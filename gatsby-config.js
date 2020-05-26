@@ -197,8 +197,8 @@ module.exports = {
     {
       resolve: 'gatsby-source-filesystem',
       options: {
-        name: 'learn_docs',
-        path: 'learn_docs',
+        name: 'advocacy_docs',
+        path: 'advocacy_docs',
       },
     },
     {
