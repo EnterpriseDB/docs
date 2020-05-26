@@ -42,13 +42,13 @@ exports.onCreateNode = ({ node, getNode, actions }) => {
   }
   if (
     node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/learn_docs/')
+    node.fileAbsolutePath.includes('/advocacy_docs/')
   ) {
     // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
     let relativeFilePath = createFilePath({
       node,
       getNode,
-      basePath: 'learn_docs',
+      basePath: 'advocacy_docs',
     });
 
     relativeFilePath = relativeFilePath.substring(
