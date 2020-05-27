@@ -28,3 +28,5 @@ Follow this setup to run the site locally. Once started, use the `Installing Pos
 3. Install all packages with `yarn`
 4. Run the site locally with `gatsby develop`
 
+## Submitting content
+
