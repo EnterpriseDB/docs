@@ -1,5 +1,5 @@
 ## Advocacy docs
-This repo is for the Advocacy docs only. These files are in `advocacy_docs/getting-started`
+This repo is for the Advocacy docs only. These files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
 
 Each document requires a `frontmatter` section at the top with a title. This looks like this:
 ```
@@ -12,7 +12,7 @@ The title can be in quotes, but they are not needed. There needs to be a space a
 
 ## Ordering of files
 
-The items in the left nav are sorted alphabetically by file name. This can be done with a numerical prefix.
+The items in the left nav are sorted alphabetically by file name. This can be done with a numerical prefix. The titles of each page are used for the names in the left nav.
 
 ## Running the site locally
 
