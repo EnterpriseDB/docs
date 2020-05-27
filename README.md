@@ -1,6 +1,8 @@
 ## Advocacy docs
 This repo is for the Advocacy docs only. These files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
 
+New docs need a `.mdx` suffix to be used by Gatsby.
+
 Each document requires a `frontmatter` section at the top with a title. This looks like this:
 ```
 ---
@@ -9,6 +11,9 @@ title: Title of page
 ```
 
 The title can be in quotes, but they are not needed. There needs to be a space after `title:`
+
+## Markdown styling
+All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/rocketinsights/edb_docs_advocacy/blob/master/docs/playground/1/01_examples/index.mdx)
 
 ## Ordering of files
 
