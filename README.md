@@ -28,3 +28,16 @@ Follow this setup to run the site locally. Once started, use the `Installing Pos
 3. Install all packages with `yarn`
 4. Run the site locally with `gatsby develop`
 
+## Content submission
+
+To add content to this site, changes must be submitted as a PR. There are two options for this:
+
+Option 1: locally
+1. Clone repo
+2. Make a new branch
+3. Add commits to branch and push to github
+4. Create a new PR on github
+
+Option 2: on github
+1. Edit a file on github
+2. Submit changes as a PR on a new branch
