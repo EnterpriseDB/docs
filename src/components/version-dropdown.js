@@ -6,14 +6,14 @@ const VersionDropdown = ({ versionArray, path }) => {
 
   return (
     <Dropdown>
-      <Dropdown.Toggle variant="primary">
+      <Dropdown.Toggle variant="outline-primary" size="sm">
         Version {activeVersion}&nbsp;
         {
           // must be a better way to get space between the text and caret
         }
       </Dropdown.Toggle>
 
-      <Dropdown.Menu alignRight>
+      <Dropdown.Menu>
         {versionArray.map(version => (
           <Dropdown.Item
             href={version.url}
