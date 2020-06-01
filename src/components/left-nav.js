@@ -3,9 +3,7 @@ import styled from '@emotion/styled';
 import { Link } from 'gatsby';
 import DottedBox from './icons/dotted-box';
 import ArrowLeft from './icons/arrow-left';
-import ChevronDown from './icons/chevron-down';
-import ChevronRight from './icons/chevron-right';
-import { Button } from 'react-bootstrap';
+import VersionDropdown from './version-dropdown';
 
 const baseUrl = (path, depth) => {
   return path
@@ -18,6 +16,7 @@ const filterAndSort = (nodes, url) => {
   return nodes
     .map(node => ({
       title: node.frontmatter.title,
+      nav_title: node.frontmatter.nav_title,
       path: node.fields.path,
       items: [],
       itemObj: {},
@@ -57,14 +56,16 @@ const orderTree = (tree, order) => {
   let result = [];
   for (let navItem of order) {
     for (let leaf of tree) {
-      if (leaf.path.includes(navItem)) {
+      if (leaf.path.includes(navItem.path)) {
         result.push(leaf);
       }
+    }
+    if (!navItem.path) {
+      result.push(navItem);
     }
   }
   return result;
 };
-
 
 const DisplayNone = styled('div')`
   display: none;
@@ -95,10 +96,10 @@ const Back = () => {
   );
 };
 
-const SectionHeading = ({ newList }) => {
+const SectionHeading = ({ newList, path }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
-      <DottedBox className="opacity-2 mr-2" width="52" height="52" />
+      <DottedBox className="opacity-2 mr-2" width="48" height="48" />
       <Link
         to="/"
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
@@ -109,17 +110,51 @@ const SectionHeading = ({ newList }) => {
   );
 };
 
+const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
+  return (
+    <li className="ml-0 mb-4 d-flex align-items-center">
+      <DottedBox className="opacity-2 mr-2" width="120" height="90" />
+      <div className="rightsidenoclass">
+        <Link
+          to="/"
+          className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+        >
+          {newList[0].title}
+        </Link>
+        {versionArray.length > 1 ? (
+          <div>
+            <VersionDropdown versionArray={versionArray} path={path} />
+          </div>
+        ) : (
+          <div className="text-muted">Version {versionArray[0].version}</div>
+        )}
+      </div>
+    </li>
+  );
+};
+
 const TreeNode = ({ node, path }) => {
+  if (!node.path) {
+    return (
+      <li
+        className="mt-3 mb-2 font-weight-bold text-muted text-uppercase small"
+        key={node.path}
+      >
+        {node.nav_title ? node.nav_title : node.title}
+      </li>
+    );
+  }
+
   return (
     <li className="ml-0 align-items-center" key={node.path}>
       <div className="d-flex align-items-center">
         <Link
           to={node.path}
-          className={`d-inline-block py-1 align-middle ${
-            path === node.path ? 'active font-weight-bold' : ''
+          className={`d-inline-block py-1 align-middle lh-12 ${
+            path === node.path ? 'active font-weight-bold text-dark' : ''
           }`}
         >
-          {node.title}
+          {node.nav_title ? node.nav_title : node.title}
         </Link>
       </div>
       {node.items.length > 0 && (
@@ -133,17 +168,26 @@ const TreeNode = ({ node, path }) => {
   );
 };
 
-const LeftNav = ({ navLinks, path, withVersions, navOrder = null }) => {
-  const newList = withVersions
+const LeftNav = ({ navLinks, path, versionArray, navOrder = null }) => {
+  const newList = versionArray
     ? filterAndSort(navLinks, baseUrl(path, 3))
     : filterAndSort(navLinks, baseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
+  console.log(navLinks);
   return (
     <ul className="list-unstyled mt-0">
       <Back />
-      <SectionHeading newList={newList} />
+      {versionArray ? (
+        <SectionHeadingWithVersions
+          newList={newList}
+          path={path}
+          versionArray={versionArray}
+        />
+      ) : (
+        <SectionHeading newList={newList} path={path} />
+      )}
       {tree.map(node => (
-        <TreeNode node={node} path={path} key={node.path} />
+        <TreeNode node={node} path={path} key={node.path + node.title} />
       ))}
     </ul>
   );
