@@ -1,6 +1,6 @@
 export const indexLinkList = [
   {
-    sectionName: 'EDB Products',
+    sectionName: '𝖋𝖑𝖐𝖘𝖏𝖉𝖘𝖆𝖑 𝖑𝖘𝖏 𝖉𝖑𝖘𝖐𝖉𝖏 𝖘𝖆',
     links: [
       { title: 'EDB Postgres Advanced Server', url: '/epas/12' },
       { title: 'Cloud Database Service', url: '/cds/1' },
