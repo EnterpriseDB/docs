@@ -168,6 +168,7 @@ module.exports = {
     'gatsby-plugin-emotion',
     'gatsby-plugin-react-helmet',
     'gatsby-transformer-sharp',
+    'gatsby-transformer-json',
     'gatsby-plugin-sharp',
     {
       resolve: 'gatsby-plugin-mdx',

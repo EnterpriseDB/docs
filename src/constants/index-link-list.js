@@ -1,18 +1,5 @@
 export const indexLinkList = [
   {
-    sectionName: 'Getting Started',
-    links: [
-      {
-        title: 'Installing Postgres',
-        url: '/getting-started/installing_postgres',
-      },
-      {
-        title: 'Connecting to Postgres',
-        url: '/getting-started/connecting_to_postgres',
-      },
-    ],
-  },
-  {
     sectionName: 'EDB Products',
     links: [
       { title: 'EDB Postgres Advanced Server', url: '/epas/12' },
