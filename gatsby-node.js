@@ -78,6 +78,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         nodes {
           frontmatter {
             title
+            nav_title
           }
           fields {
             path
