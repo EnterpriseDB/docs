@@ -9,6 +9,7 @@ import TopBar from '../components/top-bar';
 import SideNavigation from '../components/side-navigation';
 import MainContent from '../components/main-content';
 import Footer from '../components/footer';
+import CardDecks from '../components/card-decks';
 
 export const query = graphql`
   query($path: String!) {
@@ -31,34 +32,70 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
+const getChildren = (path, navLinks) => {
+  return navLinks.filter(
+    node =>
+      node.fields.path.includes(path) &&
+      node.fields.path.split('/').length === path.split('/').length + 1,
+  );
+};
+
+const Tiles = ({ mdx, navLinks }) => {
+  const { path } = mdx.fields;
+  const depth = path.split('/').length;
+  if (depth === 3) {
+    const tiles = getChildren(path, navLinks).map(child => {
+      let newChild = { ...child };
+      const { path } = newChild.fields;
+      newChild['children'] = getChildren(path, navLinks);
+      return newChild;
+    });
+
+    return <CardDecks cards={tiles} colSize={6} cardType="full" />;
+  }
+  if (depth === 4) {
+    const tiles = getChildren(path, navLinks);
+    return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
+  }
+  return <div>hi</div>;
+};
+
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { navLinks } = pageContext;
+  const { navLinks, githubLink } = pageContext;
+
   return (
     <Layout>
       <TopBar />
       <Container className="p-0 d-flex bg-white">
         <SideNavigation>
-          <LeftNav
-            navLinks={navLinks}
-            path={mdx.fields.path}
-            withVersions={false}
-          />
+          <LeftNav navLinks={navLinks} path={mdx.fields.path} />
         </SideNavigation>
         <MainContent>
-          <h1 class="balance-text">{mdx.frontmatter.title}</h1>
+          <div class="d-flex justify-content-between align-items-center">
+            <h1 className="balance-text">{mdx.frontmatter.title}</h1>
+            <a href={githubLink || '#'} className="btn btn-sm btn-primary px-4" >Edit this page</a>
+          </div>
 
-          <ContentRow>
-            <Col md={9}>
+          {mdx.tableOfContents.item ? (
+            <ContentRow>
+              <Col md={9}>
+                <MDXRenderer>{mdx.body}</MDXRenderer>
+                <Tiles mdx={mdx} navLinks={navLinks} />
+              </Col>
+
+              <Col md={3}>
+                {mdx.tableOfContents.items && (
+                  <TableOfContents toc={mdx.tableOfContents.items} />
+                )}
+              </Col>
+            </ContentRow>
+          ) : (
+            <>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-            </Col>
-
-            <Col md={3}>
-              {mdx.tableOfContents.items && (
-                <TableOfContents toc={mdx.tableOfContents.items} />
-              )}
-            </Col>
-          </ContentRow>
+              <Tiles mdx={mdx} navLinks={navLinks} />
+            </>
+          )}
 
           <Footer />
         </MainContent>
