@@ -86,6 +86,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             version
             topic
           }
+          fileAbsolutePath
         }
       }
     }
@@ -134,11 +135,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navLinks = learn.filter(
       node => node.fields.topic === doc.fields.topic,
     );
+    const githubLink =
+      'https://github.com/rocketinsights/edb_docs_advocacy/edit/master/advocacy_docs' +
+      doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
         navLinks: navLinks,
+        githubLink: githubLink,
       },
     });
   });
