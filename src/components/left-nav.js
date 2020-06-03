@@ -16,7 +16,7 @@ const filterAndSort = (nodes, url) => {
   return nodes
     .map(node => ({
       title: node.frontmatter.title,
-      nav_title: node.frontmatter.nav_title,
+      navTitle: node.frontmatter.navTitle,
       path: node.fields.path,
       items: [],
       itemObj: {},
@@ -140,7 +140,7 @@ const TreeNode = ({ node, path }) => {
         className="mt-3 mb-2 font-weight-bold text-muted text-uppercase small"
         key={node.path}
       >
-        {node.nav_title ? node.nav_title : node.title}
+        {node.navTitle ? node.navTitle : node.title}
       </li>
     );
   }
@@ -154,7 +154,7 @@ const TreeNode = ({ node, path }) => {
             path === node.path ? 'active font-weight-bold text-dark' : ''
           }`}
         >
-          {node.nav_title ? node.nav_title : node.title}
+          {node.navTitle ? node.navTitle : node.title}
         </Link>
       </div>
       {node.items.length > 0 && (
