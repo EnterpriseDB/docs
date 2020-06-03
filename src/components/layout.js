@@ -19,6 +19,9 @@ const Layout = ({ children }) => {
       <MDXProvider
         components={{
           table: props => <table {...props} className="table" />,
+          pre: props => (
+            <figure {...props} className="bg-light p-3 rounded lh-1" />
+          ),
         }}
       >
         {children}
