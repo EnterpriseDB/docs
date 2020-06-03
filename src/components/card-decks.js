@@ -10,7 +10,9 @@ const FullCard = ({ card }) => (
     </Link>
     <div className="card-body">
       <h3 className="card-title balance-text">
-        <Link to={card.fields.path}>{card.frontmatter.title}</Link>
+        <Link to={card.fields.path}>
+          {card.frontmatter.navTitle || card.frontmatter.title}
+        </Link>
       </h3>
 
       <p className="card-text">{card.frontmatter.description}</p>
@@ -21,7 +23,7 @@ const FullCard = ({ card }) => (
           to={child.fields.path}
           className="btn btn-link btn-block text-left p-0"
         >
-          {child.frontmatter.title}
+          {child.frontmatter.navTitle || child.frontmatter.title}
         </Link>
       ))}
     </div>
@@ -33,7 +35,7 @@ const SimpleCard = ({ card }) => (
     <div className="card-body">
       <h3 className="card-title balance-text">
         <Link className="stretched-link" to={card.fields.path}>
-          {card.frontmatter.title}
+          {card.frontmatter.navTitle || card.frontmatter.title}
         </Link>
       </h3>
 
