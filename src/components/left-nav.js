@@ -113,7 +113,7 @@ const SectionHeading = ({ newList, path }) => {
 const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
-      <DottedBox className="opacity-2 mr-2" width="120" height="90" />
+      <DottedBox className="opacity-2 mr-2" width="90" height="90" />
       <div className="rightsidenoclass">
         <Link
           to="/"
@@ -173,7 +173,6 @@ const LeftNav = ({ navLinks, path, versionArray, navOrder = null }) => {
     ? filterAndSort(navLinks, baseUrl(path, 3))
     : filterAndSort(navLinks, baseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
-  console.log(navLinks);
   return (
     <ul className="list-unstyled mt-0">
       <Back />
