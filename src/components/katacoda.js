@@ -1,7 +1,7 @@
 import React from 'react';
 import { Helmet } from "react-helmet"
 
-const Katacoda = ({account, scenario, highlightColor="e94621", className='katacoda-embed'}) => (
+const Katacoda = ({account, scenario, highlightColor="e94621"}) => (
     <>
         <Helmet>
             <script src="https://katacoda.com/embed.js" />
@@ -9,7 +9,7 @@ const Katacoda = ({account, scenario, highlightColor="e94621", className='kataco
         <div id={`katacoda-scenario-${account}-${scenario}`}
             data-katacoda-id={`${account}/${scenario}`}
             data-katacoda-color={highlightColor}
-            className={className}></div>
+            style={{height: '600px', paddingTop: '20px'}}></div>
     </>
 );
   
