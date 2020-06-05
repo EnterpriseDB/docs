@@ -45,7 +45,12 @@ Follow this setup to run the site locally. Once started, use the `Installing Pos
 1. This project requires Node 10.13.0 or higher to run Gatsby
 2. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
 3. Install all packages with `yarn`
+5. Run `git submodule update --init` to initialize the icons submodule
 4. Run the site locally with `gatsby develop`
+
+## Icons
+
+We're using the shared [edb-icons repository](https://github.com/rocketinsights/edb-icons) as a git submodule. Any updates to icons should be made in this repository. When you're ready to pull in changes, run `git submodule update --remote`. This will create a change in your local repository that you should commit as part of your next PR.
 
 ## Content submission
 
