@@ -48,6 +48,11 @@ Follow this setup to run the site locally. Once started, use the `Installing Pos
 5. Run `git submodule update --init` to initialize the icons submodule
 4. Run the site locally with `gatsby develop`
 
+### Running Katacoda embeds locally
+If you need to run the Katacoda embeds during local development, you'll need to have SSL setup locally.
+
+1. Run the server with `gatsby develop --https`. When promped, enter your root password. This will configured a local certificate for the development server to use. If you have issues, see [this Gatsby doc](https://www.gatsbyjs.org/docs/local-https/#manual-installation-of-certutil).
+
 ## Icons
 
 We're using the shared [edb-icons repository](https://github.com/rocketinsights/edb-icons) as a git submodule. Any updates to icons should be made in this repository. When you're ready to pull in changes, run `git submodule update --remote`. This will create a change in your local repository that you should commit as part of your next PR.
