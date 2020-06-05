@@ -21,7 +21,9 @@ const Layout = ({ children }) => {
         components={{
           table: props => <table {...props} className="table" />,
           pre: props => (
-            <figure {...props} className="bg-light p-3 rounded lh-1" />
+            <figure className="bg-light p-3 rounded lh-1">
+              <pre {...props} />
+            </figure>
           ),
         }}
       >
