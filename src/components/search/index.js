@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, createRef } from 'react';
 import algoliasearch from 'algoliasearch/lite';
 import {
   InstantSearch,
-  SearchBox,
   Hits,
   Index,
+  connectSearchBox,
   connectStateResults,
 } from 'react-instantsearch-dom';
 import { PageHit } from './hitComps';
+import { Close } from '../icons';
+import { Button } from 'react-bootstrap';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -53,29 +55,68 @@ const ResultGroup = ({ title, index, last }) => (
   </Index>
 )
 
-const SearchBar = () => {
-  const [query, setQuery] = useState(``);
-  return (
-    <InstantSearch
-      searchClient={searchClient}
-      indexName={indexes[0].index}
-      onSearchStateChange={({ query }) => setQuery(query)}
-      className='dropdown'
-    >
-      <SearchBox
-        translations={{
-          placeholder: 'Search',
-        }}
+const SearchForm = ({currentRefinement, refine, query, focus, onFocus}) => (
+  <>
+    <form noValidate action="" role="search" className='d-flex'>
+      <input
+        className="form-control form-control-lg border-0 pl-3 bg-white"
+        type="text"
+        aria-label="search"
+        placeholder="Search"
+        value={currentRefinement}
+        onChange={e => refine(e.currentTarget.value)}
+        onFocus={onFocus}
       />
-      <div
-        className={`dropdown-menu overflow-scroll w-100 pb-2 shadow ${query.length > 0 ? 'show' : ''}`}
+      <Button
+        variant="link"
+        onClick={(e) => { e.preventDefault(); refine(''); }}
+        className={`${query.length === 0 && 'd-none'}`}
       >
-        {indexes.map(({ title, index }, i) => (
-          <ResultGroup key={index} title={title} index={index} last={i === indexes.length - 1} />
-        ))}
-        <NoResults />
-      </div>
-    </InstantSearch>
+        <Close className="opacity-5" width="20" height="20" />
+      </Button>
+    </form>
+    <div
+      className={`dropdown-menu overflow-scroll w-100 pb-2 shadow ${query.length > 0 && focus ? 'show' : ''}`}
+    >
+      {indexes.map(({ title, index }, i) => (
+        <ResultGroup key={index} title={title} index={index} last={i === indexes.length - 1} />
+      ))}
+      <NoResults />
+    </div>
+  </>
+);
+const Search = connectSearchBox(SearchForm);
+
+const useClickOutside = (ref, handler, events) => {
+  if (!events) events = [`mousedown`, `touchstart`]
+  const detectClickOutside = event =>
+    !ref.current.contains(event.target) && handler()
+  useEffect(() => {
+    for (const event of events)
+      document.addEventListener(event, detectClickOutside)
+    return () => {
+      for (const event of events)
+        document.removeEventListener(event, detectClickOutside)
+    }
+  })
+};
+
+const SearchBar = () => {
+  const ref = createRef();
+  const [query, setQuery] = useState(``);
+  const [focus, setFocus] = useState(false);
+  useClickOutside(ref, () => setFocus(false));
+  return (
+    <div className="w-100" ref={ref}>
+      <InstantSearch
+        searchClient={searchClient}
+        indexName={indexes[0].index}
+        onSearchStateChange={({ query }) => setQuery(query)}
+        className='dropdown'
+      >
+        <Search query={query} focus={focus} onFocus={() => setFocus(true)}/>
+      </InstantSearch>
+    </div>
   );
 };
 

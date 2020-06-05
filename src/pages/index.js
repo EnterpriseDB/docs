@@ -1,13 +1,16 @@
 import React from 'react';
-import IndexLinks from '../components/index-links';
 import { Container } from 'react-bootstrap';
 import { indexLinkList } from '../constants/index-link-list';
-import Layout from '../components/layout';
-import TopBar from '../components/top-bar';
-import SideNavigation from '../components/side-navigation';
-import MainContent from '../components/main-content';
-import Footer from '../components/footer';
 import DottedBox from '../components/icons/dotted-box';
+import {
+  Footer,
+  IndexLinks,
+  Layout,
+  MainContent,
+  SideNavigation,
+  TopBar,
+} from '../components';
+
 import { graphql } from 'gatsby';
 
 export const query = graphql`
@@ -32,7 +35,7 @@ export default data => {
   return (
     <Layout>
       <TopBar />
-      <Container className="p-0 d-flex bg-white">
+      <Container className="p-0 d-flex bg-white fixed-container">
         <SideNavigation>
           <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
         </SideNavigation>
