@@ -1,6 +1,7 @@
 import React from 'react';
-import Helmet from 'react-helmet';
+import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
+import TextBalancer from '../components/text-balancer';
 import { MDXProvider } from '@mdx-js/react';
 
 import '../styles/index.scss';
@@ -14,7 +15,7 @@ const Layout = ({ children }) => {
         <html lang="en" />
         <title>{title}</title>
         <meta name="description" content={description} />
-        <body className="bg-light" />
+        <body className="bg-light fixed-container" />
       </Helmet>
       <MDXProvider
         components={{
@@ -26,6 +27,7 @@ const Layout = ({ children }) => {
       >
         {children}
       </MDXProvider>
+      <TextBalancer />
     </>
   );
 };

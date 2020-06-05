@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link } from 'gatsby';
+import Logo from './logo';
 
-const Logo = () => {
+const LogoLink = () => {
   return (
     <h1 className="h3">
       <Link className="d-block py-4 text-dark" to="/">
-        EDB Docs
+        <Logo width="149" height="20" />
       </Link>
     </h1>
   );
@@ -29,9 +30,9 @@ const SideNavigationFooter = () => (
 
 const SideNavigation = ({ children }) => {
   return (
-    <nav className="sidebar d-none d-md-block bg-light border-right">
-      <div className="sidebar-sticky pl-0 pr-4 pb-4">
-        <Logo />
+    <nav className="sidebar d-block bg-light border-right">
+      <div className="sidebar-sticky ml-1 pl-0 pr-4 pb-4">
+        <LogoLink />
         {children}
         <SideNavigationFooter />
       </div>
