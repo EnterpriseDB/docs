@@ -84,7 +84,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             </a>
           </div>
 
-          {mdx.tableOfContents.item ? (
+          {mdx.tableOfContents.items ? (
             <ContentRow>
               <Col xs={9}>
                 <MDXRenderer>{mdx.body}</MDXRenderer>
