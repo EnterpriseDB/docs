@@ -59,7 +59,7 @@ const Tiles = ({ mdx, navLinks }) => {
     const tiles = getChildren(path, navLinks);
     return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
   }
-  return <div>hi</div>;
+  return null;
 };
 
 const LearnDocTemplate = ({ data, pageContext }) => {
