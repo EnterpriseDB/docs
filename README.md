@@ -16,11 +16,11 @@ title: Title of page
 
 The title can be in quotes, but they are not needed unless you want an apostrophe in there. There also needs to be a space after `title:`
 
-In adedition to `title`, there is also the option of adding `navTitle` and `description` to look like this:
+In addition to `title`, there is also the option of adding `navTitle` and `description` to look like this:
 
 ```
 ---
-title: An exhaustive guide to all things wonderful about Popstgres
+title: An exhaustive guide to all things wonderful about Postgres
 navTitle: Postgres guide
 description: Everything you need to know about Postgres
 ---
