@@ -101,7 +101,7 @@ const SectionHeading = ({ newList, path }) => {
     <li className="ml-0 mb-4 d-flex align-items-center">
       <DottedBox className="opacity-2 mr-2" width="48" height="48" />
       <Link
-        to="/"
+        to={newList[0].path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
         {newList[0].title}
@@ -116,7 +116,7 @@ const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
       <DottedBox className="opacity-2 mr-2" width="90" height="90" />
       <div className="rightsidenoclass">
         <Link
-          to="/"
+          to={newList[0].path}
           className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
         >
           {newList[0].title}
