@@ -96,6 +96,18 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     reporter.panic('failed to create docs', result.errors);
   }
 
+  for (let node of result.data.allMdx.nodes) {
+    if (!node.frontmatter.title) {
+      let file;
+      if (node.fileAbsolutePath.includes('index.mdx')) {
+        file = node.fields.path + '/index.mdx';
+      } else {
+        file = node.fields.path + '.mdx';
+      }
+      reporter.warn(file + ' has no title');
+    }
+  }
+
   const docs = result.data.allMdx.nodes.filter(file => !!file.fields.version);
   const learn = result.data.allMdx.nodes.filter(file => !file.fields.version);
 
