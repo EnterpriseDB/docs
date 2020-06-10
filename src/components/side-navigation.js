@@ -15,7 +15,7 @@ const LogoLink = () => {
 const FooterItem = ({ url, children }) => (
   <li className="ml-0">
     <a href={url} className="d-block py-1 align-middle">
-      { children }
+      {children}
     </a>
   </li>
 );
