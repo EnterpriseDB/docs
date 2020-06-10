@@ -22,13 +22,12 @@ exports.onCreateNode = ({ node, getNode, actions }) => {
 
     const version = relativeFilePath.split('/')[2];
 
-    // Creates new query'able field with name of 'path'
+    // Creates new query'able fields
     createNodeField({
       node,
       name: 'path',
       value: relativeFilePath,
     });
-    // Creates new query'able field with name of 'path'
     createNodeField({
       node,
       name: 'product',
@@ -38,6 +37,11 @@ exports.onCreateNode = ({ node, getNode, actions }) => {
       node,
       name: 'version',
       value: version,
+    });
+    createNodeField({
+      node,
+      name: 'topic',
+      value: 'null',
     });
   }
   if (
@@ -79,7 +83,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           frontmatter {
             title
             navTitle
+            description
           }
+          excerpt(pruneLength: 100)
           fields {
             path
             product
