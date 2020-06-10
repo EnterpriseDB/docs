@@ -67,7 +67,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const { navLinks, githubLink } = pageContext;
 
   return (
-    <Layout>
+    <Layout pageTitle={mdx.frontmatter.title}>
       <TopBar />
       <Container className="p-0 d-flex bg-white fixed-container">
         <SideNavigation>
