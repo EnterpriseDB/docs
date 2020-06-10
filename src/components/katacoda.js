@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 
 const Katacoda = ({account, 
         scenario, 
-        "data-katacoda-layout": layout, 
+        clickToShowText = '',
+        panel = false,
+        layout = undefined, 
         port = undefined, 
         lang = undefined, 
         token = undefined, 
@@ -32,6 +34,8 @@ const Katacoda = ({account,
 
         const kataArgs = 
         {
+            "data-katacoda-ui": panel ? 'panel' : undefined,
+            "data-katacoda-ondemand": panel && clickToShowText ? 'true' : undefined,
             "data-katacoda-layout": layout,
             "data-katacoda-port": port, 
             "data-katacoda-lang": lang, 
@@ -57,15 +61,34 @@ const Katacoda = ({account,
             "data-katacoda-externalcss": externalcss, 
             "data-katacoda-hideiframebuttons": hideiframebuttons
         };
+
+        const [shownClass, setShownClass] = useState(clickToShowText ? 'd-none' : '');
+        const scenarioId = account ? [account, scenario].join('/') : scenario;
+
+        // no space reserved when using bottom panel
+        if ( panel ) height = '0';
+
+        const initKata = () => {
+            setShownClass('');
+            if ( panel )
+            {
+                // allow Katacoda to recognize its commands
+                for (var e of document.querySelectorAll(".language-shell")) 
+                    e.dataset.lang = "shell";
+                window.katacoda.init();
+            }
+        };
+
     return <>
         <Helmet>
             <script src="https://katacoda.com/embed.js" />
         </Helmet>
+        <button type="button" onClick={initKata} className={`btn btn-secondary ${!shownClass && 'd-none'}`}>{clickToShowText}</button>
         <div id={`katacoda-scenario-${account}-${scenario}`}
-            data-katacoda-id={`${account}/${scenario}`}
-            {...kataArgs}
-            style={{height: height}}
-            className={className}></div>
+                data-katacoda-id={scenarioId}
+                {...kataArgs}
+                style={{height: height}}
+                className={[className, shownClass].join(' ')}></div>
     </>
 };
   
