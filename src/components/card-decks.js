@@ -45,6 +45,7 @@ const SimpleCard = ({ card }) => (
 );
 
 const CardDecks = ({ cards, colSize = 4, cardType = 'simple' }) => {
+  console.log(cards);
   return (
     <div className="card-deck row no-gutters">
       {cards.map(card => {
