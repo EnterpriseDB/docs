@@ -23,10 +23,9 @@ const FooterItem = ({ url, children }) => (
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="#">PostgreSQL Docs</FooterItem>
-    <FooterItem url="https://github.com/rocketinsights/edb_docs/issues/new">
-      Got feedback?
-    </FooterItem>
+    <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
+    <FooterItem url="/community/contribute/">Contribute</FooterItem>
+    <FooterItem url="/community/feedback/">Feedback?</FooterItem>
   </ul>
 );
 
