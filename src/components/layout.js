@@ -6,14 +6,14 @@ import { MDXProvider } from '@mdx-js/react';
 
 import '../styles/index.scss';
 
-const Layout = ({ children }) => {
+const Layout = ({ children, pageTitle }) => {
   const { title, description } = useSiteMetadata();
 
   return (
     <>
       <Helmet>
         <html lang="en" />
-        <title>{title}</title>
+        <title>{pageTitle || title}</title>
         <meta name="description" content={description} />
         <body className="bg-light fixed-container" />
       </Helmet>

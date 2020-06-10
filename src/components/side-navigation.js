@@ -15,7 +15,7 @@ const LogoLink = () => {
 const FooterItem = ({ url, children }) => (
   <li className="ml-0">
     <a href={url} className="d-block py-1 align-middle">
-      { children }
+      {children}
     </a>
   </li>
 );
@@ -23,8 +23,9 @@ const FooterItem = ({ url, children }) => (
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="#">PostgreSQL Docs</FooterItem>
-    <FooterItem url="#">Got feedback?</FooterItem>
+    <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
+    <FooterItem url="/community/contribute/">Contribute</FooterItem>
+    <FooterItem url="/community/feedback/">Feedback?</FooterItem>
   </ul>
 );
 
