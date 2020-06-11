@@ -8,7 +8,7 @@ import {
   connectStateResults,
 } from 'react-instantsearch-dom';
 import { PageHit } from './hitComps';
-import { Close } from '../icons';
+import Icon, { iconNames } from '../icon';
 import { Button } from 'react-bootstrap';
 
 const searchClient = algoliasearch(
@@ -72,7 +72,7 @@ const SearchForm = ({currentRefinement, refine, query, focus, onFocus}) => (
         onClick={(e) => { e.preventDefault(); refine(''); }}
         className={`${query.length === 0 && 'd-none'}`}
       >
-        <Close className="opacity-5" width="20" height="20" />
+        <Icon iconName={iconNames.CLOSE} className="opacity-5" width="20" height="20" />
       </Button>
     </form>
     <div
