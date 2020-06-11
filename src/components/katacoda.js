@@ -68,22 +68,22 @@ const Katacoda = ({account,
         // no space reserved when using bottom panel
         if ( panel ) height = '0';
 
-        const initKata = () => {
-            setShownClass('');
-            if ( panel )
+        const toggleKata = () => {
+            if ( panel && shownClass )
             {
                 // allow Katacoda to recognize its commands
                 for (var e of document.querySelectorAll(".language-shell")) 
                     e.dataset.lang = "shell";
                 window.katacoda.init();
             }
+            setShownClass(shownClass ? '' : 'd-none');
         };
 
     return <>
         <Helmet>
             <script src="https://katacoda.com/embed.js" />
         </Helmet>
-        <button type="button" onClick={initKata} className={`btn btn-secondary ${!shownClass && 'd-none'}`}>{clickToShowText}</button>
+        <button type="button" onClick={toggleKata} className={`btn btn-secondary`}>{shownClass ? clickToShowText : 'Close live demo'}</button>
         <div id={`katacoda-scenario-${account}-${scenario}`}
                 data-katacoda-id={scenarioId}
                 {...kataArgs}
