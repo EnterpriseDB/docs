@@ -86,13 +86,13 @@ const splitNodeContent = nodes => {
         contentAggregator += section + ' ';
       }
       if (
-        contentAggregator.length > 500 ||
+        contentAggregator.length > 1000 ||
         (contentAggregator.length > 0 && i == contentArray.length - 1)
       ) {
         let newNode = { ...node };
         delete newNode['rawBody'];
         newNode['excerpt'] = contentAggregator;
-        newNode.id = newNode.id + '-' + order;
+        newNode.id = newNode.path + '-' + order;
         order += 1;
         result.push(newNode);
         contentAggregator = '';
@@ -160,12 +160,14 @@ const queries = [
 module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
-    title: 'Docs Site',
-    description: 'A docs site',
+    title: 'EDB Docs',
+    description:
+      'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
+    baseUrl: 'https://edb-docs.herokuapp.com',
+    imageUrl: 'https://edb-docs.herokuapp.com/images/social.jpg',
   },
   plugins: [
     'gatsby-plugin-sass',
-    'gatsby-plugin-emotion',
     'gatsby-plugin-react-helmet',
     'gatsby-transformer-sharp',
     'gatsby-transformer-json',
@@ -189,24 +191,6 @@ module.exports = {
       },
     },
     {
-      resolve: 'gatsby-plugin-mdx',
-      options: {
-        defaultLayouts: {
-          default: require.resolve('./src/components/layout.js'),
-        },
-        gatsbyRemarkPlugins: [
-          { resolve: 'gatsby-remark-images' },
-          {
-            resolve: `gatsby-remark-autolink-headers`,
-            options: {
-              isIconAfterHeader: true,
-            },
-          },
-        ],
-        plugins: [{ resolve: 'gatsby-remark-images' }],
-      },
-    },
-    {
       resolve: 'gatsby-source-filesystem',
       options: {
         name: 'docs',
@@ -221,6 +205,30 @@ module.exports = {
       },
     },
     {
+      resolve: 'gatsby-plugin-mdx',
+      options: {
+        defaultLayouts: {
+          default: require.resolve('./src/components/layout.js'),
+        },
+        gatsbyRemarkPlugins: [
+          { resolve: 'gatsby-remark-images' },
+          {
+            resolve: `gatsby-remark-autolink-headers`,
+            options: {
+              isIconAfterHeader: true,
+              className: 'ml-1',
+            },
+          },
+          {
+            resolve: 'gatsby-remark-prismjs',
+            options: {
+              noInlineHighlight: true,
+            },
+          },
+        ],
+      },
+    },
+    {
       resolve: 'gatsby-source-filesystem',
       options: {
         name: 'images',
@@ -231,20 +239,29 @@ module.exports = {
       resolve: 'gatsby-plugin-react-svg',
       options: {
         rule: {
-          include: /icons/, // See below to configure properly
+          include: /static/,
         },
       },
     },
-    // {
-    //   // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
-    //   resolve: `gatsby-plugin-algolia`,
-    //   options: {
-    //     appId: process.env.ALGOLIA_APP_ID,
-    //     apiKey: process.env.ALGOLIA_API_KEY,
-    //     indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
-    //     queries,
-    //     chunkSize: 10000, // default: 1000
-    //   },
-    // },
+    {
+      resolve: `gatsby-plugin-google-fonts`,
+      options: {
+        fonts: [
+          `source code pro\:400`, // you can also specify font weights and styles
+        ],
+      },
+    },
+    {
+      // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
+      resolve: `gatsby-plugin-algolia`,
+      options: {
+        appId: process.env.ALGOLIA_APP_ID,
+        apiKey: process.env.ALGOLIA_API_KEY,
+        indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
+        queries,
+        chunkSize: 10000, // default: 1000,
+        enablePartialUpdates: true,
+      },
+    },
   ],
 };
