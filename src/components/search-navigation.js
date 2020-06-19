@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navbar, Button } from 'react-bootstrap';
 import SearchBar from './search/';
-import Icon, { iconNames } from './icon';
+import Icon, { iconNames } from './icon/';
 
 const SearchNavigation = ({ children }) => {
   return (
