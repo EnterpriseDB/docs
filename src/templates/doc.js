@@ -3,6 +3,7 @@ import { Container, Row, Col } from 'react-bootstrap';
 import { graphql, Link } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
+  DevOnly,
   Footer,
   Layout,
   LeftNav,
@@ -13,12 +14,14 @@ import {
   TopBar,
 } from '../components';
 import { leftNavs } from '../constants/left-navs';
+import { showFrontmatter } from '../constants/utils';
 
 export const query = graphql`
   query($path: String!) {
     mdx(fields: { path: { eq: $path } }) {
       frontmatter {
         title
+        navTitle
         description
       }
       fields {
@@ -89,6 +92,7 @@ const getLinkItemFromPath = (path, navLinks) => {
       return item;
     }
   }
+  console.error('No page found for ' + path + ' from left-navs');
   return null;
 };
 
@@ -105,19 +109,27 @@ const Section = ({ section }) => (
     <div className="card rounded shadow-sm p-2">
       <div className="card-body">
         <h3 className="card-title balance-text">{section.title}</h3>
-        {section.guides.map(guide => (
-          <p className="card-text" key={`${guide.frontmatter.title}`}>
-            <Link
-              to={guide.fields.path}
-              className="btn btn-link btn-block text-left p-0"
-            >
-              {guide.frontmatter.title}
-            </Link>
-            <span className="small text-muted">
-              {guide.frontmatter.description || guide.excerpt}
-            </span>
-          </p>
-        ))}
+        {section.guides.map(guide =>
+          guide ? (
+            <p className="card-text" key={`${guide.frontmatter.title}`}>
+              <Link
+                to={guide.fields.path}
+                className="btn btn-link btn-block text-left p-0"
+              >
+                {guide.frontmatter.title}
+              </Link>
+              <span className="small text-muted">
+                {guide.frontmatter.description || guide.excerpt}
+              </span>
+            </p>
+          ) : (
+            <DevOnly key={Math.random()}>
+              <span className="badge badge-light">
+                Link Missing! Check left-navs.js
+              </span>
+            </DevOnly>
+          ),
+        )}
       </div>
     </div>
   </div>
@@ -165,6 +177,7 @@ const DocTemplate = ({ data, pageContext }) => {
           </ContentRow>
           {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
+          <DevOnly>{showFrontmatter(frontmatter)}</DevOnly>
           <Footer />
         </MainContent>
       </Container>

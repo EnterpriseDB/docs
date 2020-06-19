@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
 import { indexLinkList } from '../constants/index-link-list';
-import Icon, { iconNames } from '../components/icon';
+import Icon, { iconNames } from '../components/icon/';
 import {
   Footer,
   IndexLinks,
@@ -22,6 +22,7 @@ export const query = graphql`
           links {
             title
             url
+            iconName
           }
         }
       }
