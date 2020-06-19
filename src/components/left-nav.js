@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'gatsby';
-import Icon, { iconNames } from './icon';
+import Icon, { iconNames } from './icon/';
 import VersionDropdown from './version-dropdown';
+import { products } from '../constants/products';
 
 const baseUrl = (path, depth) => {
   return path
@@ -10,10 +11,15 @@ const baseUrl = (path, depth) => {
     .join('/');
 };
 
+const productIcon = path => {
+  const product = path.split('/')[1];
+  return products[product] ? products[product].iconName : null;
+};
+
 const filterAndSort = (nodes, url) => {
   return nodes
     .map(node => ({
-      title: node.frontmatter.title,
+      title: node.frontmatter.title || 'TITLE NEEDED',
       navTitle: node.frontmatter.navTitle,
       path: node.fields.path,
       items: [],
@@ -79,7 +85,12 @@ const Back = () => {
   return (
     <li className="ml-0 mb-3">
       <Link to="/" className="d-block py-1 align-middle small text-dark">
-        <Icon iconName={iconNames.ARROW_LEFT} className="fill-black mt-n1 mr-1" width="12" height="12" />
+        <Icon
+          iconName={iconNames.ARROW_LEFT}
+          className="fill-black mt-n1 mr-1"
+          width="12"
+          height="12"
+        />
         Back
       </Link>
     </li>
@@ -89,7 +100,12 @@ const Back = () => {
 const SectionHeading = ({ newList, path }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
-      <Icon iconName={iconNames.DOTTED_BOX} className="opacity-2 mr-2" width="48" height="48" />
+      <Icon
+        iconName={productIcon(path) || iconNames.DOTTED_BOX}
+        className="opacity-2 mr-2"
+        width="48"
+        height="48"
+      />
       <Link
         to={newList[0].path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
@@ -103,7 +119,12 @@ const SectionHeading = ({ newList, path }) => {
 const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
-      <Icon iconName={iconNames.DOTTED_BOX} className="opacity-2 mr-2" width="90" height="90" />
+      <Icon
+        iconName={productIcon(path) || iconNames.DOTTED_BOX}
+        className="opacity-2 mr-2"
+        width="90"
+        height="90"
+      />
       <div className="rightsidenoclass">
         <Link
           to={newList[0].path}

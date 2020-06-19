@@ -8,7 +8,7 @@ import {
   connectStateResults,
 } from 'react-instantsearch-dom';
 import { PageHit } from './hitComps';
-import Icon, { iconNames } from '../icon';
+import Icon, { iconNames } from '../icon/';
 import { Button } from 'react-bootstrap';
 
 const searchClient = algoliasearch(
@@ -30,10 +30,18 @@ const Results = connectStateResults(
 const NoResults = connectStateResults(
   ({ allSearchResults: res }) => (
     res && indexes.reduce((total, index) => {
-      return total + res[index.index] ? res[index.index].nbHits : 0
+      return total + (res[index.index] ? res[index.index].nbHits : 0)
     }, 0) === 0 && (
       <div className="text-center">No Results</div>
     )
+  )
+);
+
+const SearchDivider = connectStateResults(
+  ({ allSearchResults: res, nextIndex }) => (
+    res && nextIndex && res[nextIndex.index] && res[nextIndex.index].nbHits > 0 ? (
+      <div className="dropdown-divider" />
+    ) : null
   )
 );
 
@@ -42,7 +50,7 @@ const Stats = connectStateResults(
     res && res.nbHits > 0 && `${res.nbHits} result${res.nbHits > 1 ? `s` : ``}`,
 );
 
-const ResultGroup = ({ title, index, last }) => (
+const ResultGroup = ({ title, index, nextIndex }) => (
   <Index key={index} indexName={index}>
     <Results>
       <h6 className="dropdown-header">
@@ -50,7 +58,7 @@ const ResultGroup = ({ title, index, last }) => (
         <small className="ml-1"><Stats /></small>
       </h6>
       <Hits hitComponent={PageHit} />
-      { !last && <div className="dropdown-divider" /> }
+      <SearchDivider nextIndex={nextIndex} />
     </Results>
   </Index>
 )
@@ -79,7 +87,7 @@ const SearchForm = ({currentRefinement, refine, query, focus, onFocus}) => (
       className={`dropdown-menu overflow-scroll w-100 pb-2 shadow ${query.length > 0 && focus ? 'show' : ''}`}
     >
       {indexes.map(({ title, index }, i) => (
-        <ResultGroup key={index} title={title} index={index} last={i === indexes.length - 1} />
+        <ResultGroup key={index} title={title} index={index} nextIndex={indexes[i + 1]} />
       ))}
       <NoResults />
     </div>
