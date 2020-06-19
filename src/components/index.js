@@ -1,4 +1,5 @@
 import CardDecks from './card-decks';
+import DevOnly from './dev-only';
 import Footer from './footer';
 import IndexLinks from './index-links';
 import Layout from './layout';
@@ -15,6 +16,7 @@ import VersionDropdown from './version-dropdown';
 
 export {
   CardDecks,
+  DevOnly,
   Footer,
   IndexLinks,
   Layout,
