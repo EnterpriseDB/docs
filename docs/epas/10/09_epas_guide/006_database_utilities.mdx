@@ -1,0 +1,4369 @@
+---
+title: Database Utilities
+---
+
+
+This chapter describes various database utilities that provide many usage benefits with Advanced Server.
+
+## EDB\*Loader
+
+EDB\*Loader is a high-performance bulk data loader that provides an interface compatible with Oracle databases for Advanced Server. The EDB\*Loader command line utility loads data from an input source, typically a file, into one or more tables using a subset of the parameters offered by Oracle SQL\*Loader.
+
+EDB\*Loader features include:
+ - Support for the Oracle SQL\*Loader data loading methods - conventional path load, direct path load, and parallel direct path load
+ - Oracle SQL\*Loader compatible syntax for control file directives
+ - Input data with delimiter-separated or fixed-width fields
+ - Bad file for collecting rejected records
+ - Loading of multiple target tables
+ - Discard file for collecting records that do not meet the selection criteria of any target table
+ - Log file for recording the EDB\*Loader session and any error messages
+ - Data loading from standard input and remote loading, particularly useful for large data sources on remote hosts
+
+These features are explained in detail in the following sections.
+
+**Note:** The following are important version compatibility restrictions between the EDB\*Loader client and the database server.
+ - Invoking EDB\*Loader is done using a client program called edbldr, which is used to pass parameters and directive information to the database server. **It is strongly recommended that the 9.5 EDB\*Loader client (that is, the edbldr program supplied with EDB Postgres Advanced Server 9.5) be used to load data only into version 9.5 of the database server. In general, the EDB\*Loader client and database server should be the same version.**
+ - It is possible to use a 9.5 EDB\*Loader client to load data into a 9.5 database server, but the new 9.5 EDB\*Loader features may not be available under those circumstances.
+ - Use of a 9.5, 9.4 or 9.3 EDB\*Loader client is not supported for database servers version 9.2 or earlier.
+
+### Data Loading Methods
+
+As with Oracle SQL\*Loader, EDB\*Loader supports three data loading methods:
+ - Conventional path load
+ - Direct path load
+ - Parallel direct path load
+
+Conventional path load is the default method used by EDB\*Loader. Basic insert processing is used to add rows to the table.
+
+The advantage of a conventional path load over the other methods is that table constraints and database objects defined on the table such as primary keys, not null constraints, check constraints, unique indexes, foreign key constraints, and triggers are enforced during a conventional path load.
+
+One exception is that Advanced Server *rules* defined on the table are not enforced. EDB\*Loader can load tables on which rules are defined, but the rules are not executed. As a consequence, partitioned tables implemented using rules cannot be loaded using EDB\*Loader.
+
+**Note:** Advanced Server rules are created by the CREATE RULE command. Advanced Server rules are not the same database objects as rules and rule sets used in Oracle.
+
+EDB\*Loader also supports direct path loads. A direct path load is faster than a conventional path load, but requires the removal of most types of constraints and triggers from the table. See Section <span class="underline"></span>6.1.5 for information on direct path loads.
+
+Finally, EDB\*Loader supports parallel direct path loads. A parallel direct path load provides even greater performance improvement by permitting multiple EDB\*Loader sessions to run simultaneously to load a single table. See Section <span class="underline"></span>6.1.6 for information on parallel direct path loads.
+
+### General Usage
+
+EDB\*Loader can load data files with either delimiter-separated or fixed-width fields, in single-byte or multi-byte character sets. The delimiter can be a string consisting of one or more single-byte or multi-byte characters. Data file encoding and the database encoding may be different. Character set conversion of the data file to the database encoding is supported.
+
+Each EDB\*Loader session runs as a single, independent transaction. If an error should occur during the EDB\*Loader session that aborts the transaction, all changes made during the session are rolled back.
+
+Generally, formatting errors in the data file do not result in an aborted transaction. Instead, the badly formatted records are written to a text file called the *bad file*. The reason for the error is recorded in the *log file*.
+
+Records causing database integrity errors do result in an aborted transaction and rollback. As with formatting errors, the record causing the error is written to the bad file and the reason is recorded in the log file.
+
+**Note:** EDB\*Loader differs from Oracle SQL\*Loader in that a database integrity error results in a rollback in EDB\*Loader. In Oracle SQL\*Loader, only the record causing the error is rejected. Records that were previously inserted into the table are retained and loading continues after the rejected record.
+
+The following are examples of types of formatting errors that do not abort the transaction:
+ - Attempt to load non-numeric value into a numeric column
+ - Numeric value is too large for a numeric column
+ - Character value is too long for the maximum length of a character column
+ - Attempt to load improperly formatted date value into a date column
+
+The following are examples of types of database errors that abort the transaction and result in the rollback of all changes made in the EDB\*Loader session:
+ - Violation of a unique constraint such as a primary key or unique index
+ - Violation of a referential integrity constraint
+ - Violation of a check constraint
+ - Error thrown by a trigger fired as a result of inserting rows
+
+>
+
+### Building the EDB\*Loader Control File
+
+When you invoke EDB\*Loader, the list of arguments provided must include the name of a control file. The control file includes the instructions that EDB\*Loader uses to load the table (or tables) from the input data file. The control file includes information such as:
+ - The name of the input data file containing the data to be loaded.
+ - The name of the table or tables to be loaded from the data file.
+ - Names of the columns within the table or tables and their corresponding field placement in the data file.
+ - Specification of whether the data file uses a delimiter string to separate the fields, or if the fields occupy fixed column positions.
+ - Optional selection criteria to choose which records from the data file to load into a given table.
+ - The name of the file that will collect illegally formatted records.
+ - The name of the discard file that will collect records that do not meet the selection criteria of any table.
+
+The syntax for the EDB\*Loader control file is as follows:
+
+\[ OPTIONS (*param*=*value* \[, *param*=*value* \] ...) \]
+
+LOAD DATA
+
+\[ CHARACTERSET *charset* \]
+
+\[ INFILE '{ *data\_file* | stdin }' \]
+
+\[ BADFILE '*bad\_file*' \]
+
+\[ DISCARDFILE '*discard\_file*' \]
+
+\[ { DISCARDMAX | DISCARDS } *max\_discard\_recs* \]
+
+\[ INSERT | APPEND | REPLACE | TRUNCATE \]
+
+\[ PRESERVE BLANKS \]
+
+{ INTO TABLE *target\_table*
+
+\[ WHEN *field\_condition* \[ AND *field\_condition* \] ...\]
+
+\[ FIELDS TERMINATED BY '*termstring*'
+
+\[ OPTIONALLY ENCLOSED BY '*enclstring*' \] \]
+
+\[ TRAILING NULLCOLS \]
+
+(*field\_def* \[, *field\_def* \] ...)
+
+} ...
+
+where *field\_def* defines a *field* in the specified *data\_file* that describes the location, data format, or value of the data to be inserted into *column\_name* of the *target\_table*. The syntax of *field\_def* is the following:
+
+*column\_name* {
+
+CONSTANT *val* |
+
+FILLER \[ POSITION (*start*:*end*) \] \[ *fieldtype* \] |
+
+\[ POSITION (*start*:*end*) \] \[ *fieldtype* \]
+
+\[ PRESERVE BLANKS \] \[ "*expr*" \]
+
+}
+
+where *fieldtype* is one of:
+
+CHAR | DATE \[ "*datemask*" \] | INTEGER EXTERNAL |
+FLOAT EXTERNAL | DECIMAL EXTERNAL | ZONED EXTERNAL |
+ZONED \[(precision\[,scale\])\]
+
+Description
+
+The specification of *data\_file*, *bad\_file*, and *discard\_file* may include the full directory path or a relative directory path to the file name. If the file name is specified alone or with a relative directory path, the file is then assumed to exist (in the case of *data\_file*), or is created (in the case of *bad\_file* or *discard\_file*), relative to the current working directory from which edbldr is invoked.
+
+You can include references to environment variables within the EDB\*Loader control file when referring to a directory path and/or file name. Environment variable references are formatted differently on Windows systems than on Linux systems:
+ - On Linux, the format is $*ENV\_VARIABLE* or ${*ENV\_VARIABLE*}
+ - On Windows, the format is %*ENV\_VARIABLE*%
+
+Where *ENV\_VARIABLE* is the environment variable that is set to the directory path and/or file name.
+
+The EDBLDR\_ENV\_STYLE environment variable instructs Advanced Server to interpret environment variable references as Windows-styled references or Linux-styled references irregardless of the operating system on which EDB\*Loader resides. You can use this environment variable to create portable control files for EDB\*Loader.
+ - On a Windows system, set EDBLDR\_ENV\_STYLE to linux or unix to instruct Advanced Server to recognize Linux-style references within the control file.
+ - On a Linux system, set EDBLDR\_ENV\_STYLE to windows to instruct Advanced Server to recognize Windows-style references within the control file.
+
+The operating system account enterprisedb must have read permission on the directory and file specified by *data\_file*.
+
+The operating system account enterprisedb must have write permission on the directories where *bad\_file* and *discard\_file* are to be written.
+
+**Note:** It is suggested that the file names for *data\_file*, *bad\_file*, and *discard\_file* include extensions of .dat, .bad, and .dsc, respectively. If the provided file name does not contain an extension, EDB\*Loader assumes the actual file name includes the appropriate aforementioned extension.
+
+If an EDB\*Loader session results in data format errors and the BADFILE clause is not specified, nor is the BAD parameter given on the command line when edbldr is invoked, a bad file is created with the name *control\_file\_base*.bad in the current working directory from which edbldr is invoked. *control\_file\_base* is the base name of the control file (that is, the file name without any extension) used in the edbldr session.
+
+If all of the following conditions are true, the discard file is not created even if the EDB\*Loader session results in discarded records:
+ - The DISCARDFILE clause for specifying the discard file is not included in the control file.
+ - The DISCARD parameter for specifying the discard file is not included on the command line.
+ - The DISCARDMAX clause for specifying the maximum number of discarded records is not included in the control file.
+ - The DISCARDS clause for specifying the maximum number of discarded records is not included in the control file.
+ - The DISCARDMAX parameter for specifying the maximum number of discarded records is not included on the command line.
+
+If neither the DISCARDFILE clause nor the DISCARD parameter for explicitly specifying the discard file name are specified, but DISCARDMAX or DISCARDS is specified, then the EDB\*Loader session creates a discard file using the data file name with an extension of .dsc.
+
+**Note:** There is a distinction between keywords DISCARD and DISCARDS. DISCARD is an EDB\*Loader command line parameter used to specify the discard file name (see Section 6.1.4). DISCARDS is a clause of the LOAD DATA directive that may only appear in the control file. Keywords DISCARDS and DISCARDMAX provide the same functionality of specifying the maximum number of discarded records allowed before terminating the EDB\*Loader session. Records loaded into the database before termination of the EDB\*Loader session due to exceeding the DISCARDS or DISCARDMAX settings are kept in the database and are not rolled back.
+
+If one of INSERT, APPEND, REPLACE, or TRUNCATE is specified, it establishes the default action of how rows are to be added to target tables. If omitted, the default action is as if INSERT had been specified.
+
+If the FIELDS TERMINATED BY clause is specified, then the POSITION (*start*:*end*) clause may not be specified for any *field\_def*. Alternatively if the FIELDS TERMINATED BY clause is not specified, then every *field\_def* must contain the POSITION (*start*:*end*) clause, excluding those with the CONSTANT clause.
+
+Parameters
+
+*OPTIONS param*=*value*
+
+Use the *OPTIONS* clause to specify *param*=*value* pairs that represent an EDB\*Loader directive. If a parameter is specified in both the OPTIONS clause and on the command line when edbldr is invoked, the command line setting is used.
+
+Specify one or more of the following parameter/value pairs:
+
+> DIRECT= { FALSE | TRUE }
+>
+> If DIRECT is set to TRUE EDB\*Loader performs a direct path load instead of a conventional path load. The default value of DIRECT is FALSE.
+>
+> See Section <span class="underline"></span>6.1.5 for information on direct path loads.
+
+ERRORS=*error\_count*
+
+> *error\_count* specifies the number of errors permitted before aborting the EDB\*Loader session. The default is 50.
+>
+> FREEZE= { FALSE | TRUE }
+>
+> Set FREEZE to TRUE to indicate that the data should be copied with the rows *frozen*. A tuple guaranteed to be visible to all current and future transactions is marked as frozen to prevent transaction ID wrap-around. For more information about frozen tuples, please refer to the PostgreSQL core documentation at:
+>
+> <http://www.postgresql.org/docs/9.5/static/routine-vacuuming.html>
+>
+> You must specify a data-loading type of TRUNCATE in the control file when using the FREEZE option. FREEZE is not supported for direct loading.
+>
+> By default, FREEZE is FALSE.
+>
+> PARALLEL= { FALSE | TRUE }
+>
+> Set PARALLEL to TRUE to indicate that this EDB\*Loader session is one of a number of concurrent EDB\*Loader sessions participating in a parallel direct path load. The default value of PARALLEL is FALSE.
+>
+> When PARALLEL is TRUE, the DIRECT parameter must also be set to TRUE . See Section 6.1.6 for more information about parallel direct path loads.
+
+ROWS=*n*
+
+> *n* specifies the number of rows that EDB\*Loader will commit before loading the next set of *n* rows.
+>
+> If EDB\*Loader encounters an invalid row during a load (in which the ROWS parameter is specified), those rows committed prior to encountering the error will remain in the destination table.
+
+SKIP=*skip*\_*count*
+
+> *skip\_count* specifies the number of records at the beginning of the input data file that should be skipped before loading begins. The default is 0.
+
+SKIP\_INDEX\_MAINTENANCE={ FALSE | TRUE }
+
+> If SKIP\_INDEX\_MAINTENANCE is TRUE, index maintenance is not performed as part of a direct path load, and indexes on the loaded table are marked as invalid. The default value of SKIP\_INDEX\_MAINTENANCE is FALSE.
+>
+> Please note: During a parallel direct path load, target table indexes are not updated, and are marked as invalid after the load is complete.
+>
+> You can use the REINDEX command to rebuild an index. For more information about the REINDEX command, please refer to the PostgreSQL core documentation available at:
+>
+> <http://www.postgresql.org/docs/9.5/static/sql-reindex.html>
+
+*charset*
+
+Use the CHARACTERSET clause to identify the character set encoding of *data\_file* where *charset* is the character set name. This clause is required if the data file encoding differs from the control file encoding. (The control file encoding must always be in the encoding of the client where edbldr is invoked.)
+
+Examples of *charset* settings are UTF8, SQL\_ASCII, and SJIS.
+
+For more information about client to database character set conversion, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/multibyte.html>
+
+*data\_file*
+
+File containing the data to be loaded into *target\_table*. Each record in the data file corresponds to a row to be inserted into *target\_table*.
+
+If an extension is not provided in the file name, EDB\*Loader assumes the file has an extension of .dat, for example, mydatafile.dat.
+
+**Note:** If the DATA parameter is specified on the command line when edbldr is invoked, the file given by the command line DATA parameter is used instead.
+
+If the INFILE clause is omitted as well as the command line DATA parameter, then the data file name is assumed to be identical to the control file name, but with an extension of .dat.
+
+stdin
+
+Specify stdin (all lowercase letters) if you want to use standard input to pipe the data to be loaded directly to EDB\*Loader. This is useful for data sources generating a large number of records to be loaded.
+
+*bad\_file*
+
+File that receives *data\_file* records that cannot be loaded due to errors.
+
+If an extension is not provided in the file name, EDB\*Loader assumes the file has an extension of .bad, for example, mybadfile.bad.
+
+**Note:** If the BAD parameter is specified on the command line when edbldr is invoked, the file given by the command line BAD parameter is used instead.
+
+*discard\_file*
+
+File that receives input data records that are not loaded into any table because none of the selection criteria are met for tables with the WHEN clause, and there are no tables without a WHEN clause. (All records meet the selection criteria of a table without a WHEN clause.)
+
+If an extension is not provided in the file name, EDB\*Loader assumes the file has an extension of .dsc, for example, mydiscardfile.dsc.
+
+**Note:** If the DISCARD parameter is specified on the command line when edbldr is invoked, the file given by the command line DISCARD parameter is used instead.
+
+{ DISCARDMAX | DISCARDS } *max\_discard\_recs*
+
+Maximum number of discarded records that may be encountered from the input data records before terminating the EDB\*Loader session. (A discarded record is described in the preceding description of the *discard\_file* parameter.) Either keyword DISCARDMAX or DISCARDS may be used preceding the integer value specified by *max\_discard\_recs*.
+
+For example, if *max\_discard\_recs* is 0, then the EDB\*Loader session is terminated if and when a first discarded record is encountered. If *max\_discard\_recs* is 1, then the EDB\*Loader session is terminated if and when a second discarded record is encountered.
+
+When the EDB\*Loader session is terminated due to exceeding *max\_discard\_recs*, prior input data records that have been loaded into the database are retained. They are not rolled back.
+
+INSERT | APPEND | REPLACE | TRUNCATE
+
+Specifies how data is to be loaded into the target tables. If one of INSERT, APPEND, REPLACE, or TRUNCATE is specified, it establishes the default action for all tables, overriding the default of INSERT.
+
+INSERT
+
+> Data is to be loaded into an empty table. EDB\*Loader throws an exception and does not load any data if the table is not initially empty.
+>
+> **Note:** If the table contains rows, the TRUNCATE command must be used to empty the table prior to invoking EDB\*Loader. EDB\*Loader throws an exception if the DELETE command is used to empty the table instead of the TRUNCATE command. Oracle SQL\*Loader allows the table to be emptied by using either the DELETE or TRUNCATE command.
+
+APPEND
+
+> Data is to be added to any existing rows in the table. The table may be initially empty as well.
+
+REPLACE
+
+> The REPLACE keyword and TRUNCATE keywords are functionally identical. The table is truncated by EDB\*Loader prior to loading the new data.
+>
+> **Note:** Delete triggers on the table are not fired as a result of the REPLACE operation.
+
+TRUNCATE
+
+> The table is truncated by EDB\*Loader prior to loading the new data. Delete triggers on the table are not fired as a result of the truncate operation.
+
+PRESERVE BLANKS
+
+For all target tables, retains leading white space when the optional enclosure delimiters are not present and leaves trailing white space intact when fields are specified with a predetermined size. When omitted, the default behavior is to trim leading and trailing white space.
+
+*target\_table*
+
+Name of the table into which data is to be loaded. The table name may be schema-qualified (for example, enterprisedb.emp). The specified target must not be a view.
+
+*field\_condition*
+
+Conditional clause taking the following form:
+
+\[ ( \] (*start*:*end*) { = | \!= | \<\> } '*val*' \[ ) \]
+
+*start* and *end* are positive integers specifying the column positions in *data\_file* that mark the beginning and end of a field that is to be compared with the constant *val*. The first character in each record begins with a *start* value of 1.
+
+In the WHEN *field\_condition* \[ AND *field\_condition* \] clause, if all such conditions evaluate to true for a given record, then EDB\*Loader attempts to insert that record into *target\_table*. If the insert operation fails, the record is written to *bad\_file*.
+
+All characters used in the *field\_condition* text (particularly in the *val* string) must be valid in the database encoding. (For performing data conversion, EDB\*Loader first converts the characters in *val* string to the database encoding and then to the data file encoding.)
+
+If for a given record, none of the WHEN clauses evaluate to true for all INTO TABLE clauses, the record is written to *discard\_file*, if a discard file was specified for the EDB\*Loader session.
+
+*termstring*
+
+String of one or more characters that separates each field in *data\_file*. The characters may be single-byte or multi-byte as long as they are valid in the database encoding. Two consecutive appearances of *termstring* with no intervening character results in the corresponding column set to null.
+
+*enclstring*
+
+String of one or more characters used to enclose a field value in *data\_file*. The characters may be single-byte or multi-byte as long as they are valid in the database encoding. Use *enclstring* on fields where *termstring* appears as part of the data.
+
+TRAILING NULLCOLS
+
+If TRAILING NULLCOLS is specified, then the columns in the column list for which there is no data in *data\_file* for a given record, are set to null when the row is inserted. This applies only to one or more consecutive columns at the end of the column list.
+
+If fields are omitted at the end of a record and TRAILING NULLCOLS is not specified, EDB\*Loader assumes the record contains formatting errors and writes it to the bad file.
+
+*column\_name*
+
+Name of a column in *target\_table* into which a field value defined by *field\_def* is to be inserted.
+
+CONSTANT *val*
+
+Specifies a constant that is type-compatible with the column data type to which it is assigned in a field definition. Single or double quotes may enclose *val*. If *val* contains white space, then enclosing quotation marks must be used.
+
+The use of the CONSTANT clause completely determines the value to be assigned to a column in each inserted row. No other clause may appear in the same field definition.
+
+If the TERMINATED BY clause is used to delimit the fields in *data\_file*, there must be no delimited field in *data\_file* corresponding to any field definition with a CONSTANT clause. In other words, EDB\*Loader assumes there is no field in *data\_file* for any field definition with a CONSTANT clause.
+
+FILLER
+
+Specifies that the data in the field defined by the field definition is not to be loaded into the associated column. The column is set to null.
+
+A column name defined with the FILLER clause must not be referenced in a SQL expression. See the discussion of the *expr* parameter.
+
+POSITION (*start*:*end*)
+
+Defines the location of the field in a record in a fixed-width field data file. *start* and *end* are positive integers. The first character in the record has a start value of 1.
+
+CHAR | DATE \[ "*datemask*" \] | INTEGER EXTERNAL |
+FLOAT EXTERNAL | DECIMAL EXTERNAL | ZONED EXTERNAL |
+ZONED \[(precision\[,scale\])\]
+
+Field type that describes the format of the data field in *data\_file*.
+
+Note: Specification of a field type is optional (for descriptive purposes only) and has no effect on whether or not EDB\*Loader successfully inserts the data in the field into the table column. Successful loading depends upon the compatibility of the column data type and the field value. For example, a column with data type NUMBER(7,2) successfully accepts a field containing 2600, but if the field contains a value such as 26XX, the insertion fails and the record is written to *bad\_file*.
+
+Please note that ZONED data is not human-readable; ZONED data is stored in an internal format where each digit is encoded in a separate nibble/nybble/4-bit field. In each ZONED value, the last byte contains a single digit (in the high-order 4 bits) and the sign (in the low-order 4 bits).
+
+*precision*
+
+> Use precision to specify the length of the ZONED value.
+>
+> If the precision value specified for ZONED conflicts with the length calculated by the server based on information provided with the POSITION clause, EDB\*Loader will use the value specified for precision.
+
+*scale*
+
+> *scale* specifies the number of digits to the right of the decimal point in a ZONED value*.*
+
+*datemask*
+
+Specifies the ordering and abbreviation of the day, month, and year components of a date field.
+
+**Note:** If the DATE field type is specified along with a SQL expression for the column, then *datemask* must be specified after DATE and before the SQL expression. See the following discussion of the *expr* parameter.
+
+PRESERVE BLANKS
+
+For the column on which this option appears, retains leading white space when the optional enclosure delimiters are not present and leaves trailing white space intact when fields are specified with a predetermined size. When omitted, the default behavior is to trim leading and trailing white space.
+
+*expr*
+
+A SQL expression returning a scalar value that is type-compatible with the column data type to which it is assigned in a field definition. Double quotes must enclose *expr*. *expr* may contain a reference to any column in the field list (except for fields with the FILLER clause) by prefixing the column name by a colon character (:).
+
+**Examples**
+
+The following are some examples of control files and their corresponding data files.
+
+The following control file uses a delimiter-separated data file that appends rows to the emp table:
+
+LOAD DATA
+
+INFILE 'emp.dat'
+
+BADFILE 'emp.bad'
+
+APPEND
+
+INTO TABLE emp
+
+FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+
+TRAILING NULLCOLS
+
+(
+
+empno,
+
+ename,
+
+job,
+
+mgr,
+
+hiredate,
+
+sal,
+
+deptno,
+
+comm
+
+)
+
+In the preceding control file, the APPEND clause is used to allow the insertion of additional rows into the emp table.
+
+The following is the corresponding delimiter-separated data file:
+
+9101,ROGERS,CLERK,7902,17-DEC-10,1980.00,20
+
+9102,PETERSON,SALESMAN,7698,20-DEC-10,2600.00,30,2300.00
+
+9103,WARREN,SALESMAN,7698,22-DEC-10,5250.00,30,2500.00
+
+9104,"JONES, JR.",MANAGER,7839,02-APR-09,7975.00,20
+
+The use of the TRAILING NULLCOLS clause allows the last field supplying the comm column to be omitted from the first and last records. The comm column is set to null for the rows inserted from these records.
+
+The double quotation mark enclosure character surrounds the value JONES, JR. in the last record since the comma delimiter character is part of the field value.
+
+The following query displays the rows added to the table after the EDB\*Loader session:
+
+SELECT \* FROM emp WHERE empno \> 9100;
+
+empno | ename | job | mgr | hiredate | sal | comm | deptno
+
+\-------+------------+----------+------+--------------------+---------+---------+--------
+
+9101 | ROGERS | CLERK | 7902 | 17-DEC-10 00:00:00 | 1980.00 | | 20
+
+9102 | PETERSON | SALESMAN | 7698 | 20-DEC-10 00:00:00 | 2600.00 | 2300.00 | 30
+
+9103 | WARREN | SALESMAN | 7698 | 22-DEC-10 00:00:00 | 5250.00 | 2500.00 | 30
+
+9104 | JONES, JR. | MANAGER | 7839 | 02-APR-09 00:00:00 | 7975.00 | | 20
+
+(4 rows)
+
+The following example is a control file that loads the same rows into the emp table, but uses a data file containing fixed-width fields:
+
+LOAD DATA
+
+INFILE 'emp\_fixed.dat'
+
+BADFILE 'emp\_fixed.bad'
+
+APPEND
+
+INTO TABLE emp
+
+TRAILING NULLCOLS
+
+(
+
+empno POSITION (1:4),
+
+ename POSITION (5:14),
+
+job POSITION (15:23),
+
+mgr POSITION (24:27),
+
+hiredate POSITION (28:38),
+
+sal POSITION (39:46),
+
+deptno POSITION (47:48),
+
+comm POSITION (49:56)
+
+)
+
+In the preceding control file, the FIELDS TERMINATED BY and OPTIONALLY ENCLOSED BY clauses are absent. Instead, each field now includes the POSITION clause.
+
+The following is the corresponding data file containing fixed-width fields:
+
+9101ROGERS CLERK 790217-DEC-10 1980.0020
+
+9102PETERSON SALESMAN 769820-DEC-10 2600.0030 2300.00
+
+9103WARREN SALESMAN 769822-DEC-10 5250.0030 2500.00
+
+9104JONES, JR.MANAGER 783902-APR-09 7975.0020
+
+The following control file illustrates the use of the FILLER clause in the data fields for the sal and comm columns. EDB\*Loader ignores the values in these fields and sets the corresponding columns to null.
+
+LOAD DATA
+
+INFILE 'emp\_fixed.dat'
+
+BADFILE 'emp\_fixed.bad'
+
+APPEND
+
+INTO TABLE emp
+
+TRAILING NULLCOLS
+
+(
+
+empno POSITION (1:4),
+
+ename POSITION (5:14),
+
+job POSITION (15:23),
+
+mgr POSITION (24:27),
+
+hiredate POSITION (28:38),
+
+sal FILLER POSITION (39:46),
+
+deptno POSITION (47:48),
+
+comm FILLER POSITION (49:56)
+
+)
+
+Using the same fixed-width data file as in the prior example, the resulting rows in the table appear as follows:
+
+SELECT \* FROM emp WHERE empno \> 9100;
+
+empno | ename | job | mgr | hiredate | sal | comm | deptno
+
+\-------+------------------+----------+------+--------------------+-----+------+--------
+
+9101 | ROGERS | CLERK | 7902 | 17-DEC-10 00:00:00 | | | 20
+
+9102 | PETERSON | SALESMAN | 7698 | 20-DEC-10 00:00:00 | | | 30
+
+9103 | WARREN | SALESMAN | 7698 | 22-DEC-10 00:00:00 | | | 30
+
+9104 | JONES, JR. | MANAGER | 7839 | 02-APR-09 00:00:00 | | | 20
+
+(4 rows)
+
+The following example illustrates the use of multiple INTO TABLE clauses. For this example, two empty tables are created with the same data definition as the emp table. The following CREATE TABLE commands create these two empty tables, while inserting no rows from the original emp table:
+
+CREATE TABLE emp\_research AS SELECT \* FROM emp WHERE deptno = 99;
+
+CREATE TABLE emp\_sales AS SELECT \* FROM emp WHERE deptno = 99;
+
+The following control file contains two INTO TABLE clauses. Also note that there is no APPEND clause so the default operation of INSERT is used, which requires that tables emp\_research and emp\_sales be empty.
+
+LOAD DATA
+
+INFILE 'emp\_multitbl.dat'
+
+BADFILE 'emp\_multitbl.bad'
+
+DISCARDFILE 'emp\_multitbl.dsc'
+
+INTO TABLE emp\_research
+
+WHEN (47:48) = '20'
+
+TRAILING NULLCOLS
+
+(
+
+empno POSITION (1:4),
+
+ename POSITION (5:14),
+
+job POSITION (15:23),
+
+mgr POSITION (24:27),
+
+hiredate POSITION (28:38),
+
+sal POSITION (39:46),
+
+deptno CONSTANT '20',
+
+comm POSITION (49:56)
+
+)
+
+INTO TABLE emp\_sales
+
+WHEN (47:48) = '30'
+
+TRAILING NULLCOLS
+
+(
+
+empno POSITION (1:4),
+
+ename POSITION (5:14),
+
+job POSITION (15:23),
+
+mgr POSITION (24:27),
+
+hiredate POSITION (28:38),
+
+sal POSITION (39:46),
+
+deptno CONSTANT '30',
+
+comm POSITION (49:56) "ROUND(:comm + (:sal \* .25), 0)"
+
+)
+
+The WHEN clauses specify that when the field designated by columns 47 thru 48 contains 20, the record is inserted into the emp\_research table and when that same field contains 30, the record is inserted into the emp\_sales table. If neither condition is true, the record is written to the discard file named emp\_multitbl.dsc.
+
+The CONSTANT clause is given for column deptno so the specified constant value is inserted into deptno for each record. When the CONSTANT clause is used, it must be the only clause in the field definition other than the column name to which the constant value is assigned.
+
+Finally, column comm of the emp\_sales table is assigned a SQL expression. Column names may be referenced in the expression by prefixing the column name with a colon character (:).
+
+The following is the corresponding data file:
+
+9101ROGERS CLERK 790217-DEC-10 1980.0020
+
+9102PETERSON SALESMAN 769820-DEC-10 2600.0030 2300.00
+
+9103WARREN SALESMAN 769822-DEC-10 5250.0030 2500.00
+
+9104JONES, JR.MANAGER 783902-APR-09 7975.0020
+
+9105ARNOLDS CLERK 778213-SEP-10 3750.0010
+
+9106JACKSON ANALYST 756603-JAN-11 4500.0040
+
+Since the records for employees ARNOLDS and JACKSON contain 10 and 40 in columns 47 thru 48, which do not satisfy any of the WHEN clauses, EDB\*Loader writes these two records to the discard file, emp\_multitbl.dsc, whose content is shown by the following:
+
+9105ARNOLDS CLERK 778213-SEP-10 3750.0010
+
+9106JACKSON ANALYST 756603-JAN-11 4500.0040
+
+The following are the rows loaded into the emp\_research and emp\_sales tables:
+
+SELECT \* FROM emp\_research;
+
+empno | ename | job | mgr | hiredate | sal | comm | deptno
+
+\-------+------------+---------+------+--------------------+---------+------+--------
+
+9101 | ROGERS | CLERK | 7902 | 17-DEC-10 00:00:00 | 1980.00 | | 20.00
+
+9104 | JONES, JR. | MANAGER | 7839 | 02-APR-09 00:00:00 | 7975.00 | | 20.00
+
+(2 rows)
+
+SELECT \* FROM emp\_sales;
+
+empno | ename | job | mgr | hiredate | sal | comm | deptno
+
+\-------+----------+----------+------+--------------------+---------+---------+--------
+
+9102 | PETERSON | SALESMAN | 7698 | 20-DEC-10 00:00:00 | 2600.00 | 2950.00 | 30.00
+
+9103 | WARREN | SALESMAN | 7698 | 22-DEC-10 00:00:00 | 5250.00 | 3813.00 | 30.00
+
+(2 rows)
+
+### Invoking EDB\*Loader
+
+You must have superuser privileges to run EDB\*Loader. Use the following command to invoke EDB\*Loader from the command line:
+
+edbldr \[ -d *dbname* \] \[ -p *port* \] \[ -h *host* \]
+
+\[ USERID={ *username*/*password* | *username*/ | *username* | / } \]
+
+CONTROL=*control\_file*
+
+\[ DATA=*data\_file* \]
+
+\[ BAD=*bad\_file* \]
+
+\[ DISCARD=*discard\_file* \]
+
+\[ DISCARDMAX=*max\_discard\_recs* \]
+
+\[ LOG=*log\_file* \]
+
+\[ PARFILE=*param\_file* \]
+
+\[ DIRECT={ FALSE | TRUE } \]
+
+\[ FREEZE={ FALSE | TRUE } \]
+
+\[ ERRORS=*error\_count* \]
+
+\[ PARALLEL={ FALSE | TRUE } \]
+
+\[ ROWS=*n* \]
+
+\[ SKIP=*skip\_count* \]
+
+\[ SKIP\_INDEX\_MAINTENANCE={ FALSE | TRUE } \]
+
+\[ edb\_resource\_group=*group\_name* \]
+
+Description
+
+If the -d option, the -p option, or the -h option are omitted, the defaults for the database, port, and host are determined according to the same rules as other Advanced Server utility programs such as edb-psql, for example.
+
+Any parameter listed in the preceding syntax diagram except for the -d option, -p option, -h option, and the PARFILE parameter may be specified in a *parameter file*. The parameter file is specified on the command line when edbldr is invoked using PARFILE=*param\_file*. Some parameters may be specified in the OPTIONS clause in the control file. See the description of the control file in Section <span class="underline"> </span> <span class="underline">6.1.3</span>.
+
+The specification of *control\_file*, *data\_file*, *bad\_file*, *discard\_file*, *log\_file*, and *param\_file* may include the full directory path or a relative directory path to the file name. If the file name is specified alone or with a relative directory path, the file is assumed to exist (in the case of *control\_file*, *data\_file*, or *param\_file*), or to be created (in the case of *bad\_file*, *discard\_file*, or *log\_file*) relative to the current working directory from which edbldr is invoked.
+
+**Note:** The control file must exist in the character set encoding of the client where edbldr is invoked. If the client is in a different encoding than the database encoding, then the PGCLIENTENCODING environment variable must be set on the client to the client’s encoding prior to invoking edbldr. This must be done to ensure character set conversion is properly done between the client and the database server.
+
+The operating system account used to invoke edbldr must have read permission on the directories and files specified by *control\_file*, *data\_file*, and *param\_file*.
+
+The operating system account enterprisedb must have write permission on the directories where *bad\_file*, *discard\_file*, and *log\_file* are to be written.
+
+**Note:** It is suggested that the file names for *control\_file*, *data\_file*, *bad\_file*, *discard\_file*, and *log\_file* include extensions of .ctl, .dat, .bad, .dsc, and .log, respectively. If the provided file name does not contain an extension, EDB\*Loader assumes the actual file name includes the appropriate aforementioned extension.
+
+Parameters
+
+*dbname*
+
+Name of the database containing the tables to be loaded.
+
+*port*
+
+Port number on which the database server is accepting connections.
+
+*host*
+
+IP address of the host on which the database server is running.
+
+USERID={ *username*/*password* | *username*/ | *username* | / }
+
+EDB\*Loader connects to the database with *username*. *username* must be a superuser. *password* is the password for *username*.
+
+If the USERID parameter is omitted, EDB\*Loader prompts for *username* and *password*. If USERID=*username*/ is specified, then EDB\*Loader 1) uses the password file specified by environment variable PGPASSFILE if PGPASSFILE is set, or 2) uses the .pgpass password file (pgpass.conf on Windows systems) if PGPASSFILE is not set. If USERID=*username* is specified, then EDB\*Loader prompts for *password*. If USERID=/ is specified, the connection is attempted using the operating system account as the user name.
+
+**Note:** The Advanced Server connection environment variables PGUSER and PGPASSWORD are ignored by EDB\*Loader. Please refer to the PostgreSQL core documentation for information on the PGPASSFILE environment variable and the password file.
+
+*CONTROL=control\_file*
+
+*control\_file* specifies the name of the control file containing EDB\*Loader directives. If a file extension is not specified, an extension of .ctl is assumed. See Section <span class="underline"></span>6.1.3 for a description of the control file.
+
+*DATA=data\_file*
+
+*data\_file* specifies the name of the file containing the data to be loaded into the target table. If a file extension is not specified, an extension of .dat is assumed. See Section <span class="underline"></span>6.1.3 for a description of the *data\_file*.
+
+**Note:** Specifying a *data\_file* on the command line overrides the INFILE clause specified in the control file.
+
+*BAD=bad\_file*
+
+*bad\_file* specifies the name of a file that receives input data records that cannot be loaded due to errors. See Section <span class="underline"></span>6.1.3 for a description of the *bad\_file*.
+
+**Note:** Specifying a *bad\_file* on the command line overrides any BADFILE clause specified in the control file.
+
+*DISCARD=discard\_file*
+
+*discard\_file* is the name of the file that receives input data records that do not meet any table’s selection criteria. See the description of *discard\_file* in Section 6.1.3.
+
+**Note:** Specifying a *discard\_file* using the command line DISCARD parameter overrides the DISCARDFILE clause in the control file.
+
+*DISCARDMAX=max\_discard\_recs*
+
+*max\_discard\_recs* is the maximum number of discarded records that may be encountered from the input data records before terminating the EDB\*Loader session. See the description of *max\_discard\_recs* in Section 6.1.3.
+
+**Note:** Specifying *max\_discard\_recs* using the command line DISCARDMAX parameter overrides the DISCARDMAX or DISCARDS clause in the control file.
+
+*LOG=log\_file*
+
+*log\_file* specifies the name of the file in which EDB\*Loader records the results of the EDB\*Loader session.
+
+If the LOG parameter is omitted, EDB\*Loader creates a log file with the name *control\_file\_base*.log in the directory from which edbldr is invoked. *control\_file\_base* is the base name of the control file used in the EDB\*Loader session. The operating system account enterprisedb must have write permission on the directory where the log file is to be written.
+
+*PARFILE=param\_file*
+
+*param\_file* specifies the name of the file that contains command line parameters for the EDB\*Loader session. Any command line parameter listed in this section except for the -d, -p, and -h options, and the PARFILE parameter itself, can be specified in *param\_file* instead of on the command line.
+
+Any parameter given in *param\_file* overrides the same parameter supplied on the command line before the PARFILE option. Any parameter given on the command line that appears after the PARFILE option overrides the same parameter given in *param\_file*.
+
+**Note:** Unlike other EDB\*Loader files, there is no default file name or extension assumed for *param\_file*, though by Oracle SQL\*Loader convention, .par is typically used, but not required, as an extension.
+
+DIRECT= { FALSE | TRUE }
+
+If DIRECT is set to TRUE EDB\*Loader performs a direct path load instead of a conventional path load. The default value of DIRECT is FALSE.
+
+See Section 6.1.5 for information on direct path loads.
+
+FREEZE= { FALSE | TRUE }
+
+> Set FREEZE to TRUE to indicate that the data should be copied with the rows *frozen*. A tuple guaranteed to be visible to all current and future transactions is marked as frozen to prevent transaction ID wrap-around. For more information about frozen tuples, please refer to the PostgreSQL core documentation at:
+>
+> <http://www.postgresql.org/docs/9.5/static/routine-vacuuming.html>
+>
+> You must specify a data-loading type of TRUNCATE in the control file when using the FREEZE option. FREEZE is not supported for direct loading.
+>
+> By default, FREEZE is FALSE.
+
+ERRORS=*error\_count*
+
+*error\_count* specifies the number of errors permitted before aborting the EDB\*Loader session. The default is 50.
+
+PARALLEL= { FALSE | TRUE }
+
+Set PARALLEL to TRUE to indicate that this EDB\*Loader session is one of a number of concurrent EDB\*Loader sessions participating in a parallel direct path load. The default value of PARALLEL is FALSE.
+
+When PARALLEL is TRUE, the DIRECT parameter must also be set to TRUE . See Section <span class="underline"></span>6.1.6 for more information about parallel direct path loads.
+
+ROWS=*n*
+
+*n* specifies the number of rows that EDB\*Loader will commit before loading the next set of *n* rows.
+
+*SKIP=skip\_count*
+
+Number of records at the beginning of the input data file that should be skipped before loading begins. The default is 0.
+
+SKIP\_INDEX\_MAINTENANCE= { FALSE | TRUE }
+
+If set to TRUE, index maintenance is not performed as part of a direct path load, and indexes on the loaded table are marked as invalid. The default value of SKIP\_INDEX\_MAINTENANCE is FALSE.
+
+Please note: During a parallel direct path load, target table indexes are not updated, and are marked as invalid after the load is complete.
+
+You can use the REINDEX command to rebuild an index. For more information about the REINDEX command, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-reindex.html>
+
+edb\_resource\_group=*group\_name*
+
+*group\_name* specifies the name of an EDB Resource Manager resource group to which the EDB\*Loader session is to be assigned.
+
+Any default resource group that may have been assigned to the session (for example, a database user running the EDB\*Loader session who had been assigned a default resource group with the ALTER ROLE ... SET edb\_resource\_group command) is overridden by the resource group given by the edb\_resource\_group parameter specified on the edbldr command line.
+
+For information about the EDB Resource Manager, see Chapter <span class="underline">5</span>, *EDB Resource Manager.*
+
+Examples
+
+In the following example EDB\*Loader is invoked using a control file named emp.ctl located in the current working directory to load a table in database edb:
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb USERID=enterprisedb/password CONTROL=emp.ctl
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+Successfully loaded (4) records
+
+In the following example, EDB\*Loader prompts for the user name and password since they are omitted from the command line. In addition, the files for the bad file and log file are specified with the BAD and LOG command line parameters.
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb CONTROL=emp.ctl BAD=/tmp/emp.bad LOG=/tmp/emp.log
+
+Enter the user name : enterprisedb
+
+Enter the password :
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+Successfully loaded (4) records
+
+The following example runs EDB\*Loader with the same parameters as shown in the preceding example, but using a parameter file located in the current working directory. The SKIP and ERRORS parameters are altered from their defaults in the parameter file as well.
+
+The parameter file, emp.par, contains the following:
+
+CONTROL=emp.ctl
+
+BAD=/tmp/emp.bad
+
+LOG=/tmp/emp.log
+
+SKIP=1
+
+ERRORS=10
+
+EDB\*Loader is invoked with the parameter file as shown by the following:
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb PARFILE=emp.par
+
+Enter the user name : enterprisedb
+
+Enter the password :
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+Successfully loaded (3) records
+
+#### Exit Codes
+
+When EDB\*Loader exits, it will return one of the following codes:
+
+| Exit Code | Description                                                                                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | Indicates that all rows loaded successfully.                                                                                                                            |
+| 1         | Indicates that EDB\*Loader encountered command line or syntax errors, or aborted the load operation due to an unrecoverable error.                                      |
+| 2         | Indicates that the load completed, but some (or all) rows were rejected or discarded.                                                                                   |
+| 3         | Indicates that EDB\*Loader encountered fatal errors (such as OS errors). This class of errors is equivalent to the FATAL or PANIC severity levels of PostgreSQL errors. |
+
+### Direct Path Load
+
+During a direct path load, EDB\*Loader writes the data directly to the database pages, which is then synchronized to disk. The insert processing associated with a conventional path load is bypassed, thereby resulting in a performance improvement.
+
+Bypassing insert processing reduces the types of constraints that may exist on the target table. The following types of constraints are permitted on the target table of a direct path load:
+ - Primary key
+ - Not null constraints
+ - Indexes (unique or non-unique)
+
+The restrictions on the target table of a direct path load are the following:
+ - Triggers are not permitted
+ - Check constraints are not permitted
+ - Foreign key constraints on the target table referencing another table are not permitted
+ - Foreign key constraints on other tables referencing the target table are not permitted
+ - The table must not be partitioned
+ - Rules may exist on the target table, but they are not executed
+
+**Note:** Currently, a direct path load in EDB\*Loader is more restrictive than in Oracle SQL\*Loader. The preceding restrictions do not apply to Oracle SQL\*Loader in most cases. The following restrictions apply to a control file used in a direct path load:
+ - Multiple table loads are not supported. That is, only one INTO TABLE clause may be specified in the control file.
+ - SQL expressions may not be used in the data field definitions of the INTO TABLE clause.
+ - The FREEZE option is not supported for direct path loading.
+
+To run a direct path load, add the DIRECT=TRUE option as shown by the following example:
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb USERID=enterprisedb/password CONTROL=emp.ctl DIRECT=TRUE
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+Successfully loaded (4) records
+
+### Parallel Direct Path Load
+
+The performance of a direct path load can be further improved by distributing the loading process over two or more sessions running concurrently. Each session runs a direct path load into the same table.
+
+Since the same table is loaded from multiple sessions, the input records to be loaded into the table must be divided amongst several data files so that each EDB\*Loader session uses its own data file and the same record is not loaded more than once into the table.
+
+The target table of a parallel direct path load is under the same restrictions as a direct path load run in a single session.
+
+The restrictions on the target table of a direct path load are the following:
+ - Triggers are not permitted
+ - Check constraints are not permitted
+ - Foreign key constraints on the target table referencing another table are not permitted
+ - Foreign key constraints on other tables referencing the target table are not permitted
+ - The table must not be partitioned
+ - Rules may exist on the target table, but they are not executed
+
+In addition, the APPEND clause must be specified in the control file used by each EDB\*Loader session.
+
+To run a parallel direct path load, run EDB\*Loader in a separate session for each participant of the parallel direct path load. Invocation of each such EDB\*Loader session must include the DIRECT=TRUE and PARALLEL=TRUE parameters.
+
+Each EDB\*Loader session runs as an independent transaction so if one of the parallel sessions aborts and rolls back its changes, the loading done by the other parallel sessions are not affected.
+
+**Note:** In a parallel direct path load, each EDB\*Loader session reserves a fixed number of blocks in the target table in a round-robin fashion. Some of the blocks in the last allocated chunk may not be used, and those blocks remain uninitialized. A subsequent use of the VACUUM command on the target table may show warnings regarding these uninitialized blocks such as the following:
+
+WARNING: relation "emp" page 98264 is uninitialized --- fixing
+
+WARNING: relation "emp" page 98265 is uninitialized --- fixing
+
+WARNING: relation "emp" page 98266 is uninitialized --- fixing
+
+This is an expected behavior and does not indicate data corruption.
+
+Indexes on the target table are not updated during a parallel direct path load and are therefore marked as invalid after the load is complete. You must use the REINDEX command to rebuild the indexes.
+
+The following example shows the use of a parallel direct path load on the emp table.
+
+**Note:** If you attempt a parallel direct path load on the sample emp table provided with Advanced Server, you must first remove the triggers and constraints referencing the emp table. In addition the primary key column, empno, was expanded from NUMBER(4) to NUMBER in this example to allow for the insertion of a larger number of rows.
+
+The following is the control file used in the first session:
+
+LOAD DATA
+
+INFILE '/home/user/loader/emp\_parallel\_1.dat'
+
+APPEND
+
+INTO TABLE emp
+
+FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+
+TRAILING NULLCOLS
+
+(
+
+empno,
+
+ename,
+
+job,
+
+mgr,
+
+hiredate,
+
+sal,
+
+deptno,
+
+comm
+
+)
+
+The APPEND clause must be specified in the control file for a parallel direct path load.
+
+The following shows the invocation of EDB\*Loader in the first session. The DIRECT=TRUE and PARALLEL=TRUE parameters must be specified.
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb USERID=enterprisedb/password CONTROL=emp\_parallel\_1.ctl DIRECT=TRUE PARALLEL=TRUE
+
+WARNING: index maintenance will be skipped with PARALLEL load
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+The control file used for the second session appears as follows. Note that it is the same as the one used in the first session, but uses a different data file.
+
+LOAD DATA
+
+INFILE '/home/user/loader/emp\_parallel\_2.dat'
+
+APPEND
+
+INTO TABLE emp
+
+FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+
+TRAILING NULLCOLS
+
+(
+
+empno,
+
+ename,
+
+job,
+
+mgr,
+
+hiredate,
+
+sal,
+
+deptno,
+
+comm
+
+)
+
+The preceding control file is used in a second session as shown by the following:
+
+$ /opt/PostgresPlus/9.5AS/bin/edbldr -d edb USERID=enterprisedb/password CONTROL=emp\_parallel\_2.ctl DIRECT=TRUE PARALLEL=TRUE
+
+WARNING: index maintenance will be skipped with PARALLEL load
+
+EDB\*Loader: Copyright (c) 2007-2014, EnterpriseDB Corporation.
+
+EDB\*Loader displays the following message in each session when its respective load operation completes:
+
+Successfully loaded (10000) records
+
+The following query shows that the index on the emp table has been marked as INVALID:
+
+SELECT index\_name, status FROM user\_indexes WHERE table\_name = 'EMP';
+
+index\_name | status
+
+\------------+---------
+
+EMP\_PK | INVALID
+
+(1 row)
+
+**Note:** user\_indexes is the view of indexes compatible with oracle databases owned by the current user.
+
+Queries on the emp table will not utilize the index unless it is rebuilt using the REINDEX command as shown by the following:
+
+REINDEX INDEX emp\_pk;
+
+A subsequent query on user\_indexes shows that the index is now marked as VALID:
+
+SELECT index\_name, status FROM user\_indexes WHERE table\_name = 'EMP';
+
+index\_name | status
+
+\------------+--------
+
+EMP\_PK | VALID
+
+(1 row)
+
+### Remote Loading
+
+EDB\*Loader supports a feature called *remote loading*. In remote loading, the database containing the table to be loaded is running on a database server on a different host than from where EDB\*Loader is invoked with the input data source.
+
+This feature is useful if you have a large amount of data to be loaded, and you do not want to create a large data file on the host running the database server.
+
+In addition, you can use the standard input feature to pipe the data from the data source such as another program or script, directly to EDB\*Loader, which then loads the table in the remote database. This bypasses the process of having to create a data file on disk for EDB\*Loader.
+
+Performing remote loading along with using standard input requires the following:
+ - The edbldr program must be installed on the client host on which it is to be invoked with the data source for the EDB\*Loader session.
+ - The control file must contain the clause INFILE 'stdin' so you can pipe the data directly into EDB\*Loader’s standard input. See Section <span class="underline"></span>6.1.3 for information on the INFILE clause and the EDB\*Loader control file.
+ - All files used by EDB\*Loader such as the control file, bad file, discard file, and log file must reside on, or are created on, the client host on which edbldr is invoked.
+ - When invoking EDB\*Loader, use the -h option to specify the IP address of the remote database server. See Section <span class="underline"></span>6.1.4 for information on invoking EDB\*Loader.
+ - Use the operating system pipe operator (|) or input redirection operator (\<) to supply the input data to EDB\*Loader.
+
+The following example loads a database running on a database server at 192.168.1.14 using data piped from a source named datasource.
+
+datasource | ./edbldr -d edb -h 192.168.1.14 USERID=enterprisedb/password CONTROL=remote.ctl
+
+The following is another example of how standard input can be used:
+
+./edbldr -d edb -h 192.168.1.14 USERID=enterprisedb/password CONTROL=remote.ctl \< datasource
+
+### Updating a Table with a Conventional Path Load
+
+You can use EDB\*Loader with a conventional path load to update the rows within a table, merging new data with the existing data. When you invoke EDB\*Loader to perform an update, the server searches the table for an existing row with a matching primary key:
+ - If the server locates a row with a matching key, it replaces the existing row with the new row.
+ - If the server does not locate a row with a matching key, it adds the new row to the table.
+
+To use EDB\*Loader to update a table, the table must have a primary key. Please note that you cannot use EDB\*Loader to UPDATE a partitioned table.
+
+To perform an UPDATE, use the same steps as when performing a conventional path load:
+
+1.  Create a data file that contains the rows you wish to UPDATE or INSERT.
+
+2.  Define a control file that uses the INFILE keyword to specify the name of the data file. For information about building the EDB\*Loader control file, see Section 6.1.3.
+
+3.  Invoke EDB\*Loader, specifying the database name, connection information, and the name of the control file. For information about invoking EDB\*Loader, see Section 6.1.4.
+
+The following example uses the emp table that is distributed with the Advanced Server sample data. By default, the table contains:
+
+edb=\# select \* from emp;
+
+empno|ename | job | mgr | hiredate | sal | comm | deptno
+
+\-----+------+---------+------+--------------------+---------+-------+--------
+
+7369 |SMITH |CLERK | 7902 | 17-DEC-80 00:00:00 | 800.00 | | 20
+
+7499 |ALLEN |SALESMAN | 7698 | 20-FEB-81 00:00:00 | 1600.00 |300.00 | 30
+
+7521 |WARD |SALESMAN | 7698 | 22-FEB-81 00:00:00 | 1250.00 |500.00 | 30
+
+7566 |JONES |MANAGER | 7839 | 02-APR-81 00:00:00 | 2975.00 | | 20
+
+7654 |MARTIN|SALESMAN | 7698 | 28-SEP-81 00:00:00 | 1250.00 |1400.00| 30
+
+7698 |BLAKE |MANAGER | 7839 | 01-MAY-81 00:00:00 | 2850.00 | | 30
+
+7782 |CLARK |MANAGER | 7839 | 09-JUN-81 00:00:00 | 2450.00 | | 10
+
+7788 |SCOTT |ANALYST | 7566 | 19-APR-87 00:00:00 | 3000.00 | | 20
+
+7839 |KING |PRESIDENT| | 17-NOV-81 00:00:00 | 5000.00 | | 10
+
+7844 |TURNER|SALESMAN | 7698 | 08-SEP-81 00:00:00 | 1500.00 | 0.00 | 30
+
+7876 |ADAMS |CLERK | 7788 | 23-MAY-87 00:00:00 | 1100.00 | | 20
+
+7900 |JAMES |CLERK | 7698 | 03-DEC-81 00:00:00 | 950.00 | | 30
+
+7902 |FORD |ANALYST | 7566 | 03-DEC-81 00:00:00 | 3000.00 | | 20
+
+7934 |MILLER|CLERK | 7782 | 23-JAN-82 00:00:00 | 1300.00 | | 10
+
+(14 rows)
+
+The following control file (emp\_update.ctl) specifies the fields in the table in a comma-delimited list. The control file performs an UPDATE on the emp table:
+
+LOAD DATA
+
+INFILE 'emp\_update.dat'
+
+BADFILE 'emp\_update.bad'
+
+DISCARDFILE 'emp\_update.dsc'
+
+UPDATE INTO TABLE emp
+
+FIELDS TERMINATED BY ","
+
+(empno, ename, job, mgr, hiredate, sal, comm, deptno)
+
+The data that is being updated or inserted is saved in the emp\_update.dat file. emp\_update.dat contains:
+
+7521,WARD,MANAGER,7839,22-FEB-81 00:00:00,3000.00,0.00,30
+
+7566,JONES,MANAGER,7839,02-APR-81 00:00:00,3500.00,0.00,20
+
+7903,BAKER,SALESMAN,7521,10-JUN-13 00:00:00,1800.00,500.00,20
+
+7904,MILLS,SALESMAN,7839,13-JUN-13 00:00:00,1800.00,500.00,20
+
+7654,MARTIN,SALESMAN,7698,28-SEP-81 00:00:00,1500.00,400.00,30
+
+Invoke EDB\*Loader, specifying the name of the database (edb), the name of a database superuser (and their associated password) and the name of the control file (emp\_update.ctl):
+
+edbldr -d edb userid=*user\_name*/*password* control=emp\_update.ctl
+
+After performing the update, the emp table contains:
+
+edb=\# select \* from emp;
+
+empno|ename | job | mgr | hiredate | sal | comm | deptno
+
+\-----+------+---------+------+--------------------+---------+-------+--------
+
+7369 |SMITH |CLERK | 7902 | 17-DEC-80 00:00:00 | 800.00 | | 20
+
+7499 |ALLEN |SALESMAN | 7698 | 20-FEB-81 00:00:00 | 1600.00 |300.00 | 30
+
+7521 |WARD |MANAGER | 7839 | 22-FEB-81 00:00:00 | 3000.00 |0.00 | 30
+
+7566 |JONES |MANAGER | 7839 | 02-APR-81 00:00:00 | 3500.00 |0.00 | 20
+
+7654 |MARTIN|SALESMAN | 7698 | 28-SEP-81 00:00:00 | 1500.00 |400.00 | 30
+
+7698 |BLAKE |MANAGER | 7839 | 01-MAY-81 00:00:00 | 2850.00 | | 30
+
+7782 |CLARK |MANAGER | 7839 | 09-JUN-81 00:00:00 | 2450.00 | | 10
+
+7788 |SCOTT |ANALYST | 7566 | 19-APR-87 00:00:00 | 3000.00 | | 20
+
+7839 |KING |PRESIDENT| | 17-NOV-81 00:00:00 | 5000.00 | | 10
+
+7844 |TURNER|SALESMAN | 7698 | 08-SEP-81 00:00:00 | 1500.00 | 0.00 | 30
+
+7876 |ADAMS |CLERK | 7788 | 23-MAY-87 00:00:00 | 1100.00 | | 20
+
+7900 |JAMES |CLERK | 7698 | 03-DEC-81 00:00:00 | 950.00 | | 30
+
+7902 |FORD |ANALYST | 7566 | 03-DEC-81 00:00:00 | 3000.00 | | 20
+
+7903 |BAKER |SALESMAN |7521 | 10-JUN-13 00:00:00 | 1800.00 |500.00 | 20
+
+7904 |MILLS |SALESMAN |7839 |13-JUN-13 00:00:00 |1800.00 |500.00 | 20
+
+7934 |MILLER|CLERK | 7782 | 23-JAN-82 00:00:00 | 1300.00 | | 10
+
+(16 rows)
+
+The rows containing information for the three employees that are currently in the emp table are updated, while rows are added for the new employees (BAKER and MILLS).
+
+### Loading Empty Strings with EDB\*Loader
+
+Advanced Server includes a configuration parameter that controls how EDB\*Loader handles a CSV (comma-separated value) file containing empty strings. An empty string within a CSV file may take the form of:
+ - an unquoted empty string. For example:
+
+> 9001, , 40
+ - a single-quoted, comma-delimited value. For example:
+
+> 9001, '', 40
+ - a double-quoted, comma-delimited value. For example:
+
+> 9001, "", 40
+
+You can use the edbldr.empty\_csv\_field parameter to specify how EDB\*Loader will treat an empty string. The valid values for the edbldr.empty\_csv\_field parameter are:
+
+| Parameter Setting | EDB\*Loader Behavior                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| NULL              | An empty field is treated as NULL.                                                                              |
+| empty\_string     | An empty field is treated as a string of length zero.                                                           |
+| pgsql             | An empty field is treated as a NULL if it does not contain quotes and as an empty string if it contains quotes. |
+
+You can set the edbldr.empty\_csv\_field parameter in any context (i.e. with a SET statement, or in the postgresql.conf file). You can also use the PGOPTIONS environment variable to set the value of edbldr.empty\_csv\_field for an EDB\*Loader session. For example, before invoking EDB\*Loader, enter the command:
+
+> $ export PGOPTIONS="-c edbldr.empty\_csv\_field=empty\_string"
+
+Then, invoke EDB\*Loader, specifying command line options as required.
+
+For more information about setting parameter values, please refer to the PostgreSQL core documentation available at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+## EDB\*Plus
+
+EDB\*Plus is a utility program that provides a command line user interface to the Advanced Server. EDB\*Plus accepts SQL commands, SPL anonymous blocks, and EDB\*Plus commands. EDB\*Plus provides various capabilities including:
+ - Querying certain database objects
+ - Executing stored procedures
+ - Formatting output from SQL commands
+ - Executing batch scripts
+ - Executing OS commands
+ - Recording output
+
+The following section describes how to connect to an Advanced Server database using EDB\*Plus. The final section provides a summary of the EDB\*Plus commands.
+
+### Starting EDB\*Plus
+
+To open an EDB\*Plus command line, navigate through the Applications (or Start) menu to the Postgres Plus Advanced Server menu, to the Run SQL Command Line menu, and select the EDB\*Plus option. You can also invoke EDB\*Plus from the operating system command line with the following command:
+
+edbplus \[ -S\[ILENT \] \] \[ *login* | /NOLOG \] \[ @*scriptfile*\[.*ext* \] \]
+
+\-SILENT
+
+If specified, the EDB\*Plus sign-on banner is suppressed along with all prompts.
+
+*login*
+
+Login information for connecting to the database server and database. *login* takes the following format. (There must be no white space within the login information.)
+
+*username*\[/*password*\]\[@{*connectstring* | *variable* } \]
+
+> Where:
+
+*username* is a database username with which to connect to the database.
+
+*password* is the password associated with the specified *username*. If a *password* is not provided, but a password is required for authentication, EDB\*Plus will prompt for the password.
+
+*connectstring* is the database connection string.
+
+*variable* is a variable defined in the login.sql file that contains a database connection string. The login.sql file can be found in the edbplus subdirectory of the Advanced Server home directory.
+
+*host*\[:*port*\]\[/*dbname* \] \]
+
+*host* is the hostname on which the database server resides. If neither @*connectstring* nor @*variable* nor /NOLOG is specified, the default host is assumed to be the localhost. *port* is the port number receiving connections on the database server. If not specified, the default is 5444. *dbname* is the name of the database to connect to. If not specified the default is edb.
+
+/NOLOG
+
+Specify /NOLOG to start EDB\*Plus without establishing a database connection. SQL commands and EDB\*Plus commands that require a database connection cannot be used in this mode. The CONNECT command can be subsequently given to connect to a database after starting EDB\*Plus with the /NOLOG option.
+
+*scriptfile*\[.*ext* \]
+
+*scriptfile* is the name of a file residing in the current working directory, containing SQL and/or EDB\*Plus commands that will be automatically executed after startup of EDB\*Plus. *ext* is the filename extension. If the filename extension is sql, then the .sql extension may be omitted when specifying *scriptfile*. When creating a script file, always name the file with an extension, otherwise it will not be accessible by EDB\*Plus. (EDB\*Plus will always assume a .sql extension on filenames that are specified with no extension.)
+
+The following example shows user enterprisedb with password, password, connecting to database edb running on a database server on the localhost at port 5444.
+
+C:\\Program Files (x86)\\PostgresPlus\\9.5AS\\edbplus\>edbplus enterprisedb/password
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5444/edb) AS enterprisedb
+
+EDB\*Plus: Release 9.5
+
+Copyright (c) 2008-2016, EnterpriseDB Corporation. All rights reserved.
+
+SQL\>
+
+The following example shows user enterprisedb with password, password, connecting to database edb running on a database server on the localhost at port 5445.
+
+C:\\Program Files (x86)\\PostgresPlus\\9.5AS\\edbplus\>edbplus enterprisedb/password@localhost:5445/edb
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5445/edb) AS enterprisedb
+
+EDB\*Plus: Release 9.5
+
+Copyright (c) 2008-2016, EnterpriseDB Corporation. All rights reserved.
+
+SQL\>
+
+Using variable hr\_5445 in the login.sql file, the following illustrates how it is used to connect to database hr on localhost at port 5445.
+
+C:\\Program Files (x86)\\PostgresPlus\\9.5AS\\edbplus\>edbplus enterprisedb/password@hr\_5445
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5445/hr) AS enterprisedb
+
+EDB\*Plus: Release 9.5 (Build 28)
+
+Copyright (c) 2008-2016, EnterpriseDB Corporation. All rights reserved.
+
+SQL\>
+
+The following is the content of the login.sql file used in the previous example.
+
+define edb="localhost:5445/edb"
+
+define hr\_5445="localhost:5445/hr"
+
+The following example executes a script file, dept\_query.sql after connecting to database edb on server localhost at port 5444.
+
+C:\\Program Files (x86)\\PostgresPlus\\9.5AS\\edbplus\>edbplus enterprisedb/password @dept\_query
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5444/edb) AS enterprisedb
+
+SQL\> SELECT \* FROM dept;
+
+DEPTNO DNAME LOC
+
+\------ -------------- -------------
+
+10 ACCOUNTING NEW YORK
+
+20 RESEARCH DALLAS
+
+30 SALES CHICAGO
+
+40 OPERATIONS BOSTON
+
+SQL\> EXIT
+
+Disconnected from EnterpriseDB Database.
+
+The following is the content of file dept\_query.sql used in the previous example.
+
+SET PAGESIZE 9999
+
+SET ECHO ON
+
+SELECT \* FROM dept;
+
+EXIT
+
+### Command Summary
+
+This section contains a summary of EDB\*Plus commands.
+
+#### ACCEPT
+
+The ACCEPT command displays a prompt and waits for the user’s keyboard input. The value input by the user is placed in the specified variable.
+
+ACC\[EPT \] *variable*
+
+The following example creates a new variable named my\_name, accepts a value of John Smith, then displays the value using the DEFINE command.
+
+SQL\> ACCEPT my\_name
+
+Enter value for my\_name: John Smith
+
+SQL\> DEFINE my\_name
+
+DEFINE MY\_NAME = "John Smith"
+
+#### APPEND
+
+APPEND is a line editor command that appends the given text to the end of the current line in the SQL buffer.
+
+A\[PPEND \] *text*
+
+In the following example, a SELECT command is built-in the SQL buffer using the APPEND command. Note that two spaces are placed between the APPEND command and the WHERE clause in order to separate dept and WHERE by one space in the SQL buffer.
+
+SQL\> APPEND SELECT \* FROM dept
+
+SQL\> LIST
+
+1\* SELECT \* FROM dept
+
+SQL\> APPEND WHERE deptno = 10
+
+SQL\> LIST
+
+1\* SELECT \* FROM dept WHERE deptno = 10
+
+#### CHANGE
+
+CHANGE is a line editor command performs a search-and-replace on the current line in the SQL buffer.
+
+C\[HANGE \] /*from*/\[*to*/ \]
+
+If *to*/ is specified, the first occurrence of text *from* in the current line is changed to text *to*. If *to*/ is omitted, the first occurrence of text *from* in the current line is deleted.
+
+The following sequence of commands makes line 3 the current line, then changes the department number in the WHERE clause from 20 to 30.
+
+SQL\> LIST
+
+1 SELECT empno, ename, job, sal, comm
+
+2 FROM emp
+
+3 WHERE deptno = 20
+
+4\* ORDER BY empno
+
+SQL\> 3
+
+3\* WHERE deptno = 20
+
+SQL\> CHANGE /20/30/
+
+3\* WHERE deptno = 30
+
+SQL\> LIST
+
+1 SELECT empno, ename, job, sal, comm
+
+2 FROM emp
+
+3 WHERE deptno = 30
+
+4\* ORDER BY empno
+
+#### CLEAR
+
+The CLEAR command removes the contents of the SQL buffer, deletes all column definitions set with the COLUMN command, or clears the screen.
+
+CL\[EAR \] \[ BUFF\[ER \] | SQL | COL\[UMNS \] | SCR\[EEN \] \]
+
+| BUFFER | SQL | Clears the SQL buffer.                                              |
+| ------------ | ------------------------------------------------------------------- |
+| COLUMNS      | Removes column definitions.                                         |
+| SCREEN       | Clears the screen. This is the default if no options are specified. |
+
+#### COLUMN
+
+The COLUMN command controls output formatting. The formatting attributes set by using the COLUMN command remain in effect only for the duration of the current session.
+
+COL\[UMN \]
+
+\[ *column*
+
+{ CLE\[AR \] |
+
+{ FOR\[MAT \] *spec* |
+
+HEA\[DING \] *text* |
+
+{ OFF | ON }
+
+} \[...\]
+
+}
+
+\]
+
+If the COLUMN command is specified with no subsequent options, formatting options for current columns in effect for the session are displayed.
+
+If the COLUMN command is followed by a column name, then the column name may be followed by one of the following:
+ - No other options
+ - CLEAR
+ - Any combination of FORMAT, HEADING, and one of OFF or ON
+
+*column*
+
+Name of a column in a table to which subsequent column formatting options are to apply. If no other options follow *column*, then the current column formatting options if any, of *column* are displayed.
+
+CLEAR
+
+The CLEAR option reverts all formatting options back to their defaults for *column*. If the CLEAR option is specified, it must be the only option specified.
+
+*spec*
+
+Format specification to be applied to *column*. For character columns, *spec* takes the following format:
+
+*n*
+
+*n* is a positive integer that specifies the column width in characters within which to display the data. Data in excess of *n* will wrap around with the specified column width.
+
+For numeric columns, *spec* is comprised of the following elements.
+
+> Table 10‑‑ Numeric Column Format Elements
+
+|         |                                            |
+| ------- | ------------------------------------------ |
+| Element | Description                                |
+| $       | Display a leading dollar sign.             |
+| ,       | Display a comma in the indicated position. |
+| .       | Marks the location of the decimal point.   |
+| 0       | Display leading zeros.                     |
+| 9       | Number of significant digits to display.   |
+
+If loss of significant digits occurs due to overflow of the format, then all \#’s are displayed.
+
+*text*
+
+Text to be used for the column heading of *column*.
+
+OFF | ON
+
+If OFF is specified, formatting options are reverted back to their defaults, but are still available within the session. If ON is specified, the formatting options specified by previous COLUMN commands for *column* within the session are re-activated.
+
+The following example shows the effect of changing the display width of the job column.
+
+SQL\> SET PAGESIZE 9999
+
+SQL\> COLUMN job FORMAT A5
+
+SQL\> COLUMN job
+
+COLUMN JOB ON
+
+FORMAT A5
+
+wrapped
+
+SQL\> SELECT empno, ename, job FROM emp;
+
+EMPNO ENAME JOB
+
+\----- ---------- -----
+
+7369 SMITH CLERK
+
+7499 ALLEN SALES
+
+MAN
+
+7521 WARD SALES
+
+MAN
+
+7566 JONES MANAG
+
+ER
+
+7654 MARTIN SALES
+
+MAN
+
+7698 BLAKE MANAG
+
+ER
+
+7782 CLARK MANAG
+
+ER
+
+7788 SCOTT ANALY
+
+ST
+
+7839 KING PRESI
+
+DENT
+
+7844 TURNER SALES
+
+MAN
+
+7876 ADAMS CLERK
+
+7900 JAMES CLERK
+
+7902 FORD ANALY
+
+ST
+
+7934 MILLER CLERK
+
+14 rows retrieved.
+
+The following example applies a format to the sal column.
+
+SQL\> COLUMN sal FORMAT $99,999.00
+
+SQL\> COLUMN
+
+COLUMN JOB ON
+
+FORMAT A5
+
+wrapped
+
+COLUMN SAL ON
+
+FORMAT $99,999.00
+
+wrapped
+
+SQL\> SELECT empno, ename, job, sal FROM emp;
+
+EMPNO ENAME JOB SAL
+
+\----- ---------- ----- -----------
+
+7369 SMITH CLERK $800.00
+
+7499 ALLEN SALES $1,600.00
+
+MAN
+
+7521 WARD SALES $1,250.00
+
+MAN
+
+7566 JONES MANAG $2,975.00
+
+ER
+
+7654 MARTIN SALES $1,250.00
+
+MAN
+
+7698 BLAKE MANAG $2,850.00
+
+ER
+
+7782 CLARK MANAG $2,450.00
+
+ER
+
+7788 SCOTT ANALY $3,000.00
+
+ST
+
+7839 KING PRESI $5,000.00
+
+DENT
+
+7844 TURNER SALES $1,500.00
+
+MAN
+
+7876 ADAMS CLERK $1,100.00
+
+7900 JAMES CLERK $950.00
+
+7902 FORD ANALY $3,000.00
+
+ST
+
+7934 MILLER CLERK $1,300.00
+
+14 rows retrieved.
+
+#### CONNECT
+
+Change the database connection to a different user and/or connect to a different database. There must be no white space between any of the parameters following the CONNECT command.
+
+CON\[NECT\] *username*\[/*password*\]\[@{*connectstring* | *variable* } \]
+
+Where:
+
+*username* is a database username with which to connect to the database.
+
+*password* is the password associated with the specified *username*. If a *password* is not provided, but a password is required for authentication, EDB\*Plus will prompt for the password.
+
+*connectstring* is the database connection string.
+
+*variable* is a variable defined in the login.sql file that contains a database connection string. The login.sql file can be found in the edbplus subdirectory of the Advanced Server home directory.
+
+In the following example, the database connection is changed to database edb on the localhost at port 5445 with username, smith.
+
+SQL\> CONNECT smith/mypassword@localhost:5445/edb
+
+Disconnected from EnterpriseDB Database.
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5445/edb) AS smith
+
+From within the session shown above, the connection is changed to username enterprisedb. Also note that the host defaults to the localhost, the port defaults to 5444 (which is not the same as the port previously used), and the database defaults to edb.
+
+SQL\> CONNECT enterprisedb/password
+
+Disconnected from EnterpriseDB Database.
+
+Connected to EnterpriseDB 9.5.0.0 (localhost:5444/edb) AS enterprisedb
+
+#### DEFINE
+
+The DEFINE command creates or replaces the value of a *user variable* (also called a *substitution variable*).
+
+DEF\[INE \] \[ *variable* \[ = *text* \] \]
+
+If the DEFINE command is given without any parameters, all current variables and their values are displayed.
+
+If DEFINE *variable* is given, only *variable* is displayed with its value.
+
+DEFINE *variable* = *text* assigns *text* to *variable*. *text* may be optionally enclosed within single or double quotation marks. Quotation marks must be used if *text* contains space characters.
+
+The following example defines two variables, dept and name.
+
+SQL\> DEFINE dept = 20
+
+SQL\> DEFINE name = 'John Smith'
+
+SQL\> DEFINE
+
+DEFINE EDB = "localhost:5445/edb"
+
+DEFINE DEPT = "20"
+
+DEFINE NAME = "John Smith"
+
+**Note:** The variable EDB is read from the login.sql file located in the edbplus subdirectory of the Advanced Server home directory.
+
+#### DEL
+
+DEL is a line editor command that deletes one or more lines from the SQL buffer.
+
+DEL \[ *n* | *n* *m* | *n* \* | *n* L\[AST \] | \* | \* *n* | \* L\[AST \] |
+
+L\[AST \] \]
+
+The parameters specify which lines are to be deleted from the SQL buffer. Two parameters specify the start and end of a range of lines to be deleted. If the DEL command is given with no parameters, the current line is deleted.
+
+*n*
+
+*n* is an integer representing the *n*th line
+
+*n* *m*
+
+*n* and *m* are integers where *m* is greater than *n* representing the *n*th through the *m*th lines
+
+\*
+
+Current line
+
+*LAST*
+
+Last line
+
+In the following example, the fifth and sixth lines containing columns sal and comm, respectively, are deleted from the SELECT command in the SQL buffer.
+
+SQL\> LIST
+
+1 SELECT
+
+2 empno
+
+3 ,ename
+
+4 ,job
+
+5 ,sal
+
+6 ,comm
+
+7 ,deptno
+
+8\* FROM emp
+
+SQL\> DEL 5 6
+
+SQL\> LIST
+
+1 SELECT
+
+2 empno
+
+3 ,ename
+
+4 ,job
+
+5 ,deptno
+
+6\* FROM emp
+
+#### DESCRIBE
+
+The DESCRIBE command displays:
+ - A list of columns, column data types, and column lengths for a table or view
+ - A list of parameters for a procedure or function
+ - A list of procedures and functions and their respective parameters for a package.
+
+The DESCRIBE command will also display the structure of the database object referred to by a synonym. The syntax is:
+
+DESC\[RIBE\] \[ *schema*.\]*object*
+
+*schema*
+
+Name of the schema containing the object to be described.
+
+*object*
+
+Name of the table, view, procedure, function, or package to be displayed, or the synonym of an object.
+
+#### DISCONNECT
+
+The DISCONNECT command closes the current database connection, but does not terminate EDB\*Plus.
+
+DISC\[ONNECT \]
+
+#### EDIT
+
+The EDIT command invokes an external editor to edit the contents of an operating system file or the SQL buffer.
+
+ED\[IT \] \[ *filename*\[.*ext* \] \]
+
+*filename*\[.*ext* \]
+
+*filename* is the name of the file to open with an external editor. *ext* is the filename extension. If the filename extension is sql, then the .sql extension may be omitted when specifying *filename*. EDIT always assumes a .sql extension on filenames that are specified with no extension. If the filename parameter is omitted from the EDIT command, the contents of the SQL buffer are brought into the editor.
+
+#### EXECUTE
+
+The EXECUTE command executes an SPL procedure from EDB\*Plus.
+
+EXEC\[UTE \] *spl\_procedure* \[ (\[ *parameters* \]) \]
+
+*spl\_procedure*
+
+The name of the SPL procedure to be executed.
+
+*parameters*
+
+Comma-delimited list of parameters. If there are no parameters, then a pair of empty parentheses may optionally be specified.
+
+#### EXIT
+
+The EXIT command terminates the EDB\*Plus session and returns control to the operating system. QUIT is a synonym for EXIT. Specifying no parameters is equivalent to EXIT SUCCESS COMMIT.
+
+{ EXIT | QUIT }
+
+\[ SUCCESS | FAILURE | WARNING | *value* |*variable* \]
+
+\[ COMMIT | ROLLBACK \]SUCCESS | FAILURE |WARNING
+
+Returns an operating system dependent return code indicating successful operation, failure, or warning for SUCCESS, FAILURE, and WARNING, respectively. The default is SUCCESS.
+
+*value*
+
+An integer value that is returned as the return code.
+
+*variable*
+
+A variable created with the DEFINE command whose value is returned as the return code.
+
+COMMIT | ROLLBACK
+
+If COMMIT is specified, uncommitted updates are committed upon exit. If ROLLBACK is specified, uncommitted updates are rolled back upon exit. The default is COMMIT.
+
+#### GET
+
+The GET command loads the contents of the given file to the SQL buffer.
+
+GET *filename*\[.*ext* \] \[ LIS\[T \] | NOL\[IST \] \]
+
+*filename*\[.*ext* \]
+
+*filename* is the name of the file to load into the SQL buffer. *ext* is the filename extension. If the filename extension is sql, then the .sql extension may be omitted when specifying *filename*. GET always assumes a .sql extension on filenames that are specified with no extension.
+
+LIST | NOLIST
+
+If LIST is specified, the content of the SQL buffer is displayed after the file is loaded. If NOLIST is specified, no listing is displayed. The default is LIST.
+
+#### HELP
+
+The HELP command obtains an index of topics or help on a specific topic. The question mark (?) is synonymous with specifying HELP.
+
+{ HELP | ? } { INDEX | *topic* }
+
+INDEX
+
+Displays an index of available topics.
+
+*topic*
+
+The name of a specific topic – e.g., an EDB\*Plus command, for which help is desired.
+
+#### HOST
+
+The HOST command executes an operating system command from EDB\*Plus.
+
+HO\[ST \] \[*os\_command*\]
+
+*os\_command*
+
+The operating system command to be executed. If you do not provide an operating system command, EDB\*Plus pauses execution and opens a new shell prompt. When the shell exits, EDB\*Plus resumes execution.
+
+#### INPUT
+
+The INPUT line editor command adds a line of text to the SQL buffer after the current line.
+
+I\[NPUT \] *text*
+
+The following sequence of INPUT commands constructs a SELECT command.
+
+SQL\> INPUT SELECT empno, ename, job, sal, comm
+
+SQL\> INPUT FROM emp
+
+SQL\> INPUT WHERE deptno = 20
+
+SQL\> INPUT ORDER BY empno
+
+SQL\> LIST
+
+1 SELECT empno, ename, job, sal, comm
+
+2 FROM emp
+
+3 WHERE deptno = 20
+
+4\* ORDER BY empno
+
+#### LIST
+
+LIST is a line editor command that displays the contents of the SQL buffer.
+
+L\[IST\] \[ *n* | *n* *m* | *n* \* | *n* L\[AST\] | \* | \* *n* | \* L\[AST\] |
+
+L\[AST\] \]
+
+The buffer does not include a history of the EDB\*Plus commands.
+
+*n*
+
+*n* represents the buffer line number.
+
+*n m*
+
+*n* *m* displays a list of lines between n and m.
+
+*n* \*
+
+*n* \* displays a list of lines that range between line *n* and the current line.
+
+*n* L\[AST\]
+
+*n* L\[AST\] displays a list of lines that range from line *n* through the last line in the buffer.
+
+\*
+
+\* displays the current line.
+
+\* *n*
+
+\* *n* displays a list of lines that range from the current line through line *n*.
+
+\* L\[AST\]
+
+\* L\[AST\] displays a list of lines that range from the current line through the last line.
+
+L\[AST\]
+
+L\[AST\] displays the last line.
+
+#### PASSWORD
+
+Use the PASSWORD command to change your database password.
+
+PASSW\[ORD\] \[*user\_name*\]
+
+You must have sufficient privileges to use the PASSWORD command to change another user's password. The following example demonstrates using the PASSWORD command to change the password for a user named acctg:
+
+SQL\> PASSWORD acctg
+
+Changing password for acctg
+
+New password:
+
+New password again:
+
+Password successfully changed.
+
+#### PAUSE
+
+The PAUSE command displays a message, and waits for the user to press ENTER.
+
+PAU\[SE\] \[*optional\_text*\]
+
+*optional\_text* specifies the text that will be displayed to the user. If the *optional\_text* is omitted, Advanced Server will display two blank lines. If you double quote the *optional\_text* string, the quotes will be included in the output.
+
+#### PRINT
+
+The PRINT command displays the value of a bind variable.
+
+PRI\[NT\] \[*bind\_variable\_name*\]
+
+*bind\_variable\_name* specifies the name of a bind variable. Omit *bind\_variable\_name* to generate a list that includes the values of all bind variables.
+
+#### PROMPT
+
+The PROMPT command displays a message to the user before continuing.
+
+PRO\[MPT\] \[*message\_text*\]
+
+*message\_text* specifies the text displayed to the user. Double quote the string to include quotes in the output.
+
+#### QUIT
+
+The QUIT command terminates the session and returns control to the operating system. QUIT is a synonym for EXIT.
+
+QUIT
+\[SUCCESS | FAILURE | WARNING | *value* | *sub\_variable*\]
+\[COMMIT | ROLLBACK\]
+
+The default value is QUIT SUCCESS COMMIT.
+
+#### REMARK
+
+Use REMARK to include comments in a script.
+
+REM\[ARK\] \[*optional\_text*\]
+
+You may also use the following convention to include a comment:
+
+/\*
+
+\* This is an example of a three line comment.
+
+\*/
+
+#### SAVE
+
+Use the SAVE command to write the SQL Buffer to an operating system file.
+
+SAV\[E\] *file\_name*
+\[CRE\[ATE\] | REP\[LACE\] | APP\[END\]\]
+
+*file\_name*
+
+*file\_name* specifies the name of the file (including the path) where the buffer contents are written. If you do not provide a file extension, .sql is appended to the end of the file name.
+
+CREATE
+
+Include the CREATE keyword to create a new file. A new file is created *only* if a file with the specified name does not already exist. This is the default.
+
+REPLACE
+
+Include the REPLACE keyword to specify that Advanced Server should overwrite an existing file.
+
+APPEND
+
+Include the APPEND keyword to specify that Advanced Server should append the contents of the SQL buffer to the end of the specified file.
+
+The following example saves the contents of the SQL buffer to a file named example.sql, located in the temp directory:
+
+SQL\> SAVE C:\\example.sql CREATE
+
+File "example.sql" written.
+
+#### SET
+
+Use the SET command to specify a value for a session level variable that controls EDB\*Plus behavior. The following forms of the SET command are valid:
+
+**SET AUTOCOMMIT**
+
+Use the SET AUTOCOMMIT command to specify COMMIT behavior for Advanced Server transactions.
+
+SET AUTO\[COMMIT\]
+{ON | OFF | IMMEDIATE | *statement\_count*}
+
+Please note that EDB\*Plus always automatically commits DDL statements.
+
+ON
+
+Specify ON to turn AUTOCOMMIT behavior on.
+
+OFF
+
+Specify OFF to turn AUTOCOMMIT behavior off.
+
+IMMEDIATE
+
+IMMEDIATE has the same effect as ON.
+
+*statement\_count*
+
+Include a value for *statement\_count* to instruct EDB\*Plus to issue a commit after the specified count of successful SQL statements.
+
+**SET COLUMN SEPARATOR**
+
+Use the SET COLUMN SEPARATOR command to specify the text that Advanced Server displays between columns.
+
+SET COLSEP *column\_separator*
+
+The default value of *column\_separator* is a single space.
+
+**SET ECHO**
+
+Use the SET ECHO command to specify if SQL and EDB\*Plus script statements should be displayed onscreen as they are executed.
+
+SET ECHO {ON | OFF}
+
+The default value is OFF.
+
+**SET FEEDBACK**
+
+The SET FEEDBACK command controls the display of interactive information after a SQL statement executes.
+
+SET FEED\[BACK\] {ON | OFF | *row\_threshold*}
+
+*row\_threshold*
+
+Specify an integer value for *row\_threshold*. Setting *row\_threshold* to 0 is same as setting FEEDBACK to OFF. Setting *row\_threshold* equal 1 effectively sets FEEDBACK to ON.
+
+**SET FLUSH**
+
+Use the SET FLUSH command to control display buffering.
+
+SET FLU\[SH\] {ON | OFF}
+
+Set FLUSH to OFF to enable display buffering. If you enable buffering, messages bound for the screen may not appear until the script completes. Please note that setting FLUSH to OFF will offer better performance.
+
+Set FLUSH to ON to disable display buffering. If you disable buffering, messages bound for the screen appear immediately.
+
+**SET HEADING**
+
+Use the SET HEADING variable to specify if Advanced Server should display column headings for SELECT statements.
+
+SET HEA\[DING\] {ON | OFF}
+
+**SET HEAD SEPARATOR**
+
+The SET HEADSEP command sets the new heading separator character used by the COLUMN HEADING command. The default is '|'.
+
+SET HEADS\[EP\]
+
+**SET LINESIZE**
+
+Use the SET LINESIZE command to specify the width of a line in characters.
+
+SET LIN\[ESIZE\] *width\_of\_line*
+
+*width\_of\_line*
+
+The default value of *width\_of\_line* is 132.
+
+**SET NEWPAGE**
+
+Use the SET NEWPAGE command to specify how many blank lines are printed after a page break.
+
+SET NEWP\[AGE\] *lines\_per\_page*
+
+*lines\_per\_page*
+
+The default value of *lines\_per\_page* is 1.
+
+**SET NULL**
+
+Use the SET NULL command to specify a string that is displayed to the user when a NULL column value is displayed in the output buffer.
+
+SET NULL *null\_string*
+
+**SET PAGESIZE**
+
+Use the SET PAGESIZE command to specify the number of printed lines that fit on a page.
+
+SET PAGES\[IZE\] *line\_count*
+
+Use the *line\_count* parameter to specify the number of lines per page.
+
+**SET SQLCASE**
+
+The SET SQLCASE command specifies if SQL statements transmitted to the server should be converted to upper or lower case.
+
+SET SQLC\[ASE\] {MIX\[ED\] | UP\[PER\] | LO\[WER\]}
+
+UPPER
+
+Specify UPPER to convert the command text to uppercase.
+
+LOWER
+
+Specify LOWER to convert the command text to lowercase.
+
+MIXED
+
+Specify MIXED to leave the case of SQL commands unchanged. The default is MIXED.
+
+**SET PAUSE**
+
+The SET PAUSE command is most useful when included in a script; the command displays a prompt and waits for the user to press Return.
+
+SET PAU\[SE\] {ON | OFF}
+
+If SET PAUSE is ON, the message Hit ENTER to continue… will be displayed before each command is executed.
+
+**SET SPACE**
+
+Use the SET SPACE command to specify the number of spaces to display between columns:
+
+SET SPACE *number\_of\_spaces*
+
+**SET SQLPROMPT**
+
+Use SET SQLPROMPT to set a value for a user-interactive prompt:
+
+SET SQLP\[ROMPT\] "*prompt*"
+
+By default, SQLPROMPT is set to "SQL\> "
+
+**SQL TERMOUT**
+
+Use the SQL TERMOUT command to specify if command output should be displayed onscreen.
+
+SET TERM\[OUT\] {ON | OFF}
+
+**SQL TIMING**
+
+The SQL TIMING command specifies if Advanced Server should display the execution time for each SQL statement after it is executed.
+
+SET TIMI\[NG\] {ON | OFF}
+
+**SET VERIFY**
+
+Specifies if both the old and new values of a SQL statement are displayed when a substitution variable is encountered.
+
+SET VER\[IFY\] { ON | OFF }
+
+#### SHOW
+
+Use the SHOW command to display current parameter values.
+
+SHO\[W\] {ALL | *parameter\_name*}
+
+Display the current parameter settings by including the ALL keyword:
+
+SQL\> SHOW ALL
+
+autocommit OFF
+
+colsep " "
+
+define "&"
+
+echo OFF
+
+FEEDBACK ON for 6 row(s).
+
+flush ON
+
+heading ON
+
+headsep "|"
+
+linesize 78
+
+newpage 1
+
+null " "
+
+pagesize 14
+
+pause OFF
+
+serveroutput OFF
+
+spool OFF
+
+sqlcase MIXED
+
+sqlprompt "SQL\> "
+
+sqlterminator ";"
+
+suffix ".sql"
+
+termout ON
+
+timing OFF
+
+verify ON
+
+USER is "enterprisedb"
+
+HOST is "localhost"
+
+PORT is "5444"
+
+DATABASE is "edb"
+
+VERSION is "9.5.0.0"
+
+Or display a specific parameter setting by including the *parameter\_name* in the SHOW command:
+
+SQL\> SHOW VERSION
+
+VERSION is "9.5.0.0"
+
+#### SPOOL
+
+The SPOOL command sends output from the display to a file.
+
+SP\[OOL\] *output\_file* | OFF
+
+Use the *output\_file* parameter to specify a path name for the output file.
+
+#### START
+
+Use the START command to run an EDB\*Plus script file; START is an alias for @ command.
+
+STA\[RT\] *script\_file*
+
+Specify the name of a script file in the *script\_file* parameter.
+
+#### UNDEFINE
+
+The UNDEFINE command erases a user variable created by the DEFINE command.
+
+UNDEF\[INE\] *variable\_name* \[ *variable\_name*...\]
+
+Use the *variable\_name* parameter to specify the name of a variable or variables.
+
+#### WHENEVER SQLERROR
+
+The WHENEVER SQLERROR command provides error handling for SQL errors or PL/SQL block errors. The syntax is:
+
+WHENEVER SQLERROR
+{CONTINUE \[COMMIT|ROLLBACK|NONE\]
+|EXIT \[SUCCESS|FAILURE|WARNING|*n*|*sub\_variable*\]
+\[COMMIT|ROLLBACK\]}
+
+If Advanced Server encounters an error during the execution of a SQL command or PL/SQL block, EDB\*Plus performs the action specified in the WHENEVER SQLERROR command:
+
+Include the CONTINUE clause to instruct EDB\*Plus to perform the specified action before continuing.
+
+Include the COMMIT clause to instruct EDB\*Plus to COMMIT the current transaction before exiting or continuing.
+
+Include the ROLLBACK clause to instruct EDB\*Plus to ROLLBACK the current transaction before exiting or continuing.
+
+Include the NONE clause to instruct EDB\*Plus to continue without committing or rolling back the transaction.
+
+Include the EXIT clause to instruct EDB\*Plus to perform the specified action and exit if it encounters an error.
+
+> Use the following options to specify a status code that EDB\*Plus will return before exiting:
+>
+> \[SUCCESS|FAILURE|WARNING|*n*|*sub\_variable*\]
+>
+> Please note that EDB\*Plus supports substitution variables, but does not support bind variables.
+
+## libpq C Library
+
+libpq is the C application programmer’s interface to Advanced Server. libpq is a set of library functions that allow client programs to pass queries to the Advanced Server and to receive the results of these queries.
+
+libpq is also the underlying engine for several other EnterpriseDB application interfaces including those written for C++, Perl, Python, Tcl and ECPG. So some aspects of libpq’s behavior will be important to the user if one of those packages is used.
+
+Client programs that use libpq must include the header file libpq-fe.h and must link with the libpq library.
+
+### Using libpq with EnterpriseDB SPL
+
+The EnterpriseDB SPL language can be used with the libpq interface library, providing support for:
+ - Procedures, functions, packages
+ - Prepared statements
+ - REFCURSORs
+ - Static cursors
+ - structs and typedefs
+ - Arrays
+ - DML and DDL operations
+ - IN/OUT/IN OUT parameters
+
+### REFCURSOR Support
+
+In earlier releases, Advanced Server provided support for REFCURSORs through the following libpq functions; these functions should now be considered deprecated:
+ - PQCursorResult()
+ - PQgetCursorResult()
+ - PQnCursor()
+
+You may now use PQexec() and PQgetvalue() to retrieve a REFCURSOR returned by an SPL (or PL/pgSQL) function. A REFCURSOR is returned in the form of a null-terminated string indicating the name of the cursor. Once you have the name of the cursor, you can execute one or more FETCH statements to retrieve the values exposed through the cursor.
+
+Please note that the samples that follow do not include error-handling code that would be required in a real-world client application.
+
+**Returning a Single REFCURSOR**
+
+The following example shows an SPL function that returns a value of type REFCURSOR:
+
+> CREATE OR REPLACE FUNCTION getEmployees(p\_deptno NUMERIC) RETURN REFCURSOR AS
+> result REFCURSOR;
+> BEGIN
+> OPEN result FOR SELECT \* FROM emp WHERE deptno = p\_deptno;
+>
+> RETURN result;
+> END;
+
+This function expects a single parameter, p\_deptno, and returns a REFCURSOR that holds the result set for the SELECT query shown in the OPEN statement. The OPEN statement executes the query and stores the result set in a cursor. The server constructs a name for that cursor and stores the name in a variable (named result). The function then returns the name of the cursor to the caller.
+
+To call this function from a C client using libpq, you can use PQexec() and PQgetvalue():
+
+\#include \<stdio.h\>
+\#include \<stdlib.h\>
+\#include "libpq-fe.h"
+
+static void fetchAllRows(PGconn \*conn,
+const char \*cursorName,
+const char \*description);
+static void fail(PGconn \*conn, const char \*msg);
+
+int
+main(int argc, char \*argv\[\])
+{
+PGconn \*conn = PQconnectdb(argv\[1\]);
+PGresult \*result;
+
+if (PQstatus(conn) \!= CONNECTION\_OK)
+fail(conn, PQerrorMessage(conn));
+
+result = PQexec(conn, "BEGIN TRANSACTION");
+
+if (PQresultStatus(result) \!= PGRES\_COMMAND\_OK)
+fail(conn, PQerrorMessage(conn));
+
+PQclear(result);
+
+result = PQexec(conn, "SELECT \* FROM getEmployees(10)");
+
+if (PQresultStatus(result) \!= PGRES\_TUPLES\_OK)
+fail(conn, PQerrorMessage(conn));
+
+fetchAllRows(conn, PQgetvalue(result, 0, 0), "employees");
+
+PQclear(result);
+
+PQexec(conn, "COMMIT");
+
+PQfinish(conn);
+
+exit(0);
+}
+
+static void
+fetchAllRows(PGconn \*conn,
+const char \*cursorName,
+const char \*description)
+{
+size\_t commandLength = strlen("FETCH ALL FROM ") +
+strlen(cursorName) + 3;
+
+char \*commandText = malloc(commandLength);
+PGresult \*result;
+int row;
+
+sprintf(commandText, "FETCH ALL FROM \\"%s\\"", cursorName);
+
+result = PQexec(conn, commandText);
+
+if (PQresultStatus(result) \!= PGRES\_TUPLES\_OK)
+fail(conn, PQerrorMessage(conn));
+
+printf("-- %s --\\n", description);
+
+for (row = 0; row \< PQntuples(result); row++)
+{
+const char \*delimiter = "\\t";
+int col;
+
+for (col = 0; col \< PQnfields(result); col++)
+{
+printf("%s%s", delimiter, PQgetvalue(result, row, col));
+delimiter = ",";
+}
+
+printf("\\n");
+}
+
+PQclear(result);
+free(commandText);
+}
+
+static void
+fail(PGconn \*conn, const char \*msg)
+{
+fprintf(stderr, "%s\\n", msg);
+
+if (conn \!= NULL)
+PQfinish(conn);
+
+exit(-1);
+}
+
+The code sample contains a line of code that calls the getEmployees() function, and returns a result set that contains all of the employees in department 10:
+
+> result = PQexec(conn, "SELECT \* FROM getEmployees(10)");
+
+The PQexec() function returns a result set handle to the C program. The result set will contain exactly one value; that value is the name of the cursor as returned by getEmployees().
+
+Once you have the name of the cursor, you can use the SQL FETCH statement to retrieve the rows in that cursor. The function fetchAllRows() builds a FETCH ALL statement, executes that statement, and then prints the result set of the FETCH ALL statement.
+
+The output of this program is shown below:
+
+> \-- employees --
+> 7782,CLARK,MANAGER,7839,09-JUN-81 00:00:00,2450.00,,10
+> 7839,KING,PRESIDENT,,17-NOV-81 00:00:00,5000.00,,10
+> 7934,MILLER,CLERK,7782,23-JAN-82 00:00:00,1300.00,,10
+
+**Returning Multiple REFCURSORs**
+
+The next example returns two REFCURSORs:
+ - The first REFCURSOR contains the name of a cursor (employees) that contains all employees who work in a department within the range specified by the caller.
+ - The second REFCURSOR contains the name of a cursor (departments) that contains all of the departments in the range specified by the caller.
+
+In this example, instead of returning a single REFCURSOR, the function returns a SETOF REFCURSOR (which means 0 or more REFCURSORS). One other important difference is that the libpq program should not expect a single REFCURSOR in the result set, but should expect two rows, each of which will contain a single value (the first row contains the name of the employees cursor, and the second row contains the name of the departments cursor).
+
+CREATE OR REPLACE FUNCTION getEmpsAndDepts(p\_min NUMERIC,
+p\_max NUMERIC)
+RETURN SETOF REFCURSOR AS
+employees REFCURSOR;
+departments REFCURSOR;
+BEGIN
+OPEN employees FOR
+SELECT \* FROM emp WHERE deptno BETWEEN p\_min AND p\_max;
+RETURN NEXT employees;
+
+OPEN departments FOR
+SELECT \* FROM dept WHERE deptno BETWEEN p\_min AND p\_max;
+RETURN NEXT departments;
+END;
+
+As in the previous example, you can use PQexec() and PQgetvalue() to call the SPL function:
+
+\#include \<stdio.h\>
+\#include \<stdlib.h\>
+\#include "libpq-fe.h"
+
+static void fetchAllRows(PGconn \*conn,
+const char \*cursorName,
+const char \*description);
+static void fail(PGconn \*conn, const char \*msg);
+
+int
+main(int argc, char \*argv\[\])
+{
+PGconn \*conn = PQconnectdb(argv\[1\]);
+PGresult \*result;
+
+if (PQstatus(conn) \!= CONNECTION\_OK)
+fail(conn, PQerrorMessage(conn));
+
+result = PQexec(conn, "BEGIN TRANSACTION");
+
+if (PQresultStatus(result) \!= PGRES\_COMMAND\_OK)
+fail(conn, PQerrorMessage(conn));
+
+PQclear(result);
+
+result = PQexec(conn, "SELECT \* FROM getEmpsAndDepts(20, 30)");
+
+if (PQresultStatus(result) \!= PGRES\_TUPLES\_OK)
+fail(conn, PQerrorMessage(conn));
+
+fetchAllRows(conn, PQgetvalue(result, 0, 0), "employees");
+fetchAllRows(conn, PQgetvalue(result, 1, 0), "departments");
+
+PQclear(result);
+
+PQexec(conn, "COMMIT");
+
+PQfinish(conn);
+
+exit(0);
+}
+
+static void
+fetchAllRows(PGconn \*conn,
+const char \*cursorName,
+const char \*description)
+{
+size\_t commandLength = strlen("FETCH ALL FROM ") +
+strlen(cursorName) + 3;
+char \*commandText = malloc(commandLength);
+PGresult \*result;
+int row;
+
+sprintf(commandText, "FETCH ALL FROM \\"%s\\"", cursorName);
+
+result = PQexec(conn, commandText);
+
+if (PQresultStatus(result) \!= PGRES\_TUPLES\_OK)
+fail(conn, PQerrorMessage(conn));
+
+printf("-- %s --\\n", description);
+
+for (row = 0; row \< PQntuples(result); row++)
+{
+const char \*delimiter = "\\t";
+int col;
+
+for (col = 0; col \< PQnfields(result); col++)
+{
+printf("%s%s", delimiter, PQgetvalue(result, row, col));
+delimiter = ",";
+}
+
+printf("\\n");
+}
+
+PQclear(result);
+free(commandText);
+}
+
+static void
+fail(PGconn \*conn, const char \*msg)
+{
+fprintf(stderr, "%s\\n", msg);
+
+if (conn \!= NULL)
+PQfinish(conn);
+
+exit(-1);
+}
+
+If you call getEmpsAndDepts(20, 30), the server will return a cursor that contains all employees who work in department 20 or 30, and a second cursor containing the description of departments 20 and 30.
+
+\-- employees --
+7369,SMITH,CLERK,7902,17-DEC-80 00:00:00,800.00,,20
+7499,ALLEN,SALESMAN,7698,20-FEB-81 00:00:00,1600.00,300.00,30
+7521,WARD,SALESMAN,7698,22-FEB-81 00:00:00,1250.00,500.00,30
+7566,JONES,MANAGER,7839,02-APR-81 00:00:00,2975.00,,20
+7654,MARTIN,SALESMAN,7698,28-SEP-81 00:00:00,1250.00,1400.00,30
+7698,BLAKE,MANAGER,7839,01-MAY-81 00:00:00,2850.00,,30
+7788,SCOTT,ANALYST,7566,19-APR-87 00:00:00,3000.00,,20
+7844,TURNER,SALESMAN,7698,08-SEP-81 00:00:00,1500.00,0.00,30
+7876,ADAMS,CLERK,7788,23-MAY-87 00:00:00,1100.00,,20
+7900,JAMES,CLERK,7698,03-DEC-81 00:00:00,950.00,,30
+7902,FORD,ANALYST,7566,03-DEC-81 00:00:00,3000.00,,20
+\-- departments --
+20,RESEARCH,DALLAS
+30,SALES,CHICAGO
+
+### Array Binding
+
+Advanced Server's array binding functionality allows you to send an array of data across the network in a single round-trip. When the back end receives the bulk data, it can use the data to perform insert or update operations.
+
+Perform bulk operations with a prepared statement; use the following function to prepare the statement:
+
+PGresult \*PQprepare(PGconn \*conn,
+
+const char \*stmtName,
+
+const char \*query,
+
+int nParams,
+
+const Oid \*paramTypes);
+
+Details of PQprepare() can be found in the prepared statement section.
+
+The following functions can be used to perform bulk operations:
+ - <span class="underline"></span>PQBulkStart
+ - <span class="underline"></span>PQexecBulk
+ - <span class="underline"></span>PQBulkFinish
+ - <span class="underline"></span>PQexecBulkPrepared
+
+#### PQBulkStart
+
+PQBulkStart() initializes bulk operations on the server. You must call this function before sending bulk data to the server. PQBulkStart() initializes the prepared statement specified in stmtName to receive data in a format specified by paramFmts.
+
+API Definition
+
+PGresult \* PQBulkStart(PGconn \*conn,
+
+const char \* Stmt\_Name,
+
+unsigned int nCol,
+
+const int \*paramFmts);
+
+#### PQexecBulk
+
+PQexecBulk() is used to supply data (paramValues) for a statement that was previously initialized for bulk operation using PQBulkStart().
+
+This function can be used more than once after PQBulkStart() to send multiple blocks of data. See the example for more details.
+
+API Definition
+
+PGresult \*PQexecBulk(PGconn \*conn,
+
+unsigned int nRows,
+
+const char \*const \* paramValues,
+
+const int \*paramLengths);
+
+#### PQBulkFinish
+
+This function completes the current bulk operation. You can use the prepared statement again without re-preparing it.
+
+API Definition
+
+PGresult \*PQBulkFinish(PGconn \*conn);
+
+#### PQexecBulkPrepared
+
+Alternatively, you can use the PQexecBulkPrepared() function to perform a bulk operation with a single function call. PQexecBulkPrepared() sends a request to execute a prepared statement with the given parameters, and waits for the result. This function combines the functionality of PQbulkStart(), PQexecBulk(), and PQBulkFinish(). When using this function, you are not required to initialize or terminate the bulk operation; this function starts the bulk operation, passes the data to the server, and terminates the bulk operation.
+
+Specify a previously prepared statement in the place of stmtName. Commands that will be used repeatedly will be parsed and planned just once, rather than each time they are executed.
+
+API Definition
+
+PGresult \*PQexecBulkPrepared(PGconn \*conn,
+
+const char \*stmtName,
+
+unsigned int nCols,
+
+unsigned int nRows,
+
+const char \*const \*paramValues,
+
+const int \*paramLengths,
+
+const int \*paramFormats);
+
+#### Example Code (Using PQBulkStart, PQexecBulk, PQBulkFinish)
+
+The following example uses PGBulkStart, PQexecBulk, and PQBulkFinish.
+
+void InsertDataUsingBulkStyle( PGconn \*conn )
+
+{
+
+PGresult \*res;
+
+Oid paramTypes\[2\];
+
+char \*paramVals\[5\]\[2\];
+
+int paramLens\[5\]\[2\];
+
+int paramFmts\[2\];
+
+int i;
+
+int a\[5\] = { 10, 20, 30, 40, 50 };
+
+char b\[5\]\[10\] = { "Test\_1", "Test\_2", "Test\_3", "Test\_4", "Test\_5" };
+
+paramTypes\[0\] = 23;
+
+paramTypes\[1\] = 1043;
+
+res = PQprepare( conn, "stmt\_1", "INSERT INTO testtable1 values( $1, $2 )", 2, paramTypes );
+
+PQclear( res );
+
+paramFmts\[0\] = 1; /\* Binary format \*/
+
+paramFmts\[1\] = 0;
+
+for( i = 0; i \< 5; i++ )
+
+{
+
+a\[i\] = htonl( a\[i\] );
+
+paramVals\[i\]\[0\] = &(a\[i\]);
+
+paramVals\[i\]\[1\] = b\[i\];
+
+paramLens\[i\]\[0\] = 4;
+
+paramLens\[i\]\[1\] = strlen( b\[i\] );
+
+}
+
+res = PQBulkStart(conn, "stmt\_1", 2, paramFmts);
+
+PQclear( res );
+
+printf( "\< -- PQBulkStart -- \>\\n" );
+
+res = PQexecBulk(conn, 5, (const char \*const \*)paramVals, (const int \*)paramLens);
+
+PQclear( res );
+
+printf( "\< -- PQexecBulk -- \>\\n" );
+
+res = PQexecBulk(conn, 5, (const char \*const \*)paramVals, (const int \*)paramLens);
+
+PQclear( res );
+
+printf( "\< -- PQexecBulk -- \>\\n" );
+
+res = PQBulkFinish(conn);
+
+PQclear( res );
+
+printf( "\< -- PQBulkFinish -- \>\\n" );
+
+}
+
+#### Example Code (Using PQexecBulkPrepared)
+
+The following example uses PQexecBulkPrepared.
+
+void InsertDataUsingBulkStyleCombinedVersion( PGconn \*conn )
+
+{
+
+PGresult \*res;
+
+Oid paramTypes\[2\];
+
+char \*paramVals\[5\]\[2\];
+
+int paramLens\[5\]\[2\];
+
+int paramFmts\[2\];
+
+int i;
+
+int a\[5\] = { 10, 20, 30, 40, 50 };
+
+char b\[5\]\[10\] = { "Test\_1", "Test\_2", "Test\_3", "Test\_4", "Test\_5" };
+
+paramTypes\[0\] = 23;
+
+paramTypes\[1\] = 1043;
+
+res = PQprepare( conn, "stmt\_2", "INSERT INTO testtable1 values( $1, $2 )", 2, paramTypes );
+
+PQclear( res );
+
+paramFmts\[0\] = 1; /\* Binary format \*/
+
+paramFmts\[1\] = 0;
+
+for( i = 0; i \< 5; i++ )
+
+{
+
+a\[i\] = htonl( a\[i\] );
+
+paramVals\[i\]\[0\] = &(a\[i\]);
+
+paramVals\[i\]\[1\] = b\[i\];
+
+paramLens\[i\]\[0\] = 4;
+
+paramLens\[i\]\[1\] = strlen( b\[i\] );
+
+}
+
+res = PQexecBulkPrepared(conn, "stmt\_2", 2, 5, (const char \*const \*)paramVals,(const int \*)paramLens, (const int \*)paramFmts);
+
+PQclear( res );
+
+}
+
+## ECPGPlus
+
+EnterpriseDB has enhanced ECPG (the PostgreSQL pre-compiler) to create ECPGPlus. ECPGPlus allows you to include embedded SQL commands in C applications; when you use ECPGPlus to compile an application that contains embedded SQL commands, the SQL code is syntax-checked and translated into C.
+
+ECPGPlus supports Pro\*C compatible syntax in C programs when connected to an Advanced Server database. ECPGPlus supports:
+ - Oracle Dynamic SQL – Method 4 (ODS-M4)
+ - Pro\*C compatible anonymous blocks
+ - A CALL statement compatible with Oracle databases
+
+As part of ECPGPlus's Pro\*C compatibility, you do not need to include the BEGIN DECLARE SECTION and END DECLARE SECTION directives.
+
+For more information about using ECPGPlus, please see the EDB Postgres Advanced Server ECPG Connector Guide, available from the EnterpriseDB website at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+### C-preprocessor Directives
+
+The ECPGPlus C-preprocessor enforces two behaviors that are dependent on the mode in which you invoke ECPGPlus:
+ - PROC mode
+ - non-PROC mode
+
+**Compiling in PROC mode**
+
+In PROC mode, ECPGPlus allows you to:
+ - Declare host variables outside of an EXEC SQL BEGIN/END DECLARE SECTION.
+ - Use any C variable as a host variable as long as it is of a data type compatible with ECPG.
+
+When you invoke ECPGPlus in PROC mode (by including the -C PROC keywords), the ECPG compiler honors the following C-preprocessor directives:
+
+\#include
+
+\#if *expression*
+
+\#ifdef *symbolName*
+
+\#ifndef *symbolName*
+
+\#else
+
+\#elif *expression*
+
+\#endif
+
+\#define *symbolName* *expansion*
+\#define *symbolName*(\[*macro* *arguments*\]) *expansion*
+
+\#undef *symbolName*
+
+\#defined(*symbolName*)
+
+Pre-processor directives are used to effect or direct the code that is received by the compiler. For example, using the following code sample:
+
+\#if HAVE\_LONG\_LONG == 1
+
+\#define BALANCE\_TYPE long long
+
+\#else
+
+\#define BALANCE\_TYPE double
+
+\#endif
+
+...
+
+BALANCE\_TYPE customerBalance;
+
+If you invoke ECPGPlus with the following command-line arguments:
+
+ecpg –C PROC –DHAVE\_LONG\_LONG=1
+
+ECPGPlus will copy the entire fragment (without change) to the output file, but will only send the following tokens to the ECPG parser:
+
+long long customerBalance;
+
+On the other hand, if you invoke ECPGPlus with the following command-line arguments:
+
+ecpg –C PROC –DHAVE\_LONG\_LONG=0
+
+The ECPG parser will receive the following tokens:
+
+double customerBalance;
+
+If your code uses preprocessor directives to filter the code that is sent to the compiler, the complete code is retained in the original code, while the ECPG parser sees only the processed token stream.
+
+**Compiling in non-PROC mode**
+
+If you do not include the -C PROC command-line option:
+ - C preprocessor directives are copied to the output file without change.
+ - You must declare the type and name of each C variable that you intend to use as a host variable within an EXEC SQL BEGIN/END DECLARE section.
+
+When invoked in non-PROC mode, ECPG implements the behavior described in the PostgreSQL Core documentation, available at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+### Supported C Data Types
+
+An ECPGPlus application must deal with two sets of data types: SQL data types (such as SMALLINT, DOUBLE PRECISION and CHARACTER VARYING) and C data types (like short, double and varchar\[*n*\]). When an application fetches data from the server, ECPGPlus will map each SQL data type to the type of the C variable into which the data is returned.
+
+In general, ECPGPlus can convert most SQL server types into similar C types, but not all combinations are valid. For example, ECPGPlus will try to convert a SQL character value into a C integer value, but the conversion may fail (at execution time) if the SQL character value contains non-numeric characters.
+
+The reverse is also true; when an application sends a value to the server, ECPGPlus will try to convert the C data type into the required SQL type. Again, the conversion may fail (at execution time) if the C value cannot be converted into the required SQL type.
+
+ECPGPlus can convert any SQL type into C character values (char\[*n*\] or varchar\[*n*\]). Although it is safe to convert any SQL type to/from char\[*n*\] or varchar\[*n*\], it is often convenient to use more natural C types such as int, double, or float.
+
+The supported C data types are:
+ - short
+ - int
+ - unsigned int
+ - long long int
+ - float
+ - double
+ - char\[n+1\]
+ - varchar\[n+1\]
+ - bool
+ - and any equivalent created by a typedef
+
+In addition to the numeric and character types supported by C, the pgtypeslib run-time library offers custom data types (and functions to operate on those types) for dealing with date/time and exact numeric values:
+ - timestamp
+ - interval
+ - date
+ - decimal
+ - numeric
+
+To use a data type supplied by pgtypeslib, you must \#include the proper header file.
+
+### Type Codes
+
+The following table contains the type codes for *external* data types. An external data type is used to indicate the type of a C host variable. When an application binds a value to a parameter or binds a buffer to a SELECT-list item, the type code in the corresponding SQLDA descriptor (*descriptor*-\>T\[*column*\]) should be set to one of the following values:
+
+<table>
+<thead>
+<tr class="header">
+<th>Type Code</th>
+<th>Host Variable Type (C Data Type)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1, 2, 8, 11, 12, 15, 23, 24, 91, 94, 95, 96, 97</td>
+<td>char[]</td>
+</tr>
+<tr class="even">
+<td>3</td>
+<td>int</td>
+</tr>
+<tr class="odd">
+<td>4, 7, 21</td>
+<td>float</td>
+</tr>
+<tr class="even">
+<td>5, 6</td>
+<td>null-terminated string<br />
+(char[length+1])</td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td>varchar</td>
+</tr>
+<tr class="even">
+<td>22</td>
+<td>double</td>
+</tr>
+<tr class="odd">
+<td>68</td>
+<td>unsigned int</td>
+</tr>
+</tbody>
+</table>
+
+The following table contains the type codes for *internal* data types. An internal type code is used to indicate the type of a value as it resides in the database. The DESCRIBE SELECT LIST statement populates the data type array (*descriptor*-\>T\[*column*\]) using the following values.
+
+| Internal Type Code | Server Type            |
+| ------------------ | ---------------------- |
+| 1                  | VARCHAR2               |
+| 2                  | NUMBER                 |
+| 8                  | LONG                   |
+| 11                 | ROWID                  |
+| 12                 | DATE                   |
+| 23                 | RAW                    |
+| 24                 | LONG RAW               |
+| 96                 | CHAR                   |
+| 100                | BINARY FLOAT           |
+| 101                | BINARY DOUBLE          |
+| 104                | UROWID                 |
+| 187                | TIMESTAMP              |
+| 188                | TIMESTAMP W/TIMEZONE   |
+| 189                | INTERVAL YEAR TO MONTH |
+| 190                | INTERVAL DAY TO SECOND |
+| 232                | TIMESTAMP LOCAL\_TZ    |
+
+### The SQLDA Structure
+
+Oracle Dynamic SQL method 4 uses the SQLDA data structure to hold the data and metadata for a dynamic SQL statement. A SQLDA structure can describe a set of input parameters corresponding to the parameter markers found in the text of a dynamic statement or the result set of a dynamic statement. The layout of the SQLDA structure is:
+
+struct SQLDA
+
+{
+
+int N; /\* Number of entries \*/
+
+char \*\*V; /\* Variables \*/
+
+int \*L; /\* Variable lengths \*/
+
+short \*T; /\* Variable types \*/
+
+short \*\*I; /\* Indicators \*/
+
+int F; /\* Count of variables discovered by DESCRIBE \*/
+
+char \*\*S; /\* Variable names \*/
+
+short \*M; /\* Variable name maximum lengths \*/
+
+short \*C; /\* Variable name actual lengths \*/
+
+char \*\*X; /\* Indicator names \*/
+
+short \*Y; /\* Indicator name maximum lengths \*/
+
+short \*Z; /\* Indicator name actual lengths \*/
+
+};
+
+**Parameters**
+
+N - *maximum number of entries*
+
+The N structure member contains the maximum number of entries that the SQLDA may describe. This member is populated by the sqlald() function when you allocate the SQLDA structure. Before using a descriptor in an OPEN or FETCH statement, you must set N to the *actual* number of values described.
+
+V - *data values*
+
+The V structure member is a pointer to an array of data values.
+
+For a SELECT-list descriptor, V points to an array of values returned by a FETCH statement (each member in the array corresponds to a column in the result set).
+
+For a bind descriptor, V points to an array of parameter values (you must populate the values in this array before opening a cursor that uses the descriptor).
+
+Your application must allocate the space required to hold each value.
+
+L - *length of each data value*
+
+The L structure member is a pointer to an array of lengths. Each member of this array must indicate the amount of memory available in the corresponding member of the V array. For example, if V\[5\] points to a buffer large enough to hold a 20-byte NULL-terminated string, L\[5\] should contain the value 21 (20 bytes for the characters in the string plus 1 byte for the NULL-terminator). Your application must set each member of the L array.
+
+T - *data types*
+
+The T structure member points to an array of data types, one for each column (or parameter) described by the descriptor.
+
+For a bind descriptor, you must set each member of the T array to tell ECPGPlus the data type of each parameter.
+
+For a SELECT-list descriptor, the DESCRIBE SELECT LIST statement sets each member of the T array to reflect the type of data found in the corresponding column.
+
+You may change any member of the T array before executing a FETCH statement to force ECPGPlus to convert the corresponding value to a specific data type. For example, if the DESCRIBE SELECT LIST statement indicates that a given column is of type DATE, you may change the corresponding T member to request that the next FETCH statement return that value in the form of a NULL-terminated string. Each member of the T array is a numeric type code. The type codes returned by a DESCRIBE SELECT LIST statement differ from those expected by a FETCH statement. After executing a DESCRIBE SELECT LIST statement, each member of T encodes a data type *and* a flag indicating whether the corresponding column is nullable. You can use the sqlnul() function to extract the type code and nullable flag from a member of the T array. The signature of the sqlnul() function is as follows:
+
+> void sqlnul(unsigned short \*valType,
+> unsigned short \*typeCode,
+> int \*isNull)
+
+For example, to find the type code and nullable flag for the third column of a descriptor named results, you would invoke sqlnul() as follows:
+
+> sqlnul(\&results-\>T\[2\], \&typeCode, \&isNull);
+
+I - *indicator variables*
+
+The I structure member points to an array of indicator variables. This array is allocated for you when your application calls the sqlald() function to allocate the descriptor.
+
+For a SELECT-list descriptor, each member of the I array indicates whether the corresponding column contains a NULL (non-zero) or non-NULL (zero) value.
+
+For a bind parameter, your application must set each member of the I array to indicate whether the corresponding parameter value is NULL.
+
+F - *number of entries*
+
+The F structure member indicates how many values are described by the descriptor (the N structure member indicates the *maximum* number of values which may be described by the descriptor; F indicates the actual number of values). The value of the F member is set by ECPGPlus when you execute a DESCRIBE statement. F may be positive, negative, or zero.
+
+For a SELECT-list descriptor, F will contain a positive value if the number of columns in the result set is equal to or less than the maximum number of values permitted by the descriptor (as determined by the N structure member); 0 if the statement is *not* a SELECT statement, or a negative value if the query returns more columns than allowed by the N structure member.
+
+For a bind descriptor, F will contain a positive number if the number of parameters found in the statement is less than or equal to the maximum number of values permitted by the descriptor (as determined by the N structure member); 0 if the statement contains no parameters markers, or a negative value if the statement contains more parameter markers than allowed by the N structure member.
+
+If F contains a positive number (after executing a DESCRIBE statement), that number reflects the count of columns in the result set (for a SELECT-list descriptor) or the number of parameter markers found in the statement (for a bind descriptor). If F contains a negative value, you may compute the absolute value of F to discover how many values (or parameter markers) are required. For example, if F contains -24 after describing a SELECT list, you know that the query returns 24 columns.
+
+S - *column/parameter names*
+
+The S structure member points to an array of NULL-terminated strings.
+
+For a SELECT-list descriptor, the DESCRIBE SELECT LIST statement sets each member of this array to the name of the corresponding column in the result set.
+
+For a bind descriptor, the DESCRIBE BIND VARIABLES statement sets each member of this array to the name of the corresponding bind variable.
+
+In this release, the name of each bind variable is determined by the left-to-right order of the parameter marker within the query - for example, the name of the first parameter is always ?0, the name of the second parameter is always ?1, and so on.
+
+M - *maximum column/parameter name length*
+
+The M structure member points to an array of lengths. Each member in this array specifies the *maximum* length of the corresponding member of the S array (that is, M\[0\] specifies the maximum length of the column/parameter name found at S\[0\]). This array is populated by the sqlald() function.
+
+C - *actual column/parameter name length*
+
+The C structure member points to an array of lengths. Each member in this array specifies the *actual* length of the corresponding member of the S array (that is, C\[0\] specifies the actual length of the column/parameter name found at S\[0\]).
+
+This array is populated by the DESCRIBE statement.
+
+X - *indicator variable names*
+
+The X structure member points to an array of NULL-terminated strings - each string represents the name of a NULL indicator for the corresponding value.
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro\*C applications.
+
+Y - *maximum indicator name length*
+
+The Y structure member points to an array of lengths. Each member in this array specifies the *maximum* length of the corresponding member of the X array (that is, Y\[0\] specifies the maximum length of the indicator name found at X\[0\]).
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro\*C applications.
+
+Z - *actual indicator name length*
+
+The Z structure member points to an array of lengths. Each member in this array specifies the *actual* length of the corresponding member of the X array (that is, Z\[0\] specifies the actual length of the indicator name found at X\[0\]).
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro\*C applications.
+
+### ECPGPlus Statements
+
+An embedded SQL statement allows your client application to interact with the server, while an embedded directive is an instruction to the ECPGPlus compiler.
+
+You can embed any Advanced Server SQL statement in a C program. Each statement should begin with the keywords EXEC SQL, and must be terminated with a semi-colon (;). Within the C program, a SQL statement takes the form:
+
+EXEC SQL *sql\_command\_body*;
+
+Where *sql\_command\_body* represents a standard SQL statement. You can use a host variable anywhere that the SQL statement expects a value expression.
+
+ECPGPlus extends the PostgreSQL server-side syntax for some statements; for those statements, syntax differences are outlined in the following reference sections. For a complete reference to the supported syntax of other SQL commands, please refer to the *PostgreSQL Core Documentation* available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-commands.html>
+
+#### ALLOCATE DESCRIPTOR
+
+Use the ALLOCATE DESCRIPTOR statement to allocate an SQL descriptor area:
+
+> EXEC SQL \[FOR *array\_size*\] ALLOCATE DESCRIPTOR *descriptor\_name
+> * \[WITH MAX *variable\_count*\];
+
+Where:
+
+> *array\_size* is a variable that specifies the number of array elements to allocate for the descriptor. *array\_size* may be an INTEGER value or a host variable.
+>
+> *descriptor\_name* is the host variable that contains the name of the descriptor, or the name of the descriptor. This value may take the form of an identifier, a quoted string literal, or of a host variable.
+>
+> *variable\_count* specifies the maximum number of host variables in the descriptor. The default value of *variable\_count* is 100.
+
+The following code fragment allocates a descriptor named emp\_query that may be processed as an array (emp\_array):
+
+> EXEC SQL FOR :emp\_array ALLOCATE DESCRIPTOR emp\_query;
+
+#### CALL
+
+Use the CALL statement to invoke a procedure or function on the server. The CALL statement works only on Advanced Server. The CALL statement comes in two forms; the first form is used to call a *function*:
+
+> EXEC SQL CALL *program\_name* '('\[*actual\_arguments*\]')'
+> INTO \[\[:*ret\_variable*\]\[:*ret\_indicator*\]\];
+
+The second form is used to call a *procedure*:
+
+> EXEC SQL CALL *program\_name* '('\[*actual\_arguments*\]')';
+
+Where:
+
+> *program\_name* is the name of the stored procedure or function that the CALL statement invokes. The program name may be schema-qualified or package-qualified (or both); if you do not specify the schema or package in which the program resides, ECPGPlus will use the value of search\_path to locate the program.
+>
+> *actual\_arguments* specifies a comma-separated list of arguments required by the program. Note that each *actual\_argument* corresponds to a formal argument expected by the program. Each formal argument may be an IN parameter, an OUT parameter, or an INOUT parameter.
+>
+> :*ret\_variable* specifies a host variable that will receive the value returned if the program is a function.
+>
+> :*ret\_indicator* specifies a host variable that will receive the indicator value returned, if the program is a function.
+
+For example, the following statement invokes the get\_job\_desc function with the value contained in the :ename host variable, and captures the value returned by that function in the :job host variable:
+
+> EXEC SQL CALL get\_job\_desc(:ename)
+> INTO :job;
+
+#### CLOSE
+
+Use the CLOSE statement to close a cursor, and free any resources currently in use by the cursor. A client application cannot fetch rows from a closed cursor. The syntax of the CLOSE statement is:
+
+> EXEC SQL CLOSE \[*cursor\_name*\];
+
+Where:
+
+> *cursor\_name* is the name of the cursor closed by the statement. The cursor name may take the form of an identifier or of a host variable.
+
+The OPEN statement initializes a cursor. Once initialized, a cursor result set will remain unchanged unless the cursor is re-opened. You do not need to CLOSE a cursor before re-opening it.
+
+To manually close a cursor named emp\_cursor, use the command:
+
+> EXEC SQL CLOSE emp\_cursor;
+
+A cursor is automatically closed when an application terminates.
+
+#### COMMIT
+
+Use the COMMIT statement to complete the current transaction, making all changes permanent and visible to other users. The syntax is:
+
+> EXEC SQL \[AT *database\_name*\] COMMIT \[WORK\]
+> \[COMMENT *'text'*\] \[COMMENT *'text'* RELEASE\];
+
+Where:
+
+> *database\_name* is the name of the database (or host variable that contains the name of the database) in which the work resides. This value may take the form of an unquoted string literal, or of a host variable.
+
+For compatibility, ECPGPlus accepts the COMMENT clause without error but does *not* store any text included with the COMMENT clause.
+
+Include the RELEASE clause to close the current connection after performing the commit.
+
+For example, the following command commits all work performed on the dept database and closes the current connection:
+
+> EXEC SQL AT dept COMMIT RELEASE;
+
+By default, statements are committed only when a client application performs a COMMIT statement. Include the -t option when invoking ECPGPlus to specify that a client application should invoke AUTOCOMMIT functionality. You can also control AUTOCOMMIT functionality in a client application with the following statements:
+
+> EXEC SQL SET AUTOCOMMIT TO ON
+
+and
+
+> EXEC SQL SET AUTOCOMMIT TO OFF
+
+#### CONNECT
+
+Use the CONNECT statement to establish a connection to a database. The CONNECT statement is available in two forms.
+
+The following is the first form:
+
+> EXEC SQL CONNECT
+> {{:*user\_name* IDENTIFIED BY :*password*} | :*connection\_id*}
+> \[AT *database\_name*\]
+> \[USING :*database\_string*\]
+> \[ALTER AUTHORIZATION :*new\_password*\];
+
+Where:
+
+> *user\_name* is a host variable that contains the role that the client application will use to connect to the server.
+>
+> *password* is a host variable that contains the password associated with that role.
+>
+> *connection\_id* is a host variable that contains a slash-delimited user name and password used to connect to the database.
+
+Include the AT clause to specify the database to which the connection is established. *database\_name* is the name of the database to which the client is connecting; specify the value in the form of a variable, or as a string literal.
+
+Include the USING clause to specify a host variable that contains a null-terminated string identifying the database to which the connection will be established.
+
+The ALTER AUTHORIZATION clause is supported for syntax compatibility only; ECPGPlus parses the ALTER AUTHORIZATION clause, and reports a warning.
+
+Using the first form of the CONNECT statement, a client application might establish a connection with a host variable named user that contains the identity of the connecting role, and a host variable named password that contains the associated password using the following command:
+
+> EXEC SQL CONNECT :user IDENTIFIED BY :password;
+
+A client application could also use the first form of the CONNECT statement to establish a connection using a single host variable named :connection\_id. In the following example, connection\_id contains the slash-delimited role name and associated password for the user:
+
+> EXEC SQL CONNECT :connection\_id;
+
+The syntax of the second form of the CONNECT statement is:
+
+> EXEC SQL CONNECT TO *database\_name*
+> \[AS *connection\_name*\] \[*credentials*\];
+
+Where *credentials* is one of the following:
+
+> USER *user\_name* *password
+> *USER *user\_name* IDENTIFIED BY *password*
+> USER *user\_name* USING *password*
+
+In the second form:
+
+*database\_name* is the name or identity of the database to which the client is connecting. Specify *database\_name* as a variable, or as a string literal, in one of the following forms:
+
+> *database\_name*\[@*hostname*\]\[:*port*\]
+>
+> tcp:postgresql://*hostname*\[:*port*\]\[/*database\_name*\]\[*options*\]
+>
+> unix:postgresql://*hostname*\[:*port*\]\[/*database\_name*\]\[*options*\]
+
+Where:
+
+*hostname* is the name or IP address of the server on which the database resides.
+
+*port* is the port on which the server listens.
+
+You can also specify a value of DEFAULT to establish a connection with the default database, using the default role name. If you specify DEFAULT as the target database, do not include a *connection\_name* or *credentials*.
+
+> *connection\_name* is the name of the connection to the database. *connection\_name* should take the form of an identifier (that is, not a string literal or a variable). You can open multiple connections, by providing a unique *connection\_name* for each connection.
+>
+> If you do not specify a name for a connection, ecpglib assigns a name of DEFAULT to the connection. You can refer to the connection by name (DEFAULT) in any EXEC SQL statement.
+>
+> CURRENT is the most recently opened or the connection mentioned in the most-recent SET CONNECTION TO statement. If you do not refer to a connection by name in an EXEC SQL statement, ECPG assumes the name of the connection to be CURRENT.
+>
+> *user\_name* is the role used to establish the connection with the Advanced Server database. The privileges of the specified role will be applied to all commands performed through the connection.
+>
+> *password* is the password associated with the specified *user\_name*.
+
+The following code fragment uses the second form of the CONNECT statement to establish a connection to a database named edb, using the role alice and the password associated with that role, 1safepwd:
+
+> EXEC SQL CONNECT TO edb AS acctg\_conn
+> USER 'alice' IDENTIFIED BY '1safepwd';
+
+The name of the connection is acctg\_conn; you can use the connection name when changing the connection name using the SET CONNECTION statement.
+
+#### DEALLOCATE DESCRIPTOR
+
+Use the DEALLOCATE DESCRIPTOR statement to free memory in use by an allocated descriptor. The syntax of the statement is:
+
+> EXEC SQL DEALLOCATE DESCRIPTOR *descriptor\_name*
+
+Where:
+
+> *descriptor\_name* is the name of the descriptor. This value may take the form of a quoted string literal, or of a host variable.
+
+The following example deallocates a descriptor named emp\_query:
+
+> EXEC SQL DEALLOCATE DESCRIPTOR emp\_query;
+
+#### DECLARE CURSOR
+
+Use the DECLARE CURSOR statement to define a cursor. The syntax of the statement is:
+
+> EXEC SQL \[AT *database\_name*\] DECLARE *cursor\_name* CURSOR FOR (*select\_statement* | *statement\_name*);
+
+Where:
+
+> *database\_name* is the name of the database on which the cursor operates. This value may take the form of an identifier or of a host variable. If you do not specify a database name, the default value of *database\_name* is the default database.
+>
+> *cursor\_name* is the name of the cursor.
+>
+> *select\_statement* is the text of the SELECT statement that defines the cursor result set; the SELECT statement cannot contain an INTO clause.
+>
+> *statement\_name* is the name of a SQL statement or block that defines the cursor result set.
+
+The following example declares a cursor named employees:
+
+> EXEC SQL DECLARE employees CURSOR FOR
+>
+> SELECT
+>
+> empno, ename, sal, comm 
+>
+> FROM 
+>
+> emp;
+
+The cursor generates a result set that contains the employee number, employee name, salary and commission for each employee record that is stored in the emp table.
+
+#### DECLARE DATABASE
+
+Use the DECLARE DATABASE statement to declare a database identifier for use in subsequent SQL statements (for example, in a CONNECT statement). The syntax is:
+
+> EXEC SQL DECLARE *database\_name* DATABASE;
+
+Where:
+
+> *database\_name* specifies the name of the database.
+
+The following example demonstrates declaring an identifier for the acctg database:
+
+> EXEC SQL DECLARE acctg DATABASE;
+
+After invoking the command declaring acctg as a database identifier, the acctg database can be referenced by name when establishing a connection or in AT clauses.
+
+This statement has no effect and is provided for Pro\*C compatibility only.
+
+#### DECLARE STATEMENT
+
+Use the DECLARE STATEMENT directive to declare an identifier for an SQL statement. Advanced Server supports two versions of the DECLARE STATEMENT directive:
+
+> EXEC SQL \[*database\_name*\] DECLARE *statement\_name* STATEMENT;
+
+and
+
+> EXEC SQL DECLARE STATEMENT *statement\_name*;
+
+Where:
+
+> *statement\_name* specifies the identifier associated with the statement.
+>
+> *database\_name* specifies the name of the database. This value may take the form of an identifier or of a host variable that contains the identifier.
+
+A typical usage sequence that includes the DECLARE STATEMENT directive might be:
+
+> EXEC SQL DECLARE give\_raise STATEMENT; // give\_raise is now a statement handle (not prepared)
+>
+> EXEC SQL PREPARE give\_raise FROM :stmtText; // give\_raise is now associated with a statement
+>
+> EXEC SQL EXECUTE give\_raise;
+
+This statement has no effect and is provided for Pro\*C compatibility only.
+
+#### DELETE
+
+Use the DELETE statement to delete one or more rows from a table. The syntax for the ECPGPlus DELETE statement is the same as the syntax for the SQL statement, but you can use parameter markers and host variables any place that an expression is allowed. The syntax is:
+
+> \[FOR *exec\_count*\] DELETE FROM \[ONLY\] *table* \[\[AS\] *alias*\]
+>
+> \[USING *using*\_*list*\]
+>
+> \[WHERE *condition* | WHERE CURRENT OF *cursor*\_*name*\]
+> \[{RETURNING|RETURN} \* | *output*\_*expression* \[\[ AS\] *output*\_*name*\] \[, ...\] INTO *host\_variable\_list* \]
+
+Where:
+
+> Include the FOR *exec\_count* clause to specify the number of times the statement will execute; this clause is valid only if the VALUES clause references an array or a pointer to an array.
+>
+> *table* is the name (optionally schema-qualified) of an existing table. Include the ONLY clause to limit processing to the specified table; if you do not include the ONLY clause, any tables inheriting from the named table are also processed.
+>
+> *alias* is a substitute name for the target table.
+>
+> *using\_list* is a list of table expressions, allowing columns from other tables to appear in the WHERE condition.
+>
+> Include the WHERE clause to specify which rows should be deleted. If you do not include a WHERE clause in the statement, DELETE will delete all rows from the table, leaving the table definition intact.
+>
+> *condition* is an expression, host variable or parameter marker that returns a value of type BOOLEAN. Those rows for which *condition* returns true will be deleted.
+>
+> *cursor\_name* is the name of the cursor to use in the WHERE CURRENT OF clause; the row to be deleted will be the one most recently fetched from this cursor. The cursor must be a non-grouping query on the DELETE statements target table. You cannot specify WHERE CURRENT OF in a DELETE statement that includes a Boolean condition.
+>
+> The RETURN/RETURNING clause specifies an *output\_expression* or *host\_variable\_list* that is returned by the DELETE command after each row is deleted:
+>
+> *output\_expression* is an expression to be computed and returned by the DELETE command after each row is deleted. *output\_name* is the name of the returned column; include \* to return all columns.
+>
+> *host\_variable\_list* is a comma-separated list of host variables and optional indicator variables. Each host variable receives a corresponding value from the RETURNING clause.
+
+For example, the following statement deletes all rows from the emp table where the sal column contains a value greater than the value specified in the host variable, :max\_sal:
+
+> DELETE FROM emp WHERE sal \> :max\_sal;
+
+For more information about using the DELETE statement, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-delete.html>
+
+#### DESCRIBE
+
+Use the DESCRIBE statement to find the number of input values required by a prepared statement or the number of output values returned by a prepared statement. The DESCRIBE statement is used to analyze a SQL statement whose shape is unknown at the time you write your application.
+
+The DESCRIBE statement populates an SQLDA descriptor; to populate a SQL descriptor, use the ALLOCATE DESCRIPTOR and DESCRIBE…DESCRIPTOR statements.
+
+> EXEC SQL DESCRIBE BIND VARIABLES FOR *statement\_name* INTO *descriptor;*
+
+or
+
+> EXEC SQL DESCRIBE SELECT LIST FOR *statement\_name* INTO *descriptor;*
+
+Where:
+
+> *statement\_name* is the identifier associated with a prepared SQL statement or PL/SQL block.
+>
+> *descriptor* is the name of C variable of type SQLDA\*. You must allocate the space for the descriptor by calling sqlald() (and initialize the descriptor) before executing the DESCRIBE statement.
+
+When you execute the first form of the DESCRIBE statement, ECPG populates the given descriptor with a description of each input variable *required* by the statement. For example, given two descriptors:
+
+> SQLDA \*query\_values\_in;
+> SQLDA \*query\_values\_out;
+
+You might prepare a query that returns information from the emp table:
+
+> EXEC SQL PREPARE get\_emp FROM
+> "SELECT ename, empno, sal FROM emp WHERE empno = ?";
+
+The command requires one input variable (for the parameter marker (?)).
+
+> EXEC SQL DESCRIBE BIND VARIABLES
+> FOR get\_emp INTO query\_values\_in;
+
+After describing the bind variables for this statement, you can examine the descriptor to find the number of variables required and the type of each variable.
+
+When you execute the second form, ECPG populates the given descriptor with a description of each value *returned* by the statement. For example, the following statement returns three values:
+
+> EXEC SQL DESCRIBE SELECT LIST
+> FOR get\_emp INTO query\_values\_out;
+
+After describing the select list for this statement, you can examine the descriptor to find the number of returned values and the name and type of each value.
+
+Before *executing* the statement, you must bind a variable for each input value and a variable for each output value. The variables that you bind for the input values specify the actual values used by the statement. The variables that you bind for the output values tell ECPGPlus where to put the values when you execute the statement.
+
+This is alternate Pro\*C compatible syntax for the DESCRIBE DESCRIPTOR statement.
+
+#### DESCRIBE DESCRIPTOR
+
+Use the DESCRIBE DESCRIPTOR statement to retrieve information about a SQL statement, and store that information in a SQL descriptor. Before using DESCRIBE DESCRIPTOR, you must allocate the descriptor with the ALLOCATE DESCRIPTOR statement. The syntax is:
+
+> EXEC SQL DESCRIBE \[INPUT | OUTPUT\] *statement\_identifier*
+> USING \[SQL\] DESCRIPTOR *descriptor\_name*;
+
+Where:
+
+> *statement\_name* is the name of a prepared SQL statement.
+>
+> *descriptor\_name* is the name of the descriptor. *descriptor\_name* can be a quoted string value or a host variable that contains the name of the descriptor.
+
+If you include the INPUT clause, ECPGPlus populates the given descriptor with a description of each input variable *required* by the statement.
+
+For example, given two descriptors:
+
+> EXEC SQL ALLOCATE DESCRIPTOR query\_values\_in;
+> EXEC SQL ALLOCATE DESCRIPTOR query\_values\_out;
+
+You might prepare a query that returns information from the emp table:
+
+> EXEC SQL PREPARE get\_emp FROM
+> "SELECT ename, empno, sal FROM emp WHERE empno = ?";
+
+The command requires one input variable (for the parameter marker (?)).
+
+> EXEC SQL DESCRIBE INPUT get\_emp USING 'query\_values\_in';
+
+After describing the bind variables for this statement, you can examine the descriptor to find the number of variables required and the type of each variable.
+
+If you do not specify the INPUT clause, DESCRIBE DESCRIPTOR populates the specified descriptor with the values returned by the statement.
+
+If you include the OUTPUT clause, ECPGPlus populates the given descriptor with a description of each value *returned* by the statement.
+
+For example, the following statement returns three values:
+
+> EXEC SQL DESCRIBE OUTPUT FOR get\_emp USING 'query\_values\_out';
+
+After describing the select list for this statement, you can examine the descriptor to find the number of returned values and the name and type of each value.
+
+#### DISCONNECT
+
+Use the DISCONNECT statement to close the connection to the server. The syntax is:
+
+> EXEC SQL DISCONNECT \[*connection\_name*\]\[CURRENT\]\[DEFAULT\]\[ALL\];
+
+Where:
+
+> *connection\_name* is the connection name specified in the CONNECT statement used to establish the connection. If you do not specify a connection name, the current connection is closed.
+>
+> Include the CURRENT keyword to specify that ECPGPlus should close the most-recently used connection.
+>
+> Include the DEFAULT keyword to specify that ECPGPlus should close the connection named DEFAULT. If you do not specify a name when opening a connection, ECPGPlus assigns the name, DEFAULT, to the connection.
+>
+> Include the ALL keyword to instruct ECPGPlus to close all active connections.
+
+The following example creates a connection (named hr\_connection) that connects to the hr database, and then disconnects from the connection:
+
+> /\* client.pgc\*/
+>
+> int main()
+>
+> {
+>
+> EXEC SQL CONNECT TO hr AS connection\_name;
+>
+> EXEC SQL DISCONNECT connection\_name;
+>
+> return(0);
+>
+> }
+
+#### EXECUTE
+
+Use the EXECUTE statement to execute a statement previously prepared using an EXEC SQL PREPARE statement. The syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] EXECUTE *statement\_name*
+> \[USING {DESCRIPTOR *SQLDA\_descriptor*
+> |:*host\_variable* \[\[INDICATOR\] :*indicator\_variable*\]}\];
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value that specifies the number of rows to be processed. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *statement\_name* specifies the name assigned to the statement when the statement was created (using the EXEC SQL PREPARE statement).
+>
+> Include the USING clause to supply values for parameters within the prepared statement:
+>
+> Include the DESCRIPTOR *SQLDA\_descriptor* clause to provide an SQLDA descriptor value for a parameter.
+>
+> Use a *host\_variable* (and an optional *indicator\_variable*) to provide a user-specified value for a parameter.
+
+The following example creates a prepared statement that inserts a record into the emp table:
+
+> EXEC SQL PREPARE add\_emp (numeric, text, text, numeric) AS
+>
+> INSERT INTO emp VALUES($1, $2, $3, $4);
+
+Each time you invoke the prepared statement, provide fresh parameter values for the statement:
+
+> EXEC SQL EXECUTE add\_emp USING 8000, 'DAWSON', 'CLERK', 7788;
+>
+> EXEC SQL EXECUTE add\_emp USING 8001, 'EDWARDS', 'ANALYST', 7698;
+
+#### EXECUTE DESCRIPTOR
+
+Use the EXECUTE statement to execute a statement previously prepared by an EXEC SQL PREPARE statement, using an SQL descriptor. The syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] EXECUTE *statement\_identifier*
+> \[USING \[SQL\] DESCRIPTOR *descriptor\_name*\]
+> \[INTO \[SQL\] DESCRIPTOR *descriptor\_name*\];
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value that specifies the number of rows to be processed. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *statement\_identifier* specifies the identifier assigned to the statement with the EXEC SQL PREPARE statement.
+>
+> Include the USING clause to specify values for any input parameters required by the prepared statement.
+>
+> Include the INTO clause to specify a descriptor into which the EXECUTE statement will write the results returned by the prepared statement.
+>
+> *descriptor\_name* specifies the name of a descriptor (as a single-quoted string literal), or a host variable that contains the name of a descriptor.
+
+The following example executes the prepared statement, give\_raise, using the values contained in the descriptor stmtText:
+
+> EXEC SQL PREPARE give\_raise FROM :stmtText;
+>
+> EXEC SQL EXECUTE give\_raise USING DESCRIPTOR :stmtText;
+
+#### EXECUTE...END EXEC
+
+Use the EXECUTE…END-EXEC statement to embed an anonymous block into a client application. The syntax is:
+
+> EXEC SQL \[AT *database\_name*\] EXECUTE *anonymous\_block* END-EXEC;
+
+Where:
+
+> *database\_name* is the database identifier or a host variable that contains the database identifier. If you omit the AT clause, the statement will be executed on the current default database.
+>
+> *anonymous\_block* is an inline sequence of PL/pgSQL or SPL statements and declarations. You may include host variables and optional indicator variables within the block; each such variable is treated as an IN/OUT value.
+
+The following example executes an anonymous block:
+
+> EXEC SQL EXECUTE
+> BEGIN
+> IF (current\_user = :admin\_user\_name) THEN
+> DBMS\_OUTPUT.PUT\_LINE('You are an administrator');
+> END IF;
+> END-EXEC;
+
+Please Note: the EXECUTE…END EXEC statement is supported only by Advanced Server.
+
+#### EXECUTE IMMEDIATE
+
+Use the EXECUTE IMMEDIATE statement to execute a string that contains a SQL command. The syntax is:
+
+> EXEC SQL \[AT *database\_name*\] EXECUTE IMMEDIATE *command\_text*;
+
+Where:
+
+> *database\_name* is the database identifier or a host variable that contains the database identifier. If you omit the AT clause, the statement will be executed on the current default database.
+>
+> *command\_text* is the command executed by the EXECUTE IMMEDIATE statement.
+
+This dynamic SQL statement is useful when you don't know the text of an SQL statement (i.e., when writing a client application). For example, a client application may prompt a (trusted) user for a statement to execute. After the user provides the text of the statement as a string value, the statement is then executed with an EXECUTE IMMEDIATE command.
+
+The statement text may not contain references to host variables. If the statement may contain parameter markers or returns one or more values, you must use the PREPARE and DESCRIBE statements.
+
+The following example executes the command contained in the :command\_text host variable:
+
+> EXEC SQL EXECUTE IMMEDIATE :command\_text;
+
+#### FETCH
+
+Use the FETCH statement to return rows from a cursor into an SQLDA descriptor or a target list of host variables. Before using a FETCH statement to retrieve information from a cursor, you must prepare the cursor using DECLARE and OPEN statements. The statement syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] FETCH *cursor*
+> { USING DESCRIPTOR *SQLDA\_descriptor* }|{ INTO *target\_list* };
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *cursor* is the name of the cursor from which rows are being fetched, or a host variable that contains the name of the cursor.
+>
+> If you include a USING clause, the FETCH statement will populate the specified SQLDA descriptor with the values returned by the server.
+>
+> If you include an INTO clause, the FETCH statement will populate the host variables (and optional indicator variables) specified in the *target\_list*.
+
+The following code fragment declares a cursor named employees that retrieves the employee number, name and salary from the emp table:
+
+EXEC SQL DECLARE employees CURSOR FOR
+
+SELECT empno, ename, esal FROM emp;
+
+EXEC SQL OPEN emp\_cursor;
+
+EXEC SQL FETCH emp\_cursor INTO :emp\_no, :emp\_name, :emp\_sal;
+
+#### FETCH DESCRIPTOR
+
+Use the FETCH DESCRIPTOR statement to retrieve rows from a cursor into an SQL descriptor. The syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] FETCH *cursor*
+> INTO \[SQL\] DESCRIPTOR *descriptor\_name*;
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *cursor* is the name of the cursor from which rows are fetched, or a host variable that contains the name of the cursor. The client must DECLARE and OPEN the cursor before calling the FETCH DESCRIPTOR statement.
+>
+> Include the INTO clause to specify an SQL descriptor into which the EXECUTE statement will write the results returned by the prepared statement. *descriptor\_name* specifies the name of a descriptor (as a single-quoted string literal), or a host variable that contains the name of a descriptor. Prior to use, the descriptor must be allocated using an ALLOCATE DESCRIPTOR statement.
+
+The following example allocates a descriptor named row\_desc that will hold the description and the values of a specific row in the result set. It then declares and opens a cursor for a prepared statement (my\_cursor), before looping through the rows in result set, using a FETCH to retrieve the next row from the cursor into the descriptor:
+
+EXEC SQL ALLOCATE DESCRIPTOR 'row\_desc';
+
+EXEC SQL DECLARE my\_cursor CURSOR FOR query;
+
+EXEC SQL OPEN my\_cursor;
+
+for( row = 0; ; row++ )
+
+{
+
+EXEC SQL BEGIN DECLARE SECTION;
+
+int col;
+
+EXEC SQL END DECLARE SECTION;
+
+EXEC SQL FETCH my\_cursor INTO SQL DESCRIPTOR 'row\_desc';
+
+#### GET DESCRIPTOR
+
+Use the GET DESCRIPTOR statement to retrieve information from a descriptor. The GET DESCRIPTOR statement comes in two forms. The first form returns the number of values (or columns) in the descriptor.
+
+> EXEC SQL GET DESCRIPTOR *descriptor\_name*
+> :*host\_variable* = COUNT;
+
+The second form returns information about a specific value (specified by the VALUE *column\_number* clause).
+
+> EXEC SQL \[FOR *array\_size*\] GET DESCRIPTOR *descriptor\_name*
+> VALUE *column\_number* {:*host\_variable* = *descriptor\_item* {,…}};
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value that specifies the number of rows to be processed. If you specify an *array\_size*, the *host\_variable* must be an array of that size; for example, if *array\_size* is 10, :*host\_variable* must be a 10-member array of *host\_variables*. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *descriptor\_name* specifies the name of a descriptor (as a single-quoted string literal), or a host variable that contains the name of a descriptor.
+>
+> Include the VALUE clause to specify the information retrieved from the descriptor.
+>
+> *column\_number* identifies the position of the variable within the descriptor.
+>
+> *host\_variable* specifies the name of the host variable that will receive the value of the item.
+>
+> *descriptor\_item* specifies the type of the retrieved descriptor item.
+>
+> ECPGPlus implements the following *descriptor\_item* types:
+ - > TYPE
+ - > LENGTH
+ - > OCTET\_LENGTH
+ - > RETURNED\_LENGTH
+ - > RETURNED\_OCTET\_LENGTH
+ - > PRECISION
+ - > SCALE
+ - > NULLABLE
+ - > INDICATOR
+ - > DATA
+ - > NAME
+
+The following code fragment demonstrates using a GET DESCRIPTOR statement to obtain the number of columns entered in a user-provided string:
+
+EXEC SQL ALLOCATE DESCRIPTOR parse\_desc;
+
+EXEC SQL PREPARE query FROM :stmt;
+
+EXEC SQL DESCRIBE query INTO SQL DESCRIPTOR parse\_desc;
+
+EXEC SQL GET DESCRIPTOR parse\_desc :col\_count = COUNT;
+
+The example allocates an SQL descriptor (named parse\_desc), before using a PREPARE statement to syntax check the string provided by the user (:stmt). A DESCRIBE statement moves the user-provided string into the descriptor, parse\_desc. The call to EXEC SQL GET DESCRIPTOR interrogates the descriptor to discover the number of columns (:col\_count) in the result set.
+
+#### INSERT
+
+Use the INSERT statement to add one or more rows to a table. The syntax for the ECPGPlus INSERT statement is the same as the syntax for the SQL statement, but you can use parameter markers and host variables any place that a value is allowed. The syntax is:
+
+> \[FOR *exec\_count*\] INSERT INTO *table* \[(*column* \[, ...\])\]
+>
+> {DEFAULT VALUES |
+>
+> VALUES ({*expression* | DEFAULT} \[, ...\])\[, ...\] | *query*}
+>
+> \[RETURNING \* | *output*\_*expression* \[\[ AS \] *output*\_*name*\] \[, ...\]\]
+
+Where:
+
+Include the FOR *exec\_count* clause to specify the number of times the statement will execute; this clause is valid only if the VALUES clause references an array or a pointer to an array.
+
+> *table* specifies the (optionally schema-qualified) name of an existing table.
+>
+> *column* is the name of a column in the table. The column name may be qualified with a subfield name or array subscript. Specify the DEFAULT VALUES clause to use default values for all columns.
+>
+> *expression* is the expression, value, host variable or parameter marker that will be assigned to the corresponding column. Specify DEFAULT to fill the corresponding column with its default value.
+>
+> *query* specifies a SELECT statement that supplies the row(s) to be inserted.
+>
+> *output\_expression* is an expression that will be computed and returned by the INSERT command after each row is inserted. The expression can refer to any column within the table. Specify \* to return all columns of the inserted row(s).
+>
+> *output\_name* specifies a name to use for a returned column.
+
+The following example adds a row to the employees table:
+
+> INSERT INTO emp (empno, ename, job, hiredate)
+>
+> VALUES ('8400', :ename, 'CLERK', '2011-10-31');
+
+Note that the INSERT statement uses a host variable (:ename) to specify the value of the ename column.
+
+For more information about using the INSERT statement, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-insert.html>
+
+#### OPEN
+
+Use the OPEN statement to open a cursor. The syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] OPEN *cursor* \[USING *parameters*\];
+
+Where *parameters* is one of the following:
+
+> DESCRIPTOR *SQLDA\_descriptor*
+> or
+> *host\_variable* \[ \[ INDICATOR \] *indicator\_variable*, … \]
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *cursor* is the name of the cursor being opened.
+>
+> *parameters* is either DESCRIPTOR *SQLDA\_descriptor* or a comma-separated list of host variables (and optional indicator variables) that initialize the cursor. If specifying an *SQLDA\_descriptor*, the descriptor must be initialized with a DESCRIBE statement.
+>
+> The OPEN statement initializes a cursor using the values provided in *parameters*. Once initialized, the cursor result set will remain unchanged unless the cursor is closed and re-opened. A cursor is automatically closed when an application terminates.
+
+The following example declares a cursor named employees, that queries the emp table, returning the employee number, name, salary and commission of an employee whose name matches a user-supplied value (stored in the host variable, :emp\_name).
+
+EXEC SQL DECLARE employees CURSOR FOR
+
+SELECT
+
+empno, ename, sal, comm 
+
+FROM 
+
+emp
+
+WHERE ename = :emp\_name;
+
+EXEC SQL OPEN employees;
+
+...
+
+After declaring the cursor, the example uses an OPEN statement to make the contents of the cursor available to a client application.
+
+#### OPEN DESCRIPTOR
+
+Use the OPEN DESCRIPTOR statement to open a cursor with a SQL descriptor. The syntax is:
+
+> EXEC SQL \[FOR *array\_size*\] OPEN *cursor*
+> \[USING \[SQL\] DESCRIPTOR *descriptor\_name*\]
+> \[INTO \[SQL\] DESCRIPTOR *descriptor\_name*\];
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *cursor* is the name of the cursor being opened.
+>
+> *descriptor\_name* specifies the name of an SQL descriptor (in the form of a single-quoted string literal) or a host variable that contains the name of an SQL descriptor that contains the query that initializes the cursor.
+
+For example, the following statement opens a cursor (named emp\_cursor), using the host variable, :employees:
+
+EXEC SQL OPEN emp\_cursor USING DESCRIPTOR :employees;
+
+#### PREPARE
+
+Prepared statements are useful when a client application must perform a task multiple times; the statement is parsed, written and planned only once, rather than each time the statement is executed, saving repetitive processing time.
+
+Use the PREPARE statement to prepare an SQL statement or PL/pgSQL block for execution. The statement is available in two forms; the first form is:
+
+> EXEC SQL \[AT *database\_name*\] PREPARE *statement\_name*
+> FROM *sql\_statement*;
+
+The second form is:
+
+> EXEC SQL \[AT *database\_name*\] PREPARE *statement\_name*
+> AS *sql\_statement*;
+
+Where:
+
+> *database\_name* is the database identifier or a host variable that contains the database identifier against which the statement will execute. If you omit the AT clause, the statement will execute against the current default database.
+>
+> *statement\_name* is the identifier associated with a prepared SQL statement or PL/SQL block.
+>
+> *sql\_statement* may take the form of a SELECT statement, a single-quoted string literal or host variable that contains the text of an SQL statement.
+
+To include variables within a prepared statement, substitute placeholders ($1, $2, $3, etc.) for statement values that might change when you PREPARE the statement. When you EXECUTE the statement, provide a value for each parameter. The values must be provided in the order in which they will replace placeholders.
+
+The following example creates a prepared statement (named add\_emp) that inserts a record into the emp table:
+
+> EXEC SQL PREPARE add\_emp (int, text, text, numeric) AS
+>
+> INSERT INTO emp VALUES($1, $2, $3, $4);
+
+Each time you invoke the statement, provide fresh parameter values for the statement:
+
+> EXEC SQL EXECUTE add\_emp(8003, 'Davis', 'CLERK', 2000.00);
+>
+> EXEC SQL EXECUTE add\_emp(8004, 'Myer', 'CLERK', 2000.00);
+
+Please note: A client application must issue a PREPARE statement within each session in which a statement will be executed; prepared statements persist only for the duration of the current session.
+
+#### ROLLBACK
+
+Use the ROLLBACK statement to abort the current transaction, and discard any updates made by the transaction. The syntax is:
+
+> EXEC SQL \[AT *database\_name*\] ROLLBACK \[WORK\]
+> \[ { TO \[SAVEPOINT\] *savepoint* } | RELEASE \]
+
+Where:
+
+> *database\_name* is the database identifier or a host variable that contains the database identifier against which the statement will execute. If you omit the AT clause, the statement will execute against the current default database.
+>
+> Include the TO clause to abort any commands that were executed after the specified *savepoint*; use the SAVEPOINT statement to define the *savepoint*. If you omit the TO clause, the ROLLBACK statement will abort the transaction, discarding all updates.
+>
+> Include the RELEASE clause to cause the application to execute an EXEC SQL COMMIT RELEASE and close the connection.
+
+Use the following statement to rollback a complete transaction:
+
+> EXEC SQL ROLLBACK;
+
+Invoking this statement will abort the transaction, undoing all changes, erasing any savepoints, and releasing all transaction locks. If you include a savepoint (*my\_savepoint* in the following example):
+
+> EXEC SQL ROLLBACK TO SAVEPOINT my\_savepoint;
+
+Only the portion of the transaction that occurred after the my\_savepoint is rolled back; my\_savepoint is retained, but any savepoints created after my\_savepoint will be erased.
+
+Rolling back to a specified savepoint releases all locks acquired after the savepoint.
+
+#### SAVEPOINT
+
+Use the SAVEPOINT statement to define a *savepoint*; a savepoint is a marker within a transaction. You can use a ROLLBACK statement to abort the current transaction, returning the state of the server to its condition prior to the specified savepoint. The syntax of a SAVEPOINT statement is:
+
+> EXEC SQL \[AT *database\_name*\] SAVEPOINT *savepoint\_name*
+
+Where:
+
+> *database\_name* is the database identifier or a host variable that contains the database identifier against which the savepoint resides. If you omit the AT clause, the statement will execute against the current default database.
+>
+> *savepoint\_name* is the name of the savepoint. If you re-use a *savepoint\_name*, the original savepoint is discarded.
+
+Savepoints can only be established within a transaction block. A transaction block may contain multiple savepoints.
+
+To create a savepoint named my\_savepoint, include the statement:
+
+> EXEC SQL SAVEPOINT my\_savepoint;
+
+#### SELECT
+
+ECPGPlus extends support of the SQL SELECT statement by providing the INTO *host\_variables* clause. The clause allows you to select specified information from an Advanced Server database into a host variable. The syntax for the SELECT statement is:
+
+EXEC SQL \[AT *database\_name*\]
+
+SELECT
+
+\[ *hint* \]
+
+\[ ALL | DISTINCT \[ ON(*expression*, ...) \]\]
+
+*select\_list* INTO *host\_variables*
+
+\[ FROM *from\_item* \[, *from\_item* \]...\]
+
+\[ WHERE *condition* \]
+
+\[ *hierarchical\_query\_clause* \]
+
+\[ GROUP BY *expression* \[, ...\]\]
+
+\[ HAVING *condition* \]
+
+\[ { UNION \[ ALL \] | INTERSECT | MINUS } (*subquery*) \]
+
+\[ ORDER BY *expression* \[*order\_by\_options*\]\]
+
+\[ LIMIT { *count* | ALL }\]
+
+\[ OFFSET *start* \[ ROW | ROWS \] \]
+
+\[ FETCH { FIRST | NEXT } \[ *count* \] { ROW | ROWS } ONLY \]
+
+\[ FOR { UPDATE | SHARE } \[OF *table\_name* \[, ...\]\]\[NOWAIT \]\[...\]\]
+
+Where:
+
+> *database\_name* is the name of the database (or host variable that contains the name of the database) in which the table resides. This value may take the form of an unquoted string literal, or of a host variable.
+>
+> *host\_variables* is a list of host variables that will be populated by the SELECT statement. If the SELECT statement returns more than a single row, *host\_variables* must be an array.
+
+ECPGPlus provides support for the additional clauses of the SQL SELECT statement as documented in the PostgreSQL Core documentation, available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-select.html>
+
+To use the INTO *host\_variables* clause, include the names of defined host variables when specifying the SELECT statement. For example, the following SELECT statement populates the :emp\_name and :emp\_sal host variables with a list of employee names and salaries:
+
+> EXEC SQL SELECT ename, sal
+> INTO :emp\_name, :emp\_sal
+> FROM emp
+> WHERE empno = 7988;
+
+The enhanced SELECT statement also allows you to include parameter markers (question marks) in any clause where a value would be permitted. For example, the following query contains a parameter marker in the WHERE clause:
+
+> SELECT \* FROM emp WHERE dept\_no = ?;
+
+This SELECT statement allows you to provide a value at run-time for the dept\_no parameter marker.
+
+#### SET CONNECTION
+
+There are (at least) three reasons you may need more than one connection in a given client application:
+ - You may want different privileges for different statements.
+ - You may need to interact with multiple databases within the same client.
+ - Multiple threads of execution (within a client application) cannot share a connection concurrently.
+
+The syntax for the SET CONNECTION statement is:
+
+> EXEC SQL SET CONNECTION *connection\_name*;
+
+Where:
+
+> *connection\_name* is the name of the connection to the database.
+
+To use the SET CONNECTION statement, you should open the connection to the database using the second form of the CONNECT statement; include the AS clause to specify a *connection\_name*.
+
+By default, the current thread uses the current connection; use the SET CONNECTION statement to specify a default connection for the current thread to use. The default connection is only used when you execute an EXEC SQL statement that does not explicitly specify a connection name. For example, the following statement will use the default connection because it does not include an AT *connection\_name* clause:
+
+> EXEC SQL DELETE FROM emp;
+
+This statement will not use the default connection because it specifies a connection name using the AT *connection\_name* clause:
+
+> EXEC SQL AT acctg\_conn DELETE FROM emp;
+
+For example, a client application that creates and maintains multiple connections (such as):
+
+> EXEC SQL CONNECT TO edb AS acctg\_conn
+> USER 'alice' IDENTIFIED BY 'acctpwd';
+
+and
+
+> EXEC SQL CONNECT TO edb AS hr\_conn
+> USER 'bob' IDENTIFIED BY 'hrpwd';
+
+Can change between the connections with the SET CONNECTION statement:
+
+> SET CONNECTION acctg\_conn;
+
+or
+
+> SET CONNECTION hr\_conn;
+
+The server will use the privileges associated with the connection when determining the privileges available to the connecting client. When using the acctg\_conn connection, the client will have the privileges associated with the role, alice; when connected using hr\_conn, the client will have the privileges associated with bob.
+
+#### SET DESCRIPTOR
+
+Use the SET DESCRIPTOR statement to assign a value to a descriptor area using information provided by the client application in the form of a host variable or an integer value. The statement comes in two forms; the first form is:
+
+> EXEC SQL \[FOR *array\_size*\] SET DESCRIPTOR *descriptor\_name*
+> VALUE *column\_number* *descriptor\_item* = *host\_variable*;
+
+The second form is:
+
+> EXEC SQL \[FOR *array\_size*\] SET DESCRIPTOR *descriptor\_name*
+> COUNT = *integer*;
+
+Where:
+
+> *array\_size* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+>
+> *descriptor\_name* specifies the name of a descriptor (as a single-quoted string literal), or a host variable that contains the name of a descriptor.
+>
+> Include the VALUE clause to describe the information stored in the descriptor.
+>
+> *column\_number* identifies the position of the variable within the descriptor.
+>
+> *descriptor\_item* specifies the type of the descriptor item.
+>
+> *host\_variable* specifies the name of the host variable that contains the value of the item.
+>
+> ECPGPlus implements the following *descriptor\_item* types:
+ - > TYPE
+ - > LENGTH
+ - > \[REF\] INDICATOR
+ - > \[REF\] DATA
+ - > \[REF\] RETURNED LENGTH
+
+> For example, a client application might prompt a user for a dynamically created query:
+>
+> query\_text = promptUser("Enter a query");
+
+To execute a dynamically created query, you must first *prepare* the query (parsing and validating the syntax of the query), and then *describe* the *input* parameters found in the query using the EXEC SQL DESCRIBE INPUT statement.
+
+> EXEC SQL ALLOCATE DESCRIPTOR query\_params;
+> EXEC SQL PREPARE emp\_query FROM :query\_text;
+>
+> EXEC SQL DESCRIBE INPUT emp\_query
+> USING SQL DESCRIPTOR 'query\_params';
+
+After describing the query, the query\_params descriptor contains information about each parameter required by the query.
+
+For this example, we'll assume that the user has entered:
+
+> SELECT ename FROM emp WHERE sal \> ? AND job = ?;,
+
+In this case, the descriptor describes two parameters:
+ - one for sal \> ?
+ - one for job = ?
+
+To discover the number of parameter markers (question marks) in the query (and therefore, the number of values you must provide before executing the query), use:
+
+> EXEC SQL GET DESCRIPTOR … :host\_variable = COUNT;
+
+Then, you can use EXEC SQL GET DESCRIPTOR to retrieve the name of each parameter. You can also use EXEC SQL GET DESCRIPTOR to retrieve the type of each parameter (along with the number of parameters) from the descriptor, or you can supply each *value* in the form of a character string and ECPG will convert that string into the required data type.
+
+The data type of the first parameter is numeric; the type of the second parameter is varchar. The name of the first parameter is sal; the name of the second parameter is job.
+
+Next, loop through each parameter, prompting the user for a value, and store those values in host variables. You can use GET DESCRIPTOR … COUNT to find the number of parameters in the query.
+
+> EXEC SQL GET DESCRIPTOR 'query\_params'
+> :param\_count = COUNT;
+>
+> for(param\_number = 1;
+> param\_number \<= param\_count;
+> param\_number++)
+> {
+
+Use GET DESCRIPTOR to copy the name of the parameter into the param\_name host variable:
+
+> EXEC SQL GET DESCRIPTOR 'query\_params'
+> VALUE :param\_number :param\_name = NAME;
+>
+> reply = promptUser(param\_name);
+> if (reply == NULL)
+> reply\_ind = 1; /\* NULL \*/
+> else
+> reply\_ind = 0; /\* NOT NULL \*/
+
+To associate a *value* with each parameter, you use the EXEC SQL SET DESCRIPTOR statement. For example:
+
+> EXEC SQL SET DESCRIPTOR 'query\_params'
+> VALUE :param\_number DATA = :reply;
+> EXEC SQL SET DESCRIPTOR 'query\_params'
+> VALUE :param\_number INDICATOR = :reply\_ind;
+> }
+
+Now, you can use the EXEC SQL EXECUTE DESCRIPTOR statement to execute the prepared statement on the server.
+
+#### UPDATE
+
+Use an UPDATE statement to modify the data stored in a table. The syntax is:
+
+EXEC SQL \[AT *database\_name*\]\[FOR *exec\_count*\]
+UPDATE \[ ONLY \] *table* \[ \[ AS \] *alias* \]
+
+SET {*column* = { *expression* | DEFAULT } |
+
+(*column* \[, ...\]) = ({ *expression*|DEFAULT } \[, ...\])} \[, ...\]
+
+\[ FROM *from\_list* \]
+
+\[ WHERE *condition* | WHERE CURRENT OF *cursor\_name* \]
+\[ RETURNING \* | *output\_expression* \[\[ AS \] *output\_name*\] \[, ...\] \]
+
+Where:
+
+> *database\_name* is the name of the database (or host variable that contains the name of the database) in which the table resides. This value may take the form of an unquoted string literal, or of a host variable.
+>
+> Include the FOR *exec\_count* clause to specify the number of times the statement will execute; this clause is valid only if the SET or WHERE clause contains an array.
+
+ECPGPlus provides support for the additional clauses of the SQL UPDATE statement as documented in the PostgreSQL Core documentation, available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-update.html>
+
+A host variable can be used in any clause that specifies a value. To use a host variable, simply substitute a defined variable for any value associated with any of the documented UPDATE clauses.
+
+The following UPDATE statement changes the job description of an employee (identified by the :ename host variable) to the value contained in the :new\_job host variable, and increases the employee’s salary, by multiplying the current salary by the value in the :increase host variable:
+
+> EXEC SQL UPDATE emp
+> SET job = :new\_job, sal = sal \* :increase
+> WHERE ename = :ename;
+
+The enhanced UPDATE statement also allows you to include parameter markers (question marks) in any clause where an input value would be permitted. For example, we can write the same update statement with a parameter marker in the WHERE clause:
+
+> EXEC SQL UPDATE emp
+> SET job = ?, sal = sal \* ?
+> WHERE ename = :ename;
+
+This UPDATE statement could allow you to prompt the user for a new value for the job column and provide the amount by which the sal column is incremented for the employee specified by :ename.
+
+#### WHENEVER
+
+Use the WHENEVER statement to specify the action taken by a client application when it encounters an SQL error or warning. The syntax is:
+
+> EXEC SQL WHENEVER *condition action*;
+
+The following table describes the different conditions that might trigger an *action*:
+
+| Condition  | Description                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| NOT FOUND  | The server returns a NOT FOUND condition when it encounters a SELECT that returns no rows, or when a FETCH reaches the end of a result set. |
+| SQLERROR   | The server returns an SQLERROR condition when it encounters a serious error returned by an SQL statement.                                   |
+| SQLWARNING | The server returns an SQLWARNING condition when it encounters a non-fatal warning returned by an SQL statement.                             |
+
+The following table describes the actions that result from a client encountering a *condition*:
+
+<table>
+<thead>
+<tr class="header">
+<th>Action</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>CALL <em>function</em>([<em>args</em>])</td>
+<td>Instructs the client application to call the named <em>function</em>.</td>
+</tr>
+<tr class="even">
+<td>CONTINUE</td>
+<td>Instructs the client application to proceed to the next statement.</td>
+</tr>
+<tr class="odd">
+<td>DO BREAK</td>
+<td>Instructs the client application to a C break statement. A break statement may appear in a loop or a switch statement. If executed, the break statement terminate the loop or the switch statement.</td>
+</tr>
+<tr class="even">
+<td>DO CONTINUE</td>
+<td>Instructs the client application to emit a C continue statement. A continue statement may only exist within a loop, and if executed, will cause the flow of control to return to the top of the loop.</td>
+</tr>
+<tr class="odd">
+<td>DO <em>function</em>([<em>args</em>])</td>
+<td>Instructs the client application to call the named <em>function</em>.</td>
+</tr>
+<tr class="even">
+<td>GOTO <em>label</em> or<br />
+GO TO <em>label</em></td>
+<td>Instructs the client application to proceed to the statement that contains the <em>label</em>.</td>
+</tr>
+<tr class="odd">
+<td>SQLPRINT</td>
+<td>Instructs the client application to print a message to standard error.</td>
+</tr>
+<tr class="even">
+<td>STOP</td>
+<td>Instructs the client application to stop execution.</td>
+</tr>
+</tbody>
+</table>
+
+The following code fragment prints a message if the client application encounters a warning, and aborts the application if it encounters an error:
+
+> EXEC SQL WHENEVER SQLWARNING SQLPRINT;
+>
+> EXEC SQL WHENEVER SQLERROR STOP;
+
+Include the following code to specify that a client should continue processing after warning a user of a problem:
+
+> EXEC SQL WHENEVER SQLWARNING SQLPRINT;
+
+Include the following code to call a function if a query returns no rows, or when a cursor reaches the end of a result set:
+
+> EXEC SQL WHENEVER NOT FOUND CALL error\_handler(\_\_LINE\_\_);
+

@@ -1,0 +1,482 @@
+---
+
+title: "Collections"
+---
+
+<div id="collections" class="registered_link"></div>
+
+A *collection* is a set of ordered data items with the same data type. Generally, the data item is a scalar field, but may also be a user-defined type such as a record type or an object type as long as the structure and the data types that comprise each field of the user-defined type are the same for each element in the set. Each particular data item in the set is referenced by using subscript notation within a pair of parentheses.
+
+**Note:** Multilevel collections (that is, where the data item of a collection is another collection) are not supported.
+
+The most commonly known type of collection is an array. In Advanced Server, the supported collection types are *associative arrays* (formerly called *index-by-tables* in Oracle), *nested tables*, and *varrays*.
+
+The general steps for using a collection are the following:
+
+- A collection of the desired type must be defined. This can be done in the declaration section of an SPL program, which results in a local type that is accessible only within that program. For nested table and varray types this can also be done using the `CREATE TYPE` command, which creates a persistent, standalone type that can be referenced by any SPL program in the database.
+- Variables of the collection type are declared. The collection associated with the declared variable is said to be uninitialized at this point if there is no value assignment made as part of the variable declaration.
+- Uninitialized collections of nested tables and varrays are null. A null collection does not yet exist. Generally, a `COLLECTION_IS_NULL` exception is thrown if a collection method is invoked on a null collection.
+- Uninitialized collections of associative arrays exist, but have no elements. An existing collection with no elements is called an empty collection.
+- To initialize a null collection, you must either make it an empty collection or assign a non-null value to it. Generally, a null collection is initialized by using its constructor.
+- To add elements to an empty associative array, you can simply assign values to its keys. For nested tables and varrays, generally its constructor is used to assign initial values to the nested table or varray. For nested tables and varrays, the `EXTEND` method is then used to grow the collection beyond its initial size established by the constructor.
+
+The specific process for each collection type is described in the following sections.
+
+## Associative Arrays
+
+An *associative array* is a type of collection that associates a unique key with a value. The key does not have to be numeric, but can be character data as well.
+
+An associative array has the following characteristics:
+
+- An associative array type must be defined after which array variables can be declared of that array type. Data manipulation occurs using the array variable.
+- When an array variable is declared, the associative array is created, but it is empty - just start assigning values to key values.
+- The key can be any negative integer, positive integer, or zero if `INDEX BY BINARY_INTEGER` or `PLS_INTEGER` is specified.
+- The key can be character data if `INDEX BY VARCHAR2` is specified.
+- There is no pre-defined limit on the number of elements in the array - it grows dynamically as elements are added.
+- The array can be sparse - there may be gaps in the assignment of values to keys.
+- An attempt to reference an array element that has not been assigned a value will result in an exception.
+
+The `TYPE IS TABLE OF ... INDEX BY` statement is used to define an associative array type.
+
+`TYPE` *`assoctype`* `IS TABLE OF {` *`datatype`* `|` *`rectype`* `|` *`objtype`* `}`
+
+  `INDEX BY { BINARY_INTEGER | PLS_INTEGER | VARCHAR2(`*`n`*`) };`
+
+*`assoctype`* is an identifier assigned to the array type. *`datatype`* is a scalar data type such as `VARCHAR2` or `NUMBER`. *`rectype`* is a previously defined record type. *`objtype`* is a previously defined object type. *`n`* is the maximum length of a character key.
+
+In order to make use of the array, a *variable* must be declared with that array type. The following is the syntax for declaring an array variable.
+
+*`array`* *`assoctype`*
+
+*`array`* is an identifier assigned to the associative array. *`assoctype`* is the identifier of a previously defined array type.
+
+An element of the array is referenced using the following syntax.
+
+> *`array`*`(`*`n`*`)[.`*`field`* `]`
+
+*`array`* is the identifier of a previously declared array. *n* is the key value, type-compatible with the data type given in the `INDEX BY` clause. If the array type of *`array`* is defined from a record type or object type, then [.*`field`* ] must reference an individual field within the record type or attribute within the object type from which the array type is defined. Alternatively, the entire record can be referenced by omitting [.*`field`* ].
+
+The following example reads the first ten employee names from the `emp` table, stores them in an array, then displays the results from the array.
+
+```
+DECLARE
+    TYPE emp_arr_typ IS TABLE OF VARCHAR2(10) INDEX BY BINARY_INTEGER;
+    emp_arr         emp_arr_typ;
+    CURSOR emp_cur IS SELECT ename FROM emp WHERE ROWNUM <= 10;
+    i               INTEGER := 0;
+BEGIN
+    FOR r_emp IN emp_cur LOOP
+        i := i + 1;
+        emp_arr(i) := r_emp.ename;
+    END LOOP;
+    FOR j IN 1..10 LOOP
+        DBMS_OUTPUT.PUT_LINE(emp_arr(j));
+    END LOOP;
+END;
+```
+
+The above example produces the following output:
+
+```
+SMITH
+ALLEN
+WARD
+JONES
+MARTIN
+BLAKE
+CLARK
+SCOTT
+KING
+TURNER
+```
+
+The previous example is now modified to use a record type in the array definition.
+
+```
+DECLARE
+    TYPE emp_rec_typ IS RECORD (
+        empno       NUMBER(4),
+        ename       VARCHAR2(10)
+    );
+    TYPE emp_arr_typ IS TABLE OF emp_rec_typ INDEX BY BINARY_INTEGER;
+    emp_arr         emp_arr_typ;
+    CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10;
+    i               INTEGER := 0;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FOR r_emp IN emp_cur LOOP
+        i := i + 1;
+        emp_arr(i).empno := r_emp.empno;
+        emp_arr(i).ename := r_emp.ename;
+    END LOOP;
+    FOR j IN 1..10 LOOP
+        DBMS_OUTPUT.PUT_LINE(emp_arr(j).empno || '     ' ||
+            emp_arr(j).ename);
+    END LOOP;
+END;
+```
+
+The following is the output from this anonymous block.
+
+```
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+```
+
+The `emp%ROWTYPE` attribute could be used to define `emp_arr_typ` instead of using the `emp_rec_typ` record type as shown in the following.
+
+```
+DECLARE
+    TYPE emp_arr_typ IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
+    emp_arr         emp_arr_typ;
+    CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10;
+    i               INTEGER := 0;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FOR r_emp IN emp_cur LOOP
+        i := i + 1;
+        emp_arr(i).empno := r_emp.empno;
+        emp_arr(i).ename := r_emp.ename;
+    END LOOP;
+    FOR j IN 1..10 LOOP
+        DBMS_OUTPUT.PUT_LINE(emp_arr(j).empno || '     ' ||
+            emp_arr(j).ename);
+    END LOOP;
+END;
+```
+
+The results are the same as in the prior example.
+
+Instead of assigning each field of the record individually, a record level assignment can be made from `r_emp` to `emp_arr`.
+
+```
+DECLARE
+    TYPE emp_rec_typ IS RECORD (
+        empno       NUMBER(4),
+        ename       VARCHAR2(10)
+    );
+    TYPE emp_arr_typ IS TABLE OF emp_rec_typ INDEX BY BINARY_INTEGER;
+    emp_arr         emp_arr_typ;
+    CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10;
+    i               INTEGER := 0;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FOR r_emp IN emp_cur LOOP
+        i := i + 1;
+        emp_arr(i) := r_emp;
+    END LOOP;
+    FOR j IN 1..10 LOOP
+        DBMS_OUTPUT.PUT_LINE(emp_arr(j).empno || '     ' ||
+            emp_arr(j).ename);
+    END LOOP;
+END;
+```
+
+The key of an associative array can be character data as shown in the following example.
+
+```
+DECLARE
+    TYPE job_arr_typ IS TABLE OF NUMBER INDEX BY VARCHAR2(9);
+    job_arr         job_arr_typ;
+BEGIN
+    job_arr('ANALYST')   := 100;
+    job_arr('CLERK')     := 200;
+    job_arr('MANAGER')   := 300;
+    job_arr('SALESMAN')  := 400;
+    job_arr('PRESIDENT') := 500;
+    DBMS_OUTPUT.PUT_LINE('ANALYST  : ' || job_arr('ANALYST'));
+    DBMS_OUTPUT.PUT_LINE('CLERK    : ' || job_arr('CLERK'));
+    DBMS_OUTPUT.PUT_LINE('MANAGER  : ' || job_arr('MANAGER'));
+    DBMS_OUTPUT.PUT_LINE('SALESMAN : ' || job_arr('SALESMAN'));
+    DBMS_OUTPUT.PUT_LINE('PRESIDENT: ' || job_arr('PRESIDENT'));
+END;
+
+ANALYST  : 100
+CLERK    : 200
+MANAGER  : 300
+SALESMAN : 400
+PRESIDENT: 500
+```
+
+## Nested Tables
+
+A *nested table* is a type of collection that associates a positive integer with a value. A nested table has the following characteristics:
+
+- A nested table type must be defined after which nested table variables can be declared of that nested table type. Data manipulation occurs using the nested table variable, or simply, “table” for short.
+- When a nested table variable is declared, the nested table initially does not exist (it is a null collection). The null table must be initialized with a constructor. You can also initialize the table by using an assignment statement where the right-hand side of the assignment is an initialized table of the same type. Note: Initialization of a nested table is mandatory in Oracle, but optional in SPL.
+- The key is a positive integer.
+- The constructor establishes the number of elements in the table. The EXTE~ND method adds additional elements to the table. See Section 3.11 for information on collection methods. Note: Usage of the constructor to establish the number of elements in the table and usage of the `EXTEND` method to add additional elements to the table are mandatory in Oracle, but optional in SPL.
+- The table can be sparse - there may be gaps in the assignment of values to keys.
+- An attempt to reference a table element beyond its initialized or extended size will result in a `SUBSCRIPT_BEYOND_COUNT` exception.
+
+The `TYPE IS TABLE` statement is used to define a nested table type within the declaration section of an SPL program.
+
+> `TYPE` *`tbltype`* `IS TABLE OF {` *`datatype`* `|` *`rectype`* `|` *`objtype`* `};`
+
+*`tbltype`* is an identifier assigned to the nested table type. *`datatype`* is a scalar data type such as `VARCHAR2` or `NUMBER`. *`rectype`* is a previously defined record type. *`objtype`* is a previously defined object type.
+
+Note: You can use the `CREATE TYPE` command to define a nested table type that is available to all SPL programs in the database. See the Database Compatibility for Oracle Developers Reference Guide for more information about the `CREATE TYPE` command.
+
+In order to make use of the table, a *variable* must be declared of that nested table type. The following is the syntax for declaring a table variable.
+
+> *`table`* *`tbltype`*
+
+*`table`* is an identifier assigned to the nested table. *`tbltype`* is the identifier of a previously defined nested table type.
+
+A nested table is initialized using the nested table type’s constructor.
+
+*`tbltype`* `([ {` *`expr1`* `|` `NULL` `} [, {` *`expr2`* `| NULL } ] [, ...] ])`
+
+*`tbltype`* is the identifier of the nested table type’s constructor, which has the same name as the nested table type. *`expr1`*, *`expr2`*, … are expressions that are type-compatible with the element type of the table. If `NULL` is specified, the corresponding element is set to null. If the parameter list is empty, then an empty nested table is returned, which means there are no elements in the table. If the table is defined from an object type, then *`exprn`* must return an object of that object type. The object can be the return value of a function or the object type’s constructor, or the object can be an element of another nested table of the same type.
+
+If a collection method other than `EXISTS` is applied to an uninitialized nested table, a `COLLECTION_IS_NULL` exception is thrown. See Section [3.11](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.080.html#) for information on collection methods.
+
+The following is an example of a constructor for a nested table:
+
+```
+DECLARE
+    TYPE nested_typ IS TABLE OF CHAR(1);
+    v_nested        nested_typ := nested_typ('A','B');
+```
+
+An element of the table is referenced using the following syntax.
+
+> *`table`*`(`*`n`*)`[.`*`element`* `]`
+
+*`table`* is the identifier of a previously declared table. *`n`* is a positive integer. If the table type of *`table`* is defined from a record type or object type, then [.*`element`* ] must reference an individual field within the record type or attribute within the object type from which the nested table type is defined. Alternatively, the entire record or object can be referenced by omitting [.*`element`* ].
+
+The following is an example of a nested table where it is known that there will be four elements.
+
+```
+DECLARE
+    TYPE dname_tbl_typ IS TABLE OF VARCHAR2(14);
+    dname_tbl       dname_tbl_typ;
+    CURSOR dept_cur IS SELECT dname FROM dept ORDER BY dname;
+    i               INTEGER := 0;
+BEGIN
+    dname_tbl := dname_tbl_typ(NULL, NULL, NULL, NULL);
+    FOR r_dept IN dept_cur LOOP
+        i := i + 1;
+        dname_tbl(i) := r_dept.dname;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('DNAME');
+    DBMS_OUTPUT.PUT_LINE('----------');
+    FOR j IN 1..i LOOP
+        DBMS_OUTPUT.PUT_LINE(dname_tbl(j));
+    END LOOP;
+END;
+```
+
+The above example produces the following output:
+
+```
+DNAME
+----------
+ACCOUNTING
+OPERATIONS
+RESEARCH
+SALES
+```
+
+The following example reads the first ten employee names from the `emp` table, stores them in a nested table, then displays the results from the table. The SPL code is written to assume that the number of employees to be returned is not known beforehand.
+
+```
+DECLARE
+    TYPE emp_rec_typ IS RECORD (
+        empno       NUMBER(4),
+        ename       VARCHAR2(10)
+    );
+    TYPE emp_tbl_typ IS TABLE OF emp_rec_typ;
+    emp_tbl         emp_tbl_typ;
+    CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10;
+    i               INTEGER := 0;
+BEGIN
+    emp_tbl := emp_tbl_typ();
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FOR r_emp IN emp_cur LOOP
+        i := i + 1;
+        emp_tbl.EXTEND;
+        emp_tbl(i) := r_emp;
+    END LOOP;
+    FOR j IN 1..10 LOOP
+        DBMS_OUTPUT.PUT_LINE(emp_tbl(j).empno || '     ' ||
+            emp_tbl(j).ename);
+    END LOOP;
+END;
+```
+
+Note the creation of an empty table with the constructor `emp_tbl_typ()` as the first statement in the executable section of the anonymous block. The `EXTEND` collection method is then used to add an element to the table for each employee returned from the result set. See Section [3.11.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.080.html#pID0E06OD0HA) for information on `EXTEND`.
+
+The following is the output.
+
+```
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+```
+
+The following example shows how a nested table of an object type can be used. First, an object type is created with attributes for the department name and location.
+
+```
+CREATE TYPE dept_obj_typ AS OBJECT (
+    dname           VARCHAR2(14),
+    loc             VARCHAR2(13)
+);
+```
+
+The following anonymous block defines a nested table type whose element consists of the `dept_obj_typ` object type. A nested table variable is declared, initialized, and then populated from the `dept` table. Finally, the elements from the nested table are displayed.
+
+```
+DECLARE
+    TYPE dept_tbl_typ IS TABLE OF dept_obj_typ;
+    dept_tbl        dept_tbl_typ;
+    CURSOR dept_cur IS SELECT dname, loc FROM dept ORDER BY dname;
+    i               INTEGER := 0;
+BEGIN
+    dept_tbl := dept_tbl_typ(
+        dept_obj_typ(NULL,NULL),
+        dept_obj_typ(NULL,NULL),
+        dept_obj_typ(NULL,NULL),
+        dept_obj_typ(NULL,NULL)
+    );
+    FOR r_dept IN dept_cur LOOP
+        i := i + 1;
+        dept_tbl(i).dname := r_dept.dname;
+        dept_tbl(i).loc   := r_dept.loc;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('DNAME          LOC');
+    DBMS_OUTPUT.PUT_LINE('----------     ----------');
+    FOR j IN 1..i LOOP
+        DBMS_OUTPUT.PUT_LINE(RPAD(dept_tbl(j).dname,14) || ' ' ||
+            dept_tbl(j).loc);
+    END LOOP;
+END;
+```
+
+**Note:** The parameters comprising the nested table’s constructor, `dept_tbl_typ`, are calls to the object type’s constructor `dept_obj_typ`.
+
+The following is the output from the anonymous block.
+
+```
+DNAME          LOC
+
+----------     ----------
+
+ACCOUNTING     NEW YORK
+OPERATIONS     BOSTON
+RESEARCH       DALLAS
+SALES          CHICAGO
+```
+
+## Varrays
+
+A *varray* or *variable-size array* is a type of collection that associates a positive integer with a value. In many respects, it is similar to a nested table.
+
+A varray has the following characteristics:
+
+- A varray type must be defined along with a maximum size limit. After the varray type is defined, varray variables can be declared of that varray type. Data manipulation occurs using the varray variable, or simply, “varray” for short. The number of elements in the varray cannot exceed the maximum size limit established in the varray type definition.
+- When a varray variable is declared, the varray initially does not exist (it is a null collection). The null varray must be initialized with a constructor. You can also initialize the varray by using an assignment statement where the right-hand side of the assignment is an initialized varray of the same type.
+- The key is a positive integer.
+- The constructor establishes the number of elements in the varray, which must not exceed the maximum size limit. The `EXTEND` method can add additional elements to the varray up to the maximum size limit. See Section 3.11 for information on collection methods.
+- Unlike a nested table, a varray cannot be sparse - there are no gaps in the assignment of values to keys.
+- An attempt to reference a varray element beyond its initialized or extended size, but within the maximum size limit will result in a `SUBSCRIPT_BEYOND_COUNT` exception.
+- An attempt to reference a varray element beyond the maximum size limit or extend a varray beyond the maximum size limit will result in a `SUBSCRIPT_OUTSIDE_LIMIT` exception.
+
+The `TYPE IS VARRAY` statement is used to define a varray type within the declaration section of an SPL program.
+
+> `TYPE` *`varraytype`* `IS { VARRAY | VARYING ARRAY }(`*`maxsize`*`)`
+>
+>   `OF {` *`datatype`* `|` *`objtype`* `};`
+
+*varraytype* is an identifier assigned to the varray type. *`datatype`* is a scalar data type such as `VARCHAR2` or `NUMBER.` *`maxsize`* is the maximum number of elements permitted in varrays of that type. *`objtype`* is a previously defined object type.
+
+Note: The `CREATE TYPE` command can be used to define a varray type that is available to all SPL programs in the database. In order to make use of the varray, a *variable* must be declared of that varray type. The following is the syntax for declaring a varray variable.
+
+*`varray`* *`varraytype`*
+
+*`varray`* is an identifier assigned to the varray. *`varraytype`* is the identifier of a previously defined varray type.
+
+A varray is initialized using the varray type’s constructor.
+
+*`varraytype`* `([ {` *`expr1`* `| NULL } [, {` *`expr2`* `| NULL } ]`
+
+  `[, ...] ])`
+
+*`varraytype`* is the identifier of the varray type’s constructor, which has the same name as the varray type. *`expr1`*, *`expr2`*, … are expressions that are type-compatible with the element type of the varray. If `NULL` is specified, the corresponding element is set to null. If the parameter list is empty, then an empty varray is returned, which means there are no elements in the varray. If the varray is defined from an object type, then *`exprn`* must return an object of that object type. The object can be the return value of a function or the return value of the object type’s constructor. The object can also be an element of another varray of the same varray type.
+
+If a collection method other than `EXISTS` is applied to an uninitialized varray, a `COLLECTION_IS_NULL` exception is thrown. See Section [3.11](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.080.html#) for information on collection methods.
+
+The following is an example of a constructor for a varray:
+
+```
+DECLARE
+    TYPE varray_typ IS VARRAY(2) OF CHAR(1);
+    v_varray        varray_typ := varray_typ('A','B');
+```
+
+An element of the varray is referenced using the following syntax.
+
+> *`varray`*`(`*`n`*`)[.`*`element`* `]`
+
+*`varray`* is the identifier of a previously declared varray. *n* is a positive integer. If the varray type of *`varray`* is defined from an object type, then [`.`*`element`* ] must reference an attribute within the object type from which the varray type is defined. Alternatively, the entire object can be referenced by omitting [`.`*`element`* ].
+
+The following is an example of a varray where it is known that there will be four elements.
+
+```
+DECLARE
+    TYPE dname_varray_typ IS VARRAY(4) OF VARCHAR2(14);
+    dname_varray    dname_varray_typ;
+    CURSOR dept_cur IS SELECT dname FROM dept ORDER BY dname;
+    i               INTEGER := 0;
+BEGIN
+    dname_varray := dname_varray_typ(NULL, NULL, NULL, NULL);
+    FOR r_dept IN dept_cur LOOP
+        i := i + 1;
+        dname_varray(i) := r_dept.dname;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('DNAME');
+    DBMS_OUTPUT.PUT_LINE('----------');
+    FOR j IN 1..i LOOP
+        DBMS_OUTPUT.PUT_LINE(dname_varray(j));
+    END LOOP;
+END;
+```
+
+The above example produces the following output:
+
+```
+DNAME
+----------
+ACCOUNTING
+OPERATIONS
+RESEARCH
+SALES
+```
+

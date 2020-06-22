@@ -1,0 +1,123 @@
+---
+
+title: "Example - Executing a Non-query Statement with a Specified Number of Placeholders"
+---
+
+<div id="example _executing_a_non_query_statement_with_a_specified_number_of_placeholders" class="registered_link"></div>
+
+To execute a non-query command that includes a known number of parameter placeholders, you must first `PREPARE` the statement (providing a *statement handle*), and then `EXECUTE` the statement using the statement handle. When the application executes the statement, it must provide a *value* for each placeholder found in the statement.
+
+When an application uses the `PREPARE/EXECUTE` mechanism, each SQL statement is parsed and planned once, but may execute many times (providing different *values* each time).
+
+ECPGPlus will convert each parameter value to the type required by the SQL statement, if possible; if not possible, ECPGPlus will report an error.
+
+```
+/***********************************************************/
+
+\#include <stdio.h>
+\#include <string.h>
+\#include <stdlib.h>
+\#include <sqlca.h>
+
+static void handle_error(void);
+
+int main(int argc, char *argv[])
+{
+  char *stmtText;
+
+  EXEC SQL WHENEVER SQLERROR DO handle_error();
+
+  EXEC SQL CONNECT :argv[1];
+
+  stmtText = "INSERT INTO dept VALUES(?, ?, ?)";
+
+  EXEC SQL PREPARE stmtHandle FROM :stmtText;
+
+
+  EXEC SQL EXECUTE stmtHandle USING :argv[2], :argv[3], :argv[4];
+
+  fprintf(stderr, "ok\n");
+
+  EXEC SQL COMMIT RELEASE;
+
+  exit(EXIT_SUCCESS);
+}
+
+static void handle_error(void)
+{
+  printf("%s\n", sqlca.sqlerrm.sqlerrmc);
+
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL ROLLBACK RELEASE;
+
+  exit(EXIT_FAILURE);
+}
+/***********************************************************/
+```
+
+The code sample begins by including the prototypes and type definitions for the C `stdio`, string, `stdlib`, and `sqlca` libraries, and providing basic infrastructure for the program:
+
+```
+#include <stdio.h>
+\#include <string.h>
+\#include <stdlib.h>
+\#include <sqlca.h>
+
+static void handle_error(void);
+
+int main(int argc, char *argv[])
+{
+  char *stmtText;
+```
+
+The example then sets up an error handler; ECPGPlus calls the `handle_error()` function whenever a SQL error occurs:
+
+```
+  EXEC SQL WHENEVER SQLERROR DO handle_error();
+```
+
+Then, the example connects to the database using the credentials specified on the command line:
+
+```
+  EXEC SQL CONNECT :argv[1];
+```
+
+Next, the program uses a `PREPARE` statement to parse and plan a statement that includes three parameter markers - if the `PREPARE` statement succeeds, it will create a statement handle that you can use to execute the statement (in this example, the statement handle is named `stmtHandle`). You can execute a given statement multiple times using the same statement handle.
+
+```
+  stmtText = "INSERT INTO dept VALUES(?, ?, ?)";
+
+  EXEC SQL PREPARE stmtHandle FROM :stmtText;
+```
+
+After parsing and planning the statement, the application uses the `EXECUTE` statement to execute the statement associated with the statement handle, substituting user-provided values for the parameter markers:
+
+```
+  EXEC SQL EXECUTE stmtHandle USING :argv[2], :argv[3], :argv[4];
+```
+
+If the `EXECUTE` command fails for any reason, ECPGPlus will invoke the `handle_error()` function (which terminates the application after displaying an error message to the user). If the `EXECUTE` command succeeds, the application displays a message (`ok`) to the user, commits the changes, disconnects from the server, and terminates the application.
+
+```
+  fprintf(stderr, "ok\n");
+
+  EXEC SQL COMMIT RELEASE;
+
+  exit(EXIT_SUCCESS);
+}
+```
+
+ECPGPlus calls the `handle_error()` function whenever it encounters a SQL error. The handle_error() function prints the content of the error message, resets the error handler, rolls back any changes, disconnects from the database, and terminates the application.
+
+```
+static void handle_error(void)
+{
+  printf("%s\n", sqlca.sqlerrm.sqlerrmc);
+
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL ROLLBACK RELEASE;
+
+  exit(EXIT_FAILURE);
+}
+```
+

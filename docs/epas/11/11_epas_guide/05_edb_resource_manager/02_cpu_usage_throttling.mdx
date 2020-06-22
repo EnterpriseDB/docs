@@ -1,0 +1,319 @@
+---
+
+title: "CPU Usage Throttling"
+---
+
+<div id="cpu_usage_throttling" class="registered_link"></div>
+
+CPU usage of a resource group is controlled by setting the `cpu_rate_limit` resource type parameter.
+
+Set the `cpu_rate_limit` parameter to the fraction of CPU time over wall-clock time to which the combined, simultaneous CPU usage of all processes in the group should not exceed. Thus, the value assigned to `cpu_rate_limit` should typically be less than or equal to 1.
+
+The valid range of the `cpu_rate_limit` parameter is 0 to 1.67772e+07. A setting of 0 means no CPU rate limit has been set for the resource group.
+
+When multiplied by 100, the `cpu_rate_limit` can also be interpreted as the CPU usage percentage for a resource group.
+
+EDB Resource Manager utilizes *CPU throttling* to keep the aggregate CPU usage of all processes in the group within the limit specified by the `cpu_rate_limit` parameter. A process in the group may be interrupted and put into sleep mode for a short interval of time to maintain the defined limit. When and how such interruptions occur is defined by a proprietary algorithm used by EDB Resource Manager.
+
+## Setting the CPU Rate Limit for a Resource Group
+
+The `ALTER RESOURCE GROUP` command with the `SET` `cpu_rate_limit` clause is used to set the CPU rate limit for a resource group.
+
+In the following example the CPU usage limit is set to 50% for `resgrp_a`, 40% for `resgrp_b` and 30% for `resgrp_c`. This means that the combined CPU usage of all processes assigned to `resgrp_a` is maintained at approximately 50%. Similarly, for all processes in `resgrp_b`, the combined CPU usage is kept to approximately 40%, etc.
+
+```
+edb=# ALTER RESOURCE GROUP resgrp_a SET cpu_rate_limit TO .5;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_b SET cpu_rate_limit TO .4;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_c SET cpu_rate_limit TO .3;
+ALTER RESOURCE GROUP
+```
+
+The following query shows the settings of `cpu_rate_limit` in the catalog.
+
+```
+edb=# SELECT rgrpname, rgrpcpuratelimit FROM edb_resource_group;
+ rgrpname | rgrpcpuratelimit
+----------+------------------
+ resgrp_a |              0.5
+ resgrp_b |              0.4
+ resgrp_c |              0.3
+(3 rows)
+```
+
+Changing the `cpu_rate_limit` of a resource group not only affects new processes that are assigned to the group, but any currently running processes that are members of the group are immediately affected by the change. That is, if the `cpu_rate_limit` is changed from .5 to .3, currently running processes in the group would be throttled downward so that the aggregate group CPU usage would be near 30% instead of 50%.
+
+To illustrate the effect of setting the CPU rate limit for resource groups, the following examples use a CPU-intensive calculation of 20000 factorial (multiplication of 20000 * 19999 * 19998, etc.) performed by the query `SELECT 20000!`; run in the `psql` command line utility.
+
+The resource groups with the CPU rate limit settings shown in the previous query are used in these examples.
+
+## Example – Single Process in a Single Group
+
+The following shows that the current process is set to use resource group `resgrp_b`. The factorial calculation is then started.
+
+```
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+edb=# SELECT 20000!;
+```
+
+In a second session, the Linux `top` command is used to display the CPU usage as shown under the `%CPU` column. The following is a snapshot at an arbitrary point in time as the `top` command output periodically changes.
+
+```
+$ top
+top - 16:37:03 up  4:15,  7 users,  load average: 0.49, 0.20, 0.38
+Tasks: 202 total,   1 running, 201 sleeping,   0 stopped,   0 zombie
+Cpu(s): 42.7%us,  2.3%sy,  0.0%ni, 55.0%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0
+Mem:   1025624k total,   791160k used,   234464k free,    23400k buffers
+Swap:   103420k total,    13404k used,    90016k free,   373504k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+28915 enterpri  20   0  195m 5900 4212 S 39.9  0.6   3:36.98 edb-postgres
+ 1033 root      20   0  171m  77m 2960 S  1.0  7.8   3:43.96 Xorg
+ 3040 user      20   0  278m  22m  14m S  1.0  2.2   3:41.72 knotify4
+    .
+    .
+    .
+```
+
+The `psql` session performing the factorial calculation is shown by the row where `edb-postgres` appears under the `COMMAND` column. The CPU usage of the session shown under the `%CPU` column shows 39.9, which is close to the 40% CPU limit set for resource group `resgrp_b`.
+
+By contrast, if the `psql` session is removed from the resource group and the factorial calculation is performed again, the CPU usage is much higher.
+
+```
+edb=# SET edb_resource_group TO DEFAULT;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+
+(1 row)
+
+edb=# SELECT 20000!;
+```
+
+Under the `%CPU` column for `edb-postgres`, the CPU usage is now 93.6, which is significantly higher than the 39.9 when the process was part of the resource group.
+
+```
+$ top
+top - 16:43:03 up  4:21,  7 users,  load average: 0.66, 0.33, 0.37
+Tasks: 202 total,   5 running, 197 sleeping,   0 stopped,   0 zombie
+Cpu(s): 96.7%us,  3.3%sy,  0.0%ni,  0.0%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0
+Mem:   1025624k total,   791228k used,   234396k free,    23560k buffers
+Swap:   103420k total,    13404k used,    90016k free,   373508k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+28915 enterpri  20   0  195m 5900 4212 R 93.6  0.6   5:01.56 edb-postgres
+ 1033 root      20   0  171m  77m 2960 S  1.0  7.8   3:48.15 Xorg
+ 2907 user      20   0 98.7m  11m 9100 S  0.3  1.2   0:46.51 vmware-user-lo
+    .
+    .
+    .
+```
+
+## Example – Multiple Processes in a Single Group
+
+As stated previously, the CPU rate limit applies to the aggregate of all processes in the resource group. This concept is illustrated in the following example.
+
+The factorial calculation is performed simultaneously in two separate psql sessions, each of which has been added to resource group `resgrp_b` that has `cpu_rate_limit` set to .4 (CPU usage of 40%).
+
+**Session 1:**
+
+```
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+
+edb=# SELECT 20000!;
+```
+
+**Session 2:**
+
+```
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+
+edb=# SELECT 20000!;
+```
+
+A third session monitors the CPU usage.
+
+```
+$ top
+top - 16:53:03 up  4:31,  7 users,  load average: 0.31, 0.19, 0.27
+Tasks: 202 total,   1 running, 201 sleeping,   0 stopped,   0 zombie
+Cpu(s): 41.2%us,  3.0%sy,  0.0%ni, 55.8%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0
+Mem:   1025624k total,   792020k used,   233604k free,    23844k buffers
+Swap:   103420k total,    13404k used,    90016k free,   373508k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+29857 enterpri  20   0  195m 4708 3312 S 19.9  0.5   0:57.35 edb-postgres
+28915 enterpri  20   0  195m 5900 4212 S 19.6  0.6   5:35.49 edb-postgres
+ 3040 user      20   0  278m  22m  14m S  1.0  2.2   3:54.99 knotify4
+ 1033 root      20   0  171m  78m 2960 S  0.3  7.8   3:55.71 Xorg
+    .
+    .
+    .
+```
+
+There are now two processes named `edb-postgres` with `%CPU` values of 19.9 and 19.6, whose sum is close to the 40% CPU usage set for resource group `resgrp_b`.
+
+The following command sequence displays the sum of all `edb-postgres` processes sampled over half second time intervals. This shows how the total CPU usage of the processes in the resource group changes over time as EDB Resource Manager throttles the processes to keep the total resource group CPU usage near 40%.
+
+```
+$ while [[ 1 -eq 1 ]]; do  top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+37.2
+39.1
+38.9
+38.3
+44.7
+39.2
+42.5
+39.1
+39.2
+39.2
+41
+42.85
+46.1
+    .
+    .
+    .
+```
+
+## Example – Multiple Processes in Multiple Groups
+
+In this example, two additional `psql` sessions are used along with the previous two sessions. The third and fourth sessions perform the same factorial calculation within resource group `resgrp_c` with a `cpu_rate_limit` of .3 (30% CPU usage).
+
+**Session 3:**
+
+```
+edb=# SET edb_resource_group TO resgrp_c;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_c
+(1 row)
+
+edb=# SELECT 20000!;
+```
+
+**Session 4:**
+
+```
+edb=# SET edb_resource_group TO resgrp_c;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_c
+(1 row)
+
+edb=# SELECT 20000!;
+```
+
+The `top` command displays the following output.
+
+```
+$ top
+top - 17:45:09 up  5:23,  8 users,  load average: 0.47, 0.17, 0.26
+Tasks: 203 total,   4 running, 199 sleeping,   0 stopped,   0 zombie
+Cpu(s): 70.2%us,  0.0%sy,  0.0%ni, 29.8%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0
+Mem:   1025624k total,   806140k used,   219484k free,    25296k buffers
+Swap:   103420k total,    13404k used,    90016k free,   374092k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+29857 enterpri  20   0  195m 4820 3324 S 19.9  0.5   4:25.02 edb-postgres
+28915 enterpri  20   0  195m 5900 4212 R 19.6  0.6   9:07.50 edb-postgres
+29023 enterpri  20   0  195m 4744 3248 R 16.3  0.5   4:01.73 edb-postgres
+11019 enterpri  20   0  195m 4120 2764 R 15.3  0.4   0:04.92 edb-postgres
+ 2907 user      20   0 98.7m  12m 9112 S  1.3  1.2   0:56.54 vmware-user-lo
+ 3040 user      20   0  278m  22m  14m S  1.3  2.2   4:38.73 knotify4
+```
+
+The two resource groups in use have CPU usage limits of 40% and 30%. The sum of the `%CPU` column for the first two `edb-postgres` processes is 39.5 (approximately 40%, which is the limit for `resgrp_b`) and the sum of the `%CPU` column for the third and fourth `edb-postgres` processes is 31.6 (approximately 30%, which is the limit for `resgrp_c`).
+
+The sum of the CPU usage limits of the two resource groups to which these processes belong is 70%. The following output shows that the sum of the four processes borders around 70%.
+
+```
+$ while [[ 1 -eq 1 ]]; do  top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+61.8
+76.4
+72.6
+69.55
+64.55
+79.95
+68.55
+71.25
+74.85
+62
+74.85
+76.9
+72.4
+65.9
+74.9
+68.25
+```
+
+By contrast, if three sessions are processing where two sessions remain in `resgrp_b`, but the third session does not belong to any resource group, the `top` command shows the following output.
+
+```
+$ top
+top - 17:24:55 up  5:03,  7 users,  load average: 1.00, 0.41, 0.38
+Tasks: 199 total,   3 running, 196 sleeping,   0 stopped,   0 zombie
+Cpu(s): 99.7%us,  0.3%sy,  0.0%ni,  0.0%id,  0.0%wa,  0.0%hi,  0.0%si,  0.0
+Mem:   1025624k total,   797692k used,   227932k free,    24724k buffers
+Swap:   103420k total,    13404k used,    90016k free,   374068k cached
+
+  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND
+29023 enterpri  20   0  195m 4744 3248 R 58.6  0.5   2:53.75 edb-postgres
+28915 enterpri  20   0  195m 5900 4212 S 18.9  0.6   7:58.45 edb-postgres
+29857 enterpri  20   0  195m 4820 3324 S 18.9  0.5   3:14.85 edb-postgres
+ 1033 root      20   0  174m  81m 2960 S  1.7  8.2   4:26.50 Xorg
+ 3040 user      20   0  278m  22m  14m S  1.0  2.2   4:21.20 knotify4
+```
+
+The second and third `edb-postgres` processes belonging to the resource group where the CPU usage is limited to 40%, have a total CPU usage of 37.8. However, the first `edb-postgres` process has a 58.6% CPU usage as it is not within a resource group, and basically utilizes the remaining, available CPU resources on the system.
+
+Likewise, the following output shows the sum of all three sessions is around 95% since one of the sessions has no set limit on its CPU usage.
+
+```
+$ while [[ 1 -eq 1 ]]; do  top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+96
+90.35
+92.55
+96.4
+94.1
+90.7
+95.7
+95.45
+93.65
+87.95
+96.75
+94.25
+95.45
+97.35
+92.9
+96.05
+96.25
+94.95
+    .
+    .
+    .
+```
+

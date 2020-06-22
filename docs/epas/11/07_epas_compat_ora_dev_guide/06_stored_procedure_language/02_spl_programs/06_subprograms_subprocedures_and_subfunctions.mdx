@@ -1,0 +1,1236 @@
+---
+
+title: "Subprograms – Subprocedures and Subfunctions"
+---
+
+<div id="subprograms_subprocedures_and_subfunctions" class="registered_link"></div>
+
+The capability and functionality of SPL procedure and function programs can be used in an advantageous manner to build well-structured and maintainable programs by organizing the SPL code into subprocedures and subfunctions.
+
+The same SPL code can be invoked multiple times from different locations within a relatively large SPL program by declaring subprocedures and subfunctions within the SPL program.
+
+Subprocedures and subfunctions have the following characteristics:
+
+- Subprocedures and The syntax, structure, and functionality of subprocedures and subfunctions are practically identical to standalone procedures and functions. The major difference is the use of the keyword `PROCEDURE` or `FUNCTION` instead of `CREATE` `PROCEDURE` or `CREATE` `FUNCTION` to declare the subprogram.
+- Subprocedures and subfunctions provide isolation for the identifiers (that is, variables, cursors, types, and other subprograms) declared within itself. That is, these identifiers cannot be accessed nor altered from the upper, parent level SPL programs or subprograms outside of the subprocedure or subfunction. This ensures that the subprocedure and subfunction results are reliable and predictable.
+- The declaration section of subprocedures and subfunctions can include its own subprocedures and subfunctions. Thus, a multi-level hierarchy of subprograms can exist in the standalone program. Within the hierarchy, a subprogram can access the identifiers of upper level parent subprograms and also invoke upper level parent subprograms. However, the same access to identifiers and invocation cannot be done for lower level child subprograms in the hierarchy.
+
+Subprocedures and subfunctions can be declared and invoked from within any of the following types of SPL programs:
+
+- Standalone procedures and functions
+- Anonymous blocks
+- Triggers
+- Packages
+- Procedure and function methods of an object type body
+- Subprocedures and subfunctions declared within any of the preceding programs
+
+The rules regarding subprocedure and subfunction structure and access are discussed in more detail in the next sections.
+
+## Creating a Subprocedure
+
+The `PROCEDURE` clause specified in the declaration section defines and names a subprocedure local to that block.
+
+The term *block* refers to the SPL block structure consisting of an optional declaration section, a mandatory executable section, and an optional exception section. Blocks are the structures for standalone procedures and functions, anonymous blocks, subprograms, triggers, packages, and object type methods.
+
+The phrase *the identifier is local to the block* means that the identifier (that is, a variable, cursor, type, or subprogram) is declared within the declaration section of that block and is therefore accessible by the SPL code within the executable section and optional exception section of that block.
+
+Subprocedures can only be declared after all other variable, cursor, and type declarations included in the declaration section. (That is, subprograms must be the last set of declarations.)
+
+> `PROCEDURE` *`name`* `[ (`*`parameters`*`) ]`
+> `{ IS | AS }`
+>
+> ​    `[ PRAGMA AUTONOMOUS_TRANSACTION; ]`
+>
+> ​    `[` *`declarations`* `]`
+>
+> `BEGIN`
+>
+> *`statements`*
+>
+> `END` `[` *`name`* `];`
+
+**Where**:
+
+*`name`*
+
+> *`name`* is the identifier of the subprocedure.
+
+*`parameters`*
+
+> *parameters* is a list of formal parameters.
+
+`PRAGMA AUTONOMOUS_TRANSACTION`
+
+> `PRAGMA AUTONOMOUS_TRANSACTION` is the directive that sets the subprocedure as an autonomous transaction.
+
+*`declarations`*
+
+> *`declarations`* are variable, cursor, type, or subprogram declarations. If subprogram declarations are included, they must be declared after all other variable, cursor, and type declarations.
+
+*`statements`*
+
+> *`statements`* are SPL program statements (the BEGIN - END block may contain an `EXCEPTION` section).
+
+**Examples**
+
+The following example is a subprocedure within an anonymous block.
+
+```
+DECLARE
+    PROCEDURE list_emp
+    IS
+        v_empno     NUMBER(4);
+        v_ename     VARCHAR2(10);
+        CURSOR emp_cur IS
+            SELECT empno, ename FROM emp ORDER BY empno;
+    BEGIN
+        OPEN emp_cur;
+        DBMS_OUTPUT.PUT_LINE('Subprocedure list_emp:');
+        DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+        DBMS_OUTPUT.PUT_LINE('-----    -------');
+        LOOP
+            FETCH emp_cur INTO v_empno, v_ename;
+            EXIT WHEN emp_cur%NOTFOUND;
+            DBMS_OUTPUT.PUT_LINE(v_empno || '     ' || v_ename);
+        END LOOP;
+        CLOSE emp_cur;
+    END;
+BEGIN
+    list_emp;
+END;
+```
+
+Invoking this anonymous block produces the following output:
+
+```
+Subprocedure list_emp:
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+7876     ADAMS
+7900     JAMES
+7902     FORD
+7934     MILLER
+```
+
+The following example is a subprocedure within a trigger.
+
+```
+CREATE OR REPLACE TRIGGER dept_audit_trig
+    AFTER INSERT OR UPDATE OR DELETE ON dept
+DECLARE
+    v_action        VARCHAR2(24);
+    PROCEDURE display_action (
+        p_action    IN  VARCHAR2
+    )
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('User ' || USER || ' ' || p_action ||
+            ' dept on ' || TO_CHAR(SYSDATE,'YYYY-MM-DD'));
+    END display_action;
+BEGIN
+    IF INSERTING THEN
+        v_action := 'added';
+    ELSIF UPDATING THEN
+        v_action := 'updated';
+    ELSIF DELETING THEN
+        v_action := 'deleted';
+    END IF;
+    display_action(v_action);
+END;
+```
+
+Invoking this trigger produces the following output:
+
+```
+INSERT INTO dept VALUES (50,'HR','DENVER');
+
+
+User enterprisedb added dept on 2016-07-26
+```
+
+## Creating a Subfunction
+
+The `FUNCTION` clause specified in the declaration section defines and names a subfunction local to that block.
+
+The term *block* refers to the SPL block structure consisting of an optional declaration section, a mandatory executable section, and an optional exception section. Blocks are the structures for standalone procedures and functions, anonymous blocks, subprograms, triggers, packages, and object type methods.
+
+The phrase *the identifier is local to the block* means that the identifier (that is, a variable, cursor, type, or subprogram) is declared within the declaration section of that block and is therefore accessible by the SPL code within the executable section and optional exception section of that block.
+
+> `FUNCTION` *`name`* `[ (`*`parameters`*`) ]`
+>
+> `RETURN` *`data_type`*
+> `{ IS | AS }`
+>
+> ​    `[ PRAGMA AUTONOMOUS_TRANSACTION; ]`
+>
+> ​    `[` *`declarations`* `]`
+>
+> `BEGIN`
+>
+> *`statements`*
+>
+> `END [` *`name`* `];`
+
+**Where**:
+
+*`name`*
+
+> *`name`* is the identifier of the subfunction.
+
+*`parameters`*
+
+> *`parameters`* is a list of formal parameters.
+
+*`data_type`*
+
+> *`data_type`* is the data type of the value returned by the function’s `RETURN` statement.
+
+`PRAGMA AUTONOMOUS_TRANSACTION`
+
+> `PRAGMA AUTONOMOUS_TRANSACTION` is the directive that sets the subfunction as an autonomous transaction.
+
+*`declarations`*
+
+> *`declarations`* are variable, cursor, type, or subprogram declarations. If subprogram declarations are included, they must be declared after all other variable, cursor, and type declarations.
+
+*`statements`*
+
+> *`statements`* are SPL program statements (the `BEGIN - END` block may contain an `EXCEPTION` section).
+
+**Examples**
+
+The following example shows the use of a recursive subfunction:
+
+```
+DECLARE
+    FUNCTION factorial (
+        n           BINARY_INTEGER
+    ) RETURN BINARY_INTEGER
+    IS
+    BEGIN
+        IF n = 1 THEN
+            RETURN n;
+        ELSE
+            RETURN n * factorial(n-1);
+        END IF;
+    END factorial;
+BEGIN
+    FOR i IN 1..5 LOOP
+        DBMS_OUTPUT.PUT_LINE(i || '! = ' || factorial(i));
+    END LOOP;
+END;
+```
+
+The output from the example is the following:
+
+```
+1! = 1
+2! = 2
+3! = 6
+4! = 24
+5! = 120
+```
+
+## Block Relationships
+
+This section describes the terminology of the relationship between blocks that can be declared in an SPL program. The ability to invoke subprograms and access identifiers declared within a block depends upon this relationship.
+
+The following are the basic terms:
+
+- A block is the basic SPL structure consisting of an optional declaration section, a mandatory executable section, and an optional exception section. Blocks implement standalone procedure and function programs, anonymous blocks, triggers, packages, and subprocedures and subfunctions.
+- An identifier (variable, cursor, type, or subprogram) local to a block means that it is declared within the declaration section of the given block. Such local identifiers are accessible from the executable section and optional exception section of the block.
+- The parent block contains the declaration of another block (the child block).
+- Descendent blocks are the set of blocks forming the child relationship starting from a given parent block.
+- Ancestor blocks are the set of blocks forming the parental relationship starting from a given child block.
+- The set of descendent (or ancestor) blocks form a hierarchy.
+- The level is an ordinal number of a given block from the highest, ancestor block. For example, given a standalone procedure, the subprograms declared within the declaration section of this procedure are all at the same level, for example call it level 1. Additional subprograms within the declaration section of the subprograms declared in the standalone procedure are at the next level, which is level 2.
+- The sibling blocks are the set of blocks that have the same parent block (that is, they are all locally declared in the same block). Sibling blocks are also always at the same level relative to each other.
+
+The following schematic of a set of procedure declaration sections provides an example of a set of blocks and their relationships to their surrounding blocks.
+
+The two vertical lines on the left-hand side of the blocks indicate there are two pairs of sibling blocks. `block_1a` and `block_1b` is one pair, and `block_2a` and `block_2b` is the second pair.
+
+The relationship of each block with its ancestors is shown on the right-hand side of the blocks. There are three hierarchical paths formed when progressing up the hierarchy from the lowest level child blocks. The first consists of `block_0`, `block_1a`, `block_2a`, and `block_3`. The second is `block_0`, `block_1a`, and `block_2b`. The third is `block_0`, `block_1b`, and `block_2b`.
+
+```
+CREATE PROCEDURE block_0
+IS
+        .
+    +---- PROCEDURE block_1a    ------- Local to block_0
+    |     IS
+    |         .                          |
+    |         .                          |
+    |         .                          |
+    |     +-- PROCEDURE block_2a   ---- Local to block_1a and descendant
+    |     |   IS                          of block_0
+    |     |       .                      |
+    |     |       .                      |
+    |     |       .                      |
+    |     |      PROCEDURE block_3   -- Local to block_2a and descendant
+    |     |      IS                       of block_1a, and block_0
+    | Siblings        .                  |
+    |     |           .                  |
+    |     |           .                  |
+    |     |       END block_3;           |
+    |     |   END block_2a;              |
+    |     +-- PROCEDURE block_2b   ---- Local to block_1a and descendant
+    |     |   IS                          of block_0
+ Siblings |       ,                      |
+    |     |       .                      |
+    |     |       .                      |
+    |     +-- END block_2b;              |
+    |                                    |
+    |     END block_1a;         ---------+
+    +---- PROCEDURE block_1b;   ------- Local to block_0
+    |     IS
+    |         .                          |
+    |         .                          |
+    |         .                          |
+    |         PROCEDURE block_2b   ---- Local to block_1b and descendant
+    |         IS                          of block_0
+    |             .                      |
+    |             .                      |
+    |             .                      |
+    |         END block_2b;              |
+    |                                    |
+    +---- END block_1b;         ---------+
+BEGIN
+      .
+      .
+      .
+END block_0;
+```
+
+The rules for invoking subprograms based upon block location is described starting with Section [3.2.6.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.055.html#pID0E0GUH0HA). The rules for accessing variables based upon block location is described in Section [3.2.6.7](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.055.html#pID0E0YGH0HA).
+
+## Invoking Subprograms
+
+A subprogram is invoked in the same manner as a standalone procedure or function by specifying its name and any actual parameters.
+
+The subprogram may be invoked with none, one, or more qualifiers, which are the names of the parent subprograms or labeled anonymous blocks forming the ancestor hierarchy from where the subprogram has been declared.
+
+The invocation is specified as a dot-separated list of qualifiers ending with the subprogram name and any of its arguments as shown by the following:
+
+> `[`\[*`qualifier_1`*.`][...]`*`qualifier_n`*`.]`*`subprog`* `[(`*`arguments`*`)]`
+
+If specified, *`qualifier_n`* is the subprogram in which *`subprog`* has been declared in its declaration section. The preceding list of qualifiers must reside in a continuous path up the hierarchy from *`qualifier_n`* to *`qualifier_1`*. *`qualifier_1`* may be any ancestor subprogram in the path as well as any of the following:
+
+- Standalone procedure name containing the subprogram
+- Standalone function name containing subprogram
+- Package name containing the subprogram
+- Object type name containing the subprogram within an object type method
+- An anonymous block label included prior to the `DECLARE` keyword if a declaration section exists, or prior to the `BEGIN` keyword if there is no declaration section.
+
+**Note:** *`qualifier_1`* may not be a schema name, otherwise an error is thrown upon invocation of the subprogram. This Advanced Server restriction is not compatible with Oracle databases, which allow use of the schema name as a qualifier.
+
+*`arguments`* is the list of actual parameters to be passed to the subprocedure or subfunction.
+
+Upon invocation, the search for the subprogram occurs as follows:
+
+- The invoked subprogram name of its type (that is, subprocedure or subfunction) along with any qualifiers in the specified order, (referred to as the invocation list) is used to find a matching set of blocks residing in the same hierarchical order. The search begins in the block hierarchy where the lowest level is the block from where the subprogram is invoked. The declaration of the subprogram must be in the SPL code prior to the code line where it is invoked when the code is observed from top to bottom. (An exception to this requirement can be accomplished using a forward declaration. See Section 3.2.6.5 for information on forward declarations.)
+- If the invocation list does not match the hierarchy of blocks starting from the block where the subprogram is invoked, a comparison is made by matching the invocation list starting with the parent of the previous starting block. In other words, the comparison progresses up the hierarchy.
+- If there are sibling blocks of the ancestors, the invocation list comparison also includes the hierarchy of the sibling blocks, but always comparing in an upward level, never comparing the descendants of the sibling blocks.
+- This comparison process continues up the hierarchies until the first complete match is found in which case the located subprogram is invoked. Note that the formal parameter list of the matched subprogram must comply with the actual parameter list specified for the invoked subprogram, otherwise an error occurs upon invocation of the subprogram.
+- If no match is found after searching up to the standalone program, then an error is thrown upon invocation of the subprogram.
+
+**Note:** The Advanced Server search algorithm for subprogram invocation is not quite compatible with Oracle databases. For Oracle, the search looks for the first match of the first qualifier (that is *`qualifier_1`*). When such a match is found, all remaining qualifiers, the subprogram name, subprogram type, and arguments of the invocation must match the hierarchy content where the matching first qualifier is found, otherwise an error is thrown. For Advanced Server, a match is not found unless all qualifiers, the subprogram name, and the subprogram type of the invocation match the hierarchy content. If such an exact match is not initially found, Advanced Server continues the search progressing up the hierarchy.
+
+The location of subprograms relative to the block from where the invocation is made can be accessed as follows:
+
+- Subprograms declared in the local block can be invoked from the executable section or the exception section of the same block.
+- Subprograms declared in the parent or other ancestor blocks can be invoked from the child block of the parent or other ancestors.
+- Subprograms declared in sibling blocks can be called from a sibling block or from any descendent block of the sibling.
+
+However, the following location of subprograms cannot be accessed relative to the block from where the invocation is made:
+
+- Subprograms declared in blocks that are descendants of the block from where the invocation is attempted.
+- Subprograms declared in blocks that are descendants of a sibling block from where the invocation is attempted.
+
+The following examples illustrate the various conditions previously described.
+
+**Invoking Locally Declared Subprograms**
+
+The following example contains a single hierarchy of blocks contained within standalone procedure `level_0`. Within the executable section of procedure `level_1a`, the means of invoking the local procedure `level_2a` are shown, both with and without qualifiers.
+
+Also note that access to the descendant of local procedure `level_2a`, which is procedure `level_3a`, is not permitted, with or without qualifiers. These calls are commented out in the example.
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    PROCEDURE level_1a
+    IS
+        PROCEDURE level_2a
+        IS
+            PROCEDURE level_3a
+            IS
+            BEGIN
+                DBMS_OUTPUT.PUT_LINE('........ BLOCK level_3a');
+                DBMS_OUTPUT.PUT_LINE('........ END BLOCK level_3a');
+            END level_3a;
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        level_2a;                              -- Local block called
+        level_1a.level_2a;                     -- Qualified local block called
+        level_0.level_1a.level_2a;             -- Double qualified local block called
+--        level_3a;                            -- Error - Descendant of local block
+--        level_2a.level_3a;                   -- Error - Descendant of local block
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    level_1a;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+When the standalone procedure is invoked, the output is the following, which indicates that procedure `level_2a` is successfully invoked from the calls in the executable section of procedure `level_1a`.
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. BLOCK level_1a
+...... BLOCK level_2a
+...... END BLOCK level_2a
+...... BLOCK level_2a
+...... END BLOCK level_2a
+...... BLOCK level_2a
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+END BLOCK level_0
+```
+
+If you were to attempt to run procedure `level_0` with any of the calls to the descendent block uncommented, then an error occurs.
+
+**Invoking Subprograms Declared in Ancestor Blocks**
+
+The following example shows how subprograms can be invoked that are declared in parent and other ancestor blocks relative to the block where the invocation is made.
+
+In this example, the executable section of procedure `level_3a` invokes procedure `level_2a`, which is its parent block. (Note that `v_cnt` is used to avoid an infinite loop.)
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    v_cnt           NUMBER(2) := 0;
+    PROCEDURE level_1a
+    IS
+        PROCEDURE level_2a
+        IS
+            PROCEDURE level_3a
+            IS
+            BEGIN
+                DBMS_OUTPUT.PUT_LINE('........ BLOCK level_3a');
+                v_cnt := v_cnt + 1;
+                IF v_cnt < 2 THEN
+                    level_2a;                  -- Parent block called
+                END IF;
+                DBMS_OUTPUT.PUT_LINE('........ END BLOCK level_3a');
+            END level_3a;
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            level_3a;                          -- Local block called
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        level_2a;                              -- Local block called
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    level_1a;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+The following is the resulting output:
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. BLOCK level_1a
+...... BLOCK level_2a
+........ BLOCK level_3a
+...... BLOCK level_2a
+........ BLOCK level_3a
+........ END BLOCK level_3a
+...... END BLOCK level_2a
+........ END BLOCK level_3a
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+END BLOCK level_0
+```
+
+In a similar example, the executable section of procedure `level_3a` invokes procedure level_1a, which is further up the ancestor hierarchy. (Note that `v_cnt` is used to avoid an infinite loop.)
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    v_cnt           NUMBER(2) := 0;
+    PROCEDURE level_1a
+    IS
+        PROCEDURE level_2a
+        IS
+            PROCEDURE level_3a
+            IS
+            BEGIN
+                DBMS_OUTPUT.PUT_LINE('........ BLOCK level_3a');
+                v_cnt := v_cnt + 1;
+                IF v_cnt < 2 THEN
+                    level_1a;                  -- Ancestor block called
+                END IF;
+                DBMS_OUTPUT.PUT_LINE('........ END BLOCK level_3a');
+            END level_3a;
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            level_3a;                          -- Local block called
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        level_2a;                              -- Local block called
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    level_1a;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+The following is the resulting output:
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. BLOCK level_1a
+...... BLOCK level_2a
+........ BLOCK level_3a
+.. BLOCK level_1a
+...... BLOCK level_2a
+........ BLOCK level_3a
+........ END BLOCK level_3a
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+........ END BLOCK level_3a
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+END BLOCK level_0
+```
+
+**Invoking Subprograms Declared in Sibling Blocks**
+
+The following examples show how subprograms can be invoked that are declared in a sibling block relative to the local, parent, or other ancestor blocks from where the invocation of the subprogram is made.
+
+In this example, the executable section of procedure `level_1b` invokes procedure `level_1a`, which is its sibling block. Both are local to standalone procedure `level_0`.
+
+Note that invocation of `level_2a` or equivalently, `level_1a.level_2a` from within procedure `level_1b` is commented out as this call would result in an error. Invoking a descendent subprogram (`level_2a`) of sibling block (`level_1a`) is not permitted.
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    v_cnt     NUMBER(2) := 0;
+    PROCEDURE level_1a
+    IS
+        PROCEDURE level_2a
+        IS
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+    PROCEDURE level_1b
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1b');
+        level_1a;                              -- Sibling block called
+--      level_2a;                              -- Error – Descendant of sibling block
+--      level_1a.level_2a;                     -- Error - Descendant of sibling block
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1b');
+    END level_1b;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    level_1b;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+In the following example, procedure `level_1a`, which is the sibling of procedure `level_1b`, which is an ancestor of procedure `level_3b` is successfully invoked.
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    PROCEDURE level_1a
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+    PROCEDURE level_1b
+    IS
+        PROCEDURE level_2b
+        IS
+            PROCEDURE level_3b
+            IS
+            BEGIN
+                DBMS_OUTPUT.PUT_LINE('........ BLOCK level_3b');
+                level_1a;                      -- Ancestor's sibling block called
+                level_0.level_1a;              -- Qualified ancestor's sibling block
+                DBMS_OUTPUT.PUT_LINE('........ END BLOCK level_3b');
+            END level_3b;
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2b');
+            level_3b;                          -- Local block called
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2b');
+        END level_2b;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1b');
+        level_2b;                              -- Local block called
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1b');
+    END level_1b;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    level_1b;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+The following is the resulting output:
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. BLOCK level_1b
+...... BLOCK level_2b
+........ BLOCK level_3b
+.. BLOCK level_1a
+.. END BLOCK level_1a
+.. BLOCK level_1a
+.. END BLOCK level_1a
+........ END BLOCK level_3b
+...... END BLOCK level_2b
+.. END BLOCK level_1b
+END BLOCK level_0
+```
+
+## Using Forward Declarations
+
+As discussed so far, when a subprogram is to be invoked, it must have been declared somewhere in the hierarchy of blocks within the standalone program, but prior to where it is invoked. In other words, when scanning the SPL code from beginning to end, the subprogram declaration must be found before its invocation.
+
+However, there is a method of constructing the SPL code so that the full declaration of the subprogram (that is, its optional declaration section, its mandatory executable section, and optional exception section) appears in the SPL code after the point in the code where it is invoked.
+
+This is accomplished by inserting a *forward declaration* in the SPL code prior to its invocation. The forward declaration is the specification of a subprocedure or subfunction name, formal parameters, and return type if it is a subfunction.
+
+The full subprogram specification consisting of the optional declaration section, the executable section, and the optional exception section must be specified in the same declaration section as the forward declaration, but may appear following other subprogram declarations that invoke this subprogram with the forward declaration.
+
+Typical usage of a forward declaration is when two subprograms invoke each other as shown by the following:
+
+```
+DECLARE
+    FUNCTION add_one (
+        p_add       IN NUMBER
+    ) RETURN NUMBER;
+    FUNCTION test_max (
+        p_test      IN NUMBER)
+    RETURN NUMBER
+    IS
+    BEGIN
+        IF p_test < 5 THEN
+            RETURN add_one(p_test);
+        END IF;
+        DBMS_OUTPUT.PUT('Final value is ');
+        RETURN p_test;
+    END;
+    FUNCTION add_one (
+        p_add       IN NUMBER)
+    RETURN NUMBER
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('Increase by 1');
+        RETURN test_max(p_add + 1);
+    END;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(test_max(3));
+END;
+```
+
+Subfunction test_max invokes subfunction add_one, which also invokes subfunction test_max, so a forward declaration is required for one of the subprograms, which is implemented for add_one at the beginning of the anonymous block declaration section.
+
+The resulting output from the anonymous block is as follows:
+
+```
+Increase by 1
+Increase by 1
+Final value is 5
+```
+
+## Overloading Subprograms
+
+Generally, subprograms of the same type (subprocedure or subfunction) with the same name, and same formal parameter specification can appear multiple times within the same standalone program as long as they are not sibling blocks (that is, the subprograms are not declared in the same local block).
+
+Each subprogram can be individually invoked depending upon the use of qualifiers and the location where the subprogram invocation is made as discussed in the previous sections.
+
+It is however possible to declare subprograms, even as siblings, that are of the same subprogram type and name as long as certain aspects of the formal parameters differ. These characteristics (subprogram type, name, and formal parameter specification) is generally known as a program’s *signature*.
+
+The declaration of multiple subprograms where the signatures are identical except for certain aspects of the formal parameter specification is referred to as subprogram *overloading*.
+
+Thus, the determination of which particular overloaded subprogram is to be invoked is determined by a match of the actual parameters specified by the subprogram invocation and the formal parameter lists of the overloaded subprograms.
+
+Any of the following differences permit overloaded subprograms:
+
+- The number of formal parameters are different.
+- At least one pair of data types of the corresponding formal parameters (that is, compared according to the same order of appearance in the formal parameter list) are different, but are not aliases. Data type aliases are discussed later in this section.
+
+Note that the following differences alone do not permit overloaded subprograms:
+
+- Different formal parameter names
+- Different parameter modes (`IN`, `IN OUT`, `OUT`) for the corresponding formal parameters
+- For subfunctions, different data types in the `RETURN` clause
+
+As previously indicated, one of the differences allowing overloaded subprograms are different data types.
+
+However, certain data types have alternative names referred to as *aliases*, which can be used for the table definition.
+
+For example, there are fixed length character data types that can be specified as `CHAR` or `CHARACTER`. There are variable length character data types that can be specified as `CHAR VARYING`, `CHARACTER VARYING`, `VARCHAR`, or `VARCHAR2`. For integers, there are `BINARY_INTEGER`, `PLS_INTEGER`, and `INTEGER` data types. For numbers, there are `NUMBER`, `NUMERIC`, `DEC`, and `DECIMAL` data types.
+
+For detailed information about the data types supported by Advanced Server, please see the Database Compatibility for Oracle Developers Reference Guide, available from EnterpriseDB at:
+
+https://www.enterprisedb.com/resources/product-documentation
+
+Thus, when attempting to create overloaded subprograms, the formal parameter data types are not considered different if the specified data types are aliases of each other.
+
+It can be determined if certain data types are aliases of other types by displaying the table definition containing the data types in question.
+
+For example, the following table definition contains some data types and their aliases.
+
+```
+CREATE TABLE data_type_aliases (
+    dt_BLOB             BLOB,
+    dt_LONG_RAW         LONG RAW,
+    dt_RAW              RAW(4),
+    dt_BYTEA            BYTEA,
+    dt_INTEGER          INTEGER,
+    dt_BINARY_INTEGER   BINARY_INTEGER,
+    dt_PLS_INTEGER      PLS_INTEGER,
+    dt_REAL             REAL,
+    dt_DOUBLE_PRECISION DOUBLE PRECISION,
+    dt_FLOAT            FLOAT,
+    dt_NUMBER           NUMBER,
+    dt_DECIMAL          DECIMAL,
+    dt_NUMERIC          NUMERIC,
+    dt_CHAR             CHAR,
+    dt_CHARACTER        CHARACTER,
+    dt_VARCHAR2         VARCHAR2(4),
+    dt_CHAR_VARYING     CHAR VARYING(4),
+    dt_VARCHAR          VARCHAR(4)
+);
+```
+
+Using the PSQL `\d` command to display the table definition, the Type column displays the data type internally assigned to each column based upon its data type in the table definition:
+
+```
+\d data_type_aliases
+       Column        |         Type         | Modifiers
+---------------------+----------------------+-----------
+ dt_blob             | bytea                |
+ dt_long_raw         | bytea                |
+ dt_raw              | bytea(4)             |
+ dt_bytea            | bytea                |
+ dt_integer          | integer              |
+ dt_binary_integer   | integer              |
+ dt_pls_integer      | integer              |
+ dt_real             | real                 |
+ dt_double_precision | double precision     |
+ dt_float            | double precision     |
+ dt_number           | numeric              |
+ dt_decimal          | numeric              |
+ dt_numeric          | numeric              |
+ dt_char             | character(1)         |
+ dt_character        | character(1)         |
+ dt_varchar2         | character varying(4) |
+ dt_char_varying     | character varying(4) |
+ dt_varchar          | character varying(4) |
+```
+
+In the example, the base set of data types are `bytea`, `integer`, `real`, `double precision`, `numeric`, `character`, and `character varying`.
+
+When attempting to declare overloaded subprograms, a pair of formal parameter data types that are aliases would not be sufficient to allow subprogram overloading. Thus, parameters with data types `INTEGER` and `PLS_INTEGER` cannot overload a pair of subprograms, but data types `INTEGER` and `REAL`, or `INTEGER` and `FLOAT`, or `INTEGER` and `NUMBER` can overload the subprograms.
+
+**Note:** The overloading rules based upon formal parameter data types are not compatible with Oracle databases. Generally, the Advanced Server rules are more flexible, and certain combinations are allowed in Advanced Server that would result in an error when attempting to create the procedure or function in Oracle databases.
+
+For certain pairs of data types used for overloading, casting of the arguments specified by the subprogram invocation may be required to avoid an error encountered during runtime of the subprogram. Invocation of a subprogram must include the actual parameter list that can specifically identify the data types. Certain pairs of overloaded data types may require the `CAST` function to explicitly identify data types. For example, pairs of overloaded data types that may require casting during the invocation are `CHAR` and `VARCHAR2`, or `NUMBER` and `REAL`.
+
+The following example shows a group of overloaded subfunctions invoked from within an anonymous block. The executable section of the anonymous block contains the use of the `CAST` function to invoke overloaded functions with certain data types.
+
+```
+DECLARE
+    FUNCTION add_it (
+        p_add_1     IN BINARY_INTEGER,
+        p_add_2     IN BINARY_INTEGER
+    ) RETURN VARCHAR2
+    IS
+    BEGIN
+        RETURN 'add_it BINARY_INTEGER: ' || TO_CHAR(p_add_1 + p_add_2,9999.9999);
+    END add_it;
+    FUNCTION add_it (
+        p_add_1     IN NUMBER,
+        p_add_2     IN NUMBER
+    ) RETURN VARCHAR2
+    IS
+    BEGIN
+        RETURN 'add_it NUMBER: ' || TO_CHAR(p_add_1 + p_add_2,999.9999);
+    END add_it;
+    FUNCTION add_it (
+        p_add_1     IN REAL,
+        p_add_2     IN REAL
+    ) RETURN VARCHAR2
+    IS
+    BEGIN
+        RETURN 'add_it REAL: ' || TO_CHAR(p_add_1 + p_add_2,9999.9999);
+    END add_it;
+    FUNCTION add_it (
+        p_add_1     IN DOUBLE PRECISION,
+        p_add_2     IN DOUBLE PRECISION
+    ) RETURN VARCHAR2
+    IS
+    BEGIN
+        RETURN 'add_it DOUBLE PRECISION: ' || TO_CHAR(p_add_1 + p_add_2,9999.9999);
+    END add_it;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE(add_it (25, 50));
+    DBMS_OUTPUT.PUT_LINE(add_it (25.3333, 50.3333));
+    DBMS_OUTPUT.PUT_LINE(add_it (TO_NUMBER(25.3333), TO_NUMBER(50.3333)));
+    DBMS_OUTPUT.PUT_LINE(add_it (CAST('25.3333' AS REAL), CAST('50.3333' AS REAL)));
+    DBMS_OUTPUT.PUT_LINE(add_it (CAST('25.3333' AS DOUBLE PRECISION),
+        CAST('50.3333' AS DOUBLE PRECISION)));
+END;
+```
+
+The following is the output displayed from the anonymous block:
+
+```
+add_it BINARY_INTEGER:    75.0000
+add_it NUMBER:   75.6666
+add_it NUMBER:   75.6666
+add_it REAL:    75.6666
+add_it DOUBLE PRECISION:    75.6666
+```
+
+## Accessing Subprogram Variables
+
+Variable declared in blocks such as subprograms or anonymous blocks can be accessed from the executable section or the exception section of other blocks depending upon their relative location.
+
+Accessing a variable means being able to reference it within a SQL statement or an SPL statement as is done with any local variable.
+
+**Note:** If the subprogram signature contains formal parameters, these may be accessed in the same manner as local variables of the subprogram. In this section, all discussion related to variables of a subprogram also applies to formal parameters of the subprogram.
+
+Access of variables not only includes those defined as a data type, but also includes others such as record types, collection types, and cursors.
+
+The variable may be accessed by at most one qualifier, which is the name of the subprogram or labeled anonymous block in which the variable has been locally declared.
+
+The syntax to reference a variable is shown by the following:
+
+`[`*`qualifier`*`.]`*`variable`*
+
+If specified, *`qualifier`* is the subprogram or labeled anonymous block in which *`variable`* has been declared in its declaration section (that is, it is a local variable).
+
+**Note:** In Advanced Server, there is only one circumstance where two qualifiers are permitted. This scenario is for accessing public variables of packages where the reference can be specified in the following format:
+
+> *`schema_name`*`.`*`package_name`*`.`*`public_variable_name`*
+
+For more information about supported package syntax, please see the Database Compatibility for Oracle Developers Built-In Packages Guide.
+
+The following summarizes how variables can be accessed:
+
+- Variables can be accessed as long as the block in which the variable has been locally declared is within the ancestor hierarchical path starting from the block containing the reference to the variable. Such variables declared in ancestor blocks are referred to as *global variables*.
+- If a reference to an unqualified variable is made, the first attempt is to locate a local variable of that name. If such a local variable does not exist, then the search for the variable is made in the parent of the current block, and so forth, proceeding up the ancestor hierarchy. If such a variable is not found, then an error occurs upon invocation of the subprogram.
+- If a reference to a qualified variable is made, the same search process is performed as described in the previous bullet point, but searching for the first match of the subprogram or labeled anonymous block that contains the local variable. The search proceeds up the ancestor hierarchy until a match is found. If such a match is not found, then an error occurs upon invocation of the subprogram.
+
+The following location of variables cannot be accessed relative to the block from where the reference to the variable is made:
+
+- Variables declared in a descendent block cannot be accessed,
+- Variables declared in a sibling block, a sibling block of an ancestor block, or any descendants within the sibling block cannot be accessed.
+
+**Note:** The Advanced Server process for accessing variables is not compatible with Oracle databases. For Oracle, any number of qualifiers can be specified and the search is based upon the first match of the first qualifier in a similar manner to the Oracle matching algorithm for invoking subprograms.
+
+The following example displays how variables in various blocks are accessed, with and without qualifiers. The lines that are commented out illustrate attempts to access variables that would result in an error.
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    v_level_0       VARCHAR2(20) := 'Value from level_0';
+    PROCEDURE level_1a
+    IS
+        v_level_1a  VARCHAR2(20) := 'Value from level_1a';
+        PROCEDURE level_2a
+        IS
+            v_level_2a      VARCHAR2(20) := 'Value from level_2a';
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            DBMS_OUTPUT.PUT_LINE('........ v_level_2a: ' || v_level_2a);
+            DBMS_OUTPUT.PUT_LINE('........ v_level_1a: ' || v_level_1a);
+            DBMS_OUTPUT.PUT_LINE('........ level_1a.v_level_1a: ' ||
+                                           level_1a.v_level_1a);
+            DBMS_OUTPUT.PUT_LINE('........ v_level_0: ' || v_level_0);
+            DBMS_OUTPUT.PUT_LINE('........ level_0.v_level_0: ' || level_0.v_level_0);
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        level_2a;
+--        DBMS_OUTPUT.PUT_LINE('.... v_level_2a: ' || v_level_2a);
+--                              Error - Descendent block ----^
+--        DBMS_OUTPUT.PUT_LINE('.... level_2a.v_level_2a: ' || level_2a.v_level_2a);
+--                              Error - Descendent block ---------------^
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+    PROCEDURE level_1b
+    IS
+        v_level_1b  VARCHAR2(20) := 'Value from level_1b';
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1b');
+        DBMS_OUTPUT.PUT_LINE('.... v_level_1b: ' || v_level_1b);
+        DBMS_OUTPUT.PUT_LINE('.... v_level_0 : ' || v_level_0);
+--        DBMS_OUTPUT.PUT_LINE('.... level_1a.v_level_1a: ' || level_1a.v_level_1a);
+--                               Error - Sibling block -----------------^
+--        DBMS_OUTPUT.PUT_LINE('.... level_2a.v_level_2a: ' || level_2a.v_level_2a);
+--                               Error - Sibling block descendant ------^
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1b');
+    END level_1b;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    DBMS_OUTPUT.PUT_LINE('.. v_level_0: ' || v_level_0);
+    level_1a;
+    level_1b;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+The following is the output showing the content of each variable when the procedure is invoked:
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. v_level_0: Value from level_0
+.. BLOCK level_1a
+...... BLOCK level_2a
+........ v_level_2a: Value from level_2a
+........ v_level_1a: Value from level_1a
+........ level_1a.v_level_1a: Value from level_1a
+........ v_level_0: Value from level_0
+........ level_0.v_level_0: Value from level_0
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+.. BLOCK level_1b
+.... v_level_1b: Value from level_1b
+.... v_level_0 : Value from level_0
+.. END BLOCK level_1b
+END BLOCK level_0
+```
+
+The following example shows similar access attempts when all variables in all blocks have the same name:
+
+```
+CREATE OR REPLACE PROCEDURE level_0
+IS
+    v_common        VARCHAR2(20) := 'Value from level_0';
+    PROCEDURE level_1a
+    IS
+        v_common    VARCHAR2(20) := 'Value from level_1a';
+        PROCEDURE level_2a
+        IS
+            v_common    VARCHAR2(20) := 'Value from level_2a';
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            DBMS_OUTPUT.PUT_LINE('........ v_common: ' || v_common);
+            DBMS_OUTPUT.PUT_LINE('........ level_2a.v_common: ' || level_2a.v_common);
+            DBMS_OUTPUT.PUT_LINE('........ level_1a.v_common: ' || level_1a.v_common);
+            DBMS_OUTPUT.PUT_LINE('........ level_0.v_common: ' || level_0.v_common);
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END level_2a;
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        DBMS_OUTPUT.PUT_LINE('.... v_common: ' || v_common);
+        DBMS_OUTPUT.PUT_LINE('.... level_0.v_common: ' || level_0.v_common);
+        level_2a;
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END level_1a;
+    PROCEDURE level_1b
+    IS
+        v_common    VARCHAR2(20) := 'Value from level_1b';
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1b');
+        DBMS_OUTPUT.PUT_LINE('.... v_common: ' || v_common);
+        DBMS_OUTPUT.PUT_LINE('.... level_0.v_common : ' || level_0.v_common);
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1b');
+    END level_1b;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    DBMS_OUTPUT.PUT_LINE('.. v_common: ' || v_common);
+    level_1a;
+    level_1b;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END level_0;
+```
+
+The following is the output showing the content of each variable when the procedure is invoked:
+
+```
+BEGIN
+    level_0;
+END;
+
+BLOCK level_0
+.. v_common: Value from level_0
+.. BLOCK level_1a
+.... v_common: Value from level_1a
+.... level_0.v_common: Value from level_0
+...... BLOCK level_2a
+........ v_common: Value from level_2a
+........ level_2a.v_common: Value from level_2a
+........ level_1a.v_common: Value from level_1a
+........ level_0.v_common: Value from level_0
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+.. BLOCK level_1b
+.... v_common: Value from level_1b
+.... level_0.v_common : Value from level_0
+.. END BLOCK level_1b
+END BLOCK level_0
+```
+
+As previously discussed, the labels on anonymous blocks can also be used to qualify access to variables. The following example shows variable access within a set of nested anonymous blocks:
+
+```
+DECLARE
+    v_common        VARCHAR2(20) := 'Value from level_0';
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('BLOCK level_0');
+    DBMS_OUTPUT.PUT_LINE('.. v_common: ' || v_common);
+    <<level_1a>>
+    DECLARE
+        v_common    VARCHAR2(20) := 'Value from level_1a';
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1a');
+        DBMS_OUTPUT.PUT_LINE('.... v_common: ' || v_common);
+        <<level_2a>>
+        DECLARE
+            v_common    VARCHAR2(20) := 'Value from level_2a';
+        BEGIN
+            DBMS_OUTPUT.PUT_LINE('...... BLOCK level_2a');
+            DBMS_OUTPUT.PUT_LINE('........ v_common: ' || v_common);
+            DBMS_OUTPUT.PUT_LINE('........ level_1a.v_common: ' || level_1a.v_common);
+            DBMS_OUTPUT.PUT_LINE('...... END BLOCK level_2a');
+        END;
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1a');
+    END;
+    <<level_1b>>
+    DECLARE
+        v_common    VARCHAR2(20) := 'Value from level_1b';
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('.. BLOCK level_1b');
+        DBMS_OUTPUT.PUT_LINE('.... v_common: ' || v_common);
+        DBMS_OUTPUT.PUT_LINE('.... level_1b.v_common: ' || level_1b.v_common);
+        DBMS_OUTPUT.PUT_LINE('.. END BLOCK level_1b');
+    END;
+    DBMS_OUTPUT.PUT_LINE('END BLOCK level_0');
+END;
+```
+
+The following is the output showing the content of each variable when the anonymous block is invoked:
+
+```
+BLOCK level_0
+.. v_common: Value from level_0
+.. BLOCK level_1a
+.... v_common: Value from level_1a
+...... BLOCK level_2a
+........ v_common: Value from level_2a
+........ level_1a.v_common: Value from level_1a
+...... END BLOCK level_2a
+.. END BLOCK level_1a
+.. BLOCK level_1b
+.... v_common: Value from level_1b
+.... level_1b.v_common: Value from level_1b
+.. END BLOCK level_1b
+END BLOCK level_0
+```
+
+The following example is an object type whose object type method, `display_emp`, contains record type `emp_typ` and subprocedure `emp_sal_query`. Record variable `r_emp` declared locally to `emp_sal_query` is able to access the record type `emp_typ` declared in the parent block `display_emp`.
+
+```
+CREATE OR REPLACE TYPE emp_pay_obj_typ AS OBJECT
+(
+    empno           NUMBER(4),
+    MEMBER PROCEDURE display_emp(SELF IN OUT emp_pay_obj_typ)
+);
+
+CREATE OR REPLACE TYPE BODY emp_pay_obj_typ AS
+    MEMBER PROCEDURE display_emp (SELF IN OUT emp_pay_obj_typ)
+    IS
+        TYPE emp_typ IS RECORD (
+            ename           emp.ename%TYPE,
+            job             emp.job%TYPE,
+            hiredate        emp.hiredate%TYPE,
+            sal             emp.sal%TYPE,
+            deptno          emp.deptno%TYPE
+         );
+        PROCEDURE emp_sal_query (
+            p_empno         IN emp.empno%TYPE
+        )
+        IS
+            r_emp           emp_typ;
+            v_avgsal        emp.sal%TYPE;
+        BEGIN
+            SELECT ename, job, hiredate, sal, deptno
+                INTO r_emp.ename, r_emp.job, r_emp.hiredate, r_emp.sal, r_emp.deptno
+                FROM emp WHERE empno = p_empno;
+            DBMS_OUTPUT.PUT_LINE('Employee # : ' || p_empno);
+            DBMS_OUTPUT.PUT_LINE('Name       : ' || r_emp.ename);
+            DBMS_OUTPUT.PUT_LINE('Job        : ' || r_emp.job);
+            DBMS_OUTPUT.PUT_LINE('Hire Date  : ' || r_emp.hiredate);
+            DBMS_OUTPUT.PUT_LINE('Salary     : ' || r_emp.sal);
+            DBMS_OUTPUT.PUT_LINE('Dept #     : ' || r_emp.deptno);
+
+            SELECT AVG(sal) INTO v_avgsal
+            FROM emp WHERE deptno = r_emp.deptno;
+            IF r_emp.sal > v_avgsal THEN
+                DBMS_OUTPUT.PUT_LINE('Employee''s salary is more than the '
+                    || 'department average of ' || v_avgsal);
+            ELSE
+                DBMS_OUTPUT.PUT_LINE('Employee''s salary does not exceed the '
+                    || 'department average of ' || v_avgsal);
+            END IF;
+        END;
+    BEGIN
+        emp_sal_query(SELF.empno);
+    END;
+
+END;
+```
+
+The following is the output displayed when an instance of the object type is created and procedure `display_emp` is invoked:
+
+```
+DECLARE
+    v_emp          EMP_PAY_OBJ_TYP;
+BEGIN
+    v_emp := emp_pay_obj_typ(7900);
+    v_emp.display_emp;
+END;
+
+Employee # : 7900
+Name       : JAMES
+Job        : CLERK
+Hire Date  : 03-DEC-81 00:00:00
+Salary     : 950.00
+Dept #     : 30
+Employee's salary does not exceed the department average of 1566.67
+```
+
+The following example is a package with three levels of subprocedures. A record type, collection type, and cursor type declared in the upper level procedure can be accessed by the descendent subprocedure.
+
+```
+CREATE OR REPLACE PACKAGE emp_dept_pkg
+IS
+    PROCEDURE display_emp (
+        p_deptno        NUMBER
+    );
+END;
+
+CREATE OR REPLACE PACKAGE BODY emp_dept_pkg
+IS
+    PROCEDURE display_emp (
+        p_deptno        NUMBER
+    )
+    IS
+        TYPE emp_rec_typ IS RECORD (
+            empno           emp.empno%TYPE,
+            ename           emp.ename%TYPE
+        );
+        TYPE emp_arr_typ IS TABLE OF emp_rec_typ INDEX BY BINARY_INTEGER;
+        TYPE emp_cur_type IS REF CURSOR RETURN emp_rec_typ;
+        PROCEDURE emp_by_dept (
+            p_deptno        emp.deptno%TYPE
+        )
+        IS
+            emp_arr         emp_arr_typ;
+            emp_refcur      emp_cur_type;
+            i               BINARY_INTEGER := 0;
+            PROCEDURE display_emp_arr
+            IS
+            BEGIN
+                DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+                DBMS_OUTPUT.PUT_LINE('-----    -------');
+                FOR j IN emp_arr.FIRST .. emp_arr.LAST LOOP
+                    DBMS_OUTPUT.PUT_LINE(emp_arr(j).empno || '     ' ||
+                        emp_arr(j).ename);
+                END LOOP;
+            END display_emp_arr;
+        BEGIN
+            OPEN emp_refcur FOR SELECT empno, ename FROM emp WHERE deptno = p_deptno;
+            LOOP
+                i := i + 1;
+                FETCH emp_refcur INTO emp_arr(i).empno, emp_arr(i).ename;
+                EXIT WHEN emp_refcur%NOTFOUND;
+            END LOOP;
+            CLOSE emp_refcur;
+            display_emp_arr;
+        END emp_by_dept;
+    BEGIN
+        emp_by_dept(p_deptno);
+    END;
+END;
+```
+
+The following is the output displayed when the top level package procedure is invoked:
+
+```
+BEGIN
+    emp_dept_pkg.display_emp(20);
+END;
+
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7566     JONES
+7788     SCOTT
+7876     ADAMS
+7902     FORD
+```
+

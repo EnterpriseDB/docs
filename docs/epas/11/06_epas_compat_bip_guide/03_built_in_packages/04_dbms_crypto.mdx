@@ -1,0 +1,361 @@
+---
+
+title: "DBMS_CRYPTO"
+---
+
+<div id="dbms_crypto" class="registered_link"></div>
+
+The `DBMS_CRYPTO` package provides functions and procedures that allow you to encrypt or decrypt `RAW`, `BLOB` or `CLOB` data. You can also use `DBMS_CRYPTO` functions to generate cryptographically strong random values.
+
+The following table lists the `DBMS_CRYPTO` Functions and Procedures.
+
+| Function/Procedure                                           | Return Type | Description                                                  |
+| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------ |
+| `DECRYPT(`*`src`*, *`typ`*, *`key`*, *`iv`*`)`               | `RAW`       | Decrypts `RAW` data.                                         |
+| `DECRYPT(`*`dst`* `INOUT,` *`src`*, *`typ`*, *`key`*, *`iv`*`)` | N/A         | Decrypts `BLOB` data.                                        |
+| `DECRYPT(`*`dst`* `INOUT,` *`src`*, *`typ`*, *`key`*, *`iv`*) | N/A         | Decrypts `CLOB` data.                                        |
+| `ENCRYPT(`*`src`*, *`typ`*, *`key`*, *`iv`*`)`               | `RAW`       | Encrypts `RAW` data.                                         |
+| `ENCRYPT(`*`dst`* `INOUT,` *`src`*, *`typ`*, *`key`*, *`iv`*`)` | N/A         | Encrypts `BLOB` data.                                        |
+| `ENCRYPT`(*`dst`* `INOUT`, *`src`*, *`typ`*, *key*, *`iv`*`)` | N/A         | Encrypts `CLOB` data.                                        |
+| `HASH(`*`src`*, *`typ`*`)`                                   | `RAW`       | Applies a hash algorithm to `RAW` data.                      |
+| `HASH(`*`src`*`)`                                            | `RAW`       | Applies a hash algorithm to `CLOB` data.                     |
+| `MAC`(*`src`*, *`typ`*, *`key`*`)`                           | `RAW`       | Returns the hashed `MAC` value of the given `RAW` data using the specified hash algorithm and key. |
+| `MAC(`*`src`*, *`typ`*, *`key`*`)`                           | `RAW`       | Returns the hashed `MAC` value of the given `CLOB` data using the specified hash algorithm and key. |
+| `RANDOMBYTES(`*`number`*_*`bytes`*`)`                        | `RAW`       | Returns a specified number of cryptographically strong random bytes. |
+| `RANDOMINTEGER``()`                                          | `INTEGER`   | Returns a random `INTEGER`.                                  |
+| `RANDOMNUMBER``()`                                           | `NUMBER`    | Returns a random `NUMBER`.                                   |
+
+`DBMS_CRYPTO` functions and procedures support the following error messages:
+
+> `ORA-28239 - DBMS_CRYPTO.KeyNull`
+>
+> `ORA-28829 - DBMS_CRYPTO.CipherSuiteNull`
+>
+> `ORA-28827 - DBMS_CRYPTO.CipherSuiteInvalid`
+
+Unlike Oracle, Advanced Server will *not* return error `ORA-28233` if you re-encrypt previously encrypted information.
+
+Please note that `RAW` and `BLOB` are synonyms for the PostgreSQL `BYTEA` data type, and `CLOB` is a synonym for `TEXT`.
+
+## DECRYPT
+
+The `DECRYPT` function or procedure decrypts data using a user-specified cipher algorithm, key and optional initialization vector. The signature of the `DECRYPT` function is:
+
+> `DECRYPT`
+>   `(src IN RAW, typ IN INTEGER, key IN RAW, iv IN RAW`
+>    `DEFAULT NULL) RETURN RAW`
+
+The signature of the `DECRYPT` procedure is:
+
+> `DECRYPT`
+>   `(dst INOUT BLOB, src IN BLOB, typ IN INTEGER, key IN RAW,`
+>    `iv IN RAW DEFAULT NULL)`
+
+or
+
+> `DECRYPT`
+>   `(dst INOUT CLOB, src IN CLOB, typ IN INTEGER, key IN RAW,`
+>    `iv IN RAW DEFAULT NULL)`
+
+When invoked as a procedure, `DECRYPT` returns `BLOB` or `CLOB` data to a user-specified `BLOB`.
+
+**Parameters**
+
+*`dst`*
+
+> *`dst`* specifies the name of a `BLOB` to which the output of the `DECRYPT` procedure will be written. The `DECRYPT` procedure will overwrite any existing data currently in *`dst`*.
+
+*`src`*
+
+> *`src`* specifies the source data that will be decrypted. If you are invoking `DECRYPT` as a function, specify `RAW` data; if invoking `DECRYPT` as a procedure, specify `BLOB` or `CLOB` data.
+
+*`typ`*
+
+> *`typ`* specifies the block cipher type and any modifiers. This should match the type specified when the *`src`* was encrypted. Advanced Server supports the following block cipher algorithms, modifiers and cipher suites:
+
+| Block Cipher Algorithms            |                                                             |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `ENCRYPT_DES`                      | `CONSTANT INTEGER := 1;`                                    |
+| `ENCRYPT_3DES`                     | `CONSTANT INTEGER := 3;`                                    |
+| `ENCRYPT_AES`                      | `CONSTANT INTEGER := 4;`                                    |
+| `ENCRYPT_AES128`                   | `CONSTANT INTEGER := 6;`                                    |
+| **Block Cipher Modifiers**         |                                                             |
+| `CHAIN_CBC`                        | `CONSTANT INTEGER := 256;`                                  |
+| `CHAIN_ECB`                        | `CONSTANT INTEGER := 768;`                                  |
+| **Block Cipher Padding Modifiers** |                                                             |
+| `PAD_PKCS5`                        | `CONSTANT INTEGER := 4096;`                                 |
+| `PAD_NONE`                         | `CONSTANT INTEGER := 8192;`                                 |
+| **Block Cipher Suites**            |                                                             |
+| `DES_CBC_PKCS5`                    | `CONSTANT INTEGER := ENCRYPT_DES + CHAIN_CBC + PAD_PKCS5;`  |
+| `DES3_CBC_PKCS5`                   | `CONSTANT INTEGER := ENCRYPT_3DES + CHAIN_CBC + PAD_PKCS5;` |
+| `AES_CBC_PKCS5`                    | `CONSTANT INTEGER := ENCRYPT_AES + CHAIN_CBC + PAD_PKCS5;`  |
+
+*`key`*
+
+> *`key`* specifies the user-defined decryption key. This should match the key specified when the *`src`* was encrypted.
+
+*`iv`*
+
+> *`iv`* (optional) specifies an initialization vector. If an initialization vector was specified when the *`src`* was encrypted, you must specify an initialization vector when decrypting the *`src`*. The default is `NULL`.
+
+**Examples**
+
+The following example uses the `DBMS_CRYPTO.DECRYPT` function to decrypt an encrypted password retrieved from the `passwords` table:
+
+```
+CREATE TABLE passwords
+(
+  principal  VARCHAR2(90) PRIMARY KEY,  -- username
+  ciphertext RAW(9)                     -- encrypted password
+);
+
+CREATE FUNCTION get_password(username VARCHAR2) RETURN RAW AS
+ typ        INTEGER := DBMS_CRYPTO.DES_CBC_PKCS5;
+ key        RAW(128) := 'my secret key';
+ iv         RAW(100) := 'my initialization vector';
+ password   RAW(2048);
+BEGIN
+
+  SELECT ciphertext INTO password FROM passwords WHERE principal = username;
+
+  RETURN dbms_crypto.decrypt(password, typ, key, iv);
+END;
+```
+
+Note that when calling `DECRYPT`, you must pass the same cipher type, key value and initialization vector that was used when `ENCRYPTING` the target.
+
+## ENCRYPT
+
+The `ENCRYPT` function or procedure uses a user-specified algorithm, key, and optional initialization vector to encrypt `RAW`, `BLOB` or `CLOB` data. The signature of the `ENCRYPT` function is:
+
+> `ENCRYPT`
+>   `(`*`src`* `IN RAW,` *`typ`* `IN INTEGER,` *`key`* `IN RAW,`
+>  *`iv`* I`N RAW DEFAULT NULL) RETURN RAW`
+
+The signature of the `ENCRYPT` procedure is:
+
+> `ENCRYPT`
+>   `(`*`dst`* `INOUT BLOB,` *`src`* `IN BLOB,` *`typ`* `IN INTEGER,` *`key`* `IN RAW,`
+>  *`iv`* `IN RAW DEFAULT NULL)`
+
+or
+
+> `ENCRYPT`
+>   (*`dst`* `INOUT BLOB,` *`src`* `IN CLOB,` *`typ`* `IN INTEGER,` *`key`* `IN RAW,`
+>  *`iv`* `IN RAW DEFAULT NULL)`
+
+When invoked as a procedure, `ENCRYPT` returns `BLOB` or `CLOB` data to a user-specified `BLOB`.
+
+**Parameters**
+
+*`dst`*
+
+*`dst`* specifies the name of a `BLOB` to which the output of the `ENCRYPT` procedure will be written. The `ENCRYPT` procedure will overwrite any existing data currently in *`dst`*.
+
+*`src`*
+
+*`src`* specifies the source data that will be encrypted. If you are invoking `ENCRYPT` as a function, specify RAW data; if invoking `ENCRYPT` as a procedure, specify `BLOB` or `CLOB` data.
+
+*`typ`*
+
+*`typ`* specifies the block cipher type that will be used by `ENCRYPT`, and any modifiers. Advanced Server supports the block cipher algorithms, modifiers and cipher suites listed below:
+
+| Block Cipher Algorithms            |                                                             |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `ENCRYPT_DES`                      | `CONSTANT INTEGER := 1;`                                    |
+| `ENCRYPT_3DES`                     | `CONSTANT INTEGER := 3;`                                    |
+| `ENCRYPT_AES`                      | `CONSTANT INTEGER := 4;`                                    |
+| `ENCRYPT_AES128`                   | `CONSTANT INTEGER := 6;`                                    |
+| **Block Cipher Modifiers**         |                                                             |
+| `CHAIN_CBC`                        | `CONSTANT INTEGER := 256;`                                  |
+| `CHAIN_ECB`                        | `CONSTANT INTEGER := 768;`                                  |
+| **Block Cipher Padding Modifiers** |                                                             |
+| `PAD_PKCS5`                        | `CONSTANT INTEGER := 4096;`                                 |
+| `PAD_NONE`                         | `CONSTANT INTEGER := 8192;`                                 |
+| **Block Cipher Suites**            |                                                             |
+| `DES_CBC_PKCS5`                    | `CONSTANT INTEGER := ENCRYPT_DES + CHAIN_CBC + PAD_PKCS5;`  |
+| `DES3_CBC_PKCS5`                   | `CONSTANT INTEGER := ENCRYPT_3DES + CHAIN_CBC + PAD_PKCS5;` |
+| `AES_CBC_PKCS5`                    | `CONSTANT INTEGER := ENCRYPT_AES + CHAIN_CBC + PAD_PKCS5;`  |
+
+*`key`*
+
+> *`key`* specifies the encryption key.
+
+*i~v*
+
+> *`iv`* (optional) specifies an initialization vector. By default, iv is `NULL`.
+
+**Examples**
+
+The following example uses the `DBMS_CRYPTO.DES_CBC_PKCS5` Block Cipher Suite (a pre-defined set of algorithms and modifiers) to encrypt a value retrieved from the `passwords` table:
+
+```
+CREATE TABLE passwords
+(
+  principal  VARCHAR2(90) PRIMARY KEY,  -- username
+  ciphertext RAW(9)                     -- encrypted password
+);
+CREATE PROCEDURE set_password(username VARCHAR2, cleartext RAW) AS
+ typ        INTEGER := DBMS_CRYPTO.DES_CBC_PKCS5;
+ key        RAW(128) := 'my secret key';
+ iv         RAW(100) := 'my initialization vector';
+ encrypted  RAW(2048);
+BEGIN
+  encrypted := dbms_crypto.encrypt(cleartext, typ, key, iv);
+  UPDATE passwords SET ciphertext = encrypted WHERE principal = username;
+END;
+```
+
+`ENCRYPT` uses a key value of my `secret` key and an initialization vector of my `initialization` `vector` when encrypting the `password`; specify the same key and initialization vector when decrypting the `password`.
+
+## HASH
+
+The `HASH` function uses a user-specified algorithm to return the hash value of a `RAW` or `CLOB` value. The `HASH` function is available in three forms:
+
+> `HASH`
+>   (*`src`* `IN RAW,` *`typ`* `IN INTEGER) RETURN RAW`
+>
+> `HASH`
+>   (*`src`* `IN CLOB,` *`typ`* `IN INTEGER) RETURN RAW`
+
+**Parameters**
+
+*`src`*
+
+> *`src`* specifies the value for which the hash value will be generated. You can specify a `RAW`, a `BLOB`, or a `CLOB` value.
+
+*`typ`*
+
+> *`typ`* specifies the `HASH` function type. Advanced Server supports the `HASH` function types listed below:
+
+| HASH Functions |                          |
+| -------------- | ------------------------ |
+| H`ASH_MD4`     | `CONSTANT INTEGER := 1;` |
+| `HASH_MD5`     | `CONSTANT INTEGER := 2;` |
+| `HASH_SH1`     | `CONSTANT INTEGER := 3;` |
+
+**Examples**
+
+The following example uses `DBMS_CRYPTO.HASH` to find the `md5` hash value of the string, `cleartext source`:
+
+```
+DECLARE
+  typ        INTEGER := DBMS_CRYPTO.HASH_MD5;
+  hash_value RAW(100);
+BEGIN
+
+  hash_value := DBMS_CRYPTO.HASH('cleartext source', typ);
+
+END;
+```
+
+## MAC
+
+The `MAC` function uses a user-specified MAC function to return the hashed `MAC` value of a `RAW` or `CLOB` value. The M~AC function is available in three forms:
+
+> `MAC`
+>   `(src IN RAW, typ IN INTEGER, key IN RAW) RETURN RAW`
+>
+> `MAC`
+>   `(src IN CLOB, typ IN INTEGER, key IN RAW) RETURN RAW`
+
+Parameters
+
+*`src`*
+
+> *`src`* specifies the value for which the `MAC` value will be generated. Specify a `RAW`, `BLOB`, or `CLOB` value.
+
+*`typ`*
+
+> *`typ`* specifies the `MAC` function used. Advanced Server supports the `MAC` functions listed below.
+
+| MAC Functions |                          |
+| ------------- | ------------------------ |
+| `HMAC_MD5`    | `CONSTANT INTEGER := 1;` |
+| `HMAC_SH1`    | `CONSTANT INTEGER := 2;` |
+
+*`key`*
+
+> *`key`* specifies the key that will be used to calculate the hashed `MAC` value.
+
+**Examples**
+
+The following example finds the hashed `MAC` value of the string `cleartext source`:
+
+```
+DECLARE
+  typ       INTEGER := DBMS_CRYPTO.HMAC_MD5;
+  key       RAW(100) := 'my secret key';
+  mac_value RAW(100);
+BEGIN
+
+  mac_value := DBMS_CRYPTO.MAC('cleartext source', typ, key);
+
+END;
+```
+
+`DBMS_CRYPTO.MAC` uses a key value of my `secret key` when calculating the `MAC` value of `cleartext source`.
+
+## RANDOMBYTES
+
+The `RANDOMBYTES` function returns a RAW value of the specified length, containing cryptographically random bytes. The signature is:
+
+> `RANDOMBYTES`
+>   `(`*`number_bytes`* `IN INTEGER) RETURNS RAW`
+
+**Parameters**
+
+*`number_bytes`*
+
+> *`number_bytes`* specifies the number of random bytes to be returned
+
+**Examples**
+
+The following example uses `RANDOMBYTES` to return a value that is `1024` bytes long:
+
+```
+DECLARE
+  result RAW(1024);
+BEGIN
+  result := DBMS_CRYPTO.RANDOMBYTES(1024);
+END;
+```
+
+## RANDOMINTEGER
+
+The `RANDOMINTEGER()` function returns a random `INTEGER` between `0` and `268,435,455`. The signature is:
+
+> `RANDOMINTEGER() RETURNS INTEGER`
+
+**Examples**
+
+The following example uses the `RANDOMINTEGER` function to return a cryptographically strong random `INTEGER` value:
+
+```
+DECLARE
+  result INTEGER;
+BEGIN
+  result := DBMS_CRYPTO.RANDOMINTEGER();
+  DBMS_OUTPUT.PUT_LINE(result);
+END;
+```
+
+## RANDOMNUMBER
+
+The `RANDOMNUMBER()` function returns a random `NUMBER` between `0` and ~. The signature is:
+
+> `RANDOMNUMBER() RETURNS NUMBER`
+
+**Examples**
+
+The following example uses the `RANDOMNUMBER` function to return a cryptographically strong random number:
+
+```
+DECLARE
+  result NUMBER;
+BEGIN
+  result := DBMS_CRYPTO.RANDOMNUMBER();
+  DBMS_OUTPUT.PUT_LINE(result);
+END;
+```
+

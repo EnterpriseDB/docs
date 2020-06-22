@@ -1,0 +1,211 @@
+---
+
+title: "ALTER TABLE… ADD SUBPARTITION"
+---
+
+<div id="alter_table_add_subpartition" class="registered_link"></div>
+
+The `ALTER TABLE… ADD SUBPARTITION` command adds a subpartition to an existing subpartitioned partition. The syntax is:
+
+> `ALTER TABLE` *`table_name`* `MODIFY PARTITION` *`partition_name`*
+>       `ADD SUBPARTITION` *`subpartition_definition`;*
+
+Where *`subpartition_definition`* is:
+
+`{`*`list_subpartition`* `|` *`range_subpartition`*}
+
+and *`list_subpartition`* is:
+
+> `SUBPARTITION [`*`subpartition_name`*]
+>
+>   `VALUES (`*`value`*`[,` *`value`*`]...)`
+>
+>   `[TABLESPACE` *`tablespace_name`*`]`
+
+and *`range_subpartition`* is:
+
+> `SUBPARTITION [`*`subpartition_name`*`]`
+>
+>   `VALUES LESS THAN (`*`value`*`[,` *`value`*`]...)`
+>
+>   `[TABLESPACE` *`tablespace_name`*`]`
+
+**Description**
+
+The `ALTER TABLE… ADD SUBPARTITION` command adds a subpartition to an existing partition; the partition must already be subpartitioned. There is no upper limit to the number of defined subpartitions.
+
+New subpartitions must be of the same type (`LIST`, `RANGE` or `HASH`) as existing subpartitions. The new subpartition rules must reference the same column specified in the subpartitioning rules that define the existing subpartition(s).
+
+You can use the `ALTER TABLE… ADD SUBPARTITION` statement to add a subpartition to a table with a `DEFAULT` rule as long as there are no conflicting values between existing rows in the table and the values of the subpartition to be added.
+
+You cannot use the `ALTER TABLE… ADD SUBPARTITION` statement to add a subpartition to a table with a `MAXVALUE` rule.
+
+You can split an existing subpartition with the `ALTER TABLE… SPLIT SUBPARTITION` statement, effectively adding a subpartition to a table.
+
+You cannot add a new subpartition that precedes existing subpartitions in a range subpartitioned table; range subpartitions must be specified in ascending order.
+
+Include the `TABLESPACE` clause to specify the tablespace in which the subpartition will reside. If you do not specify a tablespace, the subpartition will be created in the default tablespace.
+
+If the table is indexed, the index will be created on the new subpartition.
+
+To use the `ALTER TABLE... ADD SUBPARTITION` command you must be the table owner, or have superuser (or administrative) privileges.
+
+**Parameters**
+
+*`table_name`*
+
+> The name (optionally schema-qualified) of the partitioned table in which the subpartition will reside.
+
+*`partition_name`*
+
+> The name of the partition in which the new subpartition will reside.
+
+*`subpartition_name`*
+
+> The name of the subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+`(`*`value`*`[,` *`value`*`]...)`
+
+> Use `value` to specify a quoted literal value (or comma-delimited list of literal values) by which table entries will be grouped into partitions. Each partitioning rule must specify at least one value, but there is no limit placed on the number of values specified within a rule. `value` may also be `NULL`, `DEFAULT` (if specifying a `LIST` partition), or `MAXVALUE` (if specifying a `RANGE` partition).
+>
+> For information about creating a `DEFAULT` or `MAXVALUE` partition, see Section [10.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.119.html#).
+
+*`tablespace_name`*
+
+> The name of the tablespace in which the subpartition resides.
+
+
+
+## Example - Adding a Subpartition to a LIST-RANGE Partitioned Table
+
+The following example adds a `RANGE` subpartition to the list-partitioned `sales` table. The `sales` table was created with the command:
+
+```
+CREATE TABLE sales
+(
+  dept_no     number,
+  part_no     varchar2,
+  country     varchar2(20),
+  date        date,
+  amount      number
+)
+PARTITION BY LIST(country)
+  SUBPARTITION BY RANGE(date)
+(
+  PARTITION europe VALUES('FRANCE', 'ITALY')
+    (
+      SUBPARTITION europe_2011
+        VALUES LESS THAN('2012-Jan-01'),
+      SUBPARTITION europe_2012
+        VALUES LESS THAN('2013-Jan-01')
+    ),
+  PARTITION asia VALUES('INDIA', 'PAKISTAN')
+    (
+      SUBPARTITION asia_2011
+        VALUES LESS THAN('2012-Jan-01'),
+      SUBPARTITION asia_2012
+        VALUES LESS THAN('2013-Jan-01')
+    ),
+  PARTITION americas VALUES('US', 'CANADA')
+    (
+      SUBPARTITION americas_2011
+        VALUES LESS THAN('2012-Jan-01'),
+      SUBPARTITION americas_2012
+        VALUES LESS THAN('2013-Jan-01')
+    )
+);
+```
+
+The sales table has three partitions, named `europe`, `asia`, and `americas`. Each partition has two range-defined subpartitions:
+
+```
+acctg=# SELECT partition_name, subpartition_name, high_value FROM ALL_TAB_SUBPARTITIONS;
+ partition_name | subpartition_name |              high_value
+----------------+-------------------+-------------------------------------------------
+ EUROPE         | EUROPE_2011       | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ EUROPE         | EUROPE_2012       | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+ ASIA           | ASIA_2011         | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ ASIA           | ASIA_2012         | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+ AMERICAS       | AMERICAS_2011     | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ AMERICAS       | AMERICAS_2012     | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+(6 rows)
+```
+
+The following command adds a subpartition named `europe_2013`:
+
+```
+acctg=# SELECT partition_name, subpartition_name, high_value FROM ALL_TAB_SUBPARTITIONS;
+ partition_name | subpartition_name |              high_value
+----------------+-------------------+--------------------------------------------------
+ EUROPE         | EUROPE_2011       | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ EUROPE         | EUROPE_2012       | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+ EUROPE         | EUROPE_2013       | FOR VALUES FROM ('01-JAN-13 00:00:00') TO ('01-JAN-15 00:00:00')
+ ASIA           | ASIA_2011         | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ ASIA           | ASIA_2012         | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+ AMERICAS       | AMERICAS_2011     | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+ AMERICAS       | AMERICAS_2012     | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+(7 rows)
+```
+
+Note that when adding a new range subpartition, the subpartitioning rules must specify a range that falls *after* any existing subpartitions.
+
+## Example - Adding a Subpartition to a RANGE-LIST Partitioned Table
+
+The following example adds a LIST subpartition to the RANGE partitioned sales table. The sales table was created with the command:
+
+```
+CREATE TABLE sales
+(
+  dept_no     number,
+  part_no     varchar2,
+  country     varchar2(20),
+  date        date,
+  amount      number
+)
+PARTITION BY RANGE(date)
+  SUBPARTITION BY LIST (country)
+  (
+    PARTITION first_half_2012 VALUES LESS THAN('01-JUL-2012')
+    (
+      SUBPARTITION europe VALUES ('ITALY', 'FRANCE'),
+      SUBPARTITION americas VALUES ('US', 'CANADA')
+    ),
+    PARTITION second_half_2012 VALUES LESS THAN('01-JAN-2013')`
+    (
+      SUBPARTITION asia VALUES ('INDIA', 'PAKISTAN')
+    )
+  );
+```
+
+After executing the above command, the `sales` table will have two partitions, named `first_half_2012` and `second_half_2012`. The `first_half_2012` partition has two subpartitions, named `europe` and `americas`, and the `second_half_2012` partition has one partition, named `asia`:
+
+```
+acctg=# SELECT partition_name, subpartition_name, high_value FROM ALL_TAB_SUBPARTITIONS;
+  partition_name  | subpartition_name |             high_value
+------------------+-------------------+-------------------------------------
+ FIRST_HALF_2012  | AMERICAS          | FOR VALUES IN ('US', 'CANADA')
+ FIRST_HALF_2012  | EUROPE            | FOR VALUES IN ('ITALY', 'FRANCE')
+ SECOND_HALF_2012 | ASIA              | FOR VALUES IN ('INDIA', 'PAKISTAN')
+(3 rows)
+```
+
+The following command adds a subpartition to the `second_half_2012` partition, named `east_asia`:
+
+```
+ALTER TABLE sales MODIFY PARTITION second_half_2012
+ADD SUBPARTITION east_asia VALUES ('CHINA');
+```
+
+After invoking the command, the table includes a subpartition named `east_asia`:
+
+```
+acctg=# SELECT partition_name, subpartition_name, high_value FROM ALL_TAB_SUBPARTITIONS;
+  partition_name  | subpartition_name |             high_value
+------------------+-------------------+-------------------------------------
+ FIRST_HALF_2012  | AMERICAS          | FOR VALUES IN ('US', 'CANADA')
+ FIRST_HALF_2012  | EUROPE            | FOR VALUES IN ('ITALY', 'FRANCE')
+ SECOND_HALF_2012 | EAST_ASIA         | FOR VALUES IN ('CHINA')
+ SECOND_HALF_2012 | ASIA              | FOR VALUES IN ('INDIA', 'PAKISTAN')
+(4 rows)
+```
+

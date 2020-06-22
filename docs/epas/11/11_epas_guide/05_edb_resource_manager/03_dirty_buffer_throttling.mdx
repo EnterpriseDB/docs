@@ -1,0 +1,359 @@
+---
+
+title: "Dirty Buffer Throttling"
+---
+
+<div id="dirty_buffer_throttling" class="registered_link"></div>
+
+Writing to shared buffers is controlled by setting the `dirty_rate_limit` resource type parameter.
+
+Set the `dirty_rate_limit` parameter to the number of kilobytes per second for the combined rate at which all the processes in the group should write to or “dirty” the shared buffers. An example setting would be 3072 kilobytes per seconds.
+
+The valid range of the `dirty_rate_limit` parameter is 0 to 1.67772e+07. A setting of 0 means no dirty rate limit has been set for the resource group.
+
+EDB Resource Manager utilizes *dirty buffer throttling* to keep the aggregate, shared buffer writing rate of all processes in the group near the limit specified by the `dirty_rate_limit` parameter. A process in the group may be interrupted and put into sleep mode for a short interval of time to maintain the defined limit. When and how such interruptions occur is defined by a proprietary algorithm used by EDB Resource Manager.
+
+## Setting the Dirty Rate Limit for a Resource Group
+
+The `ALTER RESOURCE GROUP` command with the `SET dirty_rate_limit` clause is used to set the dirty rate limit for a resource group.
+
+In the following example the dirty rate limit is set to 12288 kilobytes per second for `resgrp_a`, 6144 kilobytes per second for `resgrp_b` and 3072 kilobytes per second for `resgrp_c`. This means that the combined writing rate to the shared buffer of all processes assigned to `resgrp_a` is maintained at approximately 12288 kilobytes per second. Similarly, for all processes in `resgrp_b`, the combined writing rate to the shared buffer is kept to approximately 6144 kilobytes per second, etc.
+
+```
+edb=# ALTER RESOURCE GROUP resgrp_a SET dirty_rate_limit TO 12288;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_b SET dirty_rate_limit TO 6144;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_c SET dirty_rate_limit TO 3072;
+ALTER RESOURCE GROUP
+```
+
+The following query shows the settings of `dirty_rate_limit` in the catalog.
+
+```
+edb=# SELECT rgrpname, rgrpdirtyratelimit FROM edb_resource_group;
+ rgrpname | rgrpdirtyratelimit
+----------+--------------------
+ resgrp_a |              12288
+ resgrp_b |               6144
+ resgrp_c |               3072
+(3 rows)
+```
+
+Changing the `dirty_rate_limit` of a resource group not only affects new processes that are assigned to the group, but any currently running processes that are members of the group are immediately affected by the change. That is, if the `dirty_rate_limit` is changed from 12288 to 3072, currently running processes in the group would be throttled downward so that the aggregate group dirty rate would be near 3072 kilobytes per second instead of 12288 kilobytes per second.
+
+To illustrate the effect of setting the dirty rate limit for resource groups, the following examples use the following table for intensive I/O operations.
+
+```
+CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+```
+
+The `FILLFACTOR = 10` clause results in `INSERT` commands packing rows up to only 10% per page. This results in a larger sampling of dirty shared blocks for the purpose of these examples.
+
+The `pg_stat_statements` module is used to display the number of shared buffer blocks that are dirtied by a SQL command and the amount of time the command took to execute. This provides the information to calculate the actual kilobytes per second writing rate for the SQL command, and thus compare it to the dirty rate limit set for a resource group.
+
+In order to use the `pg_stat_statements` module, perform the following steps.
+
+**Step 1:** In the `postgresql.conf` file, add `$libdir/pg_stat_statements` to the `shared_preload_libraries` configuration parameter as shown by the following.
+
+```
+shared_preload_libraries = '$libdir/dbms_pipe,$libdir/edb_gen,$libdir/pg_stat_statements'
+```
+
+**Step 2:** Restart the database server.
+
+**Step 3:** Use the `CREATE EXTENSION` command to complete the creation of the `pg_stat_statements` module.
+
+```
+edb=# CREATE EXTENSION pg_stat_statements SCHEMA public;
+CREATE EXTENSION
+```
+
+The `pg_stat_statements_reset()` function is used to clear out the `pg_stat_statements` view for clarity of each example.
+
+The resource groups with the dirty rate limit settings shown in the previous query are used in these examples.
+
+## Example – Single Process in a Single Group
+
+The following sequence of commands shows the creation of table `t1`. The current process is set to use resource group `resgrp_b`. The `pg_stat_statements` view is cleared out by running the `pg_stat_statements_reset()` function.
+
+Finally, the `INSERT` command generates a series of integers from 1 to 10,000 to populate the table, and dirty approximately 10,000 blocks.
+
+```
+edb=# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+
+edb=# SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+
+(1 row)
+
+edb=# INSERT INTO t1 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+The following shows the results from the `INSERT` command.
+
+```
+edb=# SELECT query, rows, total_time, shared_blks_dirtied FROM pg_stat_statements;
+-[ RECORD 1 ]-------+--------------------------------------------------
+ query               | INSERT INTO t1 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 13496.184
+ shared_blks_dirtied | 10003
+```
+
+The actual dirty rate is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 13496.184 ms, which yields *0.74117247 blocks per millisecond*.
+- Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *741.17247 blocks per second*.
+- Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *6072 kilobytes per second*.
+
+Note that the actual dirty rate of 6072 kilobytes per second is close to the dirty rate limit for the resource group, which is 6144 kilobytes per second.
+
+By contrast, if the steps are repeated again without the process belonging to any resource group, the dirty buffer rate is much higher.
+
+```
+edb=# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+
+(1 row)
+
+edb=# SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+
+(1 row)
+
+edb=# INSERT INTO t1 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+The following shows the results from the `INSERT` command without the usage of a resource group.
+
+```
+edb=# SELECT query, rows, total_time, shared_blks_dirtied FROM pg_stat_statements;
+-[ RECORD 1 ]-------+--------------------------------------------------
+ query               | INSERT INTO t1 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 2432.165
+ shared_blks_dirtied | 10003
+```
+
+First, note the total time was only 2432.165 milliseconds as compared to 13496.184 milliseconds when a resource group with a dirty rate limit set to 6144 kilobytes per second was used.
+
+The actual dirty rate without the use of a resource group is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 2432.165 ms, which yields *4.112797 blocks per millisecond*.
+- Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *4112.797 blocks per second*.
+-  Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *33692 kilobytes per second*.
+
+Note that the actual dirty rate of 33692 kilobytes per second is significantly higher than when the resource group with a dirty rate limit of 6144 kilobytes per second was used.
+
+## Example – Multiple Processes in a Single Group
+
+As stated previously, the dirty rate limit applies to the aggregate of all processes in the resource group. This concept is illustrated in the following example.
+
+For this example the inserts are performed simultaneously on two different tables in two separate `psql` sessions, each of which has been added to resource group `resgrp_b` that has a `dirty_rate_limit` set to 6144 kilobytes per second.
+
+**Session 1:**
+
+```
+edb=# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+
+edb=# INSERT INTO t1 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+**Session 2:**
+
+```
+edb=# CREATE TABLE t2 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+
+edb=# SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+(1 row)
+
+edb=# INSERT INTO t2 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+**Note:** The `INSERT` commands in session 1 and session 2 were started after the `SELECT` `pg_stat_statements_reset()` command in session 2 was run.
+
+The following shows the results from the `INSERT` commands in the two sessions. `RECORD 3` shows the results from session 1. `RECORD 2` shows the results from session 2.
+
+```
+edb=# SELECT query, rows, total_time, shared_blks_dirtied FROM pg_stat_statements;
+-[ RECORD 1 ]-------+--------------------------------------------------
+ query               | SELECT pg_stat_statements_reset();
+ rows                | 1
+ total_time          | 0.43
+ shared_blks_dirtied | 0
+-[ RECORD 2 ]-------+--------------------------------------------------
+ query               | INSERT INTO t2 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 30591.551
+ shared_blks_dirtied | 10003
+-[ RECORD 3 ]-------+--------------------------------------------------
+ query               | INSERT INTO t1 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 33215.334
+ shared_blks_dirtied | 10003
+```
+
+First, note the total time was 33215.334 milliseconds for session 1 and 30591.551 milliseconds for session 2. When only one session was active in the same resource group as shown in the first example, the time was 13496.184 milliseconds. Thus more active processes in the resource group result in a slower dirty rate for each active process in the group. This is shown in the following calculations.
+
+The actual dirty rate for session 1 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 33215.334 ms, which yields *0.30115609 blocks per millisecond*.
+-  Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *301.15609 blocks per second*.
+-  Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2467 kilobytes per second*.
+
+The actual dirty rate for session 2 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 30591.551 ms, which yields *0.32698571 blocks per millisecond*.
+- Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *326.98571 blocks per second*.
+- Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2679 kilobytes per second*.
+
+The combined dirty rate from session 1 (2467 kilobytes per second) and from session 2 (2679 kilobytes per second) yields 5146 kilobytes per second, which is below the set dirty rate limit of the resource group (6144 kilobytes per seconds).
+
+## Example – Multiple Processes in Multiple Groups
+
+In this example, two additional `psql` sessions are used along with the previous two sessions. The third and fourth sessions perform the same `INSERT` command in resource group `resgrp_c` with a `dirty_rate_limit` of 3072 kilobytes per second.
+
+Sessions 1 and 2 are repeated as illustrated in the prior example using resource group resgrp_b. with a `dirty_rate_limit` of 6144 kilobytes per second.
+
+**Session 3:**
+
+```
+edb=# CREATE TABLE t3 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SET edb_resource_group TO resgrp_c;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+
+
+resgrp_c
+(1 row)
+
+edb=# INSERT INTO t3 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+**Session 4:**
+
+```
+edb=# CREATE TABLE t4 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+CREATE TABLE
+edb=# SET edb_resource_group TO resgrp_c;
+SET
+edb=# SHOW edb_resource_group;
+ edb_resource_group
+--------------------
+ resgrp_c
+(1 row)
+
+edb=# SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset
+--------------------------
+
+(1 row)
+
+edb=# INSERT INTO t4 VALUES (generate_series (1,10000), 'aaa');
+INSERT 0 10000
+```
+
+**Note:** The `INSERT` commands in all four sessions were started after the `SELECT` `pg_stat_statements_reset()` command in session 4 was run.
+
+The following shows the results from the `INSERT` commands in the four sessions. `RECORD 3` shows the results from session 1. `RECORD 2` shows the results from session 2. `RECORD 4` shows the results from session 3. `RECORD 5` shows the results from session 4.
+
+```
+edb=# SELECT query, rows, total_time, shared_blks_dirtied FROM pg_stat_statements;
+-[ RECORD 1 ]-------+--------------------------------------------------
+ query               | SELECT pg_stat_statements_reset();
+ rows                | 1
+ total_time          | 0.467
+ shared_blks_dirtied | 0
+-[ RECORD 2 ]-------+--------------------------------------------------
+ query               | INSERT INTO t2 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 31343.458
+ shared_blks_dirtied | 10003
+-[ RECORD 3 ]-------+--------------------------------------------------
+ query               | INSERT INTO t1 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 28407.435
+ shared_blks_dirtied | 10003
+-[ RECORD 4 ]-------+--------------------------------------------------
+ query               | INSERT INTO t3 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 52727.846
+ shared_blks_dirtied | 10003
+-[ RECORD 5 ]-------+--------------------------------------------------
+ query               | INSERT INTO t4 VALUES (generate_series (?,?), ?);
+ rows                | 10000
+ total_time          | 56063.697
+ shared_blks_dirtied | 10003
+```
+
+First note that the times of session 1 (28407.435) and session 2 (31343.458) are close to each other as they are both in the same resource group with `dirty_rate_limit` set to 6144, as compared to the times of session 3 (52727.846) and session 4 (56063.697), which are in the resource group with `dirty_rate_limit` set to 3072. The latter group has a slower dirty rate limit so the expected processing time is longer as is the case for sessions 3 and 4.
+
+The actual dirty rate for session 1 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 28407.435 ms, which yields *0.35212612 blocks per millisecond*.
+-  Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *352.12612 blocks per second*.
+- Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2885 kilobytes per second*.
+
+The actual dirty rate for session 2 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 31343.458 ms, which yields *0.31914156 blocks per millisecond*.
+-  Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *319.14156 blocks per second*.
+-  Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2614 kilobytes per second*.
+
+The combined dirty rate from session 1 (2885 kilobytes per second) and from session 2 (2614 kilobytes per second) yields 5499 kilobytes per second, which is near the set dirty rate limit of the resource group (6144 kilobytes per seconds).
+
+The actual dirty rate for session 3 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 52727.846 ms, which yields *0.18971001 blocks per millisecond*.
+-  Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *189.71001 blocks per second*.
+- Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *1554 kilobytes per second*.
+
+The actual dirty rate for session 4 is calculated as follows.
+
+- The number of blocks dirtied per millisecond (ms) is 10003 blocks / 56063.697 ms, which yields *0.17842205 blocks per millisecond*.
+- Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *178.42205 blocks per second*.
+-  Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *1462 kilobytes per second*.
+
+The combined dirty rate from session 3 (1554 kilobytes per second) and from session 4 (1462 kilobytes per second) yields 3016 kilobytes per second, which is near the set dirty rate limit of the resource group (3072 kilobytes per seconds).
+
+Thus, this demonstrates how EDB Resource Manager keeps the aggregate dirty rate of the active processes in its groups close to the dirty rate limit set for each group.

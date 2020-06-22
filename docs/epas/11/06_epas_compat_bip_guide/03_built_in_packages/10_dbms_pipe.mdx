@@ -1,0 +1,681 @@
+---
+
+title: "DBMS_PIPE"
+---
+
+<div id="dbms_pipe" class="registered_link"></div>
+
+The `DBMS_PIPE` package provides the capability to send messages through a pipe within or between sessions connected to the same database cluster.
+
+The procedures and functions available in the `DBMS_PIPE` package are listed in the following table:
+
+| Function/Procedure                                           | Return Type | Description                                                  |
+| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------ |
+| `CREATE_PIPE(`*`pipename`* `[,` *`maxpipesize`* `] [,` *`private`* `])` | `INTEGER`   | Explicitly create a private pipe if *`private`* is “true” (the default) or a public pipe if *`private`* is “false”. |
+| `NEXT_ITEM_TYPE`                                             | `INTEGER`   | Determine the data type of the next item in a received message. |
+| `PACK_MESSAGE(`*`item`*`)`                                   | n/a         | Place *`item`* in the session’s local message buffer.        |
+| `PURGE(`*pipename*`)`                                        | n/a         | Remove unreceived messages from the specified pipe.          |
+| `RECEIVE_MESSAGE(`*`pipename`* `[,` *`timeout`* `])`         | `INTEGER`   | Get a message from a specified pipe.                         |
+| `REMOVE_PIPE(`*`pipename`*`)`                                | `INTEGER`   | Delete an explicitly created pipe.                           |
+| `RESET_BUFFER`                                               | n/a         | Reset the local message buffer.                              |
+| `SEND_MESSAGE(`*`pipename`* `[,` *timeout* `] [,` *`maxpipesize`* `])` | `INTEGER`   | Send a message on a pipe.                                    |
+| `UNIQUE_SESSION_NAME`                                        | `VARCHAR2`  | Obtain a unique session name.                                |
+| `UNPACK_MESSAGE(`*`item`* `OUT)`                             | n/a         | Retrieve the next data item from a message into a type-compatible variable, *`item`*. |
+
+Pipes are categorized as implicit or explicit. An *implicit pipe* is created if a reference is made to a pipe name that was not previously created by the `CREATE_PIPE` function. For example, if the `SEND_MESSAGE` function is executed using a non-existent pipe name, a new implicit pipe is created with that name. An *explicit pipe* is created using the `CREATE_PIPE` function whereby the first parameter specifies the pipe name for the new pipe.
+
+Pipes are also categorized as private or public. A *private pipe* can only be accessed by the user who created the pipe. Even a superuser cannot access a private pipe that was created by another user. A *public pipe* can be accessed by any user who has access to the `DBMS_PIPE` package.
+
+A public pipe can only be created by using the `CREATE_PIPE` function with the third parameter set to `FALSE`. The `CREATE_PIPE` function can be used to create a private pipe by setting the third parameter to TRUE or by omitting the third parameter. All implicit pipes are private.
+
+The individual data items or “lines” of a message are first built-in a *local message buffer*, unique to the current session. The `PACK_MESSAGE` procedure builds the message in the session’s local message buffer. The `SEND_MESSAGE` function is then used to send the message through the pipe.
+
+Receipt of a message involves the reverse operation. The `RECEIVE_MESSAGE` function is used to get a message from the specified pipe. The message is written to the session’s local message buffer. The `UNPACK_MESSAGE` procedure is then used to transfer the message data items from the message buffer to program variables. If a pipe contains multiple messages, `RECEIVE_MESSAGE` gets the messages in *FIFO* (first-in-first-out) order.
+
+Each session maintains separate message buffers for messages created with the `PACK_MESSAGE` procedure and messages retrieved by the `RECEIVE_MESSAGE` function. Thus messages can be both built and received in the same session. However, if consecutive `RECEIVE_MESSAGE` calls are made, only the message from the last `RECEIVE_MESSAGE` call will be preserved in the local message buffer.
+
+## CREATE_PIPE
+
+The `CREATE_PIPE` function creates an explicit public pipe or an explicit private pipe with a specified name.
+
+> *`status`* `INTEGER CREATE_PIPE(`*`pipename`* `VARCHAR2`
+>
+>   `[,` *`maxpipesize`* `INTEGER ] [,` *`private`* `BOOLEAN ])`
+
+**Parameters**
+
+*`pipename`*
+
+> Name of the pipe.
+
+*`maxpipesize`*
+
+> Maximum capacity of the pipe in bytes. Default is 8192 bytes.
+
+*`private`*
+
+> Create a public pipe if set to `FALSE`. Create a private pipe if set to `TRUE`. This is the default.
+
+*`status`*
+
+> Status code returned by the operation. 0 indicates successful creation.
+
+**Examples**
+
+The following example creates a private pipe named messages:
+
+```
+DECLARE
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.CREATE_PIPE('messages');
+    DBMS_OUTPUT.PUT_LINE('CREATE_PIPE status: ' || v_status);
+END;
+CREATE_PIPE status: 0
+```
+
+The following example creates a public pipe named mailbox:
+
+```
+DECLARE
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.CREATE_PIPE('mailbox',8192,FALSE);
+    DBMS_OUTPUT.PUT_LINE('CREATE_PIPE status: ' || v_status);
+END;
+CREATE_PIPE status: 0
+```
+
+## NEXT_ITEM_TYPE
+
+The `NEXT_ITEM_TYPE` function returns an integer code identifying the data type of the next data item in a message that has been retrieved into the session’s local message buffer. As each item is moved off of the local message buffer with the `UNPACK_MESSAGE` procedure, the `NEXT_ITEM_TYPE` function will return the data type code for the next available item. A code of 0 is returned when there are no more items left in the message.
+
+> *`typecode`* `INTEGER NEXT_ITEM_TYPE`
+
+**Parameters**
+
+*`typecode`*
+
+> Code identifying the data type of the next data item as shown in [Table 7‑3‑1](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/11/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide.1.22.html#pID0E0J4E0HA).
+
+**Table 7‑3‑1 NEXT_ITEM_TYPE Data Type Codes**
+
+| Type Code | Data Type            |
+| --------- | -------------------- |
+| `0`       | `No more data items` |
+| `9`       | `NUMBER`             |
+| `11`      | `VARCHAR2`           |
+| `13`      | `DATE`               |
+| `23`      | `RAW`                |
+
+**Note**: The type codes list in the table are not compatible with Oracle databases. Oracle assigns a different numbering sequence to the data types.
+
+**Examples**
+
+The following example shows a pipe packed with a `NUMBER` item, a `VARCHAR2` item, a `DATE` item, and a `RAW` item. A second anonymous block then uses the `NEXT_ITEM_TYPE` function to display the type code of each item.
+
+```
+DECLARE
+    v_number        NUMBER := 123;
+    v_varchar       VARCHAR2(20) := 'Character data';
+    v_date          DATE := SYSDATE;
+    v_raw           RAW(4) := '21222324';
+    v_status        INTEGER;
+BEGIN
+    DBMS_PIPE.PACK_MESSAGE(v_number);
+    DBMS_PIPE.PACK_MESSAGE(v_varchar);
+    DBMS_PIPE.PACK_MESSAGE(v_date);
+    DBMS_PIPE.PACK_MESSAGE(v_raw);
+    v_status := DBMS_PIPE.SEND_MESSAGE('datatypes');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SQLERRM: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE);
+END;
+
+SEND_MESSAGE status: 0
+
+DECLARE
+    v_number        NUMBER;
+    v_varchar       VARCHAR2(20);
+    v_date          DATE;
+    v_timestamp     TIMESTAMP;
+    v_raw           RAW(4);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('datatypes');
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------');
+
+    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+    DBMS_OUTPUT.PUT_LINE('NEXT_ITEM_TYPE: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_number);
+    DBMS_OUTPUT.PUT_LINE('NUMBER Item   : ' || v_number);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------');
+
+    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+    DBMS_OUTPUT.PUT_LINE('NEXT_ITEM_TYPE: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_varchar);
+    DBMS_OUTPUT.PUT_LINE('VARCHAR2 Item : ' || v_varchar);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------');
+
+    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+    DBMS_OUTPUT.PUT_LINE('NEXT_ITEM_TYPE: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_date);
+    DBMS_OUTPUT.PUT_LINE('DATE Item     : ' || v_date);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------');
+
+    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+    DBMS_OUTPUT.PUT_LINE('NEXT_ITEM_TYPE: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_raw);
+    DBMS_OUTPUT.PUT_LINE('RAW Item      : ' || v_raw);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------');
+
+    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+    DBMS_OUTPUT.PUT_LINE('NEXT_ITEM_TYPE: ' || v_status);
+    DBMS_OUTPUT.PUT_LINE('---------------------------------');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SQLERRM: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE);
+END;
+
+RECEIVE_MESSAGE status: 0
+\----------------------------------
+NEXT_ITEM_TYPE: 9
+NUMBER Item   : 123
+\----------------------------------
+NEXT_ITEM_TYPE: 11
+VARCHAR2 Item : Character data
+\----------------------------------
+NEXT_ITEM_TYPE: 13
+DATE Item     : 02-OCT-07 11:11:43
+\----------------------------------
+NEXT_ITEM_TYPE: 23
+RAW Item      : 21222324
+\----------------------------------
+NEXT_ITEM_TYPE: 0
+```
+
+## PACK_MESSAGE
+
+The `PACK_MESSAGE` procedure places an item of data in the session’s local message buffer. `PACK_MESSAGE` must be executed at least once before issuing a `SEND_MESSAGE` call.
+
+> `PACK_MESSAGE(`*item* `{ DATE | NUMBER | VARCHAR2 | RAW })`
+
+Use the `UNPACK_MESSAGE` procedure to obtain data items once the message is retrieved using a `RECEIVE_MESSAGE` call.
+
+**Parameters**
+
+*`item`*
+
+> An expression evaluating to any of the acceptable parameter data types. The value is added to the session’s local message buffer.
+
+
+
+## PURGE
+
+The `PURGE` procedure removes the unreceived messages from a specified implicit pipe.
+
+> `PURGE(`*`pipename`* `VARCHAR2)`
+
+Use the `REMOVE_PIPE` function to delete an explicit pipe.
+
+`Parameters`
+
+*`pipename`*
+
+> Name of the pipe.
+
+**Examples**
+
+Two messages are sent on a pipe:
+
+```
+DECLARE
+    v_status        INTEGER;
+BEGIN
+    DBMS_PIPE.PACK_MESSAGE('Message #1');
+    v_status := DBMS_PIPE.SEND_MESSAGE('pipe');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+
+    DBMS_PIPE.PACK_MESSAGE('Message #2');
+    v_status := DBMS_PIPE.SEND_MESSAGE('pipe');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+END;
+
+SEND_MESSAGE status: 0
+SEND_MESSAGE status: 0
+```
+
+Receive the first message and unpack it:
+
+```
+DECLARE
+    v_item          VARCHAR2(80);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('pipe',1);
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_item);
+    DBMS_OUTPUT.PUT_LINE('Item: ' || v_item);
+END;
+
+RECEIVE_MESSAGE status: 0
+Item: Message #1
+```
+
+Purge the pipe:
+
+> `EXEC DBMS_PIPE.PURGE('pipe');`
+
+Try to retrieve the next message. The `RECEIVE_MESSAGE` call returns status code 1 indicating it timed out because no message was available.
+
+```
+DECLARE
+    v_item          VARCHAR2(80);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('pipe',1);
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+END;
+
+RECEIVE_MESSAGE status: 1
+```
+
+## RECEIVE_MESSAGE
+
+The `RECEIVE_MESSAGE` function obtains a message from a specified pipe.
+
+*`status`* `INTEGER RECEIVE_MESSAGE(`*`pipename`* `VARCHAR2`
+
+  `[,` *`timeout`* `INTEGER ])`
+
+**Parameters**
+
+*`pipename`*
+
+> Name of the pipe.
+
+*`timeout`*
+
+> Wait time (seconds). Default is 86400000 (1000 days).
+
+*`status`*
+
+> Status code returned by the operation.
+
+The possible status codes are:
+
+**Table 7‑3‑2 RECEIVE_MESSAGE Status Codes**
+
+| Status Code | Description                       |
+| ----------- | --------------------------------- |
+| 0           | Success                           |
+| 1           | Time out                          |
+| 2           | Message too large .for the buffer |
+
+## REMOVE_PIPE
+
+The `REMOVE_PIPE` function deletes an explicit private or explicit public pipe.
+
+*`status`* `INTEGER REMOVE_PIPE(`*`pipename`* `VARCHAR2)`
+
+Use the `REMOVE_PIPE` function to delete explicitly created pipes – i.e., pipes created with the `CREATE_PIPE` function.
+
+**Parameters**
+
+*`pipename`*
+
+> Name of the pipe.
+
+*`status`*
+
+> Status code returned by the operation. A status code of 0 is returned even if the named pipe is non-existent.
+
+**Examples**
+
+Two messages are sent on a pipe:
+
+```
+DECLARE
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.CREATE_PIPE('pipe');
+    DBMS_OUTPUT.PUT_LINE('CREATE_PIPE status : ' || v_status);
+
+	DBMS_PIPE.PACK_MESSAGE('Message #1');
+    v_status := DBMS_PIPE.SEND_MESSAGE('pipe');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+
+    DBMS_PIPE.PACK_MESSAGE('Message #2');
+    v_status := DBMS_PIPE.SEND_MESSAGE('pipe');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+END;
+
+CREATE_PIPE status : 0
+SEND_MESSAGE status: 0
+SEND_MESSAGE status: 0
+```
+
+Receive the first message and unpack it:
+
+```
+DECLARE
+    v_item          VARCHAR2(80);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('pipe',1);
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_item);
+    DBMS_OUTPUT.PUT_LINE('Item: ' || v_item);
+END;
+
+RECEIVE_MESSAGE status: 0
+Item: Message #1
+```
+
+Remove the pipe:
+
+```
+SELECT DBMS_PIPE.REMOVE_PIPE('pipe') FROM DUAL;
+
+remove_pipe
+\-------------
+           0
+(1 row)
+```
+
+Try to retrieve the next message. The `RECEIVE_MESSAGE` call returns status code 1 indicating it timed out because the pipe had been deleted.
+
+```
+DECLARE
+    v_item          VARCHAR2(80);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('pipe',1);
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+END;
+
+RECEIVE_MESSAGE status: 1
+```
+
+## RESET_BUFFER
+
+The `RESET_BUFFER` procedure resets a “pointer” to the session’s local message buffer back to the beginning of the buffer. This has the effect of causing subsequent `PACK_MESSAGE` calls to overwrite any data items that existed in the message buffer prior to the `RESET_BUFFER` call.
+
+> `RESET_BUFFER`
+
+**Examples**
+
+A message to John is written to the local message buffer. It is replaced by a message to Bob by calling `RESET_BUFFER`. The message is sent on the pipe.
+
+```
+DECLARE
+    v_status        INTEGER;
+BEGIN
+    DBMS_PIPE.PACK_MESSAGE('Hi, John');
+    DBMS_PIPE.PACK_MESSAGE('Can you attend a meeting at 3:00, today?');
+    DBMS_PIPE.PACK_MESSAGE('If not, is tomorrow at 8:30 ok with you?');
+    DBMS_PIPE.RESET_BUFFER;
+    DBMS_PIPE.PACK_MESSAGE('Hi, Bob');
+    DBMS_PIPE.PACK_MESSAGE('Can you attend a meeting at 9:30, tomorrow?');
+    v_status := DBMS_PIPE.SEND_MESSAGE('pipe');
+    DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE status: ' || v_status);
+END;
+
+SEND_MESSAGE status: 0
+```
+
+The message to Bob is in the received message.
+
+```
+DECLARE
+    v_item          VARCHAR2(80);
+    v_status        INTEGER;
+BEGIN
+    v_status := DBMS_PIPE.RECEIVE_MESSAGE('pipe',1);
+    DBMS_OUTPUT.PUT_LINE('RECEIVE_MESSAGE status: ' || v_status);
+    DBMS_PIPE.UNPACK_MESSAGE(v_item);
+    DBMS_OUTPUT.PUT_LINE('Item: ' || v_item);
+    DBMS_PIPE.UNPACK_MESSAGE(v_item);
+    DBMS_OUTPUT.PUT_LINE('Item: ' || v_item);
+END;
+
+RECEIVE_MESSAGE status: 0
+Item: Hi, Bob
+Item: Can you attend a meeting at 9:30, tomorrow?
+```
+
+
+
+## SEND_MESSAGE
+
+The `SEND_MESSAGE` function sends a message from the session’s local message buffer to the specified pipe.
+
+> *`status`* `SEND_MESSAGE(`*`pipename`* `VARCHAR2 [,` *`timeout`* ~
+>
+>   `[,` *`maxpipesize`* `INTEGER ])`
+
+**Parameters**
+
+*`pipename`*
+
+> Name of the pipe.
+
+*`timeout`*
+
+> Wait time (seconds). Default is 86400000 (1000 days).
+
+*`maxpipesize`*
+
+> Maximum capacity of the pipe in bytes. Default is 8192 bytes.
+
+*`status`*
+
+> Status code returned by the operation.
+
+The possible status codes are:
+
+**Table 7‑3‑3 SEND_MESSAGE Status Codes**
+
+| Status Code | Description          |
+| ----------- | -------------------- |
+| 0           | Success              |
+| 1           | Time out             |
+| 3           | Function interrupted |
+
+## UNIQUE_SESSION_NAME
+
+The `UNIQUE_`
+
+`SESSION_NAME` function returns a name, unique to the current session.
+
+*`name`* `VARCHAR2 UNIQUE_SESSION_NAME`
+
+**Parameters**
+
+*`name`*
+
+> Unique session name.
+
+`Examples`
+
+The following anonymous block retrieves and displays a unique session name.
+
+```
+DECLARE
+    v_session       VARCHAR2(30);
+BEGIN
+    v_session := DBMS_PIPE.UNIQUE_SESSION_NAME;
+    DBMS_OUTPUT.PUT_LINE('Session Name: ' || v_session);
+END;
+
+Session Name: PG$PIPE$5$2752
+```
+
+## UNPACK_MESSAGE
+
+The `UNPACK_MESSAGE` procedure copies the data items of a message from the local message buffer to a specified program variable. The message must be placed in the local message buffer with the `RECEIVE_MESSAGE` function before using `UNPACK_MESSAGE`.
+
+> `UNPACK_MESSAGE(item OUT { DATE | NUMBER | VARCHAR2 | RAW })`
+
+**Parameters**
+
+*`item`*
+
+> Type-compatible variable that receives a data item from the local message buffer.
+
+
+
+## Comprehensive Example
+
+The following example uses a pipe as a “mailbox”. The procedures to create the mailbox, add a multi-item message to the mailbox (up to three items), and display the full contents of the mailbox are enclosed in a package named, `mailbox`.
+
+```
+CREATE OR REPLACE PACKAGE mailbox
+IS
+    PROCEDURE create_mailbox;
+    PROCEDURE add_message (
+        p_mailbox   VARCHAR2,
+        p_item_1    VARCHAR2,
+        p_item_2    VARCHAR2 DEFAULT 'END',
+        p_item_3    VARCHAR2 DEFAULT 'END'
+    );
+    PROCEDURE empty_mailbox (
+        p_mailbox   VARCHAR2,
+        p_waittime  INTEGER DEFAULT 10
+    );
+END mailbox;
+
+CREATE OR REPLACE PACKAGE BODY mailbox
+IS
+    PROCEDURE create_mailbox
+    IS
+        v_mailbox   VARCHAR2(30);
+        v_status    INTEGER;
+    BEGIN
+        v_mailbox := DBMS_PIPE.UNIQUE_SESSION_NAME;
+        v_status := DBMS_PIPE.CREATE_PIPE(v_mailbox,1000,FALSE);
+        IF v_status = 0 THEN
+            DBMS_OUTPUT.PUT_LINE('Created mailbox: ' || v_mailbox);
+        ELSE
+            DBMS_OUTPUT.PUT_LINE('CREATE_PIPE failed - status: ' ||
+                v_status);
+        END IF;
+    END create_mailbox;
+    PROCEDURE add_message (
+        p_mailbox   VARCHAR2,
+        p_item_1    VARCHAR2,
+        p_item_2    VARCHAR2 DEFAULT 'END',
+        p_item_3    VARCHAR2 DEFAULT 'END'
+    )
+    IS
+        v_item_cnt  INTEGER := 0;
+        v_status    INTEGER;
+    BEGIN
+        DBMS_PIPE.PACK_MESSAGE(p_item_1);
+        v_item_cnt := 1;
+        IF p_item_2 != 'END' THEN
+            DBMS_PIPE.PACK_MESSAGE(p_item_2);
+            v_item_cnt := v_item_cnt + 1;
+        END IF;
+        IF p_item_3 != 'END' THEN
+            DBMS_PIPE.PACK_MESSAGE(p_item_3);
+            v_item_cnt := v_item_cnt + 1;
+        END IF;
+        v_status := DBMS_PIPE.SEND_MESSAGE(p_mailbox);
+        IF v_status = 0 THEN
+            DBMS_OUTPUT.PUT_LINE('Added message with ' || v_item_cnt ||
+                ' item(s) to mailbox ' || p_mailbox);
+        ELSE
+            DBMS_OUTPUT.PUT_LINE('SEND_MESSAGE in add_message failed - ' ||
+                'status: ' || v_status);
+        END IF;
+    END add_message;
+
+    PROCEDURE empty_mailbox (
+        p_mailbox   VARCHAR2,
+        p_waittime  INTEGER DEFAULT 10
+    )
+    IS
+        v_msgno     INTEGER DEFAULT 0;
+        v_itemno    INTEGER DEFAULT 0;
+        v_item      VARCHAR2(100);
+        v_status    INTEGER;
+    BEGIN
+        v_status := DBMS_PIPE.RECEIVE_MESSAGE(p_mailbox,p_waittime);
+        WHILE v_status = 0 LOOP
+            v_msgno := v_msgno + 1;
+            DBMS_OUTPUT.PUT_LINE('****** Start message #' || v_msgno ||
+                ' ******');
+            BEGIN
+                LOOP
+                    v_status := DBMS_PIPE.NEXT_ITEM_TYPE;
+                    EXIT WHEN v_status = 0;
+                    DBMS_PIPE.UNPACK_MESSAGE(v_item);
+                    v_itemno := v_itemno + 1;
+                    DBMS_OUTPUT.PUT_LINE('Item #' || v_itemno || ': ' ||
+                        v_item);
+                END LOOP;
+                DBMS_OUTPUT.PUT_LINE('******* End message #' || v_msgno ||
+                    ' *******');
+                DBMS_OUTPUT.PUT_LINE('*');
+                v_itemno := 0;
+                v_status := DBMS_PIPE.RECEIVE_MESSAGE(p_mailbox,1);
+            END;
+        END LOOP;
+        DBMS_OUTPUT.PUT_LINE('Number of messages received: ' || v_msgno);
+        v_status := DBMS_PIPE.REMOVE_PIPE(p_mailbox);
+        IF v_status = 0 THEN
+            DBMS_OUTPUT.PUT_LINE('Deleted mailbox ' || p_mailbox);
+        ELSE
+            DBMS_OUTPUT.PUT_LINE('Could not delete mailbox - status: '
+                || v_status);
+        END IF;
+    END empty_mailbox;
+END mailbox;
+```
+
+The following demonstrates the execution of the procedures in mailbox. The first procedure creates a public pipe using a name generated by the `UNIQUE_SESSION_NAME` function.
+
+```
+EXEC mailbox.create_mailbox;
+
+Created mailbox: PG$PIPE$13$3940
+```
+
+Using the mailbox name, any user in the same database with access to the `mailbox` package and `DBMS_PIPE` package can add messages:
+
+```
+EXEC mailbox.add_message('PG$PIPE$13$3940','Hi, John','Can you attend a meeting at 3:00, today?','-- Mary');
+
+Added message with 3 item(s) to mailbox PG$PIPE$13$3940
+
+EXEC mailbox.add_message('PG$PIPE$13$3940','Don''t forget to submit your report','Thanks,','-- Joe');
+
+Added message with 3 item(s) to mailbox PG$PIPE$13$3940
+```
+
+Finally, the contents of the mailbox can be emptied:
+
+```
+EXEC mailbox.empty_mailbox('PG$PIPE$13$3940');
+
+****** Start message #1 ******
+Item #1: Hi, John
+Item #2: Can you attend a meeting at 3:00, today?
+Item #3: -- Mary
+******* End message #1 *******
+*
+****** Start message #2 ******
+Item #1: Don't forget to submit your report
+Item #2: Thanks,
+Item #3: Joe
+******* End message #2 *******
+*
+Number of messages received: 2
+Deleted mailbox PG$PIPE$13$3940
+```
+

@@ -1,0 +1,497 @@
+---
+title: Triggers
+---
+
+
+This chapter describes *triggers* in Advanced Server. As with procedures and functions, triggers are written in the SPL language.
+
+## Overview
+
+A trigger is a named SPL code block that is associated with a table and stored in the database. When a specified event occurs on the associated table, the SPL code block is executed. The trigger is said to be *fired* when the code block is executed.
+
+The event that causes a trigger to fire can be any combination of an insert, update, or deletion carried out on the table, either directly or indirectly. If the table is the object of a SQL INSERT, UPDATE, or DELETE command the trigger is directly fired assuming that the corresponding insert, update, or deletion event is defined as a *triggering event*. The events that fire the trigger are defined in the CREATE TRIGGER command.
+
+A trigger can be fired indirectly if a triggering event occurs on the table as a result of an event initiated on another table. For example, if a trigger is defined on a table containing a foreign key defined with the ON DELETE CASCADE clause and a row in the parent table is deleted, all children of the parent would be deleted as well. If deletion is a triggering event on the child table, deletion of the children will cause the trigger to fire.
+
+## Types of Triggers
+
+Advanced Server supports both *row-level* and *statement-level* triggers. A row-level trigger fires once for each row that is affected by a triggering event. For example, if deletion is defined as a triggering event on a table and a single DELETE command is issued that deletes five rows from the table, then the trigger will fire five times, once for each row.
+
+In contrast, a statement-level trigger fires once per triggering statement regardless of the number of rows affected by the triggering event. In the prior example of a single DELETE command deleting five rows, a statement-level trigger would fire only once.
+
+The sequence of actions can be defined regarding whether the trigger code block is executed before or after the triggering statement, itself, in the case of statement-level triggers; or before or after each row is affected by the triggering statement in the case of row-level triggers.
+
+In a *before* row-level trigger, the trigger code block is executed before the triggering action is carried out on each affected row. In a *before* statement-level trigger, the trigger code block is executed before the action of the triggering statement is carried out.
+
+In an *after* row-level trigger, the trigger code block is executed after the triggering action is carried out on each affected row. In an *after* statement-level trigger, the trigger code block is executed after the action of the triggering statement is carried out.
+
+## Creating Triggers
+
+The CREATE TRIGGER command defines and names a trigger that will be stored in the database.
+
+Name
+
+CREATE TRIGGER -- define a new trigger
+
+Synopsis
+
+CREATE \[ OR REPLACE \] TRIGGER name
+
+{ BEFORE | AFTER | INSTEAD OF }
+
+{ INSERT | UPDATE | DELETE }
+
+\[ OR { INSERT | UPDATE | DELETE } \] \[, ...\]
+
+ON table
+
+\[ REFERENCING { OLD AS *old* | NEW AS *new* } ...\]
+
+\[ FOR EACH ROW \]
+
+\[ WHEN *condition* \]
+
+\[ DECLARE
+
+declaration; \[, ...\] \]
+
+BEGIN
+
+statement; \[, ...\]
+
+\[ EXCEPTION
+
+{ WHEN *exception* \[ OR *exception* \] \[...\] THEN
+
+*statement*; \[, ...\] } \[, ...\]
+
+\]
+
+END
+
+Description
+
+CREATE TRIGGER defines a new trigger. CREATE OR REPLACE TRIGGER will either create a new trigger, or replace an existing definition.
+
+If you are using the CREATE TRIGGER keywords to create a new trigger, the name of the new trigger must not match any existing trigger defined on the same table. New triggers will be created in the same schema as the table on which the triggering event is defined.
+
+If you are updating the definition of an existing trigger, use the CREATE OR REPLACE TRIGGER keywords.
+
+When you use syntax compatible with Oracle databases to create a trigger, the trigger runs as a SECURITY DEFINER function.
+
+Parameters
+
+*name*
+
+The name of the trigger to create.
+
+BEFORE | AFTER
+
+Determines whether the trigger is fired before or after the triggering event.
+
+INSERT | UPDATE | DELETE
+
+Defines the triggering event.
+
+*table*
+
+The name of the table on which the triggering event occurs.
+
+*condition*
+
+> *condition* is a Boolean expression that determines if the trigger will actually be executed; if *condition* evaluates to TRUE, the trigger will fire.
+>
+> If the trigger definition includes the FOR EACH ROW keywords, the WHEN clause can refer to columns of the old and/or new row values by writing OLD.*column\_name* or NEW.*column\_name* respectively. INSERT triggers cannot refer to OLD and DELETE triggers cannot refer to NEW.
+>
+> If the trigger includes the INSTEAD OF keywords, it may not include a WHEN clause.
+>
+> WHEN clauses cannot contain subqueries.
+
+REFERENCING { OLD AS *old* | NEW AS *new* } ...
+
+REFERENCING clause to reference old rows and new rows, but restricted in that *old* may only be replaced by an identifier named old or any equivalent that is saved in all lowercase (for example, REFERENCING OLD AS old, REFERENCING OLD AS OLD, or REFERENCING OLD AS "old"). Also, *new* may only be replaced by an identifier named new or any equivalent that is saved in all lowercase (for example, REFERENCING NEW AS new, REFERENCING NEW AS NEW, or REFERENCING NEW AS "new").
+
+Either one, or both phrases OLD AS *old* and NEW AS *new* may be specified in the REFERENCING clause (for example, REFERENCING NEW AS New OLD AS Old).
+
+See Section <span class="underline">3.4</span> for information on how these identifiers are used as pseudo-record names to reference old rows and new rows.
+
+This clause is not compatible with Oracle databases in that identifiers other than old or new may not be used.
+
+FOR EACH ROW
+
+Determines whether the trigger should be fired once for every row affected by the triggering event, or just once per SQL statement. If specified, the trigger is fired once for every affected row (row-level trigger), otherwise the trigger is a statement-level trigger.
+
+*declaration*
+
+A variable, type, REF CURSOR, or subprogram declaration. If subprogram declarations are included, they must be declared after all other variable, type, and REF CURSOR declarations.
+
+*statement*
+
+An SPL program statement. Note that a DECLARE - BEGIN - END block is considered an SPL statement unto itself. Thus, the trigger body may contain nested blocks.
+
+*exception*
+
+An exception condition name such as NO\_DATA\_FOUND, OTHERS, etc.
+
+## Trigger Variables
+
+In the trigger code block, several special variables are available for use.
+
+NEW
+
+NEW is a pseudo-record name that refers to the new table row for insert and update operations in row-level triggers. This variable is not applicable in statement-level triggers and in delete operations of row-level triggers.
+
+Its usage is: :NEW.*column* where *column* is the name of a column in the table on which the trigger is defined.
+
+The initial content of :NEW.*column* is the value in the named column of the new row to be inserted or of the new row that is to replace the old one when used in a before row-level trigger. When used in an after row-level trigger, this value has already been stored in the table since the action has already occurred on the affected row.
+
+In the trigger code block, :NEW.*column* can be used like any other variable. If a value is assigned to :NEW.*column*, in the code block of a before row-level trigger, the assigned value will be used in the new inserted or updated row.
+
+OLD
+
+OLD is a pseudo-record name that refers to the old table row for update and delete operations in row-level triggers. This variable is not applicable in statement-level triggers and in insert operations of row-level triggers.
+
+Its usage is: :OLD.*column* where *column* is the name of a column in the table on which the trigger is defined.
+
+The initial content of :OLD.*column* is the value in the named column of the row to be deleted or of the old row that is to be replaced by the new one when used in a before row-level trigger. When used in an after row-level trigger, this value is no longer stored in the table since the action has already occurred on the affected row.
+
+In the trigger code block, :OLD.*column* can be used like any other variable. Assigning a value to :OLD.*column*, has no effect on the action of the trigger.
+
+INSERTING
+
+INSERTING is a conditional expression that returns true if an insert operation fired the trigger, otherwise it returns false.
+
+UPDATING
+
+UPDATING is a conditional expression that returns true if an update operation fired the trigger, otherwise it returns false.
+
+DELETING
+
+DELETING is a conditional expression that returns true if a delete operation fired the trigger, otherwise it returns false.
+
+## Transactions and Exceptions
+
+A trigger is always executed as part of the same transaction within which the triggering statement is executing. When no exceptions occur within the trigger code block, the effects of any DML commands within the trigger are committed if and only if the transaction containing the triggering statement is committed. Therefore, if the transaction is rolled back, the effects of any DML commands within the trigger are also rolled back.
+
+If an exception does occur within the trigger code block, but it is caught and handled in an exception section, the effects of any DML commands within the trigger are still rolled back nonetheless. The triggering statement itself, however, is not rolled back unless the application forces a roll back of the encapsulating transaction.
+
+If an unhandled exception occurs within the trigger code block, the transaction that encapsulates the trigger is aborted and rolled back. Therefore the effects of any DML commands within the trigger and the triggering statement, itself are all rolled back.
+
+## Trigger Examples
+
+The following sections illustrate an example of each type of trigger.
+
+### Before Statement-Level Trigger
+
+The following is an example of a simple before statement-level trigger that displays a message prior to an insert operation on the emp table.
+
+CREATE OR REPLACE TRIGGER emp\_alert\_trig
+
+BEFORE INSERT ON emp
+
+BEGIN
+
+DBMS\_OUTPUT.PUT\_LINE('New employees are about to be added');
+
+END;
+
+The following INSERT is constructed so that several new rows are inserted upon a single execution of the command. For each row that has an employee id between 7900 and 7999, a new row is inserted with an employee id incremented by 1000. The following are the results of executing the command when three new rows are inserted.
+
+INSERT INTO emp (empno, ename, deptno) SELECT empno + 1000, ename, 40
+
+FROM emp WHERE empno BETWEEN 7900 AND 7999;
+
+New employees are about to be added
+
+SELECT empno, ename, deptno FROM emp WHERE empno BETWEEN 8900 AND 8999;
+
+EMPNO ENAME DEPTNO
+
+\---------- ---------- ----------
+
+8900 JAMES 40
+
+8902 FORD 40
+
+8934 MILLER 40
+
+The message, New employees are about to be added, is displayed once by the firing of the trigger even though the result is the addition of three new rows.
+
+### After Statement-Level Trigger
+
+The following is an example of an after statement-level trigger. Whenever an insert, update, or delete operation occurs on the emp table, a row is added to the empauditlog table recording the date, user, and action.
+
+CREATE TABLE empauditlog (
+
+audit\_date DATE,
+
+audit\_user VARCHAR2(20),
+
+audit\_desc VARCHAR2(20)
+
+);
+
+CREATE OR REPLACE TRIGGER emp\_audit\_trig
+
+AFTER INSERT OR UPDATE OR DELETE ON emp
+
+DECLARE
+
+v\_action VARCHAR2(20);
+
+BEGIN
+
+IF INSERTING THEN
+
+v\_action := 'Added employee(s)';
+
+ELSIF UPDATING THEN
+
+v\_action := 'Updated employee(s)';
+
+ELSIF DELETING THEN
+
+v\_action := 'Deleted employee(s)';
+
+END IF;
+
+INSERT INTO empauditlog VALUES (SYSDATE, USER,
+
+v\_action);
+
+END;
+
+In the following sequence of commands, two rows are inserted into the emp table using two INSERT commands. The sal and comm columns of both rows are updated with one UPDATE command. Finally, both rows are deleted with one DELETE command.
+
+INSERT INTO emp VALUES (9001,'SMITH','ANALYST',7782,SYSDATE,NULL,NULL,10);
+
+INSERT INTO emp VALUES (9002,'JONES','CLERK',7782,SYSDATE,NULL,NULL,10);
+
+UPDATE emp SET sal = 4000.00, comm = 1200.00 WHERE empno IN (9001, 9002);
+
+DELETE FROM emp WHERE empno IN (9001, 9002);
+
+SELECT TO\_CHAR(AUDIT\_DATE,'DD-MON-YY HH24:MI:SS') AS "AUDIT DATE",
+
+audit\_user, audit\_desc FROM empauditlog ORDER BY 1 ASC;
+
+AUDIT DATE AUDIT\_USER AUDIT\_DESC
+
+\------------------ -------------------- --------------------
+
+31-MAR-05 14:59:48 SYSTEM Added employee(s)
+
+31-MAR-05 15:00:07 SYSTEM Added employee(s)
+
+31-MAR-05 15:00:19 SYSTEM Updated employee(s)
+
+31-MAR-05 15:00:34 SYSTEM Deleted employee(s)
+
+The contents of the empauditlog table show how many times the trigger was fired - once each for the two inserts, once for the update (even though two rows were changed) and once for the deletion (even though two rows were deleted).
+
+### Before Row-Level Trigger
+
+The following example is a before row-level trigger that calculates the commission of every new employee belonging to department 30 that is inserted into the emp table.
+
+CREATE OR REPLACE TRIGGER emp\_comm\_trig
+
+BEFORE INSERT ON emp
+
+FOR EACH ROW
+
+BEGIN
+
+IF :NEW.deptno = 30 THEN
+
+:NEW.comm := :NEW.sal \* .4;
+
+END IF;
+
+END;
+
+The listing following the addition of the two employees shows that the trigger computed their commissions and inserted it as part of the new employee rows.
+
+INSERT INTO emp VALUES (9005,'ROBERS','SALESMAN',7782,SYSDATE,3000.00,NULL,30);
+
+INSERT INTO emp VALUES (9006,'ALLEN','SALESMAN',7782,SYSDATE,4500.00,NULL,30);
+
+SELECT \* FROM emp WHERE empno IN (9005, 9006);
+
+EMPNO ENAME JOB MGR HIREDATE SAL COMM DEPTNO
+
+\---------- ---------- --------- ---------- --------- ---------- ---------- ----------
+
+9005 ROBERS SALESMAN 7782 01-APR-05 3000 1200 30
+
+9006 ALLEN SALESMAN 7782 01-APR-05 4500 1800 30
+
+### After Row-Level Trigger
+
+The following example is an after row-level trigger. When a new employee row is inserted, the trigger adds a new row to the jobhist table for that employee. When an existing employee is updated, the trigger sets the enddate column of the latest jobhist row (assumed to be the one with a null enddate) to the current date and inserts a new jobhist row with the employee’s new information.
+
+Finally, trigger adds a row to the empchglog table with a description of the action.
+
+CREATE TABLE empchglog (
+
+chg\_date DATE,
+
+chg\_desc VARCHAR2(30)
+
+);
+
+CREATE OR REPLACE TRIGGER emp\_chg\_trig
+
+AFTER INSERT OR UPDATE OR DELETE ON emp
+
+FOR EACH ROW
+
+DECLARE
+
+v\_empno emp.empno%TYPE;
+
+v\_deptno emp.deptno%TYPE;
+
+v\_dname dept.dname%TYPE;
+
+v\_action VARCHAR2(7);
+
+v\_chgdesc jobhist.chgdesc%TYPE;
+
+BEGIN
+
+IF INSERTING THEN
+
+v\_action := 'Added';
+
+v\_empno := :NEW.empno;
+
+v\_deptno := :NEW.deptno;
+
+INSERT INTO jobhist VALUES (:NEW.empno, SYSDATE, NULL,
+
+:NEW.job, :NEW.sal, :NEW.comm, :NEW.deptno, 'New Hire');
+
+ELSIF UPDATING THEN
+
+v\_action := 'Updated';
+
+v\_empno := :NEW.empno;
+
+v\_deptno := :NEW.deptno;
+
+v\_chgdesc := '';
+
+IF NVL(:OLD.ename, '-null-') \!= NVL(:NEW.ename, '-null-') THEN
+
+v\_chgdesc := v\_chgdesc || 'name, ';
+
+END IF;
+
+IF NVL(:OLD.job, '-null-') \!= NVL(:NEW.job, '-null-') THEN
+
+v\_chgdesc := v\_chgdesc || 'job, ';
+
+END IF;
+
+IF NVL(:OLD.sal, -1) \!= NVL(:NEW.sal, -1) THEN
+
+v\_chgdesc := v\_chgdesc || 'salary, ';
+
+END IF;
+
+IF NVL(:OLD.comm, -1) \!= NVL(:NEW.comm, -1) THEN
+
+v\_chgdesc := v\_chgdesc || 'commission, ';
+
+END IF;
+
+IF NVL(:OLD.deptno, -1) \!= NVL(:NEW.deptno, -1) THEN
+
+v\_chgdesc := v\_chgdesc || 'department, ';
+
+END IF;
+
+v\_chgdesc := 'Changed ' || RTRIM(v\_chgdesc, ', ');
+
+UPDATE jobhist SET enddate = SYSDATE WHERE empno = :OLD.empno
+
+AND enddate IS NULL;
+
+INSERT INTO jobhist VALUES (:NEW.empno, SYSDATE, NULL,
+
+:NEW.job, :NEW.sal, :NEW.comm, :NEW.deptno, v\_chgdesc);
+
+ELSIF DELETING THEN
+
+v\_action := 'Deleted';
+
+v\_empno := :OLD.empno;
+
+v\_deptno := :OLD.deptno;
+
+END IF;
+
+INSERT INTO empchglog VALUES (SYSDATE,
+
+v\_action || ' employee \# ' || v\_empno);
+
+END;
+
+In the first sequence of commands shown below, two employees are added using two separate INSERT commands and then both are updated using a single UPDATE command. The contents of the jobhist table shows the action of the trigger for each affected row - two new hire entries for the two new employees and two changed commission records for the updated commissions on the two employees. The empchglog table also shows the trigger was fired a total of four times, once for each action on the two rows.
+
+INSERT INTO emp VALUES (9003,'PETERS','ANALYST',7782,SYSDATE,5000.00,NULL,40);
+
+INSERT INTO emp VALUES (9004,'AIKENS','ANALYST',7782,SYSDATE,4500.00,NULL,40);
+
+UPDATE emp SET comm = sal \* 1.1 WHERE empno IN (9003, 9004);
+
+SELECT \* FROM jobhist WHERE empno IN (9003, 9004);
+
+EMPNO STARTDATE ENDDATE JOB SAL COMM DEPTNO CHGDESC
+
+\---------- --------- --------- --------- ---------- ---------- ---------- -------------
+
+9003 31-MAR-05 31-MAR-05 ANALYST 5000 40 New Hire
+
+9004 31-MAR-05 31-MAR-05 ANALYST 4500 40 New Hire
+
+9003 31-MAR-05 ANALYST 5000 5500 40 Changed commission
+
+9004 31-MAR-05 ANALYST 4500 4950 40 Changed commission
+
+SELECT \* FROM empchglog;
+
+CHG\_DATE CHG\_DESC
+
+\--------- ------------------------------
+
+31-MAR-05 Added employee \# 9003
+
+31-MAR-05 Added employee \# 9004
+
+31-MAR-05 Updated employee \# 9003
+
+31-MAR-05 Updated employee \# 9004
+
+Finally, both employees are deleted with a single DELETE command. The empchglog table now shows the trigger was fired twice, once for each deleted employee.
+
+DELETE FROM emp WHERE empno IN (9003, 9004);
+
+SELECT \* FROM empchglog;
+
+CHG\_DATE CHG\_DESC
+
+\--------- ------------------------------
+
+31-MAR-05 Added employee \# 9003
+
+31-MAR-05 Added employee \# 9004
+
+31-MAR-05 Updated employee \# 9003
+
+31-MAR-05 Updated employee \# 9004
+
+31-MAR-05 Deleted employee \# 9003
+
+31-MAR-05 Deleted employee \# 9004
+

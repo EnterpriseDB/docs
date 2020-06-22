@@ -1,0 +1,149 @@
+---
+
+title: "Example - Executing a Query With a Known Number of Placeholders"
+---
+
+<div id="example _executing_a_query_with_a_known_number_of_placeholders" class="registered_link"></div>
+
+This example demonstrates how to execute a *query* with a known number of input parameters, and with a known number of columns in the result set. This method uses the `PREPARE` statement to parse and plan a query, before opening a cursor and iterating through the result set.
+
+```
+/***********************************************************/
+
+\#include <stdio.h>
+\#include <string.h>
+\#include <stdlib.h>
+\#include <stdbool.h>
+\#include <sqlca.h>
+
+static void handle_error(void);
+
+int main(int argc, char *argv[])
+{
+  VARCHAR  empno[10];
+  VARCHAR  ename[20];
+
+  EXEC SQL WHENEVER SQLERROR DO handle_error();
+
+  EXEC SQL CONNECT :argv[1];
+
+  EXEC SQL PREPARE queryHandle
+    FROM "SELECT empno, ename FROM emp WHERE deptno = ?";
+
+  EXEC SQL DECLARE empCursor CURSOR FOR queryHandle;
+
+  EXEC SQL OPEN empCursor USING :argv[2];
+
+  EXEC SQL WHENEVER NOT FOUND DO break;
+
+  while(true)
+  {
+
+​    EXEC SQL FETCH empCursor INTO :empno, :ename;
+
+​    printf("%-10s %s\n", empno.arr, ename.arr);
+  }
+
+  EXEC SQL CLOSE empCursor;
+
+  EXEC SQL COMMIT RELEASE;
+
+  exit(EXIT_SUCCESS);
+}
+
+static void handle_error(void)
+{
+  printf("%s\n", sqlca.sqlerrm.sqlerrmc);
+
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL ROLLBACK RELEASE;
+
+  exit(EXIT_FAILURE);
+}
+
+/***********************************************************/
+```
+
+The code sample begins by including the prototypes and type definitions for the C `stdio`, `string`, `stdlib`, `stdbool`, and `sqlca` libraries, and providing basic infrastructure for the program:
+
+```
+#include <stdio.h>
+\#include <string.h>
+\#include <stdlib.h>
+\#include <stdbool.h>
+\#include <sqlca.h>
+
+static void handle_error(void);
+
+int main(int argc, char *argv[])
+{
+  VARCHAR  empno[10];
+  VARCHAR  ename[20];
+```
+
+The example then sets up an error handler; ECPGPlus calls the handle_error() function whenever a SQL error occurs:
+
+```
+ EXEC SQL WHENEVER SQLERROR DO handle_error();
+```
+
+Then, the example connects to the database using the credentials specified on the command line:
+
+```
+  EXEC SQL CONNECT :argv[1];
+```
+
+Next, the program uses a `PREPARE` statement to parse and plan a query that includes a single parameter marker - if the `PREPARE` statement succeeds, it will create a statement handle that you can use to execute the statement (in this example, the statement handle is named `stmtHandle`). You can execute a given statement multiple times using the same statement handle.
+
+```
+  EXEC SQL PREPARE stmtHandle
+    FROM "SELECT empno, ename FROM emp WHERE deptno = ?";
+```
+
+The program then declares and opens the cursor, `empCursor`, substituting a user-provided value for the parameter marker in the prepared `SELECT` statement. Notice that the OPE~N statement includes a `USING` clause: the `USING` clause must provide a *value* for each placeholder found in the query:
+
+```
+  EXEC SQL DECLARE empCursor CURSOR FOR stmtHandle;
+
+  EXEC SQL OPEN empCursor USING :argv[2];
+
+  EXEC SQL WHENEVER NOT FOUND DO break;
+
+  while(true)
+  {
+```
+
+The program iterates through the cursor, and prints the employee number and name of each employee in the selected department:
+
+```
+    EXEC SQL FETCH empCursor INTO :empno, :ename;
+
+    printf("%-10s %s\n", empno.arr, ename.arr);
+  }
+```
+
+The program then closes the cursor, commits any changes, disconnects from the server, and terminates the application.
+
+```
+  EXEC SQL CLOSE empCursor;
+
+  EXEC SQL COMMIT RELEASE;
+
+  exit(EXIT_SUCCESS);
+}
+```
+
+The application calls the `handle_error()` function whenever it encounters a SQL error. The `handle_error()` function prints the content of the error message, resets the error handler, rolls back any changes, disconnects from the database, and terminates the application.
+
+```
+static void handle_error(void)
+{
+  printf("%s\n", sqlca.sqlerrm.sqlerrmc);
+
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL ROLLBACK RELEASE;
+
+  exit(EXIT_FAILURE);
+}
+```
+

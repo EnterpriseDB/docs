@@ -1,0 +1,500 @@
+---
+
+title: "Basic Statements"
+---
+
+<div id="basic_statements" class="registered_link"></div>
+
+This section begins the discussion of the programming statements that can be used in an SPL program.
+
+## NULL
+
+The simplest statement is the `NULL` statement. This statement is an executable statement that does nothing.
+
+> `NULL`;
+
+The following is the simplest, possible valid SPL program.
+
+```
+BEGIN
+    NULL;
+END;
+```
+
+The `NULL` statement can act as a placeholder where an executable statement is required such as in a branch of an `IF-THEN-ELSE` statement.
+
+For example:
+
+```
+CREATE OR REPLACE PROCEDURE divide_it (
+    p_numerator     IN  NUMBER,
+    p_denominator   IN  NUMBER,
+    p_result        OUT NUMBER
+)
+IS
+BEGIN
+    IF p_denominator = 0 THEN
+        NULL;
+    ELSE
+        p_result := p_numerator / p_denominator;
+    END IF;
+END;
+```
+
+## Assignment
+
+The assignment statement sets a variable or a formal parameter of mode `OUT` or `IN OUT` specified on the left side of the assignment, :=, to the evaluated expression specified on the right side of the assignment.
+
+> *`variable`* `:=` *`expression`*`;`
+
+*`variable`* is an identifier for a previously declared variable, `OUT` formal parameter, or `IN OUT` formal parameter.
+
+*`expression`* is an expression that produces a single value. The value produced by the expression must have a compatible data type with that of *`variable`*.
+
+The following example shows the typical use of assignment statements in the executable section of the procedure.
+
+```
+CREATE OR REPLACE PROCEDURE dept_salary_rpt (
+    p_deptno        NUMBER
+)
+IS
+    todays_date     DATE;
+    rpt_title       VARCHAR2(60);
+    base_sal        INTEGER;
+    base_comm_rate  NUMBER;
+    base_annual     NUMBER;
+BEGIN
+    todays_date := SYSDATE;
+    rpt_title := 'Report For Department # ' || p_deptno || ' on '
+        || todays_date;
+    base_sal := 35525;
+    base_comm_rate := 1.33333;
+    base_annual := ROUND(base_sal * base_comm_rate, 2);
+
+    DBMS_OUTPUT.PUT_LINE(rpt_title);
+    DBMS_OUTPUT.PUT_LINE('Base Annual Salary: ' || base_annual);
+
+END;
+```
+
+## SELECT INTO
+
+The `SELECT INTO` statement is an SPL variation of the SQL `SELECT` command, the differences being:
+
+- That `SELECT INTO` is designed to assign the results to variables or records where they can then be used in SPL program statements.
+- The accessible result set of `SELECT INTO` is at most one row.
+
+Other than the above, all of the clauses of the `SELECT` command such as `WHERE`, `ORDER` `BY`, `GROUP BY`, `HAVING`, etc. are valid for `SELECT INTO`. The following are the two variations of `SELECT INTO`.
+
+> `SELECT` *`select_expressions`* `INTO` *`target`* `FROM ...;`
+
+*`target`* is a comma-separated list of simple variables. *select_expressions* and the remainder of the statement are the same as for the SELECT command. The selected values must exactly match in data type, number, and order the structure of the target or a runtime error occurs.
+
+> `SELECT * INTO` *`record`* `FROM` *`table`* `...;`
+
+*`record`* is a record variable that has previously been declared.
+
+If the query returns zero rows, null values are assigned to the target(s). If the query returns multiple rows, the first row is assigned to the target(s) and the rest are discarded. (Note that "the first row" is not well-defined unless you’ve used `ORDER BY`.)
+
+**Note:** In either cases, where no row is returned or more than one row is returned, SPL throws an exception.
+
+**Note:** There is a variation of `SELECT INTO` using the `BULK COLLECT` clause that allows a result set of more than one row that is returned into a collection. See Section [3.12.4.1](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E02CD0HA) for more information on using the `BULK COLLECT` clause with the `SELECT INTO` statement.
+
+You can use the `WHEN NO_DATA_FOUND` clause in an `EXCEPTION` block to determine whether the assignment was successful (that is, at least one row was returned by the query).
+
+This version of the `emp_sal_query` procedure uses the variation of `SELECT INTO` that returns the result set into a record. Also note the addition of the `EXCEPTION` block containing the `WHEN NO_DATA_FOUND` conditional expression.
+
+```
+CREATE OR REPLACE PROCEDURE emp_sal_query (
+    p_empno         IN emp.empno%TYPE
+)
+IS
+    r_emp           emp%ROWTYPE;
+    v_avgsal        emp.sal%TYPE;
+BEGIN
+    SELECT * INTO r_emp
+        FROM emp WHERE empno = p_empno;
+    DBMS_OUTPUT.PUT_LINE('Employee # : ' || p_empno);
+    DBMS_OUTPUT.PUT_LINE('Name       : ' || r_emp.ename);
+    DBMS_OUTPUT.PUT_LINE('Job        : ' || r_emp.job);
+    DBMS_OUTPUT.PUT_LINE('Hire Date  : ' || r_emp.hiredate);
+    DBMS_OUTPUT.PUT_LINE('Salary     : ' || r_emp.sal);
+    DBMS_OUTPUT.PUT_LINE('Dept #     : ' || r_emp.deptno);
+
+    SELECT AVG(sal) INTO v_avgsal
+        FROM emp WHERE deptno = r_emp.deptno;
+    IF r_emp.sal > v_avgsal THEN
+        DBMS_OUTPUT.PUT_LINE('Employee''s salary is more than the '
+            || 'department average of ' || v_avgsal);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee''s salary does not exceed the '
+            || 'department average of ' || v_avgsal);
+    END IF;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+END;
+```
+
+If the query is executed with a non-existent employee number the results appear as follows.
+
+```
+EXEC emp_sal_query(0);
+
+Employee # 0 not found
+```
+
+Another conditional clause of use in the `EXCEPTION` section with `SELECT INTO` is the `TOO_MANY_ROWS` exception. If more than one row is selected by the `SELECT INTO` statement an exception is thrown by SPL.
+
+When the following block is executed, the `TOO_MANY_ROWS` exception is thrown since there are many employees in the specified department.
+
+```
+DECLARE
+    v_ename         emp.ename%TYPE;
+BEGIN
+    SELECT ename INTO v_ename FROM emp WHERE deptno = 20 ORDER BY ename;
+EXCEPTION
+    WHEN TOO_MANY_ROWS THEN
+        DBMS_OUTPUT.PUT_LINE('More than one employee found');
+        DBMS_OUTPUT.PUT_LINE('First employee returned is ' || v_ename);
+END;
+
+More than one employee found
+First employee returned is ADAMS
+```
+
+**Note:** See Section [3.5.7](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.069.html#pID0E0HMF0HA) or more information on exception handling.
+
+## INSERT
+
+The `INSERT` command available in the SQL language can also be used in SPL programs.
+
+An expression in the SPL language can be used wherever an expression is allowed in the SQL `INSERT` command. Thus, SPL variables and parameters can be used to supply values to the insert operation.
+
+The following is an example of a procedure that performs an insert of a new employee using data passed from a calling program.
+
+```
+CREATE OR REPLACE PROCEDURE emp_insert (
+    p_empno         IN emp.empno%TYPE,
+    p_ename         IN emp.ename%TYPE,
+    p_job           IN emp.job%TYPE,
+    p_mgr           IN emp.mgr%TYPE,
+    p_hiredate      IN emp.hiredate%TYPE,
+    p_sal           IN emp.sal%TYPE,
+    p_comm          IN emp.comm%TYPE,
+    p_deptno        IN emp.deptno%TYPE
+)
+IS
+BEGIN
+    INSERT INTO emp VALUES (
+        p_empno,
+        p_ename,
+        p_job,
+        p_mgr,
+        p_hiredate,
+        p_sal,
+        p_comm,
+        p_deptno);
+
+    DBMS_OUTPUT.PUT_LINE('Added employee...');
+    DBMS_OUTPUT.PUT_LINE('Employee # : ' || p_empno);
+    DBMS_OUTPUT.PUT_LINE('Name       : ' || p_ename);
+    DBMS_OUTPUT.PUT_LINE('Job        : ' || p_job);
+    DBMS_OUTPUT.PUT_LINE('Manager    : ' || p_mgr);
+    DBMS_OUTPUT.PUT_LINE('Hire Date  : ' || p_hiredate);
+    DBMS_OUTPUT.PUT_LINE('Salary     : ' || p_sal);
+    DBMS_OUTPUT.PUT_LINE('Commission : ' || p_comm);
+    DBMS_OUTPUT.PUT_LINE('Dept #     : ' || p_deptno);
+    DBMS_OUTPUT.PUT_LINE('----------------------');
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('OTHERS exception on INSERT of employee # '
+            || p_empno);
+        DBMS_OUTPUT.PUT_LINE('SQLCODE : ' || SQLCODE);
+        DBMS_OUTPUT.PUT_LINE('SQLERRM : ' || SQLERRM);
+END;
+```
+
+If an exception occurs all database changes made in the procedure are automatically rolled back. In this example the `EXCEPTION` section with the `WHEN OTHERS` clause catches all exceptions. Two variables are displayed. `SQLCODE` is a number that identifies the specific exception that occurred. `SQLERRM` is a text message explaining the error. See Section [3.5.7](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.069.html#pID0E0HMF0HA) for more information on exception handling.
+
+The following shows the output when this procedure is executed.
+
+```
+EXEC emp_insert(9503,'PETERSON','ANALYST',7902,'31-MAR-05',5000,NULL,40);
+
+Added employee...
+Employee # : 9503
+Name       : PETERSON
+Job        : ANALYST
+Manager    : 7902
+Hire Date  : 31-MAR-05 00:00:00
+Salary     : 5000
+
+Dept #     : 40
+----------------------
+
+SELECT * FROM emp WHERE empno = 9503;
+
+ empno |  ename   |   job   | mgr  |      hiredate      |   sal   | comm | deptno
+-------+----------+---------+------+--------------------+---------+------+--------
+  9503 | PETERSON | ANALYST | 7902 | 31-MAR-05 00:00:00 | 5000.00 |      |     40
+(1 row)
+```
+
+Note: The `INSERT` command can be included in a `FORALL` statement. A `FORALL` statement allows a single `INSERT` command to insert multiple rows from values supplied in one or more collections. See [3.12.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E0EFD0HA) for more information on the `FORALL` statement.
+
+## UPDATE
+
+The `UPDATE` command available in the SQL language can also be used in SPL programs.
+
+An expression in the SPL language can be used wherever an expression is allowed in the SQL `UPDATE` command. Thus, SPL variables and parameters can be used to supply values to the update operation.
+
+```
+CREATE OR REPLACE PROCEDURE emp_comp_update (
+    p_empno         IN emp.empno%TYPE,
+    p_sal           IN emp.sal%TYPE,
+    p_comm          IN emp.comm%TYPE
+)
+IS
+BEGIN
+    UPDATE emp SET sal = p_sal, comm = p_comm WHERE empno = p_empno;
+
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Updated Employee # : ' || p_empno);
+        DBMS_OUTPUT.PUT_LINE('New Salary         : ' || p_sal);
+        DBMS_OUTPUT.PUT_LINE('New Commission     : ' || p_comm);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+    END IF;
+
+END;
+```
+
+The `SQL%FOUND` conditional expression returns TRUE if a row is updated, `FALSE` otherwise. See Section [3.4.8](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E05BG0HA) for a discussion of `SQL%FOUND` and other similar expressions.
+
+The following shows the update on the employee using this procedure.
+
+```
+EXEC emp_comp_update(9503, 6540, 1200);
+
+Updated Employee # : 9503
+New Salary         : 6540
+New Commission     : 1200
+
+SELECT * FROM emp WHERE empno = 9503;
+
+ empno |  ename   |   job   | mgr  |      hiredate      |   sal   |  comm   | deptno
+-------+----------+---------+------+--------------------+---------+---------+--------
+  9503 | PETERSON | ANALYST | 7902 | 31-MAR-05 00:00:00 | 6540.00 | 1200.00 |     40
+(1 row)
+```
+
+**Note:** The `UPDATE` command can be included in a `FORALL` statement. A `FORALL` statement allows a single `UPDATE` command to update multiple rows from values supplied in one or more collections. See Section [3.12.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E0EFD0HA) for more information on the `FORALL` statement.
+
+## DELETE
+
+The `DELETE` command (available in the SQL language) can also be used in SPL programs.
+
+An expression in the SPL language can be used wherever an expression is allowed in the SQL `DELETE` command. Thus, SPL variables and parameters can be used to supply values to the delete operation.
+
+```
+CREATE OR REPLACE PROCEDURE emp_delete (
+    p_empno         IN emp.empno%TYPE
+)
+IS
+BEGIN
+    DELETE FROM emp WHERE empno = p_empno;
+
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Deleted Employee # : ' || p_empno);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+    END IF;
+
+END;
+```
+
+The `SQL%FOUND` conditional expression returns `TRUE` if a row is deleted, `FALSE` otherwise. See Section [3.4.8](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E05BG0HA) for a discussion of `SQL%FOUND` and other similar expressions.
+
+The following shows the deletion of an employee using this procedure.
+
+```
+EXEC emp_delete(9503);
+
+Deleted Employee # : 9503
+
+SELECT * FROM emp WHERE empno = 9503;
+
+ empno | ename | job | mgr | hiredate | sal | comm | deptno
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+```
+
+**Note:** The `DELETE` command can be included in a `FORALL` statement. A `FORALL` statement allows a single `DELETE` command to delete multiple rows from values supplied in one or more collections. See Section [3.12.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E0EFD0HA) for more information on the FORALL statement.
+
+## Using the RETURNING INTO Clause
+
+The `INSERT`, `UPDATE`, and `DELETE` commands may be appended by the optional `RETURNING` `INTO` clause. This clause allows the SPL program to capture the newly added, modified, or deleted values from the results of an `INSERT`, `UPDATE`, or `DELETE` command, respectively.
+
+The following is the syntax.
+
+`{` *`insert`* `|` *`update`* `|` *delete* `}`
+
+  `RETURNING { * |` *`expr_1`* `[,` *`expr_2`* `] ...}`
+
+​    `INTO {` *`record`* `|` *`field_1`* `[,` *`field_2`* `] ...};`
+
+*`insert`* is a valid `INSERT` command. *`update`* is a valid `UPDATE` command. *`delete`* is a valid `DELETE` command. If * is specified, then the values from the row affected by the `INSERT`, `UPDATE`, or `DELETE` command are made available for assignment to the record or fields to the right of the `INTO` keyword. (Note that the use of * is an Advanced Server extension and is not compatible with Oracle databases.) *`expr_1`*, *`expr_2`*... are expressions evaluated upon the row affected by the `INSERT`, `UPDATE`, or `DELETE` command. The evaluated results are assigned to the record or fields to the right of the `INTO` keyword. *`record`* is the identifier of a record that must contain fields that match in number and order, and are data type compatible with the values in the `RETURNING` clause. *`field_1`*, *`field_2`*,... are variables that must match in number and order, and are data type compatible with the set of values in the `RETURNING` clause.
+
+If the `INSERT`, `UPDATE`, or `DELETE` command returns a result set with more than one row, then an exception is thrown with `SQLCODE 01422, query returned more than one row`. If no rows are in the result set, then the variables following the `INTO` keyword are set to null.
+
+**Note:** There is a variation of `RETURNING INTO` using the `BULK COLLECT` clause that allows a result set of more than one row that is returned into a collection. See Section [3.12.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E05CD0HA) for more information on the `BULK COLLECT` clause.
+
+The following example is a modification of the `emp_comp_update` procedure introduced in Section [3.4.5](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E04GG0HA), with the addition of the `RETURNING INTO` clause.
+
+```
+CREATE OR REPLACE PROCEDURE emp_comp_update (
+    p_empno         IN emp.empno%TYPE,
+    p_sal           IN emp.sal%TYPE,
+    p_comm          IN emp.comm%TYPE
+)
+IS
+    v_empno         emp.empno%TYPE;
+    v_ename         emp.ename%TYPE;
+    v_job           emp.job%TYPE;
+    v_sal           emp.sal%TYPE;
+    v_comm          emp.comm%TYPE;
+    v_deptno        emp.deptno%TYPE;
+BEGIN
+    UPDATE emp SET sal = p_sal, comm = p_comm WHERE empno = p_empno
+    RETURNING
+        empno,
+        ename,
+        job,
+        sal,
+        comm,
+        deptno
+    INTO
+        v_empno,
+        v_ename,
+        v_job,
+        v_sal,
+        v_comm,
+        v_deptno;
+
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Updated Employee # : ' || v_empno);
+        DBMS_OUTPUT.PUT_LINE('Name               : ' || v_ename);
+        DBMS_OUTPUT.PUT_LINE('Job                : ' || v_job);
+        DBMS_OUTPUT.PUT_LINE('Department         : ' || v_deptno);
+        DBMS_OUTPUT.PUT_LINE('New Salary         : ' || v_sal);
+        DBMS_OUTPUT.PUT_LINE('New Commission     : ' || v_comm);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+    END IF;
+
+END;
+```
+
+The following is the output from this procedure (assuming employee `9503` created by the `emp_insert` procedure still exists within the table).
+
+```
+EXEC emp_comp_update(9503, 6540, 1200);
+
+Updated Employee # : 9503
+Name               : PETERSON
+Job                : ANALYST
+Department         : 40
+New Salary         : 6540.00
+New Commission     : 1200.00
+```
+
+The following example is a modification of the `emp_delete` procedure, with the addition of the `RETURNING INTO` clause using record types.
+
+```
+CREATE OR REPLACE PROCEDURE emp_delete (
+    p_empno         IN emp.empno%TYPE
+)
+IS
+    r_emp           emp%ROWTYPE;
+BEGIN
+    DELETE FROM emp WHERE empno = p_empno
+    RETURNING
+        *
+    INTO
+        r_emp;
+
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Deleted Employee # : ' || r_emp.empno);
+        DBMS_OUTPUT.PUT_LINE('Name               : ' || r_emp.ename);
+        DBMS_OUTPUT.PUT_LINE('Job                : ' || r_emp.job);
+        DBMS_OUTPUT.PUT_LINE('Manager            : ' || r_emp.mgr);
+        DBMS_OUTPUT.PUT_LINE('Hire Date          : ' || r_emp.hiredate);
+        DBMS_OUTPUT.PUT_LINE('Salary             : ' || r_emp.sal);
+        DBMS_OUTPUT.PUT_LINE('Commission         : ' || r_emp.comm);
+        DBMS_OUTPUT.PUT_LINE('Department         : ' || r_emp.deptno);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('Employee # ' || p_empno || ' not found');
+    END IF;
+
+END;
+```
+
+The following is the output from this procedure.
+
+```
+EXEC emp_delete(9503);
+
+Deleted Employee # : 9503
+Name               : PETERSON
+Job                : ANALYST
+Manager            : 7902
+Hire Date          : 31-MAR-05 00:00:00
+Salary             : 6540.00
+Commission         : 1200.00
+Department         : 40
+```
+
+## Obtaining the Result Status
+
+There are several attributes that can be used to determine the effect of a command. `SQL%FOUND` is a Boolean that returns TRUE if at least one row was affected by an `INSERT`, `UPDATE` or `DELETE` command or a ~ command retrieved one or more rows.
+
+The following anonymous block inserts a row and then displays the fact that the row has been inserted.
+
+```
+BEGIN
+    INSERT INTO emp (empno,ename,job,sal,deptno) VALUES (
+        9001, 'JONES', 'CLERK', 850.00, 40);
+    IF SQL%FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Row has been inserted');
+    END IF;
+END;
+
+Row has been inserted
+```
+
+`SQL%ROWCOUNT` provides the number of rows affected by an `INSERT`, `UPDATE`, `DELETE`, or `SELECT INTO` command. The `SQL%ROWCOUNT` value is returned as a `BIGINT` data type. The following example updates the row that was just inserted and displays `SQL%ROWCOUNT`.
+
+```
+BEGIN
+    UPDATE emp SET hiredate = '03-JUN-07' WHERE empno = 9001;
+    DBMS_OUTPUT.PUT_LINE('# rows updated: ' || SQL%ROWCOUNT);
+END;
+
+# rows updated: 1
+```
+
+`SQL%NOTFOUND` is the opposite of `SQL%FOUND. SQL%NOTFOUND` returns `TRUE` if no rows were affected by an `INSERT`, `UPDATE` or `DELETE` command or a `SELECT INTO` command retrieved no rows.
+
+```
+BEGIN
+    UPDATE emp SET hiredate = '03-JUN-07' WHERE empno = 9000;
+    IF SQL%NOTFOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No rows were updated');
+    END IF;
+END;
+
+No rows were updated
+```

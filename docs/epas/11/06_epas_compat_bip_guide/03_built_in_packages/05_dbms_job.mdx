@@ -1,0 +1,317 @@
+---
+
+title: "DBMS_JOB"
+---
+
+<div id="dbms_job" class="registered_link"></div>
+
+The `DBMS_JOB` package provides for the creation, scheduling, and managing of jobs. A job runs a stored procedure which has been previously stored in the database. The `SUBMIT` procedure is used to create and store a job definition. A job identifier is assigned to a job along with its associated stored procedure and the attributes describing when and how often the job is to be run.
+
+This package relies on the `pgAgent` scheduler. By default, the Advanced Server installer installs `pgAgent`, but you must start the `pgAgent` service manually prior to using `DBMS_JOB`. If you attempt to use this package to schedule a job after un-installing `pgAgent`, `DBMS_JOB` will throw an error. `DBMS_JOB` verifies that `pgAgent` is installed, but does not verify that the service is running.
+
+The following table lists the supported `DBMS_JOB` procedures:
+
+| Function/Procedure                                           | Return Type | Description                                                  |
+| ------------------------------------------------------------ | ----------- | ------------------------------------------------------------ |
+| `BROKEN``(`*`job`*, *`broken`* `[,` *`next_date`* `])`       | n/a         | Specify that a given job is either broken or not broken.     |
+| `CHANGE``(`*`job`*, *`what`*`,` *`next_date`*`,` *`interval``,` `instance``,` `force`*`)` | n/a         | Change the job’s parameters.                                 |
+| `INTERVAL(`*`job`*`,` *`interval`*`)`                        | n/a         | Set the execution frequency by means of a date function that is recalculated each time the job is run. This value becomes the next date/time for execution. |
+| `NEXT_DATE(`*`job`*`,` *`next_date`*`)`                      | n/a         | Set the next date/time the job is to be run.                 |
+| `REMOVE(`*`job`*`)`                                          | n/a         | Delete the job definition from the database.                 |
+| `RUN(`*job*`)`                                               | n/a         | Forces execution of a job even if it is marked broken.       |
+| `SUBMIT(`*`job`* `OUT,` *`what`* `[,` *`next_date`* `[,` *`interval`* `[,` *`no_parse`* `]]])` | n/a         | Creates a job and stores its definition in the database.     |
+| `WHAT(`*`job`*, *what*`)`                                    | n/a         | Change the stored procedure run by a job.                    |
+
+Advanced Server's implementation of `DBMS_JOB` is a partial implementation when compared to Oracle's version. Only those functions and procedures listed in the table above are supported.
+
+Before using `DBMS_JOB`, a database superuser must create the pgAgent extension. Use the `psql` client to connect to a database and invoke the command:
+
+> `CREATE EXTENSION pgagent;`
+
+When and how often a job is run is dependent upon two interacting parameters – *`next_date`* and *`interval`*. The *`next_date`* parameter is a date/time value that specifies the next date/time when the job is to be executed. The *inter~val* parameter is a string that contains a date function that evaluates to a date/time value.
+
+Just prior to any execution of the job, the expression in the *`interval`* parameter is evaluated. The resulting value replaces the *`next_date`* value stored with the job. The job is then executed. In this manner, the expression in *`interval`* is repeatedly re-evaluated prior to each job execution, supplying the *`next_date`* date/time for the next execution.
+
+The following examples use the following stored procedure, `job_proc`, which simply inserts a timestamp into table, `jobrun`, containing a single `VARCHAR2` column.
+
+```
+CREATE TABLE jobrun (
+    runtime         VARCHAR2(40)
+);
+
+CREATE OR REPLACE PROCEDURE job_proc
+IS
+BEGIN
+    INSERT INTO jobrun VALUES ('job_proc run at ' || TO_CHAR(SYSDATE,
+        'yyyy-mm-dd hh24:mi:ss'));
+END;
+```
+
+
+
+## BROKEN
+
+The `BROKEN` procedure sets the state of a job to either broken or not broken. A broken job cannot be executed except by using the `RUN` procedure.
+
+`BROKEN(`*`job`* `BINARY_INTEGER,` *`broken`* `BOOLEAN [,` *`next_date`* `DATE ])`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job to be set as broken or not broken.
+
+`*broken*`
+
+> If set to `TRUE` the job’s state is set to broken. If set to `FALSE` the job’s state is set to not broken. Broken jobs cannot be run except by using the `RUN` procedure.
+
+*`next_date`*
+
+> Date/time when the job is to be run. The default is `SYSDATE`.
+
+**Examples**
+
+Set the state of a job with job identifier 104 to broken:
+
+```
+BEGIN
+    DBMS_JOB.BROKEN(104,true);
+END;
+```
+
+Change the state back to not broken:
+
+```
+BEGIN
+    DBMS_JOB.BROKEN(104,false);
+END;
+```
+
+## CHANGE
+
+The `CHANGE` procedure modifies certain job attributes including the stored procedure to be run, the next date/time the job is to be run, and how often it is to be run.
+
+`CHANGE(`*`job`* `BINARY_INTEGER` *`what`* `VARCHAR2,` *`next_date`* `DATE,`
+
+ *`interval`* `VARCHAR2,` *`instance`* `BINARY_INTEGER,` *`force`* `BOOLEAN)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job to modify.
+
+*`what`*
+
+> Stored procedure name. Set this parameter to null if the existing value is to remain unchanged.
+
+*`next_date`*
+
+> Date/time when the job is to be run next. Set this parameter to null if the existing value is to remain unchanged.
+
+*`interval`*
+
+> Date function that when evaluated, provides the next date/time the job is to run. Set this parameter to null if the existing value is to remain unchanged.
+
+*`instance`*
+
+> This argument is ignored, but is included for compatibility.
+
+*`force`*
+
+> This argument is ignored, but is included for compatibility.
+
+
+
+**Examples**
+
+Change the job to run next on December 13, 2007. Leave other parameters unchanged.
+
+```
+BEGIN
+    DBMS_JOB.CHANGE(104,NULL,TO_DATE('13-DEC-07','DD-MON-YY'),NULL, NULL,
+    NULL);
+END;
+```
+
+## INTERVAL
+
+The `INTERVAL` procedure sets the frequency of how often a job is to be run.
+
+`INTERVAL(`*`job`* `BINARY_INTEGER,` *`interval`* `VARCHAR2)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job to modify.
+
+*`interval`*
+
+> Date function that when evaluated, provides the next date/time the job is to be run. If *`interval`* is `NULL` and the job is complete, the job is removed from the queue.
+
+**Examples**
+
+Change the job to run once a week:
+
+```
+BEGIN
+    DBMS_JOB.INTERVAL(104,'SYSDATE + 7');
+END;
+```
+
+## NEXT_DATE
+
+The `NEXT_DATE` procedure sets the date/time of when the job is to be run next.
+
+`NEXT_DATE(`*`job`* `BINARY_INTEGER,` *`next_date`* `DATE)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job whose next run date is to be set.
+
+*`next_date`*
+
+> Date/time when the job is to be run next.
+
+**Examples**
+
+Change the job to run next on December 14, 2007:
+
+```
+BEGIN
+    DBMS_JOB.NEXT_DATE(104, TO_DATE('14-DEC-07','DD-MON-YY'));
+END;
+```
+
+## REMOVE
+
+The `REMOVE` procedure deletes the specified job from the database. The job must be resubmitted using the `SUBMIT` procedure in order to have it executed again. Note that the stored procedure that was associated with the job is not deleted.
+
+`REMOVE(`*`job`* `BINARY_INTEGER)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job that is to be removed from the database.
+
+**Examples**
+
+Remove a job from the database:
+
+```
+BEGIN
+    DBMS_JOB.REMOVE(104);
+END;
+```
+
+## RUN
+
+The `RUN` procedure forces the job to be run, even if its state is broken.
+
+`RUN(`*`job`* `BINARY_INTEGER)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job to be run.
+
+**Examples**
+
+Force a job to be run.
+
+```
+BEGIN
+    DBMS_JOB.RUN(104);
+END;
+```
+
+## SUBMIT
+
+The `SUBMIT` procedure creates a job definition and stores it in the database. A job consists of a job identifier, the stored procedure to be executed, when the job is to be first run, and a date function that calculates the next date/time the job is to be run.
+
+`SUBMIT(`*job* `OUT BINARY_INTEGER,` *what* `VARCHAR2`
+
+  `[,` *`next_date`* `DATE [,` *`interval`* `VARCHAR2 [,` *`no_parse`* `BOOLEAN ]]])`
+
+**Parameters**
+
+*`job`*
+
+> Identifier assigned to the job.
+
+*`what`*
+
+> Name of the stored procedure to be executed by the job.
+
+*`next_date`*
+
+> Date/time when the job is to be run next. The default is `SYSDATE`.
+
+*`interval`*
+
+Date function that when evaluated, provides the next date/time the job is to run. If *`interval`* is set to null, then the job is run only once. Null is the default.
+
+*`no_parse`*
+
+If set to `TRUE`, do not syntax-check the stored procedure upon job creation – check only when the job first executes. If set to `FALSE`, check the procedure upon job creation. The default is `FALSE`.
+
+Note: The *`no_parse`* option is not supported in this implementation of `SUBMIT()`. It is included for compatibility only.
+
+**Examples**
+
+The following example creates a job using stored procedure, `job_proc`. The job will execute immediately and run once a day thereafter as set by the *`interval`* parameter, `SYSDATE + 1`.
+
+```
+DECLARE
+    jobid           INTEGER;
+BEGIN
+    DBMS_JOB.SUBMIT(jobid,'job_proc;',SYSDATE,
+        'SYSDATE + 1');
+    DBMS_OUTPUT.PUT_LINE('jobid: ' || jobid);
+END;
+
+jobid: 104
+```
+
+The job immediately executes procedure, `job_proc`, populating table, `jobrun`, with a row:
+
+```
+SELECT * FROM jobrun;
+
+               runtime
+\-------------------------------------
+ job_proc run at 2007-12-11 11:43:25
+(1 row)
+```
+
+## WHAT
+
+The `WHAT` procedure changes the stored procedure that the job will execute.
+
+`WHAT(`*`job`* `BINARY_INTEGER,` *`what`* `VARCHAR2)`
+
+**Parameters**
+
+*`job`*
+
+> Identifier of the job for which the stored procedure is to be changed.
+
+*`what`*
+
+> Name of the stored procedure to be executed.
+
+**Examples**
+
+Change the job to run the list_emp procedure:
+
+```
+BEGIN
+    DBMS_JOB.WHAT(104,'list_emp;');
+END;
+```
+

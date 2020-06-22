@@ -1,0 +1,373 @@
+---
+
+title: "Program Security"
+---
+
+<div id="program_security" class="registered_link"></div>
+
+Security over what user may execute an SPL program and what database objects an SPL program may access for any given user executing the program is controlled by the following:
+
+- Privilege to execute a program.
+- Privileges granted on the database objects (including other SPL programs) which a program attempts to access.
+- Whether the program is defined with definer’s rights or invoker’s rights.
+
+These aspects are discussed in the following sections.
+
+## EXECUTE Privilege
+
+An SPL program (function, procedure, or package) can begin execution only if any of the following are true:
+
+- The current user is a superuser, or
+- The current user has been granted `EXECUTE` privilege on the SPL program, or
+- The current user inherits `EXECUTE` privilege on the SPL program by virtue of being a member of a group which does have such privilege, or
+- `EXECUTE` privilege has been granted to the `PUBLIC` group.
+
+Whenever an SPL program is created in Advanced Server, `EXECUTE` privilege is automatically granted to the `PUBLIC` group by default, therefore, any user can immediately execute the program.
+
+This default privilege can be removed by using the `REVOKE EXECUTE` command. The following is an example:
+
+```
+REVOKE EXECUTE ON PROCEDURE list_emp FROM PUBLIC;
+```
+
+Explicit `EXECUTE` privilege on the program can then be granted to individual users or groups.
+
+```
+GRANT EXECUTE ON PROCEDURE list_emp TO john;
+```
+
+Now, user, `john`, can execute the `list_emp` program; other users who do not meet any of the conditions listed at the beginning of this section cannot.
+
+Once a program begins execution, the next aspect of security is what privilege checks occur if the program attempts to perform an action on any database object including:
+
+- Reading or modifying table or view data.
+- Creating, modifying, or deleting a database object such as a table, view, index, or sequence.
+- Obtaining the current or next value from a sequence.
+- Calling another program (function, procedure, or package).
+
+Each such action can be protected by privileges on the database object either allowed or disallowed for the user.
+
+Note that it is possible for a database to have more than one object of the same type with the same name, but each such object belonging to a different schema in the database. If this is the case, which object is being referenced by an SPL program? This is the topic of the next section.
+
+## Database Object Name Resolution
+
+A database object inside an SPL program may either be referenced by its qualified name or by an unqualified name. A qualified name is in the form of **`schema.name`* where *`schema`* is the name of the schema under which the database object with identifier, *`name`*, exists. An unqualified name does not have the “*`schema`*.” portion. When a reference is made to a qualified name, there is absolutely no ambiguity as to exactly which database object is intended – it either does or does not exist in the specified schema.
+
+Locating an object with an unqualified name, however, requires the use of the current user’s search path. When a user becomes the current user of a session, a default search path is always associated with that user. The search path consists of a list of schemas which are searched in left-to-right order for locating an unqualified database object reference. The object is considered non-existent if it can’t be found in any of the schemas in the search path. The default search path can be displayed in PSQL using the `SHOW search_path` command.
+
+```
+edb=# SHOW search_path;
+   search_path
+-----------------
+ "$user", public
+(1 row)
+```
+
+`$user` in the above search path is a generic placeholder that refers to the current user so if the current user of the above session is `enterprisedb`, an unqualified database object would be searched for in the following schemas in this order – first, `enterprisedb`, then `public`.
+
+Once an unqualified name has been resolved in the search path, it can be determined if the current user has the appropriate privilege to perform the desired action on that specific object.
+
+**Note:** The concept of the search path is not compatible with Oracle databases. For an unqualified reference, Oracle simply looks in the schema of the current user for the named database object. It also important to note that in Oracle, a user and his or her schema is the same entity while in Advanced Server, a user and a schema are two distinct objects.
+
+## Database Object Privileges
+
+Once an SPL program begins execution, any attempt to access a database object from within the program results in a check to ensure the current user has the authorization to perform the intended action against the referenced object. Privileges on database objects are bestowed and removed using the `GRANT` and `REVOKE` commands, respectively. If the current user attempts unauthorized access on a database object, then the program will throw an exception. See Section [3.5.7](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.069.html#pID0E0HMF0HA) for information about exception handling.
+
+The final topic discusses exactly who is the current user.
+
+## Definer’s vs. Invokers Rights
+
+When an SPL program is about to begin execution, a determination is made as to what user is to be associated with this process. This user is referred to as the *current user*. The current user’s database object privileges are used to determine whether or not access to database objects referenced in the program will be permitted. The current, prevailing search path in effect when the program is invoked will be used to resolve any unqualified object references.
+
+The selection of the current user is influenced by whether the SPL program was created with definer’s right or invoker’s rights. The `AUTHID` clause determines that selection. Appearance of the clause `AUTHID DEFINER` gives the program definer’s rights. This is also the default if the `AUTHID` clause is omitted. Use of the clause `AUTHID CURRENT_USER` gives the program invoker’s rights. The difference between the two is summarized as follows:
+
+- If a program has definer’s rights, then the owner of the program becomes the current user when program execution begins. The program owner’s database object privileges are used to determine if access to a referenced object is permitted. In a definer’s rights program, it is irrelevant as to which user actually invoked the program.
+- If a program has invoker’s rights, then the current user at the time the program is called remains the current user while the program is executing (but not necessarily within called subprograms – see the following bullet points). When an invoker’s rights program is invoked, the current user is typically the user that started the session (i.e., made the database connection) although it is possible to change the current user after the session has started using the SET ROLE command. In an invoker’s rights program, it is irrelevant as to which user actually owns the program.
+
+From the previous definitions, the following observations can be made:
+
+- If a definer’s rights program calls a definer’s rights program, the current user changes from the owner of the calling program to the owner of the called program during execution of the called program.
+- If a definer’s rights program calls an invoker’s rights program, the owner of the calling program remains the current user during execution of both the calling and called programs.
+- If an invoker’s rights program calls an invoker’s rights program, the current user of the calling program remains the current user during execution of the called program.
+- If an invokers’ rights program calls a definer’s rights program, the current user switches to the owner of the definer’s rights program during execution of the called program.
+
+The same principles apply if the called program in turn calls another program in the cases cited above.
+
+This section on security concludes with an example using the sample application.
+
+## Security Example
+
+In the following example, a new database will be created along with two users `– hr_mgr` who will own a copy of the entire sample application in schema, `hr_mgr`; and `sales_mgr` who will own a schema named, `sales_mgr`, that will have a copy of only the `emp` table containing only the employees who work in sales.
+
+The procedure `list_emp`, function hire_clerk, and package `emp_admin` will be used in this example. All of the default privileges that are granted upon installation of the sample application will be removed and then be explicitly re-granted so as to present a more secure environment in this example.
+
+Programs `list_emp` and hire_clerk will be changed from the default of definer’s rights to invoker’s rights. It will be then illustrated that when `sales_mgr` runs these programs, they act upon the `emp` table in `sales_mgr’s` schema since `sales_mgr’s` search path and privileges will be used for name resolution and authorization checking.
+
+Programs `get_dept_name` and `hire_emp` in the `emp_admin` package will then be executed by `sales_mgr`. In this case, the `dept` table and `emp` table in `hr_mgr’s` schema will be accessed as `hr_mgr` is the owner of the `emp_admin` package which is using definer’s rights. Since the default search path is in effect with the $user placeholder, the schema matching the user (in this case, `hr_mgr`) is used to find the tables.
+
+**Step 1 – Create Database and Users**
+
+As user `enterprisedb`, create the hr database:
+
+```
+CREATE DATABASE hr;
+```
+
+Switch to the hr database and create the users:
+
+```
+\c hr enterprisedb
+CREATE USER hr_mgr IDENTIFIED BY password;
+CREATE USER sales_mgr IDENTIFIED BY password;
+```
+
+**Step 2 – Create the Sample Application**
+
+Create the entire sample application, owned by `hr_mgr`, in `hr_mgr’s` schema.
+
+```
+\c - hr_mgr
+\i /usr/edb/as11/share/edb-sample.sql
+
+BEGIN
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE VIEW
+CREATE SEQUENCE
+        .
+        .
+        .
+CREATE PACKAGE
+CREATE PACKAGE BODY
+COMMIT
+```
+
+Step 3 – Create the `emp` Table in Schema `sales_mgr`
+
+Create a subset of the emp table owned by sales_mgr in sales_mgr’s schema.
+
+```
+\c – hr_mgr
+GRANT USAGE ON SCHEMA hr_mgr TO sales_mgr;
+\c – sales_mgr
+CREATE TABLE emp AS SELECT * FROM hr_mgr.emp WHERE job = 'SALESMAN';
+```
+
+In the above example, the `GRANT USAGE ON SCHEMA` command is given to allow `sales_mgr` access into `hr_mgr’s` schema to make a copy of `hr_mgr’s` emp table. This step is required in Advanced Server and is not compatible with Oracle databases since Oracle does not have the concept of a schema that is distinct from its user.
+
+## Step 4 – Remove Default Privileges
+
+Remove all privileges to later illustrate the minimum required privileges needed.
+
+```
+\c – hr_mgr
+REVOKE USAGE ON SCHEMA hr_mgr FROM sales_mgr;
+REVOKE ALL ON dept FROM PUBLIC;
+REVOKE ALL ON emp FROM PUBLIC;
+REVOKE ALL ON next_empno FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION new_empno() FROM PUBLIC;
+REVOKE EXECUTE ON PROCEDURE list_emp FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION hire_clerk(VARCHAR2,NUMBER) FROM PUBLIC;
+REVOKE EXECUTE ON PACKAGE emp_admin FROM PUBLIC;
+```
+
+## Change list_emp to Invoker’s Rights
+
+While connected as user, `hr_mgr`, add the `AUTHID CURRENT_USER` clause to the `list_emp` program and resave it in Advanced Server. When performing this step, be sure you are logged on as `hr_mgr`, otherwise the modified program may wind up in the `public` schema instead of in `hr_mgr’s` schema.
+
+```
+CREATE OR REPLACE PROCEDURE list_emp
+AUTHID CURRENT_USER
+IS
+    v_empno         NUMBER(4);
+    v_ename         VARCHAR2(10);
+    CURSOR emp_cur IS
+        SELECT empno, ename FROM emp ORDER BY empno;
+BEGIN
+    OPEN emp_cur;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_cur INTO v_empno, v_ename;
+        EXIT WHEN emp_cur%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_empno || '     ' || v_ename);
+    END LOOP;
+    CLOSE emp_cur;
+END;
+```
+
+**Step 6 – Change hire_clerk to Invoker’s Rights and Qualify Call to new_empno**
+
+While connected as user, `hr_mgr`, add the `AUTHID CURRENT_USER` clause to the hire~_clerk program.
+
+Also, after the `BEGIN` statement, fully qualify the reference, `new_empno`, to `hr_mgr.new_empno` in order to ensure the hire_clerk function call to the `new_empno` function resolves to the `hr_mgr` schema.
+
+When resaving the program, be sure you are logged on as `hr_mgr`, otherwise the modified program may wind up in the public schema instead of in `hr_mgr’s` schema.
+
+```
+CREATE OR REPLACE FUNCTION hire_clerk (
+    p_ename         VARCHAR2,
+    p_deptno        NUMBER
+) RETURN NUMBER
+AUTHID CURRENT_USER
+IS
+    v_empno         NUMBER(4);
+    v_ename         VARCHAR2(10);
+    v_job           VARCHAR2(9);
+    v_mgr           NUMBER(4);
+    v_hiredate      DATE;
+    v_sal           NUMBER(7,2);
+    v_comm          NUMBER(7,2);
+    v_deptno        NUMBER(2);
+BEGIN
+    v_empno := hr_mgr.new_empno;
+    INSERT INTO emp VALUES (v_empno, p_ename, 'CLERK', 7782,
+        TRUNC(SYSDATE), 950.00, NULL, p_deptno);
+    SELECT empno, ename, job, mgr, hiredate, sal, comm, deptno INTO
+        v_empno, v_ename, v_job, v_mgr, v_hiredate, v_sal, v_comm, v_deptno
+        FROM emp WHERE empno = v_empno;
+    DBMS_OUTPUT.PUT_LINE('Department : ' || v_deptno);
+    DBMS_OUTPUT.PUT_LINE('Employee No: ' || v_empno);
+    DBMS_OUTPUT.PUT_LINE('Name       : ' || v_ename);
+    DBMS_OUTPUT.PUT_LINE('Job        : ' || v_job);
+    DBMS_OUTPUT.PUT_LINE('Manager    : ' || v_mgr);
+    DBMS_OUTPUT.PUT_LINE('Hire Date  : ' || v_hiredate);
+    DBMS_OUTPUT.PUT_LINE('Salary     : ' || v_sal);
+    DBMS_OUTPUT.PUT_LINE('Commission : ' || v_comm);
+    RETURN v_empno;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('The following is SQLERRM:');
+        DBMS_OUTPUT.PUT_LINE(SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('The following is SQLCODE:');
+        DBMS_OUTPUT.PUT_LINE(SQLCODE);
+        RETURN -1;
+END;
+```
+
+**Step 7 – Grant Required Privileges**
+
+While connected as user, `hr_mgr`, grant the privileges needed so `sales_mgr` can execute the `list_emp` procedure, `hire_clerk` function, and `emp_admin` package. Note that the only data object `sales_mgr` has access to is the `emp` table in the `sales_mgr` schema. `sales_mgr` has no privileges on any table in the `hr_mgr` schema.
+
+```
+GRANT USAGE ON SCHEMA hr_mgr TO sales_mgr;
+GRANT EXECUTE ON PROCEDURE list_emp TO sales_mgr;
+GRANT EXECUTE ON FUNCTION hire_clerk(VARCHAR2,NUMBER) TO sales_mgr;
+GRANT EXECUTE ON FUNCTION new_empno() TO sales_mgr;
+GRANT EXECUTE ON PACKAGE emp_admin TO sales_mgr;
+```
+
+**Step 8 – Run Programs list_emp and hire_clerk**
+
+Connect as user, `sales_mgr`, and run the following anonymous block:
+
+```
+\c – sales_mgr
+DECLARE
+    v_empno         NUMBER(4);
+BEGIN
+    hr_mgr.list_emp;
+    DBMS_OUTPUT.PUT_LINE('*** Adding new employee ***');
+    v_empno := hr_mgr.hire_clerk('JONES',40);
+    DBMS_OUTPUT.PUT_LINE('*** After new employee added ***');
+    hr_mgr.list_emp;
+END;
+
+EMPNO    ENAME
+
+-----    -------
+
+7499     ALLEN
+7521     WARD
+7654     MARTIN
+7844     TURNER
+*** Adding new employee ***
+Department : 40
+Employee No: 8000
+Name       : JONES
+Job        : CLERK
+Manager    : 7782
+Hire Date  : 08-NOV-07 00:00:00
+Salary     : 950.00
+*** After new employee added ***
+EMPNO    ENAME
+
+-----    -------
+
+7499     ALLEN
+7521     WARD
+7654     MARTIN
+7844     TURNER
+8000     JONES
+```
+
+The table and sequence accessed by the programs of the anonymous block are illustrated in the following diagram. The gray ovals represent the schemas of `sales_mgr` and `hr_mgr`. The current user during each program execution is shown within parenthesis in bold red font.
+
+![](images/invokers_rights_programs.jpg)
+
+<center><b>Figure 3 - Invoker's Rights Programs</b></center>
+
+Selecting from `sales_mgr’s` emp table shows that the update was made in this table.
+
+```
+SELECT empno, ename, hiredate, sal, deptno, hr_mgr.emp_admin.get_dept_name(deptno) FROM sales_mgr.emp;
+
+empno | ename  |      hiredate      |   sal   | deptno | get_dept_name
+-------+--------+--------------------+---------+--------+---------------
+  7499 | ALLEN  | 20-FEB-81 00:00:00 | 1600.00 |     30 | SALES
+  7521 | WARD   | 22-FEB-81 00:00:00 | 1250.00 |     30 | SALES
+  7654 | MARTIN | 28-SEP-81 00:00:00 | 1250.00 |     30 | SALES
+  7844 | TURNER | 08-SEP-81 00:00:00 | 1500.00 |     30 | SALES
+  8000 | JONES  | 08-NOV-07 00:00:00 |  950.00 |     40 | OPERATIONS
+(5 rows)
+```
+
+The following diagram shows that the `SELECT` command references the `emp` table in the `sales_mgr` schema, but the `dept` table referenced by the `get_dept_name` function in the `emp_admin` package is from the `hr_mgr` schema since the `emp_admin` package has definer’s rights and is owned by `hr_mgr`. The default search path setting with the $user placeholder resolves the access by user `hr_mgr` to the `dept` table in the `hr_mgr` schema.
+
+![](images/definers_rights_package.jpg)
+
+<center><b>Figure 4 Definer's Rights Package</b></center>
+
+**Step 9 – Run Program hire_emp in the emp_admin Package**
+
+While connected as user, `sales_mgr`, run the `hire_emp` procedure in the `emp_admin` package.
+
+```
+EXEC hr_mgr.emp_admin.hire_emp(9001, 'ALICE','SALESMAN',8000,TRUNC(SYSDATE),1000,7369,40);
+```
+
+This diagram illustrates that the `hire_emp` procedure in the `emp_admin` definer’s rights package updates the `emp` table belonging to `hr_mgr` since the object privileges of `hr_mgr` are used, and the default search path setting with the `$user` placeholder resolves to the schema of `hr_mgr`.
+
+![](images/definers_rights_package_2.jpg)
+
+<center><b>Figure 5 Definer's Rights Package</b></center>
+
+Now connect as user, `hr_mgr`. The following `SELECT` command verifies that the new employee was added to `hr_mgr`’s `emp` table since the `emp_admin` package has definer’s rights and hr_mgr is `emp_admin`’s owner.
+
+```
+\c – hr_mgr
+SELECT empno, ename, hiredate, sal, deptno, hr_mgr.emp_admin.get_dept_name(deptno) FROM hr_mgr.emp;
+
+empno | ename  |      hiredate      |   sal   | deptno | get_dept_name
+-------+--------+--------------------+---------+--------+---------------
+  7369 | SMITH  | 17-DEC-80 00:00:00 |  800.00 |     20 | RESEARCH
+  7499 | ALLEN  | 20-FEB-81 00:00:00 | 1600.00 |     30 | SALES
+  7521 | WARD   | 22-FEB-81 00:00:00 | 1250.00 |     30 | SALES
+  7566 | JONES  | 02-APR-81 00:00:00 | 2975.00 |     20 | RESEARCH
+  7654 | MARTIN | 28-SEP-81 00:00:00 | 1250.00 |     30 | SALES
+  7698 | BLAKE  | 01-MAY-81 00:00:00 | 2850.00 |     30 | SALES
+  7782 | CLARK  | 09-JUN-81 00:00:00 | 2450.00 |     10 | ACCOUNTING
+  7788 | SCOTT  | 19-APR-87 00:00:00 | 3000.00 |     20 | RESEARCH
+  7839 | KING   | 17-NOV-81 00:00:00 | 5000.00 |     10 | ACCOUNTING
+  7844 | TURNER | 08-SEP-81 00:00:00 | 1500.00 |     30 | SALES
+  7876 | ADAMS  | 23-MAY-87 00:00:00 | 1100.00 |     20 | RESEARCH
+  7900 | JAMES  | 03-DEC-81 00:00:00 |  950.00 |     30 | SALES
+  7902 | FORD   | 03-DEC-81 00:00:00 | 3000.00 |     20 | RESEARCH
+  7934 | MILLER | 23-JAN-82 00:00:00 | 1300.00 |     10 | ACCOUNTING
+  9001 | ALICE  | 08-NOV-07 00:00:00 | 8000.00 |     40 | OPERATIONS
+(15 rows)
+
+
+```
+

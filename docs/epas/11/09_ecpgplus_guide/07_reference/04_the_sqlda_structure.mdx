@@ -1,0 +1,124 @@
+---
+
+title: "The SQLDA Structure"
+---
+
+<div id="the_sqlda_structure" class="registered_link"></div>
+
+Oracle Dynamic SQL method 4 uses the SQLDA data structure to hold the data and metadata for a dynamic SQL statement. A SQLDA structure can describe a set of input parameters corresponding to the parameter markers found in the text of a dynamic statement or the result set of a dynamic statement. The layout of the SQLDA structure is:
+
+```
+struct SQLDA
+{
+  int     N;	/* Number of entries 	 */
+  char  **V;	/* Variables 	 */
+  int    *L;	/* Variable lengths 	 */
+  short  *T;	/* Variable types 	 */
+  short **I;	/* Indicators 	 */
+  int     F;	/* Count of variables discovered by DESCRIBE */
+  char  **S;	/* Variable names 	 */
+  short  *M;	/* Variable name maximum lengths	 */
+  short  *C;	/* Variable name actual lengths	 */
+  char  **X;	/* Indicator names 	 */
+  short  *Y;	/* Indicator name maximum lengths */
+  short  *Z;	/* Indicator name actual lengths	 */
+};
+```
+
+**Parameters**
+
+`N` - *maximum number of entries*
+
+The `N` structure member contains the maximum number of entries that the SQLDA may describe. This member is populated by the `sqlald()` function when you allocate the SQLDA structure. Before using a descriptor in an `OPEN` or `FETCH` statement, you must set `N` to the *actual* number of values described.
+
+`V` - *data values*
+
+The V structure member is a pointer to an array of data values.
+
+> For a `SELECT`-list descriptor, V points to an array of values returned by a `FETCH` statement (each member in the array corresponds to a column in the result set).
+>
+> For a bind descriptor, V points to an array of parameter values (you must populate the values in this array before opening a cursor that uses the descriptor).
+
+Your application must allocate the space required to hold each value. See the `displayResultSet()` function for an example of how to allocate space for `SELECT`-list values ([Section 5.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/11/EDB_Postgres_Advanced_Server_ecpgPlus_Guide.1.19.html#), Executing a Query with an Unknown Number of Variables).
+
+`L` - *length of each data value*
+
+The L structure member is a pointer to an array of lengths. Each member of this array must indicate the amount of memory available in the corresponding member of the V array. For example, if `V[5]` points to a buffer large enough to hold a 20-byte NULL-terminated string, `L[5]` should contain the value 21 (20 bytes for the characters in the string plus 1 byte for the NULL-terminator). Your application must set each member of the L array.
+
+`T` - *data types*
+
+The `T` structure member points to an array of data types, one for each column (or parameter) described by the descriptor.
+
+> For a bind descriptor, you must set each member of the `T` array to tell ECPGPlus the data type of each parameter.
+>
+> For a `SELECT`-list descriptor, the `DESCRIBE SELECT LIST` statement sets each member of the `T` array to reflect the type of data found in the corresponding column.
+
+You may change any member of the `T` array before executing a `FETCH` statement to force ECPGPlus to convert the corresponding value to a specific data type. For example, if the `DESCRIBE SELECT LIST` statement indicates that a given column is of type `DATE`, you may change the corresponding `T` member to request that the next `FETCH` statement return that value in the form of a NULL-terminated string. Each member of the `T` array is a numeric type code (see [Section 7.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/11/EDB_Postgres_Advanced_Server_ecpgPlus_Guide.1.26.html#) for a list of type codes). The type codes returned by a `DESCRIBE SELECT LIST` statement differ from those expected by a `FETCH` statement. After executing a `DESCRIBE SELECT LIST` statement, each member of T encodes a data type *and* a flag indicating whether the corresponding column is nullable. You can use the `sqlnul()` function to extract the type code and nullable flag from a member of the T array. The signature of the `sqlnul()` function is as follows:
+
+```
+ void sqlnul(unsigned short *valType,
+              unsigned short *typeCode,
+              int            *isNull)
+```
+
+For example, to find the type code and nullable flag for the third column of a descriptor named results, you would invoke sqlnul() as follows:
+
+```
+  sqlnul(&results->T[2], &typeCode, &isNull);
+```
+
+`I` - *indicator variables*
+
+The I structure member points to an array of indicator variables. This array is allocated for you when your application calls the `sqlald()` function to allocate the descriptor.
+
+> For a `SELECT`-list descriptor, each member of the `I` array indicates whether the corresponding column contains a NULL (non-zero) or non-NULL (zero) value.
+>
+> For a bind parameter, your application must set each member of the `I` array to indicate whether the corresponding parameter value is NULL.
+
+`F` - *number of entries*
+
+The `F` structure member indicates how many values are described by the descriptor (the `N` structure member indicates the *maximum* number of values which may be described by the descriptor; `F` indicates the actual number of values). The value of the F member is set by ECPGPlus when you execute a `DESCRIBE` statement. F may be positive, negative, or zero.
+
+> For a `SELECT`-list descriptor, `F` will contain a positive value if the number of columns in the result set is equal to or less than the maximum number of values permitted by the descriptor (as determined by the `N` structure member); 0 if the statement is *not* a `SELECT` statement, or a negative value if the query returns more columns than allowed by the `N` structure member.
+>
+> For a bind descriptor, ~F will contain a positive number if the number of parameters found in the statement is less than or equal to the maximum number of values permitted by the descriptor (as determined by the N structure member); 0 if the statement contains no parameters markers, or a negative value if the statement contains more parameter markers than allowed by the N structure member.
+
+If `F` contains a positive number (after executing a `DESCRIBE` statement), that number reflects the count of columns in the result set (for a `SELECT`-list descriptor) or the number of parameter markers found in the statement (for a bind descriptor). If `F` contains a negative value, you may compute the absolute value of `F` to discover how many values (or parameter markers) are required. For example, if `F` contains -24 after describing a `SELECT` list, you know that the query returns 24 columns.
+
+`S` - *column/parameter names*
+
+The `S` structure member points to an array of NULL-terminated strings.
+
+> For a `SELECT`-list descriptor, the `DESCRIBE SELECT LIST` statement sets each member of this array to the name of the corresponding column in the result set.
+>
+> For a bind descriptor, the `DESCRIBE BIND VARIABLES` statement sets each member of this array to the name of the corresponding bind variable.
+
+In this release, the name of each bind variable is determined by the left-to-right order of the parameter marker within the query - for example, the name of the first parameter is always `?0`, the name of the second parameter is always `?1`, and so on.
+
+`M` - *maximum column/parameter name length*
+
+The M structure member points to an array of lengths. Each member in this array specifies the *maximum* length of the corresponding member of the S array (that is, `M[0]` specifies the maximum length of the column/parameter name found at `S[0])`. This array is populated by the `sqlald()` function.
+
+`C` - *actual column/parameter name length*
+
+The `C` structure member points to an array of lengths. Each member in this array specifies the *actual* length of the corresponding member of the S array (that is, `C[0]` specifies the actual length of the column/parameter name found at `S[0])`.
+
+This array is populated by the `DESCRIBE` statement.
+
+`X` - *indicator variable names*
+
+The `X` structure member points to an array of NULL-terminated strings - each string represents the name of a NULL indicator for the corresponding value.
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro*C applications.
+
+`Y` - *maximum indicator name length*
+
+The Y structure member points to an array of lengths. Each member in this array specifies the *maximum* length of the corresponding member of the X array (that is, `Y[0]` specifies the maximum length of the indicator name found at `X[0]`).
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro*C applications.
+
+`Z` - *actual indicator name length*
+
+The Z structure member points to an array of lengths. Each member in this array specifies the *actual* length of the corresponding member of the X array (that is, `Z[0]` specifies the actual length of the indicator name found at `X[0]`).
+
+This array is not used by ECPGPlus, but is provided for compatibility with Pro*C applications.

@@ -1,0 +1,140 @@
+---
+
+title: "Example - Using a Cursor to Process a Result Set"
+---
+
+<div id="example_using_a_cursor_to_process_a_result_set" class="registered_link"></div>
+
+The code sample that follows demonstrates using a cursor to process a result set. There are four basic steps involved in creating and using a cursor:
+
+1. Use the `DECLARE CURSOR` statement to define a cursor.
+2. Use the `OPEN CURSOR` statement to open the cursor.
+3. Use the `FETCH` statement to retrieve data from a cursor.
+4. Use the `CLOSE CURSOR` statement to close the cursor.
+
+After declaring host variables, our example connects to the `edb` database using a user-supplied role name and password, and queries the `emp` table. The query returns the values into a cursor named employees. The code sample then opens the cursor, and loops through the result set a row at a time, printing the result set. When the sample detects the end of the result set, it closes the connection.
+
+`/************************************************************`
+
+`*` `print_emps.pgc`
+`*`
+ `*/`
+`#include <stdio.h>`
+`int main(int argc, char *argv[])`
+`{`
+  `EXEC SQL BEGIN DECLARE SECTION;`
+`char   *username = argv[1];`
+`char   *password = argv[2];`
+`int	v_empno;`
+`char	v_ename[40];`
+`double	v_sal;`
+`double	v_comm;`
+`short	v_comm_ind;`
+  `EXEC SQL END DECLARE SECTION;`
+  `EXEC SQL WHENEVER SQLERROR sqlprint;`
+  `EXEC SQL CONNECT TO edb USER :username IDENTIFIED BY :password;`
+  `EXEC SQL DECLARE employees CURSOR FOR`
+`SELECT`
+  `empno, ename, sal, comm`
+`FROM`
+  `emp;`
+  `EXEC SQL OPEN employees;`
+  `EXEC SQL WHENEVER NOT FOUND DO break;`
+  `for (;;)`
+  `{`
+`EXEC SQL FETCH NEXT FROM employees`
+  `INTO`
+  `:v_empno, :v_ename, :v_sal, :v_comm INDICATOR :v_comm_ind;`
+
+`if (v_comm_ind)`
+  `printf("empno(%d), ename(%s), sal(%.2f) comm(NULL)\n",`
+          `v_empno, v_ename, v_sal);`
+`else`
+  `printf("empno(%d), ename(%s), sal(%.2f) comm(%.2f)\n",`
+          `v_empno, v_ename, v_sal, v_comm);`
+  `}`
+  `EXEC SQL CLOSE employees;`
+  `EXEC SQL DISCONNECT;`
+`}`
+`/************************************************************`
+
+The code sample begins by including the prototypes and type definitions for the C `stdio` library, and then declares the `main` function:
+
+> `#include <stdio.h>`
+> `int main(int argc, char *argv[])`
+> `{`
+
+Next, the application declares a set of host variables used to interact with the database server:
+
+>   `EXEC SQL BEGIN DECLARE SECTION;`
+>     `char  *username = argv[1];`
+>     `char  *password = argv[2];`
+>     `int	v_empno;`
+>     `char	v_ename[40];`
+>     `double	v_sal;`
+>     `double	v_comm;`
+>     `short	v_comm_ind;`
+>   `EXEC SQL END DECLARE SECTION;`
+
+`argv[]` is an array that contains the command line arguments entered when the user runs the client application. `argv[1]` contains the first command line argument (in this case, a `username`), and `argv[2]` contains the second command line argument (a `password`); please note that we have omitted the error-checking code you would normally include a real-world application. The declaration initializes the values of `username` and `password`, setting them to the values entered when the user invoked the client application.
+
+You may be thinking that you could refer to `argv[1]` and `argv[2]` in a SQL statement (instead of creating a separate copy of each variable); that will not work. All host variables must be declared within a `BEGIN/END DECLARE SECTION` (unless you are compiling in `PROC` mode). Since `argv` is a function *parameter* (not an automatic variable), it cannot be declared within a `BEGIN/END DECLARE SECTION`. If you are compiling in `PROC` mode, you can refer to *any* C variable within a SQL statement.
+
+The next statement instructs the server to respond to an SQL error by printing the text of the error message returned by ECPGPlus or the database server:
+
+>   `EXEC SQL WHENEVER SQLERROR sqlprint;`
+
+Then, the client application establishes a connection with Advanced Server:
+
+>   `EXEC SQL CONNECT TO edb USER :username IDENTIFIED BY :password;`
+
+The `CONNECT` statement creates a connection to the `edb` database, using the values found in the `:username` and `:password` host variables to authenticate the application to the server when connecting.
+
+The next statement declares a cursor named `employees`:
+
+> `EXEC SQL DECLARE employees CURSOR FOR`
+>     `SELECT`
+>       `empno, ename, sal, comm`
+>     `FROM`
+>       `emp;`
+
+`employees` will contain the result set of a `SELECT` statement on the `emp` table. The query returns employee information from the following columns: `empno`, `ename`, sal and `comm`. Notice that when you declare a cursor, you do not include an `INTO` clause - instead, you specify the target variables (or descriptors) when you `FETCH` from the cursor.
+
+Before fetching rows from the cursor, the client application must `OPEN` the cursor:
+
+>   `EXEC SQL OPEN employees;`
+
+In the subsequent `FETCH` section, the client application will loop through the contents of the cursor; the client application includes a `WHENEVER` statement that instructs the server to `break` (that is, terminate the loop) when it reaches the end of the cursor:
+
+>   `EXEC SQL WHENEVER NOT FOUND DO break;`
+
+The client application then uses a `FETCH` statement to retrieve each row from the cursor `INTO` the previously declared host variables:
+
+>   `for (;;)`
+>   `{`
+>     `EXEC SQL FETCH NEXT FROM employees`
+>       `INTO`
+> 	  `:v_empno, :v_ename, :v_sal, :v_comm INDICATOR :v_comm_ind;`
+
+The `FETCH` statement uses an `INTO` clause to assign the retrieved values into the :`v_empno`, :`v_ename`, :`v_sal` and :`v_comm` host variables (and the :`v_comm_ind` null indicator). The first value in the cursor is assigned to the first variable listed in the `INTO` clause, the second value is assigned to the second variable, and so on.
+
+The `FETCH` statement also includes the `INDICATOR` keyword and a host variable to hold a null indicator. If the `comm` column for the retrieved record contains a `NULL` value, `v_comm_ind` is set to a non-zero value, indicating that the column is `NULL`.
+
+The code then checks the null indicator, and displays the appropriate on-screen results:
+
+
+
+>   `if (v_comm_ind)`
+>     `printf("empno(%d), ename(%s), sal(%.2f) comm(NULL)\n",`
+>             `v_empno, v_ename, v_sal);`
+>   `else`
+>     `printf("empno(%d), ename(%s), sal(%.2f) comm(%.2f)\n",`
+>             `v_empno, v_ename, v_sal, v_comm);`
+>   `}`
+
+If the null indicator is `0` (that is, `false`), `v_comm` contains a meaningful value, and the `printf` function displays the commission. If the null indicator contains a non-zero value, `comm` is `NULL`, and `printf` displays the string '`NULL`'. Please note that a host variable (other than a null indicator) contains no meaningful value if you fetch a `NULL` into that host variable; you must use null indicators for any value which may be `NULL`.
+
+The final statements in the code sample close the cursor (`employees`), and the connection to the server:
+
+>   `EXEC SQL CLOSE employees;`
+>   `EXEC SQL DISCONNECT;`

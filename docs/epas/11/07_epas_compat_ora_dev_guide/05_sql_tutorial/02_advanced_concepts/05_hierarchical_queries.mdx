@@ -1,0 +1,453 @@
+---
+
+title: "Hierarchical Queries"
+---
+
+<div id="hierarchical_queries" class="registered_link"></div>
+
+A *hierarchical query* is a type of query that returns the rows of the result set in a hierarchical order based upon data forming a parent-child relationship. A hierarchy is typically represented by an inverted tree structure. The tree is comprised of interconnected *nodes*. Each node may be connected to none, one, or multiple *child* nodes. Each node is connected to one *parent* node except for the top node which has no parent. This node is the *root* node. Each tree has exactly one root node. Nodes that don’t have any children are called *leaf* nodes. A tree always has at least one leaf node - e.g., the trivial case where the tree is comprised of a single node. In this case it is both the root and the leaf.
+
+In a hierarchical query the rows of the result set represent the nodes of one or more trees.
+
+**Note**: It is possible that a single, given row may appear in more than one tree and thus appear more than once in the result set.
+
+The hierarchical relationship in a query is described by the `CONNECT BY` clause which forms the basis of the order in which rows are returned in the result set. The context of where the `CONNECT BY` clause and its associated optional clauses appear in the `SELECT` command is shown below.
+
+> `SELECT` *`select_list`* `FROM` *`table_expression`* `[ WHERE ...]`
+>
+>   `[ START WITH` *`start_expression`* `]`
+>
+> ​    `CONNECT BY { PRIOR` *`parent_expr`* `=` *`child_expr`* `|`
+>
+>  *`child_expr`* `= PRIOR` *`parent_expr`* `}`
+>
+>   `[ ORDER SIBLINGS BY` *`column1`* `[ ASC | DESC ]`
+>
+> ​      `[,` *`column2`* `[ ASC | DESC ] ] ...`
+>
+>   `[ GROUP BY ...]`
+>
+>   `[ HAVING ...]`
+>
+>   `[` *`other`* `...]`
+
+*`select_list`* is one or more expressions that comprise the fields of the result set. *`table_expression`* is one or more tables or views from which the rows of the result set originate. *`other`* is any additional legal `SELECT` command clauses. The clauses pertinent to hierarchical queries, `START WITH`, `CONNECT BY`, and `ORDER SIBLINGS` BY are described in the following sections.
+
+**Note:** At this time, Advanced Server does not support the use of AND (or other operators) in the `CONNECT BY` clause.
+
+## Defining the Parent/Child Relationship
+
+For any given row, its parent and its children are determined by the `CONNECT BY` clause. The `CONNECT BY` clause must consist of two expressions compared with the equals (=) operator. In addition, one of these two expressions must be preceded by the keyword, `PRIOR`.
+
+For any given row, to determine its children:
+
+1. Evaluate `parent_expr` on the given row
+2. Evaluate `child_expr` on any other row resulting from the evaluation of `table_expression`
+3. If `parent_expr = child_expr`, then this row is a child node of the given parent row
+4. Repeat the process for all remaining rows in `table_expression`. All rows that satisfy the equation in step 3 are the children nodes of the given parent row.
+
+**Note**: The evaluation process to determine if a row is a child node occurs on every row returned by *`table_expression`* before the `WHERE` clause is applied to *`table_expression`*.
+
+By iteratively repeating this process treating each child node found in the prior steps as a parent, an inverted tree of nodes is constructed. The process is complete when the final set of child nodes has no children of their own - these are the leaf nodes.
+
+A `SELECT` command that includes a `CONNECT BY` clause typically includes the `START WITH` clause. The `START WITH` clause determines the rows that are to be the root nodes - i.e., the rows that are the initial parent nodes upon which the algorithm described previously is to be applied. This is further explained in the following section.
+
+## Selecting the Root Nodes
+
+The `START WITH` clause is used to determine the row(s) selected by *`table_expression`* that are to be used as the root nodes. All rows selected by *`table_expression`* where *`start_expression`* evaluates to true become a root node of a tree. Thus, the number of potential trees in the result set is equal to the number of root nodes. As a consequence, if the `START WITH` clause is omitted, then every row returned by *`table_expression`* is a root of its own tree.
+
+## Organization Tree in the Sample Application
+
+Consider the `emp` table of the sample application. The rows of the `emp` table form a hierarchy based upon the `mgr` column which contains the employee number of the employee’s manager. Each employee has at most, one manager. `KING` is the president of the company so he has no manager, therefore KING’s `mgr` column is null. Also, it is possible for an employee to act as a manager for more than one employee. This relationship forms a typical, tree-structured, hierarchical organization chart as illustrated below.
+
+![](images/employee_organization_hierarchy.jpg)
+
+<center><b>Figure 2 Employee Organization Hierarchy</b></center>
+
+To form a hierarchical query based upon this relationship, the `SELECT` command includes the clause, `CONNECT BY PRIOR empno = mgr`. For example, given the company president, `KING`, with employee number `7839`, any employee whose `mgr` column is `7839` reports directly to KI~NG which is true for `JONES`, `BLAKE`, and `CLARK` (these are the child nodes of `KING`). Similarly, for employee, `JONES`, any other employee with `mgr` column equal to `7566` is a child node of `JONES` - these are `SCOTT` and `FORD` in this example.
+
+The top of the organization chart is KING so there is one root node in this tree. The `START WITH mgr IS NULL` clause selects only `KING` as the initial root node.
+
+The complete `SELECT` command is shown below.
+
+```
+SELECT ename, empno, mgr
+FROM emp
+START WITH mgr IS NULL
+CONNECT BY PRIOR empno = mgr;
+```
+
+The rows in the query output traverse each branch from the root to leaf moving in a top-to-bottom, left-to-right order. Below is the output from this query.
+
+```
+ename  | empno | mgr
+--------+-------+------
+ KING   |  7839 |
+ JONES  |  7566 | 7839
+ SCOTT  |  7788 | 7566
+ ADAMS  |  7876 | 7788
+ FORD   |  7902 | 7566
+ SMITH  |  7369 | 7902
+ BLAKE  |  7698 | 7839
+ ALLEN  |  7499 | 7698
+ WARD   |  7521 | 7698
+ MARTIN |  7654 | 7698
+ TURNER |  7844 | 7698
+ JAMES  |  7900 | 7698
+ CLARK  |  7782 | 7839
+ MILLER |  7934 | 7782
+(14 rows)
+```
+
+## Node Level
+
+`LEVEL` is a pseudo-column that can be used wherever a column can appear in the SELE~CT command. For each row in the result set, `LEVEL` returns a non-zero integer value designating the depth in the hierarchy of the node represented by this row. The `LEVEL` for root nodes is 1. The `LEVEL` for direct children of root nodes is 2, and so on.
+
+The following query is a modification of the previous query with the addition of the `LEVEL` pseudo-column. In addition, using the L~EVEL value, the employee names are indented to further emphasize the depth in the hierarchy of each row.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr
+FROM emp START WITH mgr IS NULL
+CONNECT BY PRIOR empno = mgr;
+```
+
+The output from this query follows.
+
+```
+level |  employee   | empno | mgr
+-------+-------------+-------+------
+     1 | KING        |  7839 |
+     2 |   JONES     |  7566 | 7839
+     3 |     SCOTT   |  7788 | 7566
+     4 |       ADAMS |  7876 | 7788
+     3 |     FORD    |  7902 | 7566
+     4 |       SMITH |  7369 | 7902
+     2 |   BLAKE     |  7698 | 7839
+     3 |     ALLEN   |  7499 | 7698
+     3 |     WARD    |  7521 | 7698
+     3 |     MARTIN  |  7654 | 7698
+     3 |     TURNER  |  7844 | 7698
+     3 |     JAMES   |  7900 | 7698
+     2 |   CLARK     |  7782 | 7839
+     3 |     MILLER  |  7934 | 7782
+(14 rows)
+```
+
+Nodes that share a common parent and are at the same level are called *siblings*. For example in the above output, employees `ALLEN`, `WARD`, `MARTIN`, `TURNER`, and `JAMES` are siblings since they are all at level three with parent, `BLAKE`. `JONES`, `BLAKE`, and `CLARK` are siblings since they are at level two and KI~NG is their common parent.
+
+## Ordering the Siblings
+
+The result set can be ordered so the siblings appear in ascending or descending order by selected column value(s) using the `ORDER SIBLINGS BY` clause. This is a special case of the `ORDER BY` clause that can be used only with hierarchical queries.
+
+The previous query is further modified with the addition of `ORDER SIBLINGS BY` ename `ASC`.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr
+FROM emp START WITH mgr IS NULL
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+The output from the prior query is now modified so the siblings appear in ascending order by name. Siblings `BLAKE`, `CLARK`, and `JONES` are now alphabetically arranged under `KING`. Siblings `ALLEN`, `JAMES`, `MARTIN`, `TURNER`, and `WARD` are alphabetically arranged under `BLAKE`, and so on.
+
+```
+level |  employee   | empno | mgr
+-------+-------------+-------+------
+     1 | KING        |  7839 |
+     2 |   BLAKE     |  7698 | 7839
+     3 |     ALLEN   |  7499 | 7698
+     3 |     JAMES   |  7900 | 7698
+     3 |     MARTIN  |  7654 | 7698
+     3 |     TURNER  |  7844 | 7698
+     3 |     WARD    |  7521 | 7698
+     2 |   CLARK     |  7782 | 7839
+     3 |     MILLER  |  7934 | 7782
+     2 |   JONES     |  7566 | 7839
+     3 |     FORD    |  7902 | 7566
+     4 |       SMITH |  7369 | 7902
+     3 |     SCOTT   |  7788 | 7566
+     4 |       ADAMS |  7876 | 7788
+(14 rows)
+```
+
+This final example adds the `WHERE` clause and starts with three root nodes. After the node tree is constructed, the `WHERE` clause filters out rows in the tree to form the result set.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr
+FROM emp WHERE mgr IN (7839, 7782, 7902, 7788)
+START WITH ename IN ('BLAKE','CLARK','JONES')
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+The output from the query shows three root nodes (level one) - `BLAKE`, `CLARK`, and `JONES`. In addition, rows that do not satisfy the WHERE clause have been eliminated from the output.
+
+```
+level | employee  | empno | mgr
+-------+-----------+-------+------
+     1 | BLAKE     |  7698 | 7839
+     1 | CLARK     |  7782 | 7839
+     2 |   MILLER  |  7934 | 7782
+     1 | JONES     |  7566 | 7839
+     3 |     SMITH |  7369 | 7902
+     3 |     ADAMS |  7876 | 7788
+(6 rows)
+```
+
+## Retrieving the Root Node with CONNECT_BY_ROOT
+
+`CONNECT_BY_ROOT` is a unary operator that can be used to qualify a column in order to return the column’s value of the row considered to be the root node in relation to the current row.
+
+**Note:** A *unary operator* operates on a single operand, which in the case of `CONNECT_BY_ROOT`, is the column name following the `CONNECT_BY_ROOT` keyword.
+
+In the context of the `SELECT` list, the `CONNECT_BY_ROOT` operator is shown by the following.
+
+> `SELECT [... ,] CONNECT_BY_ROOT` *column* `[, ...]`
+>
+>   `FROM` *`table_expression`* `...`
+
+The following are some points to note about the `CONNECT_BY_ROOT` operator.
+
+- The `CONNECT_BY_ROOT` operator can be used in the `SELECT` list, the `WHERE` clause, the `GROUP` BY clause, the `HAVING` clause, the `ORDER` BY clause, and the `ORDER SIBLINGS BY` clause as long as the `SELECT` command is for a hierarchical query.
+- The `CONNECT_BY_ROOT` operator cannot be used in the `CONNECT BY` clause or the `START WITH` clause of the hierarchical query.
+- It is possible to apply `CONNECT_BY_ROOT` to an expression involving a column, but to do so, the expression must be enclosed within parentheses.
+
+The following query shows the use of the `CONNECT_BY_ROOT` operator to return the employee number and employee name of the root node for each employee listed in the result set based on trees starting with employees `BLAKE`, `CLARK`, and JO~NES.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr,
+CONNECT_BY_ROOT empno "mgr empno",
+CONNECT_BY_ROOT ename "mgr ename"
+FROM emp
+START WITH ename IN ('BLAKE','CLARK','JONES')
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+Note that the output from the query shows that all of the root nodes in columns `mgr` e~mpno and `mgr` `ename` are one of the employees, `BLAKE`, `CLARK`, or `JONES`, listed in the `START WITH` clause.
+
+```
+level | employee  | empno | mgr  | mgr empno | mgr ename
+-------+-----------+-------+------+-----------+-----------
+     1 | BLAKE     |  7698 | 7839 |      7698 | BLAKE
+     2 |   ALLEN   |  7499 | 7698 |      7698 | BLAKE
+     2 |   JAMES   |  7900 | 7698 |      7698 | BLAKE
+     2 |   MARTIN  |  7654 | 7698 |      7698 | BLAKE
+     2 |   TURNER  |  7844 | 7698 |      7698 | BLAKE
+     2 |   WARD    |  7521 | 7698 |      7698 | BLAKE
+     1 | CLARK     |  7782 | 7839 |      7782 | CLARK
+     2 |   MILLER  |  7934 | 7782 |      7782 | CLARK
+     1 | JONES     |  7566 | 7839 |      7566 | JONES
+     2 |   FORD    |  7902 | 7566 |      7566 | JONES
+     3 |     SMITH |  7369 | 7902 |      7566 | JONES
+     2 |   SCOTT   |  7788 | 7566 |      7566 | JONES
+     3 |     ADAMS |  7876 | 7788 |      7566 | JONES
+(13 rows)
+```
+
+The following is a similar query, but producing only one tree starting with the single, top-level, employee where the `mgr` column is null.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr,
+CONNECT_BY_ROOT empno "mgr empno",
+CONNECT_BY_ROOT ename "mgr ename"
+FROM emp START WITH mgr IS NULL
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+In the following output, all of the root nodes in columns `mgr` `empno` and `mgr` `ename` indicate `KING` as the root for this particular query.
+
+```
+level |  employee   | empno | mgr  | mgr empno | mgr ename
+-------+-------------+-------+------+-----------+-----------
+     1 | KING        |  7839 |      |      7839 | KING
+     2 |   BLAKE     |  7698 | 7839 |      7839 | KING
+     3 |     ALLEN   |  7499 | 7698 |      7839 | KING
+     3 |     JAMES   |  7900 | 7698 |      7839 | KING
+     3 |     MARTIN  |  7654 | 7698 |      7839 | KING
+     3 |     TURNER  |  7844 | 7698 |      7839 | KING
+     3 |     WARD    |  7521 | 7698 |      7839 | KING
+     2 |   CLARK     |  7782 | 7839 |      7839 | KING
+     3 |     MILLER  |  7934 | 7782 |      7839 | KING
+     2 |   JONES     |  7566 | 7839 |      7839 | KING
+     3 |     FORD    |  7902 | 7566 |      7839 | KING
+     4 |       SMITH |  7369 | 7902 |      7839 | KING
+     3 |     SCOTT   |  7788 | 7566 |      7839 | KING
+     4 |       ADAMS |  7876 | 7788 |      7839 | KING
+(14 rows)
+```
+
+By contrast, the following example omits the `START WITH` clause thereby resulting in fourteen trees.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr,
+CONNECT_BY_ROOT empno "mgr empno",
+CONNECT_BY_ROOT ename "mgr ename"
+FROM emp
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+The following is the output from the query. Each node appears at least once as a root node under the `mgr empno` and `mgr ename` columns since even the leaf nodes form the top of their own trees.
+
+```
+level |  employee   | empno | mgr  | mgr empno | mgr ename
+-------+-------------+-------+------+-----------+-----------
+     1 | ADAMS       |  7876 | 7788 |      7876 | ADAMS
+     1 | ALLEN       |  7499 | 7698 |      7499 | ALLEN
+     1 | BLAKE       |  7698 | 7839 |      7698 | BLAKE
+     2 |   ALLEN     |  7499 | 7698 |      7698 | BLAKE
+     2 |   JAMES     |  7900 | 7698 |      7698 | BLAKE
+     2 |   MARTIN    |  7654 | 7698 |      7698 | BLAKE
+     2 |   TURNER    |  7844 | 7698 |      7698 | BLAKE
+     2 |   WARD      |  7521 | 7698 |      7698 | BLAKE
+     1 | CLARK       |  7782 | 7839 |      7782 | CLARK
+     2 |   MILLER    |  7934 | 7782 |      7782 | CLARK
+     1 | FORD        |  7902 | 7566 |      7902 | FORD
+     2 |   SMITH     |  7369 | 7902 |      7902 | FORD
+     1 | JAMES       |  7900 | 7698 |      7900 | JAMES
+     1 | JONES       |  7566 | 7839 |      7566 | JONES
+     2 |   FORD      |  7902 | 7566 |      7566 | JONES
+     3 |     SMITH   |  7369 | 7902 |      7566 | JONES
+     2 |   SCOTT     |  7788 | 7566 |      7566 | JONES
+     3 |     ADAMS   |  7876 | 7788 |      7566 | JONES
+     1 | KING        |  7839 |      |      7839 | KING
+     2 |   BLAKE     |  7698 | 7839 |      7839 | KING
+     3 |     ALLEN   |  7499 | 7698 |      7839 | KING
+     3 |     JAMES   |  7900 | 7698 |      7839 | KING
+     3 |     MARTIN  |  7654 | 7698 |      7839 | KING
+     3 |     TURNER  |  7844 | 7698 |      7839 | KING
+     3 |     WARD    |  7521 | 7698 |      7839 | KING
+     2 |   CLARK     |  7782 | 7839 |      7839 | KING
+     3 |     MILLER  |  7934 | 7782 |      7839 | KING
+     2 |   JONES     |  7566 | 7839 |      7839 | KING
+     3 |     FORD    |  7902 | 7566 |      7839 | KING
+     4 |       SMITH |  7369 | 7902 |      7839 | KING
+     3 |     SCOTT   |  7788 | 7566 |      7839 | KING
+     4 |       ADAMS |  7876 | 7788 |      7839 | KING
+     1 | MARTIN      |  7654 | 7698 |      7654 | MARTIN
+     1 | MILLER      |  7934 | 7782 |      7934 | MILLER
+     1 | SCOTT       |  7788 | 7566 |      7788 | SCOTT
+     2 |   ADAMS     |  7876 | 7788 |      7788 | SCOTT
+     1 | SMITH       |  7369 | 7902 |      7369 | SMITH
+     1 | TURNER      |  7844 | 7698 |      7844 | TURNER
+     1 | WARD        |  7521 | 7698 |      7521 | WARD
+(39 rows)
+```
+
+The following illustrates the unary operator effect of `CONNECT_BY_ROOT`. As shown in this example, when applied to an expression that is not enclosed in parentheses, the `CONNECT_BY_ROOT` operator affects only the term, `ename`, immediately following it. The subsequent concatenation of `|| ' manages ' || ename` is not part of the `CONNECT_BY_ROOT` operation, hence the second occurrence of `ename` results in the value of the currently processed row while the first occurrence of `ename` results in the value from the root node.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr,
+CONNECT_BY_ROOT ename || ' manages ' || ename "top mgr/employee"
+FROM emp
+START WITH ename IN ('BLAKE','CLARK','JONES')
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+The following is the output from the query. Note the values produced under the `top mgr/employee` column.
+
+```
+level | employee  | empno | mgr  |   top mgr/employee
+-------+-----------+-------+------+----------------------
+     1 | BLAKE     |  7698 | 7839 | BLAKE manages BLAKE
+     2 |   ALLEN   |  7499 | 7698 | BLAKE manages ALLEN
+     2 |   JAMES   |  7900 | 7698 | BLAKE manages JAMES
+     2 |   MARTIN  |  7654 | 7698 | BLAKE manages MARTIN
+     2 |   TURNER  |  7844 | 7698 | BLAKE manages TURNER
+     2 |   WARD    |  7521 | 7698 | BLAKE manages WARD
+     1 | CLARK     |  7782 | 7839 | CLARK manages CLARK
+     2 |   MILLER  |  7934 | 7782 | CLARK manages MILLER
+     1 | JONES     |  7566 | 7839 | JONES manages JONES
+     2 |   FORD    |  7902 | 7566 | JONES manages FORD
+     3 |     SMITH |  7369 | 7902 | JONES manages SMITH
+     2 |   SCOTT   |  7788 | 7566 | JONES manages SCOTT
+     3 |     ADAMS |  7876 | 7788 | JONES manages ADAMS
+(13 rows)
+```
+
+The following example uses the `CONNECT_BY_ROOT` operator on an expression enclosed in parentheses.
+
+```
+SELECT LEVEL, LPAD (' ', 2 * (LEVEL - 1)) || ename "employee", empno, mgr,
+CONNECT_BY_ROOT ('Manager ' || ename || ' is emp # ' || empno)
+"top mgr/empno"
+FROM emp
+START WITH ename IN ('BLAKE','CLARK','JONES')
+CONNECT BY PRIOR empno = mgr
+ORDER SIBLINGS BY ename ASC;
+```
+
+The following is the output of the query. Note that the values of both `ename` and `empno` are affected by the `CONNECT_BY_ROOT` operator and as a result, return the values from the root node as shown under the top `mgr/empno` column.
+
+```
+level | employee  | empno | mgr  |        top mgr/empno
+-------+-----------+-------+------+-----------------------------
+     1 | BLAKE     |  7698 | 7839 | Manager BLAKE is emp # 7698
+     2 |   ALLEN   |  7499 | 7698 | Manager BLAKE is emp # 7698
+     2 |   JAMES   |  7900 | 7698 | Manager BLAKE is emp # 7698
+     2 |   MARTIN  |  7654 | 7698 | Manager BLAKE is emp # 7698
+     2 |   TURNER  |  7844 | 7698 | Manager BLAKE is emp # 7698
+     2 |   WARD    |  7521 | 7698 | Manager BLAKE is emp # 7698
+     1 | CLARK     |  7782 | 7839 | Manager CLARK is emp # 7782
+     2 |   MILLER  |  7934 | 7782 | Manager CLARK is emp # 7782
+     1 | JONES     |  7566 | 7839 | Manager JONES is emp # 7566
+     2 |   FORD    |  7902 | 7566 | Manager JONES is emp # 7566
+     3 |     SMITH |  7369 | 7902 | Manager JONES is emp # 7566
+     2 |   SCOTT   |  7788 | 7566 | Manager JONES is emp # 7566
+     3 |     ADAMS |  7876 | 7788 | Manager JONES is emp # 7566
+(13 rows)
+```
+
+## Retrieving a Path with SYS_CONNECT_BY_PATH
+
+`SYS_CONNECT_BY_PATH` is a function that works within a hierarchical query to retrieve the column values of a specified column that occur between the current node and the root node. The signature of the function is:
+
+> `SYS_CONNECT_BY_PATH (`*`column`*`,` *`delimiter`*`)`
+
+The function takes two arguments:
+
+> *`column`* is the name of a column that resides within a table specified in the hierarchical query that is calling the function.
+>
+> *`delimiter`* is the `varchar` value that separates each entry in the specified column.
+
+The following example returns a list of employee names, and their managers; if the manager has a manager, that name is appended to the result:
+
+```
+edb=# SELECT level, ename , SYS_CONNECT_BY_PATH(ename, '/') managers
+      FROM emp
+      CONNECT BY PRIOR empno = mgr
+      START WITH mgr IS NULL
+      ORDER BY level, ename, managers;
+ level | ename  |        managers
+-------+--------+-------------------------
+     1 | KING   | /KING
+     2 | BLAKE  | /KING/BLAKE
+     2 | CLARK  | /KING/CLARK
+     2 | JONES  | /KING/JONES
+     3 | ALLEN  | /KING/BLAKE/ALLEN
+     3 | FORD   | /KING/JONES/FORD
+     3 | JAMES  | /KING/BLAKE/JAMES
+     3 | MARTIN | /KING/BLAKE/MARTIN
+     3 | MILLER | /KING/CLARK/MILLER
+     3 | SCOTT  | /KING/JONES/SCOTT
+     3 | TURNER | /KING/BLAKE/TURNER
+     3 | WARD   | /KING/BLAKE/WARD
+     4 | ADAMS  | /KING/JONES/SCOTT/ADAMS
+     4 | SMITH  | /KING/JONES/FORD/SMITH
+(14 rows)
+```
+
+Within the result set:
+
+- The level column displays the number of levels that the query returned.
+- The ename column displays the employee name.
+- The managers column contains the hierarchical list of managers.
+
+The Advanced Server implementation of `SYS_CONNECT_BY_PATH` does not support use of:
+
+- `SYS_CONNECT_BY_PATH` inside `CONNECT_BY_PATH`
+- `SYS_CONNECT_BY_PATH` inside `SYS_CONNECT_BY_PATH`
+

@@ -1,0 +1,515 @@
+---
+
+title: "Static Cursors"
+---
+
+<div id="static_cursors" class="registered_link"></div>
+
+Rather than executing a whole query at once, it is possible to set up a *cursor* that encapsulates the query, and then read the query result set one row at a time. This allows the creation of SPL program logic that retrieves a row from the result set, does some processing on the data in that row, and then retrieves the next row and repeats the process.
+
+Cursors are most often used in the context of a `FOR` or `WHILE` loop. A conditional test should be included in the SPL logic that detects when the end of the result set has been reached so the program can exit the loop.
+
+## Declaring a Cursor
+
+In order to use a cursor, it must first be declared in the declaration section of the SPL program. A cursor declaration appears as follows:
+
+> `CURSOR` *`name`* `IS` *`query`*`;`
+
+*`name`* is an identifier that will be used to reference the cursor and its result set later in the program. *`query`* is a SQL `SELECT` command that determines the result set retrievable by the cursor.
+
+**Note:** An extension of this syntax allows the use of parameters. This is discussed in more detail in Section [3.8.8](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.077.html#pID0E0PJE0HA).
+
+The following are some examples of cursor declarations:
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+    CURSOR emp_cur_2 IS SELECT empno, ename FROM emp;
+    CURSOR emp_cur_3 IS SELECT empno, ename FROM emp WHERE deptno = 10
+        ORDER BY empno;
+BEGIN
+    ...
+END;
+```
+
+## Opening a Cursor
+
+Before a cursor can be used to retrieve rows, it must first be opened. This is accomplished with the `OPEN` statement.
+
+> `OPEN` *`name`*`;`
+
+*`name`* is the identifier of a cursor that has been previously declared in the declaration section of the SPL program. The `OPEN` statement must not be executed on a cursor that has already been, and still is open.
+
+The following shows an `OPEN` statement with its corresponding cursor declaration.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    CURSOR emp_cur_3 IS SELECT empno, ename FROM emp WHERE deptno = 10
+        ORDER BY empno;
+BEGIN
+    OPEN emp_cur_3;
+        ...
+END;
+```
+
+## Fetching Rows From a Cursor
+
+Once a cursor has been opened, rows can be retrieved from the cursor’s result set by using the `FETCH` statement.
+
+> `FETCH` *`name`* `INTO` `{` *`record`* `|` *`variable`* `[,` *`variable_2`* `]... };`
+
+*`name`* is the identifier of a previously opened cursor. *`record`* is the identifier of a previously defined record (for example, using *`table`*`%ROWTYPE`). *`variable`*, *`variable_2`*... are SPL variables that will receive the field data from the fetched row. The fields in *`record`* or *`variable`*, *`variable_2`*... must match in number and order, the fields returned in the `SELECT` list of the query given in the cursor declaration. The data types of the fields in the `SELECT` list must match, or be implicitly convertible to the data types of the fields in *`record`* or the data types of *`variable`*, *`variable_2`*...
+
+**Note:** There is a variation of `FETCH INTO` using the `BULK COLLECT` clause that can return multiple rows at a time into a collection. See Section [3.12.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.081.html#pID0E05CD0HA) for more information on using the `BULK COLLECT` clause with the `FETCH INTO` statement.
+
+The following shows the `FETCH` statement.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_empno         NUMBER(4);
+    v_ename         VARCHAR2(10);
+    CURSOR emp_cur_3 IS SELECT empno, ename FROM emp WHERE deptno = 10
+        ORDER BY empno;
+BEGIN
+    OPEN emp_cur_3;
+    FETCH emp_cur_3 INTO v_empno, v_ename;
+        ...
+END;
+```
+
+Instead of explicitly declaring the data type of a target variable, `%TYPE` can be used instead. In this way, if the data type of the database column is changed, the target variable declaration in the SPL program does not have to be changed. `%TYPE` will automatically pick up the new data type of the specified column.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_empno         emp.empno%TYPE;
+    v_ename         emp.ename%TYPE;
+    CURSOR emp_cur_3 IS SELECT empno, ename FROM emp WHERE deptno = 10
+        ORDER BY empno;
+BEGIN
+    OPEN emp_cur_3;
+    FETCH emp_cur_3 INTO v_empno, v_ename;
+        ...
+END;
+```
+
+If all the columns in a table are retrieved in the order defined in the table, `%ROWTYPE` can be used to define a record into which the `FETCH` statement will place the retrieved data. Each field within the record can then be accessed using dot notation.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_emp_rec       emp%ROWTYPE;
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur_1;
+    FETCH emp_cur_1 INTO v_emp_rec;
+    DBMS_OUTPUT.PUT_LINE('Employee Number: ' || v_emp_rec.empno);
+    DBMS_OUTPUT.PUT_LINE('Employee Name  : ' || v_emp_rec.ename);
+        ...
+END;
+```
+
+## Closing a Cursor
+
+Once all the desired rows have been retrieved from the cursor result set, the cursor must be closed. Once closed, the result set is no longer accessible. The `CLOSE` statement appears as follows:
+
+`CLOSE` *`name`*`;`
+
+*`name`* is the identifier of a cursor that is currently open. Once a cursor is closed, it must not be closed again. However, once the cursor is closed, the `OPEN` statement can be issued again on the closed cursor and the query result set will be rebuilt after which the `FETCH` statement can then be used to retrieve the rows of the new result set.
+
+The following example illustrates the use of the `CLOSE` statement:
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_emp_rec       emp%ROWTYPE;
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur_1;
+    FETCH emp_cur_1 INTO v_emp_rec;
+    DBMS_OUTPUT.PUT_LINE('Employee Number: ' || v_emp_rec.empno);
+    DBMS_OUTPUT.PUT_LINE('Employee Name  : ' || v_emp_rec.ename);
+    CLOSE emp_cur_1;
+END;
+```
+
+This procedure produces the following output when invoked. Employee number `7369`, `SMITH` is the first row of the result set.
+
+```
+EXEC cursor_example;
+
+Employee Number: 7369
+Employee Name  : SMITH
+```
+
+## Using %ROWTYPE With Cursors
+
+Using the `%ROWTYPE` attribute, a record can be defined that contains fields corresponding to all columns fetched from a cursor or cursor variable. Each field takes on the data type of its corresponding column. The `%ROWTYPE` attribute is prefixed by a cursor name or cursor variable name.
+
+> *`record`* *`cursor`*`%ROWTYPE;`
+
+*`record`* is an identifier assigned to the record. *`cursor`* is an explicitly declared cursor within the current scope.
+
+The following example shows how you can use a cursor with `%ROWTYPE` to get information about which employee works in which department.
+
+```
+CREATE OR REPLACE PROCEDURE emp_info
+IS
+    CURSOR empcur IS SELECT ename, deptno FROM emp;
+    myvar           empcur%ROWTYPE;
+BEGIN
+    OPEN empcur;
+    LOOP
+        FETCH empcur INTO myvar;
+        EXIT WHEN empcur%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE( myvar.ename || ' works in department '
+            || myvar.deptno );
+    END LOOP;
+    CLOSE empcur;
+END;
+```
+
+The following is the output from this procedure.
+
+```
+EXEC emp_info;
+
+SMITH works in department 20
+ALLEN works in department 30
+WARD works in department 30
+JONES works in department 20
+MARTIN works in department 30
+BLAKE works in department 30
+CLARK works in department 10
+SCOTT works in department 20
+KING works in department 10
+TURNER works in department 30
+ADAMS works in department 20
+JAMES works in department 30
+FORD works in department 20
+MILLER works in department 10
+```
+
+## Cursor Attributes
+
+Each cursor has a set of attributes associated with it that allows the program to test the state of the cursor. These attributes are `%ISOPEN`, `%FOUND`, `%NOTFOUND`, and `%ROWCOUNT`. These attributes are described in the following sections.
+
+### %ISOPEN
+
+The `%ISOPEN` attribute is used to test whether or not a cursor is open.
+
+> *`cursor_name`*`%ISOPEN`
+
+*`cursor_name`* is the name of the cursor for which a `BOOLEAN` data type of `TRUE` will be returned if the cursor is open, `FALSE` otherwise.
+
+The following is an example of using `%ISOPEN`.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+        ...
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+        ...
+BEGIN
+        ...
+    IF emp_cur_1%ISOPEN THEN
+        NULL;
+    ELSE
+        OPEN emp_cur_1;
+    END IF;
+    FETCH emp_cur_1 INTO ...
+        ...
+END;
+```
+
+### %FOUND
+
+The `%FOUND` attribute is used to test whether or not a row is retrieved from the result set of the specified cursor after a `FETCH` on the cursor.
+
+> *`cursor_name`*`%FOUND`
+
+*`cursor_name`* is the name of the cursor for which a `BOOLEAN` data type of `TRUE` will be returned if a row is retrieved from the result set of the cursor after a `FETCH`.
+
+After the last row of the result set has been `FETCH`ed the next `FETCH` results in `%FOUND` returning `FALSE`. `FALSE` is also returned after the first `FETCH` if there are no rows in the result set to begin with.
+
+Referencing `%FOUND` on a cursor before it is opened or after it is closed results in an `INVALID_CURSOR` exception being thrown.
+
+`%FOUND` returns `null` if it is referenced when the cursor is open, but before the first `FETCH`.
+
+The following example uses `%FOUND`.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_emp_rec       emp%ROWTYPE;
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur_1;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FETCH emp_cur_1 INTO v_emp_rec;
+    WHILE emp_cur_1%FOUND LOOP
+        DBMS_OUTPUT.PUT_LINE(v_emp_rec.empno || '     ' || v_emp_rec.ename);
+        FETCH emp_cur_1 INTO v_emp_rec;
+    END LOOP;
+    CLOSE emp_cur_1;
+END;
+```
+
+When the previous procedure is invoked, the output appears as follows:
+
+```
+EXEC cursor_example;
+
+EMPNO    ENAME
+
+-----    ------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+7876     ADAMS
+7900     JAMES
+7902     FORD
+7934     MILLER
+```
+
+### %NOTFOUND
+
+The `%NOTFOUND` attribute is the logical opposite of `%FOUND`.
+
+*`cursor_name`*`%NOTFOUND`
+
+*`cursor_name`* is the name of the cursor for which a `BOOLEAN` data type of `FALSE` will be returned if a row is retrieved from the result set of the cursor after a `FETCH`.
+
+After the last row of the result set has been `FETCH`ed the next `FETCH` results in `%NOTFOUND` returning `TRUE`. `TRUE` is also returned after the first `FETCH` if there are no rows in the result set to begin with.
+
+Referencing `%NOTFOUND` on a cursor before it is opened or after it is closed, results in an INVALID_CURSOR exception being thrown.
+
+`%NOTFOUND` returns null if it is referenced when the cursor is open, but before the first `FETCH`.
+
+The following example uses `%NOTFOUND`.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_emp_rec       emp%ROWTYPE;
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur_1;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_cur_1 INTO v_emp_rec;
+        EXIT WHEN emp_cur_1%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_emp_rec.empno || '     ' || v_emp_rec.ename);
+    END LOOP;
+    CLOSE emp_cur_1;
+END;
+```
+
+Similar to the prior example, this procedure produces the same output when invoked.
+
+```
+EXEC cursor_example;
+
+EMPNO    ENAME
+
+-----    ------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+7876     ADAMS
+7900     JAMES
+7902     FORD
+7934     MILLER
+```
+
+### %ROWCOUNT
+
+The `%ROWCOUNT` attribute returns an integer showing the number of rows `FETCH`ed so far from the specified cursor.
+
+> *`cursor_name`*`%ROWCOUNT`
+
+*`cursor_name`* is the name of the cursor for which `%ROWCOUNT` returns the number of rows retrieved thus far. After the last row has been retrieved, `%ROWCOUNT` remains set to the total number of rows returned until the cursor is closed at which point `%ROWCOUNT` will throw an `INVALID_CURSOR` exception if referenced.
+
+Referencing `%ROWCOUNT` on a cursor before it is opened or after it is closed, results in an `INVALID_CURSOR` exception being thrown.
+
+`%ROWCOUNT` returns `0` if it is referenced when the cursor is open, but before the first FETC~H. `%ROWCOUNT` also returns `0` after the first `FETCH` when there are no rows in the result set to begin with.
+
+The following example uses `%ROWCOUNT`.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    v_emp_rec       emp%ROWTYPE;
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur_1;
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    LOOP
+        FETCH emp_cur_1 INTO v_emp_rec;
+        EXIT WHEN emp_cur_1%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE(v_emp_rec.empno || '     ' || v_emp_rec.ename);
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('**********************');
+    DBMS_OUTPUT.PUT_LINE(emp_cur_1%ROWCOUNT || ' rows were retrieved');
+    CLOSE emp_cur_1;
+END;
+```
+
+This procedure prints the total number of rows retrieved at the end of the employee list as follows:
+
+```
+EXEC cursor_example;
+
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+7876     ADAMS
+7900     JAMES
+7902     FORD
+7934     MILLER
+
+**********************
+
+14 rows were retrieved
+```
+
+### Summary of Cursor States and Attributes
+
+The following table summarizes the possible cursor states and the values returned by the cursor attributes.
+
+**Table 3‑3 Cursor Attributes**
+
+| Cursor State                                | %ISOPEN | %FOUND                     | %NOTFOUND                  | %ROWCOUNT                  |
+| ------------------------------------------- | ------- | -------------------------- | -------------------------- | -------------------------- |
+| Before `OPEN`                               | False   | `INVALID_CURSOR` Exception | `INVALID_CURSOR` Exception | `INVALID_CURSOR` Exception |
+| After `OPEN` & Before 1st `FETCH`           | True    | Null                       | Null                       | 0                          |
+| After 1st Successful `FETCH`                | True    | True                       | False                      | 1                          |
+| After *`n`*th Successful `FETCH` (last row) | True    | True                       | False                      | n                          |
+| After *`n`*+1st `FETCH` (after last row)    | True    | False                      | True                       | n                          |
+| After `CLOSE`                               | False   | `INVALID_CURSOR` Exception | `INVALID_CURSOR` Exception | `INVALID_CURSOR` Exception |
+
+## Cursor FOR Loop
+
+In the cursor examples presented so far, the programming logic required to process the result set of a cursor included a statement to open the cursor, a loop construct to retrieve each row of the result set, a test for the end of the result set, and finally a statement to close the cursor. The *cursor FOR loop* is a loop construct that eliminates the need to individually code the statements just listed.
+
+The cursor `FOR` loop opens a previously declared cursor, fetches all rows in the cursor result set, and then closes the cursor.
+
+The syntax for creating a cursor `FOR` loop is as follows.
+
+> `FOR` *`record`* `IN` *`cursor`*
+>
+> `LOOP`
+>
+>  *`statements`*
+>
+> `END LOOP;`
+
+*`record`* is an identifier assigned to an implicitly declared record with definition, *`cursor`*`%ROWTYPE`. *`cursor`* is the name of a previously declared cursor. *`statements`* are one or more SPL statements. There must be at least one statement.
+
+The following example shows the example from Section [3.8.6.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.077.html#pID0E0VNE0HA), modified to use a cursor `FOR` loop.
+
+```
+CREATE OR REPLACE PROCEDURE cursor_example
+IS
+    CURSOR emp_cur_1 IS SELECT * FROM emp;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('EMPNO    ENAME');
+    DBMS_OUTPUT.PUT_LINE('-----    -------');
+    FOR v_emp_rec IN emp_cur_1 LOOP
+        DBMS_OUTPUT.PUT_LINE(v_emp_rec.empno || '     ' || v_emp_rec.ename);
+    END LOOP;
+END;
+```
+
+The same results are achieved as shown in the output below.
+
+```
+EXEC cursor_example;
+
+EMPNO    ENAME
+
+-----    -------
+
+7369     SMITH
+7499     ALLEN
+7521     WARD
+7566     JONES
+7654     MARTIN
+7698     BLAKE
+7782     CLARK
+7788     SCOTT
+7839     KING
+7844     TURNER
+7876     ADAMS
+7900     JAMES
+7902     FORD
+7934     MILLER
+```
+
+## Parameterized Cursors
+
+A user can also declare a static cursor that accepts parameters, and can pass values for those parameters when opening that cursor. In the following example we have created a parameterized cursor which will display the name and salary of all employees from the `emp` table that have a salary less than a specified value which is passed as a parameter.
+
+```
+DECLARE
+    my_record       emp%ROWTYPE;
+    CURSOR c1 (max_wage NUMBER) IS
+        SELECT * FROM emp WHERE sal < max_wage;
+BEGIN
+    OPEN c1(2000);
+    LOOP
+        FETCH c1 INTO my_record;
+        EXIT WHEN c1%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE('Name = ' || my_record.ename || ', salary = '
+            || my_record.sal);
+    END LOOP;
+    CLOSE c1;
+END;
+```
+
+So for example if we pass the value 2000 as `max_wage`, then we will only be shown the name and salary of all employees that have a salary less than 2000. The result of the above query is the following:
+
+```
+Name = SMITH, salary = 800.00
+Name = ALLEN, salary = 1600.00
+Name = WARD, salary = 1250.00
+Name = MARTIN, salary = 1250.00
+Name = TURNER, salary = 1500.00
+Name = ADAMS, salary = 1100.00
+Name = JAMES, salary = 950.00
+Name = MILLER, salary = 1300.00
+```
+

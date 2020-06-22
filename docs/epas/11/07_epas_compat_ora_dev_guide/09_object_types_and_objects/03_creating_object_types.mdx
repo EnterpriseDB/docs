@@ -1,0 +1,208 @@
+---
+
+title: "Creating Object Types"
+---
+
+<div id="creating_object_types" class="registered_link"></div>
+
+You can use the `CREATE TYPE` command to create an object type specification, and the `CREATE TYPE BODY` command to create an object type body. This section provides some examples using the `CREATE TYPE` and `CREATE TYPE BODY` commands.
+
+The first example creates the `addr_object_type` object type that contains only attributes and no methods:
+
+```
+CREATE OR REPLACE TYPE addr_object_type AS OBJECT
+(
+    street          VARCHAR2(30),
+    city            VARCHAR2(20),
+    state           CHAR(2),
+    zip             NUMBER(5)
+);
+```
+
+Since there are no methods in this object type, an object type body is not required. This example creates a composite type, which allows you to treat related objects as a single attribute.
+
+## Member Methods
+
+A member method is a function or procedure that is defined within an object type and can only be invoked through an instance of that type. Member methods have access to, and can change the attributes of, the object instance on which they are operating.
+
+The following object type specification creates the `emp_obj_typ` object type:
+
+```
+CREATE OR REPLACE TYPE emp_obj_typ AS OBJECT
+(
+    empno           NUMBER(4),
+    ename           VARCHAR2(20),
+    addr            ADDR_OBJ_TYP,
+    MEMBER PROCEDURE display_emp(SELF IN OUT emp_obj_typ)
+);
+```
+
+Object type `emp_obj_typ` contains a member method named `display_emp`. `display_emp` uses a `SELF` parameter, which passes the object instance on which the method is invoked.
+
+A `SELF` parameter is a parameter whose data type is that of the object type being defined. `SELF` always refers to the instance that is invoking the method. A `SELF` parameter is the first parameter in a member procedure or function *regardless* of whether it is explicitly declared in the parameter list.
+
+The following code snippet defines an object type body for `emp_obj_typ`:
+
+```
+CREATE OR REPLACE TYPE BODY emp_obj_typ AS
+    MEMBER PROCEDURE display_emp (SELF IN OUT emp_obj_typ)
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('Employee No   : ' || empno);
+        DBMS_OUTPUT.PUT_LINE('Name          : ' || ename);
+        DBMS_OUTPUT.PUT_LINE('Street        : ' || addr.street);
+        DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || addr.city || ', ' ||
+            addr.state || ' ' || LPAD(addr.zip,5,'0'));
+    END;
+END;
+```
+
+You can also use the `SELF` parameter in an object type body. To illustrate how the `SELF` parameter would be used in the `CREATE TYPE BODY` command, the preceding object type body could be written as follows:
+
+```
+CREATE OR REPLACE TYPE BODY emp_obj_typ AS
+    MEMBER PROCEDURE display_emp (SELF IN OUT emp_obj_typ)
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('Employee No   : ' || SELF.empno);
+        DBMS_OUTPUT.PUT_LINE('Name          : ' || SELF.ename);
+        DBMS_OUTPUT.PUT_LINE('Street        : ' || SELF.addr.street);
+        DBMS_OUTPUT.PUT_LINE('City/State/Zip: ' || SELF.addr.city || ', ' ||
+            SELF.addr.state || ' ' || LPAD(SELF.addr.zip,5,'0'));
+    END;
+END;
+```
+
+Both versions of the `emp_obj_typ` body are completely equivalent.
+
+## Static Methods
+
+Like a member method, a static method belongs to a type. A static method, however, is invoked not by an *instance* of the type, but by using the *name* of the type. For example, to invoke a static function named `get_count`, defined within the `emp_obj_type` type, you would write:
+
+> `emp_obj_type.get_count();`
+
+A static method does not have access to, and cannot change the attributes of an object instance, and does not typically work with an instance of the type.
+
+The following object type specification includes a static function `get_dname` and a member procedure `display_dept`:
+
+```
+CREATE OR REPLACE TYPE dept_obj_typ AS OBJECT (
+    deptno          NUMBER(2),
+    STATIC FUNCTION get_dname(p_deptno IN NUMBER) RETURN VARCHAR2,
+    MEMBER PROCEDURE display_dept
+);
+```
+
+The object type body for `dept_obj_typ` defines a static function named `get_dname` and a member procedure named `display_dept`:
+
+```
+CREATE OR REPLACE TYPE BODY dept_obj_typ AS
+    STATIC FUNCTION get_dname(p_deptno IN NUMBER) RETURN VARCHAR2
+    IS
+        v_dname     VARCHAR2(14);
+    BEGIN
+        CASE p_deptno
+            WHEN 10 THEN v_dname := 'ACCOUNTING';
+            WHEN 20 THEN v_dname := 'RESEARCH';
+            WHEN 30 THEN v_dname := 'SALES';
+            WHEN 40 THEN v_dname := 'OPERATIONS';
+            ELSE v_dname := 'UNKNOWN';
+        END CASE;
+        RETURN v_dname;
+    END;
+    MEMBER PROCEDURE display_dept
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('Dept No    : ' || SELF.deptno);
+        DBMS_OUTPUT.PUT_LINE('Dept Name  : ' ||
+            dept_obj_typ.get_dname(SELF.deptno));
+    END;
+END;
+```
+
+Within the static function `get_dname`, there can be no references to `SELF`. Since a static function is invoked independently of any object instance, it has no implicit access to any object attribute.
+
+Member procedure `display_dept` can access the `deptno` attribute of the object instance passed in the `SELF` parameter. It is not necessary to explicitly declare the `SELF` parameter in the `display_dept` parameter list.
+
+The last `DBMS_OUTPUT.PUT_LINE` statement in the `display_dept` procedure includes a call to the static function `get_dname` (qualified by its object type name `dept_obj_typ`).
+
+## Constructor Methods
+
+A constructor method is a function that creates an instance of an object type, typically by assigning values to the members of the object. An object type may define several constructors to accomplish different tasks. A constructor method is a member function (invoked with a `SELF` parameter) whose name matches the name of the type.
+
+For example, if you define a type named `address`, each constructor is named `address`. You may overload a constructor by creating one or more different constructor functions with the same name, but with different argument types.
+
+The SPL compiler will provide a default constructor for each object type. The default constructor is a member function whose name matches the name of the type and whose argument list matches the type members (in order). For example, given an object type such as:
+
+```
+CREATE TYPE address AS OBJECT
+(
+  street_address VARCHAR2(40),
+  postal_code    VARCHAR2(10),
+  city           VARCHAR2(40),
+  state          VARCHAR2(2)
+)
+```
+
+The SPL compiler will provide a default constructor with the following signature:
+
+```
+CONSTRUCTOR FUNCTION address
+(
+  street_address VARCHAR2(40),
+  postal_code    VARCHAR2(10),
+  city           VARCHAR2(40),
+  state          VARCHAR2(2)
+)
+```
+
+The body of the default constructor simply sets each member to `NULL`.
+
+To create a custom constructor, declare the constructor function (using the keyword constructor) in the `CREATE TYPE` command and define the construction function in the `CREATE TYPE BODY` command. For example, you may wish to create a custom constructor for the address type which computes the city and state given a `street_address` and `postal_code`:
+
+```
+CREATE TYPE address AS OBJECT
+(
+  street_address VARCHAR2(40),
+  postal_code    VARCHAR2(10),
+  city           VARCHAR2(40),
+  state          VARCHAR2(2),
+
+  CONSTRUCTOR FUNCTION address
+   (
+     street_address VARCHAR2,
+     postal_code VARCHAR2
+    ) RETURN self AS RESULT
+)
+
+ CREATE TYPE BODY address AS
+  CONSTRUCTOR FUNCTION address
+   (
+     street_address VARCHAR2,
+     postal_code VARCHAR2
+    ) RETURN self AS RESULT
+  IS
+    BEGIN
+      self.street_address := street_address;
+      self.postal_code := postal_code;
+      self.city := postal_code_to_city(postal_code);
+      self.state := postal_code_to_state(postal_code);
+      RETURN;
+    END;
+END;
+```
+
+To create an instance of an object type, you invoke one of the constructor methods for that type. For example:
+
+```
+DECLARE
+  cust_addr address := address('100 Main Street', 02203');
+BEGIN
+  DBMS_OUTPUT.PUT_LINE(cust_addr.city);  -- displays Boston
+  DBMS_OUTPUT.PUT_LINE(cust_addr.state); -- displays MA
+END;
+```
+
+Custom constructor functions are typically used to compute member values when given incomplete information. The preceding example computes the values for `city` and `state` when given a postal code.
+
+Custom constructor functions are also used to enforce business rules that restrict the state of an object. For example, if you define an object type to represent a `payment`, you can use a custom constructor to ensure that no object of type `payment` can be created with an `amount` that is `NULL`, negative, or zero. The default constructor would set `payment.amount` to `NULL` so you must create a custom constructor (whose signature matches the default constructor) to prohibit `NULL` amounts.

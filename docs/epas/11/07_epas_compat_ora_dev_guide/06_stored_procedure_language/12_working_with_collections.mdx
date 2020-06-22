@@ -1,0 +1,552 @@
+---
+
+title: "Working with Collections"
+---
+
+<div id="working_with_collections" class="registered_link"></div>
+
+Collection operators allow you to transform, query and manipulate the contents of a collection.
+
+## TABLE()
+
+Use the `TABLE()` function to transform the members of an array into a set of rows. The signature is:
+
+> `TABLE(`*`collection_value`*`)`
+
+Where:
+
+*`collection_value`*
+
+> *`collection_value`* is an expression that evaluates to a value of collection type.
+
+The `TABLE()` function expands the nested contents of a collection into a table format. You can use the `TABLE()` function anywhere you use a regular table expression.
+
+The `TABLE()` function returns a `SETOF ANYELEMENT` (a set of values of any type). For example, if the argument passed to this function is an array of `dates`, `TABLE()` will return a `SETOF dates`. If the argument passed to this function is an array of paths, `TABLE()` will return a `SETOF` paths.
+
+You can use the `TABLE()` function to expand the contents of a collection into table form:
+
+```
+postgres=# SELECT * FROM TABLE(monthly_balance(445.00, 980.20, 552.00));
+
+ monthly_balance
+----------------
+
+  445.00
+  980.20
+  552.00
+(3 rows)
+```
+
+## Using the MULTISET UNION Operator
+
+The `MULTISET UNION` operator combines two collections to form a third collection. The signature is:
+
+> *`coll_1`* `MULTISET UNION [ALL | DISTINCT]` *`coll_2`*
+
+*`coll_1`* and *`coll_2`* specify the names of the collections to combine.
+
+Include the `ALL` keyword to specify that duplicate elements (elements that are present in both *`coll_1`* and *`coll_2`*) should be represented in the result, once for each time they are present in the original collections. This is the default behavior of `MULTISET UNION`.
+
+Include the `DISTINCT` keyword to specify that duplicate elements should be included in the result only once.
+
+The following example demonstrates using the `MULTISET UNION` operator to combine two collections (`collection_1` and `collection_2`) into a third collection (`collection_3`):
+
+```
+DECLARE
+    TYPE int_arr_typ IS TABLE OF NUMBER(2);
+    collection_1    int_arr_typ;
+    collection_2    int_arr_typ;
+    collection_3    int_arr_typ;
+    v_results       VARCHAR2(50);
+BEGIN
+    collection_1 := int_arr_typ(10,20,30);
+    collection_2 := int_arr_typ(30,40);
+    collection_3 := collection_1 MULTISET UNION ALL collection_2;
+    DBMS_OUTPUT.PUT_LINE('COUNT: ' || collection_3.COUNT);
+    FOR i IN collection_3.FIRST .. collection_3.LAST LOOP
+        IF collection_3(i) IS NULL THEN
+            v_results := v_results || 'NULL ';
+        ELSE
+            v_results := v_results || collection_3(i) || ' ';
+        END IF;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('Results: ' || v_results);
+END;
+
+COUNT: 5
+Results: 10 20 30 30 40
+```
+
+The resulting collection includes one entry for each element in `collection_1` and `collection_2`. If the `DISTINCT` keyword is used, the results are the following:
+
+```
+DECLARE
+    TYPE int_arr_typ IS TABLE OF NUMBER(2);
+    collection_1    int_arr_typ;
+    collection_2    int_arr_typ;
+    collection_3    int_arr_typ;
+    v_results       VARCHAR2(50);
+BEGIN
+    collection_1 := int_arr_typ(10,20,30);
+    collection_2 := int_arr_typ(30,40);
+    collection_3 := collection_1 MULTISET UNION DISTINCT collection_2;
+    DBMS_OUTPUT.PUT_LINE('COUNT: ' || collection_3.COUNT);
+    FOR i IN collection_3.FIRST .. collection_3.LAST LOOP
+        IF collection_3(i) IS NULL THEN
+            v_results := v_results || 'NULL ';
+        ELSE
+            v_results := v_results || collection_3(i) || ' ';
+        END IF;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('Results: ' || v_results);
+END;
+
+COUNT: 4
+Results: 10 20 30 40
+```
+
+The resulting collection includes only those members with distinct values. Note in the following example that the `MULTISET UNION DISTINCT` operator also removes duplicate entries that are stored within the same collection:
+
+```
+DECLARE
+    TYPE int_arr_typ IS TABLE OF NUMBER(2);
+    collection_1    int_arr_typ;
+    collection_2    int_arr_typ;
+    collection_3    int_arr_typ;
+    v_results       VARCHAR2(50);
+BEGIN
+    collection_1 := int_arr_typ(10,20,30,30);
+    collection_2 := int_arr_typ(40,50);
+    collection_3 := collection_1 MULTISET UNION DISTINCT collection_2;
+    DBMS_OUTPUT.PUT_LINE('COUNT: ' || collection_3.COUNT);
+    FOR i IN collection_3.FIRST .. collection_3.LAST LOOP
+        IF collection_3(i) IS NULL THEN
+            v_results := v_results || 'NULL ';
+        ELSE
+            v_results := v_results || collection_3(i) || ' ';
+        END IF;
+    END LOOP;
+    DBMS_OUTPUT.PUT_LINE('Results: ' || v_results);
+END;
+
+COUNT: 5
+Results: 10 20 30 40 50
+```
+
+## Using the FORALL Statement
+
+Collections can be used to more efficiently process DML commands by passing all the values to be used for repetitive execution of a `DELETE`, `INSERT`, or `UPDATE` command in one pass to the database server rather than re-iteratively invoking the DML command with new values. The DML command to be processed in such a manner is specified with the `FORALL` statement. In addition, one or more collections are given in the DML command where different values are to be substituted each time the command is executed.
+
+> `FORALL` *`index`* `IN` *`lower_bound`* `..` *`upper_bound`*
+>
+>   `{` *`insert_stmt`* `|` *`update_stmt`* `|` *`delete_stmt`* `};`
+
+*`index`* is the position in the collection given in the *`insert_stmt`*, *`update_stmt`*, or *`delete_stmt`* DML command that iterates from the integer value given 1as *`lower_bound`* up to and including *`upper_bound`*.
+
+**Note:** If an exception occurs during any iteration of the `FORALL` statement, all updates that occurred since the start of the execution of the `FORALL` statement are automatically rolled back. This behavior is not compatible with Oracle databases. Oracle allows explicit use of the `COMMIT` or `ROLLBACK` commands to control whether or not to commit or roll back updates that occurred prior to the exception.
+
+The `FORALL` statement creates a loop – each iteration of the loop increments the *index* variable (you typically use the *index* within the loop to select a member of a collection). The number of iterations is controlled by the *`lower_bound` `..` `upper_bound`* clause. The loop is executes once for each integer between the *`lower_bound`* and *`upper_bound`* (inclusive) and the index is incremented by one for each iteration. For example:
+
+>    `FORALL i IN 2 .. 5`
+
+Creates a loop that executes four times – in the first iteration, the `index` (i) is set to the value 2; in the second iteration, the index is set to the value `3`, and so on. The loop executes for the value 5 and then terminates.
+
+The following example creates a table (`emp_copy`) that is an empty copy of the `emp` table. The example declares a type (`emp_tbl`) that is an array where each element in the array is of composite type, composed of the column definitions used to create the table, `emp`. The example also creates an index on the `emp_tbl` type.
+
+`t_emp` is an associative array, of type `emp_tbl`. The `SELECT` statement uses the `BULK COLLECT INTO` command to populate the `t_emp` array. After the `t_emp` array is populated, the `FORALL` statement iterates through the values (i) in the `t_emp` array index and inserts a row for each record into `emp_copy`.
+
+CREATE TABLE emp_copy(LIKE emp);
+
+```
+DECLARE
+
+    TYPE emp_tbl IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
+
+    t_emp emp_tbl;
+
+BEGIN
+    SELECT * FROM emp BULK COLLECT INTO t_emp;
+
+    FORALL i IN t_emp.FIRST .. t_emp.LAST
+     INSERT INTO emp_copy VALUES t_emp(i);
+
+END;
+```
+
+The following example uses a `FORALL` statement to update the salary of three employees:
+
+```
+DECLARE
+    TYPE empno_tbl  IS TABLE OF emp.empno%TYPE INDEX BY BINARY_INTEGER;
+    TYPE sal_tbl    IS TABLE OF emp.ename%TYPE INDEX BY BINARY_INTEGER;
+    t_empno         EMPNO_TBL;
+    t_sal           SAL_TBL;
+BEGIN
+    t_empno(1)  := 9001;
+    t_sal(1)    := 3350.00;
+    t_empno(2)  := 9002;
+    t_sal(2)    := 2000.00;
+    t_empno(3)  := 9003;
+    t_sal(3)    := 4100.00;
+    FORALL i IN t_empno.FIRST..t_empno.LAST
+        UPDATE emp SET sal = t_sal(i) WHERE empno = t_empno(i);
+END;
+
+SELECT * FROM emp WHERE empno > 9000;
+
+ empno | ename  |   job   | mgr | hiredate |   sal   | comm | deptno
+-------+--------+---------+-----+----------+---------+------+--------
+  9001 | JONES  | ANALYST |     |          | 3350.00 |      |     40
+  9002 | LARSEN | CLERK   |     |          | 2000.00 |      |     40
+  9003 | WILSON | MANAGER |     |          | 4100.00 |      |     40
+(3 rows)
+```
+
+The following example deletes three employees in a `FORALL` statement:
+
+```
+DECLARE
+    TYPE empno_tbl  IS TABLE OF emp.empno%TYPE INDEX BY BINARY_INTEGER;
+    t_empno         EMPNO_TBL;
+BEGIN
+    t_empno(1)  := 9001;
+    t_empno(2)  := 9002;
+    t_empno(3)  := 9003;
+    FORALL i IN t_empno.FIRST..t_empno.LAST
+        DELETE FROM emp WHERE empno = t_empno(i);
+END;
+
+SELECT * FROM emp WHERE empno > 9000;
+
+ empno | ename | job | mgr | hiredate | sal | comm | deptno
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+```
+
+## Using the BULK COLLECT Clause
+
+SQL commands that return a result set consisting of a large number of rows may not be operating as efficiently as possible due to the constant context switching that must occur between the database server and the client in order to transfer the entire result set. This inefficiency can be mitigated by using a collection to gather the entire result set in memory which the client can then access. The `BULK COLLECT` clause is used to specify the aggregation of the result set into a collection.
+
+The `BULK COLLECT` clause can be used with the `SELECT INTO`, `FETCH INTO` and `EXECUTE IMMEDIATE` commands, and with the `RETURNING INTO` clause of the `DELETE`, `INSERT`, and `UPDATE` commands. Each of these is illustrated in the following sections.
+
+### SELECT BULK COLLECT
+
+The `BULK COLLECT` clause can be used with the `SELECT INTO` statement as follows. (Refer to Section [3.4.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E05KG0HA) for additional information on the `SELECT INTO` statement.)
+
+> `SELECT` *`select_expressions`* `BULK COLLECT INTO` *`collection`*
+>
+>   `[, ...] FROM ...;`
+
+If a single collection is specified, then *`collection`* may be a collection of a single field, or it may be a collection of a record type. If more than one collection is specified, then each *`collection`* must consist of a single field. *`select_expressions`* must match in number, order, and type-compatibility all fields in the target collections.
+
+The following example shows the use of the `BULK COLLECT` clause where the target collections are associative arrays consisting of a single field.
+
+```
+DECLARE
+    TYPE empno_tbl    IS TABLE OF emp.empno%TYPE    INDEX BY BINARY_INTEGER;
+    TYPE ename_tbl    IS TABLE OF emp.ename%TYPE    INDEX BY BINARY_INTEGER;
+    TYPE job_tbl      IS TABLE OF emp.job%TYPE      INDEX BY BINARY_INTEGER;
+    TYPE hiredate_tbl IS TABLE OF emp.hiredate%TYPE INDEX BY BINARY_INTEGER;
+    TYPE sal_tbl      IS TABLE OF emp.sal%TYPE      INDEX BY BINARY_INTEGER;
+    TYPE comm_tbl     IS TABLE OF emp.comm%TYPE     INDEX BY BINARY_INTEGER;
+    TYPE deptno_tbl   IS TABLE OF emp.deptno%TYPE   INDEX BY BINARY_INTEGER;
+    t_empno           EMPNO_TBL;
+    t_ename           ENAME_TBL;
+    t_job             JOB_TBL;
+    t_hiredate        HIREDATE_TBL;
+    t_sal             SAL_TBL;
+    t_comm            COMM_TBL;
+    t_deptno          DEPTNO_TBL;
+BEGIN
+    SELECT empno, ename, job, hiredate, sal, comm, deptno BULK COLLECT
+       INTO t_empno, t_ename, t_job, t_hiredate, t_sal, t_comm, t_deptno
+       FROM emp;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME    JOB        HIREDATE    ' ||
+        'SAL        ' || 'COMM      DEPTNO');
+    DBMS_OUTPUT.PUT_LINE('-----  -------  ---------  ---------   ' ||
+        '--------   ' || '--------  ------');
+    FOR i IN 1..t_empno.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(t_empno(i) || '   ' ||
+            RPAD(t_ename(i),8) || ' ' ||
+            RPAD(t_job(i),10) || ' ' ||
+            TO_CHAR(t_hiredate(i),'DD-MON-YY') || ' ' ||
+            TO_CHAR(t_sal(i),'99,999.99') || ' ' ||
+            TO_CHAR(NVL(t_comm(i),0),'99,999.99') || '  ' ||
+            t_deptno(i));
+    END LOOP;
+END;
+
+EMPNO  ENAME    JOB        HIREDATE    SAL        COMM      DEPTNO
+
+-----  -------  ---------  ---------   --------   --------  ------
+
+7369   SMITH    CLERK      17-DEC-80     800.00        .00  20
+7499   ALLEN    SALESMAN   20-FEB-81   1,600.00     300.00  30
+7521   WARD     SALESMAN   22-FEB-81   1,250.00     500.00  30
+7566   JONES    MANAGER    02-APR-81   2,975.00        .00  20
+7654   MARTIN   SALESMAN   28-SEP-81   1,250.00   1,400.00  30
+7698   BLAKE    MANAGER    01-MAY-81   2,850.00        .00  30
+7782   CLARK    MANAGER    09-JUN-81   2,450.00        .00  10
+7788   SCOTT    ANALYST    19-APR-87   3,000.00        .00  20
+7839   KING     PRESIDENT  17-NOV-81   5,000.00        .00  10
+7844   TURNER   SALESMAN   08-SEP-81   1,500.00        .00  30
+7876   ADAMS    CLERK      23-MAY-87   1,100.00        .00  20
+7900   JAMES    CLERK      03-DEC-81     950.00        .00  30
+7902   FORD     ANALYST    03-DEC-81   3,000.00        .00  20
+7934   MILLER   CLERK      23-JAN-82   1,300.00        .00  10
+```
+
+The following example produces the same result, but uses an associative array on a record type defined with the `%ROWTYPE` attribute.
+
+```
+DECLARE
+    TYPE emp_tbl IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
+    t_emp           EMP_TBL;
+BEGIN
+    SELECT * BULK COLLECT INTO t_emp FROM emp;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME    JOB        HIREDATE    ' ||
+        'SAL        ' || 'COMM      DEPTNO');
+    DBMS_OUTPUT.PUT_LINE('-----  -------  ---------  ---------   ' ||
+        '--------   ' || '--------  ------');
+    FOR i IN 1..t_emp.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(t_emp(i).empno || '   ' ||
+            RPAD(t_emp(i).ename,8) || ' ' ||
+            RPAD(t_emp(i).job,10) || ' ' ||
+            TO_CHAR(t_emp(i).hiredate,'DD-MON-YY') || ' ' ||
+            TO_CHAR(t_emp(i).sal,'99,999.99') || ' ' ||
+            TO_CHAR(NVL(t_emp(i).comm,0),'99,999.99') || '  ' ||
+            t_emp(i).deptno);
+    END LOOP;
+END;
+
+EMPNO  ENAME    JOB        HIREDATE    SAL        COMM      DEPTNO
+
+-----  -------  ---------  ---------   --------   --------  ------
+
+7369   SMITH    CLERK      17-DEC-80     800.00        .00  20
+7499   ALLEN    SALESMAN   20-FEB-81   1,600.00     300.00  30
+7521   WARD     SALESMAN   22-FEB-81   1,250.00     500.00  30
+7566   JONES    MANAGER    02-APR-81   2,975.00        .00  20
+7654   MARTIN   SALESMAN   28-SEP-81   1,250.00   1,400.00  30
+7698   BLAKE    MANAGER    01-MAY-81   2,850.00        .00  30
+7782   CLARK    MANAGER    09-JUN-81   2,450.00        .00  10
+7788   SCOTT    ANALYST    19-APR-87   3,000.00        .00  20
+7839   KING     PRESIDENT  17-NOV-81   5,000.00        .00  10
+7844   TURNER   SALESMAN   08-SEP-81   1,500.00        .00  30
+7876   ADAMS    CLERK      23-MAY-87   1,100.00        .00  20
+7900   JAMES    CLERK      03-DEC-81     950.00        .00  30
+7902   FORD     ANALYST    03-DEC-81   3,000.00        .00  20
+7934   MILLER   CLERK      23-JAN-82   1,300.00        .00  10
+```
+
+### FETCH BULK COLLECT
+
+The `BULK COLLECT` clause can be used with a `FETCH` statement. (See Section [3.8.3](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.075.html#pID0E03SE0HA) for information on the `FETCH` statement.) Instead of returning a single row at a time from the result set, the `FETCH BULK COLLECT` will return all rows at once from the result set into the specified collection unless restricted by the LIMIT clause.
+
+`FETCH` *`name`* `BULK COLLECT INTO` *`collection`* `[, ...] [ LIMIT` *`n`* `];`
+
+If a single collection is specified, then *`collection`* may be a collection of a single field, or it may be a collection of a record type. If more than one collection is specified, then each *`collection`* must consist of a single field. The expressions in the `SELECT` list of the cursor identified by *`name`* must match in number, order, and type-compatibility all fields in the target collections. If `LIMIT` *`n`* is specified, the number of rows returned into the collection on each FETCH will not exceed *n~*.
+
+The following example uses the `FETCH BULK COLLECT` statement to retrieve rows into an associative array.
+
+```
+DECLARE
+    TYPE emp_tbl IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
+    t_emp           EMP_TBL;
+    CURSOR emp_cur IS SELECT * FROM emp;
+BEGIN
+    OPEN emp_cur;
+    FETCH emp_cur BULK COLLECT INTO t_emp;
+    CLOSE emp_cur;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME    JOB        HIREDATE    ' ||
+        'SAL        ' || 'COMM      DEPTNO');
+    DBMS_OUTPUT.PUT_LINE('-----  -------  ---------  ---------   ' ||
+        '--------   ' || '--------  ------');
+    FOR i IN 1..t_emp.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(t_emp(i).empno || '   ' ||
+            RPAD(t_emp(i).ename,8) || ' ' ||
+            RPAD(t_emp(i).job,10) || ' ' ||
+            TO_CHAR(t_emp(i).hiredate,'DD-MON-YY') || ' ' ||
+            TO_CHAR(t_emp(i).sal,'99,999.99') || ' ' ||
+            TO_CHAR(NVL(t_emp(i).comm,0),'99,999.99') || '  ' ||
+            t_emp(i).deptno);
+    END LOOP;
+END;
+
+EMPNO  ENAME    JOB        HIREDATE    SAL        COMM      DEPTNO
+
+-----  -------  ---------  ---------   --------   --------  ------
+
+7369   SMITH    CLERK      17-DEC-80     800.00        .00  20
+7499   ALLEN    SALESMAN   20-FEB-81   1,600.00     300.00  30
+7521   WARD     SALESMAN   22-FEB-81   1,250.00     500.00  30
+7566   JONES    MANAGER    02-APR-81   2,975.00        .00  20
+7654   MARTIN   SALESMAN   28-SEP-81   1,250.00   1,400.00  30
+7698   BLAKE    MANAGER    01-MAY-81   2,850.00        .00  30
+7782   CLARK    MANAGER    09-JUN-81   2,450.00        .00  10
+7788   SCOTT    ANALYST    19-APR-87   3,000.00        .00  20
+7839   KING     PRESIDENT  17-NOV-81   5,000.00        .00  10
+7844   TURNER   SALESMAN   08-SEP-81   1,500.00        .00  30
+7876   ADAMS    CLERK      23-MAY-87   1,100.00        .00  20
+7900   JAMES    CLERK      03-DEC-81     950.00        .00  30
+7902   FORD     ANALYST    03-DEC-81   3,000.00        .00  20
+7934   MILLER   CLERK      23-JAN-82   1,300.00        .00  10
+```
+
+### EXECUTE IMMEDIATE BULK COLLECT
+
+The `BULK COLLECT` clause can be used with a `EXECUTE IMMEDIATE` statement to specify a collection to receive the returned rows.
+
+> `EXECUTE IMMEDIATE '`*`sql_expression`*`;'`
+>
+>    `BULK COLLECT INTO` *`collection`* `[,...]`
+>
+>    `[USING {[`*`bind_type`*`]` *`bind_argument`*`} [, ...]}];`
+
+*`collection`* specifies the name of a collection.
+
+*`bind_type`* specifies the parameter mode of the *`bind_argument`*.
+
+- A `bind_type` of `IN` specifies that the `bind_argument` contains a value that is passed to the `sql_expression`.
+- A `bind_type` of `OUT` specifies that the `bind_argument` receives a value from the `sql_expression`.
+- A `bind_type` of `IN` `OUT` specifies that the bind_argument is passed to `sql_expression`, and then stores the value returned by `sql_expression`.
+
+*`bind_argument`* specifies a parameter that contains a value that is either passed to the *`sql_expression`* (specified with a *`bind_type`* of `IN`), or that receives a value from the *`sql_expression`* (specified with a *`bind_type`* of `OUT`), or both (specified with a *`bind_type`* of `IN OUT`).
+
+If a single collection is specified, then *`collection`* may be a collection of a single field, or a collection of a record type; if more than one collection is specified, each *`collection`* must consist of a single field.
+
+### RETURNING BULK COLLECT
+
+The `BULK COLLECT` clause can be added to the `RETURNING INTO` clause of a `DELETE`, `INSERT`, or `UPDATE` command. (See Section [3.4.7](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E05EG0HA) for information on the `RETURNING INTO` clause.)
+
+`{` *`insert`* `|` *`update`* `|` *`delete`* `}`
+
+  `RETURNING { * |` *`expr_1`* `[,` *`expr_2`* `] ...}`
+
+​    `BULK COLLECT INTO` *`collection`* `[, ...];`
+
+*`insert`*, *`update`*, and *`delete`* are the `INSERT`, `UPDATE`, and `DELETE` commands as described in Sections [3.4.4](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E0AJG0HA), [3.4.5](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E04GG0HA), and [3.4.6](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/Database_Compatibility_for_Oracle_Developers_Guide.1.062.html#pID0E01FG0HA), respectively. If a single collection is specified, then *`collection`* may be a collection of a single field, or it may be a collection of a record type. If more than one collection is specified, then each *`collection`* must consist of a single field. The expressions following the `RETURNING` keyword must match in number, order, and type-compatibility all fields in the target collections. If * is specified, then all columns in the affected table are returned. (Note that the use of * is an Advanced Server extension and is not compatible with Oracle databases.)
+
+The `clerkemp` table created by copying the `emp` table is used in the remaining examples in this section as shown below.
+
+```
+CREATE TABLE clerkemp AS SELECT * FROM emp WHERE job = 'CLERK';
+
+SELECT * FROM clerkemp;
+
+ empno | ename  |  job  | mgr  |      hiredate      |   sal   | comm | deptno
+-------+--------+-------+------+--------------------+---------+------+--------
+  7369 | SMITH  | CLERK | 7902 | 17-DEC-80 00:00:00 |  800.00 |      |     20
+  7876 | ADAMS  | CLERK | 7788 | 23-MAY-87 00:00:00 | 1100.00 |      |     20
+  7900 | JAMES  | CLERK | 7698 | 03-DEC-81 00:00:00 |  950.00 |      |     30
+  7934 | MILLER | CLERK | 7782 | 23-JAN-82 00:00:00 | 1300.00 |      |     10
+(4 rows)
+```
+
+The following example increases everyone’s salary by 1.5, stores the employees’ numbers, names, and new salaries in three associative arrays, and finally, displays the contents of these arrays.
+
+```
+DECLARE
+    TYPE empno_tbl IS TABLE OF emp.empno%TYPE INDEX BY BINARY_INTEGER;
+    TYPE ename_tbl IS TABLE OF emp.ename%TYPE INDEX BY BINARY_INTEGER;
+    TYPE sal_tbl   IS TABLE OF emp.sal%TYPE   INDEX BY BINARY_INTEGER;
+    t_empno         EMPNO_TBL;
+    t_ename         ENAME_TBL;
+    t_sal           SAL_TBL;
+BEGIN
+    UPDATE clerkemp SET sal = sal * 1.5 RETURNING empno, ename, sal
+        BULK COLLECT INTO t_empno, t_ename, t_sal;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME      SAL        ');
+    DBMS_OUTPUT.PUT_LINE('-----  -------    --------   ');
+    FOR i IN 1..t_empno.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(t_empno(i) || '   ' || RPAD(t_ename(i),8) ||
+            ' ' || TO_CHAR(t_sal(i),'99,999.99'));
+    END LOOP;
+END;
+
+EMPNO  ENAME      SAL
+
+-----  -------    --------
+
+7369   SMITH      1,200.00
+7876   ADAMS      1,650.00
+7900   JAMES      1,425.00
+7934   MILLER     1,950.00
+```
+
+The following example performs the same functionality as the previous example, but uses a single collection defined with a record type to store the employees’ numbers, names, and new salaries.
+
+```
+DECLARE
+    TYPE emp_rec IS RECORD (
+        empno       emp.empno%TYPE,
+        ename       emp.ename%TYPE,
+        sal         emp.sal%TYPE
+    );
+    TYPE emp_tbl IS TABLE OF emp_rec INDEX BY BINARY_INTEGER;
+    t_emp           EMP_TBL;
+BEGIN
+    UPDATE clerkemp SET sal = sal * 1.5 RETURNING empno, ename, sal
+        BULK COLLECT INTO t_emp;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME      SAL        ');
+    DBMS_OUTPUT.PUT_LINE('-----  -------    --------   ');
+    FOR i IN 1..t_emp.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(t_emp(i).empno || '   ' ||
+            RPAD(t_emp(i).ename,8) || ' ' ||
+            TO_CHAR(t_emp(i).sal,'99,999.99'));
+    END LOOP;
+END;
+
+EMPNO  ENAME      SAL
+
+-----  -------    --------
+
+7369   SMITH      1,200.00
+7876   ADAMS      1,650.00
+7900   JAMES      1,425.00
+7934   MILLER     1,950.00
+```
+
+The following example deletes all rows from the `clerkemp` table, and returns information on the deleted rows into an associative array, which is then displayed.
+
+```
+DECLARE
+    TYPE emp_rec IS RECORD (
+        empno       emp.empno%TYPE,
+        ename       emp.ename%TYPE,
+        job         emp.job%TYPE,
+        hiredate    emp.hiredate%TYPE,
+        sal         emp.sal%TYPE,
+        comm        emp.comm%TYPE,
+        deptno      emp.deptno%TYPE
+    );
+    TYPE emp_tbl IS TABLE OF emp_rec INDEX BY BINARY_INTEGER;
+    r_emp           EMP_TBL;
+BEGIN
+    DELETE FROM clerkemp RETURNING empno, ename, job, hiredate, sal,
+        comm, deptno BULK COLLECT INTO r_emp;
+    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME    JOB        HIREDATE    ' ||
+        'SAL        ' || 'COMM      DEPTNO');
+    DBMS_OUTPUT.PUT_LINE('-----  -------  ---------  ---------   ' ||
+        '--------   ' || '--------  ------');
+    FOR i IN 1..r_emp.COUNT LOOP
+        DBMS_OUTPUT.PUT_LINE(r_emp(i).empno || '   ' ||
+            RPAD(r_emp(i).ename,8) || ' ' ||
+            RPAD(r_emp(i).job,10) || ' ' ||
+            TO_CHAR(r_emp(i).hiredate,'DD-MON-YY') || ' ' ||
+            TO_CHAR(r_emp(i).sal,'99,999.99') || ' ' ||
+            TO_CHAR(NVL(r_emp(i).comm,0),'99,999.99') || '  ' ||
+            r_emp(i).deptno);
+    END LOOP;
+END;
+
+EMPNO  ENAME    JOB        HIREDATE    SAL        COMM      DEPTNO
+
+-----  -------  ---------  ---------   --------   --------  ------
+
+7369   SMITH    CLERK      17-DEC-80   1,200.00        .00  20
+7876   ADAMS    CLERK      23-MAY-87   1,650.00        .00  20
+7900   JAMES    CLERK      03-DEC-81   1,425.00        .00  30
+7934   MILLER   CLERK      23-JAN-82   1,950.00        .00  10
+```
+

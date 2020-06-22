@@ -1,0 +1,3966 @@
+---
+title: Table Partitioning
+---
+
+
+In a partitioned table, one logically large table is broken into smaller physical pieces. Partitioning can provide several benefits:
+ - Query performance can be improved dramatically in certain situations, particularly when most of the heavily accessed rows of the table are in a single partition or a small number of partitions. Partitioning allows you to omit the partition column from the front of an index, reducing index size and making it more likely that the heavily used parts of the index fits in memory.
+ - When a query or update accesses a large percentage of a single partition, performance may improve because the server will perform a sequential scan of the partition instead of using an index and random access reads scattered across the whole table.
+ - A bulk load (or unload) can be implemented by adding or removing partitions, if you plan that requirement into the partitioning design. ALTER TABLE is far faster than a bulk operation. It also entirely avoids the VACUUM overhead caused by a bulk DELETE.
+ - Seldom-used data can be migrated to less-expensive (or slower) storage media.
+
+Table partitioning is worthwhile only when a table would otherwise be very large. The exact point at which a table will benefit from partitioning depends on the application; a good rule of thumb is that the size of the table should exceed the physical memory of the database server.
+
+This document discusses the aspects of table partitioning compatible with Oracle databases that are supported by Advanced Server.
+
+**Note:** This document and particularly the partitioning presented in this chapter do not describe the *declarative partitioning* feature, which has been introduced with PostgreSQL version 10. Note that PostgreSQL declarative partitioning is supported in Advanced Server 10 in addition to the table partitioning compatible with Oracle databases as described in this chapter. For information about declarative partitioning, please see the PostgreSQL core documentation available at:
+
+<https://www.postgresql.org/docs/10/static/ddl-partitioning.html>
+
+The PostgreSQL 9.6 INSERT… ON CONFLICT DO NOTHING/UPDATE clause (commonly known as UPSERT) is not supported on Oracle-styled partitioned tables. If you include the ON CONFLICT DO NOTHING/UPDATE clause when invoking the INSERT command to add data to a partitioned table, the server will return an error.
+
+## Selecting a Partition Type
+
+When you create a partitioned table, you specify LIST, RANGE, or HASH partitioning rules. The partitioning rules provide a set of constraints that define the data that is stored in each partition. As new rows are added to the partitioned table, the server uses the partitioning rules to decide which partition should contain each row.
+
+Advanced Server can also use the partitioning rules to enforce partition pruning, improving performance when responding to user queries. When selecting a partitioning type and partitioning keys for a table, you should take into consideration how the data that is stored within a table will be queried, and include often-queried columns in the partitioning rules.
+
+***List Partitioning***
+
+When you create a list-partitioned table, you specify a single partitioning key column. When adding a row to the table, the server compares the key values specified in the partitioning rule to the corresponding column within the row. If the column value matches a value in the partitioning rule, the row is stored in the partition named in the rule.
+
+***Range Partitioning***
+
+When you create a range-partitioned table, you specify one or more partitioning key columns. When you add a new row to the table, the server compares the value of the partitioning key (or keys) to the corresponding column (or columns) in a table entry. If the column values satisfy the conditions specified in the partitioning rule, the row is stored in the partition named in the rule.
+
+***Hash Partitioning***
+
+When you create a hash-partitioned table, you specify one or more partitioning key columns. Data is divided into (approx.) equal-sized partitions amongst the specified partitions. When you add a row to a hash-partitioned table, the server computes a hash value for the data in the specified column (or columns), and stores the row in a partition according to the hash value.
+
+***Subpartitioning***
+
+Subpartitioning breaks a partitioned table into smaller subsets. All subsets must be stored in the same database server cluster. A table is typically subpartitioned by a different set of columns, and may be a different subpartitioning type than the parent partition. If one partition is subpartitioned, then each partition will have at least one subpartition.
+
+If a table is subpartitioned, no data will be stored in any of the partition tables; the data will be stored instead in the corresponding subpartitions.
+
+## Using Partition Pruning
+
+Advanced Server's query planner uses *partition* *pruning* to compute an efficient plan to locate a row (or rows) that matches the conditions specified in the WHERE clause of a SELECT statement. To successfully prune partitions from an execution plan, the WHERE clause must constrain the information that is compared to the partitioning key column specified when creating the partitioned table. When querying a:
+ - list-partitioned table, partition pruning is effective when the WHERE clause compares a literal value to the partitioning key using operators like equal (=) or AND.
+ - range-partitioned table, partition pruning is effective when the WHERE clause compares a literal value to a partitioning key using operators such as equal (=), less than (\<), or greater than (\>).
+ - hash-partitioned table, partition pruning is effective when the WHERE clause compares a literal value to the partitioning key using an operator such as equal (=).
+
+The partition pruning mechanism uses two optimization techniques:
+ - Fast Pruning
+ - Constraint exclusion
+
+Partition pruning techniques limit the search for data to only those partitions in which the values for which you are searching might reside. Both pruning techniques remove partitions from a query's execution plan, increasing performance.
+
+The difference between the fast pruning and constraint exclusion is that fast pruning understands the relationship between the partitions in an Oracle-partitioned table, while constraint exclusion does not. For example, when a query searches for a specific value within a list-partitioned table, fast pruning can reason that only a specific partition may hold that value, while constraint exclusion must examine the constraints defined for *each* partition. Fast pruning occurs early in the planning process to reduce the number of partitions that the planner must consider, while constraint exclusion occurs late in the planning process.
+
+**Using Constraint Exclusion**
+
+The constraint\_exclusion parameter controls constraint exclusion. The constraint\_exclusion parameter may have a value of on, off, or partition. To enable constraint exclusion, the parameter must be set to *either* partition or on. By default, the parameter is set to partition.
+
+For more information about constraint exclusion, see:
+
+<https://www.postgresql.org/docs/10/static/ddl-partitioning.html>
+
+When constraint exclusion is enabled, the server examines the constraints defined for each partition to determine if that partition can satisfy a query.
+
+When you execute a SELECT statement that *does not* contain a WHERE clause, the query planner must recommend an execution plan that searches the entire table. When you execute a SELECT statement that *does* contain a WHERE clause, the query planner determines in which partition that row would be stored, and sends query fragments to that partition, pruning the partitions that could not contain that row from the execution plan. If you are not using partitioned tables, disabling constraint exclusion may improve performance.
+
+**Fast Pruning**
+
+Like constraint exclusion, fast pruning can only optimize queries that include a WHERE (or join) clause, and only when the qualifiers in the WHERE clause match a certain form. In both cases, the query planner will avoid searching for data within partitions that cannot possibly hold the data required by the query.
+
+Fast pruning is controlled by a boolean configuration parameter named edb\_enable\_pruning. If edb\_enable\_pruning is ON, Advanced Server will fast prune certain queries. If edb\_enable\_pruning is OFF, the server will disable fast pruning.
+
+Please note: Fast pruning cannot optimize queries against subpartitioned tables or optimize queries against range-partitioned tables that are partitioned on more than one column.
+
+For LIST-partitioned tables, Advanced Server can fast prune queries that contain a WHERE clause that constrains a partitioning column to a literal value. For example, given a LIST-partitioned table such as:
+
+CREATE TABLE sales\_hist(..., country text, ...)
+PARTITION BY LIST(country)
+
+(
+PARTITION americas VALUES('US', 'CA', 'MX'),
+PARTITION europe VALUES('BE', 'NL', 'FR'),
+PARTITION asia VALUES('JP', 'PK', 'CN'),
+PARTITION others VALUES(DEFAULT)
+)
+
+Fast pruning can reason about WHERE clauses such as:
+
+> WHERE country = 'US'
+>
+> WHERE country IS NULL;
+
+Given the first WHERE clause, fast pruning would eliminate partitions europe, asia, and others because those partitions cannot hold rows that satisfy the qualifier: WHERE country = 'US'.
+
+Given the second WHERE clause, fast pruning would eliminate partitions americas, europe, and asia because those partitions cannot hold rows where country IS NULL.
+
+The operator specified in the WHERE clause must be an equal sign (=) or the equality operator appropriate for the data type of the partitioning column.
+
+For range-partitioned tables, Advanced Server can fast prune queries that contain a WHERE clause that constrains a partitioning column to a literal value, but the operator may be any of the following:
+
+> \>
+> \>=
+> \=
+> \<=
+> \<
+
+Fast pruning will also reason about more complex expressions involving AND and BETWEEN operators, such as:
+
+WHERE size \> 100 AND size \<= 200
+WHERE size BETWEEN 100 AND 200
+
+But cannot prune based on expressions involving OR or IN.
+
+For example, when querying a RANGE-partitioned table, such as:
+
+CREATE TABLE boxes(id int, size int, color text)
+PARTITION BY RANGE(size)
+(
+PARTITION small VALUES LESS THAN(100),
+PARTITION medium VALUES LESS THAN(200),
+PARTITION large VALUES LESS THAN(300)
+)
+
+Fast pruning can reason about WHERE clauses such as:
+
+WHERE size \> 100 -- scan partitions 'medium' and 'large'
+
+WHERE size \>= 100 -- scan partitions 'medium' and 'large'
+
+WHERE size = 100 -- scan partition 'medium'
+
+WHERE size \<= 100 -- scan partitions 'small' and 'medium'
+
+WHERE size \< 100 -- scan partition 'small'
+
+WHERE size \> 100 AND size \< 199 -- scan partition 'medium'
+
+WHERE size BETWEEN 100 AND 199 -- scan partition 'medium'
+
+WHERE color = 'red' AND size = 100 -- scan 'medium'
+
+WHERE color = 'red' AND (size \> 100 AND size \< 199) -- scan 'medium'
+
+In each case, fast pruning requires that the qualifier must refer to a partitioning column and literal value (or IS NULL/IS NOT NULL).
+
+Note that fast pruning can also optimize DELETE and UPDATE statements containing WHERE clauses of the forms described above.
+
+### Example - Partition Pruning
+
+The EXPLAIN statement displays the execution plan of a statement. You can use the EXPLAIN statement to confirm that Advanced Server is pruning partitions from the execution plan of a query.
+
+To demonstrate the efficiency of partition pruning, first create a simple table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Then, perform a constrained query that includes the EXPLAIN statement:
+
+EXPLAIN (COSTS OFF) SELECT \* FROM sales WHERE country = 'INDIA';
+
+The resulting query plan shows that the server will scan only the sales\_asia table - the table in which a row with a country value of INDIA would be stored:
+
+edb=\# EXPLAIN (COSTS OFF) SELECT \* FROM sales WHERE country = 'INDIA';
+
+QUERY PLAN
+
+\---------------------------------------------------
+
+Append
+
+\-\> Seq Scan on sales\_asia
+
+Filter: ((country)::text = 'INDIA'::text)
+
+(3 rows)
+
+If you perform a query that searches for a row that matches a value not included in the partitioning key:
+
+EXPLAIN (COSTS OFF) SELECT \* FROM sales WHERE dept\_no = '30';
+
+The resulting query plan shows that the server must look in all of the partitions to locate the rows that satisfy the query:
+
+edb=\# EXPLAIN (COSTS OFF) SELECT \* FROM sales WHERE dept\_no = '30';
+
+QUERY PLAN
+
+\-------------------------------------------
+
+Append
+
+\-\> Seq Scan on sales\_americas
+
+Filter: (dept\_no = '30'::numeric)
+
+\-\> Seq Scan on sales\_europe
+
+Filter: (dept\_no = '30'::numeric)
+
+\-\> Seq Scan on sales\_asia
+
+Filter: (dept\_no = '30'::numeric)
+
+(7 rows)
+
+Constraint exclusion also applies when querying subpartitioned tables:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date) SUBPARTITION BY LIST (country)
+
+(
+PARTITION "2011" VALUES LESS THAN('01-JAN-2012')
+
+(
+
+SUBPARTITION europe\_2011 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2011 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2011 VALUES ('US', 'CANADA')
+
+),
+
+PARTITION "2012" VALUES LESS THAN('01-JAN-2013')
+
+(
+
+SUBPARTITION europe\_2012 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2012 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2012 VALUES ('US', 'CANADA')
+
+),
+PARTITION "2013" VALUES LESS THAN('01-JAN-2015')
+
+(
+
+SUBPARTITION europe\_2013 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2013 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2013 VALUES ('US', 'CANADA')
+
+)
+
+);
+
+When you query the table, the query planner prunes any partitions or subpartitions from the search path that cannot possibly contain the desired result set:
+
+edb=\# EXPLAIN (COSTS OFF) SELECT \* FROM sales WHERE country = 'US' AND date = 'Dec 12, 2012';
+
+QUERY PLAN
+
+\-----------------------------------------------------------------------------------------------------------------
+
+Append
+
+\-\> Seq Scan on sales\_americas\_2012
+
+Filter: (((country)::text = 'US'::text) AND (date = '12-DEC-12 00:00:00'::timestamp without time zone))
+
+(3 rows)
+
+##  Partitioning Commands Compatible with Oracle Databases
+
+The following sections provide information about using the table partitioning syntax compatible with Oracle databases supported by Advanced Server.
+
+### CREATE TABLE…PARTITION BY
+
+Use the PARTITION BY clause of the CREATE TABLE command to create a partitioned table with data distributed amongst one or more partitions (and subpartitions). The command syntax comes in the following forms:
+
+***List Partitioning Syntax***
+
+Use the first form to create a list-partitioned table:
+
+CREATE TABLE \[ schema. \]*table\_name*
+*table\_definition*
+
+PARTITION BY LIST(*column*)
+
+\[SUBPARTITION BY {RANGE|LIST|HASH} (*column*\[, *column* \]...)\]
+
+(*list\_partition\_definition\[, list\_partition\_definition\]...*);
+
+Where *list\_partition\_definition* is:
+
+> PARTITION \[*partition\_name*\]
+>
+> VALUES (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+>
+> \[(*subpartition*, ...)\]
+
+***Range Partitioning Syntax***
+
+Use the second form to create a range-partitioned table:
+
+CREATE TABLE \[ *schema*. \]*table\_name*
+*table\_definition*
+PARTITION BY RANGE(*column*\[, *column* \]...)
+
+\[SUBPARTITION BY {RANGE|LIST|HASH} (*column*\[, *column* \]...)\]
+
+(*range\_partition\_definition\[, range\_partition\_definition\]...*);
+
+Where *range\_partition\_definition* is:
+
+> PARTITION \[*partition\_name*\]
+>
+> VALUES LESS THAN (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+>
+> \[(*subpartition*, ...)\]
+
+***Hash Partitioning Syntax***
+
+Use the third form to create a hash-partitioned table:
+
+CREATE TABLE \[ *schema*. \]*table\_name*
+
+*table\_definition*
+
+PARTITION BY HASH(*column*\[, *column* \]...)
+\[SUBPARTITION BY {RANGE|LIST|HASH} (*column*\[, *column* \]...)\]
+(*hash\_partition\_definition*\[, *hash\_partition\_definition*\]...);
+
+Where *hash\_partition\_definition* is:
+
+> \[PARTITION *partition\_name*\]
+>
+> \[TABLESPACE *tablespace\_name*\]
+> \[(*subpartition*, ...)\]
+
+***Subpartitioning Syntax***
+
+*subpartition* may be one of the following:
+
+> {*list*\_*subpartition* | *range*\_*subpartition* | *hash\_subpartition*}
+
+where *list*\_*subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name*\]
+>
+> VALUES (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+where *range*\_*subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name*\]
+>
+> VALUES LESS THAN (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+where hash\_subpartition is:
+
+> \[SUBPARTITION subpartition\_name\]
+>
+> \[TABLESPACE tablespace\_name\]
+
+Description
+
+The CREATE TABLE… PARTITION BY command creates a table with one or more partitions; each partition may have one or more subpartitions. There is no upper limit to the number of defined partitions, but if you include the PARTITION BY clause, you must specify at least one partitioning rule. The resulting table will be owned by the user that creates it.
+
+Use the PARTITION BY LIST clause to divide a table into partitions based on the values entered in a specified column. Each partitioning rule must specify at least one literal value, but there is no upper limit placed on the number of values you may specify. Include a rule that specifies a matching value of DEFAULT to direct any un-qualified rows to the given partition; for more information about using the DEFAULT keyword, see Section <span class="underline">10.4</span>.
+
+Use the PARTITION BY RANGE clause to specify boundary rules by which to create partitions. Each partitioning rule must contain at least one column of a data type that has two operators (i.e., a greater-than or equal to operator, and a less-than operator). Range boundaries are evaluated against a LESS THAN clause and are non-inclusive; a date boundary of January 1, 2013 will include only those date values that fall on or before December 31, 2012.
+
+Range partition rules must be specified in ascending order. INSERT commands that store rows with values that exceed the top boundary of a range-partitioned table will fail unless the partitioning rules include a boundary rule that specifies a value of MAXVALUE. If you do not include a MAXVALUE partitioning rule, any row that exceeds the maximum limit specified by the boundary rules will result in an error.
+
+For more information about using the MAXVALUE keyword, see Section <span class="underline">10.4</span>.
+
+Use the PARTITION BY HASH clause to create a hash-partitioned table. In a HASH partitioned table, data is divided amongst equal-sized partitions based on the hash value of the column specified in the partitioning syntax. When specifying a HASH partition, choose a column (or combination of columns) that is as close to unique as possible to help ensure that data is evenly distributed amongst the partitions. When selecting a partitioning column (or combination of columns), select a column (or columns) that you frequently search for exact matches for best performance.
+
+Use the TABLESPACE keyword to specify the name of a tablespace on which a partition or subpartition will reside; if you do not specify a tablespace, the partition or subpartition will reside in the default tablespace.
+
+If a table definition includes the SUBPARTITION BY clause, each partition within that table will have at least one subpartition. Each subpartition may be explicitly defined or system-defined.
+
+If the subpartition is system-defined, the server-generated subpartition will reside in the default tablespace, and the name of the subpartition will be assigned by the server. The server will create:
+ - A DEFAULT subpartition if the SUBPARTITION BY clause specifies LIST.
+ - A MAXVALUE subpartition if the SUBPARTITION BY clause specifies RANGE.
+
+The server will generate a subpartition name that is a combination of the partition table name and a unique identifier. You can query the ALL\_TAB\_SUBPARTITIONS table to review a complete list of subpartition names.
+
+**Note:** For Advanced Server 10, an index cannot be created on a partitioned table. For example on the partitioned table named sales, you will get the following error message:
+
+edb=\# CREATE INDEX ON sales (part\_no);
+
+ERROR: cannot create index on partitioned table "sales"
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the table to be created.
+
+*table\_definition*
+
+The column names, data types, and constraint information as described in the PostgreSQL core documentation for the CREATE TABLE statement, available at:
+
+<https://www.postgresql.org/docs/10/static/sql-createtable.html>
+
+*partition\_name*
+
+The name of the partition to be created. Partition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*subpartition\_name*
+
+The name of the subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*column*
+
+The name of a column on which the partitioning rules are based. Each row will be stored in a partition that corresponds to the *value* of the specified column(s).
+
+(*value*\[, *value*\]...)
+
+Use value to specify a quoted literal value (or comma-delimited list of literal values) by which table entries will be grouped into partitions. Each partitioning rule must specify at least one value, but there is no limit placed on the number of values specified within a rule. value may be NULL, DEFAULT (if specifying a LIST partition), or MAXVALUE (if specifying a RANGE partition).
+
+When specifying rules for a list-partitioned table, include the DEFAULT keyword in the last partition rule to direct any un-matched rows to the given partition. If you do not include a rule that includes a value of DEFAULT, any INSERT statement that attempts to add a row that does not match the specified rules of at least one partition will fail, and return an error.
+
+When specifying rules for a list-partitioned table, include the MAXVALUE keyword in the last partition rule to direct any un-categorized rows to the given partition. If you do not include a MAXVALUE partition, any INSERT statement that attempts to add a row where the partitioning key is greater than the highest value specified will fail, and return an error.
+
+*tablespace\_name*
+
+The name of the tablespace in which the partition or subpartition resides.
+
+#### Example - PARTITION BY LIST
+
+The following example creates a partitioned table (sales) using the PARTITION BY LIST clause. The sales table stores information in three partitions (europe, asia, and americas):
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+The resulting table is partitioned by the value specified in the country column:
+
+acctg=\# SELECT partition\_name, high\_value from ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+ - Rows with a value of US or CANADA in the country column are stored in the americas partition.
+ - Rows with a value of INDIA or PAKISTAN in the country column are stored in the asia partition.
+ - Rows with a value of FRANCE or ITALY in the country column are stored in the europe partition.
+
+The server would evaluate the following statement against the partitioning rules, and store the row in the europe partition:
+
+INSERT INTO sales VALUES (10, '9519a', 'FRANCE', '18-Aug-2012', '650000');
+
+#### Example - PARTITION BY RANGE
+
+The following example creates a partitioned table (sales) using the PARTITION BY RANGE clause. The sales table stores information in four partitions (q1\_2012, q2\_2012, q3\_2012 and q4\_2012) :
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date)
+
+(
+
+PARTITION q1\_2012
+VALUES LESS THAN('2012-Apr-01'),
+
+PARTITION q2\_2012
+VALUES LESS THAN('2012-Jul-01'),
+
+PARTITION q3\_2012
+VALUES LESS THAN('2012-Oct-01'),
+
+PARTITION q4\_2012
+VALUES LESS THAN('2013-Jan-01')
+);
+
+The resulting table is partitioned by the value specified in the date column:
+
+acctg=\# SELECT partition\_name, high\_value from ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+------------------------------------------------------------------
+
+Q1\_2012 | FOR VALUES FROM (MINVALUE) TO ('01-APR-12 00:00:00')
+
+Q2\_2012 | FOR VALUES FROM ('01-APR-12 00:00:00') TO ('01-JUL-12 00:00:00')
+
+Q3\_2012 | FOR VALUES FROM ('01-JUL-12 00:00:00') TO ('01-OCT-12 00:00:00')
+
+Q4\_2012 | FOR VALUES FROM ('01-OCT-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+(4 rows)
+ - Any row with a value in the date column before April 1, 2012 is stored in a partition named q1\_2012.
+ - Any row with a value in the date column before July 1, 2012 is stored in a partition named q2\_2012.
+ - Any row with a value in the date column before October 1, 2012 is stored in a partition named q3\_2012.
+ - Any row with a value in the date column before January 1, 2013 is stored in a partition named q4\_2012.
+
+The server would evaluate the following statement against the partitioning rules and store the row in the q3\_2012 partition:
+
+INSERT INTO sales VALUES (10, '9519a', 'FRANCE', '18-Aug-2012', '650000');
+
+#### Example - PARTITION BY HASH
+
+The following example creates a partitioned table (sales) using the PARTITION BY HASH clause. The sales table stores information in three partitions (p1, p2, and p3:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY HASH (part\_no)
+
+(
+
+PARTITION p1,
+
+PARTITION p2,
+
+PARTITION p3
+
+);
+
+The table is partitioned by the hash value of the value specified in the part\_no column:
+
+acctg=\# SELECT partition\_name, high\_value from ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+------------------------------------------
+
+P1 | FOR VALUES WITH (modulus 3, remainder 0)
+
+P2 | FOR VALUES WITH (modulus 3, remainder 1)
+
+P3 | FOR VALUES WITH (modulus 3, remainder 2)
+
+(3 rows)
+
+The server will evaluate the hash value of the part\_no column, and distribute the rows into approximately equal partitions.
+
+#### Example - PARTITION BY RANGE, SUBPARTITION BY LIST
+
+The following example creates a partitioned table (sales) that is first partitioned by the transaction date; the range partitions (q1\_2012, q2\_2012, q3\_2012 and q4\_2012) are then list-subpartitioned using the value of the country column.
+
+CREATE TABLE sales
+(
+dept\_no number,
+part\_no varchar2,
+country varchar2(20),
+date date,
+amount number
+)
+PARTITION BY RANGE(date)
+SUBPARTITION BY LIST(country)
+(
+PARTITION q1\_2012
+VALUES LESS THAN('2012-Apr-01')
+(
+SUBPARTITION q1\_europe VALUES ('FRANCE', 'ITALY'),
+SUBPARTITION q1\_asia VALUES ('INDIA', 'PAKISTAN'),
+SUBPARTITION q1\_americas VALUES ('US', 'CANADA')
+),
+PARTITION q2\_2012
+VALUES LESS THAN('2012-Jul-01')
+(
+SUBPARTITION q2\_europe VALUES ('FRANCE', 'ITALY'),
+SUBPARTITION q2\_asia VALUES ('INDIA', 'PAKISTAN'),
+SUBPARTITION q2\_americas VALUES ('US', 'CANADA')
+),
+PARTITION q3\_2012
+VALUES LESS THAN('2012-Oct-01')
+(
+SUBPARTITION q3\_europe VALUES ('FRANCE', 'ITALY'),
+SUBPARTITION q3\_asia VALUES ('INDIA', 'PAKISTAN'),
+SUBPARTITION q3\_americas VALUES ('US', 'CANADA')
+),
+PARTITION q4\_2012
+VALUES LESS THAN('2013-Jan-01')
+(
+SUBPARTITION q4\_europe VALUES ('FRANCE', 'ITALY'),
+SUBPARTITION q4\_asia VALUES ('INDIA', 'PAKISTAN'),
+SUBPARTITION q4\_americas VALUES ('US', 'CANADA')
+)
+);
+
+This statement creates a table with four partitions; each partition has three subpartitions:
+
+acctg=\# SELECT subpartition\_name, high\_value, partition\_name FROM ALL\_TAB\_SUBPARTITIONS;
+
+subpartition\_name | high\_value | partition\_name
+
+\-------------------+-------------------------------------+----------------
+
+Q1\_AMERICAS | FOR VALUES IN ('US', 'CANADA') | Q1\_2012
+
+Q1\_ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN') | Q1\_2012
+
+Q1\_EUROPE | FOR VALUES IN ('FRANCE', 'ITALY') | Q1\_2012
+
+Q2\_AMERICAS | FOR VALUES IN ('US', 'CANADA') | Q2\_2012
+
+Q2\_ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN') | Q2\_2012
+
+Q2\_EUROPE | FOR VALUES IN ('FRANCE', 'ITALY') | Q2\_2012
+
+Q3\_AMERICAS | FOR VALUES IN ('US', 'CANADA') | Q3\_2012
+
+Q3\_ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN') | Q3\_2012
+
+Q3\_EUROPE | FOR VALUES IN ('FRANCE', 'ITALY') | Q3\_2012
+
+Q4\_AMERICAS | FOR VALUES IN ('US', 'CANADA') | Q4\_2012
+
+Q4\_ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN') | Q4\_2012
+
+Q4\_EUROPE | FOR VALUES IN ('FRANCE', 'ITALY') | Q4\_2012
+
+(12 rows)
+
+When a row is added to this table, the value in the date column is compared to the values specified in the range partitioning rules, and the server selects the partition in which the row should reside. The value in the country column is then compared to the values specified in the list subpartitioning rules; when the server locates a match for the value, the row is stored in the corresponding subpartition.
+
+Any row added to the table will be stored in a subpartition, so the partitions will contain no data.
+
+The server would evaluate the following statement against the partitioning and subpartitioning rules and store the row in the q3\_europe partition:
+
+INSERT INTO sales VALUES (10, '9519a', 'FRANCE', '18-Aug-2012', '650000');
+
+### ALTER TABLE...ADD PARTITION
+
+Use the ALTER TABLE… ADD PARTITION command to add a partition to an existing partitioned table. The syntax is:
+
+ALTER TABLE *table*\_*name* ADD PARTITION *partition*\_*definition*;
+
+Where *partition\_definition* is:
+
+> {*list\_partition* | *range\_partition* }
+
+and *list*\_*partition* is:
+
+> PARTITION \[*partition\_name*\]
+>
+> VALUES (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+>
+> \[(*subpartition*, ...)\]
+
+and *range\_partition* is:
+
+> PARTITION \[*partition\_name*\]
+>
+> VALUES LESS THAN (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+>
+> \[(*subpartition*, ...)\]
+
+Where *subpartition* is:
+
+> {*list*\_*subpartition* | *range*\_*subpartition | hash\_subpartition*}
+
+and *list*\_*subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name*\]
+>
+> VALUES (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+and *range*\_*subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name* \]
+>
+> VALUES LESS THAN (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+Description
+
+The ALTER TABLE… ADD PARTITION command adds a partition to an existing partitioned table. There is no upper limit to the number of defined partitions in a partitioned table.
+
+New partitions must be of the same type (LIST, RANGE or HASH) as existing partitions. The new partition rules must reference the same column specified in the partitioning rules that define the existing partition(s).
+
+You cannot use the ALTER TABLE… ADD PARTITION statement to add a partition to a table with a MAXVALUE or DEFAULT rule. Note that you can alternatively use the ALTER TABLE… SPLIT PARTITION statement to split an existing partition, effectively increasing the number of partitions in a table.
+
+RANGE partitions must be specified in ascending order. You cannot add a new partition that precedes existing partitions in a RANGE partitioned table.
+
+Include the TABLESPACE clause to specify the tablespace in which the new partition will reside. If you do not specify a tablespace, the partition will reside in the default tablespace.
+
+If the table is indexed, the index will be created on the new partition.
+
+To use the ALTER TABLE... ADD PARTITION command you must be the table owner, or have superuser (or administrative) privileges.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*partition\_name*
+
+The name of the partition to be created. Partition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*subpartition\_name*
+
+The name of the subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+(*value*\[, *value*\]...)
+
+Use *value* to specify a quoted literal value (or comma-delimited list of literal values) by which rows will be distributed into partitions. Each partitioning rule must specify at least one *value*, but there is no limit placed on the number of values specified within a rule. *value* may also be NULL, DEFAULT (if specifying a LIST partition), or MAXVALUE (if specifying a RANGE partition).
+
+For information about creating a DEFAULT or MAXVALUE partition, see Section <span class="underline">10.4</span>.
+
+*tablespace\_name*
+
+The name of the tablespace in which a partition or subpartition resides.
+
+#### Example - Adding a Partition to a LIST Partitioned Table
+
+The example that follows adds a partition to the list-partitioned sales table. The table was created using the command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+The table contains three partitions (americas, asia, and europe) :
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+
+The following command adds a partition named east\_asia to the sales table:
+
+> ALTER TABLE sales ADD PARTITION east\_asia
+> VALUES ('CHINA', 'KOREA');
+
+After invoking the command, the table includes the east\_asia partition:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+EAST\_ASIA | FOR VALUES IN ('CHINA', 'KOREA')
+
+(4 rows)
+
+#### Example - Adding a Partition to a RANGE Partitioned Table
+
+The example that follows adds a partition to a range-partitioned table named sales:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date)
+
+(
+
+PARTITION q1\_2012
+VALUES LESS THAN('2012-Apr-01'),
+
+PARTITION q2\_2012
+VALUES LESS THAN('2012-Jul-01'),
+
+PARTITION q3\_2012
+VALUES LESS THAN('2012-Oct-01'),
+
+PARTITION q4\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+);
+
+The table contains four partitions (q1\_2012, q2\_2012, q3\_2012, and q4\_2012):
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+------------------------------------------------------------------
+
+Q1\_2012 | FOR VALUES FROM (MINVALUE) TO ('01-APR-12 00:00:00')
+
+Q2\_2012 | FOR VALUES FROM ('01-APR-12 00:00:00') TO ('01-JUL-12 00:00:00')
+
+Q3\_2012 | FOR VALUES FROM ('01-JUL-12 00:00:00') TO ('01-OCT-12 00:00:00')
+
+Q4\_2012 | FOR VALUES FROM ('01-OCT-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+(4 rows)
+
+The following command adds a partition named q1\_2013 to the sales table:
+
+> ALTER TABLE sales ADD PARTITION q1\_2013
+> VALUES LESS THAN('01-APR-2013');
+
+After invoking the command, the table includes the q1\_2013 partition:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+------------------------------------------------------------------
+
+Q1\_2012 | FOR VALUES FROM (MINVALUE) TO ('01-APR-12 00:00:00')
+
+Q2\_2012 | FOR VALUES FROM ('01-APR-12 00:00:00') TO ('01-JUL-12 00:00:00')
+
+Q3\_2012 | FOR VALUES FROM ('01-JUL-12 00:00:00') TO ('01-OCT-12 00:00:00')
+
+Q4\_2012 | FOR VALUES FROM ('01-OCT-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+Q1\_2013 | FOR VALUES FROM ('01-JAN-13 00:00:00') TO ('01-APR-13 00:00:00')
+
+(5 rows)
+
+### ALTER TABLE… ADD SUBPARTITION
+
+The ALTER TABLE… ADD SUBPARTITION command adds a subpartition to an existing subpartitioned partition. The syntax is:
+
+> ALTER TABLE *table*\_*name* MODIFY PARTITION *partition*\_*name*
+> ADD SUBPARTITION *subpartition*\_*definition;*
+
+Where *subpartition\_definition* is:
+
+{*list\_subpartition* | *range\_subpartition*}
+
+and *list*\_*subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name*\]
+>
+> VALUES (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+and *range\_subpartition* is:
+
+> SUBPARTITION \[*subpartition\_name*\]
+>
+> VALUES LESS THAN (*value*\[, *value*\]...)
+>
+> \[TABLESPACE *tablespace\_name*\]
+
+Description
+
+The ALTER TABLE… ADD SUBPARTITION command adds a subpartition to an existing partition; the partition must already be subpartitioned. There is no upper limit to the number of defined subpartitions.
+
+New subpartitions must be of the same type (LIST, RANGE or HASH) as existing subpartitions. The new subpartition rules must reference the same column specified in the subpartitioning rules that define the existing subpartition(s).
+
+You cannot use the ALTER TABLE… ADD SUBPARTITION statement to add a subpartition to a table with a MAXVALUE or DEFAULT rule , but you can split an existing subpartition with the ALTER TABLE… SPLIT SUBPARTITION statement, effectively adding a subpartition to a table.
+
+You cannot add a new subpartition that precedes existing subpartitions in a range subpartitioned table; range subpartitions must be specified in ascending order.
+
+Include the TABLESPACE clause to specify the tablespace in which the subpartition will reside. If you do not specify a tablespace, the subpartition will be created in the default tablespace.
+
+If the table is indexed, the index will be created on the new subpartition.
+
+To use the ALTER TABLE... ADD SUBPARTITION command you must be the table owner, or have superuser (or administrative) privileges.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table in which the subpartition will reside.
+
+*partition\_name*
+
+The name of the partition in which the new subpartition will reside.
+
+*subpartition\_name*
+
+The name of the subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+(*value*\[, *value*\]...)
+
+Use value to specify a quoted literal value (or comma-delimited list of literal values) by which table entries will be grouped into partitions. Each partitioning rule must specify at least one value, but there is no limit placed on the number of values specified within a rule. value may also be NULL, DEFAULT (if specifying a LIST partition), or MAXVALUE (if specifying a RANGE partition).
+
+For information about creating a DEFAULT or MAXVALUE partition, see Section <span class="underline">10.4</span>.
+
+*tablespace\_name*
+
+The name of the tablespace in which the subpartition resides.
+
+#### Example - Adding a Subpartition to a LIST-RANGE Partitioned Table
+
+The following example adds a RANGE subpartition to the list-partitioned sales table. The sales table was created with the command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+SUBPARTITION BY RANGE(date)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY')
+
+(
+
+SUBPARTITION europe\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION europe\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN')
+
+(
+
+SUBPARTITION asia\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION asia\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+(
+
+SUBPARTITION americas\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION americas\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+)
+
+);
+
+The sales table has three partitions, named europe, asia, and americas. Each partition has two range-defined subpartitions:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\----------------+-------------------+------------------------------------------------------------------
+
+EUROPE | EUROPE\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+EUROPE | EUROPE\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+ASIA | ASIA\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+ASIA | ASIA\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+AMERICAS | AMERICAS\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+AMERICAS | AMERICAS\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+(6 rows)
+
+The following command adds a subpartition named europe\_2013:
+
+> ALTER TABLE sales MODIFY PARTITION europe
+> ADD SUBPARTITION europe\_2013
+> VALUES LESS THAN('2015-Jan-01');
+
+After invoking the command, the table includes a subpartition named europe\_2013:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\----------------+-------------------+------------------------------------------------------------------
+
+EUROPE | EUROPE\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+EUROPE | EUROPE\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+EUROPE | EUROPE\_2013 | FOR VALUES FROM ('01-JAN-13 00:00:00') TO ('01-JAN-15 00:00:00')
+
+ASIA | ASIA\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+ASIA | ASIA\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+AMERICAS | AMERICAS\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+AMERICAS | AMERICAS\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+(7 rows)
+
+Note that when adding a new range subpartition, the subpartitioning rules must specify a range that falls *after* any existing subpartitions.
+
+#### Example - Adding a Subpartition to a RANGE-LIST Partitioned Table
+
+The following example adds a LIST subpartition to the RANGE partitioned sales table. The sales table was created with the command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date)
+SUBPARTITION BY LIST (country)
+(
+PARTITION first\_half\_2012 VALUES LESS THAN('01-JUL-2012')
+(
+
+SUBPARTITION europe VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION americas VALUES ('US', 'CANADA')
+
+),
+
+PARTITION second\_half\_2012 VALUES LESS THAN('01-JAN-2013')
+(
+
+SUBPARTITION asia VALUES ('INDIA', 'PAKISTAN')
+
+)
+);
+
+After executing the above command, the sales table will have two partitions, named first\_half\_2012 and second\_half\_2012. The first\_half\_2012 partition has two subpartitions, named europe and americas, and the second\_half\_2012 partition has one partition, named asia:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\------------------+-------------------+-------------------------------------
+
+FIRST\_HALF\_2012 | AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+FIRST\_HALF\_2012 | EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SECOND\_HALF\_2012 | ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+(3 rows)
+
+The following command adds a subpartition to the second\_half\_2012 partition, named east\_asia:
+
+> ALTER TABLE sales MODIFY PARTITION second\_half\_2012
+> ADD SUBPARTITION east\_asia VALUES ('CHINA')*;*
+
+After invoking the command, the table includes a subpartition named east\_asia:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\------------------+-------------------+-------------------------------------
+
+FIRST\_HALF\_2012 | AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+FIRST\_HALF\_2012 | EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SECOND\_HALF\_2012 | EAST\_ASIA | FOR VALUES IN ('CHINA')
+
+SECOND\_HALF\_2012 | ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+(4 rows)
+
+###  ALTER TABLE...SPLIT PARTITION
+
+Use the ALTER TABLE… SPLIT PARTITION command to divide a single partition into two partitions, and redistribute the partition's contents between the new partitions. The command syntax comes in two forms.
+
+The first form splits a RANGE partition into two partitions:
+
+> ALTER TABLE *table*\_*name* SPLIT PARTITION *partition*\_*name
+> * AT (*range*\_*part*\_*value*)
+> INTO
+> (
+> PARTITION *new\_part1
+> *\[TABLESPACE *tablespace\_name*\]*,
+> *PARTITION *new\_part2
+> *\[TABLESPACE *tablespace\_name*\]*
+> * );
+
+The second form splits a LIST partition into two partitions:
+
+> ALTER TABLE *table*\_*name* SPLIT PARTITION *partition*\_*name
+> * VALUES (*value*\[, *value*\]...)
+> INTO
+> (
+> PARTITION *new\_part1
+> * \[TABLESPACE *tablespace\_name*\]*,
+> * PARTITION *new\_part2
+> * \[TABLESPACE *tablespace\_name*\]*
+> * );
+
+Description
+
+The ALTER TABLE...SPLIT PARTITION command adds a partition to an existing LIST or RANGE partitioned table. Please note that the ALTER TABLE… SPLIT PARTITION command cannot add a partition to a HASH partitioned table. There is no upper limit to the number of partitions that a table may have.
+
+When you execute an ALTER TABLE...SPLIT PARTITION command, Advanced Server creates two new partitions, and redistributes the content of the old partition between them (as constrained by the partitioning rules).
+
+Include the TABLESPACE clause to specify the tablespace in which a partition will reside. If you do not specify a tablespace, the partition will reside in the default tablespace.
+
+If the table is indexed, the index will be created on the new partition.
+
+To use the ALTER TABLE... SPLIT PARTITION command you must be the table owner, or have superuser (or administrative) privileges.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*partition\_name*
+
+The name of the partition that is being split.
+
+*new\_part1*
+
+The name of the first new partition to be created. Partition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*new\_part1* will receive the rows that meet the partitioning constraints specified in the ALTER TABLE… SPLIT PARTITION command.
+
+*new\_part2*
+
+The name of the second new partition to be created. Partition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*new\_part2* will receive the rows are not directed to *new\_part1* by the partitioning constraints specified in the ALTER TABLE… SPLIT PARTITION command.
+
+*range\_part\_value*
+
+> Use *range\_part\_value* to specify the boundary rules by which to create the new partition. The partitioning rule must contain at least one column of a data type that has two operators (i.e., a greater-than-or-equal to operator, and a less-than operator). Range boundaries are evaluated against a LESS THAN clause and are non-inclusive; a date boundary of January 1, 2010 will include only those date values that fall on or before December 31, 2009.
+
+(*value*\[, *value*\]...)
+
+Use *value* to specify a quoted literal value (or comma-delimited list of literal values) by which rows will be distributed into partitions. Each partitioning rule must specify at least one value, but there is no limit placed on the number of values specified within a rule.
+
+For information about creating a DEFAULT or MAXVALUE partition, see Section <span class="underline">10.4</span>.
+
+*tablespace\_name*
+
+The name of the tablespace in which the partition or subpartition resides.
+
+#### Example - Splitting a LIST Partition
+
+Our example will divide one of the partitions in the list-partitioned sales table into two new partitions, and redistribute the contents of the partition between them. The sales table is created with the statement:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+The table definition creates three partitions (europe, asia, and americas). The following command adds rows to each partition:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+The rows are distributed amongst the partitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+The following command splits the americas partition into two partitions named us and canada:
+
+ALTER TABLE sales SPLIT PARTITION americas
+VALUES ('US')
+INTO (PARTITION us, PARTITION canada);
+
+A SELECT statement confirms that the rows have been redistributed across the correct partitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\--------------+---------+---------+----------+--------------------+--------
+
+sales\_canada | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_canada | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_canada | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+sales\_us | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_us | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_us | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_us | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_us | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+(17 rows)
+
+#### Example - Splitting a RANGE Partition
+
+This example divides the q4\_2012 partition (of the range-partitioned sales table) into two partitions, and redistribute the partition's contents. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date)
+
+(
+
+PARTITION q1\_2012
+VALUES LESS THAN('2012-Apr-01'),
+
+PARTITION q2\_2012
+VALUES LESS THAN('2012-Jul-01'),
+
+PARTITION q3\_2012
+VALUES LESS THAN('2012-Oct-01'),
+
+PARTITION q4\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+);
+
+The table definition creates four partitions (q1\_2012, q2\_2012, q3\_2012, and q4\_2012). The following command adds rows to each partition:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+A SELECT statement confirms that the rows are distributed amongst the partitions as expected:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\---------------+---------+---------+----------+--------------------+--------
+
+sales\_q1\_2012 | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_q1\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_q1\_2012 | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_q2\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_q2\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_q2\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_q2\_2012 | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_q3\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_q3\_2012 | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_q3\_2012 | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_q3\_2012 | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_q3\_2012 | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_q4\_2012 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_q4\_2012 | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_q4\_2012 | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_q4\_2012 | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_q4\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+The following command splits the q4\_2012 partition into two partitions named q4\_2012\_p1 and q4\_2012\_p2:
+
+> ALTER TABLE sales SPLIT PARTITION q4\_2012
+> AT ('15-Nov-2012')
+> INTO
+> (
+> PARTITION q4\_2012\_p1,
+> PARTITION q4\_2012\_p2
+> );
+
+A SELECT statement confirms that the rows have been redistributed across the new partitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date |amount
+
+\------------------+---------+---------+----------+--------------------+------
+
+sales\_q1\_2012 | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_q1\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_q1\_2012 | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_q2\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 |145000
+
+sales\_q2\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_q2\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 |120000
+
+sales\_q2\_2012 | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_q3\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_q3\_2012 | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 |650000
+
+sales\_q3\_2012 | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 |650000
+
+sales\_q3\_2012 | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_q3\_2012 | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_q4\_2012\_p1 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_q4\_2012\_p1 | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_q4\_2012\_p1 | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 |650000
+
+sales\_q4\_2012\_p2 | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_q4\_2012\_p2 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+### ALTER TABLE...SPLIT SUBPARTITION
+
+Use the ALTER TABLE… SPLIT SUBPARTITION command to divide a single subpartition into two subpartitions, and redistribute the subpartition's contents. The command comes in two variations.
+
+The first variation splits a range subpartition into two subpartitions:
+
+> ALTER TABLE *table*\_*name* SPLIT SUBPARTITION *subpartition*\_*name*
+> AT (*range*\_*part*\_*value*)
+> INTO
+> (
+> SUBPARTITION *new*\_*subpart1*
+> \[TABLESPACE *tablespace*\_*name*\],
+> SUBPARTITION *new*\_*subpart2*
+> \[TABLESPACE *tablespace*\_*name*\]
+> );
+
+The second variation splits a list subpartition into two subpartitions:
+
+> ALTER TABLE *table*\_*name* SPLIT SUBPARTITION *subpartition*\_*name
+> * VALUES (*value*\[, *value*\]...)
+> INTO
+> (
+> SUBPARTITION *new*\_*subpart1*
+> \[TABLESPACE *tablespace*\_*name*\],
+> SUBPARTITION *new*\_*subpart2*
+> \[TABLESPACE *tablespace*\_*name*\]
+> );
+
+Description
+
+The ALTER TABLE...SPLIT SUBPARTITION command adds a subpartition to an existing subpartitioned table. There is no upper limit to the number of defined subpartitions. When you execute an ALTER TABLE...SPLIT SUBPARTITION command, Advanced Server creates two new subpartitions, moving any rows that contain values that are constrained by the specified subpartition rules into *new\_subpart1*, and any remaining rows into *new\_subpart2*.
+
+The new subpartition rules must reference the column specified in the rules that define the existing subpartition(s).
+
+Include the TABLESPACE clause to specify a tablespace in which a new subpartition will reside. If you do not specify a tablespace, the subpartition will be created in the default tablespace.
+
+If the table is indexed, the index will be created on the new subpartition.
+
+To use the ALTER TABLE... SPLIT SUBPARTITION command you must be the table owner, or have superuser (or administrative) privileges.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*subpartition\_name*
+
+The name of the subpartition that is being split.
+
+*new\_subpart1*
+
+The name of the first new subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*new\_subpart1* will receive the rows that meet the subpartitioning constraints specified in the ALTER TABLE… SPLIT SUBPARTITION command.
+
+*new\_subpart2*
+
+The name of the second new subpartition to be created. Subpartition names must be unique amongst all partitions and subpartitions, and must follow the naming conventions for object identifiers.
+
+*new\_subpart2* will receive the rows are not directed to *new\_subpart1* by the subpartitioning constraints specified in the ALTER TABLE… SPLIT SUBPARTITION command.
+
+(*value*\[, *value*\]...)
+
+Use *value* to specify a quoted literal value (or comma-delimited list of literal values) by which table entries will be grouped into partitions. Each partitioning rule must specify at least one value, but there is no limit placed on the number of values specified within a rule. *value* may also be NULL, DEFAULT (if specifying a LIST subpartition), or MAXVALUE (if specifying a RANGE subpartition).
+
+For information about creating a DEFAULT or MAXVALUE partition, see Section <span class="underline">10.4</span>.
+
+*tablespace\_name*
+
+The name of the tablespace in which the partition or subpartition resides.
+
+#### Example - Splitting a LIST Subpartition
+
+The following example splits a list subpartition, redistributing the subpartition's contents between two new subpartitions. The sample table (sales) was created with the command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date)
+SUBPARTITION BY LIST (country)
+(
+PARTITION first\_half\_2012 VALUES LESS THAN('01-JUL-2012')
+(
+
+SUBPARTITION p1\_europe VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION p1\_americas VALUES ('US', 'CANADA')
+
+),
+
+PARTITION second\_half\_2012 VALUES LESS THAN('01-JAN-2013')
+(
+
+SUBPARTITION p2\_europe VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION p2\_americas VALUES ('US', 'CANADA')
+
+)
+);
+
+The sales table has two partitions, named first\_half\_2012, and second\_half\_2012. Each partition has two range-defined subpartitions that distribute the partition's contents into subpartitions based on the value of the country column:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\------------------+-------------------+-----------------------------------
+
+FIRST\_HALF\_2012 | P1\_AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+FIRST\_HALF\_2012 | P1\_EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SECOND\_HALF\_2012 | P2\_AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+SECOND\_HALF\_2012 | P2\_EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+(4 rows)
+
+The following command adds rows to each subpartition:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000');
+
+A SELECT statement confirms that the rows are correctly distributed amongst the subpartitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\-------------------+---------+---------+---------+--------------------+--------
+
+sales\_p1\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_p1\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_p1\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_p1\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_p1\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_p2\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_p2\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_p2\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_p2\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_p2\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_p2\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_p2\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+(12 rows)
+
+The following command splits the p2\_americas subpartition into two new subpartitions, and redistributes the contents:
+
+> ALTER TABLE sales SPLIT SUBPARTITION p2\_americas*
+> * VALUES ('US')
+>
+> INTO
+> (
+> SUBPARTITION p2\_us,
+> SUBPARTITION p2\_canada
+> );
+
+After invoking the command, the p2\_americas subpartition has been deleted; in its place, the server has created two new subpartitions (p2\_us and p2\_canada):
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\------------------+-------------------+-----------------------------------
+
+FIRST\_HALF\_2012 | P1\_AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+FIRST\_HALF\_2012 | P1\_EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SECOND\_HALF\_2012 | P2\_CANADA | FOR VALUES IN ('CANADA')
+
+SECOND\_HALF\_2012 | P2\_US | FOR VALUES IN ('US')
+
+SECOND\_HALF\_2012 | P2\_EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+(5 rows)
+
+Querying the sales table demonstrates that the content of the p2\_americas subpartition has been redistributed:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\-------------------+---------+---------+---------+--------------------+--------
+
+sales\_p1\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_p1\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_p1\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_p1\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_p1\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_p2\_canada | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_p2\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_p2\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_p2\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_p2\_us | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_p2\_us | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_p2\_us | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+(12 rows)
+
+#### Example - Splitting a RANGE Subpartition
+
+The following example splits a range subpartition, redistributing the subpartition's contents between two new subpartitions. The sample table (sales) was created with the command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+SUBPARTITION BY RANGE(date)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY')
+
+(
+
+SUBPARTITION europe\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION europe\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN')
+
+(
+
+SUBPARTITION asia\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION asia\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+(
+
+SUBPARTITION americas\_2011
+VALUES LESS THAN('2012-Jan-01'),
+
+SUBPARTITION americas\_2012
+VALUES LESS THAN('2013-Jan-01')
+
+)
+
+);
+
+The sales table has three partitions (europe, asia, and americas). Each partition has two range-defined subpartitions that sort the partitions contents into subpartitions by the value of the date column:
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\----------------+-------------------+------------------------------------------------------------------
+
+EUROPE | EUROPE\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+EUROPE | EUROPE\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+ASIA | ASIA\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+ASIA | ASIA\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+AMERICAS | AMERICAS\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+AMERICAS | AMERICAS\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+(6 rows)
+
+The following command adds rows to each subpartition:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+A SELECT statement confirms that the rows are distributed amongst the subpartitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\---------------------+---------+---------+----------+--------------------+--------
+
+sales\_americas\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas\_2012 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas\_2012 | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas\_2012 | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas\_2012 | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas\_2012 | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas\_2012 | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe\_2012 | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe\_2012 | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe\_2012 | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia\_2012 | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia\_2012 | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+The following command splits the americas\_2012 subpartition into two new subpartitions, and redistributes the contents:
+
+> ALTER TABLE sales
+> SPLIT SUBPARTITION americas\_2012
+> AT('2012-Jun-01')
+>
+> INTO
+>
+> (
+> SUBPARTITION americas\_p1\_2012,
+>
+> SUBPARTITION americas\_p2\_2012
+>
+> );
+
+After invoking the command, the americas\_2012 subpartition has been deleted; in its place, the server has created two new subpartitions (americas\_p1\_2012 and americas\_p2\_2012):
+
+acctg=\# SELECT partition\_name, subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+partition\_name | subpartition\_name | high\_value
+
+\----------------+-------------------+------------------------------------------------------------------
+
+EUROPE | EUROPE\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+EUROPE | EUROPE\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+ASIA | ASIA\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+ASIA | ASIA\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+AMERICAS | AMERICAS\_2011 | FOR VALUES FROM (MINVALUE) TO ('01-JAN-12 00:00:00')
+
+AMERICAS | AMERICAS\_P1\_2012 | FOR VALUES FROM ('01-JAN-12 00:00:00') TO ('01-JUN-12 00:00:00')
+
+AMERICAS | AMERICAS\_P2\_2012 | FOR VALUES FROM ('01-JUN-12 00:00:00') TO ('01-JAN-13 00:00:00')
+
+(7 rows)
+
+Querying the sales table demonstrates that the subpartition's contents are redistributed:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\------------------------+---------+---------+----------+--------------------+--------
+
+sales\_americas\_p1\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas\_p1\_2012 | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas\_p1\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas\_p1\_2012 | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas\_p2\_2012 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas\_p2\_2012 | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas\_p2\_2012 | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas\_p2\_2012 | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe\_2012 | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe\_2012 | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe\_2012 | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia\_2012 | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia\_2012 | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+### ALTER TABLE… EXCHANGE PARTITION
+
+The ALTER TABLE…EXCHANGE PARTITION command swaps an existing table with a partition. If you plan to add a large quantity of data to a partitioned table, you can use the ALTER TABLE… EXCHANGE PARTITION command to implement a bulk load. You can also use the ALTER TABLE… EXCHANGE PARTITION command to remove old or unneeded data for storage.
+
+The command syntax is available in two forms.
+
+The first form swaps a table for a partition:
+
+> ALTER TABLE *target\_table*
+> EXCHANGE PARTITION *target\_partition*
+> WITH TABLE *source\_table*
+> \[(INCLUDING | EXCLUDING) INDEXES\]
+>
+> \[(WITH | WITHOUT) VALIDATION\];
+
+The second form swaps a table for a subpartition:
+
+> ALTER TABLE *target\_table*
+> EXCHANGE SUBPARTITION *target\_subpartition*
+> WITH TABLE *source\_table*
+> \[(INCLUDING | EXCLUDING) INDEXES\]
+>
+> \[(WITH | WITHOUT) VALIDATION\];
+
+Description
+
+When the ALTER TABLE… EXCHANGE PARTITION command completes, the data originally located in the *target\_partition* will be located in the *source\_table*, and the data originally located in the *source\_table* will be located in the *target\_partition*.
+
+The ALTER TABLE… EXCHANGE PARTITION command can exchange partitions in a LIST, RANGE or HASH partitioned table. The structure of the *source\_table* must match the structure of the *target\_table* (both tables must have matching columns and data types), and the data contained within the table must adhere to the partitioning constraints.
+
+If the INCLUDING INDEXES clause is specified with EXCHANGE PARTITION, then matching indexes in the *target\_partition* and *source\_table* are swapped. Indexes in the *target\_partition* with no match in the *source\_table* are rebuilt and vice versa (that is, indexes in the *source\_table* with no match in the *target\_partition* are also rebuilt).
+
+If the EXCLUDING INDEXES clause is specified with EXCHANGE PARTITION, then matching indexes in the *target\_partition* and *source\_table* are swapped, but the *target\_partition* indexes with no match in the *source\_table* are marked as invalid and vice versa (that is, indexes in the *source\_table* with no match in the *target\_partition* are also marked as invalid).
+
+The previously used *matching index* term refers to indexes that have the same attributes such as the collation order, ascending or descending direction, ordering of nulls first or nulls last, and so forth as determined by the CREATE INDEX command.
+
+If both INCLUDING INDEXES and EXCLUDING INDEXES are omitted, then the default action is the EXCLUDING INDEXES behavior.
+
+The same behavior as previously described applies for the *target\_subpartition* used with the EXCHANGE SUBPARTITION clause.
+
+You must own a table to invoke ALTER TABLE… EXCHANGE PARTITION or ALTER TABLE… EXCHANGE SUBPARTITION against that table.
+
+Parameters:
+
+*target\_table*
+
+The name (optionally schema-qualified) of the table in which the partition or subpartition resides.
+
+*target\_partition*
+
+The name of the partition to be replaced.
+
+*target\_subpartition*
+
+The name of the subpartition to be replaced.
+
+*source\_table*
+
+The name of the table that will replace the *target\_partition* or *target\_subpartition*.
+
+#### Example - Exchanging a Table for a Partition
+
+The example that follows demonstrates swapping a table for a partition (americas) of the sales table. You can create the sales table with the following command:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Use the following command to add sample data to the sales table:
+
+INSERT INTO sales VALUES
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+Querying the sales table shows that only one row resides in the americas partition:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(10 rows)
+
+The following command creates a table (n\_america) that matches the definition of the sales table:
+
+CREATE TABLE n\_america
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+);
+
+The following command adds data to the n\_america table. The data conforms to the partitioning rules of the americas partition:
+
+INSERT INTO n\_america VALUES
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000');
+
+The following command swaps the table into the partitioned table:
+
+> ALTER TABLE sales
+> EXCHANGE PARTITION americas
+> WITH TABLE n\_america;
+
+Querying the sales table shows that the contents of the n\_america table has been exchanged for the content of the americas partition:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+Querying the n\_america table shows that the row that was previously stored in the americas partition has been moved to the n\_america table:
+
+acctg=\# SELECT tableoid::regclass, \* FROM n\_america;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\-----------+---------+---------+---------+--------------------+--------
+
+n\_america | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+(1 row)
+
+### ALTER TABLE… MOVE PARTITION
+
+Use the ALTER TABLE… MOVE PARTITION command to move a partition to a different tablespace. The command takes two forms.
+
+The first form moves a partition to a new tablespace:
+
+> ALTER TABLE *table*\_*name*
+> MOVE PARTITION *partition*\_*name*
+> TABLESPACE *tablespace*\_*name*;
+
+The second form moves a subpartition to a new tablespace:
+
+> ALTER TABLE *table*\_*name*
+> MOVE SUBPARTITION *subpartition*\_*name*
+> TABLESPACE *tablespace*\_*name*;
+
+Description
+
+The ALTER TABLE…MOVE PARTITION command moves a partition from its current tablespace to a different tablespace. The ALTER TABLE… MOVE PARTITION command can move partitions of a LIST, RANGE or HASH partitioned table.
+
+The same behavior as previously described applies for the *subpartition\_name* used with the MOVE SUBPARTITION clause.
+
+You must own the table to invoke ALTER TABLE… MOVE PARTITION or ALTER TABLE… MOVE SUBPARTITION.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the table in which the partition or subpartition resides.
+
+*partition\_name*
+
+The name of the partition to be moved.
+
+*subpartition\_name*
+
+The name of the subpartition to be moved.
+
+*tablespace\_name*
+
+The name of the tablespace to which the partition or subpartition will be moved.
+
+#### Example - Moving a Partition to a Different Tablespace
+
+The following example moves a partition of the sales table from one tablespace to another. First, create the sales table with the command:
+
+CREATE TABLE sales
+(
+dept\_no number,
+part\_no varchar2,
+country varchar2(20),
+date date,
+amount number
+)
+PARTITION BY RANGE(date)
+(
+PARTITION q1\_2012 VALUES LESS THAN ('2012-Apr-01'),
+PARTITION q2\_2012 VALUES LESS THAN ('2012-Jul-01'),
+PARTITION q3\_2012 VALUES LESS THAN ('2012-Oct-01'),
+PARTITION q4\_2012 VALUES LESS THAN ('2013-Jan-01') TABLESPACE ts\_1,
+PARTITION q1\_2013 VALUES LESS THAN ('2013-Mar-01') TABLESPACE ts\_2
+);
+
+Querying the ALL\_TAB\_PARTITIONS view confirms that the partitions reside on the expected servers and tablespaces:
+
+acctg=\# SELECT partition\_name, tablespace\_name FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | tablespace\_name
+
+\----------------+-----------------
+
+Q1\_2012 |
+
+Q2\_2012 |
+
+Q3\_2012 |
+
+Q4\_2012 | TS\_1
+
+Q1\_2013 | TS\_2
+
+(5 rows)
+
+After preparing the target tablespace, invoke the ALTER TABLE… MOVE PARTITION command to move the q1\_2013 partition from a tablespace named ts\_2 to a tablespace named ts\_3:
+
+> ALTER TABLE sales MOVE PARTITION q1\_2013 TABLESPACE ts\_3;
+
+Querying the ALL\_TAB\_PARTITIONS view shows that the move was successful:
+
+acctg=\# SELECT partition\_name, tablespace\_name FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | tablespace\_name
+
+\----------------+-----------------
+
+Q1\_2012 |
+
+Q2\_2012 |
+
+Q3\_2012 |
+
+Q4\_2012 | TS\_1
+
+Q1\_2013 | TS\_3
+
+(5 rows)
+
+### ALTER TABLE… RENAME PARTITION
+
+Use the ALTER TABLE… RENAME PARTITION command to rename a table partition. The syntax takes two forms.
+
+The first form renames a partition:
+
+> ALTER TABLE *table*\_*name*
+> RENAME PARTITION *partition*\_*name*
+> TO *new*\_*name*;
+
+The second form renames a subpartition:
+
+> ALTER TABLE *table*\_*name*
+> RENAME SUBPARTITION *subpartition*\_*name*
+> TO *new*\_*name*;
+
+Description
+
+The ALTER TABLE… RENAME PARTITION command renames a partition.
+
+The same behavior as previously described applies for the *subpartition\_name* used with the RENAME SUBPARTITION clause.
+
+You must own the specified table to invoke ALTER TABLE… RENAME PARTITION or ALTER TABLE… RENAME SUBPARTITION.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the table in which the partition or subpartition resides.
+
+*partition\_name*
+
+The name of the partition to be renamed.
+
+*subpartition\_name*
+
+The name of the subpartition to be renamed.
+
+*new\_name*
+
+The new name of the partition or subpartition.
+
+#### Example - Renaming a Partition
+
+The following command creates a list-partitioned table named sales:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Query the ALL\_TAB\_PARTITIONS view to display the partition names:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+
+The following command renames the americas partition to n\_america:
+
+> ALTER TABLE sales
+> RENAME PARTITION americas TO n\_america;
+
+Querying the ALL\_TAB\_PARTITIONS view demonstrates that the partition has been successfully renamed:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+N\_AMERICA | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+
+### DROP TABLE
+
+Use the PostgreSQL DROP TABLE command to remove a partitioned table definition, it's partitions and subpartitions, and delete the table contents. The syntax is:
+
+> DROP TABLE *table*\_*name*
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+Description
+
+The DROP TABLE command removes an entire table, and the data that resides in that table. When you delete a table, any partitions or subpartitions (of that table) are deleted as well.
+
+To use the DROP TABLE command, you must be the owner of the partitioning root, a member of a group that owns the table, the schema owner, or a database superuser.
+
+Example
+
+To delete a table, connect to the controller node (the host of the partitioning root), and invoke the DROP TABLE command. For example, to delete the sales table, invoke the following command:
+
+> DROP TABLE sales;
+
+The server will confirm that the table has been dropped:
+
+acctg=\# drop table sales;
+
+DROP TABLE
+
+acctg=\#
+
+For more information about the DROP TABLE command, please see the PostgreSQL core documentation at:
+
+<https://www.postgresql.org/docs/10/static/sql-droptable.html>
+
+### ALTER TABLE… DROP PARTITION
+
+Use the ALTER TABLE… DROP PARTITION command to delete a partition definition, and the data stored in that partition. The syntax is:
+
+> ALTER TABLE *table*\_*name* DROP PARTITION *partition*\_*name;*
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*partition\_name*
+
+The name of the partition to be deleted.
+
+Description
+
+The ALTER TABLE… DROP PARTITION command deletes a partition and any data stored on that partition. The ALTER TABLE… DROP PARTITION command can drop partitions of a LIST or RANGE partitioned table; please note that this command does not work on a HASH partitioned table. When you delete a partition, any subpartitions (of that partition) are deleted as well.
+
+To use the DROP PARTITION clause, you must be the owner of the partitioning root, a member of a group that owns the table, or have database superuser or administrative privileges.
+
+#### Example - Deleting a Partition
+
+The example that follows deletes a partition of the sales table. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Querying the ALL\_TAB\_PARTITIONS view displays the partition names:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+
+To delete the americas partition from the sales table, invoke the following command:
+
+> ALTER TABLE sales DROP PARTITION americas;
+
+Querying the ALL\_TAB\_PARTITIONS view demonstrates that the partition has been successfully deleted:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+(2 rows)
+
+### ALTER TABLE… DROP SUBPARTITION
+
+Use the ALTER TABLE… DROP SUBPARTITION command to drop a subpartition definition, and the data stored in that subpartition. The syntax is:
+
+> ALTER TABLE *table*\_*name* DROP SUBPARTITION *subpartition*\_*name;*
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*subpartition\_name*
+
+The name of the subpartition to be deleted.
+
+Description
+
+The ALTER TABLE… DROP SUBPARTITION command deletes a subpartition, and the data stored in that subpartition. To use the DROP SUBPARTITION clause, you must be the owner of the partitioning root, a member of a group that owns the table, or have superuser or administrative privileges.
+
+#### Example - Deleting a Subpartition
+
+The example that follows deletes a subpartition of the sales table. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+PARTITION BY RANGE(date)
+SUBPARTITION BY LIST (country)
+(
+PARTITION first\_half\_2012 VALUES LESS THAN('01-JUL-2012')
+(
+
+SUBPARTITION europe VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION americas VALUES ('CANADA', 'US'),
+
+SUBPARTITION asia VALUES ('PAKISTAN', 'INDIA')
+
+),
+
+PARTITION second\_half\_2012 VALUES LESS THAN('01-JAN-2013')
+);
+
+Querying the ALL\_TAB\_SUBPARTITIONS view displays the subpartition names:
+
+acctg=\# SELECT subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+subpartition\_name | high\_value
+
+\-------------------+-------------------------------------
+
+ASIA | FOR VALUES IN ('PAKISTAN', 'INDIA')
+
+AMERICAS | FOR VALUES IN ('CANADA', 'US')
+
+EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SYS0101 | DEFAULT
+
+(4 rows)
+
+To delete the americas subpartition from the sales table, invoke the following command:
+
+> ALTER TABLE sales DROP SUBPARTITION americas;
+
+Querying the ALL\_TAB\_SUBPARTITIONS view demonstrates that the subpartition has been successfully deleted:
+
+acctg=\# SELECT subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+subpartition\_name | high\_value
+
+\-------------------+-------------------------------------
+
+ASIA | FOR VALUES IN ('PAKISTAN', 'INDIA')
+
+EUROPE | FOR VALUES IN ('ITALY', 'FRANCE')
+
+SYS0101 | DEFAULT
+
+(3 rows)
+
+### TRUNCATE TABLE
+
+Use the TRUNCATE TABLE command to remove the contents of a table, while preserving the table definition. When you truncate a table, any partitions or subpartitions of that table are also truncated. The syntax is:
+
+> TRUNCATE TABLE *table*\_*name*
+
+Description
+
+The TRUNCATE TABLE command removes an entire table, and the data that resides in that table. When you delete a table, any partitions or subpartitions (of that table) are deleted as well.
+
+To use the TRUNCATE TABLE command, you must be the owner of the partitioning root, a member of a group that owns the table, the schema owner, or a database superuser.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+#### Example - Emptying a Table
+
+The example that follows removes the data from the sales table. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Populate the sales table with the command:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+Querying the sales table shows that the partitions are populated with data:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+To delete the contents of the sales table, invoke the following command:
+
+> TRUNCATE TABLE sales;
+
+Now, querying the sales table shows that the data has been removed but the structure is intact:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------+---------+---------+---------+------+--------
+
+(0 rows)
+
+For more information about the TRUNCATE TABLE command, please see the PostgreSQL documentation at:
+
+<https://www.postgresql.org/docs/10/static/sql-truncate.html>
+
+### ALTER TABLE… TRUNCATE PARTITION
+
+Use the ALTER TABLE… TRUNCATE PARTITION command to remove the data from the specified partition, leaving the partition structure intact. The syntax is:
+
+> ALTER TABLE *table\_name* TRUNCATE PARTITION *partition\_name
+> * \[{DROP|REUSE} STORAGE\]
+
+Description
+
+Use the ALTER TABLE… TRUNCATE PARTITION command to remove the data from the specified partition, leaving the partition structure intact. When you truncate a partition, any subpartitions of that partition are also truncated.
+
+ALTER TABLE… TRUNCATE PARTITION will not cause ON DELETE triggers that might exist for the table to fire, but it will fire ON TRUNCATE triggers. If an ON TRUNCATE trigger is defined for the partition, all BEFORE TRUNCATE triggers are fired before any truncation happens, and all AFTER TRUNCATE triggers are fired after the last truncation occurs.
+
+You must have the TRUNCATE privilege on a table to invoke ALTER TABLE… TRUNCATE PARTITION.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*partition\_name*
+
+The name of the partition to be deleted.
+
+DROP STORAGE and REUSE STORAGE are included for compatibility only; the clauses are parsed and ignored.
+
+#### Example - Emptying a Partition
+
+The example that follows removes the data from a partition of the sales table. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA')
+
+);
+
+Populate the sales table with the command:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+
+(30, '9519b', 'CANADA', '01-Feb-2012', '75000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2012', '4950'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(10, '9519a', 'FRANCE', '18-Aug-2012', '650000'),
+
+(10, '9519b', 'FRANCE', '18-Aug-2012', '650000'),
+
+(20, '3788b', 'INDIA', '21-Sept-2012', '5090'),
+
+(40, '4788a', 'US', '23-Sept-2012', '4950'),
+
+(40, '4788b', 'US', '09-Oct-2012', '15000'),
+
+(20, '4519a', 'INDIA', '18-Oct-2012', '650000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+Querying the sales table shows that the partitions are populated with data:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(17 rows)
+
+To delete the contents of the americas partition, invoke the following command:
+
+> ALTER TABLE sales TRUNCATE PARTITION americas;
+
+Now, querying the sales table shows that the content of the americas partition has been removed:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\--------------+---------+---------+----------+--------------------+--------
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(9 rows)
+
+While the rows have been removed, the structure of the americas partition is still intact:
+
+acctg=\# SELECT partition\_name, high\_value FROM ALL\_TAB\_PARTITIONS;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+(3 rows)
+
+### ALTER TABLE… TRUNCATE SUBPARTITION
+
+Use the ALTER TABLE… TRUNCATE SUBPARTITION command to remove all of the data from the specified subpartition, leaving the subpartition structure intact. The syntax is:
+
+> ALTER TABLE *table\_name*
+> TRUNCATE SUBPARTITION *subpartition\_name
+> *\[{DROP|REUSE} STORAGE\]
+
+Description
+
+The ALTER TABLE… TRUNCATE SUBPARTITION command removes all data from a specified subpartition, leaving the subpartition structure intact.
+
+ALTER TABLE… TRUNCATE SUBPARTITION will not cause ON DELETE triggers that might exist for the table to fire, but it will fire ON TRUNCATE triggers. If an ON TRUNCATE trigger is defined for the subpartition, all BEFORE TRUNCATE triggers are fired before any truncation happens, and all AFTER TRUNCATE triggers are fired after the last truncation occurs.
+
+You must have the TRUNCATE privilege on a table to invoke ALTER TABLE… TRUNCATE SUBPARTITION.
+
+Parameters
+
+*table\_name*
+
+The name (optionally schema-qualified) of the partitioned table.
+
+*subpartition\_name*
+
+The name of the subpartition to be truncated.
+
+The DROP STORAGE and REUSE STORAGE clauses are included for compatibility only; the clauses are parsed and ignored.
+
+#### Example - Emptying a Subpartition
+
+The example that follows removes the data from a subpartition of the sales table. Use the following command to create the sales table:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY RANGE(date) SUBPARTITION BY LIST (country)
+
+(
+PARTITION "2011" VALUES LESS THAN('01-JAN-2012')
+
+(
+
+SUBPARTITION europe\_2011 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2011 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2011 VALUES ('US', 'CANADA')
+
+),
+
+PARTITION "2012" VALUES LESS THAN('01-JAN-2013')
+
+(
+
+SUBPARTITION europe\_2012 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2012 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2012 VALUES ('US', 'CANADA')
+
+),
+PARTITION "2013" VALUES LESS THAN('01-JAN-2015')
+
+(
+
+SUBPARTITION europe\_2013 VALUES ('ITALY', 'FRANCE'),
+
+SUBPARTITION asia\_2013 VALUES ('PAKISTAN', 'INDIA'),
+
+SUBPARTITION americas\_2013 VALUES ('US', 'CANADA')
+
+)
+
+);
+
+Populate the sales table with the command:
+
+INSERT INTO sales VALUES
+
+(10, '4519b', 'FRANCE', '17-Jan-2011', '45000'),
+
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+
+(40, '9519b', 'US', '12-Apr-2012', '145000'),
+
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+
+(40, '4577b', 'US', '11-Nov-2012', '25000'),
+
+(30, '7588b', 'CANADA', '14-Dec-2011', '50000'),
+
+(30, '4519b', 'CANADA', '08-Apr-2012', '120000'),
+
+(40, '3788a', 'US', '12-May-2011', '4950'),
+
+(20, '3788a', 'US', '04-Apr-2012', '37500'),
+
+(40, '4577b', 'INDIA', '11-Jun-2011', '25000'),
+
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+
+(20, '4519b', 'INDIA', '2-Dec-2012', '5090');
+
+Querying the sales table shows that the rows have been distributed amongst the subpartitions:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\---------------------+---------+---------+----------+--------------------+--------
+
+sales\_americas\_2011 | 30 | 7588b | CANADA | 14-DEC-11 00:00:00 | 50000
+
+sales\_americas\_2011 | 40 | 3788a | US | 12-MAY-11 00:00:00 | 4950
+
+sales\_europe\_2011 | 10 | 4519b | FRANCE | 17-JAN-11 00:00:00 | 45000
+
+sales\_asia\_2011 | 40 | 4577b | INDIA | 11-JUN-11 00:00:00 | 25000
+
+sales\_americas\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas\_2012 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas\_2012 | 20 | 3788a | US | 04-APR-12 00:00:00 | 37500
+
+sales\_europe\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_asia\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(12 rows)
+
+To delete the contents of the 2012\_americas partition, invoke the following command:
+
+ALTER TABLE sales TRUNCATE SUBPARTITION "americas\_2012";
+
+Now, querying the sales table shows that the content of the americas\_2012 partition has been removed:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\---------------------+---------+---------+----------+--------------------+--------
+
+sales\_americas\_2011 | 30 | 7588b | CANADA | 14-DEC-11 00:00:00 | 50000
+
+sales\_americas\_2011 | 40 | 3788a | US | 12-MAY-11 00:00:00 | 4950
+
+sales\_europe\_2011 | 10 | 4519b | FRANCE | 17-JAN-11 00:00:00 | 45000
+
+sales\_asia\_2011 | 40 | 4577b | INDIA | 11-JUN-11 00:00:00 | 25000
+
+sales\_europe\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_asia\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+(8 rows)
+
+While the rows have been removed, the structure of the 2012\_americas partition is still intact:
+
+acctg=\# SELECT subpartition\_name, high\_value FROM ALL\_TAB\_SUBPARTITIONS;
+
+subpartition\_name | high\_value
+
+\-------------------+-------------------------------------
+
+AMERICAS\_2011 | FOR VALUES IN ('US', 'CANADA')
+
+ASIA\_2011 | FOR VALUES IN ('PAKISTAN', 'INDIA')
+
+EUROPE\_2011 | FOR VALUES IN ('ITALY', 'FRANCE')
+
+AMERICAS\_2012 | FOR VALUES IN ('US', 'CANADA')
+
+ASIA\_2012 | FOR VALUES IN ('PAKISTAN', 'INDIA')
+
+EUROPE\_2012 | FOR VALUES IN ('ITALY', 'FRANCE')
+
+AMERICAS\_2013 | FOR VALUES IN ('US', 'CANADA')
+
+ASIA\_2013 | FOR VALUES IN ('PAKISTAN', 'INDIA')
+
+EUROPE\_2013 | FOR VALUES IN ('ITALY', 'FRANCE')
+
+(9 rows)
+
+## Handling Stray Values in a LIST or RANGE Partitioned Table
+
+A DEFAULT or MAXVALUE partition or subpartition will capture any rows that do not meet the other partitioning rules defined for a table.
+
+***Defining a DEFAULT Partition***
+
+A DEFAULT partition will capture any rows that do not fit into any other partition in a LIST partitioned (or subpartitioned) table. If you do not include a DEFAULT rule, any row that does not match one of the values in the partitioning constraints will result in an error. Each LIST partition or subpartition may have its own DEFAULT rule.
+
+The syntax of a DEFAULT rule is:
+
+> PARTITION \[*partition*\_*name*\] VALUES (DEFAULT)
+
+Where *partition\_name* specifies the name of the partition or subpartition that will store any rows that do not match the rules specified for other partitions.
+
+The last example created a list partitioned table in which the server decided which partition to store the data based upon the value of the country column. If you attempt to add a row in which the value of the country column contains a value not listed in the rules, Advanced Server reports an error:
+
+acctg=\# INSERT INTO sales VALUES
+
+acctg-\# (40, '3000x', 'IRELAND', '01-Mar-2012', '45000');
+
+ERROR: no partition of relation "sales\_2012" found for row
+
+DETAIL: Partition key of the failing row contains (country) = (IRELAND).
+
+The following example creates the same table, but adds a DEFAULT partition. The server will store any rows that do not match a value specified in the partitioning rules for europe, asia, or americas partitions in the others partition:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+date date,
+
+amount number
+
+)
+
+PARTITION BY LIST(country)
+
+(
+
+PARTITION europe VALUES('FRANCE', 'ITALY'),
+
+PARTITION asia VALUES('INDIA', 'PAKISTAN'),
+
+PARTITION americas VALUES('US', 'CANADA'),
+
+PARTITION others VALUES (DEFAULT)
+
+);
+
+To test the DEFAULT partition, add row with a value in the country column that does not match one of the countries specified in the partitioning constraints:
+
+> INSERT INTO sales VALUES
+> (40, '3000x', 'IRELAND', '01-Mar-2012', '45000');
+
+Querying the contents of the sales table confirms that the previously rejected row is now stored in the sales\_others partition:
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+----------+--------------------+--------
+
+sales\_americas | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_americas | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_americas | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_americas | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_americas | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_europe | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_europe | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_asia | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_asia | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_asia | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+sales\_others | 40 | 3000x | IRELAND | 01-MAR-12 00:00:00 | 45000
+
+(18 rows)
+
+Please note that Advanced Server does not have a way to re-assign the contents of a DEFAULT partition or subpartition:
+ - You cannot use the ALTER TABLE… ADD PARTITION command to add a partition to a table with a DEFAULT rule, but you can use the ALTER TABLE… SPLIT PARTITION command to split an existing partition. An example is shown following this bullet point list.
+ - You cannot use the ALTER TABLE… ADD SUBPARTITION command to add a subpartition to a table with a DEFAULT rule, but you can use the ALTER TABLE… SPLIT SUBPARTITION command to split an existing subpartition.
+
+***Splitting a DEFAULT Partition***
+
+The following example splits a DEFAULT partition, redistributing the partition's content between two new partitions. The table was created with the CREATE TABLE sales command shown at the beginning of this section.
+
+The following inserts rows into the table including rows into the DEFAULT partition:
+
+INSERT INTO sales VALUES
+(10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
+(10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
+(20, '3788a', 'INDIA', '01-Mar-2012', '75000'),
+(20, '3788a', 'PAKISTAN', '04-Jun-2012', '37500'),
+(30, '9519b', 'US', '12-Apr-2012', '145000'),
+(30, '7588b', 'CANADA', '14-Dec-2012', '50000'),
+(40, '4519b', 'SOUTH AFRICA', '08-Apr-2012', '120000'),
+(40, '4519b', 'KENYA', '08-Apr-2012', '120000'),
+(50, '3788a', 'CHINA', '12-May-2012', '4950');
+
+The partitions include the DEFAULT others partition:
+
+edb=\# SELECT partition\_name, high\_value FROM all\_tab\_partitions;
+
+partition\_name | high\_value
+
+\----------------+-------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+OTHERS | DEFAULT
+
+(4 rows)
+
+The following shows the rows distributed amongst the partitions:
+
+edb=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+--------------+--------------------+--------
+
+sales\_americas | 30 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_others | 40 | 4519b | SOUTH AFRICA | 08-APR-12 00:00:00 | 120000
+
+sales\_others | 40 | 4519b | KENYA | 08-APR-12 00:00:00 | 120000
+
+sales\_others | 50 | 3788a | CHINA | 12-MAY-12 00:00:00 | 4950
+
+(9 rows)
+
+The following command splits the DEFAULT others partition into two partitions named africa and others:
+
+> ALTER TABLE sales SPLIT PARTITION others VALUES
+> ('SOUTH AFRICA', 'KENYA')
+>
+> INTO (PARTITION africa, PARTITION others);
+
+The partitions now include the africa partition along with the DEFAULT others partition:
+
+edb=\# SELECT partition\_name, high\_value FROM all\_tab\_partitions;
+
+partition\_name | high\_value
+
+\----------------+-----------------------------------------
+
+EUROPE | FOR VALUES IN ('FRANCE', 'ITALY')
+
+ASIA | FOR VALUES IN ('INDIA', 'PAKISTAN')
+
+AMERICAS | FOR VALUES IN ('US', 'CANADA')
+
+AFRICA | FOR VALUES IN ('SOUTH AFRICA', 'KENYA')
+
+OTHERS | DEFAULT
+
+(5 rows)
+
+The following shows that the rows have been redistributed across the new partitions:
+
+edb=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\----------------+---------+---------+--------------+--------------------+--------
+
+sales\_americas | 30 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_americas | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_europe | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_europe | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_asia | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_asia | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_africa | 40 | 4519b | SOUTH AFRICA | 08-APR-12 00:00:00 | 120000
+
+sales\_africa | 40 | 4519b | KENYA | 08-APR-12 00:00:00 | 120000
+
+sales\_others\_1 | 50 | 3788a | CHINA | 12-MAY-12 00:00:00 | 4950
+
+(9 rows)
+
+***Defining a MAXVALUE Partition***
+
+A MAXVALUE partition (or subpartition) will capture any rows that do not fit into any other partition in a range-partitioned (or subpartitioned) table. If you do not include a MAXVALUE rule, any row that exceeds the maximum limit specified by the partitioning rules will result in an error. Each partition or subpartition may have its own MAXVALUE partition.
+
+The syntax of a MAXVALUE rule is:
+
+PARTITION \[*partition*\_*name*\] VALUES LESS THAN (MAXVALUE)
+
+Where *partition\_name* specifies the name of the partition that will store any rows that do not match the rules specified for other partitions.
+
+The last example created a range-partitioned table in which the data was partitioned based upon the value of the date column. If you attempt to add a row with a date that exceeds a date listed in the partitioning constraints, Advanced Server reports an error:
+
+acctg=\# INSERT INTO sales VALUES
+
+acctg-\# (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
+
+ERROR: no partition of relation "sales" found for row
+
+DETAIL: Partition key of the failing row contains (date) = (01-MAR-13 00:00:00).
+
+The following CREATE TABLE command creates the same table, but with a MAXVALUE partition. Instead of throwing an error, the server will store any rows that do not match the previous partitioning constraints in the others partition:
+
+CREATE TABLE sales
+(
+dept\_no number,
+part\_no varchar2,
+country varchar2(20),
+date date,
+amount number
+)
+PARTITION BY RANGE(date)
+(
+PARTITION q1\_2012 VALUES LESS THAN('2012-Apr-01'),
+PARTITION q2\_2012 VALUES LESS THAN('2012-Jul-01'),
+PARTITION q3\_2012 VALUES LESS THAN('2012-Oct-01'),
+PARTITION q4\_2012 VALUES LESS THAN('2013-Jan-01'),
+PARTITION others VALUES LESS THAN (MAXVALUE)
+);
+
+To test the MAXVALUE partition, add a row with a value in the date column that exceeds the last date value listed in a partitioning rule. The server will store the row in the others partition:
+
+> INSERT INTO sales VALUES
+> (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
+
+Querying the contents of the sales table confirms that the previously rejected row is now stored in the sales\_others partition :
+
+acctg=\# SELECT tableoid::regclass, \* FROM sales;
+
+tableoid | dept\_no | part\_no | country | date | amount
+
+\---------------+---------+---------+----------+--------------------+--------
+
+sales\_q1\_2012 | 10 | 4519b | FRANCE | 17-JAN-12 00:00:00 | 45000
+
+sales\_q1\_2012 | 20 | 3788a | INDIA | 01-MAR-12 00:00:00 | 75000
+
+sales\_q1\_2012 | 30 | 9519b | CANADA | 01-FEB-12 00:00:00 | 75000
+
+sales\_q2\_2012 | 40 | 9519b | US | 12-APR-12 00:00:00 | 145000
+
+sales\_q2\_2012 | 20 | 3788a | PAKISTAN | 04-JUN-12 00:00:00 | 37500
+
+sales\_q2\_2012 | 30 | 4519b | CANADA | 08-APR-12 00:00:00 | 120000
+
+sales\_q2\_2012 | 40 | 3788a | US | 12-MAY-12 00:00:00 | 4950
+
+sales\_q3\_2012 | 10 | 9519b | ITALY | 07-JUL-12 00:00:00 | 15000
+
+sales\_q3\_2012 | 10 | 9519a | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_q3\_2012 | 10 | 9519b | FRANCE | 18-AUG-12 00:00:00 | 650000
+
+sales\_q3\_2012 | 20 | 3788b | INDIA | 21-SEP-12 00:00:00 | 5090
+
+sales\_q3\_2012 | 40 | 4788a | US | 23-SEP-12 00:00:00 | 4950
+
+sales\_q4\_2012 | 40 | 4577b | US | 11-NOV-12 00:00:00 | 25000
+
+sales\_q4\_2012 | 30 | 7588b | CANADA | 14-DEC-12 00:00:00 | 50000
+
+sales\_q4\_2012 | 40 | 4788b | US | 09-OCT-12 00:00:00 | 15000
+
+sales\_q4\_2012 | 20 | 4519a | INDIA | 18-OCT-12 00:00:00 | 650000
+
+sales\_q4\_2012 | 20 | 4519b | INDIA | 02-DEC-12 00:00:00 | 5090
+
+sales\_others | 40 | 3000x | IRELAND | 01-MAR-13 00:00:00 | 45000
+
+(18 rows)
+
+Please note that Advanced Server does not have a way to re-assign the contents of a MAXVALUE partition or subpartition:
+ - You cannot use the ALTER TABLE… ADD PARTITION statement to add a partition to a table with a MAXVALUE rule, but you can use the ALTER TABLE… SPLIT PARTITION statement to split an existing partition.
+ - You cannot use the ALTER TABLE… ADD SUBPARTITION statement to add a subpartition to a table with a MAXVALUE rule , but you can split an existing subpartition with the ALTER TABLE… SPLIT SUBPARTITION statement.
+
+## Specifying Multiple Partitioning Keys in a RANGE Partitioned Table
+
+You can often improve performance by specifying multiple key columns for a RANGE partitioned table. If you often select rows using comparison operators (based on a greater-than or less-than value) on a small set of columns, consider using those columns in RANGE partitioning rules.
+
+***Specifying Multiple Keys in a Range-Partitioned Table***
+
+Range-partitioned table definitions may include multiple columns in the partitioning key. To specify multiple partitioning keys for a range-partitioned table, include the column names in a comma-separated list after the PARTITION BY RANGE clause:
+
+CREATE TABLE sales
+
+(
+
+dept\_no number,
+
+part\_no varchar2,
+
+country varchar2(20),
+
+sale\_year number,
+
+sale\_month number,
+
+sale\_day number,
+
+amount number
+
+)
+
+PARTITION BY RANGE(sale\_year, sale\_month)
+
+(
+
+PARTITION q1\_2012
+VALUES LESS THAN(2012, 4),
+
+PARTITION q2\_2012
+VALUES LESS THAN(2012, 7),
+
+PARTITION q3\_2012
+VALUES LESS THAN(2012, 10),
+
+PARTITION q4\_2012
+VALUES LESS THAN(2013, 1)
+
+);
+
+If a table is created with multiple partitioning keys, you must specify multiple key values when querying the table to take full advantage of partition pruning:
+
+acctg=\# EXPLAIN SELECT \* FROM sales WHERE sale\_year = 2012 AND sale\_month = 8;
+
+QUERY PLAN
+
+\---------------------------------------------------------------------------------
+
+Append (cost=0.00..14.35 rows=1 width=250)
+
+\-\> Seq Scan on sales\_q3\_2012 (cost=0.00..14.35 rows=1 width=250)
+
+Filter: ((sale\_year = '2012'::numeric) AND (sale\_month = '8'::numeric))
+
+(3 rows)
+
+Since all rows with a value of 8 in the sale\_month column and a value of 2012 in the sale\_year column will be stored in the q3\_2012 partition, Advanced Server searches only that partition.
+
+## Retrieving Information about a Partitioned Table
+
+Advanced Server provides five system catalog views that you can use to view information about the structure of partitioned tables.
+
+***Querying the Partitioning Views***
+
+You can query the following views to retrieve information about partitioned and subpartitioned tables:
+ - ALL\_PART\_TABLES
+ - ALL\_TAB\_PARTITIONS
+ - ALL\_TAB\_SUBPARTITIONS
+ - ALL\_PART\_KEY\_COLUMNS
+ - ALL\_SUBPART\_KEY\_COLUMNS
+
+The structure of each view is explained in Section [<span class="underline">10.6.1</span>](#_Table_Partitioning_Views_3), *Table Partitioning Views*. If you are using the EDB-PSQL client, you can also discover the structure of a view by entering:
+
+> \\d *view*\_*name*
+
+Where *view\_name* specifies the name of the table partitioning view.
+
+Querying a view can provide information about the structure of a partitioned or subpartitioned table. For example, the following code snippet displays the names of a subpartitioned table:
+
+acctg=\# SELECT subpartition\_name, partition\_name FROM ALL\_TAB\_SUBPARTITIONS;
+
+subpartition\_name | partition\_name
+
+\-------------------+----------------
+
+EUROPE\_2011 | EUROPE
+
+EUROPE\_2012 | EUROPE
+
+ASIA\_2011 | ASIA
+
+ASIA\_2012 | ASIA
+
+AMERICAS\_2011 | AMERICAS
+
+AMERICAS\_2012 | AMERICAS
+
+(6 rows)
+
+<span id="_Table_Partitioning_Views_3" class="anchor"></span>
+
+### Table Partitioning Views - Reference
+
+Query the following catalog views, compatible with Oracle databases, to review detailed information about your partitioned tables.
+
+#### ALL\_PART\_TABLES
+
+The following table lists the information available in the ALL\_PART\_TABLES view:
+
+| Column                      | Type                    | Description                                              |
+| --------------------------- | ----------------------- | -------------------------------------------------------- |
+| owner                       | name                    | The owner of the table.                                  |
+| schema\_name                | name                    | The schema in which the table resides.                   |
+| table\_name                 | name                    | The name of the table.                                   |
+| partitioning\_type          | text                    | RANGE, LIST or HASH                                      |
+| subpartitioning\_type       | text                    | RANGE, LIST, HASH, or NONE                               |
+| partition\_count            | bigint                  | The number of partitions.                                |
+| def\_subpartition\_count    | integer                 | The default subpartition count - this will always be 0.  |
+| partitioning\_key\_count    | integer                 | The number of columns listed in the partition by clause. |
+| subpartitioning\_key\_count | integer                 | The number of columns in the subpartition by clause.     |
+| status                      | character varying(8)    | This column will always be VALID.                        |
+| def\_tablespace\_name       | character varying(30)   | This column will always be NULL.                         |
+| def\_pct\_free              | numeric                 | This column will always be NULL.                         |
+| def\_pct\_used              | numeric                 | This column will always be NULL.                         |
+| def\_ini\_trans             | numeric                 | This column will always be NULL.                         |
+| def\_max\_trans             | numeric                 | This column will always be NULL.                         |
+| def\_initial\_extent        | character varying(40)   | This column will always be NULL.                         |
+| def\_next\_extent           | character varying(40)   | This column will always be NULL.                         |
+| def\_min\_extents           | character varying(40)   | This column will always be NULL.                         |
+| def\_max\_extents           | character varying(40)   | This column will always be NULL.                         |
+| def\_pct\_increase          | character varying(40)   | This column will always be NULL.                         |
+| def\_freelists              | numeric                 | This column will always be NULL.                         |
+| def\_freelist\_groups       | numeric                 | This column will always be NULL.                         |
+| def\_logging                | character varying(7)    | This column will always be YES                           |
+| def\_compression            | character varying(8)    | This column will always be NONE                          |
+| def\_buffer\_pool           | character varying(7)    | This column will always be DEFAULT                       |
+| ref\_ptn\_constraint\_name  | character varying(30)   | This column will always be NULL                          |
+| interval                    | character varying(1000) | This column will always be NULL                          |
+
+#### ALL\_TAB\_PARTITIONS
+
+The following table lists the information available in the ALL\_TAB\_PARTITIONS view:
+
+| Column              | Type                        | Description                                                                           |
+| ------------------- | --------------------------- | ------------------------------------------------------------------------------------- |
+| table\_owner        | name                        | The owner of the table.                                                               |
+| schema\_name        | name                        | The schema in which the table resides.                                                |
+| table\_name         | name                        | The name of the table.                                                                |
+| composite           | text                        | YES if the table is subpartitioned; NO if it is not subpartitioned.                   |
+| partition\_name     | name                        | The name of the partition.                                                            |
+| subpartition\_count | bigint                      | The number of subpartitions for this partition.                                       |
+| high\_value         | text                        | The partition limit for RANGE partitions, or the partition value for LIST partitions. |
+| high\_value\_length | integer                     | The length of high\_value.                                                            |
+| partition\_position | integer                     | This column will always be NULL.                                                      |
+| tablespace\_name    | name                        | The tablespace in which this partition resides.                                       |
+| pct\_free           | numeric                     | This column will always be 0.                                                         |
+| pct\_used           | numeric                     | This column will always be 0.                                                         |
+| ini\_trans          | numeric                     | This column will always be 0.                                                         |
+| max\_trans          | numeric                     | This column will always be 0.                                                         |
+| initial\_extent     | numeric                     | This column will always be NULL.                                                      |
+| next\_extent        | numeric                     | This column will always be NULL.                                                      |
+| min\_extent         | numeric                     | This column will always be 0.                                                         |
+| max\_extent         | numeric                     | This column will always be 0.                                                         |
+| pct\_increase       | numeric                     | This column will always be 0.                                                         |
+| freelists           | numeric                     | This column will always be NULL                                                       |
+| freelist\_groups    | numeric                     | This column will always be NULL                                                       |
+| logging             | character varying(7)        | This column will always be YES.                                                       |
+| compression         | character varying(8)        | This column will always be NONE.                                                      |
+| num\_rows           | numeric                     | The approx. number of rows in this partition.                                         |
+| blocks              | integer                     | The approx. number of blocks in this partition.                                       |
+| empty\_blocks       | numeric                     | This column will always be NULL                                                       |
+| avg\_space          | numeric                     | This column will always be NULL                                                       |
+| chain\_cnt          | numeric                     | This column will always be NULL                                                       |
+| avg\_row\_len       | numeric                     | This column will always be NULL                                                       |
+| sample\_size        | numeric                     | This column will always be NULL                                                       |
+| last\_analyzed      | timestamp without time zone | This column will always be NULL                                                       |
+| buffer\_pool        | character varying(7)        | This column will always be NULL                                                       |
+| global\_stats       | character varying(3)        | This column will always be YES.                                                       |
+| user\_stats         | character varying(3)        | This column will always be NO.                                                        |
+| backing\_table      | regclass                    | OID of the backing table for this partition.                                          |
+
+#### ALL\_TAB\_SUBPARTITIONS
+
+The following table lists the information available in the ALL\_TAB\_SUBPARTITIONS view:
+
+| Column                 | Type                        | Description                                                                                       |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
+| table\_owner           | name                        | The name of the owner of the table.                                                               |
+| schema\_name           | name                        | The name of the schema in which the table resides.                                                |
+| table\_name            | name                        | The name of the table.                                                                            |
+| partition\_name        | name                        | The name of the partition.                                                                        |
+| subpartition\_name     | name                        | The name of the subpartition.                                                                     |
+| high\_value            | text                        | The subpartition limit for RANGE subpartitions, or the subpartition value for LIST subpartitions. |
+| high\_value\_length    | integer                     | The length of high\_value.                                                                        |
+| subpartition\_position | integer                     | This column will always be NULL.                                                                  |
+| tablespace\_name       | name                        | The tablespace in which this subpartition resides.                                                |
+| pct\_free              | numeric                     | This column will always be 0.                                                                     |
+| pct\_used              | numeric                     | This column will always be 0.                                                                     |
+| ini\_trans             | numeric                     | This column will always be 0.                                                                     |
+| max\_trans             | numeric                     | This column will always be 0.                                                                     |
+| initial\_extent        | numeric                     | This column will always be NULL.                                                                  |
+| next\_extent           | numeric                     | This column will always be NULL.                                                                  |
+| min\_extent            | numeric                     | This column will always be 0.                                                                     |
+| max\_extent            | numeric                     | This column will always be 0.                                                                     |
+| pct\_increase          | numeric                     | This column will always be 0.                                                                     |
+| freelists              | numeric                     | This column will always be NULL.                                                                  |
+| freelist\_groups       | numeric                     | This column will always be NULL.                                                                  |
+| logging                | character varying(7)        | This column will always be YES.                                                                   |
+| compression            | character varying(8)        | This column will always be NONE.                                                                  |
+| num\_rows              | numeric                     | The approx. number of rows in this subpartition.                                                  |
+| blocks                 | integer                     | The approx. number of blocks in this subpartition.                                                |
+| empty\_blocks          | numeric                     | This column will always be NULL.                                                                  |
+| avg\_space             | numeric                     | This column will always be NULL.                                                                  |
+| chain\_cnt             | numeric                     | This column will always be NULL.                                                                  |
+| avg\_row\_len          | numeric                     | This column will always be NULL.                                                                  |
+| sample\_size           | numeric                     | This column will always be NULL.                                                                  |
+| last\_analyzed         | timestamp without time zone | This column will always be NULL.                                                                  |
+| buffer\_pool           | character varying(7)        | This column will always be NULL.                                                                  |
+| global\_stats          | character varying(3)        | This column will always be YES.                                                                   |
+| user\_stats            | character varying(3)        | This column will always be NO.                                                                    |
+| backing\_table         | regclass                    | OID of the backing table for this subpartition.                                                   |
+
+#### ALL\_PART\_KEY\_COLUMNS
+
+The following table lists the information available in the ALL\_PART\_KEY\_COLUMNS view:
+
+| Column           | Type         | Description                                                                                                                                            |
+| ---------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| owner            | name         | The name of the table owner.                                                                                                                           |
+| schema\_name     | name         | The name of the schema on which the table resides.                                                                                                     |
+| name             | name         | The name of the table.                                                                                                                                 |
+| object\_type     | character(5) | This column will always be TABLE.                                                                                                                      |
+| column\_name     | name         | The name of the partitioning key column.                                                                                                               |
+| column\_position | integer      | The position of this column within the partitioning key (the first column has a column position of 1, the second column has a column position of 2...) |
+
+#### ALL\_SUBPART\_KEY\_COLUMNS
+
+The following table lists the information available in the ALL\_SUBPART\_KEY\_COLUMNS view:
+
+| Column           | Type         | Description                                                                                                                                               |
+| ---------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| owner            | name         | The name of the table owner.                                                                                                                              |
+| schema\_name     | name         | The name of the schema on which the table resides.                                                                                                        |
+| name             | name         | The name of the table.                                                                                                                                    |
+| object\_type     | character(5) | This column will always be TABLE.                                                                                                                         |
+| column\_name     | name         | The name of the partitioning key column.                                                                                                                  |
+| column\_position | integer      | The position of this column within the subpartitioning key (the first column has a column position of 1, the second column has a column position of 2...) |
+

@@ -1,0 +1,98 @@
+---
+
+title: "SET DESCRIPTOR"
+---
+
+<div id="set_descriptor" class="registered_link"></div>
+
+Use the `SET DESCRIPTOR` statement to assign a value to a descriptor area using information provided by the client application in the form of a host variable or an integer value. The statement comes in two forms; the first form is:
+
+> `EXEC SQL [FOR` *`array_size`*`] SET DESCRIPTOR` *`descriptor_name`*
+>   `VALUE` *`column_number`* *`descriptor_item`* `=` *`host_variable`*`;`
+
+The second form is:
+
+> `EXEC SQL [FOR` *`array_size`*`] SET DESCRIPTOR` *`descriptor_name`*
+>   `COUNT = integer;`
+
+Where:
+
+*`array_size`* is an integer value or a host variable that contains an integer value specifying the number of rows to fetch. If you omit the FOR clause, the statement is executed once for each member of the array.
+
+*`descriptor_name`* specifies the name of a descriptor (as a single-quoted string literal), or a host variable that contains the name of a descriptor.
+
+Include the `VALUE` clause to describe the information stored in the descriptor.
+
+> *`column_number`* identifies the position of the variable within the descriptor.
+>
+> *`descriptor_item`* specifies the type of the descriptor item.
+>
+> *`host_variable`* specifies the name of the host variable that contains the value of the item.
+
+ECPGPlus implements the following *`descriptor_item`* types:
+
+- `TYPE`
+- `LENGTH`
+- `[REF] INDICATOR`
+- `[REF] DATA`
+- `[REF] RETURNED LENGTH`
+
+For example, a client application might prompt a user for a dynamically created query:
+
+> `query_text = promptUser("Enter a query");`
+
+To execute a dynamically created query, you must first *prepare* the query (parsing and validating the syntax of the query), and then *describe* the *input* parameters found in the query using the `EXEC SQL DESCRIBE INPUT` statement.
+
+> `EXEC SQL ALLOCATE DESCRIPTOR query_params;`
+> `EXEC SQL PREPARE emp_query FROM :query_text;`
+>
+> `EXEC SQL DESCRIBE INPUT emp_query`
+>   `USING SQL DESCRIPTOR 'query_params';`
+
+After describing the query, the `query_params` descriptor contains information about each parameter required by the query.
+
+For this example, we'll assume that the user has entered:
+
+> `SELECT ename FROM emp WHERE sal > ? AND job = ?;,`
+
+In this case, the descriptor describes two parameters, one for `sal > ?` and one for `job = ?`.
+
+To discover the number of parameter markers (question marks) in the query (and therefore, the number of values you must provide before executing the query), use:
+
+> `EXEC SQL GET DESCRIPTOR … :host_variable = COUNT;`
+
+Then, you can use `EXEC SQL GET DESCRIPTOR` to retrieve the name of each parameter. You can also use `EXEC SQL GET DESCRIPTOR` to retrieve the type of each parameter (along with the number of parameters) from the descriptor, or you can supply each *value* in the form of a character string and ECPG will convert that string into the required data type.
+
+The data type of the first parameter is `numeric`; the type of the second parameter is varchar. The name of the first parameter is `sal`; the name of the second parameter is `job`.
+
+Next, loop through each parameter, prompting the user for a value, and store those values in host variables. You can use `GET DESCRIPTOR … COUNT` to find the number of parameters in the query.
+
+> `EXEC SQL GET DESCRIPTOR 'query_params'`
+>   `:param_count = COUNT;`
+>
+> `for(param_number = 1;`
+>     `param_number <= param_count;`
+>     `param_number++)`
+> `{`
+
+Use `GET DESCRIPTOR` to copy the name of the parameter into the `param_name` host variable:
+
+>    `EXEC SQL GET DESCRIPTOR 'query_params'`
+>       `VALUE :param_number :param_name = NAME;`
+>
+>    `reply = promptUser(param_name);`
+>    `if (reply == NULL)`
+>     `reply_ind = 1;  /* NULL */
+> else
+>     reply_ind = 0;  /* NOT NULL */`
+
+To associate a *value* with each parameter, you use the `EXEC SQL SET DESCRIPTOR` statement. For example:
+
+>   `EXEC SQL SET DESCRIPTOR 'query_params'`
+>     `VALUE :param_number DATA = :reply;`
+>   `EXEC SQL SET DESCRIPTOR 'query_params'`
+>     `VALUE :param_number INDICATOR = :reply_ind;`
+> `}`
+
+Now, you can use the `EXEC SQL EXECUTE DESCRIPTOR` statement to execute the prepared statement on the server.
+

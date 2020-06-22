@@ -1,0 +1,1228 @@
+---
+title: EDB Resource Manager
+---
+
+
+*EDB Resource Manager* is an Advanced Server feature that provides the capability to control the usage of operating system resources used by Advanced Server processes.
+
+This capability allows you to protect the system from processes that may uncontrollably overuse and monopolize certain system resources.
+
+The following are some key points about using EDB Resource Manager.
+ - The basic component of EDB Resource Manager is a resource group. A *resource group* is a named, global group, available to all databases in an Advanced Server instance, on which various resource usage limits can be defined. Advanced Server processes that are assigned as members of a given resource group are then controlled by EDB Resource Manager so that the aggregate resource usage of all processes in the group is kept near the limits defined on the group.
+ - Data definition language commands are used to create, alter, and drop resource groups. These commands can only be used by a database user with superuser privileges.
+ - The desired, aggregate consumption level of all processes belonging to a resource group is defined by *resource type parameters*. There are different resource type parameters for the different types of system resources currently supported by EDB Resource Manager.
+ - Multiple resource groups can be created, each with different settings for its resource type parameters, thus defining different consumption levels for each resource group.
+ - EDB Resource Manager throttles processes in a resource group to keep resource consumption near the limits defined by the resource type parameters. If there are multiple resource type parameters with defined settings in a resource group, the actual resource consumption may be significantly lower for certain resource types than their defined resource type parameter settings. This is because EDB Resource Manager throttles processes attempting to keep *all resources with defined resource type settings within their defined limits*.
+ - The definition of available resource groups and their resource type settings are stored in a shared global system catalog. Thus, resource groups can be utilized by all databases in a given Advanced Server instance.
+ - The edb\_max\_resource\_groups configuration parameter sets the maximum number of resource groups that can be active simultaneously with running processes. The default setting is 16 resource groups. Changes to this parameter take effect on database server restart.
+ - Use the SET edb\_resource\_group TO *group\_name* command to assign the current process to a specified resource group. Use the RESET edb\_resource\_group command or SET edb\_resource\_group TO DEFAULT to remove the current process from a resource group.
+ - A default resource group can be assigned to a role using the ALTER ROLE ... SET command, or to a database by the ALTER DATABASE ... SET command. The entire database server instance can be assigned a default resource group by setting the parameter in the postgresql.conf file.
+ - In order to include resource groups in a backup file of the database server instance, use the pg\_dumpall backup utility with default settings (That is, do not specify any of the --globals-only, --roles-only, or --tablespaces-only options.)
+
+## Creating and Managing Resource Groups
+
+The data definition language commands described in this section provide for the creation and management of resource groups.
+
+### CREATE RESOURCE GROUP
+
+Use the CREATE RESOURCE GROUP command to create a new resource group.
+
+> CREATE RESOURCE GROUP *group*\_*name*;
+
+**Description**
+
+The CREATE RESOURCE GROUP command creates a resource group with the specified name. Resource limits can then be defined on the group with the ALTER RESOURCE GROUP command. The resource group is accessible from all databases in the Advanced Server instance.
+
+To use the CREATE RESOURCE GROUP command you must have superuser privileges.
+
+**Parameters**
+
+*group\_name*
+
+The name of the resource group.
+
+**Example**
+
+The following example results in the creation of three resource groups named resgrp\_a, resgrp\_b, and resgrp\_c.
+
+edb=\# CREATE RESOURCE GROUP resgrp\_a;
+
+CREATE RESOURCE GROUP
+
+edb=\# CREATE RESOURCE GROUP resgrp\_b;
+
+CREATE RESOURCE GROUP
+
+edb=\# CREATE RESOURCE GROUP resgrp\_c;
+
+CREATE RESOURCE GROUP
+
+The following query shows the entries for the resource groups in the edb\_resource\_group catalog.
+
+edb=\# SELECT \* FROM edb\_resource\_group;
+
+rgrpname | rgrpcpuratelimit | rgrpdirtyratelimit
+
+\----------+------------------+--------------------
+
+resgrp\_a | 0 | 0
+
+resgrp\_b | 0 | 0
+
+resgrp\_c | 0 | 0
+
+(3 rows)
+
+### ALTER RESOURCE GROUP
+
+Use the ALTER RESOURCE GROUP command to change the attributes of an existing resource group. The command syntax comes in three forms.
+
+The first form renames the resource group:
+
+> ALTER RESOURCE GROUP *group\_name* RENAME TO *new*\_*name*;
+
+The second form assigns a resource type to the resource group:
+
+> ALTER RESOURCE GROUP *group\_name* SET
+>
+> *resource\_type* { TO | = } { *value* | DEFAULT };
+
+The third form resets the assignment of a resource type to its default within the group:
+
+> ALTER RESOURCE GROUP *group*\_*name* RESET *resource\_type*;
+
+**Description**
+
+The ALTER RESOURCE GROUP command changes certain attributes of an existing resource group.
+
+The first form with the RENAME TO clause assigns a new name to an existing resource group.
+
+The second form with the SET *resource\_type* TO clause either assigns the specified literal value to a resource type, or resets the resource type when DEFAULT is specified. Resetting or setting a resource type to DEFAULT means that the resource group has no defined limit on that resource type.
+
+The third form with the RESET *resource\_type* clause resets the resource type for the group as described previously.
+
+To use the ALTER RESOURCE GROUP command you must have superuser privileges.
+
+**Parameters**
+
+*group\_name*
+
+The name of the resource group to be altered.
+
+*new\_name*
+
+The new name to be assigned to the resource group.
+
+*resource\_type*
+
+The resource type parameter specifying the type of resource to which a usage value is to be set.
+
+*value* | DEFAULT
+
+When *value* is specified, the literal value to be assigned to *resource\_type*. When DEFAULT is specified, the assignment of *resource\_type* is reset for the resource group.
+
+**Example**
+
+The following are examples of the ALTER RESOURCE GROUP command.
+
+edb=\# ALTER RESOURCE GROUP resgrp\_a RENAME TO newgrp;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_b SET cpu\_rate\_limit = .5;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_b SET dirty\_rate\_limit = 6144;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_c RESET cpu\_rate\_limit;
+
+ALTER RESOURCE GROUP
+
+The following query shows the results of the ALTER RESOURCE GROUP commands to the entries in the edb\_resource\_group catalog.
+
+edb=\# SELECT \* FROM edb\_resource\_group;
+
+rgrpname | rgrpcpuratelimit | rgrpdirtyratelimit
+
+\----------+------------------+--------------------
+
+newgrp | 0 | 0
+
+resgrp\_b | 0.5 | 6144
+
+resgrp\_c | 0 | 0
+
+(3 rows)
+
+### DROP RESOURCE GROUP
+
+Use the DROP RESOURCE GROUP command to remove a resource group.
+
+> DROP RESOURCE GROUP \[ IF EXISTS \] *group*\_*name*;
+
+**Description**
+
+The DROP RESOURCE GROUP command removes a resource group with the specified name.
+
+To use the DROP RESOURCE GROUP command you must have superuser privileges.
+
+**Parameters**
+
+*group\_name*
+
+The name of the resource group to be removed.
+
+IF EXISTS
+
+Do not throw an error if the resource group does not exist. A notice is issued in this case.
+
+**Example**
+
+The following example removes resource group newgrp.
+
+edb=\# DROP RESOURCE GROUP newgrp;
+
+DROP RESOURCE GROUP
+
+### Assigning a Process to a Resource Group
+
+Use the SET edb\_resource\_group TO *group\_name* command to assign the current process to a specified resource group as shown by the following.
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+The resource type settings of the group immediately take effect on the current process. If the command is used to change the resource group assigned to the current process, the resource type settings of the newly assigned group immediately take effect.
+
+Processes can be included by default in a resource group by assigning a default resource group to roles, databases, or an entire database server instance.
+
+A default resource group can be assigned to a role using the ALTER ROLE ... SET command. For more information about the ALTER ROLE command, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-alterrole.html>
+
+A default resource group can be assigned to a database by the ALTER DATABASE ... SET command. For more information about the ALTER DATABASE command, please refer to the PostgreSQL core documentation available at:
+
+<http://www.postgresql.org/docs/9.5/static/sql-alterdatabase.html>
+
+The entire database server instance can be assigned a default resource group by setting the edb\_resource\_group configuration parameter in the postgresql.conf file as shown by the following.
+
+\# - EDB Resource Manager -
+
+\#edb\_max\_resource\_groups = 16 \# 0-65536 (change requires restart)
+
+edb\_resource\_group = 'resgrp\_b'
+
+A change to edb\_resource\_group in the postgresql.conf file requires a configuration file reload before it takes effect on the database server instance.
+
+### Removing a Process from a Resource Group
+
+Set edb\_resource\_group to DEFAULT or use RESET edb\_resource\_group to remove the current process from a resource group as shown by the following.
+
+edb=\# SET edb\_resource\_group TO DEFAULT;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+(1 row)
+
+For removing a default resource group from a role, use the ALTER ROLE ... RESET form of the ALTER ROLE command.
+
+For removing a default resource group from a database, use the ALTER DATABASE ... RESET form of the ALTER DATABASE command.
+
+For removing a default resource group from the database server instance, set the edb\_resource\_group configuration parameter to an empty string in the postgresql.conf file and reload the configuration file.
+
+### Monitoring Processes in Resource Groups
+
+After resource groups have been created, the number of processes actively using these resource groups can be obtained from the view edb\_all\_resource\_groups.
+
+The columns in edb\_all\_resource\_groups are the following:
+ - **group\_name.** Name of the resource group.
+ - **active\_processes.** Number of active processes in the resource group.
+ - **cpu\_rate\_limit.** The value of the CPU rate limit resource type assigned to the resource group.
+ - **per\_process\_cpu\_rate\_limit.** The CPU rate limit applicable to an individual, active process in the resource group.
+ - **dirty\_rate\_limit.** The value of the dirty rate limit resource type assigned to the resource group.
+ - **per\_process\_dirty\_rate\_limit.** The dirty rate limit applicable to an individual, active process in the resource group.
+
+**Note:** Columns per\_process\_cpu\_rate\_limit and per\_process\_dirty\_rate\_limit do not show the *actual* resource consumption used by the processes, but indicate how EDB Resource Manager sets the resource limit for an individual process based upon the number of active processes in the resource group.
+
+The following shows edb\_all\_resource\_groups when resource group resgrp\_a contains no active processes, resource group resgrp\_b contains two active processes, and resource group resgrp\_c contains one active process.
+
+edb=\# SELECT \* FROM edb\_all\_resource\_groups ORDER BY group\_name;
+
+\-\[ RECORD 1 \]----------------+------------------
+
+group\_name | resgrp\_a
+
+active\_processes | 0
+
+cpu\_rate\_limit | 0.5
+
+per\_process\_cpu\_rate\_limit |
+
+dirty\_rate\_limit | 12288
+
+per\_process\_dirty\_rate\_limit |
+
+\-\[ RECORD 2 \]----------------+------------------
+
+group\_name | resgrp\_b
+
+active\_processes | 2
+
+cpu\_rate\_limit | 0.4
+
+per\_process\_cpu\_rate\_limit | 0.195694289022895
+
+dirty\_rate\_limit | 6144
+
+per\_process\_dirty\_rate\_limit | 3785.92924684337
+
+\-\[ RECORD 3 \]----------------+------------------
+
+group\_name | resgrp\_c
+
+active\_processes | 1
+
+cpu\_rate\_limit | 0.3
+
+per\_process\_cpu\_rate\_limit | 0.292342129631091
+
+dirty\_rate\_limit | 3072
+
+per\_process\_dirty\_rate\_limit | 3072
+
+The CPU rate limit and dirty rate limit settings that are assigned to these resource groups are as follows.
+
+edb=\# SELECT \* FROM edb\_resource\_group;
+
+rgrpname | rgrpcpuratelimit | rgrpdirtyratelimit
+
+\----------+------------------+--------------------
+
+resgrp\_a | 0.5 | 12288
+
+resgrp\_b | 0.4 | 6144
+
+resgrp\_c | 0.3 | 3072
+
+(3 rows)
+
+In the edb\_all\_resource\_groups view, note that the per\_process\_cpu\_rate\_limit and per\_process\_dirty\_rate\_limit values are roughly the corresponding CPU rate limit and dirty rate limit divided by the number of active processes.
+
+## CPU Usage Throttling
+
+CPU usage of a resource group is controlled by setting the cpu\_rate\_limit resource type parameter.
+
+Set the cpu\_rate\_limit parameter to the fraction of CPU time over wall-clock time to which the combined, simultaneous CPU usage of all processes in the group should not exceed. Thus, the value assigned to cpu\_rate\_limit should typically be less than or equal to 1.
+
+The valid range of the cpu\_rate\_limit parameter is 0 to 1.67772e+07. A setting of 0 means no CPU rate limit has been set for the resource group.
+
+When multiplied by 100, the cpu\_rate\_limit can also be interpreted as the CPU usage percentage for a resource group.
+
+EDB Resource Manager utilizes *CPU throttling* to keep the aggregate CPU usage of all processes in the group within the limit specified by the cpu\_rate\_limit parameter. A process in the group may be interrupted and put into sleep mode for a short interval of time to maintain the defined limit. When and how such interruptions occur is defined by a proprietary algorithm used by EDB Resource Manager.
+
+### Setting the CPU Rate Limit for a Resource Group
+
+The ALTER RESOURCE GROUP command with the SET cpu\_rate\_limit clause is used to set the CPU rate limit for a resource group.
+
+In the following example the CPU usage limit is set to 50% for resgrp\_a, 40% for resgrp\_b and 30% for resgrp\_c. This means that the combined CPU usage of all processes assigned to resgrp\_a is maintained at approximately 50%. Similarly, for all processes in resgrp\_b, the combined CPU usage is kept to approximately 40%, etc.
+
+edb=\# ALTER RESOURCE GROUP resgrp\_a SET cpu\_rate\_limit TO .5;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_b SET cpu\_rate\_limit TO .4;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_c SET cpu\_rate\_limit TO .3;
+
+ALTER RESOURCE GROUP
+
+The following query shows the settings of cpu\_rate\_limit in the catalog.
+
+edb=\# SELECT rgrpname, rgrpcpuratelimit FROM edb\_resource\_group;
+
+rgrpname | rgrpcpuratelimit
+
+\----------+------------------
+
+resgrp\_a | 0.5
+
+resgrp\_b | 0.4
+
+resgrp\_c | 0.3
+
+(3 rows)
+
+Changing the cpu\_rate\_limit of a resource group not only affects new processes that are assigned to the group, but any currently running processes that are members of the group are immediately affected by the change. That is, if the cpu\_rate\_limit is changed from .5 to .3, currently running processes in the group would be throttled downward so that the aggregate group CPU usage would be near 30% instead of 50%.
+
+To illustrate the effect of setting the CPU rate limit for resource groups, the following examples use a CPU-intensive calculation of 20000 factorial (multiplication of 20000 \* 19999 \* 19998, etc.) performed by the query SELECT 20000\!; run in the psql command line utility.
+
+The resource groups with the CPU rate limit settings shown in the previous query are used in these examples.
+
+### Example – Single Process in a Single Group
+
+The following shows that the current process is set to use resource group resgrp\_b. The factorial calculation is then started.
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+In a second session, the Linux top command is used to display the CPU usage as shown under the %CPU column. The following is a snapshot at an arbitrary point in time as the top command output periodically changes.
+
+$ top
+
+top - 16:37:03 up 4:15, 7 users, load average: 0.49, 0.20, 0.38
+
+Tasks: 202 total, 1 running, 201 sleeping, 0 stopped, 0 zombie
+
+Cpu(s): 42.7%us, 2.3%sy, 0.0%ni, 55.0%id, 0.0%wa, 0.0%hi, 0.0%si, 0.0
+
+Mem: 1025624k total, 791160k used, 234464k free, 23400k buffers
+
+Swap: 103420k total, 13404k used, 90016k free, 373504k cached
+
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+
+28915 enterpri 20 0 195m 5900 4212 S 39.9 0.6 3:36.98 edb-postgres
+
+1033 root 20 0 171m 77m 2960 S 1.0 7.8 3:43.96 Xorg
+
+3040 user 20 0 278m 22m 14m S 1.0 2.2 3:41.72 knotify4
+
+.
+
+.
+
+.
+
+The psql session performing the factorial calculation is shown by the row where edb-postgres appears under the COMMAND column. The CPU usage of the session shown under the %CPU column shows 39.9, which is close to the 40% CPU limit set for resource group resgrp\_b.
+
+By contrast, if the psql session is removed from the resource group and the factorial calculation is performed again, the CPU usage is much higher.
+
+edb=\# SET edb\_resource\_group TO DEFAULT;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+Under the %CPU column for edb-postgres, the CPU usage is now 93.6, which is significantly higher than the 39.9 when the process was part of the resource group.
+
+$ top
+
+top - 16:43:03 up 4:21, 7 users, load average: 0.66, 0.33, 0.37
+
+Tasks: 202 total, 5 running, 197 sleeping, 0 stopped, 0 zombie
+
+Cpu(s): 96.7%us, 3.3%sy, 0.0%ni, 0.0%id, 0.0%wa, 0.0%hi, 0.0%si, 0.0
+
+Mem: 1025624k total, 791228k used, 234396k free, 23560k buffers
+
+Swap: 103420k total, 13404k used, 90016k free, 373508k cached
+
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+
+28915 enterpri 20 0 195m 5900 4212 R 93.6 0.6 5:01.56 edb-postgres
+
+1033 root 20 0 171m 77m 2960 S 1.0 7.8 3:48.15 Xorg
+
+2907 user 20 0 98.7m 11m 9100 S 0.3 1.2 0:46.51 vmware-user-lo
+
+.
+
+.
+
+.
+
+### Example – Multiple Processes in a Single Group
+
+As stated previously, the CPU rate limit applies to the aggregate of all processes in the resource group. This concept is illustrated in the following example.
+
+The factorial calculation is performed simultaneously in two separate psql sessions, each of which has been added to resource group resgrp\_b that has cpu\_rate\_limit set to .4 (CPU usage of 40%).
+
+**Session 1:**
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+**Session 2:**
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+A third session monitors the CPU usage.
+
+$ top
+
+top - 16:53:03 up 4:31, 7 users, load average: 0.31, 0.19, 0.27
+
+Tasks: 202 total, 1 running, 201 sleeping, 0 stopped, 0 zombie
+
+Cpu(s): 41.2%us, 3.0%sy, 0.0%ni, 55.8%id, 0.0%wa, 0.0%hi, 0.0%si, 0.0
+
+Mem: 1025624k total, 792020k used, 233604k free, 23844k buffers
+
+Swap: 103420k total, 13404k used, 90016k free, 373508k cached
+
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+
+29857 enterpri 20 0 195m 4708 3312 S 19.9 0.5 0:57.35 edb-postgres
+
+28915 enterpri 20 0 195m 5900 4212 S 19.6 0.6 5:35.49 edb-postgres
+
+3040 user 20 0 278m 22m 14m S 1.0 2.2 3:54.99 knotify4
+
+1033 root 20 0 171m 78m 2960 S 0.3 7.8 3:55.71 Xorg
+
+.
+
+.
+
+.
+
+There are now two processes named edb-postgres with %CPU values of 19.9 and 19.6, whose sum is close to the 40% CPU usage set for resource group resgrp\_b.
+
+The following command sequence displays the sum of all edb-postgres processes sampled over half second time intervals. This shows how the total CPU usage of the processes in the resource group changes over time as EDB Resource Manager throttles the processes to keep the total resource group CPU usage near 40%.
+
+$ while \[\[ 1 -eq 1 \]\]; do top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+
+37.2
+
+39.1
+
+38.9
+
+38.3
+
+44.7
+
+39.2
+
+42.5
+
+39.1
+
+39.2
+
+39.2
+
+41
+
+42.85
+
+46.1
+
+.
+
+.
+
+.
+
+### Example – Multiple Processes in Multiple Groups
+
+In this example, two additional psql sessions are used along with the previous two sessions. The third and fourth sessions perform the same factorial calculation within resource group resgrp\_c with a cpu\_rate\_limit of .3 (30% CPU usage).
+
+**Session 3:**
+
+edb=\# SET edb\_resource\_group TO resgrp\_c;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_c
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+**Session 4:**
+
+edb=\# SET edb\_resource\_group TO resgrp\_c;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_c
+
+(1 row)
+
+edb=\# SELECT 20000\!;
+
+The top command displays the following output.
+
+$ top
+
+top - 17:45:09 up 5:23, 8 users, load average: 0.47, 0.17, 0.26
+
+Tasks: 203 total, 4 running, 199 sleeping, 0 stopped, 0 zombie
+
+Cpu(s): 70.2%us, 0.0%sy, 0.0%ni, 29.8%id, 0.0%wa, 0.0%hi, 0.0%si, 0.0
+
+Mem: 1025624k total, 806140k used, 219484k free, 25296k buffers
+
+Swap: 103420k total, 13404k used, 90016k free, 374092k cached
+
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+
+29857 enterpri 20 0 195m 4820 3324 S 19.9 0.5 4:25.02 edb-postgres
+
+28915 enterpri 20 0 195m 5900 4212 R 19.6 0.6 9:07.50 edb-postgres
+
+29023 enterpri 20 0 195m 4744 3248 R 16.3 0.5 4:01.73 edb-postgres
+
+11019 enterpri 20 0 195m 4120 2764 R 15.3 0.4 0:04.92 edb-postgres
+
+2907 user 20 0 98.7m 12m 9112 S 1.3 1.2 0:56.54 vmware-user-lo
+
+3040 user 20 0 278m 22m 14m S 1.3 2.2 4:38.73 knotify4
+
+The two resource groups in use have CPU usage limits of 40% and 30%. The sum of the %CPU column for the first two edb-postgres processes is 39.5 (approximately 40%, which is the limit for resgrp\_b) and the sum of the %CPU column for the third and fourth edb-postgres processes is 31.6 (approximately 30%, which is the limit for resgrp\_c).
+
+The sum of the CPU usage limits of the two resource groups to which these processes belong is 70%. The following output shows that the sum of the four processes borders around 70%.
+
+$ while \[\[ 1 -eq 1 \]\]; do top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+
+61.8
+
+76.4
+
+72.6
+
+69.55
+
+64.55
+
+79.95
+
+68.55
+
+71.25
+
+74.85
+
+62
+
+74.85
+
+76.9
+
+72.4
+
+65.9
+
+74.9
+
+68.25
+
+By contrast, if three sessions are processing where two sessions remain in resgrp\_b, but the third session does not belong to any resource group, the top command shows the following output.
+
+$ top
+
+top - 17:24:55 up 5:03, 7 users, load average: 1.00, 0.41, 0.38
+
+Tasks: 199 total, 3 running, 196 sleeping, 0 stopped, 0 zombie
+
+Cpu(s): 99.7%us, 0.3%sy, 0.0%ni, 0.0%id, 0.0%wa, 0.0%hi, 0.0%si, 0.0
+
+Mem: 1025624k total, 797692k used, 227932k free, 24724k buffers
+
+Swap: 103420k total, 13404k used, 90016k free, 374068k cached
+
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
+
+29023 enterpri 20 0 195m 4744 3248 R 58.6 0.5 2:53.75 edb-postgres
+
+28915 enterpri 20 0 195m 5900 4212 S 18.9 0.6 7:58.45 edb-postgres
+
+29857 enterpri 20 0 195m 4820 3324 S 18.9 0.5 3:14.85 edb-postgres
+
+1033 root 20 0 174m 81m 2960 S 1.7 8.2 4:26.50 Xorg
+
+3040 user 20 0 278m 22m 14m S 1.0 2.2 4:21.20 knotify4
+
+The second and third edb-postgres processes belonging to the resource group where the CPU usage is limited to 40%, have a total CPU usage of 37.8. However, the first edb-postgres process has a 58.6% CPU usage as it is not within a resource group, and basically utilizes the remaining, available CPU resources on the system.
+
+Likewise, the following output shows the sum of all three sessions is around 95% since one of the sessions has no set limit on its CPU usage.
+
+$ while \[\[ 1 -eq 1 \]\]; do top -d0.5 -b -n2 | grep edb-postgres | awk '{ SUM += $9} END { print SUM / 2 }'; done
+
+96
+
+90.35
+
+92.55
+
+96.4
+
+94.1
+
+90.7
+
+95.7
+
+95.45
+
+93.65
+
+87.95
+
+96.75
+
+94.25
+
+95.45
+
+97.35
+
+92.9
+
+96.05
+
+96.25
+
+94.95
+
+.
+
+.
+
+.
+
+## Dirty Buffer Throttling
+
+Writing to shared buffers is controlled by setting the dirty\_rate\_limit resource type parameter.
+
+Set the dirty\_rate\_limit parameter to the number of kilobytes per second for the combined rate at which all the processes in the group should write to or “dirty” the shared buffers. An example setting would be 3072 kilobytes per seconds.
+
+The valid range of the dirty\_rate\_limit parameter is 0 to 1.67772e+07. A setting of 0 means no dirty rate limit has been set for the resource group.
+
+EDB Resource Manager utilizes *dirty buffer throttling* to keep the aggregate, shared buffer writing rate of all processes in the group near the limit specified by the dirty\_rate\_limit parameter. A process in the group may be interrupted and put into sleep mode for a short interval of time to maintain the defined limit. When and how such interruptions occur is defined by a proprietary algorithm used by EDB Resource Manager.
+
+### Setting the Dirty Rate Limit for a Resource Group
+
+The ALTER RESOURCE GROUP command with the SET dirty\_rate\_limit clause is used to set the dirty rate limit for a resource group.
+
+In the following example the dirty rate limit is set to 12288 kilobytes per second for resgrp\_a, 6144 kilobytes per second for resgrp\_b and 3072 kilobytes per second for resgrp\_c. This means that the combined writing rate to the shared buffer of all processes assigned to resgrp\_a is maintained at approximately 12288 kilobytes per second. Similarly, for all processes in resgrp\_b, the combined writing rate to the shared buffer is kept to approximately 6144 kilobytes per second, etc.
+
+edb=\# ALTER RESOURCE GROUP resgrp\_a SET dirty\_rate\_limit TO 12288;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_b SET dirty\_rate\_limit TO 6144;
+
+ALTER RESOURCE GROUP
+
+edb=\# ALTER RESOURCE GROUP resgrp\_c SET dirty\_rate\_limit TO 3072;
+
+ALTER RESOURCE GROUP
+
+The following query shows the settings of dirty\_rate\_limit in the catalog.
+
+edb=\# SELECT rgrpname, rgrpdirtyratelimit FROM edb\_resource\_group;
+
+rgrpname | rgrpdirtyratelimit
+
+\----------+--------------------
+
+resgrp\_a | 12288
+
+resgrp\_b | 6144
+
+resgrp\_c | 3072
+
+(3 rows)
+
+Changing the dirty\_rate\_limit of a resource group not only affects new processes that are assigned to the group, but any currently running processes that are members of the group are immediately affected by the change. That is, if the dirty\_rate\_limit is changed from 12288 to 3072, currently running processes in the group would be throttled downward so that the aggregate group dirty rate would be near 3072 kilobytes per second instead of 12288 kilobytes per second.
+
+To illustrate the effect of setting the dirty rate limit for resource groups, the following examples use the following table for intensive I/O operations.
+
+CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+The FILLFACTOR = 10 clause results in INSERT commands packing rows up to only 10% per page. This results in a larger sampling of dirty shared blocks for the purpose of these examples.
+
+The pg\_stat\_statements module is used to display the number of shared buffer blocks that are dirtied by a SQL command and the amount of time the command took to execute. This provides the information to calculate the actual kilobytes per second writing rate for the SQL command, and thus compare it to the dirty rate limit set for a resource group.
+
+In order to use the pg\_stat\_statements module, perform the following steps.
+
+**Step 1:** In the postgresql.conf file, add $libdir/pg\_stat\_statements to the shared\_preload\_libraries configuration parameter as shown by the following.
+
+shared\_preload\_libraries = '$libdir/dbms\_pipe,$libdir/edb\_gen,$libdir/pg\_stat\_statements'
+
+**Step 2:** Restart the database server.
+
+**Step 3:** Use the CREATE EXTENSION command to complete the creation of the pg\_stat\_statements module.
+
+edb=\# CREATE EXTENSION pg\_stat\_statements SCHEMA public;
+
+CREATE EXTENSION
+
+The pg\_stat\_statements\_reset() function is used to clear out the pg\_stat\_statements view for clarity of each example.
+
+The resource groups with the dirty rate limit settings shown in the previous query are used in these examples.
+
+### Example – Single Process in a Single Group
+
+The following sequence of commands shows the creation of table t1. The current process is set to use resource group resgrp\_b. The pg\_stat\_statements view is cleared out by running the pg\_stat\_statements\_reset() function.
+
+Finally, the INSERT command generates a series of integers from 1 to 10,000 to populate the table, and dirty approximately 10,000 blocks.
+
+edb=\# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# SELECT pg\_stat\_statements\_reset();
+
+pg\_stat\_statements\_reset
+
+\--------------------------
+
+(1 row)
+
+edb=\# INSERT INTO t1 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+The following shows the results from the INSERT command.
+
+edb=\# SELECT query, rows, total\_time, shared\_blks\_dirtied FROM pg\_stat\_statements;
+
+\-\[ RECORD 1 \]-------+--------------------------------------------------
+
+query | INSERT INTO t1 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 13496.184
+
+shared\_blks\_dirtied | 10003
+
+The actual dirty rate is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 13496.184 ms, which yields *0.74117247 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *741.17247 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *6072 kilobytes per second*.
+
+Note that the actual dirty rate of 6072 kilobytes per second is close to the dirty rate limit for the resource group, which is 6144 kilobytes per second.
+
+By contrast, if the steps are repeated again without the process belonging to any resource group, the dirty buffer rate is much higher.
+
+edb=\# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+(1 row)
+
+edb=\# SELECT pg\_stat\_statements\_reset();
+
+pg\_stat\_statements\_reset
+
+\--------------------------
+
+(1 row)
+
+edb=\# INSERT INTO t1 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+The following shows the results from the INSERT command without the usage of a resource group.
+
+edb=\# SELECT query, rows, total\_time, shared\_blks\_dirtied FROM pg\_stat\_statements;
+
+\-\[ RECORD 1 \]-------+--------------------------------------------------
+
+query | INSERT INTO t1 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 2432.165
+
+shared\_blks\_dirtied | 10003
+
+First, note the total time was only 2432.165 milliseconds as compared to 13496.184 milliseconds when a resource group with a dirty rate limit set to 6144 kilobytes per second was used.
+
+The actual dirty rate without the use of a resource group is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 2432.165 ms, which yields *4.112797 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *4112.797 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *33692 kilobytes per second*.
+
+Note that the actual dirty rate of 33692 kilobytes per second is significantly higher than when the resource group with a dirty rate limit of 6144 kilobytes per second was used.
+
+### Example – Multiple Processes in a Single Group
+
+As stated previously, the dirty rate limit applies to the aggregate of all processes in the resource group. This concept is illustrated in the following example.
+
+For this example the inserts are performed simultaneously on two different tables in two separate psql sessions, each of which has been added to resource group resgrp\_b that has a dirty\_rate\_limit set to 6144 kilobytes per second.
+
+**Session 1:**
+
+edb=\# CREATE TABLE t1 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# INSERT INTO t1 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+**Session 2:**
+
+edb=\# CREATE TABLE t2 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SET edb\_resource\_group TO resgrp\_b;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_b
+
+(1 row)
+
+edb=\# SELECT pg\_stat\_statements\_reset();
+
+pg\_stat\_statements\_reset
+
+\--------------------------
+
+(1 row)
+
+edb=\# INSERT INTO t2 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+**Note:** The INSERT commands in session 1 and session 2 were started after the SELECT pg\_stat\_statements\_reset() command in session 2 was run.
+
+The following shows the results from the INSERT commands in the two sessions. RECORD 3 shows the results from session 1. RECORD 2 shows the results from session 2.
+
+edb=\# SELECT query, rows, total\_time, shared\_blks\_dirtied FROM pg\_stat\_statements;
+
+\-\[ RECORD 1 \]-------+--------------------------------------------------
+
+query | SELECT pg\_stat\_statements\_reset();
+
+rows | 1
+
+total\_time | 0.43
+
+shared\_blks\_dirtied | 0
+
+\-\[ RECORD 2 \]-------+--------------------------------------------------
+
+query | INSERT INTO t2 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 30591.551
+
+shared\_blks\_dirtied | 10003
+
+\-\[ RECORD 3 \]-------+--------------------------------------------------
+
+query | INSERT INTO t1 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 33215.334
+
+shared\_blks\_dirtied | 10003
+
+First, note the total time was 33215.334 milliseconds for session 1 and 30591.551 milliseconds for session 2. When only one session was active in the same resource group as shown in the first example, the time was 13496.184 milliseconds. Thus more active processes in the resource group result in a slower dirty rate for each active process in the group. This is shown in the following calculations.
+
+The actual dirty rate for session 1 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 33215.334 ms, which yields *0.30115609 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *301.15609 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2467 kilobytes per second*.
+
+The actual dirty rate for session 2 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 30591.551 ms, which yields *0.32698571 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *326.98571 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2679 kilobytes per second*.
+
+The combined dirty rate from session 1 (2467 kilobytes per second) and from session 2 (2679 kilobytes per second) yields 5146 kilobytes per second, which is below the set dirty rate limit of the resource group (6144 kilobytes per seconds).
+
+### Example – Multiple Processes in Multiple Groups
+
+In this example, two additional psql sessions are used along with the previous two sessions. The third and fourth sessions perform the same INSERT command in resource group resgrp\_c with a dirty\_rate\_limit of 3072 kilobytes per second.
+
+Sessions 1 and 2 are repeated as illustrated in the prior example using resource group resgrp\_b. with a dirty\_rate\_limit of 6144 kilobytes per second.
+
+**Session 3:**
+
+edb=\# CREATE TABLE t3 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SET edb\_resource\_group TO resgrp\_c;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_c
+
+(1 row)
+
+edb=\# INSERT INTO t3 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+**Session 4:**
+
+edb=\# CREATE TABLE t4 (c1 INTEGER, c2 CHARACTER(500)) WITH (FILLFACTOR = 10);
+
+CREATE TABLE
+
+edb=\# SET edb\_resource\_group TO resgrp\_c;
+
+SET
+
+edb=\# SHOW edb\_resource\_group;
+
+edb\_resource\_group
+
+\--------------------
+
+resgrp\_c
+
+(1 row)
+
+edb=\# SELECT pg\_stat\_statements\_reset();
+
+pg\_stat\_statements\_reset
+
+\--------------------------
+
+(1 row)
+
+edb=\# INSERT INTO t4 VALUES (generate\_series (1,10000), 'aaa');
+
+INSERT 0 10000
+
+**Note:** The INSERT commands in all four sessions were started after the SELECT pg\_stat\_statements\_reset() command in session 4 was run.
+
+The following shows the results from the INSERT commands in the four sessions. RECORD 3 shows the results from session 1. RECORD 2 shows the results from session 2. RECORD 4 shows the results from session 3. RECORD 5 shows the results from session 4.
+
+edb=\# SELECT query, rows, total\_time, shared\_blks\_dirtied FROM pg\_stat\_statements;
+
+\-\[ RECORD 1 \]-------+--------------------------------------------------
+
+query | SELECT pg\_stat\_statements\_reset();
+
+rows | 1
+
+total\_time | 0.467
+
+shared\_blks\_dirtied | 0
+
+\-\[ RECORD 2 \]-------+--------------------------------------------------
+
+query | INSERT INTO t2 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 31343.458
+
+shared\_blks\_dirtied | 10003
+
+\-\[ RECORD 3 \]-------+--------------------------------------------------
+
+query | INSERT INTO t1 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 28407.435
+
+shared\_blks\_dirtied | 10003
+
+\-\[ RECORD 4 \]-------+--------------------------------------------------
+
+query | INSERT INTO t3 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 52727.846
+
+shared\_blks\_dirtied | 10003
+
+\-\[ RECORD 5 \]-------+--------------------------------------------------
+
+query | INSERT INTO t4 VALUES (generate\_series (?,?), ?);
+
+rows | 10000
+
+total\_time | 56063.697
+
+shared\_blks\_dirtied | 10003
+
+First note that the times of session 1 (28407.435) and session 2 (31343.458) are close to each other as they are both in the same resource group with dirty\_rate\_limit set to 6144, as compared to the times of session 3 (52727.846) and session 4 (56063.697), which are in the resource group with dirty\_rate\_limit set to 3072. The latter group has a slower dirty rate limit so the expected processing time is longer as is the case for sessions 3 and 4.
+
+The actual dirty rate for session 1 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 28407.435 ms, which yields *0.35212612 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *352.12612 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2885 kilobytes per second*.
+
+The actual dirty rate for session 2 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 31343.458 ms, which yields *0.31914156 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *319.14156 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *2614 kilobytes per second*.
+
+The combined dirty rate from session 1 (2885 kilobytes per second) and from session 2 (2614 kilobytes per second) yields 5499 kilobytes per second, which is near the set dirty rate limit of the resource group (6144 kilobytes per seconds).
+
+The actual dirty rate for session 3 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 52727.846 ms, which yields *0.18971001 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *189.71001 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *1554 kilobytes per second*.
+
+The actual dirty rate for session 4 is calculated as follows.
+ - The number of blocks dirtied per millisecond (ms) is 10003 blocks / 56063.697 ms, which yields *0.17842205 blocks per millisecond*.
+ - Multiply the result by 1000 to give the number of shared blocks dirtied per second (1 second = 1000 ms), which yields *178.42205 blocks per second*.
+ - Multiply the result by 8.192 to give the number of kilobytes dirtied per second (1 block = 8.192 kilobytes), which yields approximately *1462 kilobytes per second*.
+
+The combined dirty rate from session 3 (1554 kilobytes per second) and from session 4 (1462 kilobytes per second) yields 3016 kilobytes per second, which is near the set dirty rate limit of the resource group (3072 kilobytes per seconds).
+
+Thus, this demonstrates how EDB Resource Manager keeps the aggregate dirty rate of the active processes in its groups close to the dirty rate limit set for each group.
+
+## System Catalogs
+
+This section describes the system catalogs that store the resource group information used by EDB Resource Manager.
+
+### edb\_all\_resource\_groups
+
+The following table lists the information available in the edb\_all\_resource\_groups catalog:
+
+| Column                           | Type    | Description                                                                  |
+| -------------------------------- | ------- | ---------------------------------------------------------------------------- |
+| group\_name                      | name    | The name of the resource group.                                              |
+| active\_processes                | integer | Number of currently active processes in the resource group.                  |
+| cpu\_rate\_limit                 | float8  | Maximum CPU rate limit for the resource group. 0 means no limit.             |
+| per\_process\_cpu\_rate\_limit   | float8  | Maximum CPU rate limit per currently active process in the resource group.   |
+| dirty\_rate\_limit               | float8  | Maximum dirty rate limit for a resource group. 0 means no limit.             |
+| per\_process\_dirty\_rate\_limit | float8  | Maximum dirty rate limit per currently active process in the resource group. |
+
+### edb\_resource\_group
+
+The following table lists the information available in the edb\_resource\_group catalog:
+
+| Column             | Type   | Description                                                      |
+| ------------------ | ------ | ---------------------------------------------------------------- |
+| rgrpname           | name   | The name of the resource group.                                  |
+| rgrpcpuratelimit   | float8 | Maximum CPU rate limit for a resource group. 0 means no limit.   |
+| rgrpdirtyratelimit | float8 | Maximum dirty rate limit for a resource group. 0 means no limit. |
+

@@ -1,0 +1,479 @@
+---
+
+title: "DBMS_AQADM"
+---
+
+<div id="dbms_aqadm" class="registered_link"></div>
+
+EDB Postgres Advanced Server Advanced Queueing provides message queueing and message processing for the Advanced Server database. User-defined messages are stored in a queue; a collection of queues is stored in a queue table. Procedures in the DBMS_AQADM package create and manage message queues and queue tables. Use the DBMS_AQ package to add messages to a queue or remove messages from a queue, or register or unregister a PL/SQL callback procedure.
+
+Advanced Server also provides extended (non-compatible) functionality for the DBMS_AQ package with SQL commands. Please see the *Database Compatibility for Oracle Developers Reference Guide* for detailed information about the following SQL commands:
+
+- ALTER QUEUE
+- ALTER QUEUE TABLE
+- CREATE QUEUE
+- CREATE QUEUE TABLE
+- DROP QUEUE
+- DROP QUEUE TABLE
+
+The DBMS_AQADM package provides procedures that allow you to create and manage queues and queue tables.
+
+| Function/Procedure   | Return Type | Description                                                  |
+| -------------------- | ----------- | ------------------------------------------------------------ |
+| `ALTER_QUEUE`        | n/a         | Modify an existing queue.                                    |
+| `ALTER_QUEUE_TABLE`  | n/a         | Modify an existing queue table.                              |
+| `CREATE_QUEUE`       | n/a         | Create a queue.                                              |
+| `CREATE_QUEUE_TABLE` | n/a         | Create a queue table.                                        |
+| `DROP_QUEUE`         | n/a         | Drop an existing queue.                                      |
+| `DROP_QUEUE_TABLE`   | n/a         | Drop an existing queue table.                                |
+| `PURGE_QUEUE_TABLE`  | n/a         | Remove one or more messages from a queue table.              |
+| `START_QUEUE`        | n/a         | Make a queue available for enqueueing and dequeueing procedures. |
+| `STOP_QUEUE`         | n/a         | Make a queue unavailable for enqueueing and dequeueing procedures |
+
+Advanced Server's implementation of `DBMS_AQADM` is a partial implementation when compared to Oracle's version. Only those functions and procedures listed in the table above are supported.
+
+Advanced Server supports use of the arguments listed below:
+
+| Constant                                | Description                                                 | For Parameters                    |
+| --------------------------------------- | ----------------------------------------------------------- | --------------------------------- |
+| `DBMS_AQADM.TRANSACTIONAL`(1)           | This constant is defined, but will return an error if used. | `message_grouping`                |
+| `DBMS_AQADM.NONE`(0)                    | Use to specify message grouping for a queue table.          | `message_grouping`                |
+| `DBMS_AQADM.NORMAL_QUEUE`(0)            | Use with `create_queue` to specify `queue_type`.            | `queue_type`                      |
+| `DBMS_AQADM.EXCEPTION_QUEUE` (1)        | Use with `create_queue` to specify `queue_type`.            | `queue_type`                      |
+| `DBMS_AQADM.INFINITE`(-1)               | Use with `create_queue` to specify `retention_time`.        | `retention_time`                  |
+| `DBMS_AQADM.PERSISTENT` (0)             | The message should be stored in a table.                    | `enqueue_options_t.delivery_mode` |
+| `DBMS_AQADM.BUFFERED` (1)               | This constant is defined, but will return an error if used. | `enqueue_options_t.delivery_mode` |
+| `DBMS_AQADM.PERSISTENT_OR_BUFFERED` (2) | This constant is defined, but will return an error if used. | `enqueue_options_t.delivery_mode` |
+
+## ALTER_QUEUE
+
+Use the `ALTER_QUEUE` procedure to modify an existing queue. The signature is:
+
+> `ALTER_QUEUE(`
+> *`max_retries`* `IN NUMBER DEFAULT NULL,`
+>  *`retry_delay`* `IN NUMBER DEFAULT 0`
+>  *`retention_time`* `IN NUMBER DEFAULT 0,`
+>  *`auto_commit`* `IN BOOLEAN DEFAULT TRUE)`
+>  *`comment`* `IN VARCHAR2 DEFAULT NULL,`
+
+**Parameters**
+
+*`queue_name`*
+
+> The name of the new queue.
+
+*`max_retries`*
+
+> *`max_retries`* specifies the maximum number of attempts to remove a message with a dequeue statement. The value of *`max_retries`* is incremented with each `ROLLBACK` statement. When the number of failed attempts reaches the value specified by *`max_retries`*, the message is moved to the exception queue. Specify 0 to indicate that no retries are allowed.
+
+*`retry_delay`*
+
+> *`retry_delay`* specifies the number of seconds until a message is scheduled for re-processing after a `ROLLBACK`. Specify `0` to indicate that the message should be retried immediately (the default).
+
+*`retention_time`*
+
+> *`retention_time`* specifies the length of time (in seconds) that a message will be stored after being dequeued. You can also specify `0` (the default) to indicate the message should not be retained after dequeueing, or `INFINITE` to retain the message forever.
+
+*`auto_commit`*
+
+> This parameter is accepted for compatibility and ignored.
+
+*`comment`*
+
+> *`comment`* specifies a comment associated with the queue.
+
+**Example**
+
+The following command alters a queue named `work_order`, setting the retry_delay parameter to 5 seconds:
+
+```
+EXEC DBMS_AQADM.ALTER_QUEUE(queue_name => 'work_order', retry_delay => 5);
+```
+
+## ALTER_QUEUE_TABLE
+
+Use the `ALTER_QUEUE_TABLE` procedure to modify an existing queue table. The signature is:
+
+> `ALTER_QUEUE_TABLE (`
+>  *`queue_table`* `IN VARCHAR2,`
+>   *`comment`* `IN VARCHAR2 DEFAULT NULL,`
+>   *`primary_instance`* `IN BINARY_INTEGER DEFAULT 0,`
+>   *`secondary_instance`* `IN BINARY_INTEGER DEFAULT 0,`
+
+**Parameters**
+
+*`queue_table`*
+
+> The (optionally schema-qualified) name of the queue table.
+
+*`comment`*
+
+> Use the *`comment`* parameter to provide a comment about the queue table.
+
+*`primary_instance`*
+
+> *`primary_instance`* is accepted for compatibility and stored, but is ignored.
+
+*`secondary_instance`*
+
+> *`secondary_instance`* is accepted for compatibility, but is ignored.
+
+**Example**
+
+The following command modifies a queue table named `work_order_table`:
+
+```
+EXEC DBMS_AQADM.ALTER_QUEUE_TABLE
+      (queue_table => 'work_order_table', comment => 'This queue table contains work orders for the shipping department.');
+```
+
+The queue table is named `work_order_table`; the command adds a comment to the definition of the queue table.
+
+## CREATE_QUEUE
+
+Use the `CREATE_QUEUE` procedure to create a queue in an existing queue table. The signature is:
+
+> `CREATE_QUEUE(`
+>   *`queue_name`* `IN VARCHAR2`
+>   *`queue_table`* `IN VARCHAR2,`
+>  *`queue_type`* `IN BINARY_INTEGER DEFAULT NORMAL_QUEUE,`
+>  *`max_retries`* `IN NUMBER DEFAULT 5,`
+>  *`retry_delay`* `IN NUMBER DEFAULT 0`
+>  *`retention_time`* `IN NUMBER DEFAULT 0,`
+>  *`dependency_tracking`* `IN BOOLEAN DEFAULT FALSE,`
+>  *`comment`* `IN VARCHAR2 DEFAULT NULL,`
+>  *`auto_commit`* `IN BOOLEAN DEFAULT TRUE)`
+
+**Parameters**
+
+*`queue_name`*
+
+> The name of the new queue.
+
+*`queue_table`*
+
+> The name of the table in which the new queue will reside.
+
+*`queue_type`*
+
+> >The type of the new queue. The valid values for *queue*_``*type* are:
+>
+> `DBMS_AQADM.NORMAL_QUEUE` – This value specifies a normal queue (the default).
+>
+> `DBMS_AQADM.EXCEPTION_QUEUE` – This value specifies that the new queue is an exception queue. An exception queue will support only dequeue operations.
+
+*`max_retries`*
+
+> *`max_retries`* specifies the maximum number of attempts to remove a message with a dequeue statement. The value of *`max_retries`* is incremented with each `ROLLBACK` statement. When the number of failed attempts reaches the value specified by *`max_retries`*, the message is moved to the exception queue. The default value for a system table is 0; the default value for a user created table is 5.
+
+*`retry_delay`*
+
+> *`retry_delay`* specifies the number of seconds until a message is scheduled for re-processing after a `ROLLBACK`. Specify 0 to indicate that the message should be retried immediately (the default).
+
+*`retention_time`*
+
+> *`retention_time`* specifies the length of time (in seconds) that a message will be stored after being dequeued. You can also specify 0 (the default) to indicate the message should not be retained after dequeueing, or `INFINITE` to retain the message forever.
+
+*`dependency_tracking`*
+
+> This parameter is accepted for compatibility and ignored.
+
+*`comment`*
+
+> *`comment`* specifies a comment associated with the queue.
+
+*`auto_commit`*
+
+> This parameter is accepted for compatibility and ignored.
+
+**Example**
+
+The following anonymous block creates a queue named `work_order` in the `work_order_table` table:
+
+```
+BEGIN
+DBMS_AQADM.CREATE_QUEUE ( queue_name => 'work_order', queue_table => 'work_order_table', comment => 'This queue contains pending work orders.');
+END;
+```
+
+## CREATE_QUEUE_TABLE
+
+Use the `CREATE_QUEUE_TABLE` procedure to create a queue table. The signature is:
+
+> `CREATE_QUEUE_TABLE` `(`
+>  *`queue_table`* `IN VARCHAR2,`
+>   *`queue_payload_type`* `IN VARCHAR2,`
+>   *`storage_clause`* `IN VARCHAR2 DEFAULT NULL,`
+>   *`sort_list`* `IN VARCHAR2 DEFAULT NULL,`
+>   *`multiple_consumers`* `IN BOOLEAN DEFAULT FALSE,`
+>   *`message_grouping`* `IN BINARY_INTEGER DEFAULT NONE,`
+>   *`comment`* `IN VARCHAR2 DEFAULT NULL,`
+>   *`auto_commit`* `IN BOOLEAN DEFAULT TRUE,`
+>   *`primary_instance`* `IN BINARY_INTEGER DEFAULT 0,`
+>   *`secondary_instance`* `IN BINARY_INTEGER DEFAULT 0,`
+>   *`compatible`* `IN VARCHAR2 DEFAULT NULL,`
+>   *`secure`* `IN BOOLEAN DEFAULT FALSE)`
+
+**Parameters**
+
+*`queue_table`*
+
+> The (optionally schema-qualified) name of the queue table.
+
+*`queue_payload_type`*
+
+> The user-defined type of the data that will be stored in the queue table. Please note that to specify a `RAW` data type, you must create a user-defined type that identifies a `RAW` type.
+
+*`storage_clause`*
+
+> Use the *`storage_clause`* parameter to specify attributes for the queue table.  Please note that only the `TABLESPACE` option is enforced; all others are accepted for compatibility and ignored.  Use the `TABLESPACE` clause to specify the name of a tablespace in which the table will be created.
+>
+> *`storage_clause`* may be one or more of the following:
+>
+> `TABLESPACE` *`tablespace_name`*, `PCTFREE` `integer`, `PCTUSED integer`, `INITRANS integer`, `MAXTRANS integer` or `STORAGE *storage*_*option`.*
+>
+> *`storage_option`* may be one or more of the following:
+>
+> `MINEXTENTS integer, MAXEXTENTS integer, PCTINCREASE integer, INITIAL` *`size_clause`*, `NEXT`, `FREELISTS` `integer`, `OPTIMAL` *`size_clause`*, `BUFFER_POOL` `{KEEP|RECYCLE|DEFAULT}.`
+
+*`sort_list`*
+
+> *`sort_list`* controls the dequeueing order of the queue; specify the names of the column(s) that will be used to sort the queue (in ascending order). The currently accepted values are the following combinations of `enq_time` and `priority`:
+>
+> > `enq_time, priority`
+> > `priority, enq_time`
+> > `priority`
+> > `enq_time`
+
+*`multiple_consumers`*
+
+> If specified, *`multiple_consumers`* must be `FALSE`.
+
+*`message_grouping`*
+
+> If specified, *`message_grouping`* must be NONE.
+
+*`comment`*
+
+> Use the *`comment`* parameter to provide a comment about the queue table.
+
+*auto_commit*
+
+> *`auto_commit`* is accepted for compatibility, but is ignored.
+
+*primary_instance*
+
+> *`primary_instance`* is accepted for compatibility and stored, but is ignored.
+
+*`secondary_instance`*
+
+> *`secondary_instance`* is accepted for compatibility, but is ignored.
+
+*`compatible`*
+
+> *`compatible`* is accepted for compatibility, but is ignored.
+
+*`secure`*
+
+> *`secure`* is accepted for compatibility, but is ignored.
+
+**Example**
+
+The following anonymous block first creates a type (`work_order`) with attributes that hold a name (a `VARCHAR2`), and a project description (a `TEXT`). The block then uses that type to create a queue table:
+
+```
+BEGIN
+
+CREATE TYPE work_order AS (name VARCHAR2, project TEXT, completed BOOLEAN);
+
+EXEC DBMS_AQADM.CREATE_QUEUE_TABLE
+      (queue_table => 'work_order_table',
+       queue_payload_type => 'work_order',
+       comment => 'Work order message queue table');
+END;
+```
+
+The queue table is named `work_order_table`, and contains a payload of a type `work_order`. A comment notes that this is the `Work order message queue table`.
+
+## DROP_QUEUE
+
+Use the `DROP_QUEUE` procedure to delete a queue. The signature is:
+
+> `DROP_QUEUE(`
+>  *`queue_name`*  `IN VARCHAR2,`
+>  *`auto_commit`* `IN BOOLEAN DEFAULT TRUE)`
+>
+> **Parameters**
+
+*`queue_name`*
+
+> The name of the queue that you wish to drop.
+
+*`auto_commit`*
+
+> *`auto_commit`* is accepted for compatibility, but is ignored.
+
+**Example**
+
+The following anonymous block drops the queue named `work_order`:
+
+```
+BEGIN
+DBMS_AQADM.DROP_QUEUE(queue_name => 'work_order');
+END;
+```
+
+## DROP_QUEUE_TABLE
+
+Use the `DROP_QUEUE_TABLE` procedure to delete a queue table. The signature is:
+
+> `DROP_QUEUE_TABLE``(`
+>  *`queue_table`* `IN VARCHAR2,`
+>  *`force`* `IN BOOLEAN default FALSE,`
+>  *`auto_commit`* `IN BOOLEAN default TRUE)`
+
+**Parameters**
+
+*`queue_table`*
+
+> The (optionally schema-qualified) name of the queue table.
+
+*`force`*
+
+> The *`force`* keyword determines the behavior of the `DROP_QUEUE_TABLE` command when dropping a table that contain entries:
+>
+> > If the target table contains entries and force is `FALSE`, the command will fail, and the server will issue an error.
+> >
+> > If the target table contains entries and force is `TRUE`, the command will drop the table and any dependent objects.
+
+*`auto_commit`*
+
+> *`auto_commit`* is accepted for compatibility, but is ignored.
+
+**Example**
+
+The following anonymous block drops a table named `work_order_table`:
+
+```
+BEGIN
+   DBMS_AQADM.DROP_QUEUE_TABLE ('work_order_table', force => TRUE);
+END;
+```
+
+## PURGE_QUEUE_TABLE
+
+Use the `PURGE_QUEUE_TABLE` procedure to delete messages from a queue table. The signature is:
+
+> `PURGE_QUEUE_TABLE`(
+>  *`queue_table`* `IN VARCHAR2,`
+>  *`purge_condition`* `IN VARCHAR2,`
+>  *`purge_options`* `IN aq$_purge_options_t)`
+
+**Parameters**
+
+*`queue_table`*
+
+> *`queue_table`* specifies the name of the queue table from which you are deleting a message.
+
+*`purge_condition`*
+
+> Use *`purge_condition`* to specify a condition (a SQL WHERE clause) that the server will evaluate when deciding which messages to purge.
+
+*`purge_options`*
+
+>*`purge_options`* is an object of the type `aq$_purge_options_t`. An `aq$_purge_options_t` object contains:
+
+| Attribute       | Type    | Description                                                  |
+| --------------- | ------- | ------------------------------------------------------------ |
+| `Block`         | Boolean | Specify `TRUE` if an exclusive lock should be held on all queues within the table; the default is `FALSE`. |
+| `delivery_mode` | INTEGER | *`delivery_mode`* specifies the type of message that will be purged. The only accepted value is `DBMS_AQ.PERSISTENT`. |
+
+
+
+**Example**
+
+The following anonymous block removes any messages from the `work_order_table` with a value in the completed column of `YES`:
+
+```
+DECLARE
+   purge_options dbms_aqadm.aq$_purge_options_t;
+BEGIN
+   dbms_aqadm.purge_queue_table('work_order_table', 'completed = YES', purge_options);
+  END;
+```
+
+## START_QUEUE
+
+Use the `START_QUEUE` procedure to make a queue available for enqueuing and dequeueing. The signature is:
+
+`START_QUEUE(`
+ *`queue_name`* `IN VARCHAR2,`
+ *`enqueue`* `IN BOOLEAN DEFAULT TRUE,`
+ *`dequeue`* `IN BOOLEAN DEFAULT TRUE)`
+
+**Parameters**
+
+*`queue_name`*
+
+> *`queue_name`* specifies the name of the queue that you are starting.
+
+*`enqueue`*
+
+> Specify `TRUE` to enable enqueueing (the default), or `FALSE` to leave the current setting unchanged.
+
+*`dequeue`*
+
+> Specify `TRUE` to enable dequeueing (the default), or `FALSE` to leave the current setting unchanged.
+
+**Example**
+
+The following anonymous block makes a queue named `work_order` available for enqueueing:
+
+```
+BEGIN
+DBMS_AQADM.START_QUEUE
+(queue_name => 'work_order);
+END;
+```
+
+## STOP_QUEUE
+
+Use the `STOP_QUEUE` procedure to disable enqueuing or dequeueing on a specified queue. The signature is:
+
+`STOP_QUEUE(`
+ *`queue_name`* `IN VARCHAR2,`
+ *`enqueue`* `IN BOOLEAN DEFAULT TRUE,`
+ *`dequeue`* `IN BOOLEAN DEFAULT TRUE,`
+ *`wait`* `IN BOOLEAN DEFAULT TRUE)`
+
+**Parameters**
+
+*`queue_name`*
+
+*`queue_name`* specifies the name of the queue that you are stopping.
+
+*`enqueue`*
+
+Specify `TRUE` to disable enqueueing (the default), or `FALSE` to leave the current setting unchanged.
+
+*`dequeue`*
+
+Specify `TRUE` to disable dequeueing (the default), or `FALSE` to leave the current setting unchanged.
+
+*`wait`*
+
+Specify `TRUE` to instruct the server to wait for any uncompleted transactions to complete before applying the specified changes; while waiting to stop the queue, no transactions are allowed to enqueue or dequeue from the specified queue. Specify `FALSE` to stop the queue immediately.
+
+
+
+**Example**
+
+The following anonymous block disables enqueueing and dequeueing from the queue named `work_order`:
+
+```
+BEGIN
+DBMS_AQADM.STOP_QUEUE(queue_name =>'work_order', enqueue=>TRUE, dequeue=>TRUE, wait=>TRUE);
+END;
+```
+
+Enqueueing and dequeueing will stop after any outstanding transactions complete.
