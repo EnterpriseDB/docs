@@ -152,8 +152,8 @@ const DocTemplate = ({ data, pageContext }) => {
   };
   return (
     <Layout pageMeta={pageMeta}>
-      <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      {/* <TopBar /> */}
+      <Container className="d-flex fluid-container mw-100 pl-0 pr-0 bg-white ml-0">
         <SideNavigation>
           <LeftNav
             navLinks={navLinks}
@@ -163,9 +163,10 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
-          <h1 className="balance-text">{frontmatter.title}</h1>
+
           <ContentRow>
             <Col xs={9}>
+            <h1 className="mb-4">{frontmatter.title}</h1>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
 

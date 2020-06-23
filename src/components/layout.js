@@ -28,7 +28,7 @@ const Layout = ({ children, pageMeta }) => {
           content={meta.path ? baseUrl + meta.path : baseUrl}
         />
         <meta name="twitter:card" content="summary_large_image" />
-        <body className="bg-light fixed-container" />
+        <body className="fluid-container" />
       </Helmet>
       <MDXProvider
         components={{

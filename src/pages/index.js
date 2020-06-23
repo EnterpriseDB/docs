@@ -36,7 +36,7 @@ export default data => {
   return (
     <Layout>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container className="p-0 d-flex fixed-container">
         <SideNavigation>
           <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
         </SideNavigation>
