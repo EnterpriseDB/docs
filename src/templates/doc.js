@@ -165,15 +165,14 @@ const DocTemplate = ({ data, pageContext }) => {
         <MainContent>
           <ContentRow>
             <Col xs={9}>
-              <h1 className="mb-4 balance-text">{frontmatter.title}</h1>
+              <h1 className="mb-4 balance-text pt-5">{frontmatter.title}</h1>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
-
-            <Col xs={3}>
-              {tableOfContents.items && (
+            {tableOfContents.items && (
+              <Col xs={3}>
                 <TableOfContents toc={tableOfContents.items} />
-              )}
-            </Col>
+              </Col>
+            )}
           </ContentRow>
           <ContentRow>
             <Col xs={9}>
@@ -181,8 +180,11 @@ const DocTemplate = ({ data, pageContext }) => {
               {sections && <Sections sections={sections} />}
             </Col>
           </ContentRow>
-
-          {/* <DevOnly>{showFrontmatter(frontmatter)}</DevOnly> */}
+          <ContentRow>
+            <Col xs={9}>
+              <DevOnly>{showFrontmatter(frontmatter)}</DevOnly>
+            </Col>
+          </ContentRow>
           <ContentRow>
             <Col xs={9}>
               <Footer />
