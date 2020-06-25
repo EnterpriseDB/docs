@@ -153,7 +153,7 @@ const DocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta}>
       {/* <TopBar /> */}
-      <Container className="d-flex fluid-container mw-100 pl-0 pr-0 bg-white ml-0">
+      <Container className="d-flex mw-100 pl-0 pr-0 bg-white ml-0">
         <SideNavigation>
           <LeftNav
             navLinks={navLinks}
@@ -163,10 +163,9 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
-
           <ContentRow>
             <Col xs={9}>
-            <h1 className="mb-4">{frontmatter.title}</h1>
+              <h1 className="mb-4 balance-text">{frontmatter.title}</h1>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
 
@@ -176,10 +175,19 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </Col>
           </ContentRow>
-          {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
-          {sections && <Sections sections={sections} />}
-          <DevOnly>{showFrontmatter(frontmatter)}</DevOnly>
-          <Footer />
+          <ContentRow>
+            <Col xs={9}>
+              {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
+              {sections && <Sections sections={sections} />}
+            </Col>
+          </ContentRow>
+
+          {/* <DevOnly>{showFrontmatter(frontmatter)}</DevOnly> */}
+          <ContentRow>
+            <Col xs={9}>
+              <Footer />
+            </Col>
+          </ContentRow>
         </MainContent>
       </Container>
     </Layout>

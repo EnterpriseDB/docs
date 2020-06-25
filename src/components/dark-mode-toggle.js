@@ -6,7 +6,7 @@ const DarkModeToggle = () => {
   const darkMode = useDarkMode(false, {
     classNameDark: 'dark',
     classNameLight: 'light',
-    storageKey: 'theme', // must match gatsby-config plugin settings
+    storageKey: 'dark-theme', // must match gatsby-config plugin settings
   });
 
   return (

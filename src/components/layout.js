@@ -33,6 +33,7 @@ const Layout = ({ children, pageMeta }) => {
       <MDXProvider
         components={{
           table: props => <table {...props} className="table" />,
+          h2: props => <h2 {...props} className="balance-text" />,
           pre: props => (
             <figure>
               <pre {...props} />

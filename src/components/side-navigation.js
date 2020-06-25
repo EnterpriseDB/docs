@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link } from 'gatsby';
 import Logo from './logo';
-import DarkModeToggle from './dark-mode-toggle';
 
 const LogoLink = () => {
   return (
@@ -32,12 +31,11 @@ const SideNavigationFooter = () => (
 
 const SideNavigation = ({ children }) => {
   return (
-    <nav className="pl-4 pr-2 bg-light">
-      <div className="sidebar-sticky ml-1 pl-0 pr-4 pb-4">
+    <nav className="bg-light nav-column">
+      <div className="sidebar-sticky ml-1 pl-4 pr-4 pb-4">
         <LogoLink />
         {children}
         <SideNavigationFooter />
-        <DarkModeToggle/>
       </div>
 
     </nav>

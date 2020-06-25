@@ -262,7 +262,7 @@ module.exports = {
       options: {
         classNameDark: 'dark',
         classNameLight: 'light',
-        storageKey: 'theme',
+        storageKey: 'dark-theme',
         minify: true,
       },
     },

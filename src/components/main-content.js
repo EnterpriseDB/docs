@@ -3,9 +3,9 @@ import SearchNavigation from './search-navigation';
 
 const MainContent = ({ children }) => {
   return (
-    <div className="col-10">
+    <div className="col debug">
       <SearchNavigation />
-      <main role="main" className="col-12 pt-5">
+      <main role="main" >
         {children}
       </main>
     </div>
