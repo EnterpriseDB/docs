@@ -16,8 +16,8 @@ const DarkModeToggle = () => {
     <div className="dark-mode-toggle" title="Toggle Color Theme">
 
       <label className="d-flex cursor">
-      <Icon iconName={iconNames.MOON} className="moon" width="10" height="10" />
-      <Icon iconName={iconNames.SUN} className="sun" width="10" height="10" />
+      <Icon iconName={iconNames.MOON} className="sun" width="10" height="10" />
+      <Icon iconName={iconNames.SUN} className="moon" width="10" height="10" />
         <Form.Check type="switch" id="darkmode-switch" checked={darkMode.value} onChange={darkMode.toggle} label="" />
       </label>
 
