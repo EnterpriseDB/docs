@@ -34,6 +34,7 @@ const Layout = ({ children, pageMeta }) => {
         components={{
           table: props => <table {...props} className="table" />,
           h2: props => <h2 {...props} className="balance-text" />,
+          img: props => <img {...props} className="img-fluid" />,
           pre: props => (
             <figure>
               <pre {...props} />
