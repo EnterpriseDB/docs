@@ -80,6 +80,7 @@ import MigrateSvg from '../../../static/edb-icons/migrate.svg';
 import MissionSvg from '../../../static/edb-icons/mission.svg';
 import ModuleSvg from '../../../static/edb-icons/module.svg';
 import MonitorSvg from '../../../static/edb-icons/monitor.svg';
+import MoonSvg from '../../../static/edb-icons/moon.svg';
 import MoreControlSvg from '../../../static/edb-icons/more-control.svg';
 import MultiPrimaryReplicationSvg from '../../../static/edb-icons/multi-primary-replication.svg';
 import NameTagSvg from '../../../static/edb-icons/name-tag.svg';
@@ -113,6 +114,7 @@ import StarSvg from '../../../static/edb-icons/star.svg';
 import StoreSvg from '../../../static/edb-icons/store.svg';
 import SupportPortalSvg from '../../../static/edb-icons/support-portal.svg';
 import SupportSvg from '../../../static/edb-icons/support.svg';
+import SunSvg from '../../../static/edb-icons/sun.svg';
 import TenYearsSvg from '../../../static/edb-icons/ten-years.svg';
 import TicketSvg from '../../../static/edb-icons/ticket.svg';
 import ToolsSvg from '../../../static/edb-icons/tools.svg';
@@ -290,6 +292,8 @@ export default function IconType({ iconName, ...rest }) {
       return <MoreControlSvg {...rest} />;
     case iconNames.MULTI_PRIMARY_REPLICATION:
       return <MultiPrimaryReplicationSvg {...rest} />;
+    case iconNames.MOON:
+        return <MoonSvg {...rest} />;
     case iconNames.NAME_TAG:
       return <NameTagSvg {...rest} />;
     case iconNames.NETWORK:
@@ -352,6 +356,8 @@ export default function IconType({ iconName, ...rest }) {
       return <SupportPortalSvg {...rest} />;
     case iconNames.SUPPORT:
       return <SupportSvg {...rest} />;
+    case iconNames.SUN:
+      return <SunSvg {...rest} />;
     case iconNames.TEN_YEARS:
       return <TenYearsSvg {...rest} />;
     case iconNames.TICKET:

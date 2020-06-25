@@ -1,6 +1,7 @@
 import React from 'react';
-import Toggle from './toggle';
 import useDarkMode from 'use-dark-mode';
+import { Form } from 'react-bootstrap';
+import Icon, { iconNames } from '../components/icon/';
 
 const DarkModeToggle = () => {
   const darkMode = useDarkMode(false, {
@@ -9,15 +10,17 @@ const DarkModeToggle = () => {
     storageKey: 'dark-theme', // must match gatsby-config plugin settings
   });
 
+  console.log(darkMode.value);
+
   return (
-    <div className="dark-mode-toggle">
-      <button type="button" onClick={darkMode.disable}>
-        ☀
-      </button>
-      <Toggle checked={darkMode.value} onChange={darkMode.toggle} />
-      <button type="button" onClick={darkMode.enable}>
-        ☾
-      </button>
+    <div className="dark-mode-toggle" title="Toggle Color Theme">
+
+      <label className="d-flex cursor">
+      <Icon iconName={iconNames.MOON} className="moon" width="10" height="10" />
+      <Icon iconName={iconNames.SUN} className="sun" width="10" height="10" />
+        <Form.Check type="switch" id="darkmode-switch" checked={darkMode.value} onChange={darkMode.toggle} label="" />
+      </label>
+
     </div>
   );
 };
