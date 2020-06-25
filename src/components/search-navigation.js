@@ -4,6 +4,7 @@ import SearchBar from './search/';
 import Icon, { iconNames } from './icon/';
 
 
+
 const SearchNavigation = ({ children }) => {
   return (
     <Navbar variant="light" className="flex-md-nowrap p-2 border-bottom">
@@ -16,6 +17,7 @@ const SearchNavigation = ({ children }) => {
       <Button variant="link" className="text-nowrap mr-2">
         Sign In
       </Button>
+
     </Navbar>
   );
 };

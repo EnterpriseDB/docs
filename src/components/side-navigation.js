@@ -1,8 +1,7 @@
 import React from 'react';
 import { Link } from 'gatsby';
 import Logo from './logo';
-import useDarkMode from "use-dark-mode"
-import Sunset from './sunset';
+import DarkModeToggle from './dark-mode-toggle';
 
 const LogoLink = () => {
   return (
@@ -22,8 +21,6 @@ const FooterItem = ({ url, children }) => (
   </li>
 );
 
-
-
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
@@ -33,18 +30,14 @@ const SideNavigationFooter = () => (
   </ul>
 );
 
-const SideNavigation = ({ children }) =>
-{
-  const darkMode = useDarkMode(false);
-  const handleTheme = theme =>
-  theme === 'dark' ? darkMode.enable() : darkMode.disable();
+const SideNavigation = ({ children }) => {
   return (
     <nav className="pl-4 pr-2 bg-light">
       <div className="sidebar-sticky ml-1 pl-0 pr-4 pb-4">
         <LogoLink />
         {children}
         <SideNavigationFooter />
-        <Sunset onClick={handleTheme} />
+        <DarkModeToggle/>
       </div>
 
     </nav>

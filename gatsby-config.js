@@ -173,15 +173,6 @@ module.exports = {
     'gatsby-transformer-json',
     'gatsby-plugin-sharp',
     {
-      resolve: "gatsby-plugin-use-dark-mode",
-      options: {
-         classNameDark: "dark-mode",
-         classNameLight: "light-mode",
-         storageKey: "darkMode",
-         minify: true,
-      },
-    },
-    {
       resolve: `gatsby-plugin-manifest`,
       options: {
         name: 'EDB Documentation',
@@ -264,6 +255,15 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+      },
+    },
+    {
+      resolve: 'gatsby-plugin-use-dark-mode',
+      options: {
+        classNameDark: 'dark',
+        classNameLight: 'light',
+        storageKey: 'theme',
+        minify: true,
       },
     },
     // {

@@ -28,8 +28,8 @@ const Layout = ({ children, pageMeta }) => {
           content={meta.path ? baseUrl + meta.path : baseUrl}
         />
         <meta name="twitter:card" content="summary_large_image" />
-        <body className="fluid-container" />
       </Helmet>
+      <body className="fluid-container" />
       <MDXProvider
         components={{
           table: props => <table {...props} className="table" />,

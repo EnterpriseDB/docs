@@ -1,0 +1,25 @@
+import React from 'react';
+import Toggle from './toggle';
+import useDarkMode from 'use-dark-mode';
+
+const DarkModeToggle = () => {
+  const darkMode = useDarkMode(false, {
+    classNameDark: 'dark',
+    classNameLight: 'light',
+    storageKey: 'theme', // must match gatsby-config plugin settings
+  });
+
+  return (
+    <div className="dark-mode-toggle">
+      <button type="button" onClick={darkMode.disable}>
+        ☀
+      </button>
+      <Toggle checked={darkMode.value} onChange={darkMode.toggle} />
+      <button type="button" onClick={darkMode.enable}>
+        ☾
+      </button>
+    </div>
+  );
+};
+
+export default DarkModeToggle;
