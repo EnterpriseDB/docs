@@ -1,17 +1,18 @@
 import React from 'react';
-import { Dropdown } from 'react-bootstrap';
+import { Dropdown, ButtonGroup } from 'react-bootstrap';
 
 const VersionDropdown = ({ versionArray, path }) => {
   const activeVersion = path.split('/')[2];
 
   return (
-    <Dropdown>
-      <Dropdown.Toggle variant="outline-primary" size="sm">
+    <Dropdown className="mt-3">
+      <Dropdown.Toggle variant="outline-secondary" size="sm" block="true" className="text-left">
         Version {activeVersion}&nbsp;
         {
           // must be a better way to get space between the text and caret
         }
       </Dropdown.Toggle>
+
 
       <Dropdown.Menu>
         {versionArray.map(version => (

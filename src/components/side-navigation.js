@@ -5,8 +5,8 @@ import Logo from './logo';
 const LogoLink = () => {
   return (
     <h1 className="h3">
-      <Link className="d-block py-4 text-dark" to="/">
-        <Logo width="149" height="40" />
+      <Link className="d-block pt-4 pb-3 text-dark" to="/">
+        <Logo width="100" height="26" />
       </Link>
     </h1>
   );

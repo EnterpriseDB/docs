@@ -118,29 +118,33 @@ const SectionHeading = ({ newList, path }) => {
 
 const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
   return (
-    <li className="ml-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={productIcon(path) || iconNames.DOTTED_BOX}
-        className="opacity-2 mr-2"
-        width="90"
-        height="90"
-      />
-      <div className="rightsidenoclass">
-        <Link
-          to={newList[0].path}
-          className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
-        >
-          {newList[0].title}
-        </Link>
+    <div>
+      <li className="ml-0 mb-2 d-flex align-items-center">
+        <Icon
+          iconName={productIcon(path) || iconNames.DOTTED_BOX}
+          className="opacity-2 mr-2"
+          width="50"
+          height="50"
+        />
+        <div className="rightsidenoclass">
+          <Link
+            to={newList[0].path}
+            className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+          >
+            {newList[0].title}
+          </Link>
+        </div>
+      </li>
+      <li className="ml-0 mb-4 align-items-center">
         {versionArray.length > 1 ? (
-          <div>
+
             <VersionDropdown versionArray={versionArray} path={path} />
-          </div>
+
         ) : (
-          <div className="text-muted">Version {versionArray[0].version}</div>
+          <div className="text-muted display-none">Version {versionArray[0].version}</div>
         )}
-      </div>
-    </li>
+      </li>
+    </div>
   );
 };
 
