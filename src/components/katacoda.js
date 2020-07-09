@@ -72,7 +72,7 @@ const Katacoda = ({account,
             if ( panel && shownClass )
             {
                 // allow Katacoda to recognize its commands
-                for (var e of document.querySelectorAll(".language-shell")) 
+                for (var e of document.querySelectorAll("pre.language-shell")) 
                     e.dataset.lang = "shell";
                 window.katacoda.init();
             }
@@ -83,7 +83,8 @@ const Katacoda = ({account,
         <Helmet>
             <script src="https://katacoda.com/embed.js" />
         </Helmet>
-        <button type="button" onClick={toggleKata} className={`btn btn-secondary`}>{shownClass ? clickToShowText : 'Close live demo'}</button>
+        <button type="button" onClick={toggleKata} className="btn btn-secondary">{shownClass ? clickToShowText : 'Close live demo'}</button>
+        <div className={`alert alert-info col-auto ${shownClass}`} role="alert">(Click code blocks to execute in terminal)</div>
         <div id={`katacoda-scenario-${account}-${scenario}`}
                 data-katacoda-id={scenarioId}
                 {...kataArgs}
