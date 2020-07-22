@@ -1,0 +1,66 @@
+---
+title: Using Postgres in a Docker container
+navTitle: Docker
+description: Overview and instructions for running Postgres within a container
+---
+import Katacoda from '../../../src/components/katacoda';
+
+Docker containers are an environment which exist and run independently from whatever else is running on a given machine. Containers are created from "images", which define what a given environment will look like - file system layout, running processes, etc. This makes them very convenient for side-stepping the whole "installation" problem: an image in which the necessary software has already been installed and configured can be distributed and used to create containers on any machine with Docker available.
+
+## Creating a container from an official image
+
+Let's start by spinning up a local Postgres server using one of the images available on the public Docker Hub repository: https://hub.docker.com/_/postgres 
+
+Make sure you have Docker installed. If not, install it using [the instructions on the Docker website](https://docs.docker.com/get-docker/). 
+
+Alternately, you can follow these steps in your browser: <Katacoda scenario="ubuntu1804" clickToShowText="Live demo using Ubuntu" panel="true"/>
+
+1. Retrieve the PostgreSQL image from the Docker Hub repository (if not already cached) and run it: 
+
+   ```shell
+   docker run --name test_postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=testdb -d postgres
+   ```
+
+2. Run some commands against the database from within the container:
+
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c "create table Test (Id integer, Name text);"
+   ```
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c "insert into Test values (1, 'Bob');"
+   ```
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c "select * from Test;"
+   ```
+
+3. Stop and then delete the container:
+
+   ```shell
+   docker kill test_postgres
+   docker rm test_postgres
+   ```
+
+## Using a volume to persist the database
+
+By default, any databases created will be stored in the container itself and will disappear when the container is deleted. This can be desirable for testing purposes! But otherwise, you'll want to make sure the databases are stored on a Docker *volume*, a storage area that exists outside of the container itself. 
+
+Here's an example:
+
+```shell
+docker run -v pgdata:/var/lib/postgresql/data --name test_postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=testdb -d postgres
+```
+The volume - named "pgdata" - will persist even after the container is removed; if a new container is created & pointed to the same volume, any data stored will be immediately available!
+
+To remove the volume, use the command:
+
+```shell
+docker volume rm pgdata
+```
+
+Docker will ensure that no existing containers are referencing the volume before it'll let you remove it.
+
+## Spinning up a whole dev environment, including Postgres, using Docker Compose
+
+Docker Compose takes the basic options outlined above and allows you to configure, start & stop multiple containers together. This is very handy for standardizing a development environment, or even just keeping multiple projects separate on your workstation. 
+
+For example, you might spend some time working on a Python + Django app, backed by a Postgres database. It's built against a specific Python configuration and database schema, which you don't want interfering with other projects on your machine - so, you put together a configuration like this:
