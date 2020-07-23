@@ -1,3 +1,5 @@
+import React from 'react';
+
 export const filterAndSort = (nodes, url) => {
   return nodes
     .map(node => ({
@@ -16,4 +18,19 @@ export const filterAndSort = (nodes, url) => {
       }
       return 0;
     });
+};
+
+export const showFrontmatter = frontmatter => {
+  let keys = Object.keys(frontmatter);
+  return (
+    <>
+      <div>Page frontmatter</div>
+      <br />
+      {keys.map(key => (
+        <div>
+          <strong>{key}</strong>: {frontmatter[key]}
+        </div>
+      ))}
+    </>
+  );
 };

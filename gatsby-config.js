@@ -187,6 +187,7 @@ module.exports = {
         // An optional attribute which provides support for CORS check.
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
+        optional_permissions: ['clipboardWrite'],
         crossOrigin: `use-credentials`,
       },
     },
@@ -211,7 +212,12 @@ module.exports = {
           default: require.resolve('./src/components/layout.js'),
         },
         gatsbyRemarkPlugins: [
-          { resolve: 'gatsby-remark-images' },
+          {
+            resolve:
+              process.env.NODE_ENV === 'development'
+                ? 'gatsby-remark-static-images'
+                : 'gatsby-remark-images',
+          },
           {
             resolve: `gatsby-remark-autolink-headers`,
             options: {

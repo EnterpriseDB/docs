@@ -5,19 +5,29 @@ import { products } from '../../constants/products';
 
 const productAndVersion = hit => {
   if (hit.product) {
-    return products[hit.product] + ' / v' + hit.version + ' / ';
+    return (
+      (products[hit.product] ? products[hit.product].name : hit.product) +
+      ' / v' +
+      hit.version +
+      ' / '
+    );
   }
 };
 
 export const PageHit = ({ hit }) => (
   <>
-    <Link to={hit.path} className='dropdown-item'>
+    <Link to={hit.path} className="dropdown-item">
       <div className="mb-n1">
         {productAndVersion(hit)}
         {hit.breadcrumb}
         <Highlight attribute="title" hit={hit} tagName="mark" />
       </div>
-      <Snippet attribute="excerpt" hit={hit} tagName="mark" className="lh-1 small text-muted" />
+      <Snippet
+        attribute="excerpt"
+        hit={hit}
+        tagName="mark"
+        className="lh-1 small text-muted"
+      />
     </Link>
   </>
 );
