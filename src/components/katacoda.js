@@ -72,7 +72,7 @@ const Katacoda = ({account,
             if ( panel && shownClass )
             {
                 // allow Katacoda to recognize its commands
-                for (var e of document.querySelectorAll("pre.language-shell")) 
+                for (var e of document.querySelectorAll("code.language-shell")) 
                     e.dataset.lang = "shell";
                 window.katacoda.init();
             }
