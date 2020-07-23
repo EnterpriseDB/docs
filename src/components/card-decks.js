@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'gatsby';
 import { Col } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon';
+import Icon, { iconNames } from '../components/icon/';
 
 const FullCard = ({ card }) => (
   <div className="card rounded shadow-sm p-2 mt-4">
