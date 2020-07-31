@@ -42,6 +42,7 @@ export default {
   DIPLOMA: 'diploma',
   DOCS: 'docs',
   DOTTED_BOX: 'dottedbox',
+  DOWNLOAD: 'download',
   DRIVES: 'drives',
   DUPLICATE: 'duplicate',
   EARTH: 'earth',
