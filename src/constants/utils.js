@@ -1,6 +1,4 @@
-import React from 'react';
-
-export const filterAndSort = (nodes, url) => {
+export const filterAndSortLinks = (nodes, url) => {
   return nodes
     .map(node => ({
       ...node.frontmatter,
@@ -20,17 +18,14 @@ export const filterAndSort = (nodes, url) => {
     });
 };
 
-export const showFrontmatter = frontmatter => {
-  let keys = Object.keys(frontmatter);
-  return (
-    <>
-      <div>Page frontmatter</div>
-      <br />
-      {keys.map(key => (
-        <div>
-          <strong>{key}</strong>: {frontmatter[key]}
-        </div>
-      ))}
-    </>
-  );
+export const capitalize = (s) => {
+  if (!s) { return ''; };
+  return `${s[0].toUpperCase()}${s.slice(1)}`;
+};
+
+export const getBaseUrl = (path, depth) => {
+  return path
+    .split('/')
+    .slice(0, depth)
+    .join('/');
 };
