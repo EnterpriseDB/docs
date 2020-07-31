@@ -14,9 +14,9 @@ const productAndVersion = hit => {
   }
 };
 
-export const PageHit = ({ hit }) => (
+export const PageHit = ({ hit, className }) => (
   <>
-    <Link to={hit.path} className="dropdown-item">
+    <Link to={hit.path} className={`dropdown-item ${className}`}>
       <div className="mb-n1">
         {productAndVersion(hit)}
         {hit.breadcrumb}

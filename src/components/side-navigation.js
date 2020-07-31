@@ -25,17 +25,19 @@ const SideNavigationFooter = () => (
     <hr />
     <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
     <FooterItem url="/community/contribute/">Contribute</FooterItem>
+    <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
+    <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
     <FooterItem url="/community/feedback/">Feedback?</FooterItem>
   </ul>
 );
 
-const SideNavigation = ({ children }) => {
+const SideNavigation = ({ children, background = 'light', footer = true }) => {
   return (
-    <nav className="sidebar d-block bg-light border-right">
-      <div className="sidebar-sticky ml-1 pl-0 pr-4 pb-4">
+    <nav className={`sidebar d-block bg-${background} border-right`}>
+      <div className="sidebar-sticky pl-4 pr-4 pb-4">
         <LogoLink />
         {children}
-        <SideNavigationFooter />
+        { footer && <SideNavigationFooter /> }
       </div>
     </nav>
   );
