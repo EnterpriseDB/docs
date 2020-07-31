@@ -44,6 +44,7 @@ import DeveloperSvg from '../../../static/edb-icons/developer.svg';
 import DiplomaSvg from '../../../static/edb-icons/diploma.svg';
 import DocsSvg from '../../../static/edb-icons/docs.svg';
 import DottedBoxSvg from '../../../static/edb-icons/dotted-box.svg';
+import DownloadSvg from '../../../static/edb-icons/download.svg';
 import DrivesSvg from '../../../static/edb-icons/drives.svg';
 import DuplicateSvg from '../../../static/edb-icons/duplicate.svg';
 import EarthSvg from '../../../static/edb-icons/earth.svg';
@@ -226,6 +227,8 @@ export default function IconType({ iconName, ...rest }) {
       return <DocsSvg {...rest} />;
     case iconNames.DOTTED_BOX:
       return <DottedBoxSvg {...rest} />;
+    case iconNames.DOWNLOAD:
+      return <DownloadSvg {...rest} />;
     case iconNames.DRIVES:
       return <DrivesSvg {...rest} />;
     case iconNames.DUPLICATE:
