@@ -7,7 +7,7 @@ import Icon from '../components/icon/';
 
 import '../styles/index.scss';
 
-const Layout = ({ children, pageMeta }) => {
+const Layout = ({ children, pageMeta, background = 'light' }) => {
   const { baseUrl, imageUrl, title, description } = useSiteMetadata();
   const meta = pageMeta || {};
 
@@ -28,7 +28,7 @@ const Layout = ({ children, pageMeta }) => {
           content={meta.path ? baseUrl + meta.path : baseUrl}
         />
         <meta name="twitter:card" content="summary_large_image" />
-        <body className="bg-light fixed-container" />
+        <body className={`bg-${background} fixed-container`} />
       </Helmet>
       <MDXProvider
         components={{

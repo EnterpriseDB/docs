@@ -22,7 +22,6 @@ export const query = graphql`
           links {
             title
             url
-            iconName
           }
         }
       }
@@ -36,7 +35,7 @@ export default data => {
   return (
     <Layout>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
         </SideNavigation>

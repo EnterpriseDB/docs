@@ -4,7 +4,7 @@ import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
   CardDecks,
-  DevOnly,
+  DevFrontmatter,
   Footer,
   Layout,
   LeftNav,
@@ -13,7 +13,6 @@ import {
   TableOfContents,
   TopBar,
 } from '../components';
-import { showFrontmatter } from '../constants/utils';
 
 export const query = graphql`
   query($path: String!) {
@@ -77,7 +76,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta}>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav navLinks={navLinks} path={mdx.fields.path} />
         </SideNavigation>
@@ -112,11 +111,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             </>
           )}
 
-          <DevOnly>
-            <div className="alert alert-primary mt-5" role="alert">
-              {showFrontmatter(mdx.frontmatter)}
-            </div>
-          </DevOnly>
+          <DevFrontmatter frontmatter={mdx.frontmatter} />
 
           <Footer />
         </MainContent>
