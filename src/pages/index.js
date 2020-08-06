@@ -22,6 +22,7 @@ export const query = graphql`
           links {
             title
             url
+            iconName
           }
         }
       }
