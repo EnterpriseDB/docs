@@ -1,91 +1,22 @@
-import React, { useState, useEffect, createRef } from 'react';
+import React, { useState, useEffect, useCallback, createRef, useRef } from 'react';
 import algoliasearch from 'algoliasearch/lite';
 import {
   InstantSearch,
-  Hits,
-  Index,
+  Configure,
   connectSearchBox,
-  connectStateResults,
 } from 'react-instantsearch-dom';
-import { PageHit } from './hitComps';
-import { Close } from '../icons';
-import { Button } from 'react-bootstrap';
+import Icon, { iconNames } from '../icon/';
+import {
+  SlashIndicator,
+  ClearButton,
+  SearchPane,
+} from './formComps';
+import { allIndex } from './indices';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
   '3c95fc5297e90a44b6467f3098a4e6ed',
 );
-
-const indexes = [
-  { title: 'Learn', index: 'advocacy' },
-  { title: 'EDB Products', index: 'edb-products' },
-  { title: 'EDB Postgres Tools', index: 'edb-tools' },
-];
-
-const Results = connectStateResults(
-  ({ searchState: state, searchResults: res, children }) =>
-    res && res.nbHits > 0 ? children : null,
-);
-
-const NoResults = connectStateResults(
-  ({ allSearchResults: res }) => (
-    res && indexes.reduce((total, index) => {
-      return total + res[index.index] ? res[index.index].nbHits : 0
-    }, 0) === 0 && (
-      <div className="text-center">No Results</div>
-    )
-  )
-);
-
-const Stats = connectStateResults(
-  ({ searchResults: res }) =>
-    res && res.nbHits > 0 && `${res.nbHits} result${res.nbHits > 1 ? `s` : ``}`,
-);
-
-const ResultGroup = ({ title, index, last }) => (
-  <Index key={index} indexName={index}>
-    <Results>
-      <h6 className="dropdown-header">
-        {title}
-        <small className="ml-1"><Stats /></small>
-      </h6>
-      <Hits hitComponent={PageHit} />
-      { !last && <div className="dropdown-divider" /> }
-    </Results>
-  </Index>
-)
-
-const SearchForm = ({currentRefinement, refine, query, focus, onFocus}) => (
-  <>
-    <form noValidate action="" role="search" className='d-flex'>
-      <input
-        className="form-control form-control-lg border-0 pl-3 bg-white"
-        type="text"
-        aria-label="search"
-        placeholder="Search"
-        value={currentRefinement}
-        onChange={e => refine(e.currentTarget.value)}
-        onFocus={onFocus}
-      />
-      <Button
-        variant="link"
-        onClick={(e) => { e.preventDefault(); refine(''); }}
-        className={`${query.length === 0 && 'd-none'}`}
-      >
-        <Close className="opacity-5" width="20" height="20" />
-      </Button>
-    </form>
-    <div
-      className={`dropdown-menu overflow-scroll w-100 pb-2 shadow ${query.length > 0 && focus ? 'show' : ''}`}
-    >
-      {indexes.map(({ title, index }, i) => (
-        <ResultGroup key={index} title={title} index={index} last={i === indexes.length - 1} />
-      ))}
-      <NoResults />
-    </div>
-  </>
-);
-const Search = connectSearchBox(SearchForm);
 
 const useClickOutside = (ref, handler, events) => {
   if (!events) events = [`mousedown`, `touchstart`]
@@ -101,20 +32,122 @@ const useClickOutside = (ref, handler, events) => {
   })
 };
 
+const SearchForm = ({currentRefinement, refine, query}) => {
+  const searchBarRef = createRef();
+  const [focus, setFocus] = useState(false);
+  const inputRef = createRef();
+  const searchContentRef = useRef(null);
+  const [arrowIndex, setArrowIndex] = useState(0);
+
+  const close = useCallback(() => {
+    setFocus(false);
+    setArrowIndex(0);
+  }, []);
+
+  const moveArrowIndex = useCallback((key) => {
+    const dropdownItems = searchContentRef.current.querySelector('.search-pane').querySelectorAll('.dropdown-item');
+    let nextIndex = arrowIndex;
+    if (key === "ArrowDown") {
+      nextIndex = Math.min(arrowIndex + 1, dropdownItems.length - 1);
+    }
+    if (key === 'ArrowUp') {
+      nextIndex = Math.max(arrowIndex - 1, 0);
+    }
+    setArrowIndex(nextIndex);
+    if (nextIndex === dropdownItems.length - 1) {
+      searchContentRef.current.scrollTop = searchContentRef.current.scrollHeight;
+    } else if (dropdownItems[nextIndex]) {
+      dropdownItems[nextIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }, [searchContentRef, arrowIndex, setArrowIndex]);
+
+  const searchKeyboardShortcuts = useCallback((e) => {
+    const inputFocused = inputRef.current.id === document.activeElement.id;
+
+    if (e.key === '/' && !inputFocused) {
+      inputRef.current.focus();
+      e.preventDefault();
+    }
+
+    if (inputFocused) {
+      switch(e.key) {
+        case 'Escape':
+          inputRef.current.blur();
+          close();
+          e.preventDefault();
+          break;
+        case 'ArrowDown':
+        case 'ArrowUp':
+          moveArrowIndex(e.key);
+          e.preventDefault();
+          break;
+        case 'Enter':
+          const dropdownItems = searchContentRef.current.querySelector('.search-pane').querySelectorAll('.dropdown-item');
+          dropdownItems[arrowIndex].click();
+          e.preventDefault();
+          break;
+        default:
+          // do nothing
+      }
+    }
+  }, [inputRef, searchContentRef, arrowIndex, close, moveArrowIndex]);
+
+  useEffect(() => {
+    document.addEventListener("keydown", searchKeyboardShortcuts);
+    return () => {
+      document.removeEventListener("keydown", searchKeyboardShortcuts);
+    };
+  }, [searchKeyboardShortcuts]);
+
+  useClickOutside(searchBarRef, close);
+
+  const queryLength = (query || '').length;
+
+  return (
+    <div className={`${queryLength > 0 && focus && 'shadow'}`} ref={searchBarRef}>
+      <form noValidate action="" autoComplete="off" role="search" className={`search-form d-flex align-items-center ${queryLength > 0 && focus && 'open'}`}>
+        <Icon iconName={iconNames.SEARCH} className="fill-black ml-3 opacity-5 flex-shrink-0" width="22" height="22" />
+        <input
+          id='search-input'
+          className="form-control form-control-lg border-0 pl-3"
+          type="text"
+          aria-label="search"
+          placeholder="Search"
+          value={currentRefinement}
+          onChange={e => refine(e.currentTarget.value)}
+          onFocus={() => setFocus(true)}
+          ref={inputRef}
+        />
+        <ClearButton onClick={() => { refine('') }} className={`${queryLength === 0 && 'd-none'}`} />
+        <SlashIndicator query={query} />
+      </form>
+
+      <div
+        className={`dropdown-menu w-100 p-0 ${queryLength > 0 && focus && 'show'}`}
+      >
+        <div className="search-content quick-search-content mb-1 mt-1" ref={searchContentRef}>
+          <SearchPane arrowIndex={arrowIndex} />
+        </div>
+      </div>
+    </div>
+  );
+};
+const Search = connectSearchBox(SearchForm);
+
 const SearchBar = () => {
   const ref = createRef();
   const [query, setQuery] = useState(``);
-  const [focus, setFocus] = useState(false);
-  useClickOutside(ref, () => setFocus(false));
+
   return (
-    <div className="w-100" ref={ref}>
+    <div className="w-100 position-relative" ref={ref}>
       <InstantSearch
         searchClient={searchClient}
-        indexName={indexes[0].index}
+        indexName={allIndex.index}
         onSearchStateChange={({ query }) => setQuery(query)}
         className='dropdown'
       >
-        <Search query={query} focus={focus} onFocus={() => setFocus(true)}/>
+        <Configure hitsPerPage={30} />
+        <Search query={query} />
       </InstantSearch>
     </div>
   );

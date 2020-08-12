@@ -4,6 +4,7 @@ import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
   CardDecks,
+  DevFrontmatter,
   Footer,
   Layout,
   LeftNav,
@@ -18,6 +19,8 @@ export const query = graphql`
     mdx(fields: { path: { eq: $path } }) {
       frontmatter {
         title
+        navTitle
+        description
       }
       fields {
         path
@@ -29,7 +32,7 @@ export const query = graphql`
 `;
 
 const ContentRow = ({ children }) => (
-  <div class="container p-0 mt-4">
+  <div className="container p-0 mt-4">
     <Row>{children}</Row>
   </div>
 );
@@ -65,11 +68,15 @@ const Tiles = ({ mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { navLinks, githubLink } = pageContext;
-
+  const pageMeta = {
+    title: mdx.frontmatter.title,
+    description: mdx.frontmatter.description,
+    path: mdx.fields.path,
+  };
   return (
-    <Layout pageTitle={mdx.frontmatter.title}>
+    <Layout pageMeta={pageMeta}>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav navLinks={navLinks} path={mdx.fields.path} />
         </SideNavigation>
@@ -103,6 +110,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               <Tiles mdx={mdx} navLinks={navLinks} />
             </>
           )}
+
+          <DevFrontmatter frontmatter={mdx.frontmatter} />
 
           <Footer />
         </MainContent>
