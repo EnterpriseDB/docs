@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
 import { indexLinkList } from '../constants/index-link-list';
-import DottedBox from '../components/icons/dotted-box';
+import Icon, { iconNames } from '../components/icon/';
 import {
   Footer,
   IndexLinks,
@@ -22,6 +22,7 @@ export const query = graphql`
           links {
             title
             url
+            iconName
           }
         }
       }
@@ -35,7 +36,7 @@ export default data => {
   return (
     <Layout>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
         </SideNavigation>
@@ -47,7 +48,12 @@ export default data => {
           <div className="card-deck mt-4">
             <div className="card rounded shadow-sm d-flex flex-row align-items-center">
               <div className="ml-3">
-                <DottedBox className="opacity-1" width="64" height="64" />
+                <Icon
+                  iconName={iconNames.DOTTED_BOX}
+                  className="opacity-1"
+                  width="64"
+                  height="64"
+                />
               </div>
               <div className="card-body">
                 <a
@@ -63,7 +69,12 @@ export default data => {
             </div>
             <div className="card rounded shadow-sm d-flex flex-row align-items-center">
               <div className="ml-3">
-                <DottedBox className="opacity-1" width="64" height="64" />
+                <Icon
+                  iconName={iconNames.DOTTED_BOX}
+                  className="opacity-1"
+                  width="64"
+                  height="64"
+                />
               </div>
               <div className="card-body">
                 <a
@@ -85,7 +96,12 @@ export default data => {
             <div className="card-body">
               <div className="card-title d-flex justify-content-start align-items-start">
                 <a href="docs-product.php">
-                  <DottedBox className="opacity-1" width="150" height="150" />
+                  <Icon
+                    iconName={iconNames.DOTTED_BOX}
+                    className="opacity-1"
+                    width="150"
+                    height="150"
+                  />
                 </a>
                 <div className="ml-4">
                   <h3 className="balance-text">
@@ -206,7 +222,8 @@ export default data => {
           <div className="card-deck mt-4">
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <DottedBox
+                <Icon
+                  iconName={iconNames.DOTTED_BOX}
                   className="img-fluid opacity-1 mt-3 ml-3"
                   width="150"
                   height="150"
@@ -231,7 +248,8 @@ export default data => {
 
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <DottedBox
+                <Icon
+                  iconName={iconNames.DOTTED_BOX}
                   className="img-fluid opacity-1 mt-3 ml-3"
                   width="150"
                   height="150"
@@ -254,7 +272,8 @@ export default data => {
 
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <DottedBox
+                <Icon
+                  iconName={iconNames.DOTTED_BOX}
                   className="img-fluid opacity-1 mt-3 ml-3"
                   width="150"
                   height="150"

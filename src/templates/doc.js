@@ -3,10 +3,13 @@ import { Container, Row, Col } from 'react-bootstrap';
 import { graphql, Link } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
+  DevOnly,
+  DevFrontmatter,
   Footer,
   Layout,
   LeftNav,
   MainContent,
+  PrevNext,
   SideNavigation,
   TableOfContents,
   TopBar,
@@ -18,6 +21,9 @@ export const query = graphql`
     mdx(fields: { path: { eq: $path } }) {
       frontmatter {
         title
+        navTitle
+        description
+        redirects
       }
       fields {
         path
@@ -87,6 +93,7 @@ const getLinkItemFromPath = (path, navLinks) => {
       return item;
     }
   }
+  console.error('No page found for ' + path + ' from left-navs');
   return null;
 };
 
@@ -103,19 +110,27 @@ const Section = ({ section }) => (
     <div className="card rounded shadow-sm p-2">
       <div className="card-body">
         <h3 className="card-title balance-text">{section.title}</h3>
-        {section.guides.map(guide => (
-          <p className="card-text" key={`${guide.frontmatter.title}`}>
-            <Link
-              to={guide.fields.path}
-              className="btn btn-link btn-block text-left p-0"
-            >
-              {guide.frontmatter.title}
-            </Link>
-            <span className="small text-muted">
-              {guide.frontmatter.description || guide.excerpt}
-            </span>
-          </p>
-        ))}
+        {section.guides.map(guide =>
+          guide ? (
+            <p className="card-text" key={`${guide.frontmatter.title}`}>
+              <Link
+                to={guide.fields.path}
+                className="btn btn-link btn-block text-left p-0"
+              >
+                {guide.frontmatter.title}
+              </Link>
+              <span className="small text-muted">
+                {guide.frontmatter.description || guide.excerpt}
+              </span>
+            </p>
+          ) : (
+            <DevOnly key={Math.random()}>
+              <span className="badge badge-light">
+                Link Missing! Check left-navs.js
+              </span>
+            </DevOnly>
+          ),
+        )}
       </div>
     </div>
   </div>
@@ -131,11 +146,15 @@ const DocTemplate = ({ data, pageContext }) => {
   const navOrder = getNavOrder(product, version, leftNavs);
   const sections =
     navOrder && depth === 3 ? convertOrderToObjects(navOrder, navLinks) : null;
-
+  const pageMeta = {
+    title: frontmatter.title,
+    description: frontmatter.description,
+    path: path,
+  };
   return (
-    <Layout pageTitle={frontmatter.title}>
+    <Layout pageMeta={pageMeta}>
       <TopBar />
-      <Container className="p-0 d-flex bg-white fixed-container">
+      <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
             navLinks={navLinks}
@@ -157,7 +176,9 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </Col>
           </ContentRow>
+          {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
+          <DevFrontmatter frontmatter={frontmatter} />
           <Footer />
         </MainContent>
       </Container>
