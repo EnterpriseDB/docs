@@ -2,7 +2,7 @@
 name: Propose a new topic
 about: Suggest the addition of a new page or section
 title: ''
-labels: ''
+labels: 'enhancement'
 assignees: ''
 
 ---
