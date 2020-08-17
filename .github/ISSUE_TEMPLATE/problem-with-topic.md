@@ -1,7 +1,7 @@
 ---
 name: Problem with a topic
 about: Report a problem you've observed while reading a topic
-title: ''
+title: 'Problem on (PUT PAGE PATH / URL / TITLE HERE)'
 labels: ''
 assignees: ''
 
