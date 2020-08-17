@@ -67,7 +67,7 @@ const Tiles = ({ mdx, navLinks }) => {
 
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { navLinks, githubLink } = pageContext;
+  const { navLinks, githubLink, githubIssuesLink } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
@@ -112,6 +112,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           )}
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
+
+          <p>Know of a way this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>Report a problem</a> or <a href={githubIssuesLink + "&template=suggest-addition-to-topic.md&labels=enhancement"}>suggest an addition</a>!</p>
 
           <Footer />
         </MainContent>

@@ -187,12 +187,17 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       'https://github.com/rocketinsights/edb_docs_advocacy/edit/master/advocacy_docs' +
       doc.fields.path +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubIssuesLink = 
+      'https://github.com/rocketinsights/edb_docs_advocacy/issues/new?title=Regarding%20' +
+      doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
         navLinks: navLinks,
         githubLink: githubLink,
+        githubIssuesLink: githubIssuesLink,
       },
     });
   });
