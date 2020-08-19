@@ -16,9 +16,9 @@ const IndexLinks = ({ indexLinkList }) => (
                 <Link to={link.url} className="d-block py-1 align-middle">
                   <Icon
                     iconName={link.iconName || iconNames.DOTTED_BOX}
-                    className="opacity-2 mr-2 mt-n1"
-                    width="20"
-                    height="20"
+                    className="mr-2 mt-n1 fill-orange"
+                    width="22"
+                    height="22"
                   />
                   {link.title}
                 </Link>

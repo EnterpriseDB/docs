@@ -48,11 +48,14 @@ export default data => {
           <div className="card-deck mt-4">
             <div className="card rounded shadow-sm d-flex flex-row align-items-center">
               <div className="ml-3">
-                <Icon
-                  iconName={iconNames.DOTTED_BOX}
-                  className="opacity-1"
-                  width="64"
-                  height="64"
+              <Icon
+                  iconName={iconNames.INSTALL}
+                  className="fill-orange"
+                  width="38"
+                  height="38"
+                  circle={true}
+                  circleClassName="bg-blue-10"
+                  circleDiameter={80}
                 />
               </div>
               <div className="card-body">
@@ -69,11 +72,14 @@ export default data => {
             </div>
             <div className="card rounded shadow-sm d-flex flex-row align-items-center">
               <div className="ml-3">
-                <Icon
-                  iconName={iconNames.DOTTED_BOX}
-                  className="opacity-1"
-                  width="64"
-                  height="64"
+              <Icon
+                  iconName={iconNames.CONNECT}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10"
+                  circleDiameter={80}
                 />
               </div>
               <div className="card-body">
@@ -96,27 +102,23 @@ export default data => {
             <div className="card-body">
               <div className="card-title d-flex justify-content-start align-items-start">
                 <a href="docs-product.php">
-                  <Icon
-                    iconName={iconNames.DOTTED_BOX}
-                    className="opacity-1"
-                    width="150"
-                    height="150"
-                  />
+                <Icon
+                  iconName={iconNames.EDB_EPAS}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10"
+                  circleDiameter={90}
+                />
                 </a>
                 <div className="ml-4">
                   <h3 className="balance-text">
                     <a href="docs-product.php">EDB Postgres Advanced Server</a>
                   </h3>
                   <p className="card-text">
-                    Duis mollis, est non commodo luctus, nisi erat porttitor
-                    ligula, eget lacinia odio sem nec elit. Praesent commodo
-                    cursus magna, vel scelerisque nisl consectetur et. Sed
-                    posuere consectetur est at lobortis. Fusce dapibus, tellus
-                    ac cursus commodo, tortor mauris condimentum nibh, ut
-                    fermentum massa justo sit amet risus. Donec ullamcorper
-                    nulla non metus auctor fringilla. Nullam quis risus eget
-                    urna mollis ornare vel eu leo. Aenean lacinia bibendum nulla
-                    sed consectetur.
+                  EDB Postgres Advanced Server gives you the best of both worlds—all the advantages of PostgreSQL,
+enhanced with mission-critical features that help you maintain greater consistency across your PostgreSQL deployments.
                   </p>
                 </div>
               </div>
@@ -222,11 +224,14 @@ export default data => {
           <div className="card-deck mt-4">
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <Icon
-                  iconName={iconNames.DOTTED_BOX}
-                  className="img-fluid opacity-1 mt-3 ml-3"
-                  width="150"
-                  height="150"
+              <Icon
+                  iconName={iconNames.EDB_PEM}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10 mt-4 mb-2"
+                  circleDiameter={90}
                 />
               </a>
               <div className="card-body">
@@ -240,19 +245,22 @@ export default data => {
                   </a>
                 </h3>
                 <p className="card-text">
-                  Cum sociis natoque penatibus et magnis dis parturient montes,
-                  nascetur ridiculus mus
+                Monitor and manage multiple Postgres
+clusters from one convenient GUI
                 </p>
               </div>
             </div>
 
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <Icon
-                  iconName={iconNames.DOTTED_BOX}
-                  className="img-fluid opacity-1 mt-3 ml-3"
-                  width="150"
-                  height="150"
+              <Icon
+                  iconName={iconNames.EDB_BART}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10 mt-4 mb-2"
+                  circleDiameter={90}
                 />
               </a>
               <div className="card-body">
@@ -264,19 +272,22 @@ export default data => {
                   </a>
                 </h3>
                 <p className="card-text">
-                  Integer posuere erat a ante venenatis dapibus posuere velit
-                  aliquet
+                Disaster Recovery
+for PostgreSQL
                 </p>
               </div>
             </div>
 
             <div className="card rounded shadow-sm p-2">
               <a href="docs-product.php">
-                <Icon
-                  iconName={iconNames.DOTTED_BOX}
-                  className="img-fluid opacity-1 mt-3 ml-3"
-                  width="150"
-                  height="150"
+              <Icon
+                  iconName={iconNames.EDB_EFM}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10 mt-4 mb-2"
+                  circleDiameter={90}
                 />
               </a>
               <div className="card-body">
@@ -284,7 +295,7 @@ export default data => {
                   <a href="docs-product.php">Failover Manager</a>
                 </h3>
                 <p className="card-text">
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit
+                High Availability for PostgreSQL
                 </p>
               </div>
             </div>
