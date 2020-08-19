@@ -30,7 +30,8 @@ const Katacoda = ({account,
         externalcss = undefined, 
         hideiframebuttons = undefined,
         height='600px', 
-        className='katacoda-embed'}) => {
+        className='katacoda-embed',
+        codelanguages='shell'}) => {
 
         const kataArgs = 
         {
@@ -71,9 +72,47 @@ const Katacoda = ({account,
         const toggleKata = () => {
             if ( panel && shownClass )
             {
-                // allow Katacoda to recognize its commands
-                for (var e of document.querySelectorAll("code.language-shell")) 
-                    e.dataset.lang = "shell";
+
+                // fixes two issues with Katacoda: 
+                // 1. KC likes to wire up <code> instead of <pre>, which plays hell with syntax highlighting
+                // 2. KC doesn't like to wire up anything that doesn't have its favorite attributes, 
+                //    which just makes using data awkward
+
+                WireCodeToKatacoda(codelanguages.split(",").map(l => "pre.language-" + l).join(","));
+
+                function WireCodeToKatacoda(selector) {
+                    var codeBlocks = document.querySelectorAll(selector);
+                    for (const c of codeBlocks) {
+                        if (c.style.cursor === "pointer") continue;
+                        c.style.cursor = "pointer";
+                        c.addEventListener("click", 
+                            (e) => window.katacoda.write(e.target.closest(selector).textContent), false);
+                    }
+                }
+
+                // adapted from Katacoda src to patch over http->https redirect issues
+                // when testing locally - remove once Katacoda has this fixed
+                window.katacoda.write = window.katacoda.writeToTerminal = function (cmd) {
+                    var target = document.querySelectorAll("[data-katacoda-env]");
+                    if (target.length === 0)
+                        target = document.querySelectorAll("[data-katacoda-id]");
+                    if (target.length === 0) {
+                        if (console && console.error) console.error("No katacoda elements found");
+                        return;
+                    }
+                    var p = document.getElementById(target[0].getAttribute("id"));
+                    var iframe = p.getElementsByTagName("iframe")[0];
+                    if (!iframe) return;
+                    var host = (new URL(iframe.src)).host;
+                    iframe.contentWindow.postMessage(
+                        { cmd: "writeTerm", data: cmd },
+                        "https://" + host
+                    );
+                };
+
+                // last hack: make room for the panel! This... Really needs a better idea.
+                document.querySelector("main").style.marginBottom="40%";
+
                 window.katacoda.init();
             }
             setShownClass(shownClass ? '' : 'd-none');
