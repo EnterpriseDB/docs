@@ -8,6 +8,7 @@ import Layout from './layout';
 import LeftNav from './left-nav';
 import Logo from './logo';
 import MainContent from './main-content';
+import PdfDownload from './pdf-download.js';
 import PrevNext from './prev-next';
 import SearchNavigationLinks from './search-navigation-links';
 import SearchNavigation from './search-navigation';
@@ -29,6 +30,7 @@ export {
   LeftNav,
   Logo,
   MainContent,
+  PdfDownload,
   PrevNext,
   SearchNavigationLinks,
   SearchNavigation,

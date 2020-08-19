@@ -9,6 +9,7 @@ import {
   Layout,
   LeftNav,
   MainContent,
+  PdfDownload,
   PrevNext,
   SideNavigation,
   TableOfContents,
@@ -151,6 +152,7 @@ const DocTemplate = ({ data, pageContext }) => {
     description: frontmatter.description,
     path: path,
   };
+
   return (
     <Layout pageMeta={pageMeta}>
       <TopBar />
@@ -165,6 +167,7 @@ const DocTemplate = ({ data, pageContext }) => {
         </SideNavigation>
         <MainContent>
           <h1 className="balance-text">{frontmatter.title}</h1>
+          <PdfDownload path={path} />
           <ContentRow>
             <Col xs={9}>
               <MDXRenderer>{body}</MDXRenderer>
