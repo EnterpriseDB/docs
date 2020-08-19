@@ -45,14 +45,14 @@ const orderTree = (tree, order) => {
   return result;
 };
 
-const SectionHeading = ({ newList, path }) => {
+const SectionHeading = ({ newList, path, iconName }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
       <Icon
-        iconName={productIcon(path) || iconNames.DOTTED_BOX}
-        className="opacity-2 mr-2"
-        width="48"
-        height="48"
+        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+        className="fill-orange mr-3"
+        width="50"
+        height="50"
       />
       <Link
         to={newList[0].path}
@@ -64,14 +64,14 @@ const SectionHeading = ({ newList, path }) => {
   );
 };
 
-const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
+const SectionHeadingWithVersions = ({ newList, path, versionArray, iconName }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
       <Icon
-        iconName={productIcon(path) || iconNames.DOTTED_BOX}
-        className="opacity-2 mr-2"
-        width="90"
-        height="90"
+        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+        className="fill-orange mr-3"
+        width="50"
+        height="50"
       />
       <div className="rightsidenoclass">
         <Link
@@ -92,7 +92,7 @@ const SectionHeadingWithVersions = ({ newList, path, versionArray }) => {
   );
 };
 
-const LeftNav = ({ navLinks, path, versionArray, navOrder = null }) => {
+const LeftNav = ({ navLinks, path, versionArray, iconName, navOrder = null }) => {
   const newList = versionArray
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
     : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
@@ -105,9 +105,10 @@ const LeftNav = ({ navLinks, path, versionArray, navOrder = null }) => {
           newList={newList}
           path={path}
           versionArray={versionArray}
+          iconName={iconName}
         />
       ) : (
-        <SectionHeading newList={newList} path={path} />
+        <SectionHeading newList={newList} path={path} iconName={iconName} />
       )}
       {tree.map(node => (
         <TreeNode node={node} path={path} key={node.path + node.title} />
