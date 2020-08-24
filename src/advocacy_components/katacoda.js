@@ -86,7 +86,7 @@ const Katacoda = ({
         if (panel && isShown)
         {
             // make room for the panel!
-            document.body.style.marginBottom =  "40%";
+            document.documentElement.classList.add("katacoda-panel-active");
             // detect when katacoda is closed via the internal button
             const handler = (e) => {
                 if (e.data.type === "close-panel" && e.data.data && e.data.data.target
@@ -97,7 +97,7 @@ const Katacoda = ({
             };
             window.addEventListener("message", handler);
             return () => {
-                document.body.style.marginBottom = ''
+                document.documentElement.classList.remove("katacoda-panel-active");
                 window.removeEventListener("message", handler);
             };
         }
@@ -108,12 +108,12 @@ const Katacoda = ({
             <script src="https://katacoda.com/embed.js" />
         </Helmet>
         <button type="button" onClick={toggleKata} className="btn btn-secondary">{isShown ? 'Close live demo' :  clickToShowText}</button>
-        <div className={`alert alert-info col-auto ${isShown && panel ? '' : 'd-none'}`} role="alert">(Click code blocks to execute in terminal)</div>
+        <div className={`alert alert-info col-auto${isShown && panel ? '' : ' d-none'}`} role="alert">(Click code blocks to execute in terminal)</div>
         <div id={panelElementId}
                 data-katacoda-id={scenarioId}
                 {...kataArgs}
                 style={{height: height}}
-                className={[className, isShown ? '' : 'd-none'].join(' ')}></div>
+                className={`${className}${isShown ? '' : ' d-none'}`}></div>
     </>
 };
 
@@ -135,12 +135,12 @@ function CodeTriggersKatacoda(codeSelector, isShown)
         const codeBlocks = document.querySelectorAll(codeSelector);
         window.addEventListener("click", callback);
         for (const c of codeBlocks) {
-            if (c.style.cursor === "pointer") continue;
-            c.style.cursor = "pointer";
+            if (c.classList.contains("katacoda-exec")) continue;
+            c.classList.add("katacoda-exec");
         }
         return () => {
             for (const c of codeBlocks)
-                c.style.cursor = "";        
+                c.classList.remove("katacoda-exec");
             window.removeEventListener("click", callback);
         };
     });
