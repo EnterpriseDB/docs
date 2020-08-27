@@ -88,6 +88,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             title
             navTitle
             description
+            katacodaPages
           }
           excerpt(pruneLength: 100)
           fields {
@@ -187,6 +188,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       'https://github.com/rocketinsights/edb_docs_advocacy/edit/master/advocacy_docs' +
       doc.fields.path +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
@@ -194,6 +196,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         navLinks: navLinks,
         githubLink: githubLink,
       },
+    });
+
+    (doc.frontmatter.katacodaPages || []).forEach(katacodaId => {
+      actions.createPage({
+        path: `${doc.fields.path}/${katacodaId}`,
+        component: require.resolve('./src/templates/katacoda-page.js'),
+        context: {
+          scenario: katacodaId,
+          learn: {
+            title: doc.frontmatter.title,
+            description: doc.frontmatter.description,
+          },
+        },
+      })
     });
   });
 };
