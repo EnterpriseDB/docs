@@ -4,6 +4,7 @@ import useSiteMetadata from '../hooks/use-sitemetadata';
 import TextBalancer from '../components/text-balancer';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
+import KatacodaPageLink from '../advocacy_components/katacoda-page-link';
 
 import '../styles/index.scss';
 
@@ -41,6 +42,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           Icon,
+          KatacodaPageLink,
         }}
       >
         {children}

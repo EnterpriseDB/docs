@@ -4,7 +4,6 @@ import { Container } from 'react-bootstrap';
 import {
   Layout,
   Logo,
-  MainContent,
   Footer,
 } from '../components';
 import Katacoda from '../advocacy_components/katacoda'
