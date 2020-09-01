@@ -88,7 +88,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             title
             navTitle
             description
-            katacodaPages
+            katacodaPages {
+              scenario
+              account
+            }
           }
           excerpt(pruneLength: 100)
           fields {
@@ -198,12 +201,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       },
     });
 
-    (doc.frontmatter.katacodaPages || []).forEach(katacodaId => {
+    (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
+      if (!katacodaPage.scenario) {
+        raise `no scenario id provided for ${doc.fields.path}`;
+      }
+
       actions.createPage({
-        path: `${doc.fields.path}/${katacodaId}`,
+        path: `${doc.fields.path}/${katacodaPage.scenario}`,
         component: require.resolve('./src/templates/katacoda-page.js'),
         context: {
-          scenario: katacodaId,
+          ...katacodaPage,
           learn: {
             title: doc.frontmatter.title,
             description: doc.frontmatter.description,
