@@ -15,6 +15,8 @@ const KatacodaPageTemplate = ({ pageContext }) => {
     path: pageContext.path,
   };
 
+  const account = pageContext.account; // || 'shog9';
+
   return (
     <Layout pageMeta={pageMeta} background='white'>
       <Container fluid className="p-0 d-flex bg-white">
@@ -28,7 +30,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
           <h1>{ pageContext.learn.title }</h1>
           <p>{ pageContext.learn.description }</p>
           <div>
-            <Katacoda account="shog9" scenario={pageContext.scenario} hideintro="true" />
+            <Katacoda account={account} scenario={pageContext.scenario} hideintro="true" />
           </div>
           <Footer />
         </main>
