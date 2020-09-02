@@ -4,6 +4,7 @@ import useSiteMetadata from '../hooks/use-sitemetadata';
 import TextBalancer from '../components/text-balancer';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
+import Katacoda from '../advocacy_components/katacoda';
 
 import '../styles/index.scss';
 
@@ -32,7 +33,11 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
       </Helmet>
       <MDXProvider
         components={{
-          table: props => <table {...props} className="table" />,
+          table: props => (
+            <div className="table-with-scroll">
+              <table {...props} className="table" />
+            </div>
+          ),
           pre: props => (
             <figure>
               <pre {...props} />
@@ -41,6 +46,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           Icon,
+          Katacoda,
         }}
       >
         {children}
