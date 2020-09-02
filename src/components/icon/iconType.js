@@ -79,8 +79,10 @@ import EnergySvg from '../../../static/edb-icons/energy.svg';
 import EnterpriseSvg from '../../../static/edb-icons/enterprise.svg';
 import ExportSvg from '../../../static/edb-icons/export.svg';
 import FileSvg from '../../../static/edb-icons/file.svg';
+import GlobeSvg from '../../../static/edb-icons/globe.svg';
 import GolangColorSvg from '../../../static/edb-icons/golang-color.svg';
 import GuiSvg from '../../../static/edb-icons/gui.svg';
+import HadoopSvg from '../../../static/edb-icons/hadoop.svg';
 import HamburgerSvg from '../../../static/edb-icons/hamburger.svg';
 import HandshakeSvg from '../../../static/edb-icons/handshake.svg';
 import HardToFindSvg from '../../../static/edb-icons/hard-to-find.svg';
@@ -139,6 +141,7 @@ import QuoteLeftSvg from '../../../static/edb-icons/quote-left.svg';
 import QuoteRightSvg from '../../../static/edb-icons/quote-right.svg';
 import ReactNativeColorSvg from '../../../static/edb-icons/react-native-color.svg';
 import RedhatColorSvg from '../../../static/edb-icons/redhat-color.svg';
+import RedhatSvg from '../../../static/edb-icons/redhat.svg';
 import RemoteDbaSvg from '../../../static/edb-icons/remote-dba.svg';
 import ReplicationSvg from '../../../static/edb-icons/replication.svg';
 import RocketSvg from '../../../static/edb-icons/rocket.svg';
@@ -334,10 +337,14 @@ export default function IconType({ iconName, ...rest }) {
       return <ExportSvg {...rest} />;
     case iconNames.FILE:
       return <FileSvg {...rest} />;
+    case iconNames.GLOBE:
+      return <GlobeSvg {...rest} />;
     case iconNames.GOLANG_COLOR:
       return <GolangColorSvg {...rest} />;
     case iconNames.GUI:
       return <GuiSvg {...rest} />;
+    case iconNames.HADOOP:
+      return <HadoopSvg {...rest} />;
     case iconNames.HAMBURGER:
       return <HamburgerSvg {...rest} />;
     case iconNames.HANDSHAKE:
@@ -454,6 +461,8 @@ export default function IconType({ iconName, ...rest }) {
       return <ReactNativeColorSvg {...rest} />;
     case iconNames.REDHAT_COLOR:
       return <RedhatColorSvg {...rest} />;
+    case iconNames.REDHAT:
+      return <RedhatSvg {...rest} />;
     case iconNames.REMOTE_DBA:
       return <RemoteDbaSvg {...rest} />;
     case iconNames.REPLICATION:

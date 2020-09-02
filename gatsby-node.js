@@ -1,8 +1,10 @@
 const { createFilePath } = require(`gatsby-source-filesystem`);
+const { exec } = require("child_process");
 
-const sortVersions = (a, b) => {
-  return parseFloat(a) - parseFloat(b);
-};
+const sortVersionArray = (versions) => {
+  return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
+                 .map(version => version.replace(/\d+/g, n => +n-100000));
+}
 
 exports.onCreateNode = ({ node, getNode, actions }) => {
   const { createNodeField } = actions;
@@ -88,6 +90,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             title
             navTitle
             description
+            redirects
+            iconName
           }
           excerpt(pruneLength: 100)
           fields {
@@ -127,6 +131,19 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   nodes.forEach(doc => {
     const { path } = doc.fields;
+    const { redirects } = doc.frontmatter;
+
+    if (redirects) {
+      redirects.forEach(fromPath => {
+        actions.createRedirect({
+          fromPath,
+          toPath: path,
+          redirectInBrowser: true,
+          isPermanent: true,
+        });
+      });
+    }
+
     const splitPath = path.split('/');
     const subPath = splitPath.slice(0, splitPath.length - 1).join('/');
     const { fileAbsolutePath } = doc;
@@ -160,7 +177,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   });
 
   for (const product in versionIndex) {
-    versionIndex[product] = versionIndex[product].sort(sortVersions).reverse();
+    versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
   }
 
   docs.forEach(doc => {
@@ -183,9 +200,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navLinks = learn.filter(
       node => node.fields.topic === doc.fields.topic,
     );
-    const githubLink =
-      'https://github.com/rocketinsights/edb_docs_advocacy/edit/master/advocacy_docs' +
+    const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
+    const githubLink = advocacyDocsRepoUrl + 
+      '/edit/master/advocacy_docs' +
       doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubIssuesLink = advocacyDocsRepoUrl + 
+      '/issues/new?title=Regarding%20' +
+      encodeURIComponent(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     actions.createPage({
       path: doc.fields.path,
@@ -193,7 +215,26 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       context: {
         navLinks: navLinks,
         githubLink: githubLink,
+        githubIssuesLink: githubIssuesLink,
       },
     });
+  });
+
+  const sha = await new Promise((resolve, reject) => {
+    exec("git rev-parse HEAD", (error, stdout, stderr) => resolve(stdout));
+  });
+
+  const branch = await new Promise((resolve, reject) => {
+    exec("git branch --show-current", (error, stdout, stderr) => resolve(stdout));
+  });
+
+  actions.createPage({
+    path: 'build-info',
+    component: require.resolve('./src/templates/build-info.js'),
+    context: {
+      sha: sha,
+      branch: branch,
+      buildTime: Date.now(),
+    },
   });
 };
