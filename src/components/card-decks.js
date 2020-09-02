@@ -6,7 +6,7 @@ import Icon, { iconNames } from '../components/icon/';
 const FullCard = ({ card }) => (
   <div className="card rounded shadow-sm p-2 mt-4">
     <Link to={card.fields.path}>
-      <Icon iconName={iconNames.DOTTED_BOX} className="opacity-1 mt-3 ml-3" width="100" height="100" />
+      <Icon iconName={card.frontmatter.iconName || iconNames.DOTTED_BOX} className="opacity-1 mt-3 ml-3" width="100" height="100" />
     </Link>
     <div className="card-body">
       <h3 className="card-title balance-text">
