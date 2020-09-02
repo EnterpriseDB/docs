@@ -129,6 +129,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
+          <hr />
+    
           <p>
             Could this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>
               Report a problem
