@@ -6,7 +6,7 @@ import {
   Logo,
   Footer,
 } from '../components';
-import Katacoda from '../advocacy_components/katacoda'
+import { KatacodaPageEmbed } from '../advocacy_components';
 
 const KatacodaPageTemplate = ({ pageContext }) => {
   const pageMeta = {
@@ -15,7 +15,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
     path: pageContext.path,
   };
 
-  const account = pageContext.account; // || 'shog9';
+  const account = pageContext.account;
 
   return (
     <Layout pageMeta={pageMeta} background='white'>
@@ -26,13 +26,9 @@ const KatacodaPageTemplate = ({ pageContext }) => {
               <Logo width="149" height="40" />
             </Link>
           </div>
-          <hr/>
-          <h1>{ pageContext.learn.title }</h1>
-          <p>{ pageContext.learn.description }</p>
           <div>
-            <Katacoda account={account} scenario={pageContext.scenario} hideintro="true" />
+            <KatacodaPageEmbed account={account} scenario={pageContext.scenario} hideintro="true" />
           </div>
-          <Footer />
         </main>
       </Container>
     </Layout>
