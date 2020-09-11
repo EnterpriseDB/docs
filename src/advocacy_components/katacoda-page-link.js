@@ -5,10 +5,10 @@ import Icon, { iconNames } from '../components/icon';
 
 const KatacodaPageLink = ({ scenarioId }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
-    <Link to={scenarioId} className="mr-5">
+    <Link to={scenarioId} className="mr-5" target="_blank">
       <Button variant='info' className="text-left" style={{minWidth: '180px'}}>
         <div>Interactive Tutorial</div>
-        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Start Now</div>
+        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Launch Now</div>
       </Button>
     </Link>
     <div className="d-flex align-items-center">
@@ -21,8 +21,8 @@ const KatacodaPageLink = ({ scenarioId }) => (
         circleClassName="bg-blue-10"
       />
       <div className="ml-2">
-        Clicking <span className='font-weight-bold'>Start Now</span> will
-        load the tutorial in a new window
+        Clicking <span className='font-weight-bold'>Launch Now</span> will
+        take you to the tutorial page
       </div>
     </div>
   </div>

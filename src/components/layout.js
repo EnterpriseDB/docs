@@ -5,7 +5,10 @@ import TextBalancer from '../components/text-balancer';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
 import { CodeBlock } from '../components';
-import KatacodaPageLink from '../advocacy_components/katacoda-page-link';
+import { 
+  KatacodaPageLink,
+  KatacodaPanel,
+} from '../advocacy_components';
 
 import '../styles/index.scss';
 
@@ -40,6 +43,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           Icon,
           KatacodaPageLink,
+          KatacodaPanel,
         }}
       >
         {children}
