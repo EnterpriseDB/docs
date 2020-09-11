@@ -1,7 +1,48 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { Helmet } from 'react-helmet';
+import { Button } from 'react-bootstrap';
+import Icon, { iconNames } from '../components/icon';
 
-const Katacoda = ({
+const KatacodaPanelToggleClosed = ({ onClick }) => (
+  <div className="d-flex align-items-center mt-5 mb-5">
+    <div className="mr-5">
+      <Button onClick={onClick} variant='info' className="text-left" style={{minWidth: '180px'}}>
+        <div>Interactive Tutorial</div>
+        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Start Now</div>
+      </Button>
+    </div>
+    <div className="d-flex align-items-center">
+      <Icon
+        iconName={iconNames.CONSOLE}
+        className="fill-orange ny-n1"
+        width={20}
+        circle={true}
+        circleDiameter={45}
+        circleClassName="bg-blue-10"
+      />
+      <div className="ml-2">
+        Clicking <span className='font-weight-bold'>Start Now</span> will
+        load an interactive terminal in this window
+      </div>
+    </div>
+  </div>
+);
+
+const KatacodaPanelToggleOpen = ({ onClick }) => (
+  <div className="d-flex align-items-center mt-5 mb-5">
+    <div className="mr-5">
+      <Button onClick={onClick} variant='outline-info' className="text-left" style={{minWidth: '180px'}}>
+        <div>Interactive Tutorial</div>
+        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Enabled</div>
+      </Button>
+    </div>
+    <div className="d-flex align-items-center">
+      Open
+    </div>
+  </div>
+);
+
+const KatacodaPanel = ({
     account, 
     scenario, 
     clickToShowText = '',
@@ -107,8 +148,12 @@ const Katacoda = ({
         <Helmet>
             <script src="https://katacoda.com/embed.js" />
         </Helmet>
-        <button type="button" onClick={toggleKata} className="btn btn-secondary">{isShown ? 'Close live demo' :  clickToShowText}</button>
-        <div className={`alert alert-info col-auto${isShown && panel ? '' : ' d-none'}`} role="alert">(Click code blocks to execute in terminal)</div>
+
+        { (isShown && panel) ?
+            <KatacodaPanelToggleOpen onClick={toggleKata} /> :
+            <KatacodaPanelToggleClosed onClick={toggleKata} />
+        }
+
         <div id={panelElementId}
                 data-katacoda-id={scenarioId}
                 {...kataArgs}
@@ -165,4 +210,4 @@ function KatacodaHttpsWrite(cmd) {
         "https://" + host
     );                
 }
-export default Katacoda;
+export default KatacodaPanel;
