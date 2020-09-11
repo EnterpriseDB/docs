@@ -9,7 +9,7 @@ const DevFrontmatter = ({ frontmatter }) => {
         <div>Page frontmatter</div>
         <br />
         {keys.map(key => (
-          <div>
+          <div key={key}>
             <strong>{key}</strong>: {frontmatter[key]}
           </div>
         ))}
