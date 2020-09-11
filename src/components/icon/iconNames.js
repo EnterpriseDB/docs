@@ -115,6 +115,7 @@ export default {
   NAME_TAG: 'nametag',
   NETWORK: 'network',
   NETWORK2: 'network2',
+  NEW_WINDOW: 'newwindow',
   NEWS: 'news',
   NODEJS_COLOR: 'nodejscolor',
   NODEJS: 'nodejs',
