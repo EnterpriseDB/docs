@@ -70,14 +70,6 @@ const KatacodaPageEmbed = ({
 
     // no space reserved when using bottom panel
 
-    const toggleKata = () => {
-        setShown(!isShown);
-        if (panel && !isShown) {
-            window.katacoda.init();
-            window.katacoda.write = KatacodaHttpsWrite;
-        }
-    };
-
     CodeTriggersKatacoda(codeBlocksSelector, panel && isShown);
 
     useLayoutEffect(() => {
