@@ -9,7 +9,6 @@ import {
   Layout,
   LeftNav,
   MainContent,
-  PdfDownload,
   PrevNext,
   SideNavigation,
   TableOfContents,
@@ -18,8 +17,8 @@ import {
 import { leftNavs } from '../constants/left-navs';
 
 export const query = graphql`
-  query($path: String!) {
-    mdx(fields: { path: { eq: $path } }) {
+  query($nodePath: String!, $potentialLatestNodePath: String) {
+    mdx(fields: { path: { eq: $nodePath } }) {
       frontmatter {
         title
         navTitle
@@ -31,6 +30,9 @@ export const query = graphql`
       }
       body
       tableOfContents
+    }
+    potentialLatest: mdx(fields: { path: { eq: $potentialLatestNodePath } }) {
+      id
     }
   }
 `;
@@ -50,9 +52,9 @@ const getProductAndVersion = path => {
 };
 
 const makeVersionArray = (versions, path) => {
-  return versions.map(version => ({
+  return versions.map((version, i) => ({
     version: version,
-    url: `${getProductUrlBase(path)}/${version}`,
+    url: `${getProductUrlBase(path)}/${i === 0 ? 'latest' : version}`,
   }));
 };
 
@@ -98,6 +100,11 @@ const getLinkItemFromPath = (path, navLinks) => {
   return null;
 };
 
+const determineCanonicalPath = (hasLatest, latestPath) => {
+  if (hasLatest) { return latestPath; } // latest will also have hasLatest=true
+  return null;
+}
+
 const Sections = ({ sections }) => (
   <>
     {sections.map(section => (
@@ -118,11 +125,12 @@ const Section = ({ section }) => (
                 to={guide.fields.path}
                 className="btn btn-link btn-block text-left p-0"
               >
-                {guide.frontmatter.title}
+                {guide.frontmatter.navTitle || guide.frontmatter.title}
               </Link>
-              <span className="small text-muted">
-                {guide.frontmatter.description || guide.excerpt}
-              </span>
+              {/* <div className="text-small">
+                <span>{guide.frontmatter.description || guide.excerpt}
+                </span>
+              </div> */}
             </p>
           ) : (
             <DevOnly key={Math.random()}>
@@ -137,7 +145,7 @@ const Section = ({ section }) => (
   </div>
 );
 
-const DocTemplate = ({ data, pageContext }) => {
+const DocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path } = fields;
   const depth = path.split('/').length;
@@ -150,8 +158,14 @@ const DocTemplate = ({ data, pageContext }) => {
   const pageMeta = {
     title: frontmatter.title,
     description: frontmatter.description,
-    path: path,
+    path: pagePath,
+    canonicalPath: determineCanonicalPath(
+      !!data.potentialLatest,
+      pageContext.potentialLatestPath
+    ),
   };
+
+  const showToc = !!tableOfContents.items;
 
   return (
     <Layout pageMeta={pageMeta}>
@@ -166,23 +180,24 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
-          <h1 className="balance-text">{frontmatter.title}</h1>
-          <PdfDownload path={path} />
+          <h1 className="balance-text">{frontmatter.title} <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">v{version}</span></h1>
+
           <ContentRow>
-            <Col xs={9}>
+            <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
 
-            <Col xs={3}>
-              {tableOfContents.items && (
+            { showToc &&
+              <Col xs={3}>
                 <TableOfContents toc={tableOfContents.items} />
-              )}
-            </Col>
+              </Col>
+            }
           </ContentRow>
           {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
           <DevFrontmatter frontmatter={frontmatter} />
           <Footer />
+
         </MainContent>
       </Container>
     </Layout>
