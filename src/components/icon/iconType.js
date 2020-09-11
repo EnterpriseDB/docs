@@ -117,6 +117,7 @@ import MoreTeamSvg from '../../../static/edb-icons/more-team.svg';
 import NameTagSvg from '../../../static/edb-icons/name-tag.svg';
 import NetworkSvg from '../../../static/edb-icons/network.svg';
 import Network2Svg from '../../../static/edb-icons/network2.svg';
+import NewWindowSvg from '../../../static/edb-icons/new-window.svg';
 import NewsSvg from '../../../static/edb-icons/news.svg';
 import NodejsColorSvg from '../../../static/edb-icons/nodejs-color.svg';
 import NodejsSvg from '../../../static/edb-icons/nodejs.svg';
@@ -413,6 +414,8 @@ export default function IconType({ iconName, ...rest }) {
       return <NetworkSvg {...rest} />;
     case iconNames.NETWORK2:
       return <Network2Svg {...rest} />;
+    case iconNames.NEW_WINDOW:
+      return <NewWindowSvg {...rest} />;
     case iconNames.NEWS:
       return <NewsSvg {...rest} />;
     case iconNames.NODEJS_COLOR:
