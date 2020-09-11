@@ -28,6 +28,20 @@ const KatacodaPanelToggleClosed = ({ onClick }) => (
   </div>
 );
 
+const KatacodaPanelToggleOpenInstruction = ({ children, className="" }) => (
+  <div className={`d-flex align-items-center ${className}`}>
+    <Icon
+      iconName={iconNames.CHEVRON_RIGHT}
+      width={13}
+      circle={true}
+      circleDiameter={25}
+      circleClassName="bg-blue-10 mr-3"
+      circleAutoMargin={false}
+    />
+    { children }
+  </div>
+)
+
 const KatacodaPanelToggleOpen = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
     <div className="mr-5">
@@ -36,11 +50,19 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
         <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Enabled</div>
       </Button>
     </div>
-    <div className="d-flex align-items-center">
-      Open
+    <div className="d-flex flex-column">
+      <KatacodaPanelToggleOpenInstruction className="py-1">
+        Follow along with the steps below
+      </KatacodaPanelToggleOpenInstruction>
+      <KatacodaPanelToggleOpenInstruction>
+        Hit
+        <Button size="sm" variant="dark" className="mx-2 katacoda-exec-button d-inline">Run</Button>
+        to execute a code block in your terminal
+      </KatacodaPanelToggleOpenInstruction>
     </div>
   </div>
 );
+
 
 const KatacodaPanel = ({
     account, 
