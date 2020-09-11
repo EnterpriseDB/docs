@@ -22,7 +22,7 @@ const KatacodaPageLink = ({ scenarioId }) => (
       />
       <div className="ml-2">
         Clicking <span className='font-weight-bold'>Start Now</span> will
-        load an interactive terminal in this window
+        load the tutorial in a new window
       </div>
     </div>
   </div>
