@@ -4,7 +4,6 @@ import { Container } from 'react-bootstrap';
 import {
   Layout,
   Logo,
-  Footer,
 } from '../components';
 import { KatacodaPageEmbed } from '../advocacy_components';
 

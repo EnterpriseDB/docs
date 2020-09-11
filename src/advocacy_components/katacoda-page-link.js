@@ -13,7 +13,7 @@ const KatacodaPageLink = ({ scenarioId }) => (
     </Link>
     <div className="d-flex align-items-center">
       <Icon
-        iconName={iconNames.CONSOLE}
+        iconName={iconNames.NEW_WINDOW}
         className="fill-orange ny-n1"
         width={20}
         circle={true}
