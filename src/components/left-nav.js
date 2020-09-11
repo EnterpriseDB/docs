@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'gatsby';
+import PdfDownload from '../components/pdf-download';
 import Icon, { iconNames } from './icon/';
 import VersionDropdown from './version-dropdown';
 import { products } from '../constants/products';
@@ -26,6 +27,7 @@ const makeTree = edges => {
   }
   return newEdges[0].items;
 };
+
 
 const orderTree = (tree, order) => {
   if (!order) {
@@ -113,6 +115,9 @@ const LeftNav = ({ navLinks, path, versionArray, iconName, navOrder = null }) =>
       {tree.map(node => (
         <TreeNode node={node} path={path} key={node.path + node.title} />
       ))}
+      <li>
+      <PdfDownload path={path} />
+      </li>
     </ul>
   );
 };
