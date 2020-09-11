@@ -3,32 +3,41 @@ import { Link } from 'gatsby';
 import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 
-const FullCard = ({ card }) => (
-  <div className="card rounded shadow-sm p-2 mt-4">
-    <Link to={card.fields.path}>
-      <Icon iconName={iconNames.DOTTED_BOX} className="opacity-1 mt-3 ml-3" width="100" height="100" />
-    </Link>
-    <div className="card-body">
-      <h3 className="card-title balance-text">
-        <Link to={card.fields.path}>
-          {card.frontmatter.navTitle || card.frontmatter.title}
-        </Link>
-      </h3>
+const FullCard = ({ card }) => {
+  const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX
 
-      <p className="card-text">{card.frontmatter.description}</p>
+  return (
+    <div className="card rounded shadow-sm p-2 mt-4">
+      <Link to={card.fields.path}>
+        <Icon
+          iconName={iconName}
+          className={`${(iconName === iconNames.DOTTED_BOX) && 'opacity-1'} mt-3 ml-3`}
+          width="100"
+          height="100"
+        />
+      </Link>
+      <div className="card-body">
+        <h3 className="card-title balance-text">
+          <Link to={card.fields.path}>
+            {card.frontmatter.navTitle || card.frontmatter.title}
+          </Link>
+        </h3>
 
-      {card.children.map(child => (
-        <Link
-          key={child.fields.path}
-          to={child.fields.path}
-          className="btn btn-link btn-block text-left p-0"
-        >
-          {child.frontmatter.navTitle || child.frontmatter.title}
-        </Link>
-      ))}
+        <p className="card-text">{card.frontmatter.description}</p>
+
+        {card.children.map(child => (
+          <Link
+            key={child.fields.path}
+            to={child.fields.path}
+            className="btn btn-link btn-block text-left p-0"
+          >
+            {child.frontmatter.navTitle || child.frontmatter.title}
+          </Link>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const SimpleCard = ({ card }) => (
   <div className="card rounded shadow-sm p-2 mt-4">

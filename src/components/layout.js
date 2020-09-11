@@ -15,6 +15,7 @@ import '../styles/index.scss';
 const Layout = ({ children, pageMeta, background = 'light' }) => {
   const { baseUrl, imageUrl, title, description } = useSiteMetadata();
   const meta = pageMeta || {};
+  const url = meta.path ? baseUrl + meta.path : baseUrl;
 
   return (
     <>
@@ -28,10 +29,10 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           content={meta.description || description}
         />
         <meta property="og:image" content={imageUrl} />
-        <meta
-          property="og:url"
-          content={meta.path ? baseUrl + meta.path : baseUrl}
-        />
+        <meta property="og:url" content={url} />
+        { meta.canonicalPath &&
+          <link rel="canonical" href={baseUrl + meta.canonicalPath} />
+        }
         <meta name="twitter:card" content="summary_large_image" />
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
@@ -41,6 +42,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           pre: props => <CodeBlock {...props} />,
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
+          img: props => <img {...props} className='mw-100' />, // eslint-disable-line jsx-a11y/alt-text
           Icon,
           KatacodaPageLink,
           KatacodaPanel,
