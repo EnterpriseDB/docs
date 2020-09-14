@@ -5,8 +5,10 @@ import TextBalancer from '../components/text-balancer';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
 import Katacoda from '../advocacy_components/katacoda';
+import Alert from 'react-bootstrap/Alert';
 
 import '../styles/index.scss';
+
 
 const Layout = ({ children, pageMeta, background = 'light' }) => {
   const { baseUrl, imageUrl, title, description } = useSiteMetadata();
@@ -49,6 +51,9 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           img: props => <img {...props} className='mw-100' />, // eslint-disable-line jsx-a11y/alt-text
           Icon,
           Katacoda,
+          Attention: props => (
+            <Alert variant="warning" {...props}/>
+          ),
         }}
       >
         {children}
