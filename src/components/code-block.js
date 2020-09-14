@@ -8,16 +8,16 @@ const CodeBlock = (props) => {
 
   return (
     <figure>
-      <pre {...props} style={{margin: 0, borderBottomRightRadius: 0}}/>
+      <pre {...props}/>
       <div className="d-flex justify-content-between flex-row-reverse">
-        <Button size="sm" variant="light" className="no-br-tl no-br-tr">Copy</Button>
+        <Button size="sm" variant="light">Copy</Button>
         <Button
           size="sm"
-          variant="dark"
-          className="no-br-tl no-br-tr katacoda-exec-button d-none"
+          variant="outline-info"
+          className="katacoda-exec-button d-none"
           onClick={runClick}
         >
-          Run
+          ► Run
         </Button>
       </div>
     </figure>
