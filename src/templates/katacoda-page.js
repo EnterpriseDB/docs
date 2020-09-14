@@ -26,7 +26,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
             </Link>
           </div>
           <div>
-            <KatacodaPageEmbed account={account} scenario={pageContext.scenario} hideintro="true" />
+            <KatacodaPageEmbed account={account} scenario={pageContext.scenario} />
           </div>
         </main>
       </Container>
