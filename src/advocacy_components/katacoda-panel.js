@@ -56,7 +56,7 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
       </KatacodaPanelToggleOpenInstruction>
       <KatacodaPanelToggleOpenInstruction>
         Click
-        <Button size="sm" variant="dark" className="mx-2 katacoda-exec-button d-inline">Run</Button>
+        <Button size="sm" variant="outline-info" className="mx-2 katacoda-exec-button d-inline">► Run</Button>
         to execute a code block in your terminal
       </KatacodaPanelToggleOpenInstruction>
     </div>
@@ -64,65 +64,65 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
 );
 
 const KatacodaPanel = ({
-    account, 
-    scenario, 
+    account,
+    scenario,
     clickToShowText = '',
     panel = false,
-    layout = undefined, 
-    port = undefined, 
-    lang = undefined, 
-    token = undefined, 
-    userid = undefined, 
-    filename = undefined, 
-    command = undefined, 
-    runinbackground = undefined, 
-    prompt = undefined, 
-    color = "e94621", 
-    secondary = undefined, 
-    background = undefined, 
-    hideintro = undefined, 
-    hidefinish = undefined, 
-    hidetitle = undefined, 
-    hidesidebar = undefined, 
-    hideprogress = undefined, 
-    font = undefined, 
-    fontheader = undefined, 
-    startscenariobuttontext = undefined, 
-    ctaurl = undefined, 
-    ctatext = undefined, 
-    externalcss = undefined, 
+    layout = undefined,
+    port = undefined,
+    lang = undefined,
+    token = undefined,
+    userid = undefined,
+    filename = undefined,
+    command = undefined,
+    runinbackground = undefined,
+    prompt = undefined,
+    color = "e94621",
+    secondary = undefined,
+    background = undefined,
+    hideintro = undefined,
+    hidefinish = undefined,
+    hidetitle = undefined,
+    hidesidebar = undefined,
+    hideprogress = undefined,
+    font = undefined,
+    fontheader = undefined,
+    startscenariobuttontext = undefined,
+    ctaurl = undefined,
+    ctatext = undefined,
+    externalcss = undefined,
     hideiframebuttons = undefined,
-    height='600px', 
+    height='600px',
     className='katacoda-embed',
     codelanguages='shell'}) => {
 
-    const kataArgs = 
+    const kataArgs =
     {
         "data-katacoda-ui": panel ? 'panel' : undefined,
         "data-katacoda-ondemand": panel && clickToShowText ? 'true' : undefined,
         "data-katacoda-layout": layout,
-        "data-katacoda-port": port, 
-        "data-katacoda-lang": lang, 
-        "data-katacoda-token": token, 
-        "data-katacoda-userid": userid, 
-        "data-katacoda-filename": filename, 
-        "data-katacoda-command": command, 
-        "data-katacoda-runinbackground": runinbackground, 
-        "data-katacoda-prompt": prompt, 
-        "data-katacoda-color": color, 
-        "data-katacoda-secondary": secondary, 
-        "data-katacoda-background": background, 
-        "data-katacoda-hideintro": hideintro, 
-        "data-katacoda-hidefinish": hidefinish, 
-        "data-katacoda-hidetitle": hidetitle, 
-        "data-katacoda-hidesidebar": hidesidebar, 
-        "data-katacoda-hideprogress": hideprogress, 
-        "data-katacoda-font": font, 
-        "data-katacoda-fontheader": fontheader, 
-        "data-katacoda-startscenariobuttontext": startscenariobuttontext, 
-        "data-katacoda-ctaurl": ctaurl, 
-        "data-katacoda-ctatext": ctatext, 
-        "data-katacoda-externalcss": externalcss, 
+        "data-katacoda-port": port,
+        "data-katacoda-lang": lang,
+        "data-katacoda-token": token,
+        "data-katacoda-userid": userid,
+        "data-katacoda-filename": filename,
+        "data-katacoda-command": command,
+        "data-katacoda-runinbackground": runinbackground,
+        "data-katacoda-prompt": prompt,
+        "data-katacoda-color": color,
+        "data-katacoda-secondary": secondary,
+        "data-katacoda-background": background,
+        "data-katacoda-hideintro": hideintro,
+        "data-katacoda-hidefinish": hidefinish,
+        "data-katacoda-hidetitle": hidetitle,
+        "data-katacoda-hidesidebar": hidesidebar,
+        "data-katacoda-hideprogress": hideprogress,
+        "data-katacoda-font": font,
+        "data-katacoda-fontheader": fontheader,
+        "data-katacoda-startscenariobuttontext": startscenariobuttontext,
+        "data-katacoda-ctaurl": ctaurl,
+        "data-katacoda-ctatext": ctatext,
+        "data-katacoda-externalcss": externalcss,
         "data-katacoda-hideiframebuttons": hideiframebuttons
     };
 
@@ -155,7 +155,7 @@ const KatacodaPanel = ({
                     && e.data.data.target === panelElementId )
                 {
                     setShown(false);
-                } 
+                }
             };
             window.addEventListener("message", handler);
             return () => {
@@ -183,9 +183,9 @@ const KatacodaPanel = ({
     </>
 };
 
-// fixes two issues with Katacoda: 
+// fixes two issues with Katacoda:
 // 1. KC likes to wire up <code> instead of <pre>, which plays hell with syntax highlighting
-// 2. KC doesn't like to wire up anything that doesn't have its favorite attributes, 
+// 2. KC doesn't like to wire up anything that doesn't have its favorite attributes,
 //    which just makes using data awkward
 function CodeTriggersKatacoda(codeSelector, isShown)
 {
@@ -197,7 +197,7 @@ function CodeTriggersKatacoda(codeSelector, isShown)
             const matched = e.target.closest(codeSelector);
             if (matched) window.katacoda.write(matched.textContent);
         };
-    
+
         const codeBlocks = document.querySelectorAll(codeSelector);
         window.addEventListener("click", callback);
         for (const c of codeBlocks) {
@@ -229,6 +229,6 @@ function KatacodaHttpsWrite(cmd) {
     iframe.contentWindow.postMessage(
         { cmd: "writeTerm", data: cmd },
         "https://" + host
-    );                
+    );
 }
 export default KatacodaPanel;
