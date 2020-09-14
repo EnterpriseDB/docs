@@ -56,7 +56,7 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
       </KatacodaPanelToggleOpenInstruction>
       <KatacodaPanelToggleOpenInstruction>
         Click
-        <Button size="sm" variant="dark" className="mx-2 katacoda-exec-button d-inline">Run</Button>
+        <Button size="sm" variant="outline-info" className="mx-2 katacoda-exec-button d-inline">► Run</Button>
         to execute a code block in your terminal
       </KatacodaPanelToggleOpenInstruction>
     </div>
