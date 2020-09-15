@@ -1,6 +1,7 @@
 import Attention from './attention';
 import BackButton from './back-button';
 import CardDecks from './card-decks';
+import CodeBlock from './code-block';
 import DevOnly from './dev-only';
 import DevFrontmatter from './dev-frontmatter';
 import Footer from './footer';
@@ -24,6 +25,7 @@ export {
   Attention,
   BackButton,
   CardDecks,
+  CodeBlock,
   DevOnly,
   DevFrontmatter,
   Footer,

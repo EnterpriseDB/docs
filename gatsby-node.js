@@ -104,6 +104,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             description
             redirects
             iconName
+            katacodaPages {
+              scenario
+              account
+            }
           }
           excerpt(pruneLength: 280)
           fields {
@@ -239,6 +243,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       '/issues/new?title=Regarding%20' +
       encodeURIComponent(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
@@ -247,6 +252,24 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         githubLink: githubLink,
         githubIssuesLink: githubIssuesLink,
       },
+    });
+
+    (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
+      if (!katacodaPage.scenario || !katacodaPage.account) {
+        raise `katacoda scenario or account missing for ${doc.fields.path}`;
+      }
+
+      actions.createPage({
+        path: `${doc.fields.path}/${katacodaPage.scenario}`,
+        component: require.resolve('./src/templates/katacoda-page.js'),
+        context: {
+          ...katacodaPage,
+          learn: {
+            title: doc.frontmatter.title,
+            description: doc.frontmatter.description,
+          },
+        },
+      })
     });
   });
 
