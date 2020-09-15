@@ -3,11 +3,11 @@ import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
   Attention,
+  CodeBlock,
   TextBalancer,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
-import { CodeBlock } from '../components';
 import { 
   KatacodaPageLink,
   KatacodaPanel,
