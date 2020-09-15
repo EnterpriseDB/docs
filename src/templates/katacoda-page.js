@@ -14,8 +14,6 @@ const KatacodaPageTemplate = ({ pageContext }) => {
     path: pageContext.path,
   };
 
-  const account = pageContext.account;
-
   return (
     <Layout pageMeta={pageMeta} background='white'>
       <Container fluid className="p-0 d-flex bg-white">
@@ -26,7 +24,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
             </Link>
           </div>
           <div>
-            <KatacodaPageEmbed account={account} scenario={pageContext.scenario} />
+            <KatacodaPageEmbed account={pageContext.account} scenario={pageContext.scenario} />
           </div>
         </main>
       </Container>

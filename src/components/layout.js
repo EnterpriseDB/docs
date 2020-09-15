@@ -38,7 +38,11 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
       </Helmet>
       <MDXProvider
         components={{
-          table: props => <table {...props} className="table" />,
+          table: props => (
+            <div className="table-with-scroll">
+              <table {...props} className="table" />
+            </div>
+          ),
           pre: props => <CodeBlock {...props} />,
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
