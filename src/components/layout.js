@@ -1,7 +1,10 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
-import TextBalancer from '../components/text-balancer';
+import {
+  Attention,
+  TextBalancer,
+} from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
 import Katacoda from '../advocacy_components/katacoda';
@@ -49,6 +52,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           img: props => <img {...props} className='mw-100' />, // eslint-disable-line jsx-a11y/alt-text
           Icon,
           Katacoda,
+          Attention,
         }}
       >
         {children}
