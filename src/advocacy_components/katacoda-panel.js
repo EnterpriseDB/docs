@@ -6,9 +6,9 @@ import Icon, { iconNames } from '../components/icon';
 const KatacodaPanelToggleClosed = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
     <div className="mr-5">
-      <Button onClick={onClick} variant='info' className="text-left" style={{minWidth: '180px'}}>
+      <Button onClick={onClick} variant='info' className="katacoda-start-button">
         <div>Interactive Tutorial</div>
-        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Start Now</div>
+        <div className='font-weight-bold cta'>Start Now</div>
       </Button>
     </div>
     <div className="d-flex align-items-center">
@@ -45,9 +45,9 @@ const KatacodaPanelToggleOpenInstruction = ({ children, className="" }) => (
 const KatacodaPanelToggleOpen = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
     <div className="mr-5">
-      <Button onClick={onClick} variant='outline-info' className="text-left" style={{minWidth: '180px'}}>
+      <Button onClick={onClick} variant='outline-info' className="katacoda-start-button">
         <div>Interactive Tutorial</div>
-        <div className='font-weight-bold' style={{fontSize: '1.2rem'}}>Enabled</div>
+        <div className='font-weight-bold cta'>Enabled</div>
       </Button>
     </div>
     <div className="d-flex flex-column">
