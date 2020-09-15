@@ -1,3 +1,4 @@
+import Attention from './attention';
 import BackButton from './back-button';
 import CardDecks from './card-decks';
 import DevOnly from './dev-only';
@@ -20,6 +21,7 @@ import TreeNode from './tree-node';
 import VersionDropdown from './version-dropdown';
 
 export {
+  Attention,
   BackButton,
   CardDecks,
   DevOnly,
