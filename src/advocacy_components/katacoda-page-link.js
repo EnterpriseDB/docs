@@ -3,9 +3,9 @@ import { Link } from 'gatsby';
 import { Button } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon';
 
-const KatacodaPageLink = ({ scenarioId }) => (
+const KatacodaPageLink = ({ scenario }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
-    <Link to={scenarioId} className="mr-5" target="_blank">
+    <Link to={scenario} className="mr-5" target="_blank">
       <Button variant='info' className="katacoda-start-button">
         <div>Interactive Tutorial</div>
         <div className='font-weight-bold cta'>Launch Now</div>
