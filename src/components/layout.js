@@ -1,7 +1,10 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
-import TextBalancer from '../components/text-balancer';
+import {
+  Attention,
+  TextBalancer,
+} from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
 import { CodeBlock } from '../components';
@@ -50,6 +53,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           Icon,
           KatacodaPageLink,
           KatacodaPanel,
+          Attention,
         }}
       >
         {children}
