@@ -2,12 +2,12 @@ import React from 'react';
 import IconType from './iconType';
 import iconNames from './iconNames';
 
-function Icon({ circle, circleClassName, circleDiameter, ...rest }) {
+function Icon({ circle, circleClassName, circleDiameter, circleAutoMargin, ...rest }) {
   if (circle && circleDiameter) {
     return (
       <div
         className={`hpx-${circleDiameter} wpx-${circleDiameter} rounded-circle
-        mx-auto d-flex justify-content-center align-items-center ${circleClassName}`}
+        ${circleAutoMargin && 'mx-auto'} d-flex justify-content-center align-items-center ${circleClassName}`}
       >
         {IconType(rest)}
       </div>
@@ -21,6 +21,7 @@ Icon.defaultProps = {
   className: 'dottedbox',
   circleClassName: '',
   circleDiameter: 100,
+  circleAutoMargin: true,
   circle: false,
   width: 100,
   height: 100,
