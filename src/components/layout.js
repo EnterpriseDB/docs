@@ -8,7 +8,7 @@ import {
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
-import { 
+import {
   KatacodaPageLink,
   KatacodaPanel,
 } from '../advocacy_components';
@@ -50,6 +50,7 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           img: props => <img {...props} className='mw-100' />, // eslint-disable-line jsx-a11y/alt-text
+          blockquote: props => <blockquote {...props} className='pl-3 border-left border-5'></blockquote>,
           Icon,
           KatacodaPageLink,
           KatacodaPanel,
