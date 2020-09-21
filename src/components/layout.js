@@ -8,7 +8,7 @@ import {
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
-import {
+import { 
   KatacodaPageLink,
   KatacodaPanel,
 } from '../advocacy_components';
