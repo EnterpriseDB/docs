@@ -19,7 +19,7 @@ const CodeBlock = (props) => {
   };
 
   return (
-    <figure>
+    <figure className='overflow-auto'>
       <pre {...props} ref={codeRef} />
       <div className="d-flex justify-content-between flex-row-reverse">
         <Button
