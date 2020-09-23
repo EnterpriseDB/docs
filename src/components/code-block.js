@@ -50,9 +50,11 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
 };
 
 const CodePre = ({ className, content }) => {
+  const codeRef = React.createRef();
   const [copyButtonText, setCopyButtonText] = useState('Copy');
   const copyClick = (e) => {
-    navigator.clipboard.writeText(content).then(() => {
+    const text = codeRef.current && codeRef.current.textContent;
+    navigator.clipboard.writeText(text).then(() => {
       setCopyButtonText('Copied!');
       setTimeout(() => {
         setCopyButtonText('Copy');
@@ -61,7 +63,6 @@ const CodePre = ({ className, content }) => {
     e.target.blur();
   };
 
-
   const [wrap, setWrap] = useState(false);
   const wrapClick = (e) => {
     setWrap(!wrap);
@@ -69,8 +70,8 @@ const CodePre = ({ className, content }) => {
   }
 
   const runClick = (e) => {
-    const block = e.target.closest('figure').querySelector('.katacoda-exec')
-    block && block.click();
+    const text = codeRef.current && codeRef.current.textContent;
+    window.katacoda.write(text);
   };
 
   return (
@@ -91,7 +92,7 @@ const CodePre = ({ className, content }) => {
         </Button>
       </div>
 
-      <pre className={`${className} ${wrap && 'ws-preline'} m-0 br-tl-0 br-tr-0`}>
+      <pre className={`${className} ${wrap && 'ws-preline'} m-0 br-tl-0 br-tr-0`} ref={codeRef}>
         { content }
       </pre>
     </>

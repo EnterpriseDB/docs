@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { Button } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon';
@@ -98,7 +98,6 @@ const KatacodaPanel = ({ account, scenario, codelanguages = 'shell' }) => {
   const [isShown, setShown] = useState(false);
   const scenarioId = account ? [account, scenario].join('/') : scenario;
   const panelElementId = `katacoda-scenario-${account}-${scenario}`;
-  const codeBlocksSelector = codelanguages.split(",").map(l => "pre.language-" + l).join(",");
 
   const toggleKata = () => {
     setShown(!isShown);
@@ -108,7 +107,6 @@ const KatacodaPanel = ({ account, scenario, codelanguages = 'shell' }) => {
     }
   };
 
-  useCodeTriggers(codeBlocksSelector, isShown);
   useAdjustLayoutCloseDetection(isShown, panelElementId, setShown);
 
   return <>
@@ -130,34 +128,6 @@ const KatacodaPanel = ({ account, scenario, codelanguages = 'shell' }) => {
       data-katacoda-ondemand='true'
     />
   </>
-};
-
-// fixes two issues with Katacoda:
-// 1. KC likes to wire up <code> instead of <pre>, which plays hell with syntax highlighting
-// 2. KC doesn't like to wire up anything that doesn't have its favorite attributes,
-//    which just makes using data awkward
-const useCodeTriggers = (codeSelector, isShown) => {
-  useEffect(() => {
-    if (!isShown) return;
-
-    const callback = (e) => {
-      const matched = e.target.closest(codeSelector);
-      if (matched) window.katacoda.write(matched.textContent);
-    };
-
-    const codeBlocks = document.querySelectorAll(codeSelector);
-    window.addEventListener("click", callback);
-    for (const c of codeBlocks) {
-      if (c.classList.contains("katacoda-exec")) continue;
-      c.classList.add("katacoda-exec");
-    }
-
-    return () => {
-      for (const c of codeBlocks)
-        c.classList.remove("katacoda-exec");
-      window.removeEventListener("click", callback);
-    };
-  });
 };
 
 const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
