@@ -8,11 +8,16 @@ const DevFrontmatter = ({ frontmatter }) => {
       <div className="alert alert-primary mt-5" role="alert">
         <div>Page frontmatter</div>
         <br />
-        {keys.map(key => (
-          <div key={key}>
-            <strong>{key}</strong>: {frontmatter[key]}
-          </div>
-        ))}
+        {keys.map(key => {
+          let val = frontmatter[key];
+          if (typeof val !== 'string') { val = JSON.stringify(val); }
+
+          return (
+            <div key={key}>
+              <strong>{key}</strong>: {val}
+            </div>
+          );
+        })}
       </div>
     </DevOnly>
   );
