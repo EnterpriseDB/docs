@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Button } from 'react-bootstrap';
 
 const childToString = (child) => {
-  if (typeof child !== 'string') {
+  if (!child || !child.props) {
+    return '';
+  } else if (typeof child !== 'string') {
     return childToString(child.props.children);
   }
   return child;
@@ -15,6 +17,8 @@ const popExtraNewLines = (code) => {
 }
 
 const splitChildrenIntoCodeAndOutput = (rawChildren) => {
+  if (!rawChildren) { return [[], []]; }
+
   const splitRegex = /__OUTPUT__/;
   const code = [];
   const output = [];
@@ -108,12 +112,16 @@ const OutputPre = ({ content }) => (
 const CodeBlock = ({ children, ...otherProps }) => {
   const [codeContent, outputContent] = splitChildrenIntoCodeAndOutput(children.props.children);
 
-  return (
-    <figure className='codeblock-wrapper katacoda-enabled'>
-      <CodePre className={children.props.className} content={codeContent} />
-      { outputContent.length > 0 && <OutputPre content={outputContent} /> }
-    </figure>
-  );
+  if (codeContent.length > 0) {
+    return (
+      <figure className='codeblock-wrapper katacoda-enabled'>
+        <CodePre className={children.props.className} content={codeContent} />
+        { outputContent.length > 0 && <OutputPre content={outputContent} /> }
+      </figure>
+    );
+  } else {
+    return null;
+  }
 }
 
 export default CodeBlock;
