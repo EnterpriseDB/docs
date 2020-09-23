@@ -94,7 +94,11 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
   "data-katacoda-hideiframebuttons"
 */
 
-const KatacodaPanel = ({ account, scenario, codelanguages = 'shell' }) => {
+const KatacodaPanel = ({ katacodaPanelData }) => {
+  if (!katacodaPanelData) { throw 'katacodaPanel frontmatter missing!'; }
+  const account = katacodaPanelData.account;
+  const scenario = katacodaPanelData.scenario;
+
   const [isShown, setShown] = useState(false);
   const scenarioId = account ? [account, scenario].join('/') : scenario;
   const panelElementId = `katacoda-scenario-${account}-${scenario}`;
