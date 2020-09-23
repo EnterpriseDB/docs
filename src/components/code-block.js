@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Button } from 'react-bootstrap';
 
 const childToString = (child) => {
-  if (!child || !child.props) {
+  if (!child) {
     return '';
   } else if (typeof child !== 'string') {
     return childToString(child.props.children);
   }
-  return child;
+  return child; // hit string, unroll
 }
 
 const popExtraNewLines = (code) => {
