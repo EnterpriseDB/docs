@@ -49,7 +49,7 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   return [code, output];
 };
 
-const CodePre = ({ className, content }) => {
+const CodePre = ({ className, content, runnable }) => {
   const codeRef = React.createRef();
   const [copyButtonText, setCopyButtonText] = useState('Copy');
   const copyClick = (e) => {
@@ -72,6 +72,7 @@ const CodePre = ({ className, content }) => {
   const runClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
     window.katacoda.write(text);
+    e.target.blur();
   };
 
   return (
@@ -82,14 +83,16 @@ const CodePre = ({ className, content }) => {
           <Button size="sm" variant="link" onClick={copyClick}>{copyButtonText}</Button>
         </div>
 
-        <Button
-          size="sm"
-          variant="outline-info"
-          className="katacoda-exec-button"
-          onClick={runClick}
-        >
-          ► Run
-        </Button>
+        { runnable &&
+          <Button
+            size="sm"
+            variant="outline-info"
+            className="katacoda-exec-button"
+            onClick={runClick}
+          >
+            ► Run
+          </Button>
+        }
       </div>
 
       <pre className={`${className} ${wrap && 'ws-preline'} m-0 br-tl-0 br-tr-0`} ref={codeRef}>
@@ -110,13 +113,19 @@ const OutputPre = ({ content }) => (
   </div>
 );
 
-const CodeBlock = ({ children, ...otherProps }) => {
+const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
   const [codeContent, outputContent] = splitChildrenIntoCodeAndOutput(children.props.children);
+  const execLanguages = katacodaPanelData ? ['shell'].concat(katacodaPanelData.codelanguages) : [];
+  const language = children.props.className.replace('language-','');
 
   if (codeContent.length > 0) {
     return (
       <figure className='codeblock-wrapper katacoda-enabled'>
-        <CodePre className={children.props.className} content={codeContent} />
+        <CodePre
+          className={children.props.className}
+          content={codeContent}
+          runnable={execLanguages.includes(language)}
+        />
         { outputContent.length > 0 && <OutputPre content={outputContent} /> }
       </figure>
     );
