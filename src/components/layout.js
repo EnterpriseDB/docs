@@ -15,7 +15,7 @@ import {
 
 import '../styles/index.scss';
 
-const Layout = ({ children, pageMeta, background = 'light' }) => {
+const Layout = ({ children, pageMeta, katacodaPanelData, background = 'light' }) => {
   const { baseUrl, imageUrl, title, description } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
@@ -46,15 +46,15 @@ const Layout = ({ children, pageMeta, background = 'light' }) => {
               <table {...props} className="table" />
             </div>
           ),
-          pre: props => <CodeBlock {...props} />,
+          pre: props => <CodeBlock {...props} katacodaPanelData={katacodaPanelData} />,
           h2: props => <h2 {...props} className='mt-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           h3: props => <h3 {...props} className='mt-4-5' />, // eslint-disable-line jsx-a11y/heading-has-content
           img: props => <img {...props} className='mw-100' />, // eslint-disable-line jsx-a11y/alt-text
           blockquote: props => <blockquote {...props} className='pl-3 border-left border-5'></blockquote>,
-          Icon,
+          KatacodaPanel: props => <KatacodaPanel {...props} katacodaPanelData={katacodaPanelData} />,
           KatacodaPageLink,
-          KatacodaPanel,
           Attention,
+          Icon,
         }}
       >
         {children}
