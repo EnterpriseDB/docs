@@ -20,7 +20,7 @@ const popExtraNewLines = (code) => {
 const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   if (!rawChildren) { return [[], []]; }
 
-  const splitRegex = /__OUTPUT__/;
+  const splitRegex = /\s*__OUTPUT__\s*/;
   const code = [];
   const output = [];
 
@@ -38,8 +38,8 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     const sChild = childToString(child);
     const splitChild = sChild.split(splitRegex);
     if (splitChild.length > 1) { // found split location
-      code.push(splitChild[0].trim()); // will convert token to pure text, seems to be okay in practice
-      output.push(splitChild[1].trim());
+      code.push(splitChild[0]); // will convert token to pure text, seems to be okay in practice
+      output.push(splitChild[1]);
       popExtraNewLines(code);
       splitFound = true;
     } else {
@@ -96,7 +96,7 @@ const CodePre = ({ className, content, runnable }) => {
         }
       </div>
 
-      <pre className={`${className} ${wrap && 'ws-preline'} m-0 br-tl-0 br-tr-0`} ref={codeRef}>
+      <pre className={`${className} ${wrap && 'ws-prewrap'} m-0 br-tl-0 br-tr-0`} ref={codeRef}>
         { content }
       </pre>
     </>
