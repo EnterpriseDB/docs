@@ -95,7 +95,7 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
 */
 
 const KatacodaPanel = ({ katacodaPanelData }) => {
-  if (!katacodaPanelData) { throw 'katacodaPanel frontmatter missing!'; }
+  if (!katacodaPanelData) { throw new Error('katacodaPanel frontmatter missing!'); }
   const account = katacodaPanelData.account;
   const scenario = katacodaPanelData.scenario;
 
