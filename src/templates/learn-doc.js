@@ -21,6 +21,11 @@ export const query = graphql`
         title
         navTitle
         description
+        katacodaPanel {
+          account
+          scenario
+          codelanguages
+        }
       }
       fields {
         path
@@ -85,14 +90,14 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     path: mdx.fields.path,
   };
 
+  const katacodaPanelData = mdx.frontmatter.katacodaPanel;
   const iconName = (data.file.childAdvocacyDocsJson.advocacyLinks[0].links.find(
     link => mdx.fields.path.includes(link.url)
   ) || { iconName: null }).iconName;
-
   const showToc = !!mdx.tableOfContents.items;
 
   return (
-    <Layout pageMeta={pageMeta}>
+    <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
