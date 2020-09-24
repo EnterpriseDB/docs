@@ -20,7 +20,7 @@ const popExtraNewLines = (code) => {
 const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   if (!rawChildren) { return [[], []]; }
 
-  const splitRegex = /\s*__OUTPUT__\s*/;
+  const splitRegex = /(?:\s+|^)__OUTPUT__(?:\s+|$)/;
   const code = [];
   const output = [];
 
@@ -38,8 +38,8 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     const sChild = childToString(child);
     const splitChild = sChild.split(splitRegex);
     if (splitChild.length > 1) { // found split location
-      code.push(splitChild[0]); // will convert token to pure text, seems to be okay in practice
-      output.push(splitChild[1]);
+      code.push(splitChild[0].replace(/(\n|\r\n)*$/g, '')); // will convert token to pure text, seems to be okay in practice
+      output.push(splitChild[1].replace(/^(\n|\r\n)*/g, ''));
       popExtraNewLines(code);
       splitFound = true;
     } else {
