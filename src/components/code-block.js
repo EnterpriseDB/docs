@@ -31,7 +31,7 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     const child = children[i];
 
     if (splitFound) { // we've already split, toss it into output and move on
-      output.push(childToString(child).trim());
+      output.push(childToString(child));
       continue;
     }
 
