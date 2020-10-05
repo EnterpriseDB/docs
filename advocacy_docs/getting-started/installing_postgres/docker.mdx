@@ -29,18 +29,48 @@ Alternately, you can follow these steps in your browser: <KatacodaPanel />
 
    ```shell
    docker run --name test_postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=testdb -d postgres
+   __OUTPUT__
+   3cf208bf260dd3714bba84ec606b6a7bd92b34466fc159a17b5a12596d96e86c
    ```
+   The output will be the container ID of the newly-running container, a [UUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) that distinguishes it from other running containers. **This will be different each time the container is started,** so we also passed the `--name` option to give us something consistent to refer to in the examples that follow.
 
+  The postgres image has PostgreSQL installed, but no database initialized. During startup, the default database cluster will be initialized, and then the database specified in the `POSTGRES_DB` environmental variable will be created. 
+
+  We can view the initialization progress by retrieving the Docker logs for the container:
+
+  ```shell
+  docker logs test_postgres
+  __OUTPUT__
+  The files belonging to this database system will be owned by user "postgres".
+
+  ... other messages describing the initialization ...
+
+  LOG:  database system is ready to accept connections
+  ```
 2. Run some commands against the database from within the container:
 
    ```shell
-   docker exec -it test_postgres psql -U postgres -d testdb -c "create table Test (Id integer, Name text);"
+   docker exec -it test_postgres psql -U postgres -d testdb -c \
+    "create table Test (Id integer, Name text);"
+   __OUTPUT__
+   CREATE TABLE
+   ```
+   This uses the `psql` command to run SQL as the `postgres` superuser to create a new table in our testdb database 
+   (Note: if you see a message such as "psql: error: could not connect to server: FATAL:  database "testdb" does not exist" then the database is still being initialized - check the logs as described in step #1)
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c \
+    "insert into Test values (1, 'Bob');"
+   __OUTPUT__
+   INSERT 0 1
    ```
    ```shell
-   docker exec -it test_postgres psql -U postgres -d testdb -c "insert into Test values (1, 'Bob');"
-   ```
-   ```shell
-   docker exec -it test_postgres psql -U postgres -d testdb -c "select * from Test;"
+   docker exec -it test_postgres psql -U postgres -d testdb -c \
+    "select * from Test;"
+   __OUTPUT__
+   id | name
+   ----+------
+     1 | Bob
+   (1 row)   
    ```
 
 3. Stop and then delete the container:
@@ -48,6 +78,8 @@ Alternately, you can follow these steps in your browser: <KatacodaPanel />
    ```shell
    docker kill test_postgres
    docker rm test_postgres
+   __OUTPUT__
+   test_postgres
    ```
 
 ## Using a volume to persist the database
@@ -56,18 +88,72 @@ By default, any databases created will be stored in the container itself and wil
 
 Here's an example:
 
-```shell
-docker run -v pgdata:/var/lib/postgresql/data --name test_postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=testdb -d postgres
-```
-The volume - named "pgdata" - will persist even after the container is removed; if a new container is created & pointed to the same volume, any data stored will be immediately available!
+1. Start the container with a named volume for the data directory:
+
+  ```shell
+  docker run -v pgdata:/var/lib/postgresql/data \
+  --name test_postgres \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=testdb \
+  -d postgres
+  __OUTPUT__
+  [UUID]
+  ```
+  The volume - named "pgdata" - will persist even after the container is removed; if a new container is created & pointed to the same volume, any data stored will be immediately available! 
+
+2. Store some data:
+
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c \
+    "create table Test (Id integer, Name text);
+    insert into Test values (1, 'Bob');"
+   __OUTPUT__
+   INSERT 0 1
+   ```
+3. Stop and delete the container:
+
+   ```shell
+   docker kill test_postgres
+   docker rm test_postgres
+   __OUTPUT__
+   test_postgres
+   ```
+4. Create it again against the same volume:
+
+  ```shell
+  docker run -v pgdata:/var/lib/postgresql/data \
+  --name test_postgres \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=testdb \
+  -d postgres
+  __OUTPUT__
+  [UUID]
+  ```
+5. Query it, observing that the data stored in step #2 is still there:
+
+   ```shell
+   docker exec -it test_postgres psql -U postgres -d testdb -c \
+    "select * from Test;"
+   __OUTPUT__
+   id | name
+   ----+------
+     1 | Bob
+   (1 row)   
+   ```
+
+<Attention>
+Don't try to run multiple postgres containers simultaneously sharing the same volume for data - your database will probably be corrupted!
+</Attention>
 
 To remove the volume, use the command:
 
 ```shell
 docker volume rm pgdata
+__OUTPUT__
+pgdata
 ```
 
-Docker will ensure that no existing containers are referencing the volume before it'll let you remove it.
+Docker will ensure that no existing containers are referencing the volume before it'll let you remove it - you must stop and delete them first.
 
 ## Spinning up a development or testing environment, including Postgres, using Docker Compose
 
@@ -104,8 +190,6 @@ volumes:
   pgconf:
     driver: local
   pglog:
-    driver: local
-  pgadata:
     driver: local
 ```
 
