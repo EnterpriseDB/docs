@@ -75,6 +75,7 @@ import EdbMigrationToolkitSvg from '../../../static/edb-icons/edb-migration-tool
 import EdbPemSvg from '../../../static/edb-icons/edb-pem.svg';
 import EdbReplicationSvg from '../../../static/edb-icons/edb-replication.svg';
 import EdbSymbolSvg from '../../../static/edb-icons/edb-symbol.svg';
+import EllipsisSvg from '../../../static/edb-icons/ellipsis.svg';
 import EnergySvg from '../../../static/edb-icons/energy.svg';
 import EnterpriseSvg from '../../../static/edb-icons/enterprise.svg';
 import ExportSvg from '../../../static/edb-icons/export.svg';
@@ -125,6 +126,7 @@ import NotFoundSvg from '../../../static/edb-icons/not-found.svg';
 import OptionsSvg from '../../../static/edb-icons/options.svg';
 import PandasSvg from '../../../static/edb-icons/pandas.svg';
 import PartnerSvg from '../../../static/edb-icons/partner.svg';
+import PdfSvg from '../../../static/edb-icons/pdf.svg';
 import PeopleSvg from '../../../static/edb-icons/people.svg';
 import PerlColorSvg from '../../../static/edb-icons/perl-color.svg';
 import PhpColorSvg from '../../../static/edb-icons/php-color.svg';
@@ -330,6 +332,8 @@ export default function IconType({ iconName, ...rest }) {
       return <EdbReplicationSvg {...rest} />;
     case iconNames.EDB_SYMBOL:
       return <EdbSymbolSvg {...rest} />;
+    case iconNames.ELLIPSIS:
+      return <EllipsisSvg {...rest} />;
     case iconNames.ENERGY:
       return <EnergySvg {...rest} />;
     case iconNames.ENTERPRISE:
@@ -430,6 +434,8 @@ export default function IconType({ iconName, ...rest }) {
       return <PandasSvg {...rest} />;
     case iconNames.PARTNER:
       return <PartnerSvg {...rest} />;
+    case iconNames.PDF:
+      return <PdfSvg {...rest} />;
     case iconNames.PEOPLE:
       return <PeopleSvg {...rest} />;
     case iconNames.PERL_COLOR:
