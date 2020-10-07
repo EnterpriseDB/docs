@@ -172,6 +172,7 @@ module.exports = {
     'gatsby-transformer-sharp',
     'gatsby-transformer-json',
     'gatsby-plugin-sharp',
+    'gatsby-plugin-meta-redirect',
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
@@ -255,6 +256,15 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+      },
+    },
+    {
+      resolve: 'gatsby-plugin-use-dark-mode',
+      options: {
+        classNameDark: 'dark',
+        classNameLight: 'light',
+        storageKey: 'dark-theme',
+        minify: true,
       },
     },
     // {
