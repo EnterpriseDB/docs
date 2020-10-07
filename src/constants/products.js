@@ -8,7 +8,7 @@ export const products = {
   pem: { name: 'Postgres Enterprise Manager', iconName: IconNames.EDB_PEM },
   migration_portal: { name: 'Migration Portal', iconName: IconNames.EDB_MIGRATION_PORTAL },
   migration_toolkit: { name: 'Migration Toolkit', iconName: IconNames.EDB_MIGRATION_TOOLKIT },
-  hadoop_data_adapter: { name: 'EDB Postgres Hadoop Data Adapter', iconName: IconNames.HADOOP },
+  hadoop_data_adapter: { name: 'Hadoop Data Adapter', iconName: IconNames.HADOOP },
   jdbc_connector: { name: 'JDBC Connector', iconName: IconNames.CONNECT},
   net_connector: { name: '.NET Connector', iconName: IconNames.CONNECT},
   ocl_connector: { name: 'OCL Connector', iconName: IconNames.CONNECT},
