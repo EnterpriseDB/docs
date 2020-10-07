@@ -139,7 +139,7 @@ const SearchBar = () => {
   const [query, setQuery] = useState(``);
 
   return (
-    <div className="w-100 position-relative" ref={ref}>
+    <div className="global-search w-100 position-relative" ref={ref}>
       <InstantSearch
         searchClient={searchClient}
         indexName={allIndex.index}
