@@ -24,7 +24,7 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   const code = [];
   const output = [];
 
-  const children = typeof rawChildren === 'string' ? [rawChildren] : rawChildren;
+  const children = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
 
   let splitFound = false;
   for (let i = 0; i < children.length; i++) {
