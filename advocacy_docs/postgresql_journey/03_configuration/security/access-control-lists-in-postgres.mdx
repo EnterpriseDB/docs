@@ -1,0 +1,142 @@
+---
+title: "Using Access Control Lists for Data Security in PostgreSQL Systems"
+navTitle: ACLs
+description: A guide to the use and configuration of ACLs in PostgreSQL systems
+author: Dave Page
+product: postgresql
+tags:
+    - postgresql
+    - security
+    - acl
+---
+
+## Introduction
+
+In this guide we will look at how we can control access to data.
+
+## ACLs
+
+Access Control Lists or ACLs are somewhat cryptic strings that are attached to objects such as tables, functions, views and even columns in Postgres. They actually contain a list of privileges such as select, insert, execute and so on that are granted to each role, as well as an additional optional flag (*) for each privilege which, if present, denotes that the role has the ability to grant this privilege to other roles, and the name of the role that granted the privileges.
+
+An example of an ACL for a table created by Joe might be as follows:
+
+```
+joe=arwdDxt/joe =r/joe sales_team=arw/joe
+```
+
+The first section tells us that Joe has all the available privileges on the table (`INSERT`, `SELECT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` and `TRIGGER`), originally granted by Joe (when he created the table).
+
+The second section tells us that read access has been granted to `PUBLIC` (a special, pseudo-role that means everyone) by Joe, and the third section tells us that the Sales Team has been granted `INSERT`, `SELECT` and `UPDATE` privileges, again, by Joe.
+
+The privilege flags in ACLs vary quite significantly based on the type of object in question; please review [the documentation](https://www.postgresql.org/docs/current/ddl-priv.html) for further details.
+
+It's useful to understand how ACLs are written in Postgres, particularly if you prefer working with command line tools which will typically show them in the internal format. Graphical tools such as [pgAdmin](https://www.pgadmin.org/) will parse and display the ACL in a visual format that is much easier to read.
+
+Any well designed system should use roles in conjunction with ACLs to protect the schema and data in the database. It is good practice to have the schema (i.e. the tables and other objects) be owned by a non-superuser role which is not a role that the application uses to connect to the database with or used to grant other privileges to login roles. Create group roles that reflect the permissions or roles within your application that have the required database privileges, and grant those roles to login roles as required. It is not usually a good idea to grant privileges directly to login roles used by end users, as that can quickly become difficult to manage.
+
+<Attention>Spend time fully understanding the privileges required in your system for users and applications to be able to do their jobs. Minimise privileges to only those required, separate schema ownership from data, and make use of group roles to simplify privilege management for individual login roles.</Attention>
+
+## GRANT & REVOKE
+
+ACLs are managed on objects in Postgres through the use of the `GRANT` and `REVOKE` SQL commands. In most cases when an object is created, only the owner has any privileges to use or work with that object in any way, exceptions being that `PUBLIC` are granted `EXECUTE` permission on functions and procedures, `CONNECT` and `TEMPORARY` permission on databases, and `USAGE` permission on languages, data types and domains. Any of these privileges can be revoked if required.
+
+Permission to modify or drop an object is always reserved for the owner of the object and superusers. The object ownership can be reassigned using the `ALTER` SQL command.
+
+[Default privileges](https://www.postgresql.org/docs/current/sql-alterdefaultprivileges.html) can be overridden using the `ALTER DEFAULT PRIVILEGES` command for some object types. This allows you to configure the system such that certain privileges are automatically granted to roles on new objects that are created. For example, Joe in the previous example could issue a command such as the one below to grant the Sales Team insert, select and update privileges on any new tables (but not pre-existing ones, which may need to be updated manually):
+
+```
+ALTER DEFAULT PRIVILEGES 
+    GRANT INSERT, SELECT, UPDATE 
+    ON TABLES 
+    TO sales_team;
+```
+
+Assuming that when a new object is created it doesn't automatically include the required privileges in the ACL, we can use `GRANT` and `REVOKE` to set up the ACL as required. To continue our previous example, Joe might use the following SQL command to grant the Sales Team permissions on the orders table:
+
+```
+GRANT INSERT, SELECT, UPDATE ON orders TO sales_team;
+```
+
+In order to revoke any automatically granted privileges, or to revoke previously granted privileges to meet changing business needs, we can use the `REVOKE` SQL command, e.g.
+
+```
+REVOKE UPDATE ON orders FROM sales_team;
+```
+
+Assuming the Sales Team previously had the INSERT, SELECT and UPDATE privileges as seen in the earlier example, this would remove the UPDATE privilege, allowing them to view and add orders, but not modify them.
+
+It is worth noting that the use of ACLs on columns can sometimes catch people out because the wildcard in a `SELECT * FROM` query will not exclude the columns that users don't have access to and will return an access denied message for the table. In such cases the user should explicitly list the columns they have permission to `SELECT` from.
+
+<Attention>Having created group roles in which to organise login users, use the GRANT and REVOKE SQL commands to give the group roles the minimum level of privilege required to work. Use default privileges where appropriate as a time-saver, but be careful that doing so doesn't give more privileges than appropriate in the future. Use GRANT to give the privileges to the required login roles by making them members of the group roles.</Attention>
+
+## RLS
+
+[Row Level Security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) or RLS is a technology available in Postgres that allows you to define policies that limit the visibility of rows in a table to certain roles. Before we dive into the details of how an RLS policy can be set up, there are two important caveats to note:
+
+1. Superusers and roles with the `BYPASSRLS` attribute always bypass row level security policies, as do table owners unless they force the policy on themselves.
+2. The existence of a row may be inferred by a user through "covert channels". For example, a unique constraint on a field such as a social security number might prevent the user inserting another row with the same value. The user cannot access the row, but they can infer that a record with that social security number already exists.
+
+By default, row level security is turned off on tables in Postgres. It can be enabled with a command such as `ALTER TABLE...ENABLE ROW LEVEL SECURITY`, which will enable a restrictive policy preventing access to all data unless or until other policies have been created.
+
+The policy itself consists of a name, the table to which the policy applies, the optional role to which it applies, and the `USING` clause which defines how matching or allowed rows will be identified. For example, we might limit access to orders to the Sales Team member that created them:
+
+```
+CREATE POLICY sales_team_policy ON orders TO sales_team
+    USING (sales_person = current_user);
+```
+
+We can also specify operations to which the policy applies. The following example would allow all members of the Sales Team to select any orders, but only the original sales person would be able to update or delete an order:
+
+```
+CREATE POLICY sales_team_select_policy ON users
+    FOR SELECT
+    USING (true);
+CREATE POLICY sales_team_modify_policy ON users
+    USING (sales_person = current_user);
+```
+
+By default, permissive policies are used meaning that where there are multiple policies that apply, they are combined using a boolean OR. It is also possible to use restrictive policies, where a boolean AND is used when evaluating whether or not access to a row satisfies the combined policies.
+
+Row Level Security policies can take some effort to set up and index design must also consider them, but there are cases when it may be essential to do so, such as in a medical records system where it may be a legal requirement to restrict access to patient records to the medical staff that are directly responsible for the patient's care.
+
+<Attention>Consider the legal and ethical requirements to restrict access to specific rows in each of your tables, and design and implement RLS policies to meet those requirements where necessary. Take care to minimise covert channels by avoiding the use of sensitive data in constraints.</Attention>
+
+## Views
+
+Views are obviously useful for encapsulating commonly executed queries into an object that can be queried as if it were also a table, however they can also be useful for preventing unauthorised access to data by ensuring that roles do not have the ability to select from the underlying tables, and have to access the data from the view instead. A classic example is part of Postgres; the `pg_catalog.pg_authid` table contains a row for each role in the database, including a column containing the hash of the password for the role if it's been set. Because the hash is considered sensitive information, the table does not have `SELECT` privileges for any roles other than the superuser that the database was initialised with.
+
+A view (`pg_catalog.pg_roles`)  is provided instead, which can be selected from by any user. When selecting from the view, the password is always returned as `********`. This is arguably more convenient than simply using an ACL on the password column in the underlying table as that would cause a permissions error if queried with `SELECT * FROM`.
+
+When using updateable views, a `CHECK OPTION` is available when defining the view. When omitted, the view will allow the user to insert or update records such that they wouldn't be visible through the view, otherwise the insert or update will only be allowed if the row would be visible to the user. If `LOCAL CHECK OPTION` is specified, row visibility is checked only against conditions on the view being used directly, but when `CASCADED CHECK OPTION` is used (the default, if `CHECK OPTION` is specified), row visibility is checked against the view being used directly as well as any other underlying views.
+
+<Attention>Consider using views over secured tables as a method of allowing access to a limited subset of the columns in the underlying table to appropriate roles.</Attention>
+
+## Security barriers
+
+Using views to restrict access to a column is quite common, however people often also use them to restrict access to certain rows. Whilst there is certainly value in doing that, one must be mindful of one particularly nasty side effect; it's possible to trick the Postgres optimiser into leaking the hidden data! 
+
+This is not actually a bug; it's the way the system is intended to work. Essentially what can happen is that when a query against a view is executed by the user, and the user includes a call to a very low cost function in that outer query, the optimiser may choose to run the query for every row in the data underlying the view, before it applies the selectivity clauses in the view, thus allowing the function to access the restricted data. This is demonstrated nicely in a blog post by my colleague Robert Haas.
+
+To solve this problem, we use a security barrier, which is basically an option that is passed when the view is created that tells Postgres to always execute the qualifiers on the view first, thus ensuring that the function never sees the hidden rows.
+
+Related to security barriers is the LEAKPROOF parameter for functions. This can only be used by superusers when creating a function, and serves to certify that the function doesn't leak any information besides the intended return value. This allows Postgres to better optimise queries where a function is used with a security barrier view, safe in the knowledge that the function won't leak any information.
+
+Be careful when using views to hide rows to ensure that they are marked as security barriers to avoid leaking of data. Consider whether RLS might be a better solution for limiting access to specific rows.
+Security Definer Functions
+By default, functions and procedures in Postgres are what we call SECURITY INVOKER functions. That means that when they are called, they execute with the privileges of the calling role.
+
+Passing the SECURITY DEFINER option when creating the function means that whenever the function is called, it will be executed with the privileges of the owner instead of the calling role. This is similar to the setuid bit in a Unix file ACL, which when set, will allow an executable to run with the permissions of its owner instead of the user that executed it.
+
+This ability can be useful in various situations. One example might be a function that is called by a trigger on a table to write a record to an audit log, that all login and group roles are prevented from accessing in any way. It is important to carefully consider the consequences of using SECURITY DEFINER functions though - in particular, ensure that they are kept as simple as possible and perform only a single task without taking any parameters that may allow them to be used for other purposes for which they were not intended.
+
+Consider using SECURITY DEFINER functions to provide specific functionality to roles that cannot perform that tasks directly themselves. Be careful to consider the possible ramifications and ways in which such functions could be misused, and ensure they are limited to performing only the intended task.
+Data redaction
+Data redaction is a technique that hides specific pieces of sensitive information from users by dynamically changing the value that is displayed. Whilst this can be done to some extent with views in PostgreSQL as described above, EDB Postgres Advanced Server includes native data redaction functionality.
+
+Redaction is implemented in EPAS using data redaction policies on tables. In short, these policies specify one or more columns on a table to operate on, an expression that determines whether or not the policy should be applied, a function to perform the redaction, a scope, and any exceptions to the policy. See the documentation link above for an example showing how policies can be created.
+
+When using EDB Postgres Advanced Server and working with sensitive data such as  credit card numbers, consider using data redaction policies to dynamically change the data displayed to a redacted form such as "XXXX XXXX XXXX XXXX 8397" to prevent users having access to sensitive data unnecessarily.
+Conclusion
+In this part of the blog series we looked at various techniques for securing and minimising access to sensitive data in Postgres. Most of these techniques require planning and careful design, but can significantly improve the security of your data.
+
+In the fifth and final part of the blog series, we will look at encryption.

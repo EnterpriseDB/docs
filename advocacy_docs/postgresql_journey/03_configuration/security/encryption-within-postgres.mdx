@@ -1,0 +1,152 @@
+---
+title: "Securing Data Within PostgreSQL Systems: Data Encryption"
+navTitle: Data Encryption
+description: A guide to the capabilities available for encrypting data stored within PostgreSQL
+author: Dave Page
+product: postgresql
+tags:
+    - postgresql
+    - security
+    - encryption
+    - firewall
+---
+
+## Introduction
+
+In this part we will look at encryption.
+
+## pgcrypto
+
+[pgcrypto](https://www.postgresql.org/docs/current/pgcrypto.html) is a standard extension of PostgreSQL and EPAS that is included as a contrib module in the source tree and most binary distributions. Its purpose is to provide SQL functions for encryption and hashing that can be utilised as part of the logic in your database design.
+
+### Installation
+
+With most binary distributions of Postgres, pgcrypto can be installed by first ensuring that the contrib modules are installed on the server. With installer-based distributions such as those for Windows and macOS, they are typically installed as part of the database server itself. Linux packages such as Debian/Ubuntu's DEBs and Redhat/SUSE RPMs may include them in a sub-package - for example, the PostgreSQL Community's packages from yum.postgresql.org have a package called `postgresql12-contrib` for PostgreSQL 12.
+
+Once the package is installed on your server, simply run the CREATE EXTENSION command in the desired database as a superuser:
+
+```sql
+CREATE EXTENSION pgcrypto;
+```
+
+<Attention>Consider using the pgcrypto extension in your databases when you require the ability to hash or encrypt individual pieces of data to meet regulatory and similar requirements.</Attention>
+
+### Hashing
+
+Hashing is a method of generating a cryptographically secure representation of a piece of data, typically of a fixed length (the size of which is dependent on the algorithm used). Importantly, it is non-reversible; that is, the original data cannot be extracted from the hash value --- however, because the hashed value is unique to the original data, it can be used as a checksum to see if the data has been changed or to see if a user provided value matches the original value.
+
+Hashing is most commonly used to store passwords and other sensitive information that may need to be verified, but not returned.
+
+As an example, we can use pgcrypto to hash a password that the user will use in the future:
+
+```sql
+INSERT INTO users 
+    (username, email, password)
+VALUES
+    ('pgsnake', 'dave.page@enterprisedb.com', crypt('new password', gen_salt('md5')));
+```
+
+To verify this password later we can SELECT the user record from the table;
+
+```sql
+SELECT
+    *
+FROM
+    users
+WHERE
+   username = 'pgsnake' AND 
+password = crypt('entered password', password)
+```
+
+If a record is returned, the password was entered correctly --- otherwise, it was incorrect.
+
+It is important to note that when passwords are included in SQL commands as shown above, they may end up being written to log files on the database server. Network communications may also leak commands like these, if not protected with encryption.
+
+<Attention>Never store user passwords in plain text or obfuscated form in the database, and never use a reversible encrypted form unless the functionality of the application absolutely requires it (for example, if writing a password manager application). Use non-reversible hashing wherever possible for application passwords and other information that must be verified but not returned.</Attention>
+
+### Encryption
+
+pgcrypto also provides functionality for encrypting data which is useful when storing information that needs to be retrieved but should be stored in a secure form. There are "raw" encryption/decryption functions provided with pgcrypto as well as PGP functions. The PGP functions are strongly encouraged over use of the raw functions which use a user-provided key directly as the cipher key, provide no integrity checking, expect the user to manage all encryption parameters, and work with `bytea` data not text.
+
+Symmetric key encryption is the easiest to use, as it doesn't require a PGP key. For example, we can demonstrate encryption and decryption of data as shown with this simple SQL command in which the inner function call encrypts the data and the outer one decrypts it:
+
+```sql
+SELECT pgp_sym_decrypt(
+    pgp_sym_encrypt('Hi There', 'password'), 
+    'password');
+```
+
+Note that the cipher text returned by the encryption function and passed to the decryption function is in `bytea` format.
+
+To use public key functionality, first a key is required. This can be generated using [GnuPG](https://www.gnupg.org/) with a command such as:
+
+```shell
+gpg --gen-key
+```
+
+The PostgreSQL documentation suggests that the preferred key type is "DSA and Elgamal". Once the key is generated, you'll need to export it:
+
+```shell
+# List the keys in the keyring:
+gpg --list-secret-keys
+
+# Export a public key in ASCII armor format:
+gpg -a --export KEYID > public.key
+
+# Export a secret key in ASCII armor format:
+gpg -a --export-secret-keys KEYID > secret.key
+```
+
+The public key can now be used to encrypt data using the SQL encryption function:
+
+```sql
+pgp_pub_encrypt('<data>', '<public key>')
+```
+
+Similarly, the data can later be decrypted using:
+
+```sql
+pgp_pub_decrypt(<cipher text>, '<private key>')
+```
+
+Again, note that the cipher text is in `bytea` format.
+
+<Attention>Use encryption when storing pieces of sensitive data in the database that need to be retrieved in the future. Consider carefully whether symmetric or public key encryption is most appropriate for your use case. Public key generally makes more sense when exchanging data with others (because there's no shared secret), whilst symmetric may make more sense for a self-contained application.</Attention>
+
+## Key management 
+
+One, often major, issue with the use of encryption in a database is key management. In its simplest form, an application may have a hard coded or centrally configured key that it uses when encrypting and decrypting data. Unless the application has the ability to change the key (which may also be expensive if there's a lot of data to re-encrypt), then that key will be valid for the lifetime of the application and it also means that all users are sharing one single key. These factors greatly increase the chances of that key being known to multiple people (e.g. the administrators of the application), some of whom may leave the organisation, taking that knowledge with them.
+
+Key management systems alleviate some of these problems by offering ways to store keys in a secure service separately from the database and application, and to potentially use different keys for different users or purposes. Some, such as Bruce Momjian's [pgcryptokey](https://momjian.us/download/pgcryptokey/) extension, also offer functionality for re-encrypting through SQL commands. That can still be expensive of course, but the extension does make it trivial to do. Key management systems can also avoid the need for users to ever see the actual keys; their access to the keys can be controlled through a password or passphrase (which may be authenticated using Kerberos or a similar enterprise identity management system), with the key itself being passed directly to the database server or application as needed.
+
+At the time of writing there is an ongoing discussion in the PostgreSQL community about the development of a key management system as a feature of the database server. Those that are interested in this feature or interested in seeing how features are discussed and added to PostgreSQL might want to read the [original](https://www.postgresql.org/message-id/flat/031401d3f41d%245c70ed90%241552c8b0%24%40lab.ntt.co.jp) and [current](https://www.postgresql.org/message-id/flat/CA%2Bfd4k7q5o6Nc_AaX6BcYM9yqTbC6_pnH-6nSD%3D54Zp6NBQTCQ%40mail.gmail.com) email threads.
+
+<Attention>Consider whether the use of a key management system may be appropriate for managing your cryptographic keys to avoid the use of shared keys or to separate their storage from the application.</Attention>
+
+<!-- Consider moving to "securing access" -->
+
+## File system & full disk encryption
+
+When using file system encryption (or full disk encryption, as the benefits are essentially the same for the scope of this blog) we typically encrypt the volumes that are used to store the database and write ahead log, or often the entire system. These types of encryption are transparent to the database server and require no configuration in Postgres.
+
+It is important to note that file system and data encryption in Postgres provide protection against different attack vectors. The operating system may make use of a password or key management system very early on in the boot phase to ensure that keys are kept externally, but once a server with file system encryption is booted and running with filesystems mounted, all the data is accessible in the same way as it would be on a machine without encryption. This gives us protection against physical attacks on non-running hardware; for example, a stolen hard disk. File system or full disk encryption do not protect against attacks against a system that is up and running, nor do they enable us to control visibility of data in the database for different users.
+
+There are different file system or full disk system encryption options available bundled with most operating systems, commercially, and as Open Source products. Among the most common options are [FileVault](https://support.apple.com/en-gb/guide/mac-help/mh11785/mac) which is included with Apple macOS, [BitLocker](https://docs.microsoft.com/en-us/windows/security/information-protection/bitlocker/bitlocker-how-to-deploy-on-windows-server) for use with Microsoft Windows, and [LUKS](https://gitlab.com/cryptsetup/cryptsetup/) on Linux systems.
+
+Encrypted volumes are also available on all the major cloud providers for protecting your data. For example, Amazon's Elastic Block Service (EBS) provides an option for creating encrypted volumes, which can use a default key or one provided through their key management system. It's worth noting that Amazon do of course have access to both your keys and the physical devices on which the volumes are provisioned, but they go to lengths to ensure that there is separation of duties between the staff that may have access to the keys and staff that may have access to the hardware.
+
+<Attention>It is a good idea to use file system or full disk encryption on any computer to protect against physical loss of hardware in your humble author's opinion. All popular operating systems have options available to allow this built in.</Attention>
+
+## Conclusion
+
+In the final part of this blog series we've looked at both data and file system/full disk encryption, and why it may be desirable to integrate with a key management system.
+
+Throughout the series we've looked at the security of your Postgres implementation from the client perspective through to the on-disk storage. In all aspects of this journey there are options that are appropriate for one deployment and other options that are appropriate for others — as well as additional functionality that should be considered such as [sepgsql](https://www.postgresql.org/docs/current/sepgsql.html), which can work with SELinux, and could take an entire blog series to describe on its own!
+
+Hopefully these posts are helpful in reviewing the security of your deployments, but do remember that each deployment scenario is unique and the suggestions made here are not a "one size fits all" solution.
+
+## Further Reading
+
+-
+- 
+- 
