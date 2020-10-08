@@ -4,11 +4,12 @@ import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
   Attention,
   CodeBlock,
+  ForYourInfo,
   TextBalancer,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
-import { 
+import {
   KatacodaPageLink,
   KatacodaPanel,
 } from '../advocacy_components';
@@ -63,6 +64,7 @@ const Layout = ({ children, pageMeta, katacodaPanelData, background = 'light' })
           KatacodaPanel: props => <KatacodaPanel {...props} katacodaPanelData={katacodaPanelData} />,
           KatacodaPageLink,
           Attention,
+          ForYourInfo,
           Icon,
         }}
       >

@@ -6,6 +6,7 @@ import DarkModeToggle from './dark-mode-toggle';
 import DevOnly from './dev-only';
 import DevFrontmatter from './dev-frontmatter';
 import Footer from './footer';
+import ForYourInfo from './fyi';
 import IndexLinks from './index-links';
 import Layout from './layout';
 import LeftNav from './left-nav';
@@ -31,6 +32,7 @@ export {
   DevOnly,
   DevFrontmatter,
   Footer,
+  ForYourInfo,
   IndexLinks,
   Layout,
   LeftNav,
