@@ -60,7 +60,7 @@ export default data => {
               </div>
               <div className="card-body">
                 <a
-                  href="getting-started/installing_postgres"
+                  href="postgresql_journey/02_installing"
                   className="h3 card-title stretched-link"
                 >
                   Installing Postgres
@@ -84,7 +84,7 @@ export default data => {
               </div>
               <div className="card-body">
                 <a
-                  href="getting-started/connecting_to_postgres"
+                  href="postgresql_journey/04_developing/connecting_to_postgres"
                   className="h3 card-title stretched-link"
                 >
                   Connecting to Postgres
