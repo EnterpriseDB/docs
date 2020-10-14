@@ -74,7 +74,8 @@ const Tiles = ({ mdx, navLinks }) => {
 
     return <CardDecks cards={tiles} colSize={6} cardType="full" />;
   }
-  if (depth === 4) {
+  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
+  if (depth >= 4) {
     const tiles = getChildren(path, navLinks);
     return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
   }
