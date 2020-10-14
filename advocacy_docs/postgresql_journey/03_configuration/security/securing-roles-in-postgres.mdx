@@ -1,0 +1,115 @@
+---
+title: "Role-based Security in PostgreSQL Systems"
+navTitle: Role Security
+description: A guide to the use and configuration of roles in PostgreSQL systems with a focus on security
+author: Dave Page
+product: postgresql
+tags:
+    - postgresql
+    - security
+    - roles
+    - grant
+    - monitoring
+    - passwords
+    - epas
+---
+
+
+## Introduction
+
+In this guide we will look at roles in Postgres. 
+
+## What is a role?
+
+Very old - practically prehistoric - versions of PostgreSQL offered users and user groups as ways of grouping user accounts together. In PostgreSQL 8.1 this system was replaced with the SQL Standard compliant roles system.
+
+A role can be a member of other roles, or have roles that are members of it. We sometimes refer to this as "granting" a role to another role. Roles have a number of attributes that can be set, including ones that effectively make them user accounts that can be used to login to the database server. An example of granting a role to another role is shown below:
+
+```
+GRANT pg_monitor TO nagios;
+```
+
+This makes the nagios role a member of pg_monitor, thereby giving nagios access to the extended functionality reserved for superusers and members of the pg_monitor role.
+
+## Role attributes
+
+Roles have a number of fixed attributes that can be set:
+
+- LOGIN - can this role be used to login to the database server?
+- SUPERUSER - is this role a superuser?
+- CREATEDB - can this role create databases?
+- CREATEROLE - can this role create new roles?
+- REPLICATION - can this role initiate streaming replication?
+- PASSWORD - the password for the role, if set.
+- BYPASSRLS - can this role bypass Row Level Security checks?
+- VALID UNTIL - an optional timestamp after which time the password will no longer be valid.
+
+Roles with the SUPERUSER flag set automatically bypass all permission checks except the right to login.
+
+There are a number of other less commonly used role attributes that can also be set. See [the documentation](https://www.postgresql.org/docs/12/sql-createrole.html) for more information.
+
+<Attention>Grant SUPERUSER (and potentially dangerous attributes such as CREATEDB and CREATEROLE) with great care. Do not use a role with SUPERUSER privileges for day-to-day work.</Attention>
+
+## Password complexity
+
+PostgreSQL (as opposed to EDB Postgres Advanced Server) doesn't include any password complexity enforcement functionality by default. It does include a hook that can be used to plugin a module to do password complexity checks, however this will have no effect if the user changes their password using a pre-hashed string
+
+A sample [password check module](https://www.postgresql.org/docs/current/passwordcheck.html) can be found in Postgres' contrib directory in the source tree, and is included with most package sets. This module can be used as an example for developing something more complex that meets an organisation's specific requirements, though it does require C development work.
+
+<Attention>The most effective way to enforce password complexity in PostgreSQL is to use an external identity service for authentication, such as LDAP or Kerberos as described in the previous part of this blog series.</Attention>
+
+## Password profiles
+
+EDB Postgres Advanced Server offers a [password profile feature](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/12/Database_Compatibility_for_Oracle_Developers_Guide.1.030.html) that can be used with the `password` (never use this, as the password will be transferred in plain text!), `md5` and `scram-sha-256` authentication methods configured in `pg_hba.conf`. Password profiles can be configured by the superuser and applied to one or more roles. A profile allows you to define the following options:
+
+- `FAILED_LOGIN_ATTEMPTS`: The number of failed login attempts that may occur before the role is locked out for the amount of time specified in the `PASSWORD_LOCK_TIME` parameter.
+- `PASSWORD_LIFE_TIME`: The number of days a password can be used before the user is prompted to change it.
+- `PASSWORD_GRACE_TIME`: The length of the grace period after a password expires until the user is forced to change their password. When the grace period expires, a user will be allowed to connect, but will not be allowed to execute any command until they update their expired password.
+- `PASSWORD_REUSE_TIME`: The number of days a user must wait before re-using a password.
+- `PASSWORD_REUSE_MAX`: The number of password changes that must occur before a password can be reused.
+- `PASSWORD_VERIFY_FUNCTION`: The name of a PL/SQL function that can check password complexity.
+
+Note that if the user changes their password by supplying a new one in a pre-hashed form, then it is not possible to verify the complexity with the `PASSWORD_VERIFY_FUNCTION` option or re-use with the `PASSWORD_REUSE_MAX` option. In order to mitigate this, the `PASSWORD_ALLOW_HASHED` option may be set to false in the password profile.
+
+<Attention>If you're running EDB Postgres Advanced Server and not using an external authentication provider such as LDAP or Kerberos, consider using password profiles to ensure your users maintain strong, regularly changed passwords.</Attention>
+
+## SET ROLE
+
+The [`SET ROLE`](https://www.postgresql.org/docs/current/sql-set-role.html) SQL command may be used by a user to change the user identifier of the current session to the name of any role of which they are a member. This may be used to either add to or restrict privileges on the session, and may be reset using `RESET ROLE` (thus making `SET ROLE` unsuitable for use as a multi-tenancy solution).
+
+`SET ROLE` is similar to using the `sudo su - <user>` on a Unix-like system. It essentially allows you to run SQL commands as that other user.
+
+By default when a role is a member of another role, it will automatically inherit the privileges of that role. In order to use `SET ROLE` effectively, the `NOINHERIT` keyword should be used when creating the role to prevent it inheriting privileges automatically, requiring the use of `SET ROLE` to explicitly gain them when needed.
+
+In addition to `SET ROLE`, there is also a [`SET SESSION AUTHORIZATION`](https://www.postgresql.org/docs/current/sql-set-session-authorization.html) command which is only available to superusers. The high-level difference between them is that `SET ROLE` will change the `current_user` value but not `session_user`, whilst `SET SESSION AUTHORIZATION` will change both. In practical terms, this means that after running `SET SESSION AUTHORIZATION`, any subsequent `SET ROLE` commands will be restricted to those that the `session_user` could perform, regardless of the fact that the original `session_user` was a superuser. This allows superusers to more accurately imitate another user.
+
+<Attention>Consider using `SET ROLE` to allow users to temporarily elevate their privileges when and only when required to perform more potentially dangerous tasks.</Attention>
+
+## Monitoring Roles
+
+Postgres comes with a number of built-in monitoring roles (originally developed by your humble author!) which have access to functionality that was restricted to superusers only in earlier versions of Postgres. These roles allow you to grant specific privileges to roles that are used to monitor the system, without having to give them full superuser access:
+
+- `pg_monitor`: A role which combines all of the following roles:
+- `pg_read_all_settings`: Read all configuration variables, even those normally visible only to superusers.
+- `pg_read_all_stats`: Read all `pg_stat_*` views and use various statistics related extensions, even those normally visible only to superusers.
+- `pg_stat_scan_tables`: Execute monitoring functions that may take `ACCESS SHARE` locks on tables, potentially for a long time.
+
+Use the monitoring roles to give elevated privileges to the roles that you use to monitor your database servers to avoid the need to give them superuser access. Ensure the roles you have have the minimum privileges required to do what you need.
+
+## Conclusion
+
+In this part of the blog series we looked at roles in Postgres, how we may configure them and secure them, and how we can use them to minimise the risk to our database servers using the principle of least privilege.
+
+## Further Reading
+
+- 
+- 
+- 
+- 
+
+In the fourth part of the blog series, we will look at data access control and how we can prevent users from accessing data that they should not be able to access.
+
+
+
+
+

@@ -1,0 +1,127 @@
+---
+title: "Authentication Security for PostgreSQL Systems: Strategies and Configuration"
+navTitle: Authentication Security
+description: A guide to authentication methods, connection types and configuration options for securing PostgreSQL systems
+author: Dave Page
+product: postgresql
+tags:
+    - postgresql
+    - security
+    - authentication
+    - configuration
+    - md5
+    - scram
+    - ldap
+    - kerberos
+    - gssapi
+    - sspi
+    - passwords
+---
+
+## Introduction
+
+In this guide we will look at how we manage user authentication: methods for ensuring that users connecting to PostgreSQL systems are who they say they are. 
+
+## Configuration: pg_hba.conf
+
+The [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file (typically found in the PostgreSQL data directory) defines the access rules and authentication methods for the data server. Lines in the file are processed sequentially when a connection is being established, and the first line that matches the properties of the connection is used to determine the authentication method that will be used.
+
+There are seven different possible formats for lines in the file (as well as comments which start with a #), of which there are three main variants, the rest following the same structure as one of the others, but with a different connection type in the first field. Here are some examples:
+
+```
+local     my_db     my_user     scram-sha-256
+```
+
+In this example, a connection attempt from `my_user` to the database my_db over a local (UDS) connection using `scram-sha-256` will be accepted.
+
+```
+host        my_db     my_user     172.16.253.47/32        md5
+```
+
+In this example, a connection attempt from `my_user` to the database `my_db` from `172.16.253.47` using `md5` as the authentication method will be accepted.
+
+Note that the address shown in the example has /32 on the end to denote that all 32 of the high order bits must be matched. To allow connections to match from anywhere on that subnet we could also write it as `172.16.0.0/16` or `172.16.0.0     255.255.0.0` (the third format variant).
+
+The fields in each line are always the connection type, the database name(s), the user name(s), the client network address/subnet (where needed) and the authentication method and any options that may be applicable. See [the documentation](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) for more information.
+
+As a general rule of thumb, any network connections should use either the `hostssl` or `hostgssenc` connection types to ensure that connections are encrypted.
+
+In the following subsections we will examine a number of the most commonly used authentication methods. 
+
+### Trust
+
+The `trust` authentication method should only be used in exceptional circumstances if at all, as it allows a matching client to connect to the server with no further authentication.
+
+`trust` is useful for testing and development work on the local machine where connecting via a UDS and when only fully trusted users have access to the machine, and data security is not a concern.
+
+It is also a useful mechanism for resetting passwords in the server if there is no other way to login; temporarily allow `trust` access to connections from a UDS, connect to the server and reset the password, and then disable the `trust` access again.
+
+<Attention>Use trust with extreme care. It can be very dangerous!</Attention>
+
+### Peer & Ident
+
+Peer and Ident are both methods of allowing users to be authenticated by the underlying operating system. Many PostgreSQL packages come pre-configured to use peer authentication.
+
+The `peer` authentication method is only available for local connections. When `peer` is used, the server gets the username of the client from the operating system and checks that it matches the requested database username.
+
+The `ident` authentication method is only available for network connections. It works in a similar way to peer authentication, except that it relies on an ident server running on the client to confirm the username. 
+
+Both peer and ident allow the use of connection maps to handle acceptable mis-matches between the username known to the client and that known to the database server.
+
+<Attention>Note that ident should not be relied upon, as the client running the ident server is unlikely to be guaranteed trustworthy.</Attention>
+
+### md5 vs. SCRAM
+
+For many years `md5` was the preferred hashing mechanism for use with PostgreSQL, and though still widely used it's strongly recommended that users move to the `scram-sha-256` where password authentication is required.
+
+Both `md5` and `scram-sha-256` use a challenge response mechanism to prevent sniffing, and store hashed passwords on the server, however, `scram-sha-256` stores the hashes in what is currently considered to be a cryptographically secure form to avoid issues if an attacker gains access to the hash.
+
+If you need to support password authentication with a standalone PostgreSQL server, you should be using `scram-sha-256` as the authentication method. **Do not use md5 in new deployments!**
+
+### LDAP vs. Kerberos
+
+LDAP and Kerberos are often utilised in corporate environments when integrated with Single Sign On (SSO) systems. In such systems, the PostgreSQL server is configured to authenticate the user through an LDAP directory or Kerberos infrastructure. 
+
+In LDAP systems, there are various ways that user access can be controlled, for example by only granting access to users that are members of a specific Organizational Unit or group. When setting up your `pg_hba.conf` file, additional options can be specified on the end of the line, including an LDAP search filter which will only allow users that match the filter to connect to the database.
+
+Kerberos authentication is available through the `gssapi` authentication method in PostgreSQL. Setting it up can be a little more daunting than LDAP and other authentication methods, but not only is it considered secure but it also offers automatic authentication for client software that supports it. There is a related Windows-specific `sspi` authentication method that can be used in Windows domains.
+
+Though LDAP authentication is very popular based on user feedback the author has received, **Kerberos authentication should always be preferred as, unlike LDAP, the user's password is never sent to the PostgreSQL server.**
+
+### TLS Certificates
+
+TLS (sometimes referred to as SSL) certificates can be used for authentication as well as being [required for TLS encryption](securing-access-to-postgres). Certificate authentication works by trusting a top-level certificate (or one of its children or 'intermediate' certificates) to issue certificates only to trusted clients. Clients in possession of a certificate and key issued by a higher authority that also issued the server certificate and key can be considered trusted.
+
+In a simple example, you would first create a Certificate Authority (CA) certificate and key. This is extremely valuable and sensitive so must be kept completely securely. Then, you create a certificate and key for the PostgreSQL server and sign it using the CA certificate and key.
+
+Both the server certificate and key are then installed in the PostgreSQL server, along with a copy of the CA's certificate (but **not** the CA's key).
+
+Client certificates and keys can then also be created and signed by the CA as required.
+
+When the client connects to PostgreSQL and the `cert` authentication method is used, the PostgreSQL server will check that the certificate presented by the client is trusted and that the Common Name (CN) field of the certificate matches the username for the client. Username mapping can also be done as with `peer` and `ident`.
+
+The client can also specify a number of options when connecting to the server, including whether or not (and to what extent) to verify the trustworthiness of the server's certificate. This gives protection against spoofing.
+
+Both the client and the server can use certificate revocation lists to keep track of any certificates that should no longer be trusted.
+
+Certificates are an ideal way to authenticate automated systems that need to connect across the network to a PostgreSQL server.
+
+## Additional Configuration
+
+There are two additional configuration options that are worth considering:
+
+`authentication_timeout` is a parameter that can be set in `postgresql.conf`. Its purpose is to set the maximum amount of time in which authentication must be completed before the server closes the connection. This is to ensure that incomplete connection attempts don't occupy a connection slot indefinitely.
+
+[`auth_delay`](https://www.postgresql.org/docs/current/auth-delay.html) is a contrib module for Postgres that can be loaded through the `shared_preload_libraries` configuration option in `postgresql.conf`. Its purpose is to pause briefly when an authentication attempt fails before failure is reported to make brute force attacks much more difficult.
+
+## Conclusion
+
+In this guide we looked at how we determine the user authentication mechanism used to authenticate different connection attempts, and how and why we might use some of the more popular authentication methods available in PostgreSQL. There are a number of [other authentication methods](https://www.postgresql.org/docs/12/client-authentication.html) available, however these are typically less widely used and have more specialised applications.
+
+## Further Reading
+
+- 
+- 
+- 
+
+In the third part of the blog series, we will look at roles in Postgres.
