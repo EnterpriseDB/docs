@@ -13,37 +13,39 @@ tags:
 
 ## Introduction
 
-In this guide we will look at how the server is connected to and accessed. As with any security configuration, follow the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) when considering how to configure your system; that is, only allow as much access as is required to implement a working system, and no more.
+In this guide we will look at how the server is connected to and accessed. While written with an eye toward designing and configuring production systems, most of the principles apply to any system that might contain sensitive data. 
 
-In the following parts we'll also look at authentication, roles, data access control, and encryption.
+As with any security configuration, follow the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) when considering how to configure your system; that is, only allow as much access as is required to implement a working system, and no more.
 
 ## Physical access
 
 It can be extremely difficult to prevent someone with physical access to a server from gaining access to the data, but there are a number of measures that can be taken, both physical and technological.
 
 First and foremost, the physical access should be limited as much as possible, by ensuring the server is located in a secure facility. This may be a privately owned server room, in which case measures can be taken to ensure that only authorised personnel can enter the room and that monitoring such as CCTV is employed. In the case that a co-location facility is used, ensure that the chosen provider has a strictly enforced security policy appropriately designed to prevent unauthorised access, and in facilities that allow users to enter, that locking racks and cages are available to keep other customers away from your hardware.
+   
+When sensitive data may find its way onto workstations or laptops (for instance, developer PCs), physical security becomes much easier to compromise. Ensure that such machines are never left in public places (or [vehicles](https://www.reuters.com/article/us-space-nasa-security/laptop-with-nasa-workers-personal-data-is-stolen-idUSBRE8AE05F20121115)), invest in physical locks if they must be, and ensure that [full disk encryption is configured](#file-system--full-disk-encryption). 
 
 There's little that can be done in this regard with the major cloud providers, other than to trust that they do implement the high levels of physical security that they claim, however for both them and co-location facilities it is essential to check that they have appropriate documentation attesting to the level of security they provide, such as [SOC 2 or 3](https://www.datacenterknowledge.com/archives/2011/03/03/sas-70-ssae-16-soc-and-data-center-standards).
 
 ## Connecting
 
-There are two ways to connect to a Postgres server; via a [Unix Domain Socket](https://en.wikipedia.org/wiki/Unix_domain_socket) or a [TCP/IP Socket](https://en.wikipedia.org/wiki/Network_socket)
+There are two ways to connect to a PostgreSQL server; via a [Unix Domain Socket](https://en.wikipedia.org/wiki/Unix_domain_socket) or a [TCP/IP Socket](https://en.wikipedia.org/wiki/Network_socket)
 
 ### Unix Domain Socket
 
-Unix Domain Sockets (UDS) are the default method for connecting to a Postgres database on Unix-like platforms. On Windows they are not available at present, but will be in Postgres v13 and later.
+Unix Domain Sockets (UDS) are the default method for connecting to a PostgreSQL database on Unix-like platforms. On Windows they are not available at present, but will be in PostgreSQL v13 and later.
 
-UDS are only accessible from the machine on which they are present (and therefore are not subject to direct remote attacks), and appear as special files on the file system. This means that access to them is subject to the same access controls as other files (though, only write permission is actually needed to use the socket), and can be controlled by managing the permissions and group ownership of the socket through the `unix_socket_permissions` and `unix_socket_group` configuration options, as well as the permissions on the directory in which the socket is created. Sockets are always owned by the user that the Postgres server is running as.
+UDS are only accessible from the machine on which they are present (and therefore are not subject to direct remote attacks), and appear as special files on the file system. This means that access to them is subject to the same access controls as other files (though, only write permission is actually needed to use the socket), and can be controlled by managing the permissions and group ownership of the socket through the [`unix_socket_permissions`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-UNIX-SOCKET-PERMISSIONS) and [`unix_socket_group`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-UNIX-SOCKET-GROUP) configuration options, as well as the permissions on the directory in which the socket is created. Sockets are always owned by the user that the PostgreSQL server is running as.
 
-To offer even more flexibility, Postgres can create multiple sockets (though by default, only one is created) using the `unix_socket_directories` configuration option, each of which directories can have different permissions as required to segregate different users or applications and help to apply the principle of least privilege.
+To offer even more flexibility, PostgreSQL can create multiple sockets (though by default, only one is created) using the [`unix_socket_directories`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-UNIX-SOCKET-DIRECTORIES) configuration option, each of which directories can have different permissions as required to segregate different users or applications and help to apply the principle of least privilege.
 
 <Attention>If your application is running on the same host as the database server, give serious consideration to allowing access to the server via one or more UDS only.</Attention>
 
 ### TCP/IP Socket
 
-If you need to access your Postgres server from a remote system, as is often the case when implementing applications with multiple tiers or services, or just for remote administration using tools such as [pgAdmin](https://www.pgadmin.org/), you will need to use a TCP/IP network socket.
+If you need to access your PostgreSQL server from a remote system, as is often the case when implementing applications with multiple tiers or services, or just for remote administration using tools such as [pgAdmin](https://www.pgadmin.org/), you will need to use a TCP/IP network socket.
 
-As is generally the case when it comes to security, we want to minimise the potential attack area for anyone attempting to gain access to the system. How this is done depends on how the server is hosted on the network. If it's inside a corporate network, it may be hosted on multiple [VLANs](https://en.wikipedia.org/wiki/Virtual_LAN) or physical networks, which can be used for different purposes, such as applications, management and storage access for example. The system should only be configured to listen for and accept connections on the networks that are actually required; by default, a source code build of Postgres will listen only on the localhost or loopback address which prevents connections from other machines, however some pre-packaged builds of Postgres override this so you should check your installation. Use the `listen_addresses` configuration parameter in `postgresql.conf` to ensure Postgres only listens and accepts connections on the required network addresses, thus preventing access from, say, the storage network.
+As is generally the case when it comes to security, we want to minimise the potential attack area for anyone attempting to gain access to the system. How this is done depends on how the server is hosted on the network. If it's inside a corporate network, it may be hosted on multiple [VLANs](https://en.wikipedia.org/wiki/Virtual_LAN) or physical networks, which can be used for different purposes, such as applications, management and storage access for example. The system should only be configured to listen for and accept connections on the networks that are actually required; by default, a source code build of PostgreSQL will listen only on the localhost or loopback address which prevents connections from other machines, however some pre-packaged builds of PostgreSQL override this so you should check your installation. Use the [`listen_addresses`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-LISTEN-ADDRESSES) configuration parameter in `postgresql.conf` to ensure PostgreSQL only listens and accepts connections on the required network addresses, thus preventing access from, say, the storage network.
 
 ## Firewall
 
@@ -61,7 +63,7 @@ Typical firewalls will allow you to define inbound and outbound rules that speci
 
 Some firewalls offer additional options to give far greater flexibility; for example, Windows Defender Firewall allows you to specify a program instead of port number.
 
-As always, we want to minimise access to Postgres so it would be quite normal to create a rule for TCP (and/or IPv6) traffic arriving on port 5432 to be rejected (or black-holed) unless it's coming from the address of our application server. The source address can usually be a list of addresses or subnets.
+As always, we want to minimise access to PostgreSQL so it would be quite normal to create a rule for TCP (and/or IPv6) traffic arriving on port 5432 to be rejected (or black-holed) unless it's coming from the address of our application server. The source address can usually be a list of addresses or subnets.
 
 If your server has any Foreign Data Wrappers or similar extensions installed, it may also be desirable to create outbound rules to prevent them being used to connect to anything other than a predefined set of servers.
 
@@ -81,38 +83,50 @@ Most cloud providers also offer Virtual Private Clouds (VPC), in which a number 
 
 ## Transport Encryption
 
-If traffic to the database server is flowing across the network, it is good practice (arguably essential practice) to encrypt that traffic. Postgres uses OpenSSL to provide transport security - though work has been underway for some time to add support for Microsoft Secure Channel or Schannel and Apple Secure Transport - through the use of TLS (previously SSL).
+If traffic to the database server is flowing across the network, it is good practice (arguably essential practice) to encrypt that traffic. PostgreSQL uses OpenSSL to provide transport security - though work has been underway for some time to add support for Microsoft Secure Channel or Schannel and Apple Secure Transport - through the use of TLS (previously SSL).
 
-To encrypt connections in Postgres you will need at least a server certificate and key, ideally protected with a passphrase that can be securely entered at server startup either manually or using a script that can retrieve the passphrase on behalf of the server, as specified using the `ssl_passphrase_command` configuration parameter. Passphrases are not supported on Windows, at least as of Postgres 12. The server certificate and key are specified using the `ssl_cert_file` and `ssl_key_file` respectively.
+To encrypt connections in PostgreSQL you will need at least a server certificate and key, ideally protected with a passphrase that can be securely entered at server startup either manually or using a script that can retrieve the passphrase on behalf of the server, as specified using the [`ssl_passphrase_command`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-PASSPHRASE-COMMAND) configuration parameter. Passphrases are not supported on Windows, at least as of PostgreSQL 12. The server certificate and key are specified using the [`ssl_cert_file`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-CERT-FILE) and [`ssl_key_file`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-KEY-FILE) respectively.
 
-If you have an existing Certification Authority (CA) in use you can use certificates provided from that with Postgres. The configuration parameters `ssl_ca_file` and `ssl_crl_file` allow you to provide the CA (and intermediate) certificates and the certificate revocation list to the server. This gives you the flexibility to revoke certificates in response to security incidents, and have the server reject client certificates or the client reject server certificates. It also allows you to configure the client and server to reject each other if the identity of either cannot be verified through the chain of trust to prevent as-yet undetected spoofing. Part two of this blog series will go into more detail on the use of certificates for client authentication.
+If you have an existing Certification Authority (CA) in use you can use certificates provided from that with PostgreSQL. The configuration parameters [`ssl_ca_file`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-CA-FILE) and [`ssl_crl_file`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-CRL-FILE) allow you to provide the CA (and intermediate) certificates and the certificate revocation list to the server. This gives you the flexibility to revoke certificates in response to security incidents, and have the server reject client certificates or the client reject server certificates. It also allows you to configure the client and server to reject each other if the identity of either cannot be verified through the chain of trust to prevent as-yet undetected spoofing. [More detail on the use of certificates for client authentication](securing-authentication-for-postgres).
 
 It's important to ensure that your use of TLS is secure as well. There are a number of configuration parameters that can be set to ensure that you're not using ciphers or other options that may no longer be considered secure. It is recommended that you check and appropriately configure the following configuration parameters in your `postgresql.conf` configuration file:
 
 
-- `ssl_ciphers`
-- `ssl_ecdh_curve`
-- `ssl_dh_params_file`
-- `ssl_min_protocol_version`
+- [`ssl_ciphers`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-CIPHERS)
+- [`ssl_ecdh_curve`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-ECDH-CURVE)
+- [`ssl_dh_params_file`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-DH-PARAMS-FILE)
+- [`ssl_min_protocol_version`](https://www.postgresql.org/docs/current/runtime-config-connection.html#GUC-SSL-MIN-PROTOCOL-VERSION)
 
 No recommendation is made in this article on what those parameters should be set to as inevitably they will change over time. You should periodically check to ensure you're using options that continue to be regarded as secure, and update them when appropriate.
 
 <Attention>If traffic to your server flows over the network, ensure it's encrypted using the strongest possible ciphers and other options.</Attention>
 
+## File system & full disk encryption
+
+When using file system encryption (or full disk encryption, as the benefits are essentially the same for the scope of this guide) we typically encrypt the volumes that are used to store the database and write ahead log, or often the entire system. These types of encryption are transparent to the database server and require no configuration in PostgreSQL.
+
+It is important to note that file system and [data encryption in PostgreSQL](encryption-within-postgres) provide protection against different attack vectors. The operating system may make use of a password or key management system very early on in the boot phase to ensure that keys are kept externally, but once a server with file system encryption is booted and running with filesystems mounted, all the data is accessible in the same way as it would be on a machine without encryption. This gives us protection against physical attacks on non-running hardware; for example, a stolen hard disk. File system or full disk encryption do not protect against attacks against a system that is up and running, nor do they enable us to control visibility of data in the database for different users.
+
+There are different file system or full disk system encryption options available bundled with most operating systems, commercially, and as Open Source products. Among the most common options are [FileVault](https://support.apple.com/en-gb/guide/mac-help/mh11785/mac) which is included with Apple macOS, [BitLocker](https://docs.microsoft.com/en-us/windows/security/information-protection/bitlocker/bitlocker-how-to-deploy-on-windows-server) for use with Microsoft Windows, and [LUKS](https://gitlab.com/cryptsetup/cryptsetup/) on Linux systems.
+
+Encrypted volumes are also available on all the major cloud providers for protecting your data. For example, Amazon's Elastic Block Service (EBS) provides an option for creating encrypted volumes, which can use a default key or one provided through their key management system. It's worth noting that Amazon do of course have access to both your keys and the physical devices on which the volumes are provisioned, but they go to lengths to ensure that there is separation of duties between the staff that may have access to the keys and staff that may have access to the hardware.
+
+<Attention>It is a good idea to use file system or full disk encryption on any computer to protect against physical loss of hardware in your humble author's opinion. All popular operating systems have options available to allow this built in.</Attention>
+
 ## Conclusion
 
-In this guide we looked at a number of factors related to server access that can affect the security of your Postgres servers and should be considered as part of any deployment or review:
+In this guide we looked at a number of factors related to server access that can affect the security of your PostgreSQL servers and should be considered as part of any deployment or review:
 
 - Physical access
 - Server access via Unix Domain Sockets and the network
 - Firewalls
 - Transport encryption
+- File system encryption
 
 ## Further reading
 
-- 
-- 
-- 
-
-In the next part we will look at client authentication; how we authenticate users and control whether or not they can connect to the server successfully through the pg_hba.conf configuration file.
+- [Authentication Security for PostgreSQL Systems: Strategies and Configuration](securing-authentication-for-postgres)
+- [Role-based Security in PostgreSQL Systems](securing-roles-in-postgres)
+- [Using Access Control Lists for Data Security in PostgreSQL Systems](access-control-lists-in-postgres)
+- [Securing Data Within PostgreSQL Systems: Data Encryption](encryption-within-postgres)
 
