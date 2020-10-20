@@ -320,7 +320,7 @@ exports.onPreBootstrap = async () => {
   console.log('sourcing docs');
   if (!isDevelopment) {
     await source(['source_docs']);
-    execSync('python3 scripts/source/restore_mtimes.py');
+    console.log(execSync('python3 scripts/source/restore_mtimes.py').toString());
   } else {
     const sources = await interactiveSourcing();
     await source(sources);
