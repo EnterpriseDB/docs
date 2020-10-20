@@ -4,7 +4,9 @@ const gracefulFs = require('graceful-fs');
 gracefulFs.gracefulify(realFs);
 
 const { createFilePath } = require(`gatsby-source-filesystem`);
-const { exec } = require("child_process");
+const { exec, execSync } = require("child_process");
+
+const isDevelopment = process.env.NODE_ENV === 'development'
 
 const sortVersionArray = (versions) => {
   return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
@@ -61,6 +63,13 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
       name: 'topic',
       value: 'null',
     });
+
+    const fileNode = getNode(node.parent);
+    createNodeField({
+      node,
+      name: 'mtime',
+      value: fileNode.mtime,
+    });
   }
   if (
     node.internal.type === 'Mdx' &&
@@ -89,6 +98,13 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
       node,
       name: 'topic',
       value: topic,
+    });
+
+    const fileNode = getNode(node.parent);
+    createNodeField({
+      node,
+      name: 'mtime',
+      value: fileNode.mtime,
     });
   }
 };
@@ -214,6 +230,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
+    const docsRepoUrl = 'https://github.com/rocketinsights/edb_docs';
+    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
+    const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
+
     actions.createPage({
       path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
       component: require.resolve('./src/templates/doc.js'),
@@ -221,6 +242,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
+        githubFileLink: githubFileLink,
+        githubIssuesLink: githubIssuesLink,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(
           doc.fields.path,
@@ -234,22 +257,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navLinks = learn.filter(
       node => node.fields.topic === doc.fields.topic,
     );
+
     const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
-    const githubLink = advocacyDocsRepoUrl +
-      '/edit/master/advocacy_docs' +
-      doc.fields.path +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubIssuesLink = advocacyDocsRepoUrl +
-      '/issues/new?title=Regarding%20' +
-      encodeURIComponent(doc.fields.path) +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
+    const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
         navLinks: navLinks,
-        githubLink: githubLink,
+        githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
       },
     });
@@ -291,3 +312,50 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     },
   });
 };
+
+exports.onPreBootstrap = async () => {
+  console.log('cleaning sources');
+  console.log(execSync('python3 scripts/source/rm_sources.py').toString());
+
+  console.log('sourcing docs');
+  if (!isDevelopment) {
+    await source(['source_docs']);
+    execSync('python3 scripts/source/restore_mtimes.py');
+  } else {
+    const sources = await interactiveSourcing();
+    await source(sources);
+  }
+}
+
+const interactiveSourcing = () => {
+  return new Promise((resolve, reject) => {
+    gracefulFs.stat('dev-sources.json', (err, stat) => {
+      if (err) {
+        console.log('Failed to load dev-sources.json - run `yarn config-sources`')
+        resolve([]);
+      } else {
+        const sourceJson = JSON.parse(gracefulFs.readFileSync('dev-sources.json'));
+        const sources = [];
+        for (const [key, value] of Object.entries(sourceJson)) {
+          if (value) { sources.push(key) }
+        }
+        resolve(sources);
+      }
+    }); 
+  })
+}
+
+const source = (sourceList) => {
+  const execs = [];
+  sourceList.forEach((sourceFilename) => {
+    execs.push(
+      new Promise((resolve, reject) => {
+        exec(`python3 scripts/source/${sourceFilename}.py`, (error, stdout, stderr) => {
+          if (error) { console.warn(error) }
+          resolve(stdout ? stdout : stderr)
+        })
+      })
+    );
+  });
+  return Promise.all(execs)
+}

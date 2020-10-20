@@ -29,6 +29,7 @@ export const query = graphql`
       }
       fields {
         path
+        mtime
       }
       body
       tableOfContents
@@ -74,16 +75,18 @@ const Tiles = ({ mdx, navLinks }) => {
 
     return <CardDecks cards={tiles} colSize={6} cardType="full" />;
   }
-  if (depth === 4) {
+  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
+  if (depth >= 4) {
     const tiles = getChildren(path, navLinks);
     return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
   }
   return null;
 };
 
-const LearnDocTemplate = ({ data, pageContext }) => {
+const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
-  const { navLinks, githubLink, githubIssuesLink } = pageContext;
+  const { mtime } = mdx.fields;
+  const { navLinks, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
@@ -101,13 +104,18 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
-          <LeftNav navLinks={navLinks} path={mdx.fields.path} iconName={iconName} />
+          <LeftNav
+            navLinks={navLinks}
+            path={mdx.fields.path}
+            pagePath={pagePath}
+            iconName={iconName}
+          />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{mdx.frontmatter.title}</h1>
             <a
-              href={githubLink || '#'}
+              href={githubEditLink || '#'}
               className="btn btn-sm btn-primary px-4 text-nowrap"
             >
               Edit this page
@@ -138,7 +146,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             </a>!
           </p>
 
-          <Footer />
+          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
         </MainContent>
       </Container>
     </Layout>

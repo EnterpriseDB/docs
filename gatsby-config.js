@@ -2,6 +2,7 @@ const config = require('./config');
 require('dotenv').config({
   path: `.env.${process.env.NODE_ENV}`,
 });
+const utf8Truncate = require("truncate-utf8-bytes");
 
 const docQuery = `
 {
@@ -22,21 +23,23 @@ const docQuery = `
  }
 `;
 
-const transformNodeDocs = node => {
+const transformNodeForAlgolia = node => {
   let newNode = node;
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
-  newNode['product'] = node.fields.product;
-  newNode['version'] = node.fields.version;
-  delete newNode['frontmatter'];
-  delete newNode['fields'];
-  return newNode;
-};
+  newNode['type'] = 'guide';
+  // if (node.frontmatter.product) { newNode['product'] = node.frontmatter.product; }
+  // if (node.frontmatter.platform) { newNode['platform'] = node.frontmatter.platform; }
+  newNode['platform'] = node.frontmatter.platform || 'unknown';
 
-const transformNodeLearn = node => {
-  let newNode = node;
-  newNode['title'] = node.frontmatter.title;
-  newNode['path'] = node.fields.path;
+  if (!!node.fields.product) {
+    newNode['product'] = node.fields.product;
+    newNode['version'] = node.fields.version;
+    newNode['productVersion'] =
+      node.fields.product + ' > ' + node.fields.version;
+    newNode['type'] = 'doc';
+  }
+
   delete newNode['frontmatter'];
   delete newNode['fields'];
   return newNode;
@@ -62,11 +65,12 @@ const makeBreadcrumbs = (node, dictionary, advocacy = false) => {
   return trail;
 };
 
-const addBreadcrumbsToNodes = (nodes, advocacy = false) => {
+const addBreadcrumbsToNodes = nodes => {
   const pathDictionary = makePathDictionary(nodes);
   let newNodes = [];
   for (let node of nodes) {
     let newNode = node;
+    const advocacy = !node.fields.product;
     newNode['breadcrumb'] = makeBreadcrumbs(node, pathDictionary, advocacy);
     newNodes.push(newNode);
   }
@@ -77,13 +81,18 @@ const splitNodeContent = nodes => {
   let result = [];
   for (let node of nodes) {
     let order = 1;
-    let content = node.rawBody.replace('\n\n', '\n').replace('\n\n', '\n');
+    let content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
     const contentArray = content.split('\n');
     let contentAggregator = '';
+    let hitTocTree = false;
     for (let i = 0; i < contentArray.length; i++) {
       const section = contentArray[i];
-      if (sectionCheck(section)) {
-        contentAggregator += section + ' ';
+      if (section.startsWith('<div class="toctree"')) {
+        hitTocTree = true;
+      }
+      const cleanedSection = cleanSection(section);
+      if (!hitTocTree && cleanedSection !== '') {
+        contentAggregator += cleanedSection + ' ';
       }
       if (
         contentAggregator.length > 1000 ||
@@ -102,60 +111,93 @@ const splitNodeContent = nodes => {
   return result;
 };
 
-const sectionCheck = section => {
+const cleanSection = section => {
   if (
     section.length < 6 ||
-    RegExp('</?table>').test(section) ||
     RegExp('<div class=.*>').test(section) ||
-    RegExp('</div>').test(section) ||
-    section === '```text'
+    section.includes('</div>') ||
+    notStartWith(section, [
+      '```',
+      'title:',
+      'navTitle:',
+      'description:',
+      '![',
+      '<table',
+      '</table',
+      '---',
+      '| ---',
+      'import ',
+    ])
   ) {
-    return false;
+    return '';
   }
-  return true;
+  return removeLeadingBrackets(
+    removeTheseCharacters(section, [/\s\|/g, /\|\s/g, /`/g]),
+  );
 };
 
-const products = ['epas', 'cds', 'ark'];
+const notStartWith = (section, list) => {
+  for (let item of list) {
+    if (section.startsWith(item)) {
+      return true;
+    }
+  }
+  return false;
+};
 
-const queries = [
+const removeTheseCharacters = (section, list) => {
+  let newSection = section;
+  for (let item of list) {
+    newSection = newSection.replace(item, '');
+  }
+  return newSection;
+};
+
+const removeLeadingBrackets = section => {
+  if (section.startsWith('> > > ')) {
+    return section.substring(6);
+  }
+  if (section.startsWith('> > ')) {
+    return section.substring(4);
+  }
+  if (section.startsWith('> ')) {
+    return section.substring(2);
+  }
+  return section;
+};
+
+const queries = process.env.INDEX_ON_BUILD ? [
   {
     query: docQuery,
     transformer: ({ data }) =>
       splitNodeContent(
         addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(
-            node =>
-              !!node.fields.product && products.includes(node.fields.product),
-          ),
-        ).map(node => transformNodeDocs(node)),
+          data.allMdx.nodes.filter(node => node.type === 'doc'),
+        ).map(node => transformNodeForAlgolia(node)),
       ),
-    indexName: 'edb-products', // overrides main index name, optional
+    indexName: 'edb-products',
   },
   {
     query: docQuery,
     transformer: ({ data }) =>
       splitNodeContent(
         addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(
-            node =>
-              !!node.fields.product && !products.includes(node.fields.product),
-          ),
-        ).map(node => transformNodeDocs(node)),
+          data.allMdx.nodes.filter(node => node.type === 'guide'),
+        ).map(node => transformNodeForAlgolia(node)),
       ),
-    indexName: 'edb-tools', // overrides main index name, optional
+    indexName: 'advocacy',
   },
   {
     query: docQuery,
     transformer: ({ data }) =>
       splitNodeContent(
-        addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(node => !node.fields.product),
-          true,
-        ).map(node => transformNodeLearn(node)),
+        addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
+          transformNodeForAlgolia(node),
+        ),
       ),
-    indexName: 'advocacy', // overrides main index name, optional
+    indexName: 'edb',
   },
-];
+] : [];
 
 module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
@@ -163,8 +205,9 @@ module.exports = {
     title: 'EDB Docs',
     description:
       'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
-    baseUrl: 'https://edb-docs.herokuapp.com',
-    imageUrl: 'https://edb-docs.herokuapp.com/images/social.jpg',
+    baseUrl: 'https://edb-docs.netlify.com',
+    imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
+    siteUrl: 'https://edb-docs.netlify.com',
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -173,6 +216,8 @@ module.exports = {
     'gatsby-transformer-json',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
+    'gatsby-plugin-netlify',
+    'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
@@ -195,15 +240,22 @@ module.exports = {
     {
       resolve: 'gatsby-source-filesystem',
       options: {
-        name: 'docs',
-        path: 'docs',
+        name: 'advocacy_docs',
+        path: 'advocacy_docs',
       },
     },
     {
       resolve: 'gatsby-source-filesystem',
       options: {
-        name: 'advocacy_docs',
-        path: 'advocacy_docs',
+        name: 'docs',
+        path: 'docs/docs',
+      },
+    },
+    {
+      resolve: 'gatsby-source-filesystem',
+      options: {
+        name: 'images',
+        path: 'static/images',
       },
     },
     {
@@ -214,10 +266,9 @@ module.exports = {
         },
         gatsbyRemarkPlugins: [
           {
-            resolve:
-              process.env.NODE_ENV === 'development'
-                ? 'gatsby-remark-static-images'
-                : 'gatsby-remark-images',
+            resolve: process.env.OPTIMIZE_IMAGES ?
+              'gatsby-remark-images' :
+              'gatsby-remark-static-images'
           },
           {
             resolve: `gatsby-remark-autolink-headers`,
@@ -233,13 +284,6 @@ module.exports = {
             },
           },
         ],
-      },
-    },
-    {
-      resolve: 'gatsby-source-filesystem',
-      options: {
-        name: 'images',
-        path: 'static/images',
       },
     },
     {
@@ -259,25 +303,16 @@ module.exports = {
       },
     },
     {
-      resolve: 'gatsby-plugin-use-dark-mode',
+      // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
+      resolve: `gatsby-plugin-algolia`,
       options: {
-        classNameDark: 'dark',
-        classNameLight: 'light',
-        storageKey: 'dark-theme',
-        minify: true,
+        appId: process.env.ALGOLIA_APP_ID,
+        apiKey: process.env.ALGOLIA_API_KEY,
+        indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
+        queries,
+        chunkSize: 10000, // default: 1000,
+        enablePartialUpdates: false,
       },
     },
-    // {
-    //   // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
-    //   resolve: `gatsby-plugin-algolia`,
-    //   options: {
-    //     appId: process.env.ALGOLIA_APP_ID,
-    //     apiKey: process.env.ALGOLIA_API_KEY,
-    //     indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
-    //     queries,
-    //     chunkSize: 10000, // default: 1000,
-    //     enablePartialUpdates: true,
-    //   },
-    // },
   ],
 };

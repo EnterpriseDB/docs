@@ -114,7 +114,8 @@ for path in Path('content').rglob('index.rst'):
       print ("Successfully created the directory %s " % dest_path)
 
     # copy images folder to destination folder
-    shutil.copytree(root_path + "images", dest_path + "/images")
+    if os.path.exists(root_path + "images"):
+      shutil.copytree(root_path + "images", dest_path + "/images")
 
     # copy index over
     shutil.copyfile(root_path + "index.mdx", dest_path + "/index.mdx") 
@@ -125,3 +126,9 @@ for path in Path('content').rglob('index.rst'):
     for node in toc:
       process_node(node, root_path, dest_path + "/", idx)
       idx += 1
+
+    # remove conclusion
+    conclusion_path = '{0}/{1}conclusion.mdx'.format(dest_path, number_prefix(idx-1))
+    if os.path.exists(conclusion_path):
+      print("removed conclusion.mdx")
+      os.remove(conclusion_path)
