@@ -5,7 +5,7 @@ ANSI_RED = '\033[31m'
 ANSI_STOP = '\033[0m'
 
 if os.path.exists('docs'):
-    if not os.system('cd docs && test -n "$(git status --porcelain)"'):
+    if os.path.exists('docs/.git') and not os.system('cd docs && test -n "$(git status --porcelain)"'):
         print(ANSI_RED + """
 You have local changes to your docs folder! Leaving your changes untouched...
 To update docs, either delete the folder, or check-in your changes.
@@ -15,4 +15,4 @@ To update docs, either delete the folder, or check-in your changes.
 
 if not os.path.exists('docs'):
     os.makedirs('docs/docs/dummy/1')
-    os.system('touch docs/docs/dummy/1/.keep')
+    os.system('touch docs/docs/dummy/1/dummy.mdx')
