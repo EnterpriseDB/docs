@@ -8,11 +8,10 @@ if os.path.exists('docs'):
     if os.path.exists('docs/.git') and not os.system('cd docs && test -n "$(git status --porcelain)"'):
         print(ANSI_RED + """
 You have local changes to your docs folder! Leaving your changes untouched...
-To update docs, either delete the folder, or check-in your changes.
 """ + ANSI_STOP)
     else:
         shutil.rmtree('docs')
 
 if not os.path.exists('docs'):
-    os.makedirs('docs/docs/dummy/1')
-    os.system('touch docs/docs/dummy/1/dummy.mdx')
+    os.makedirs('docs/docs')
+    os.system('touch docs/docs/.keep')

@@ -15,7 +15,7 @@ BASE_OUTPUT = {
     'source_docs': False,
 }
 
-print("""
+print(ANSI_RED + """
         `.:+oossssssoo+/-`                                                                        
       -/ossssssssssssssssso:`                                                                     
     -osssssssssssssssssssssso/`                                                                   
@@ -33,7 +33,7 @@ print("""
       .:+ossssssssssssssso/-`                                                                     
          .-/++ooooooo+/:.`                                                                        
                `````    
-""")
+""" + ANSI_STOP)
 print(ANSI_BLUE + 'Welcome to EDB Docs! Which doc sets would you like to load?' + ANSI_STOP)
 print(ANSI_BLUE + '-' * 60 + ANSI_STOP)
 for i, option in enumerate(OPTIONS):

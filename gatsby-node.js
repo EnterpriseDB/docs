@@ -42,6 +42,11 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
     const product = relativeFilePath.split('/')[1];
     const version = relativeFilePath.split('/')[2];
 
+    createNodeField({
+      node,
+      name: 'docType',
+      value: 'doc',
+    });
     // Creates new query'able fields
     createNodeField({
       node,
@@ -88,11 +93,27 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
     );
     const topic = relativeFilePath.split('/')[2];
 
+
+    createNodeField({
+      node,
+      name: 'docType',
+      value: 'advocacy',
+    });
     // Creates new query'able field with name of 'path'
     createNodeField({
       node,
       name: 'path',
       value: relativeFilePath,
+    });
+    createNodeField({
+      node,
+      name: 'product',
+      value: 'null',
+    });
+    createNodeField({
+      node,
+      name: 'version',
+      value: '1',
     });
     createNodeField({
       node,
@@ -127,6 +148,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           }
           excerpt(pruneLength: 280)
           fields {
+            docType
             path
             product
             version
@@ -156,8 +178,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
 
-  const docs = nodes.filter(file => !!file.fields.version);
-  const learn = nodes.filter(file => !file.fields.version);
+  // const docs = nodes.filter(file => !!file.fields.version);
+  // const learn = nodes.filter(file => !file.fields.version);
+  const docs = nodes.filter(file => file.fields.docType === 'doc');
+  const learn = nodes.filter(file => file.fields.docType === 'advocacy');
 
   const folderIndex = {};
 
@@ -315,9 +339,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
 exports.onPreBootstrap = async () => {
   console.log('cleaning sources');
-  console.log(execSync('python3 scripts/source/rm_sources.py').toString());
+  console.log(execSync('python3 scripts/source/reset_sources.py').toString());
 
-  console.log('sourcing docs');
+  console.log('sourcing...');
   if (isDevelopment) {
     const sources = await interactiveSourcing();
     await source(sources);

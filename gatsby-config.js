@@ -3,6 +3,7 @@ require('dotenv').config({
   path: `.env.${process.env.NODE_ENV}`,
 });
 const utf8Truncate = require("truncate-utf8-bytes");
+const gracefulFs = require('graceful-fs');
 
 const docQuery = `
 {
@@ -199,6 +200,16 @@ const queries = process.env.INDEX_ON_BUILD ? [
   },
 ] : [];
 
+const externalSourcePlugins = [
+  {
+    resolve: 'gatsby-source-filesystem',
+    options: {
+      name: 'docs',
+      path: 'docs/docs',
+    },
+  },
+];
+
 module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
@@ -247,17 +258,11 @@ module.exports = {
     {
       resolve: 'gatsby-source-filesystem',
       options: {
-        name: 'docs',
-        path: 'docs/docs',
-      },
-    },
-    {
-      resolve: 'gatsby-source-filesystem',
-      options: {
         name: 'images',
         path: 'static/images',
       },
     },
+    ...externalSourcePlugins,
     {
       resolve: 'gatsby-plugin-mdx',
       options: {
