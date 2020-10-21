@@ -302,17 +302,22 @@ module.exports = {
         ],
       },
     },
-    // {
-    //   // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
-    //   resolve: `gatsby-plugin-algolia`,
-    //   options: {
-    //     appId: process.env.ALGOLIA_APP_ID,
-    //     apiKey: process.env.ALGOLIA_API_KEY,
-    //     indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
-    //     queries,
-    //     chunkSize: 10000, // default: 1000,
-    //     enablePartialUpdates: false,
-    //   },
-    // },
   ],
 };
+
+if (process.env.INDEX_ON_BUILD) {
+  module.exports['plugins'].push(
+    {
+      // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
+      resolve: `gatsby-plugin-algolia`,
+      options: {
+        appId: process.env.ALGOLIA_APP_ID,
+        apiKey: process.env.ALGOLIA_API_KEY,
+        indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
+        queries,
+        chunkSize: 10000, // default: 1000,
+        enablePartialUpdates: false,
+      },
+    },
+  )
+}

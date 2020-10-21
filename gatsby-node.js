@@ -318,12 +318,12 @@ exports.onPreBootstrap = async () => {
   console.log(execSync('python3 scripts/source/rm_sources.py').toString());
 
   console.log('sourcing docs');
-  if (!isDevelopment) {
-    await source(['source_docs']);
-    console.log(execSync('python3 scripts/source/restore_mtimes.py').toString());
-  } else {
+  if (isDevelopment) {
     const sources = await interactiveSourcing();
     await source(sources);
+  } else { // build
+    if (!process.env.SKIP_SOURCING) { await source(['source_docs']); }
+    console.log(execSync('python3 scripts/source/restore_mtimes.py').toString());
   }
 }
 
