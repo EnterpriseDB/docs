@@ -14,5 +14,5 @@ To update docs, either delete the folder, or check-in your changes.
         shutil.rmtree('docs')
 
 if not os.path.exists('docs'):
-    os.makedirs('docs/docs')
-    os.system('touch docs/docs/.keep')
+    os.makedirs('docs/docs/dummy/1')
+    os.system('touch docs/docs/dummy/1/.keep')
