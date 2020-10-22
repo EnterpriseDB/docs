@@ -5,6 +5,46 @@ require('dotenv').config({
 const utf8Truncate = require("truncate-utf8-bytes");
 const gracefulFs = require('graceful-fs');
 
+/******** Sourcing *********/
+const sourceToPluginConfig = {
+  'source_docs': { name: 'docs', path: 'sources/docs/docs' }
+};
+
+const externalSourcePlugins = () => {
+  const sourcePlugins = [];
+
+  if (process.env.CLEAN_SOURCE_ALL) {
+    Object.values(sourceToPluginConfig).forEach((config) => {
+      sourcePlugins.push({
+        resolve: 'gatsby-source-filesystem',
+        options: {
+          name: config.name,
+          path: config.path,
+        }
+      });
+    });
+  } else if (gracefulFs.existsSync('dev-sources.json')) {
+    const sources = JSON.parse(gracefulFs.readFileSync('dev-sources.json'));
+    for (const [source, enabled] of Object.entries(sources)) {
+      const config = sourceToPluginConfig[source];
+      if (enabled && config) {
+        sourcePlugins.push({
+          resolve: 'gatsby-source-filesystem',
+          options: {
+            name: config.name,
+            path: config.path,
+          }
+        });
+      }
+    }
+  } else if (!process.env.SKIP_SOURCING) {
+    console.error('Configure sources with `yarn config-sources`, or set CLEAN_SOURCE_ALL to `true`.')
+  }
+
+  return sourcePlugins;
+}
+
+/******** Algolia Index ********/
 const docQuery = `
 {
   allMdx {
@@ -14,6 +54,7 @@ const docQuery = `
       }
       id
       fields {
+        docType
         product
         path
         version
@@ -33,7 +74,7 @@ const transformNodeForAlgolia = node => {
   // if (node.frontmatter.platform) { newNode['platform'] = node.frontmatter.platform; }
   newNode['platform'] = node.frontmatter.platform || 'unknown';
 
-  if (!!node.fields.product) {
+  if (node.fields.docType == 'doc') {
     newNode['product'] = node.fields.product;
     newNode['version'] = node.fields.version;
     newNode['productVersion'] =
@@ -200,44 +241,7 @@ const queries = process.env.INDEX_ON_BUILD ? [
   },
 ] : [];
 
-const sourceToPluginConfig = {
-  'source_docs': { name: 'docs', path: 'sources/docs/docs' }
-};
-
-const externalSourcePlugins = () => {
-  const sourcePlugins = [];
-
-  if (process.env.CLEAN_SOURCE_ALL) {
-    Object.values(sourceToPluginConfig).forEach((config) => {
-      sourcePlugins.push({
-        resolve: 'gatsby-source-filesystem',
-        options: {
-          name: config.name,
-          path: config.path,
-        }
-      });
-    });
-  } else if (gracefulFs.existsSync('dev-sources.json')) {
-    const sources = JSON.parse(gracefulFs.readFileSync('dev-sources.json'));
-    for (const [source, enabled] of Object.entries(sources)) {
-      const config = sourceToPluginConfig[source];
-      if (enabled && config) {
-        sourcePlugins.push({
-          resolve: 'gatsby-source-filesystem',
-          options: {
-            name: config.name,
-            path: config.path,
-          }
-        });
-      }
-    }
-  } else if (!process.env.SKIP_SOURCING) {
-    console.error('Configure sources with `yarn config-sources`, or set CLEAN_SOURCE_ALL to `true`.')
-  }
-
-  return sourcePlugins;
-}
-
+/********** Gatsby config *********/
 module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
