@@ -51,7 +51,7 @@ while not selection:
     if not selection:
         print(ANSI_RED + 'Please enter a number corresponding to an option above' + ANSI_STOP)
 
-print(ANSI_GREEN + 'Sourcing {0}: {1}'.format(i + 1, selection['name']) + ANSI_STOP)
+print(ANSI_GREEN + 'Setting {0}: {1}'.format(i + 1, selection['name']) + ANSI_STOP)
 with open('dev-sources.json', 'w') as outfile:
     json.dump({**BASE_OUTPUT, **selection['output']}, outfile)
     print(ANSI_GREEN + 'Wrote to dev-sources.json' + ANSI_STOP)
