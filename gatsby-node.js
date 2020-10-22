@@ -23,110 +23,41 @@ const productLatestVersionCache = [];
 
 exports.onCreateNode = async ({ node, getNode, actions }) => {
   const { createNodeField } = actions;
-  // Ensures we are processing only markdown files
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
+
+  if (node.internal.type === 'Mdx') {
+    const fileNode = getNode(node.parent);
+    const nodeFields = {
+      docType: node.fileAbsolutePath.includes('/docs/') ? 'doc' : 'advocacy',
+      mtime: fileNode.mtime,
+    };
+
+    const relativeFilePath = createFilePath({
       node,
       getNode,
-      basePath: 'docs',
+      basePath: nodeFields.docType === 'doc' ? 'docs' : 'advocacy_docs',
+    }).slice(0, -1); // remove last character
+
+    Object.assign(nodeFields, {
+      path: relativeFilePath,
     });
 
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const product = relativeFilePath.split('/')[1];
-    const version = relativeFilePath.split('/')[2];
+    if (nodeFields.docType === 'doc') {
+      Object.assign(nodeFields, {
+        product: relativeFilePath.split('/')[1],
+        version: relativeFilePath.split('/')[2],
+        topic: 'null',
+      });
+    } else { // advocacy
+      Object.assign(nodeFields, {
+        product: 'null',
+        version: '0',
+        topic: relativeFilePath.split('/')[2],
+      });
+    }
 
-    createNodeField({
-      node,
-      name: 'docType',
-      value: 'doc',
-    });
-    // Creates new query'able fields
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'product',
-      value: product,
-    });
-    createNodeField({
-      node,
-      name: 'version',
-      value: version,
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: 'null',
-    });
-
-    const fileNode = getNode(node.parent);
-    createNodeField({
-      node,
-      name: 'mtime',
-      value: fileNode.mtime,
-    });
-  }
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/advocacy_docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
-      node,
-      getNode,
-      basePath: 'advocacy_docs',
-    });
-
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const topic = relativeFilePath.split('/')[2];
-
-
-    createNodeField({
-      node,
-      name: 'docType',
-      value: 'advocacy',
-    });
-    // Creates new query'able field with name of 'path'
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'product',
-      value: 'null',
-    });
-    createNodeField({
-      node,
-      name: 'version',
-      value: '1',
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: topic,
-    });
-
-    const fileNode = getNode(node.parent);
-    createNodeField({
-      node,
-      name: 'mtime',
-      value: fileNode.mtime,
-    });
+    for (const [name, value] of Object.entries(nodeFields)) {
+      createNodeField({ node, name: name, value: value });
+    }
   }
 };
 
@@ -178,8 +109,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
 
-  // const docs = nodes.filter(file => !!file.fields.version);
-  // const learn = nodes.filter(file => !file.fields.version);
   const docs = nodes.filter(file => file.fields.docType === 'doc');
   const learn = nodes.filter(file => file.fields.docType === 'advocacy');
 
