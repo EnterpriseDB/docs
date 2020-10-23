@@ -1,3 +1,26 @@
+# EDB Docs
+
+This repo contains the code that powers EDB's documentation website, as well as the tutorial/advocacy/learn content. The site pulls additional content in from other repos, in a process called 'sourcing'.
+
+## Installation
+put stuff here
+
+## Source Configuration
+When doing locally development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
+
+### `yarn config-sources`
+Run `yarn config-sources` to setup your `dev-sources.json` file. This will tells the Gatsby appliation which sources to look for, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
+
+### `yarn pull-sources`
+Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all existing sources (besides advocacy_docs)**, so make sure you do not have any local changes to these files that you want to save!
+
+## Running the Site
+
+### `yarn develop`
+This command will boot up the site in development mode. This is typically how you will run the application
+
+
+# Old README
 ## Advocacy docs
 
 This repo is for the Advocacy docs only. These files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
