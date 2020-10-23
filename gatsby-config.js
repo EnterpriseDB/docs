@@ -5,7 +5,13 @@ require('dotenv').config({
 const utf8Truncate = require("truncate-utf8-bytes");
 const gracefulFs = require('graceful-fs');
 
+const ANSI_BLUE = '\033[34m';
+const ANSI_STOP = '\033[0m';
+
+const isBuild = process.env.NODE_ENV === 'production';
+
 /******** Sourcing *********/
+const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
   'source_docs': { name: 'docs', path: 'sources/docs/docs' }
 };
@@ -13,18 +19,10 @@ const sourceToPluginConfig = {
 const externalSourcePlugins = () => {
   const sourcePlugins = [];
 
-  if (process.env.CLEAN_SOURCE_ALL) {
-    Object.values(sourceToPluginConfig).forEach((config) => {
-      sourcePlugins.push({
-        resolve: 'gatsby-source-filesystem',
-        options: {
-          name: config.name,
-          path: config.path,
-        }
-      });
-    });
-  } else if (gracefulFs.existsSync('dev-sources.json')) {
-    const sources = JSON.parse(gracefulFs.readFileSync('dev-sources.json'));
+  if (!process.env.SKIP_SOURCING && gracefulFs.existsSync(sourceFilename)) {
+    console.log(`${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`)
+
+    const sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
     for (const [source, enabled] of Object.entries(sources)) {
       const config = sourceToPluginConfig[source];
       if (enabled && config) {
@@ -37,8 +35,8 @@ const externalSourcePlugins = () => {
         });
       }
     }
-  } else if (!process.env.SKIP_SOURCING) {
-    console.error('Configure sources with `yarn config-sources`, or set CLEAN_SOURCE_ALL to `true`.')
+  } else if (isBuild) {
+    console.error('Configure sources with `yarn config-sources`. Defaulting to advocacy content only!')
   }
 
   return sourcePlugins;

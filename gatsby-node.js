@@ -6,8 +6,6 @@ gracefulFs.gracefulify(realFs);
 const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 
-const isDevelopment = process.env.NODE_ENV === 'development'
-
 const sortVersionArray = (versions) => {
   return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
                  .map(version => version.replace(/\d+/g, n => +n-100000));

@@ -1,6 +1,7 @@
 import os
 import shutil
 import json
+import sys
 
 from source_docs import *
 
@@ -16,22 +17,24 @@ def wipe_sources():
         print('Wiping sources...')
         shutil.rmtree('sources')
 
-if os.environ.get('CLEAN_SOURCE_ALL'):
-    print('CLEAN_SOURCE_ALL = true, sourcing everything!')
+is_build = sys.argv[1].strip() in ['--build', '--force-build']
+force = sys.argv[1].strip() == '--force-build'
+
+source_filename = 'dev-sources.json'
+if is_build:
+    source_filename = 'build-sources.json'
+
+if os.path.exists(source_filename):
+    if not force:
+        print(ANSI_RED + 'Pulling fresh sources will completely destroy any changes you have made inside the `source/` folder.' + ANSI_STOP)
+        response = input('Do you want to continue (y/n)? ')
+
+        if response.strip() != 'y':
+            sys.exit('User canceled process.')
 
     wipe_sources()
-    source_docs()
-
-elif os.path.exists('dev-sources.json'):
-    print(ANSI_RED + 'Pulling fresh sources will completely destroy any changes you have made inside the `source/` folder.' + ANSI_STOP)
-    response = input('Do you want to continue (y/n)? ')
-
-    if response.strip() != 'y':
-        sys.exit('User canceled process.')
-
-    wipe_sources()
-    print('Sourcing using your local config, `dev-sources.json`...')
-    with open('dev-sources.json') as dev_sources_json:
+    print('Sourcing using `{}`...'.format(source_filename))
+    with open(source_filename) as dev_sources_json:
         sources = json.load(dev_sources_json)
     for source, val in sources.items():
         if val:
@@ -40,4 +43,4 @@ elif os.path.exists('dev-sources.json'):
                 source_function()
 
 else:
-    raise Exception(ANSI_RED + 'Configure sources with `yarn config-sources`, or set CLEAN_SOURCE_ALL to `true`.' + ANSI_STOP)
+    raise Exception(ANSI_RED + 'Failed to source: `{}` not found! Configure sources with `yarn config-sources`.'.format(source_filename) + ANSI_STOP)
