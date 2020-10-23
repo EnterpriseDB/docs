@@ -7,4 +7,4 @@ if os.environ.get('FORCE_MTIME') == 'true':
 os.system('python3 scripts/source/git-restore-mtime.py' + mtime_opts)
 
 if os.path.exists('sources/docs/.git'):
-    os.system('cd sources/docs && python3 ../scripts/source/git-restore-mtime.py' + mtime_opts)
+    os.system('cd sources/docs && python3 ../../scripts/source/git-restore-mtime.py' + mtime_opts)
