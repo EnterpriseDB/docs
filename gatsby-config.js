@@ -13,7 +13,7 @@ const isBuild = process.env.NODE_ENV === 'production';
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
-  'source_docs': { name: 'docs', path: 'sources/docs/docs' }
+  'docs': { name: 'docs', path: 'sources/docs/docs' }
 };
 
 const externalSourcePlugins = () => {

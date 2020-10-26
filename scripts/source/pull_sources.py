@@ -9,7 +9,7 @@ ANSI_RED = '\033[31m'
 ANSI_STOP = '\033[0m'
 
 DEV_SOURCES_TO_FUNCTION = {
-    'source_docs': source_docs
+    'docs': source_docs
 }
 
 def wipe_sources():

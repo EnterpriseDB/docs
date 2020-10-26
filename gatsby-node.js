@@ -6,6 +6,8 @@ gracefulFs.gracefulify(realFs);
 const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 
+const isBuild = process.env.NODE_ENV === 'production';
+
 const sortVersionArray = (versions) => {
   return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
                  .map(version => version.replace(/\d+/g, n => +n-100000));
@@ -263,6 +265,28 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     },
   });
 };
+
+exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDigest }) => {
+  const sources = JSON.parse(
+    gracefulFs.readFileSync(isBuild ? 'build-sources.json' : 'dev-sources.json')
+  );
+
+  const activeSources = ['advocacy'];
+  for (const [source, enabled] of Object.entries(sources)) {
+    if (enabled) { activeSources.push(source) }
+  }
+
+  const nodeData = { activeSources: activeSources };
+
+  createNode({
+    ...nodeData,
+    id: createNodeId('edb-sources'),
+    internal: {
+      type: 'edbSources',
+      contentDigest: createContentDigest(nodeData),
+    },
+  });
+}
 
 exports.onPreBootstrap = () => {
   console.log(`

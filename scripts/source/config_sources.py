@@ -8,11 +8,11 @@ ANSI_RED = '\033[31m'
 
 OPTIONS = [
     { 'name': 'Advocacy docs only', 'output': {} },
-    { 'name': 'Advocacy docs + Product docs', 'output': { 'source_docs': True } },
+    { 'name': 'Advocacy docs + Product docs', 'output': { 'docs': True } },
 ]
 
 BASE_OUTPUT = {
-    'source_docs': False,
+    'docs': False,
 }
 
 print('Which sources would you like loaded when you run `yarn develop`?')
