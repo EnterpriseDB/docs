@@ -263,3 +263,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     },
   });
 };
+
+exports.onPreBootstrap = () => {
+  console.log(`
+ _____  ____   _____    ____                 
+|   __||    \\ | __  |  |    \\  ___  ___  ___ 
+|   __||  |  || __ -|  |  |  || . ||  _||_ -|
+|_____||____/ |_____|  |____/ |___||___||___|
+                                                                                                                   
+  `)
+}

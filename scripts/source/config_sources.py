@@ -15,27 +15,7 @@ BASE_OUTPUT = {
     'source_docs': False,
 }
 
-print(ANSI_RED + """
-        `.:+oossssssoo+/-`                                                                        
-      -/ossssssssssssssssso:`                                                                     
-    -osssssssssssssssssssssso/`                                                                   
-  `/sssssssssssssssssssssssssso-        -::::::::::::-  `::::::::-.`       ::::::::::-``          
- `+sssssooooosssssssssooooosssso:       dMMMMMMMMMMMMh  /MMMMMMMMMMNho.   `mMMMMMMMMMMNh/         
- +sssso:.```-ssssssss+.```.+sssso-      dMMN/////////-  /MMMs////+ymMMN+  `mMMm/////+dMMN-        
-.ossss+`    `s:---:+s+     .sssss+      dMMN.````````   /MMM/      `sMMM+ `mMMd.````.oMMN:        
-:ssssso.    `s.    `++     /ssssso`     dMMMmmmmmmmmh   /MMM/        mMMm `mMMMmmmmmNMMMs         
-:sssss+     `s.     /+     .ssssso`     dMMMyyyyyyyyo   /MMM/       `NMMd `mMMmoooooshMMNo        
-.osssso/.`` .s.     /+````-+sssss+      dMMN`           /MMM/      .yMMM/ `mMMd      `dMMm`       
- /ssssssoo+++s/--  .oo++ooossssso.      dMMNo++++++++/  /MMMy+++oshmMMm+  `mMMmo++++ohNMMy        
- `+sssssssssss+   +ossssssssssso-       dMMMMMMMMMMMMh  :MMMMMMMNNmdy/.   `dMMMMMMMMNNmh+`        
-  `/osssssssssssssssssssssssss+-        ..............  `.........``       ...........`           
-    .+ossssssssssssssssssssso:`                                                                   
-      .:+ossssssssssssssso/-`                                                                     
-         .-/++ooooooo+/:.`                                                                        
-               `````    
-""" + ANSI_STOP)
-print(ANSI_BLUE + 'Welcome to EDB Docs! Which doc sets would you like to load?' + ANSI_STOP)
-print(ANSI_BLUE + '-' * 60 + ANSI_STOP)
+print('Which sources would you like loaded when you run `yarn develop`?')
 for i, option in enumerate(OPTIONS):
     print("{0}: {1}".format(i + 1, option['name']))
 
@@ -51,7 +31,7 @@ while not selection:
     if not selection:
         print(ANSI_RED + 'Please enter a number corresponding to an option above' + ANSI_STOP)
 
-print(ANSI_GREEN + 'Setting {0}: {1}'.format(i + 1, selection['name']) + ANSI_STOP)
+print(ANSI_GREEN + '{0}: {1}'.format(i + 1, selection['name']) + ANSI_STOP)
 with open('dev-sources.json', 'w') as outfile:
     json.dump({**BASE_OUTPUT, **selection['output']}, outfile)
     print(ANSI_GREEN + 'Wrote to dev-sources.json' + ANSI_STOP)

@@ -17,8 +17,11 @@ def wipe_sources():
         print('Wiping sources...')
         shutil.rmtree('sources')
 
-is_build = sys.argv[1].strip() in ['--build', '--force-build']
-force = sys.argv[1].strip() == '--force-build'
+arg = None
+if len(sys.argv) > 1:
+    arg = sys.argv[1].strip()
+is_build = arg in ['--build', '--force-build']
+force = arg == '--force-build'
 
 source_filename = 'dev-sources.json'
 if is_build:
