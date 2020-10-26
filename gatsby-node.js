@@ -267,13 +267,15 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 };
 
 exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDigest }) => {
-  const sources = JSON.parse(
-    gracefulFs.readFileSync(isBuild ? 'build-sources.json' : 'dev-sources.json')
-  );
-
   const activeSources = ['advocacy'];
-  for (const [source, enabled] of Object.entries(sources)) {
-    if (enabled) { activeSources.push(source) }
+
+  if (!process.env.SKIP_SOURCING) {
+    const sources = JSON.parse(
+      gracefulFs.readFileSync(isBuild ? 'build-sources.json' : 'dev-sources.json')
+    );
+    for (const [source, enabled] of Object.entries(sources)) {
+      if (enabled) { activeSources.push(source) }
+    }
   }
 
   const nodeData = { activeSources: activeSources };
