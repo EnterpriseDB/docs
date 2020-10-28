@@ -70,9 +70,14 @@ const CodePre = ({ className, content, runnable }) => {
     e.target.blur();
   }
 
+  const [canRun, setCanRun] = useState(true);
   const runClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
     window.katacoda.write(text);
+    setCanRun(false);
+    setTimeout(() => {
+      setCanRun(true);
+    }, 3000);
     e.target.blur();
   };
 
@@ -90,6 +95,7 @@ const CodePre = ({ className, content, runnable }) => {
             variant="outline-info"
             className="katacoda-exec-button"
             onClick={runClick}
+            disabled={!canRun}
           >
             ► Run
           </Button>
