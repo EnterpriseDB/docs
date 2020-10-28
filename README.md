@@ -28,20 +28,26 @@ Use this command to pull down all the sources you have specified in your `dev-so
 
 If you experience errors or other issues with the site, the first step you should take is to run `yarn clean`, and then try `yarn develop` again. This clears gatsby's cache, and can often resolve strange issues.
 
-## Deployment
+## Development
 
-Deployments of the site use the `build-sources.json` file to determine which sources need to be loaded. All environments are continuously deployed - new commits to relevant branches will trigger a build of the associated environment.
+All changes should have a pull request opened against the default branch, `develop`. When a pull request is opened, Heroku should automatically create a review build, which should be linked in the pull request under "deployments". Review builds only include advocacy content. When a pull request is merged, `develop` will automatically deploy the changes to the staging environment.
+
+To deploy to production, create a pull request merging `develop` into `main`. When that PR is merged, `main` will automatically build and deploy to the production site.
+
+### Environment Details
+
+Deployments of the site use the `build-sources.json` file to determine which sources need to be loaded. All environments are continuously deployed - new commits to relevant branches will trigger a build of the associated environment. The builds are done using Github Actions, so you can view deployment progress by clicking the "Actions" tab.
 
 #### Staging
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
 #### Production
-Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow.
+Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
 #### Review Builds
-Review builds are automatically created for Pull Requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
-#### Triggered Deployment
+### Triggered Deployment
 Because the site pulls docs from multiple repositories, these source repositories may trigger rebuilds of the site when appropriate.
 
 # Advocacy Docs
