@@ -58,7 +58,7 @@ const buildQuery = (pathname) => {
     title = tokens[productIndex + 2];
   }
   if (productIndex + 3 < tokens.length - 1) {
-    version = tokens[productIndex + 3].match(/\d+/g)[0];
+    version = (tokens[productIndex + 3].match(/\d+/g) || [])[0];
   }
 
   if (product) {

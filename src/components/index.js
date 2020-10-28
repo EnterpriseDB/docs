@@ -8,6 +8,7 @@ import DevFrontmatter from './dev-frontmatter';
 import Footer from './footer';
 import IndexLinks from './index-links';
 import Layout from './layout';
+import LayoutContext from './layout-context';
 import LeftNav from './left-nav';
 import Logo from './logo';
 import MainContent from './main-content';
@@ -33,6 +34,7 @@ export {
   Footer,
   IndexLinks,
   Layout,
+  LayoutContext,
   LeftNav,
   Logo,
   MainContent,
