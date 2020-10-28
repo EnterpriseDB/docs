@@ -1,4 +1,5 @@
 import React from 'react';
+import { graphql } from 'gatsby';
 import { Container } from 'react-bootstrap';
 import { indexLinkList } from '../constants/index-link-list';
 import Icon, { iconNames } from '../components/icon/';
@@ -10,8 +11,7 @@ import {
   SideNavigation,
   TopBar,
 } from '../components';
-
-import { graphql } from 'gatsby';
+import useActiveSources from '../hooks/use-active-sources';
 
 export const query = graphql`
   query {
@@ -33,12 +33,17 @@ export const query = graphql`
 export default data => {
   const advocacyLinks =
     data.data.file.childAdvocacyDocsJson.advocacyLinks || [];
+
+  const { docsActive } = useActiveSources();
+  let mergedIndexLinks = advocacyLinks
+  if (docsActive) { mergedIndexLinks = mergedIndexLinks.concat(indexLinkList); }
+
   return (
     <Layout>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
-          <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
+          <IndexLinks indexLinkList={mergedIndexLinks} />
         </SideNavigation>
         <MainContent>
           {/* the following content is pasted from the EDB wireframe w/ minor modifications */}

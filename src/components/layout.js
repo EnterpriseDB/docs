@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
   Attention,
   CodeBlock,
+  LayoutContext,
   TextBalancer,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
@@ -15,22 +16,35 @@ import {
 
 import '../styles/index.scss';
 
-const darkModeActive = () => {
-  if (typeof window !== `undefined`) {
-    return window.localStorage.getItem('dark-theme') === 'true';
-  }
-  return false;
-}
-
 const Layout = ({ children, pageMeta, katacodaPanelData, background = 'light' }) => {
   const { baseUrl, imageUrl, title, description } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
 
+  const [dark, setDark] = useState(false);
+
+  const toggleDark = () => {
+    window.localStorage.setItem('dark', !dark);
+    setDark(!dark);
+  }
+
+  // gatsby-ssr handles initial setting of class, this will sync the toggle to that
+  useEffect(() => {
+    if (
+      document.documentElement.classList.contains('dark') ||
+      window.localStorage.getItem('dark') === 'true'
+    ) {
+      setDark(true);
+    }
+  }, [setDark])
+
   return (
-    <>
+    <LayoutContext.Provider value={{
+      dark: dark,
+      toggleDark: toggleDark,
+    }}>
       <Helmet>
-        <html lang="en" />
+        <html lang="en" className={`${dark && 'dark'}`}/>
         <title>{meta.title || title}</title>
         <meta name="description" content={meta.description || description} />
         <meta property="og:title" content={meta.title || title} />
@@ -44,9 +58,7 @@ const Layout = ({ children, pageMeta, katacodaPanelData, background = 'light' })
           <link rel="canonical" href={baseUrl + meta.canonicalPath} />
         }
         <meta name="twitter:card" content="summary_large_image" />
-        <body
-          className={`bg-${background} fixed-container ${darkModeActive() && 'dark'}`}
-        />
+        <body className={`bg-${background} fixed-container`} />
       </Helmet>
       <MDXProvider
         components={{
@@ -69,7 +81,7 @@ const Layout = ({ children, pageMeta, katacodaPanelData, background = 'light' })
         {children}
       </MDXProvider>
       <TextBalancer />
-    </>
+    </LayoutContext.Provider>
   );
 };
 

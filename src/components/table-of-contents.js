@@ -5,7 +5,7 @@ const TableOfContents = ({ toc }) => (
     <li className="mb-2 font-weight-bold text-muted text-uppercase small">
       On this page
     </li>
-    {toc.map(item => (
+    {toc.filter((item) => item.title).map(item => (
       <li key={item.title}>
         <a className="d-block py-2 align-middle" href={item.url}>
           {item.title}

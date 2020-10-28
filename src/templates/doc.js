@@ -28,6 +28,7 @@ export const query = graphql`
       }
       fields {
         path
+        mtime
       }
       body
       tableOfContents
@@ -186,9 +187,9 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
 
 const DocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
-  const { path } = fields;
+  const { path, mtime } = fields;
   const depth = path.split('/').length;
-  const { navLinks, versions, githubIssuesLink } = pageContext;
+  const { navLinks, versions, githubFileLink, githubIssuesLink } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
@@ -214,6 +215,7 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
           <LeftNav
             navLinks={navLinks}
             path={path}
+            pagePath={pagePath}
             versionArray={versionArray}
             navOrder={navOrder}
           />
@@ -243,7 +245,7 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
           {sections && <Sections sections={sections} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
-          <Footer />
+          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
         </MainContent>
       </Container>
     </Layout>
