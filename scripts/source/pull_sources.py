@@ -28,7 +28,7 @@ if is_build:
     source_filename = 'build-sources.json'
 
 if os.path.exists(source_filename):
-    if not force:
+    if not force and os.path.exists('sources'):
         print(ANSI_RED + 'Pulling fresh sources will completely destroy any changes you have made inside the `source/` folder.' + ANSI_STOP)
         response = input('Do you want to continue (y/n)? ')
 
