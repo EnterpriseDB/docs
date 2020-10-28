@@ -1,6 +1,51 @@
-## Advocacy docs
+# <img src="static/images/edb-docs-logo-dark.svg" alt='EDB Docs' width="350">
 
-This repo is for the Advocacy docs only. These files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
+This repo contains the Gatsby application that powers EDB's documentation website, as well as the advocacy content. The site pulls additional content from other repos, in a process called 'sourcing'.
+
+## Installation
+1. Clone the repo!
+2. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
+3. Install Node.js. We're currently using Node.js version 12. To install this version, first install `nvm` (Node Version Manager). This can be done with (MacOS) `brew install nvm`, followed by `nvm install`. Optionally, you can skip installing `nvm` and install Node.js 12 directly if you prefer.
+4. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
+5. Install all required packages with `yarn`
+6. Pull the shared icon files down with `git submodule update --init`
+7. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+
+## Sources
+- Advocacy (default, part of this repo)
+- Product Docs - [rocketinsights/edb_docs](rocketinsights/edb_docs)
+
+### Configuring
+When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
+
+#### `yarn config-sources`
+Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby  which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
+
+#### `yarn pull-sources`
+Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all existing sources (besides advocacy_docs)**, so make sure you do not have any local changes to these files that you want to save!
+
+## Resolving issues
+
+If you experience errors or other issues with the site, the first step you should take is to run `yarn clean`, and then try `yarn develop` again. This clears gatsby's cache, and can often resolve strange issues.
+
+## Deployment
+
+Deployments of the site use the `build-sources.json` file to determine which sources need to be loaded. All environments are continuously deployed - new commits to relevant branches will trigger a build of the associated environment.
+
+#### Staging
+Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
+
+#### Production
+Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow.
+
+#### Review Builds
+Review builds are automatically created for Pull Requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+
+#### Triggered Deployment
+Because the site pulls docs from multiple repositories, these source repositories may trigger rebuilds of the site when appropriate.
+
+# Advocacy Docs
+Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
 
 New docs need a `.mdx` suffix to be used by Gatsby.
 
@@ -38,24 +83,6 @@ All of these files use Markdown for styling. The options for what can be done ca
 
 The items in the left nav are sorted alphabetically by file name. This can be done with a numerical prefix. The titles of each page are used for the names in the left nav.
 
-## Running the site locally
-
-Follow this setup to run the site locally. Once started, use the `Installing Postgres` and `Connecting to Postgres` links in the top-right to access the Getting Started content. The rest of the links will not work.
-
-### Setup
-
-1. Clone the repo!
-2. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
-3. Install Node.js. We're currently using Node.js version 12. To install this version, first install `nvm` (Node Version Manager). This can be done with (MacOS) `brew install nvm`, followed by `nvm install`. Optionally, you can skip installing `nvm` and install Node.js 12 directly if you prefer.
-4. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
-5. Install all required packages with `yarn`
-6. Pull the shared icon files down with `git submodule update --init`
-7. Run the site locally with `gatsby develop`. The site should now be running at `http://localhost:8000/`!
-
-### Resolving issues
-
-If you experience errors or other issues with the site, the first step you should take is to run `gatsby clean`, and then try `gatsby develop` again. This clears gatsby's cache, and can often resolve issues.
-
 ## Content submission
 
 To add content to this site, changes must be submitted as a PR. There are two options for this:
@@ -72,23 +99,6 @@ Option 2: on github
 1. Edit a file on github
 2. Submit changes as a PR on a new branch
 
-## Advocacy site vs the "main site"
-
-This repo covers all of the advocacy content. This is then used by the main site when the main site builds a new version of the app.
-
-When the main site builds it takes content only from the `advocacy_docs` folder in the `master` branch of this repo. It then builds the whole site along with all of the product docs.
-
-From the perspective of this repo the process of getting content into the main app requires that any commits be merged into the `master` branch and a build is triggered for the main app.
-
-Once content is merged into `master`, this test site will rebuild:
-
-https://edb-docs-advocacy.herokuapp.com
-
-In addition to the content, there is also a
-file, `advocacy-index-nav.json`, that is used to create the left nav on the front page of both the advocacy test site and the main site.
-
-Again, for this to show on the main site, changes need to be committed to `master` and the main site built.
-
 ## Search
 
-Content is indexed for search when the main site builds.
+Content is indexed for search when the production site builds.

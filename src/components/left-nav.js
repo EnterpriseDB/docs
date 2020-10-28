@@ -94,14 +94,15 @@ const SectionHeadingWithVersions = ({ newList, path, versionArray, iconName }) =
   );
 };
 
-const LeftNav = ({ navLinks, path, versionArray, iconName, navOrder = null }) => {
+const LeftNav = ({ navLinks, path, pagePath, versionArray, iconName, navOrder = null }) => {
   const newList = versionArray
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
     : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
+
   return (
     <ul className="list-unstyled mt-0">
-      <BackButton />
+      <BackButton currentPath={pagePath} />
       {versionArray ? (
         <SectionHeadingWithVersions
           newList={newList}

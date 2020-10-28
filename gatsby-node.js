@@ -4,7 +4,9 @@ const gracefulFs = require('graceful-fs');
 gracefulFs.gracefulify(realFs);
 
 const { createFilePath } = require(`gatsby-source-filesystem`);
-const { exec } = require("child_process");
+const { exec, execSync } = require("child_process");
+
+const isBuild = process.env.NODE_ENV === 'production';
 
 const sortVersionArray = (versions) => {
   return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
@@ -21,75 +23,41 @@ const productLatestVersionCache = [];
 
 exports.onCreateNode = async ({ node, getNode, actions }) => {
   const { createNodeField } = actions;
-  // Ensures we are processing only markdown files
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
+
+  if (node.internal.type === 'Mdx') {
+    const fileNode = getNode(node.parent);
+    const nodeFields = {
+      docType: node.fileAbsolutePath.includes('/docs/') ? 'doc' : 'advocacy',
+      mtime: fileNode.mtime,
+    };
+
+    const relativeFilePath = createFilePath({
       node,
       getNode,
-      basePath: 'docs',
+      basePath: nodeFields.docType === 'doc' ? 'docs' : 'advocacy_docs',
+    }).slice(0, -1); // remove last character
+
+    Object.assign(nodeFields, {
+      path: relativeFilePath,
     });
 
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const product = relativeFilePath.split('/')[1];
-    const version = relativeFilePath.split('/')[2];
+    if (nodeFields.docType === 'doc') {
+      Object.assign(nodeFields, {
+        product: relativeFilePath.split('/')[1],
+        version: relativeFilePath.split('/')[2],
+        topic: 'null',
+      });
+    } else { // advocacy
+      Object.assign(nodeFields, {
+        product: 'null',
+        version: '0',
+        topic: relativeFilePath.split('/')[2],
+      });
+    }
 
-    // Creates new query'able fields
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'product',
-      value: product,
-    });
-    createNodeField({
-      node,
-      name: 'version',
-      value: version,
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: 'null',
-    });
-  }
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/advocacy_docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
-      node,
-      getNode,
-      basePath: 'advocacy_docs',
-    });
-
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const topic = relativeFilePath.split('/')[2];
-
-    // Creates new query'able field with name of 'path'
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: topic,
-    });
+    for (const [name, value] of Object.entries(nodeFields)) {
+      createNodeField({ node, name: name, value: value });
+    }
   }
 };
 
@@ -111,6 +79,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           }
           excerpt(pruneLength: 280)
           fields {
+            docType
             path
             product
             version
@@ -140,8 +109,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
 
-  const docs = nodes.filter(file => !!file.fields.version);
-  const learn = nodes.filter(file => !file.fields.version);
+  const docs = nodes.filter(file => file.fields.docType === 'doc');
+  const learn = nodes.filter(file => file.fields.docType === 'advocacy');
 
   const folderIndex = {};
 
@@ -214,6 +183,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
+    const docsRepoUrl = 'https://github.com/rocketinsights/edb_docs';
+    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
+    const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
+
     actions.createPage({
       path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
       component: require.resolve('./src/templates/doc.js'),
@@ -221,6 +195,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
+        githubFileLink: githubFileLink,
+        githubIssuesLink: githubIssuesLink,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(
           doc.fields.path,
@@ -234,22 +210,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navLinks = learn.filter(
       node => node.fields.topic === doc.fields.topic,
     );
+
     const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
-    const githubLink = advocacyDocsRepoUrl +
-      '/edit/master/advocacy_docs' +
-      doc.fields.path +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubIssuesLink = advocacyDocsRepoUrl +
-      '/issues/new?title=Regarding%20' +
-      encodeURIComponent(doc.fields.path) +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
+    const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
         navLinks: navLinks,
-        githubLink: githubLink,
+        githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
       },
     });
@@ -291,3 +265,37 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     },
   });
 };
+
+exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDigest }) => {
+  const activeSources = ['advocacy'];
+
+  if (!process.env.SKIP_SOURCING) {
+    const sources = JSON.parse(
+      gracefulFs.readFileSync(isBuild ? 'build-sources.json' : 'dev-sources.json')
+    );
+    for (const [source, enabled] of Object.entries(sources)) {
+      if (enabled) { activeSources.push(source) }
+    }
+  }
+
+  const nodeData = { activeSources: activeSources };
+
+  createNode({
+    ...nodeData,
+    id: createNodeId('edb-sources'),
+    internal: {
+      type: 'edbSources',
+      contentDigest: createContentDigest(nodeData),
+    },
+  });
+}
+
+exports.onPreBootstrap = () => {
+  console.log(`
+ _____  ____   _____    ____                 
+|   __||    \\ | __  |  |    \\  ___  ___  ___ 
+|   __||  |  || __ -|  |  |  || . ||  _||_ -|
+|_____||____/ |_____|  |____/ |___||___||___|
+                                                                                                                   
+  `)
+}
