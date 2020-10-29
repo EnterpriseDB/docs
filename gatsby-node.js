@@ -27,7 +27,7 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
   if (node.internal.type === 'Mdx') {
     const fileNode = getNode(node.parent);
     const nodeFields = {
-      docType: node.fileAbsolutePath.includes('/docs/') ? 'doc' : 'advocacy',
+      docType: node.fileAbsolutePath.includes('/docs/') ? 'doc' : 'advocacy', // should maybe be /docs/docs/ ?
       mtime: fileNode.mtime,
     };
 
