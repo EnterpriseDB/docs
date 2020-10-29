@@ -9,10 +9,13 @@ ANSI_RED = '\033[31m'
 OPTIONS = [
     { 'name': 'Advocacy docs only', 'output': {} },
     { 'name': 'Advocacy docs + Product docs', 'output': { 'docs': True } },
+    { 'name': 'Advocacy docs + Kubernetes docs', 'output': { 'k8s_docs': True } },
+    { 'name': 'All', 'output': { 'docs': True, 'k8s_docs': True } },
 ]
 
 BASE_OUTPUT = {
     'docs': False,
+    'k8s_docs': False,
 }
 
 print('Which sources would you like loaded when you run `yarn develop`?')
