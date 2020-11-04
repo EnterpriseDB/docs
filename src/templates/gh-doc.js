@@ -1,9 +1,8 @@
 import React from 'react';
-import { Container, Row, Col } from 'react-bootstrap';
+import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
-  CardDecks,
   DevFrontmatter,
   Footer,
   Layout,
@@ -21,11 +20,6 @@ export const query = graphql`
         title
         navTitle
         description
-        katacodaPanel {
-          account
-          scenario
-          codelanguages
-        }
       }
       fields {
         path
@@ -54,39 +48,10 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (path, navLinks) => {
-  return navLinks.filter(
-    node =>
-      node.fields.path.includes(path) &&
-      node.fields.path.split('/').length === path.split('/').length + 1,
-  );
-};
-
-const Tiles = ({ mdx, navLinks }) => {
-  const { path } = mdx.fields;
-  const depth = path.split('/').length;
-  if (depth === 3) {
-    const tiles = getChildren(path, navLinks).map(child => {
-      let newChild = { ...child };
-      const { path } = newChild.fields;
-      newChild['children'] = getChildren(path, navLinks);
-      return newChild;
-    });
-
-    return <CardDecks cards={tiles} colSize={6} cardType="full" />;
-  }
-  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
-  if (depth >= 4) {
-    const tiles = getChildren(path, navLinks);
-    return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
-  }
-  return null;
-};
-
-const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
+const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  const { navLinks, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
+  const { navLinks, githubFileLink, githubFileHistoryLink } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
@@ -94,7 +59,6 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   };
 
   const showToc = !!mdx.tableOfContents.items;
-  const katacodaPanelData = mdx.frontmatter.katacodaPanel;
 
   const navigationLinkEntries = data.file.childAdvocacyDocsJson.advocacyLinks.map(al => al.links).flat();
   const iconName = (navigationLinkEntries.find(
@@ -102,7 +66,7 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   ) || { iconName: null }).iconName;
 
   return (
-    <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
+    <Layout pageMeta={pageMeta}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
@@ -116,18 +80,16 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{mdx.frontmatter.title}</h1>
-            <a
-              href={githubEditLink || '#'}
-              className="btn btn-sm btn-primary px-4 text-nowrap"
-            >
-              Edit this page
-            </a>
           </div>
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
+              <Alert variant='primary' className="mb-4">
+                This documentation is sourced from GitHub. To view the original file and context,
+                <a href={githubFileLink}> click here</a>.
+              </Alert>
+
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mdx={mdx} navLinks={navLinks} />
             </Col>
 
             { showToc &&
@@ -139,20 +101,11 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
-          <hr />
-          <p>
-            Could this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>
-              Report a problem
-            </a> or <a href={githubIssuesLink + "&template=suggest-addition-to-topic.md&labels=enhancement"}>
-              suggest an addition
-            </a>!
-          </p>
-
-          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
+          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
         </MainContent>
       </Container>
     </Layout>
   );
 };
 
-export default LearnDocTemplate;
+export default GhDocTemplate;
