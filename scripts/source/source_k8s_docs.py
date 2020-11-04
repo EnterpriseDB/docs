@@ -16,7 +16,6 @@ def rewrite_any_relative_links(line, gh_relative_path):
             gh_relative_folder_path = '/'.join(split_path[0:len(split_path) - 1 - dot_dot_count])
             new_link = gh_tree_base_url+gh_relative_folder_path+'/'+match[1].replace('../', '')
             return re.sub(r'\]\(.+\)', ']({})'.format(new_link), line)
-        # import code; code.interact(local=dict(globals(), **locals()))
     return line
 
 def process_md(file_path):
