@@ -20,7 +20,7 @@ const replacePathVersion = (path, version = 'latest') => {
 };
 
 const filePathToDocType = (filePath) => {
-  if (filePath.includes('/docs/docs')) {
+  if (filePath.includes('/docs/docs/')) {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
     return 'advocacy';
@@ -179,10 +179,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   });
 
   for (const product in versionIndex) {
-    console.log(`${product} ${versionIndex[product]}`);
-    versionIndex[product] = sortVersionArray(
-      versionIndex[product].filter(val => !!val)
-    ).reverse();
+    versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
   }
 
   docs.forEach(doc => {
