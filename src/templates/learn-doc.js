@@ -85,18 +85,8 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
   const showToc = !!mdx.tableOfContents.items;
   const katacodaPanelData = mdx.frontmatter.katacodaPanel;
-<<<<<<< Updated upstream
-
-  const navigationLinkEntries = data.file.childAdvocacyDocsJson.advocacyLinks.map(al => al.links).flat();
-  const iconName = (navigationLinkEntries.find(
-=======
-<<<<<<< Updated upstream
-  const iconName = (data.file.childAdvocacyDocsJson.advocacyLinks[0].links.find(
-=======
 
   const iconName = (advocacyNavigation.map(al => al.links).flat().find(
->>>>>>> Stashed changes
->>>>>>> Stashed changes
     link => mdx.fields.path.includes(link.url)
   ) || { iconName: null }).iconName;
 
