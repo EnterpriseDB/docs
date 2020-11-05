@@ -2,6 +2,7 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
+import { advocacyNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -33,17 +34,6 @@ export const query = graphql`
       }
       body
       tableOfContents
-    }
-    file(name: { eq: "advocacy-index-nav" }) {
-      childAdvocacyDocsJson {
-        advocacyLinks {
-          links {
-            title
-            url
-            iconName
-          }
-        }
-      }
     }
   }
 `;
@@ -95,9 +85,18 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
   const showToc = !!mdx.tableOfContents.items;
   const katacodaPanelData = mdx.frontmatter.katacodaPanel;
+<<<<<<< Updated upstream
 
   const navigationLinkEntries = data.file.childAdvocacyDocsJson.advocacyLinks.map(al => al.links).flat();
   const iconName = (navigationLinkEntries.find(
+=======
+<<<<<<< Updated upstream
+  const iconName = (data.file.childAdvocacyDocsJson.advocacyLinks[0].links.find(
+=======
+
+  const iconName = (advocacyNavigation.map(al => al.links).flat().find(
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
     link => mdx.fields.path.includes(link.url)
   ) || { iconName: null }).iconName;
 
