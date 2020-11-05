@@ -179,8 +179,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   });
 
   for (const product in versionIndex) {
-    console.log(versionIndex[product]);
-    versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
+    console.log(`${product} ${versionIndex[product]}`);
+    versionIndex[product] = sortVersionArray(
+      versionIndex[product].filter(val => !!val)
+    ).reverse();
   }
 
   docs.forEach(doc => {
