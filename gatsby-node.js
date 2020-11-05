@@ -200,7 +200,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
-    const docsRepoUrl = 'https://github.com/rocketinsights/edb_docs';
+    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs-products';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
@@ -228,7 +228,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
+    const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
     const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
