@@ -1,0 +1,109 @@
+---
+title: "Configuring a Database Server"
+---
+
+
+
+To configure a database server, you must:
+
+1.  Authorize SSH/SCP access to the server.
+2.  Create and configure a replication database user.
+3.  Enable WAL archiving of the server.
+4.  Verify the server configuration settings.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+You must authorize SSH/SCP access and set up a replication database user before restarting the database server with WAL archiving enabled.
+
+</div>
+
+## Authorizing SSH/SCP Access
+
+The following example enables SSH/SCP access on a CentOS 6.x host; similar (platform-specific) steps will apply to other platforms/versions.
+
+1.  First, enable the usage of public key authentication:
+
+    > 1.  In the SSH server daemon configuration file `/etc/ssh/sshd_config`, ensure that the following parameter is set to `yes` and is not commented out:
+    >
+    >     `PubkeyAuthentication yes`
+    >
+    > 2.  Reload the configuration file using the `service sshd reload`, `service sshd stop`, `service sshd start`, or `service sshd restart` command.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+If you get any SSH or SCP errors, examine the log file (`/var/log/secure`).
+
+</div>
+
+1.  Then, execute the following command to create a password-less connection:
+
+    `ssh-copy-id target_user@host_address`
+
+For more information about how to generate the authorized public key, see the *Authorized Public Keys Generation* section of the BART Installation and Upgrade Guide available at:
+
+<https://www.enterprisedb.com/edb-docs>
+
+## Setting up a Replication Database User
+
+To set up a replication database user:
+
+1.  Choose a database user to serve as the *replication database user* (a superuser) for each Postgres database server to be managed by BART.
+2.  Modify the `pg_hba.conf` file to allow the replication database user to access the `template1` database. Include the replication database user in the `pg_hba.conf` file as a `replication` connection if `pg_basebackup` is to be used for taking any backups.
+3.  Specify the replication database user for the database server in the BART configuration file in the `user` parameter.
+
+## Enabling WAL Archiving
+
+To enable WAL archiving, set the following parameters in the `postgresql.conf` file for any database server for which BART is to perform a backup. Set:
+
+-   `wal_level` to `archive` for Postgres 9.5 or to `replica` for Postgres 9.6 or later.
+-   `archive_mode` to on.
+-   `archive_command` to copy the WAL files to the BART backup catalog.
+-   `max_wal_senders` to a value high enough to leave at least one session available for the backup. If the `xlog_method=stream` parameter setting is to be used by this server, the `max_wal_senders` setting must account for an additional session for transaction log streaming.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+Run the `INIT` subcommand with the `-o` option to override any existing `archive_command` setting in the `postgresql.conf` or the `postgresql.auto.conf` file.
+
+</div>
+
+1.  After verifying that the full path of the BART backup catalog has been created, restart the database server to initiate WAL archiving.
+
+2.  Start the WAL scanner by executing the following command:
+
+    > `./bart-scanner`
+
+## Verifying Configuration Setting
+
+-   Use the `CHECK-CONFIG` subcommand with the `–s` option to verify the parameter settings in the database server configuration for which the `-s` option is specified.
+
+    > `bart CHECK-CONFIG` \[ `–s` *&lt;server\_name&gt;* \]
+
+In addition, the following `postgresql.conf` parameters for the database server must be properly set and activated for certain processes:
+
+-   The `cluster_owner` parameter must be set to the user account owning the database cluster directory.
+-   A password-less SSH/SCP connection must be set between the BART user and the user account specified by the `cluster_owner` parameter.
+-   The BART `user` parameter must specify a database superuser.
+-   The `pg_hba.conf` file must contain a replication entry for the database superuser specified by the BART `user` parameter.
+-   The `archive_mode` parameter in the `postgresql.conf` file must be enabled.
+-   The `archive_command` parameter in the `postgresql.auto.conf` or the `postgresql.conf` file must be set.
+-   The `allow_incremental_backups` parameter in the BART configuration file must be enabled for database servers for which incremental backups are to be taken.
+-   Archiving of WAL files to the BART backup catalog must be in process.
+-   The WAL scanner program must be running.

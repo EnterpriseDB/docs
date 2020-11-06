@@ -1,0 +1,1879 @@
+---
+title: "Advanced Server Supporting Components"
+---
+
+After installing Advanced Server, you must configure and manually start the services of some supporting components. The following sections list the Advanced Server components that require post-installation configuration, and information about their services.
+
+Please note that you must install a Java environment before invoking EDB\*Plus or Migration Toolkit or before using PL/Java or the JDBC connector.
+
+## EDB\*Plus - Configuring an RPM Installation
+
+If you have performed an RPM installation of EDB\*Plus, you must perform the following steps before invoking EDB\*Plus.
+
+***Setting the Session Environment Variables***
+
+Before invoking EDB\*Plus on a Linux system, you must set the values of environment variables. Use the following commands to set variable values:
+
+> export JAVA\_HOME=\<path\_to\_java\>
+> export PATH=\<path\_to\_java\>/bin:$PATH
+
+***Configuring EDB\*Plus Authentication***
+
+By default, the pg\_hba.conf file for the RPM installer enforces IDENT authentication. Before invoking EDB\*Plus, you must either modify the pg\_hba.conf file, changing the authentication method to a form other than IDENT (and restarting the server), or perform the following steps to ensure that an IDENT server is accessible:
+
+1\. Confirm that an identd server is installed and running. For example, you can use the yum package manager to install an identd server by invoking the command:
+
+> yum install xinetd authd
+
+The command should create a file named /etc/xinetd.d/auth that contains:
+
+> service auth
+> {
+> disable = no
+> socket\_type = stream
+> wait = no
+> user = ident
+> cps = 4096 10
+> instances = UNLIMITED
+> server = /usr/sbin/in.authd
+> server\_args = -t60 --xerror --os
+> }
+
+Note: if the file includes a -E argument at the end of server\_args, please erase the -E.
+
+Then, to start the identd server, invoke the commands:
+
+> systemctl enable xinetd
+>
+> systemctl start xinetd
+
+2\. Open the pg\_ident.conf file and create a user mapping:
+
+\# map\_name system\_username postgres\_username
+
+ppas enterprisedb enterprisedb
+
+Where:
+
+> The name specified in the map\_name column is a user-defined name that will identify the mapping in the pg\_hba.conf file.
+>
+> The name specified in the system\_username column is enterprisedb.
+>
+> The name specified in the postgres\_username is enterprisedb.
+
+3\. Open the pg\_hba.conf file and modify the IDENT entries.
+
+If you are using an IPv4 local connection, modify the file entry to read:
+
+> host all all 127.0.0.0/0 ident map=ppas
+
+If you are using an IPv6 local connection:
+
+> host all all ::1/128 ident map=ppas
+
+4\. Restart the Advanced Server service before invoking EDB\*Plus.
+
+## Infinite Cache
+
+Unless otherwise noted, the commands and paths noted in the following section assume that you have performed an installation with the interactive installer.
+
+Please note: Infinite Cache has been deprecated and may be removed in a future release. Please contact your EnterpriseDB Account Manager or [mailto:sales@enterprisedb.com](mailto:sales@enterprisedb.com) for more information.
+
+InfiniteCache allows Linux systems to utilize memory on other computers connected to their network to increase the amount of memory in the shared buffer cache. For more information about Infinite Cache functionality, please refer to the *EDB Postgres (Postgres Plus) Migration Guide*, available from the EnterpriseDB website at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+After installing Advanced Server, you must provide configuration information for Infinite Cache, and start the service. You must:
+
+1.  Specify Infinite Cache server settings in the Infinite Cache configuration file.
+
+2.  Modify the Advanced Server postgresql.conf file, enabling Infinite Cache, and specifying connection and compression settings.
+
+3.  Start the Infinite Cache service.
+
+The Infinite Cache configuration file is named ppas-infinitecache, and contains two parameters and their associated values:
+
+| Parameter | Description                                                                                           | Default Value |
+| --------- | ----------------------------------------------------------------------------------------------------- | ------------- |
+| PORT      | The PORT variable specifies the port on which Infinite Cache listens for connections from the server. | 11211         |
+| CACHESIZE | The CACHESIZE variable specifies the default cache size (in mega-bytes)                               | 500           |
+
+By default, the file is located in the /opt/PostgresPlus/infinitecache/etc directory. To modify a parameter value, open the ppas-infinitecache file with your editor of choice, and edit the parameter values.
+
+To enable Infinite Cache, you must modify the postgresql.conf file, setting the values of the configuration parameters that control the behavior of Infinite Cache. To modify a parameter, open the postgresql.conf file (located in the data directory, under your Advanced Server installation), and locate the section of the configuration file shown below:
+
+\# - Infinite Cache
+\#edb\_enable\_icache = off
+\#edb\_icache\_servers = '' \#'host1:port1,host2,ip3:port3,ip4'
+\#edb\_icache\_compression\_level = 6
+
+Within the postgresql.conf file, lines that begin with a pound sign (\#) are treated as a comment; to edit a given parameter, remove the pound sign and specify a value for the parameter. When you've updated and saved the configuration file, restart the database server for the changes to take effect.
+
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>edb_enable_icache</td>
+<td><p>Use the edb_enable_icache parameter to enable or disable Infinite Cache. When edb_enable_icache is set to on, Infinite Cache is enabled; if the parameter is set to off, Infinite Cache is disabled.</p>
+<p>If you enable Infinite Cache, you must use the edb-icache_servers parameter to specify a list of cache servers.</p>
+<p>The default value is off.</p></td>
+</tr>
+<tr class="even">
+<td>edb_icache_servers</td>
+<td>Use the edb_icache_servers parameter to specify a list of one or more servers with active edb-icache daemons. Specify a string value that takes the form of a comma-separated list of hostname:port pairs. You may specify a maximum of 128 cache nodes.</td>
+</tr>
+<tr class="odd">
+<td>edb_icache_compression_level</td>
+<td><p>edb_icache_compression_level controls the compression level that is applied to each page before storing it in the distributed cache. The parameter must be greater than or equal to 0 or less than or equal to 9.</p>
+<p>A compression level of 0 disables compression, while a compression level of 9 invokes the maximum amount of compression. By default, this parameter is set to 6.</p></td>
+</tr>
+</tbody>
+</table>
+
+The following example shows a typical collection of Infinite Cache settings:
+
+edb\_enable\_icache = on
+
+edb\_icache\_servers = 'localhost,192.168.2.1:11200,192.168.2.2'
+
+edb\_icache\_compression\_level = 6
+
+After specifying configuration options, you must start the Infinite Cache service. Before starting the service, ensure that the edb-icache daemons are running on each server specified in edb\_icache\_servers parameter.
+
+The Infinite Cache service script is named ppas-infinitecache. The service script resides in the /etc/init.d directory. For detailed information about stopping or starting a service on your platform, please see Section <span class="underline">5</span>.
+
+## Language Pack
+
+Language Pack installers contain supported languages that may be used with the Advanced Server and PostgreSQL database installers. The Language Pack installer allows you to create languages for PL/Perl, PL/Tcl, and PL/Python without installing supporting software from third party vendors.
+
+The Language Pack installer includes:
+ - Tcl with TK, version 8.5
+ - Perl, version 5.20
+ - Python, version 3.3
+
+You can use StackBuilder Plus to invoke the Language Pack installer. For information about using StackBuilder Plus, see [Section 4.5](#_Using_StackBuilder_Plus_15).
+
+The Perl package contains the cpan package manager, and Python contains pip and easy\_install package managers. There is no package manager for Tcl/TK.
+
+***Configuring Language Pack on Linux***
+
+On Linux, the installer places the languages in:
+
+> /opt/EnterpriseDB/LanguagePack/9.5/
+
+If you install Language Pack before Advanced Server, the Advanced Server installer will detect the Language Pack installation, and set the paths in the plLanguages.config file for you.
+
+If you are invoking the Advanced Server installer using the --extract-only option, or if you install Language Pack after installing Advanced Server, you must manually configure the installation. The Language Pack configuration file is named:
+
+> /opt/PostgresPlus/9.5AS/etc/sysconfig/plLanguages.config
+
+If you are installing Language Pack on a system that already hosts an Advanced Server installation, use your editor of choice to modify the plLanguages.config file, and modify the entries to include the locations of each language:
+
+EDB\_PERL\_VERSION=5.20
+
+EDB\_PYTHON\_VERSION=3.3
+
+EDB\_TCL\_VERSION=8.5
+
+EDB\_PERL\_PATH=/opt/EnterpriseDB/LanguagePack/9.5/Perl-5.20
+
+EDB\_PYTHON\_PATH=/opt/EnterpriseDB/LanguagePack/9.5/Python-3.3
+
+EDB\_TCL\_PATH=/opt/EnterpriseDB/LanguagePack/9.5/Tcl-8.5
+
+After modifying the plLanguages.config file, restart the server for the changes to take effect. See [Section 5](#managing-an-advanced-server-installation) for detailed information about restarting the server.
+
+***Configuring Language Pack on Windows***
+
+On Windows, the Language Pack installer places the languages in:
+
+> C:\\EnterpriseDB\\PostgreSQL\\LanguagePack\\9.5\\x64
+
+After installing Language Pack, you must set the following variables:
+
+set PYTHONHOME=C:\\EnterpriseDB\\PostgreSQL\\LanguagePack\\9.5\\x64\\Python-3.3
+
+Use the following commands to add Python, Perl and Tcl to your search path:
+
+set PATH=C:\\EnterpriseDB\\PostgreSQL\\LanguagePack\\9.5\\x64\\Python-3.3\\bin:C:\\EnterpriseDB\\PostgreSQL\\LanguagePack\\9.5\\x64\\Perl-5.20\\bin:C:\\EnterpriseDB\\PostgreSQL\\LanguagePack\\9.5\\x64\\Tcl-8.5\\bin:%PATH%
+
+After performing the system-specific steps required to configure Language Pack on Windows, restart the Advanced Server database server; see [Section 5](#managing-an-advanced-server-installation) for detailed information about restarting the server.
+
+***Configuring Language Pack on OSX***
+
+If you are installing Language Pack on a PostgreSQL host on OSX, the Language Pack installer places the languages in:
+
+> /Library/PostgreSQL/LanguagePack/9.5
+
+After installing Language Pack, you must set the following variables:
+
+> export PERLHOME=/Library/PostgreSQL/LanguagePack/9.5/Perl-5.20
+> export PYTHONHOME=/Library/PostgreSQL/LanguagePack/9.5/Python-3.3
+> export TCLHOME=/Library/PostgreSQL/LanguagePack/9.5/Tcl-8.5
+
+Use the following commands to add Python, Perl and Tcl to your search path:
+
+> export PATH=$PYTHONHOME/bin:$PERLHOME/bin:$TCLHOME/bin:$PATH
+> export DYLD\_LIBRARY\_PATH=$PYTHONHOME/lib:$DYLD\_LIBRARY\_PATH
+> export DYLD\_LIBRARY\_PATH=$PERLHOME/lib/CORE:$DYLD\_LIBRARY\_PATH
+> export DYLD\_LIBRARY\_PATH=$TCLHOME/lib:$DYLD\_LIBRARY\_PATH
+
+After performing the system-specific steps required to configure Language Pack on OSX, restart the Advanced Server database server; for information about restarting the server, consult the documentation available at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+***Known Language Pack Restrictions:***
+
+(1) The current set of installers can only be installed in a fixed location. The packages are not relocatable.
+
+(2) There is no package manager for Tcl.
+
+(3) The installer will only extract in the stated installation path.
+
+***Known Bugs:***
+
+1)  On Windows, the pythonw.exe, pyw.exe and other binaries may produce an error, reporting fault module in a MSVCR120.dll.
+
+## Migration Toolkit - Configuring an RPM Installation
+
+Please note that you must install a Java environment before invoking EDB\*Plus or Migration Toolkit or before using PL/Java or the JDBC connector.
+
+If you have performed an RPM installation of Migration Toolkit, you must perform the following steps before invoking Migration Toolkit.
+
+***Using Migration Toolkit with IDENT Authentication***
+
+By default, the pg\_hba.conf file for the RPM installer enforces IDENT authentication for remote clients. Before invoking Migration Toolkit, you must either modify the pg\_hba.conf file, changing the authentication method to a form other than IDENT (and restarting the server), or perform the following steps to ensure that an IDENT server is accessible:
+
+1\. Confirm that an identd server is installed and running. For example, you can use the yum package manager to install an identd server by invoking the command:
+
+> yum install xinetd authd
+
+The command should create a file named /etc/xinetd.d/auth that contains:
+
+> service auth
+> {
+> disable = no
+> socket\_type = stream
+> wait = no
+> user = ident
+> cps = 4096 10
+> instances = UNLIMITED
+> server = /usr/sbin/in.authd
+> server\_args = -t60 --xerror --os
+> }
+
+Note: if the file includes a -E argument at the end of server\_args, please erase the -E.
+
+Then, to start the identd server, invoke the commands:
+
+> systemctl enable xinetd
+>
+> systemctl start xinetd
+
+2\. Open the pg\_ident.conf file and create a user mapping:
+
+\# map\_name system\_username postgres\_username
+
+ppas enterprisedb enterprisedb
+
+Where:
+
+> The name specified in the map\_name column is a user-defined name that will identify the mapping in the pg\_hba.conf file.
+>
+> The name specified in the system\_username column is enterprisedb.
+>
+> The name specified in the postgres\_username is enterprisedb.
+
+3\. Open the pg\_hba.conf file and modify the IDENT entries.
+
+If you are using an IPv4 local connection, modify the file entry to read:
+
+> host all all 127.0.0.0/0 ident map=ppas
+
+If you are using an IPv6 local connection:
+
+> host all all ::1/128 ident map=ppas
+
+4\. Restart the Advanced Server service before invoking Migration Toolkit.
+
+For more information about using Migration Toolkit, see the *EDB Postgres Migration Toolkit Guide*, available at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+## pgAgent
+
+Unless otherwise noted, the commands and paths in the following section assume that you have performed an installation with the interactive installer.
+
+pgAgent is a job scheduling agent for Advanced Server. When you schedule a pgAgent job, the scheduling agent records the job definition in a scheduling table. The pgAgent service (running in the background) monitors the scheduling table and executes jobs at their scheduled time.
+
+The Advanced Server installer creates the scheduling tables required by the pgAgent service under schema pgagent. If you are installing Advanced Server in Compatible with Oracle mode (the default), the scheduling tables are created in the edb database; if you are installing in PostgreSQL mode, the tables are created in the postgres database.
+
+You can use the Postgres Enterprise Manager Client (available from EnterpriseDB) to conveniently schedule and manage pgAgent jobs. The PEM Client also offers online documentation for pgAgent.
+
+To use the DBMS\_JOB package compatible with Oracle databases from a database other than the edb database, you must install the pgAgent schema into each additional database in which you wish to schedule jobs. To install the pgAgent schema, you must:
+
+> 1\) Connect to the target database.
+>
+> 2\) Invoke the pgagent.sql script.
+
+When installed with the RPM package, the pgagent.sql script is located in /usr/share/ppas95-pgagent-3.4.1. When installed with the interactive installer, the script is located in /opt/PostgresPlus/9.5AS/share/extension.
+
+The pgAgent script will install the scheduling tables in the target database.
+
+***Installing the pgAgent Service on Linux***
+
+If you installed Advanced Server using the interactive installer, pgAgent is installed as well. The pgagent program is installed under the bin subdirectory of the Advanced Server installation directory along with the required startup scripts, subdirectories for logging, etc.
+
+Similarly, if you installed Advanced Server using the ppas95 RPM package or the ppas95-pgagent RPM package, pgAgent is installed. The pgagent program is installed under the bin subdirectory of the Advanced Server installation directory along with the required startup scripts, subdirectories for logging, etc.
+
+As already stated, when the interactive installer is used, the pgagent schema and its scheduling tables are created in either the edb database or the postgres database.
+
+When the RPM package is used, the pgagent schema and its scheduling tables are not automatically created. The scheduling tables must be created by connecting to the desired database and executing the pgagent.sql script as previously described.
+
+When the interactive installer is used, a script named servicemanager.sh along with other supporting files is installed under the installer/pgAgent subdirectory of the Advanced Server location for providing an alternative method for managing pgAgent.
+
+The servicemanager.sh script can be used to install pgAgent, uninstall pgAgent, start the pgAgent service, stop the pgAgent service, or disable the automatic startup of pgAgent.
+
+**Note:** The servicemanager.sh script is only provided when the interactive installer is used, and the same functionality provided by this script can be accomplished using the methods described in Chapter <span class="underline">5</span>.
+
+The following section describes the usage of this script.
+
+***Using Script servicemanager.sh on Linux***
+
+You must have superuser privileges to manage the pgAgent service using the servicemanager.sh script.
+
+When invoking the servicemanager.sh script, the current working directory from where the script is invoked must be /opt/PostgresPlus/9.5AS/installer/pgAgent.
+
+If for whatever reason, you need to reinstall pgAgent using the servicemanager.sh script, you must create the pgpass file in the following directory:
+
+> /opt/PostgresPlus/9.5AS/installer/pgAgent/
+
+The file should contain a set of connection properties that reflect the properties specified during the Advanced Server installation process. The format of an entry in the pgpass file is as follows:
+
+> *hostname:port:database:username:password*
+
+Where:
+
+> *hostname* specifies name of the Advanced Server host.
+>
+> *port* specifies the port on which the Advanced Server host is listening.
+>
+> *database* specifies the name of the database.
+>
+> *username* specifies the name of an Advanced Server user.
+>
+> *password* specifies the password of the database in which the scheduling table resides.
+
+For example:
+
+> localhost:5444:\*:enterprisedb:edb
+
+After creating the pgpass file, execute the following commands as the root user to install the pgAgent service and create the startup file. The script configures the pgAgent executor to run in the background at system startup.
+
+cd /opt/PostgresPlus/9.5AS/installer/pgAgent
+
+./servicemanager.sh *component\_name user\_name install\_dir service\_name action\_type version data\_dir pg\_host pg\_port pg\_user pg\_database*
+
+This command takes the following arguments:
+
+> *component\_name* - Specify pgAgent.
+>
+> *user\_name* - Specify the Linux operating system account that runs Advanced Server. For example, this is enterprisedb if installed with the mode compatible with Oracle databases. This is postgres if installed with the mode compatible with PostgreSQL databases.
+>
+> *install\_dir* - Specify the Advanced Server installation directory.
+>
+> *service\_name* - Specify ppas-agent-9.5.
+>
+> *action\_type* - Specify install to install pgAgent, uninstall to uninstall pgAgent, start to start up the pgAgent service, stop to stop the pgAgent service, or disable\_autostart to prevent automatic startup of the pgAgent service.
+>
+> *version* - Specify 9.5.
+>
+> *data\_dir* - Specify the Advanced Server data directory (for example, /opt/PostgresPlus/9.5AS/data).
+>
+> *pg\_host* - Specify the name or IP address of the target database server's host.
+>
+> *pg\_port* - Specify the port number of the target database server.
+>
+> *pg\_user* - Specify the name of the database user listed in the pgpass file (for example, enterprisedb).
+>
+> *pg\_database* - Specify the name of the target database.
+
+The following is an example of an installation:
+
+\[root@localhost \~\]\# cd /opt/PostgresPlus/9.5AS/installer/pgAgent
+
+\[root@localhost pgAgent\]\# ./servicemanager.sh pgAgent enterprisedb \\
+
+\> /opt/PostgresPlus/9.5AS ppas-agent-9.5 \\
+
+\> install 9.5 /opt/PostgresPlus/9.5AS/data \\
+
+\> 127.0.0.1 5444 enterprisedb edb
+
+./servicemanager.sh ran to completion
+
+After installing the service, you should remove the password from the pgpass file so that the password is not available to other users.
+
+The following example starts the pgAgent service:
+
+\[root@localhost pgAgent\]\# ./servicemanager.sh pgAgent enterprisedb \\
+
+\> /opt/PostgresPlus/9.5AS ppas-agent-9.5 \\
+
+\> start 9.5 /opt/PostgresPlus/9.5AS/data \\
+
+\> 127.0.0.1 5444 enterprisedb edb
+
+Starting ppas-agent-9.5 \[ OK \]
+
+INFO: \[PID: 11135\]
+
+INFO: \[CMD: /opt/PostgresPlus/9.5AS/bin/pgagent -l 1 -s /var/log/ppas-agent-9.5/ppas-agent-9.5.log hostaddr=127.0.0.1 port=5444 dbname=edb user=enterprisedb\]
+
+MSG: \[ppas-agent-9.5 started\]
+
+INFO: \[Please see service script file /var/log/ppas-agent-9.5/ppas-agent-9.5\_script.log for details\]
+
+./servicemanager.sh ran to completion
+
+The following example stops the pgAgent service:
+
+\[root@localhost pgAgent\]\# ./servicemanager.sh pgAgent enterprisedb \\
+
+\> /opt/PostgresPlus/9.5AS ppas-agent-9.5 \\
+
+\> stop 9.5 /opt/PostgresPlus/9.5AS/data \\
+
+\> 127.0.0.1 5444 enterprisedb edb
+
+INFO: \[PID: 11135\]
+
+INFO: \[CMD: /opt/PostgresPlus/9.5AS/bin/pgagent -l 1 -s /var/log/ppas-agent-9.5/ppas-agent-9.5.log hostaddr=127.0.0.1 port=5444 dbname=edb user=enterprisedb\]
+
+Stopping ppas-agent-9.5 \[ OK \]
+
+MSG: \[ppas-agent-9.5 stopped\]
+
+INFO: \[Please see service script file /var/log/ppas-agent-9.5/ppas-agent-9.5\_script.log for details\]
+
+./servicemanager.sh ran to completion
+
+***Installing the pgAgent Service on Windows***
+
+pgAgent also provides an alternate command line argument that allows you to install or remove the pgAgent service on a Windows system. Use the following command to install the pgAgent service:
+
+> pgagent INSTALL ser*vice*\_*name* \[*options*\] *connection*\_*string*
+
+Where:
+
+> *service*\_*name* specifies the name of the pgAgent service.
+>
+> *options*
+
+| Option | Description                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| \-u    | specifies a user or DOMAIN\\user                                                                                                           |
+| \-p    | specifies a password associated with that user                                                                                             |
+| \-d    | specifies a display name for the user                                                                                                      |
+| \-t    | specifies a poll time interval (in seconds). The default value is 10.                                                                      |
+| \-r    | specifies a retry period after connection abort (in seconds) Specify a value greater than or equal to 10; the default is 30.               |
+| \-l    | specifies a logging verbosity. Specify a 0 to log ERROR messages, 1 to log WARNING messages, or 2 to log DEBUG messages. The default is 0. |
+
+*connection*\_*string* specifies connection information for an Advanced Server host.
+
+For example, the following command creates a pgAgent service on a Windows platform:
+
+%EDB\_HOME%\\bin\\pgagent INSTALL jobscheduler -u enterprisedb -p 1safepassword hostaddr=127.0.0.1 dbname=edb user=enterprisedb
+
+The example is:
+ - Running on the localhost.
+ - Connecting to a database called edb.
+ - Connecting as user enterprisedb.
+ - Using the password 1safepassword.
+
+You can optionally include the REMOVE keyword to remove a pgAgent service:
+
+> pgAgent REMOVE \<serviceName\>
+
+***Controlling the pgAgent Service***
+
+After installing the pgAgent service on either Linux or Windows, you must start the service. Please Note: if you stop or restart the Advanced Server service, the dependent pgAgent service is also stopped; you must manually restart the pgAgent service.
+
+For detailed information about controlling the pgAgent service, see Section <span class="underline">5</span>.
+
+## PgBouncer
+
+Unless otherwise noted, the commands and paths noted in the following section assume that you have performed an installation with the interactive installer.
+
+PgBouncer is a lightweight connection pooler for Advanced Server. During an Advanced Server installation, the Advanced Configuration window will offer you the opportunity to specify a PgBouncer Listening Port, and allow you to specify a PgBouncer autostart preference. By default, PgBouncer is configured to monitor port 6432, and to start automatically when the operating system starts.
+
+***Configuring PgBouncer***
+
+When the PgBouncer service is running, any Postgres Client connecting to the PgBouncer listener port specified in the configuration file will use connection pooling. PgBouncer connection and configuration information is stored in the pgbouncer.ini file, located under in the share directory, under your Advanced Server installation.
+
+The PgBouncer configuration file is divided into two sections: \[databases\] and \[pgbouncer\].
+
+The \[databases\] section of the configuration file contains a list of databases and the associated connection information; in an Advanced Server installation, the configuration file contains an entry for the installation of Advanced Server that installed PgBouncer:
+
+> edb = host=127.0.0.1 port=5444
+
+You can specify additional database connection information in the configuration file in the form of *keyword*=*value* pairs. You can include the following parameters:
+
+| Parameter | Description                                                                         |
+| --------- | ----------------------------------------------------------------------------------- |
+| name      | The name of the database to which the client application will connect.              |
+| host      | The IP address of the host.                                                         |
+| port      | The port on which the host is listening.                                            |
+| dbname    | The (optional) database name.                                                       |
+| user      | A username (if different than the information specified by the connecting client ). |
+| password  | A password (if different than the information specified by the connecting client).  |
+
+The following example demonstrates the syntax allowed in the \[databases\] section of the configuration file:
+
+> \[databases\]
+>
+> edb = host=127.0.0.1 port=5444
+>
+> acctg = host=192.168.10.101 port=5432 user=lola password=1safe\_pwd\!
+
+Include the dbname parameter to map the connection name to an alternate database name. For example:
+
+> hr = host=127.0.0.1 port=5444 dbname=humanresources
+
+Please note that the connection information will vary according to the platform, client software and identity you are connecting with. PgBouncer uses the information provided in the connection string to connect to the database server. Specifying a user in the pgbouncer.ini file overrides user details supplied by the client. If the client provides user information, that information is used to connect to PgBouncer, which in turn uses the information specified in the PgBouncer configuration file to connect to the server. The details of the user specified in the configuration file must be defined in the database cluster.
+
+Note: If you do not specify user details in pgbouncer.ini, the username and password will be authenticated by the database server and PgBouncer. As such, the username and password should be included in the userlist.txt file and the database cluster.
+
+The \[pgbouncer\] section of the configuration file contains configuration details specific to PgBouncer:
+
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>admin_users</td>
+<td>A comma-delimited list of users that are allowed to access the Admin Console (for management and monitoring purposes). By default, PgBouncer is installed with an admin_user named enterprisedb.</td>
+</tr>
+<tr class="even">
+<td>auth_file</td>
+<td><p>The path to the authentication file that contains username and passwords of clients that may connect to PgBouncer. The authentication file (userlist.txt) is located in /opt/PostgresPlus/pgbouncer/etc, and contains username/password pairs that specify the identities that clients may use to access PgBouncer. Within the authentication file, the username and password must be specified within double-quotes, as shown below:</p>
+<blockquote>
+<p>"user_name" "password"</p>
+</blockquote>
+<p>To make changes to the identities that can access PgBouncer, you can edit the existing authentication file, or specify an alternate authentication file with the auth_file parameter.</p></td>
+</tr>
+<tr class="odd">
+<td>auth_type</td>
+<td>The authentication method used by PgBouncer. May be: md5, crypt, plain, trust or any. The default value is md5.</td>
+</tr>
+<tr class="even">
+<td>listen_addr</td>
+<td>The IP address on which PgBouncer listens for client connections. If omitted, only Unix socket connections are allowed; the client must also reside on the same host as PgBouncer and may not specify a host IP address when connecting to PgBouncer.</td>
+</tr>
+<tr class="odd">
+<td>listen_port</td>
+<td>The port that PgBouncer monitors for client connections. By default, PgBouncer listens on port 6432.</td>
+</tr>
+<tr class="even">
+<td>logfile</td>
+<td>The path to the PgBouncer log file.</td>
+</tr>
+<tr class="odd">
+<td>pidfile</td>
+<td>The path to the process ID file.</td>
+</tr>
+<tr class="even">
+<td>pool_mode</td>
+<td>The value of pool_mode specifies when the server connection can be made available to the connection pool. May be: session, transaction or statement. The default value is session.</td>
+</tr>
+</tbody>
+</table>
+
+The following example demonstrates the syntax allowed in the \[pgbouncer\] section of the configuration file:
+
+> \[pgbouncer\]
+>
+> logfile = /var/log/pgbouncer-1.6/pgbouncer.log
+>
+> pidfile = /var/run/pgbouncer-1.6/pgbouncer-1.6.pid
+>
+> listen\_addr = \*
+>
+> listen\_port = 6432
+>
+> auth\_type = md5
+>
+> auth\_file = /opt/PostgresPlus/PgBouncer-1.6/etc/userlist.txt
+>
+> admin\_users = enterprisedb
+>
+> pool\_mode = session
+
+After editing the PgBouncer configuration file to reflect your environment, you must restart the PgBouncer service for the changes to take effect. For detailed information about controlling the PgBouncer service, see Section <span class="underline">5</span>.
+
+***Using the PgBouncer Admin Console***
+
+The Admin Console allows you to retrieve statistical information about PgBouncer activity, and to control the PgBouncer process. You can use the psql client to access the PgBouncer Admin Console by connecting to the pgbouncer database. The following example connects to the pgbouncer database with the psql client on a Linux system. PgBouncer is listening on port 6432, with a user name of enterprisedb:
+
+> \# ./psql -p 6432 -U enterprisedb pgbouncer
+
+Please note that the required connection information will vary according to the connecting client, platform and authentication information required by the server.
+
+After connecting to the pgbouncer database, you can use the SHOW CLIENTS command to retrieve client-related information:
+
+> \# SHOW CLIENTS;
+
+The SHOW CLIENTS command returns:
+
+> \--\[ RECORD 1\]-+--------------------
+> type | C
+> user | postgres
+> database | pgbouncer
+> state | active
+> addr | unix
+> port | 6432
+> local\_addr | unix
+> local\_port | 6432
+> connect\_time | 2010-05-25 05:26:20
+> request\_time | 2010-05-25 05:39:46
+> ptr | 0x8655d20
+> link |
+
+You can use other variations of the SHOW command to retrieve information about PgBouncer:
+
+> SHOW STATS
+> SHOW SERVERS
+> SHOW POOLS
+> SHOW LISTS
+> SHOW USERS
+> SHOW DATABASES
+> SHOW FDS
+> SHOW CONFIG
+
+You can use the following commands to control the PgBouncer process:
+
+PAUSE
+
+> Use the PAUSE command to disconnect all servers after waiting for current queries to complete.
+
+SUSPEND
+
+> Use the SUSPEND command to flush the socket buffers and suspend the PgBouncer process.
+
+RESUME
+
+> Use the RESUME command to resume work after a PAUSE or SUSPEND command.
+
+SHUTDOWN
+
+> Use the SHUTDOWN command to stop the PgBouncer process and exit.
+
+RELOAD
+
+> Use the RELOAD command to reload the PgBouncer configuration files.
+
+For more information about using PgBouncer, visit:
+
+<http://pgbouncer.projects.pgfoundry.org/doc/usage.html>
+
+## pgpool-II
+
+Unless otherwise noted, the commands and paths noted in the following section assume that you have performed an installation with the interactive installer.
+
+The pgpool-II utility package acts as a middleman between client applications and Server database servers. pgpool-II functionality is transparent to client applications; client applications connect to pgpool-II instead of directly to Advanced Server, and pgpool-II manages the connection. EnterpriseDB supports the following pgpool-II features:
+ - Load balancing
+ - Connection pooling
+ - High availability
+ - Connection limits
+
+pgpool-II runs as a service on Linux systems, and is not supported on Windows systems. pgpool-II functionality is controlled via configuration parameter settings made in the configuration files. If you have used the graphical installer, the configuration files are located in:
+
+> /opt/PostgresPlus/pgpool-II-3.4/etc/pgpool.conf
+> /opt/PostgresPlus/pgpool-II-3.4/etc/pool\_hba.conf
+> /opt/PostgresPlus/pgpool-II-3.4/etc/pcp.conf
+
+If you have used an RPM package to install pgpool-II, the configuration files are located in:
+
+> /etc/ppas-pgpool34/pgpool.conf
+>
+> /etc/ppas-pgpool34/pool\_hba.conf
+>
+> /etc/ppas-pgpool34/pcp.conf
+
+After modifying the parameter settings that implement pgpool-II functionality for your installation, you must restart the pgpool service. For detailed information about controlling the pgpool service, see Section <span class="underline">5</span>.
+
+Please note that the configuration options for pgpool-II are extensive; the options listed below should be considered a starting point only. For more information about configuring and using pgpool-II, please consult the project website at:
+
+<http://www.pgpool.net/mediawiki/index.php/Main_Page>
+
+***pgpool-II Host Setup***
+
+When pgpool-II starts, it records its process ID in a file whose name is determined by the pid\_file\_name configuration parameter. The initial value of the pid\_file\_name parameter in the sample file is:
+
+> pid\_file\_name = '/var/run/pgpool/pgpool.pid'
+
+Please note that the contents of the /var/run directory (including the pgpool directory) may be removed by the operating system during a reboot. The /var/run/pgpool directory should NOT be used as the location for the pgpool.pid file.
+
+Modify the pid\_file\_name parameter to specify a safer directory location. For example:
+
+> pid\_file\_name = '/var/run/ppas-pgpool34/ppas-pgpool34.pid'
+
+The /var/run directory will persist after a system reboot, and if removed by the operating system, the pgpool.pid file will be recreated by pgpool-II upon startup.
+
+***Configuring Connection Pooling***
+
+pgpool-II provides a set of child processes that maintain cached connections to one or more database servers. When a client connects, pgpool-II attempts to reuse a connection from its pool, thus avoiding the overhead of opening and closing client connections.
+
+A connection in the pool can be reused only if the target database and the connection user match a prior connection that is currently in the pool. Connection pooling configuration options (such as the number of child processes, and the maximum number of cached connections per child) are specified in the pgpool.conf file.
+
+To configure connection pooling with one database server:
+
+1.  Configure the pg\_hba.conf file on the pgpool host to permit connections between the clients and the server.
+
+2.  Copy the pgpool.conf.sample file to pgpool.conf, and modify the file, setting the connection\_cache parameter to on, and specifying connection properties for your database server.
+
+> For example:
+>
+> connection\_cache = on
+>
+> backend\_hostname0 = 'localhost'
+>
+> backend\_port0 = 5444
+>
+> backend\_weight0 = 1
+>
+> backend\_data\_directory0 = '/opt/PostgresPlus/9.5AS/data'
+>
+> Note that in the pgpool.conf file, connection parameters have an appended digit that specifies a cluster node identifier. Database node 0 specifies values for the master node.
+
+3.  Optionally, configure pgpool-II client authentication.
+
+4.  Optionally, configure the PCP administrative interface.
+
+5.  Start pgpool-II and begin using your application.
+
+***Configuring Streaming Replication and pgpool-II Load Balancing***
+
+EnterpriseDB supports replication scenarios that use pgpool-II load balancing with PostgreSQL streaming replication or Slony replication. The supported replication methods ensure that database updates made by client applications are applied to multiple backend servers. For detailed information about the benefits of each replication method and detailed configuration instructions, please review project documentation for each utility.
+
+When load balancing is enabled, pgpool-II distributes some types of SELECT statements to backend servers, allowing multiple database servers and hosts to share the processing load of SELECT statements issued by client applications.
+
+When configuring pgpool-II load balancing, it is crucial that the initial database environments in all backend servers are identical:
+ - Tables must have the same name, definition, and row content.
+ - Schemas must exist in each backend application database.
+ - Roles and privileges must be comparably configured on each backend server to ensure that the result set of SQL statements are identical on all servers.
+
+If you use password authentication, the same password must be assigned to an associated user name on each database server. The same user name/password pair is used to connect pgpool-II to each backend connection.
+
+Within a replication scenario, each backend is uniquely identified by the host name (or IP address) and port number on which the database server instance is listening for connections. You must ensure that the pool\_hba.conf and pg\_hba.conf files allow a connection between that server and the host on which pgpool-II will be running.
+
+The following example demonstrates how to implement pgpool-II load balancing with two servers (the master and replica nodes) in a Streaming Replication scenario. Configuring pgpool-II load balancing for a Slony replication scenario is similar; please consult the Slony documentation for information about configuring Slony replication.
+
+**Step 1 - Configuring the Master Node of the Replication Scenario**
+
+Open an SSH session with the master node of the replication scenario, and modify the pg\_hba.conf file (located in the /opt/PostgresPlus/9.5AS/data directory), adding connection information for the replication user (in the example that follows, edbrepuser resides on a standby node with an IP address of 107.178.217.178):
+
+> host replication edbrepuser 107.178.217.178/32 md5
+
+The connection information should specify the address of the standby node of the replication scenario, and your preferred authentication method.
+
+Modify the postgresql.conf file (located in /opt/PostgresPlus/9.5AS/data), adding the following replication parameter and values to the end of the file:
+
+> wal\_level = hot\_standby
+> max\_wal\_senders = 3
+> checkpoint\_segments = 8
+> wal\_keep\_segments = 8
+
+Save the configuration file, and issue the following command in the OS Terminal window to restart the server:
+
+> /etc/init.d/ppas-9.5 restart
+
+Use the sudo su - command to assume the identity of the enterprisedb database superuser:
+
+> sudo su - enterprisedb
+
+Then, start a psql session, connecting to the edb database:
+
+> psql -d edb
+
+At the psql command line, create a user with the replication attribute:
+
+> CREATE ROLE edbrepuser WITH REPLICATION LOGIN PASSWORD 'password';
+
+**Step 2 - Configuring the Standby Node of the Replication Scenario**
+
+Open an SSH session with the Standby server, and assume the identity of the database superuser (enterprisedb):
+
+> sudo su - enterprisedb
+
+With your choice of editor, create a .pgpass file in the home directory of the enterprisedb user. The .pgpass file holds the password of the replication user in plain-text form; if you are using a .pgpass file, you should ensure that only trusted users have access to the .pgpass file:
+
+Add an entry that specifies connection information for the replication user:
+
+> \*:5444:\*:edbrepuser:password
+
+The server will enforce restrictive permissions on the .pgpass file; use the following command to set the file permissions:
+
+> chmod 600 .pgpass
+
+Relinquish the identity of the database superuser:
+
+> exit
+
+Then, assume superuser privileges:
+
+> sudo su -
+
+Use your platform-specific command to stop the database server before replacing the data directory on the Standby node with the data directory of the Master node. For information about controlling the service, see Section <span class="underline">5</span>.
+
+Then, delete the data directory on the Standby node:
+
+> rm -rf /opt/PostgresPlus/9.5AS/data
+
+After deleting the existing data directory, use the pg\_basebackup utility to copy the data directory of the Master node to the Standby:
+
+pg\_basebackup --pgdata=/opt/PostgresPlus/9.5AS/data
+\--format=p --label=standby --host=146.148.46.44
+\--username=edbrepuser --password --xlog-method=stream
+
+The call to pg\_basebackup specifies the IP address of the Master node and the name of the replication user created on the Master node.
+
+For more information about the options available with the pg\_basebackup utility, see the PostgreSQL core documentation at:
+
+<https://www.postgresql.org/docs/9.5/static/app-pgbasebackup.html>
+
+When prompted by pg\_basebackup, provide the password associated with the replication user.
+
+After copying the data directory, change ownership of the directory to the database superuser (enterprisedb):
+
+> chown -R enterprisedb /opt/PostgresPlus/9.5AS/data
+
+Navigate into the data directory:
+
+> cd /opt/PostgresPlus/9.5AS/data
+
+With your choice of editor, create a file named recovery.conf( in the /opt/PostgresPlus/9.5AS/data directory) that includes:
+
+> standby\_mode = on
+> trigger\_file = /tmp/trigger\_file
+> primary\_conninfo = 'host=146.148.46.44 port=5444
+> user=edbrepuser password=password'
+
+Please note: the primary\_conninfo parameter specifies connection information for the replication user on the master node of the replication scenario (in our example, edbrepuser resides on 146.148.46.44).
+
+Change ownership of the recovery.conf file to enterprisedb:
+
+> chown enterprisedb:enterprisedb recovery.conf
+
+Modify the postgresql.conf file (located in /opt/PostgresPlus/9.5AS/data), specifying the following values at the end of the file:
+
+> wal\_level = hot\_standby
+> hot\_standby = on
+
+The data file has been copied from the Master node, and will contain the replication parameters specified previously.
+
+Then, restart the server:
+
+> /etc/init.d/ppas-9.5 start
+
+At this point, the Master node will be replicating data to the Standby node.
+
+**Step 3 - Configuring pgpool-II Load Balancing**
+
+Use your choice of editor to modify the pgpool.conf file. Within the pgpool.conf file, modify the parameter settings to specify that load balancing is enabled:
+
+> load\_balance\_mode = true
+
+Then, specify the connections settings for the master database node in the parameter set that ends with a 0. For example:
+
+> backend\_hostname0 = '146.148.46.44'
+>
+> backend\_port0 = 5444
+>
+> backend\_weight0 = 1
+>
+> backend\_data\_directory0 = '/opt/PostgresPlus/9.5AS/data'
+
+Then, specify the connections settings for each node to which queries will be distributed. Increment the number that follows the parameter name for each node, and provide connection details:
+
+> backend\_hostname1 = '107.178.217.178'
+>
+> backend\_port1 = 5444
+>
+> backend\_weight1 = 1
+>
+> backend\_data\_directory1 = '/opt/PostgresPlus/9.5AS/data'
+
+Use the backend\_weight parameter to specify how queries will be distributed amongst the nodes. Specify a value of 1 to indicate that you wish (qualified) queries to be equally distributed across the nodes of the replication scenario.
+
+**Step 4 - Restart pgpool-II and begin using your application**
+
+> For detailed information about starting the pgpool-II service, see Section <span class="underline">5</span>.
+
+***Commonly Used pgpool-II Parameters***
+
+The following table lists pgpool.conf parameters that are used when implementing connection pooling:
+
+| Parameter Name            | Description                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pool\_conn\_dbname        | Database name to which pgpool-II will connect. By default, pgpool-II will connect with postgres.                                                                                                    |
+| listen\_addresses         | Host name or IP address used by pgpool-II to listen for connections. Default is localhost. Change to '\*' for all addresses.                                                                        |
+| port                      | Port for pgpool-II connections. Default is 9999.                                                                                                                                                    |
+| pcp\_port                 | Port for PCP connections. Default is 9898.                                                                                                                                                          |
+| backend\_hostname0        | Host name or IP address for backend 0. You can specify '' if the backend and pgpool-II are running on the same host.                                                                                |
+| backend\_port0            | Port number for backend 0.                                                                                                                                                                          |
+| backend\_weight0          | Weight for backend 0 (only in load balancing mode). Specify 1 for each backend if you want the load equally balanced, or decimal values (.9, .1, etc.) to weight the load towards certain backends. |
+| backend\_data\_directory0 | Data directory for backend 0.                                                                                                                                                                       |
+| enable\_pool\_hba         | Set to on to use pool\_hba.conf for client authentication.                                                                                                                                          |
+| num\_init\_children       | Number of pools. Default is 32.                                                                                                                                                                     |
+| max\_pool                 | Number of connections per pool. Default is 4.                                                                                                                                                       |
+| connection\_cache         | Set to on to enable connection pooling.                                                                                                                                                             |
+
+The following table lists pgpool.conf parameters that are used when implementing replication and load balancing:
+
+| Parameter Name                | Description                                                                                                                                                                                                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Allow\_sql\_comments          | If on, ignore SQL comments; modifications to this parameter require a reload of the pgpool.conf file.                                                                                                                                                       |
+| load\_balance\_mode           | Set to on to activate load balancing mode. If load\_balance\_mode is on and replicate\_select is off, SELECT statements are sent to one backend. The proportion of SELECT statements each backend receives is determined by parameter backend\_weight\<N\>. |
+| ignore\_leading\_white\_space | Ignore leading white spaces of each query. Certain APIs such as DBI/DBD::Pg for Perl add white space that the user cannot control. Default is on.                                                                                                           |
+
+***pgpool-II Client Authentication Configuration***
+
+When pgpool-II is enabled, client applications connect to pgpool-II, which acts as a middleman for a Postgres server. A connecting client application is first authenticated with the pgpool-II server, and then authenticated with the Postgres server.
+
+pgpool-II authentication properties are determined by parameter settings in the pool\_hba.conf configuration file. The pool\_hba.conf file is similar in format and function to the Postgres pg\_hba.conf configuration file. Please consult the pgpool-II documentation for detailed information about pool\_hba.conf entries.
+
+To enable pgpool-II authentication:
+
+1.  Copy file pool\_hba.conf.sample to pool\_hba.conf.
+
+2.  Modify the pool\_hba.conf file, specifying authentication information for servers or users that you wish to allow to connect. Entries follow the same format used in the pg\_hba.conf file.
+
+3.  Modify the pgpool.conf file, setting the enable\_pool\_hba parameter to on.
+
+4.  Restart pgpool-II to reload the pgpool-II configuration files.
+
+Note: user names and passwords specified in the pool\_hba.conf file will be used for authentication with the database server; you must also specify those user names and passwords in the database server's pg\_hba.conf file.
+
+***Connecting a Client to pgpool-II***
+
+Client applications should connect directly to the pgpool-II listener port on the pgpool-II host. For example, to connect to the edb database (while using pgpool-II functionality), enter:
+
+> psql -d edb -U enterprisedb -h localhost -p 9999
+
+When invoked at the psql prompt, the following SHOW command keywords will display pgpool-II information:
+
+| Command              | Information Provided                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| SHOW pool\_status    | Displays pgpool-II configuration parameters and their name, value, and description.              |
+| SHOW pool\_nodes     | Displays a list of all configured nodes.                                                         |
+| SHOW pool\_processes | Displays a list of all pgpool-II processes waiting for connections or dealing with a connection. |
+| SHOW pool\_pools     | Displays a list of pools.                                                                        |
+| SHOW pool\_version   | Displays the pgpool-II release number.                                                           |
+
+***PCP Configuration***
+
+PCP is an administrative interface for pgpool-II that allows you to retrieve information about database nodes, pgpool-II child processes, etc. You should issue PCP commands from the Linux command line.
+
+Before using PCP commands, you must modify the pcp.conf file, providing user names and passwords that you supply whenever you issue a PCP command. The user names in the pcp.conf file are completely independent of the database server user names and passwords.
+
+Use the following steps to enable PCP:
+
+1.  Copy the pcp.conf.sample file to pcp.conf.
+
+2.  Add an entry to the pcp.conf file of the following form:
+
+> *username:md5\_password*
+>
+> where:
+>
+> *username* is a PCP user name.
+>
+> *md5\_password* is the PCP password in md5 format
+>
+> You can use the pg\_md5 program to generate the encrypted password from the clear-text form as shown below:
+>
+> $ pg\_md5 mypassword
+>
+> 34819d7beeabb9260a5c854bc85b3e44
+>
+> For example, the entry in the pcp.conf file for a PCP user named pcpuser with the password of mypassword is:
+>
+> \# USERID:MD5PASSWD
+> pcpuser:34819d7beeabb9260a5c854bc85b3e44
+
+3.  Restart the pgpool service. For information about restarting the pgpool service, see Section <span class="underline">5</span>.
+
+4.  When issuing a PCP command, specify the PCP user name and the unencrypted form of the password:
+
+> $ pcp\_node\_info 5 localhost 9898 pcpuser mypassword 0
+> localhost 5432 1 1.000000
+
+After configuring PCP, you can use PCP commands to control pgpool-II and retrieve information. Specify the following arguments when calling PCP commands:
+
+| Argument | Description                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| timeout  | Timeout value in seconds. PCP will disconnect if pgpool-II does not respond within the specified number of seconds. |
+| host     | The name of the pgpool-II host.                                                                                     |
+| port     | The PCP port number; the default value is 9898.                                                                     |
+| username | The PCP user name (as specified in pcp.conf.)                                                                       |
+| password | The password associated with the user name (as specified in pcp.conf).                                              |
+
+PCP recognizes the following commands:
+
+| PCP Command                                                           | Description                                                                                                                                                                                         |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pcp\_node\_*count timeout host port username password*                | Total number of nodes defined in pgpool.conf                                                                                                                                                        |
+| pcp\_node\_info *timeout host port username password nodeid*          | Displays information on the node given by \<nodeid\>                                                                                                                                                |
+| pcp\_proc\_count *timeout host port username password*                | Displays the pgpool-II child process IDs                                                                                                                                                            |
+| pcp\_proc\_info *timeout host port username password processid*       | Displays information on the pgpool-II child process given by \<processid\>                                                                                                                          |
+| pcp\_detach\_node \[-g\] *timeout host port username password nodeid* | Detaches the node specified by \<nodeid\> from pgpool-II. If -g is given, wait until all clients are disconnected (unless client\_idle\_limit\_in\_recovery is -1 or recovery\_timeout is expired). |
+| pcp\_attach\_node *timeout host port username password nodeid*        | Attaches the node specified by \<nodeid\> to pgpool-II.                                                                                                                                             |
+
+## pgsnmpd
+
+pgsnmpd is an SNMP agent that can return hierarchical information about the current state of Advanced Server on a Linux system. pgsnmpd is distributed with and installed by the Advanced Server installer as part of the Database Server component. The pgsnmpd agent can operate as a stand-alone SNMP agent, as a pass-through sub-agent, or as an AgentX sub-agent.
+
+After installing Advanced Server, you will need to update the LD\_LIBRARY\_PATH variable. Use the command:
+
+$export LD\_LIBRARY\_PATH=/opt/PostgresPlus/9.xAS/lib:$LD\_LIBRARY\_PATH
+
+Where *x* specifies the server version.
+
+This command does not persistently alter the value of LD\_LIBRARY\_PATH; consult the documentation for your distribution of Linux for information about persistently setting the value of LD\_LIBRARY\_PATH.
+
+The examples that follow demonstrate the simplest usage of pgsnmpd, implementing read only access. pgsnmpd is based on the net-snmp library; for more information about net-snmp, please visit:
+
+<http://net-snmp.sourceforge.net>
+
+***Configuring pgsnmpd***
+
+The pgsnmpd configuration file is named snmpd.conf. For information about the directives that you can specify in the configuration file, please review the snmpd.conf man page (man snmpd.conf).
+
+You can create the configuration file by hand, or you can use the snmpconf perl script to create the configuration file. The perl script is distributed with net-snmp package. net-snmp is an open-source package available from:
+
+<http://www.net-snmp.org>
+
+To use the snmpconf configuration file wizard, download and install net-snmp. When the installation completes, open a command line and enter:
+
+> snmpconf
+
+When the configuration file wizard opens, it may prompt you to read in an existing configuration file. Enter none to generate a new configuration file (not based on a previously existing configuration file).
+
+snmpconf is a menu-driven wizard. Select menu item 1: snmpd.conf to start the configuration wizard. As you select each top-level menu option displayed by snmpconf, the wizard walks through a series of questions, prompting you for information required to build the configuration file. When you have provided information in each of the category relevant to your system, enter Finished to generate a configuration file named snmpd.conf. Copy the file to:
+
+> /opt/PostgresPlus/9.*x*AS/share
+
+Where *x* specifies the server version.
+
+***Setting the Listener address***
+
+By default, pgsnmpd listens on port 161. If the listener port is already being used by another service, you may receive the following error:
+
+> Error opening specified endpoint "udp:161".
+
+You can specify an alternate listener port by adding the following line to your snmpd.conf file:
+
+> agentaddress *$host\_address*:2000
+
+The example instructs pgsnmpd to listen on UDP port 2000, where *$host\_address* is the IP address of the server (e.g. 127.0.0.1).
+
+***Invoking pgsnmpd***
+
+Ensure that an instance of Advanced Server is up and running (pgsnmpd will connect to this server). Open a command line and assume super-user privileges, before invoking pgsnmpd with a command that takes the following form:
+
+*path\_to\_PPAS*/bin/pgsnmpd -b -c *path\_to\_PPAS*/share/snmpd.conf -C "user=enterprisedb dbname=edb password=safe\_password port=5444"
+
+Where *path\_to\_PPAS* specifies the Advanced Server installation directory.
+
+Include the -b option to specify that pgsnmpd should run in the background.
+
+Include the -c option, specifying the path and name of the pgsnmpd configuration file.
+
+Include connection information for your installation of Advanced Server (in the form of a libpq connection string) after the -C option.
+
+***Viewing pgsnmpd Help***
+
+Include the --help option when invoking the pgsnmpd utility to view other pgsnmpd command line options:
+
+pgsnmpd --help
+
+Version PGSQL-SNMP-Ver1.0
+
+usage: pgsnmpd \[-s\] \[-b\] \[-c FILE \] \[-x address \] \[-g\] \[-C "Connect String"\]
+
+\-s : run as AgentX sub-agent of an existing snmpd process
+
+\-b : run in the background
+
+\-c : configuration file name
+
+\-g : use syslog
+
+\-C : libpq connection string
+
+\-x : address:port of a network interface
+
+\-V : display version strings
+
+***Requesting information from pgsnmpd***
+
+You can use net-snmp commands to query the pgsnmpd service. For example:
+
+snmpgetnext -v 2c -c public localhost .1.3.6.1.4.1.5432.1.4.2.1.1.0
+
+In the above example:
+
+\-v 2c option instructs the snmpgetnext client to send the request in SNMP version 2c format.
+
+\-c public specifies the community name.
+
+localhost indicates the host machine running the pgsnmpd server.
+
+.1.3.6.1.4.1.5432.1.4.2.1.1.0 is the identity of the requested object. To see a list of all databases, increment the last digit by one (e.g. .1.1, .1.2, .1.3 etc.).
+
+The encodings required to query any given object are defined in the MIB (Management Information Base). An SNMP client can monitor a variety of servers; the server type determines the information exposed by a given server. Each SNMP server describes the exposed data in the form of a MIB (Management information base). By default, pgsnmpd searches for MIB's in the following locations:
+
+> /usr/share/snmp/mibs
+>
+> $HOME/.snmp/mibs
+
+## PL/Java
+
+The PL/Java package allows you to create and execute Java stored procedures, triggers and functions via the JDBC interface. Unless otherwise noted, the commands and paths noted in the following section assume that you have performed an installation with the interactive installer.
+
+Before installing PL/Java for use with a standard Java virtual machine (JVM) on a Linux system, you must first confirm that a Java runtime environment (version 1.5 or later) is installed on your system. Installation of a Java development kit also provides a Java runtime environment.
+
+### Installing PL/Java on Linux
+
+The following steps outline the process of installing PL/Java on a Linux system:
+
+1.  Edit the postgresql.conf file and add (or modify) the following settings:
+
+> pljava.classpath='*path\_to\_PPAS*/lib/pljava.jar'
+>
+> Where *path\_to\_PPAS* specifies the location of the Advanced Server installation.
+
+2.  Restart the database server.
+
+3.  If your Java installation is not located in the system default location, you must ensure that Advanced Server can locate the JRE shared libraries. To instruct the server where to find the Java libraries, modify the Advanced Server service startup script or the user profile, setting the path to the Java library.
+
+> Please note: If you include the command that sets the path in the service startup script, any user that invokes the startup script will set the path when the service restarts. If you include the command that sets the path in a user profile, the path will only be set for the session that belongs to the user that connects using that profile.
+>
+> You can use your editor of choice to open the Advanced Server service script. The script is named:
+>
+> ppas-9.x
+>
+> Open the script file, and add the following line to the beginning of the script:
+>
+> { export LD\_LIBRARY\_PATH= \<\<*path\_to\_libjvm.so*\>\>:$LD\_LIBRARY\_PATH }
+>
+> Where *path\_to\_libjvm.so* specifies the location of the libjvm.so file. After saving the file, restart the server; for information about controlling the service, see Section <span class="underline">5</span>.
+
+4.  You can install PL/Java using either the installation script or the PL/Java Deployer application. Deployer is a Java client program that deploys PL/Java in the database.
+
+> The easiest method is to use the installation script. To run the installation script, login to the database in which you want to install PL/Java and use the following command to run the script:
+>
+> edb-psql=\# \\i *path\_to\_PPAS/*share/pljava\_install.sql
+>
+> Where *path\_to\_PPAS* specifies the location of the Advanced Server installation.
+>
+> Alternatively, you can use the PL/Java Deployer application. When invoking the Deployer application, you must specify a classpath that includes the deploy.jar file (by default, located in the lib subdirectory under your Advanced Server installation) and the edb‑jdbc1*x*.jar file (by default, located in the /opt/PostgresPlus/connectors/jdbc directory).
+>
+> The deploy.jar file contains the code for the deployer command; the edb‑jdbc1*x*.jar file includes the EnterpriseDB JDBC driver. Use the following command to invoke the Deployer application:
+>
+> java -cp *your\_classpath* org.postgresql.pljava.deploy.Deployer \[*options*\]
+>
+> Where *your\_classpath* specifies the search path to the compiled classes.
+>
+> You can include the following *options* when invoking the Deployer application:
+>
+> \-install
+>
+> Installs the Java language and the sqlj procedures. The deployer will fail if the language is already installed.
+>
+> \-reinstall
+>
+> Reinstalls the Java language and the sqlj procedures. This will effectively drop all jar files that have been loaded.
+>
+> \-remove
+>
+> Drops the Java language and the sqlj procedures and loaded jar files.
+>
+> \-user *user\_name*
+>
+> *user\_name* specifies the name of the user that is connecting to the database. Default is the current user.
+>
+> \-password *password*
+>
+> *password* specifies the password of the user that is connecting to the database. Default is no password.
+>
+> \-database *database*
+>
+> *database* specifies the name of the database to which to connect. The default value is edb.
+>
+> \-host *host\_name*
+>
+> *host\_name* specifies the name of the host. The default value is localhost.
+>
+> \-port *port\_number*
+>
+> *port\_number* specifies the Advanced Server port number. The default value is 5444.
+>
+> The following example uses the Deployer application to install PL/Java:
+>
+> java -cp /opt/PostgresPlus/connectors/connectors/jdbc/edb-jdbc16.jar:/opt/PostgresPlus/connectors/lib/deploy.jar org.postgresql.pljava.deploy.Deployer -install -user enterprisedb -password password -database edb -host localhost -port 5444
+>
+> Because of the complexity of this command line, we recommend storing the command line in a shell script or a .bat script.
+
+5.  Open the psql client and connect to the database in which PL/Java is installed. You can invoke the following command to display two rows indicating that Java and "Java Untrusted" have been installed in the database:
+
+> select \* from pg\_language where lanname like 'java%';
+
+### Installing PL/Java on Windows
+
+The following steps outline the process of installing PL/Java on a Windows system:
+
+1.  Edit the postgresql.conf file and add (or modify) the following settings:
+
+> pljava.classpath='*path\_to\_PPAS*/lib/pljava.jar'
+>
+> Where *path\_to\_PPAS* specifies the location of the Advanced Server installation.
+
+2.  Restart the database server.
+
+3.  Modify the PATH setting used by the edb-postmaster backend (if it runs as a service, you will normally change the System Environment setting) so that it contains the following two entries:
+
+> %JRE\_HOME%\\bin;%*JRE\_HOME*%\\bin\\client
+>
+> Where JRE\_HOME specifies the installation directory of your Java runtime environment. If you have a Java development kit, substitute the location of $JDK\_HOME/jre for JRE\_HOME.
+
+4.  You can use either the installation script or the PL/Java Deployer application to install PL/Java. Deployer is a Java client program that deploys PL/Java in the database.
+
+> The easiest method is to use the installation script. To run the installation script, login to the database in which you want to install PL/Java and use the following command to run the script:
+>
+> edb-psql=\# \\i *path\_to\_PPAS*/share/pljava\_install.sql
+>
+> Where *path\_to\_PPAS* specifies the location of the Advanced Server installation.
+>
+> Alternatively, you can use the PL/Java Deployer application. When invoking the Deployer application, you must specify a classpath that includes the deploy.jar file (by default, located in the lib subdirectory under your Advanced Server installation) and the edb‑jdbc1*x*.jar file (located in the connectors/jdbc subdirectory under your Advanced Server installation).
+>
+> The deploy.jar file contains the code for the deployer command; the edb‑jdbc1*x*.jar file includes the EnterpriseDB JDBC driver. Use the following command to invoke the Deployer application:
+>
+> java -cp *your\_classpath* org.postgresql.pljava.deploy.Deployer \[*options*\]
+>
+> Where *your\_classpath* specifies the search path to the compiled classes.
+>
+> You can include the following *options* when invoking the Deployer application:
+>
+> \-install
+>
+> Installs the Java language and the sqlj procedures. The deployer will fail if the language is already installed.
+>
+> \-reinstall
+>
+> Reinstalls the Java language and the sqlj procedures. This will effectively drop all jar files that have been loaded.
+>
+> \-remove
+>
+> Drops the Java language and the sqlj procedures and loaded jar files.
+>
+> \-user *user\_name*
+>
+> *user\_name* specifies the name of the user that is connecting to the database. Default is the current user.
+>
+> \-password *password*
+>
+> *password* specifies the password of the user that is connecting to the database. Default is no password.
+>
+> \-database *database*
+>
+> *database* specifies the name of the database to which to connect. The default value is edb.
+>
+> \-host *host\_name*
+>
+> *host\_name* specifies the name of the host. The default value is localhost.
+>
+> \-port *port\_number*
+>
+> *port\_number* specifies the Advanced Server port number. The default value is 5444.
+>
+> The following example uses the Deployer application to install PL/Java:
+>
+> java -cp "/opt/PostgresPlus/connectors\\\\connectors\\\\jdbc\\\\edb-jdbc16.jar;/opt/PostgresPlus/connectors\\\\lib\\\\deploy.jar" org.postgresql.pljava.deploy.Deployer -install -user enterprisedb -password password -database edb -host localhost -port 5444
+>
+> Because of the complexity of this command line, we recommend storing the command line in a shell script or a .bat script.
+
+5.  Open the psql client and connect to the database in which PL/Java is installed. You can invoke the following command to display two rows indicating that Java and "Java Untrusted" have been installed in the database:
+
+> select \* from pg\_language where lanname like 'java%';
+
+### Using PL/Java
+
+To create a PL/Java program, you must first create a Java class that contains at least one static method, and then you must compile that class into a .class or .jar file. Next, you declare the Java function within SQL using the CREATE FUNCTION command. The CREATE FUNCTION command gives a SQL name to the function and associates the compiled class (and method name) with that function name.
+
+For example, the following CREATE FUNCTION statement creates a function names getsysprop:
+
+> CREATE FUNCTION getsysprop(VARCHAR)
+> RETURNS VARCHAR
+> AS 'java.lang.System.getProperty'
+> LANGUAGE java;
+> SELECT getsysprop('user.home');
+
+When invoked, getsysprop will execute the getProperty (static) method defined within the java.lang.System class.
+
+***Creating and Installing a PL/Java Program***
+
+The example that follows demonstrates the procedures used to create and install a simple HelloWorld program:
+
+1\. Save the following code sample to a file named HelloWorld.java
+
+> package com.mycompany.helloworld;
+> public class HelloWorld
+> {
+> public static String helloWorld()
+> {
+> return "Hello World";
+> }
+> }
+
+2\. Compile the file:
+
+> $ javac HelloWorld.java
+
+and save it in a folder hierarchy as:
+
+> com/mycompany/helloworld/HelloWorld.class
+
+3\. Create an archive file (a JAR file) named helloworld.jar :
+
+> $ jar cf helloworld.jar \\ com/mycompany/helloworld/HelloWorld.class
+
+4\. Open the psql client, and install the jar file with the following command:
+
+> edb=\# SELECT sqlj.install\_jar('file:///\<file\_path\>/helloworld.jar', 'helloworld', true);
+
+To confirm that the jar file has been loaded correctly, perform a SELECT statement on the sqlj.jar\_entry and sqlj.jar\_repository tables.
+
+5\. Set the classpath as:
+
+> edb=\# SELECT sqlj.set\_classpath('public', 'helloworld');
+
+The sqlj.classpath\_entry table will now include an entry for the helloworld class file.
+
+6\. Create a function that uses Java to call the static function declared in the JAR file:
+
+> CREATE OR REPLACE FUNCTION helloworld()
+> RETURNS "varchar" AS
+> 'com.mycompany.helloworld.HelloWorld.helloWorld'
+> LANGUAGE 'java' VOLATILE;
+
+7\. Execute the function:
+
+> edb=\# SELECT \* FROM helloworld();
+>
+> You should see the output:
+>
+> helloworld
+> \-------------
+> Hello World
+> (1 row)
+
+The official PL/Java distribution is distributed with examples and documentation. For more information about using PL/Java, please see the project page at:
+
+<https://github.com/tada/pljava/wiki>
+
+##  PL/Perl
+
+The PL/Perl procedural language allows Advanced Server users to use Perl functions in Advanced Server applications. Before using PL/Perl, you must use the Language Pack installer (available via StackBuilder Plus) to install Perl. For information about using StackBuilder Plus, see Section <span class="underline">4.5</span>. After downloading and installing the Language Pack, perform the OS specific Language Pack configuration steps outlined in Section <span class="underline">7.3</span>.
+
+You must install PL/Perl in each database (or in a template database) before creating a PL/Perl function. Use the CREATE LANGUAGE command at the EDB-PSQL command line to install PL/Perl. Open the EDB-PSQL client, establish a connection to the database in which you wish to install PL/Perl, and enter the command:
+
+> CREATE LANGUAGE plperl;
+
+Advanced Server confirms that the language is loaded with the response:
+
+> CREATE LANGUAGE
+
+You can now use the features of the PL/Perl language from within Advanced Server. The following PL/Perl example creates a function named perl\_max that returns the larger of two integer values:
+
+CREATE OR REPLACE FUNCTION perl\_max (integer, integer) RETURNS integer AS
+$$
+if ($\_\[0\] \> $\_\[1\])
+{ return $\_\[0\]; }
+return $\_\[1\];
+$$ LANGUAGE plperl;
+
+Pass two values when calling the function:
+
+SELECT perl\_max(1, 2);
+
+Advanced Server returns:
+
+perl\_max
+\---------
+2
+(1 row)
+
+For more information about using the Perl procedural language with Advanced Server, consult the official Postgres documentation, available at:
+
+<https://www.postgresql.org/docs/9.5/static/plperl.html>
+
+## PL/Python
+
+The PL/Python procedural language allows Advanced Server users to create (and execute) functions written in Python within Advanced Server applications. The version of PL/Python used by Advanced Server is untrusted (plpython3u); it offers no restrictions on users to prevent potential security risks.
+
+Please note: Advanced Server version 9.5 includes a major change in the Python installation for Linux systems. In previous releases, plpython was statically linked with ActiveState's python library. The EnterpriseDB Language Pack installer dynamically links with our shared object for python. In ActiveState Linux installers for Python, there was no dynamic library. As a result of these changes, plpython will no longer work with ActiveState installers.
+
+You can use StackBuilder Plus to invoke the Language Pack installer. For information about using StackBuilder Plus, see Section <span class="underline">4.5</span>. After downloading and installing the Language Pack, perform the OS specific configuration steps outlined in Section <span class="underline">7.3</span>.
+
+Install PL/Python in each database (or in a template database) before creating a PL/Python function. You can use the CREATE LANGUAGE command at the EDB-PSQL command line to install PL/Python. Use EDB-PSQL to connect to the database in which you wish to install PL/Python, and enter the command:
+
+> CREATE LANGUAGE plpython3u;
+>
+> Advanced Server confirms that the language is loaded with the response:
+>
+> CREATE LANGUAGE
+
+After installing PL/Python in your database, you can use the features of the PL/Python language from within Advanced Server.
+
+Please Note: The indentation shown in the following example must be included as you enter the sample function in EDB-PSQL. The following PL/Python example creates a function named pymax that returns the larger of two integer values:
+
+CREATE OR REPLACE FUNCTION pymax (a integer, b integer) RETURNS integer AS
+$$
+if a \> b:
+return a
+return b
+$$ LANGUAGE plpython3u;
+
+When calling the pymax function, pass two values as shown below:
+
+SELECT pymax(12, 3);
+
+Advanced Server returns:
+
+pymax
+\-------
+12
+(1 row)
+
+For more information about using the Python procedural language with Advanced Server, consult the official PostgreSQL documentation, available at:
+
+<https://www.postgresql.org/docs/9.5/static/plpython.html>
+
+## PL/Tcl
+
+The PL/Tcl procedural language allows Advanced Server users to use Tcl/Tk functions in Advanced Server applications. Before using PL/Tcl with Advanced Server you must install TCL. You can use StackBuilder Plus to invoke the Language Pack installer (for information about using StackBuilder Plus, see [Section 4.5](#_Using_StackBuilder_Plus_15)). After downloading and installing the Language Pack, perform the operating system specific configuration steps outlined in [Section 7.3](#plperl).
+
+PL/Tcl is distributed with EDB Postgres Advanced Server. You must install PL/Tcl in each database (or in a template database) before creating a PL/Tcl function. Use the CREATE LANGUAGE command at the EDB-PSQL command line to install PL/Tcl. Use the psql client to connect to the database in which you wish to install PL/Tcl, and enter the command:
+
+> CREATE LANGUAGE pltcl;
+
+After creating the pltcl language, you can use the features of the PL/Tcl language from within Advanced Server. The following PL/Tcl example creates a function named tcl\_max that returns the larger of two integer values:
+
+CREATE OR REPLACE FUNCTION tcl\_max(integer, integer) RETURNS integer AS $$
+if {\[argisnull 1\]} {
+if {\[argisnull 2\]} { return\_null }
+return $2
+}
+if {\[argisnull 2\]} { return $1 }
+if {$1 \> $2} {return $1}
+return $2
+$$ LANGUAGE pltcl;
+
+Pass two values when calling the function:
+
+SELECT tcl\_max(1, 2);
+
+Advanced Server returns:
+
+tcl\_max
+\--------
+2
+(1 row)
+
+For more information about using the Tcl procedural language with Advanced Server, consult the official Postgres documentation, available at:
+
+https://www.postgresql.org/docs/9.5/static/pltcl.html
+
+## PostGIS
+
+PostGIS is a PostgreSQL extension that allows you to store Geographic Information Systems (GIS) objects in an Advanced Server database. PostGIS includes functions for analyzing and processing GIS objects, and support for GiST-based R-Tree spatial indexes.
+
+***Installing PostGIS with a Package Manager***
+
+You can use EnterpriseDB packages to add PostGIS to your Advanced Server installation.
+
+**Note:** Before using a package to install PostGIS, you must install the EPEL repository. For information about installing the EPEL repository, see Section <span class="underline">2.3</span>.
+
+Then, invoke the PostGIS meta installer package with the command:
+
+> yum install ppas95-postgis
+
+The ppas95-postgis package installs the following supporting Advanced Server packages:
+
+> ppas95-postgis-2.1.5
+>
+> ppas95-postgis-utils
+>
+> ppas95-postgis-docs
+>
+> ppas95-postgis-core
+
+Additional support for PostGIS is also provided by the following packages:
+
+| Package    | Provides                                                    |
+| ---------- | ----------------------------------------------------------- |
+| cfitsio    | Library for manipulating FITS data files                    |
+| gdal       | GIS file format library                                     |
+| geos       | A C++ port of the Java Topology Suite                       |
+| hdf5       | General purpose library and file format for scientific data |
+| libdap     | The C++ DAP2 library                                        |
+| libgeotiff | GeoTIFF format library                                      |
+| librx      | POSIX regexp functions                                      |
+| netcdf     | Libraries for the Unidata network Common Data Form          |
+| ogdi       | Open Geographic Datastore Interface                         |
+| proj       | Cartographic projection software (PROJ.4)                   |
+
+If you are installing PostGIS with a package manager, please note that you must manually create the template\_postgis database and any PostGIS extensions required. For complete information about managing your PostGIS installation, please visit the official project website at:
+
+<http://postgis.net/documentation/>
+
+***Using StackBuilder Plus to Install PostGIS***
+
+If you have used the graphical installation wizard to install Advanced Server, you can use StackBuilder Plus to add PostGIS to your installation.
+
+Navigate through the Start (or Applications) menu to the Postgres Plus Add-ons menu, and select StackBuilder Plus. Select your Advanced Server installation from the drop down listbox on the Welcome window and click Next to continue to the application selection page. Expand the Spatial Extensions node, and check the box next to PostGIS v2.1.x.x to download and install your selected version of PostGIS (see Figure 7.1).
+
+![sbp](./images/image82.png)
+
+*Figure 7.1 — Open the Spatial Extensions node to locate PostGIS.*
+
+Click Next to continue; the StackBuilder Plus wizard will walk you through the installation process. During the installation, StackBuilder Plus will install PostGIS and create the template\_postgis database, as well as the PostGIS functions.
+
+### Upgrading to PostGIS 2.0
+
+If you are upgrading an existing Advanced Server installation (version 9.1 or prior) that contains PostGIS to a later version of Advanced Server, you must perform a manual upgrade. The pg\_upgrade tool does not support upgrades of spatially enabled databases (a database that contains PostGIS database objects (functions, types, operators, tables, etc.).
+
+To upgrade a database using PostGIS 1.x to PostGIS 2.x, use the pg\_dump and pg\_restore commands to perform a dump and restore of the PostGIS database. Please note: the host must contain an installation of Perl to perform this upgrade.
+
+For complete information about PostGIS and performing an upgrade, see the PostGIS documentation at:
+
+<http://postgis.refractions.net/documentation/manual-2.0>
+
+The following summarizes the basic steps required to perform an upgrade to Advanced Server 9.5 when your current version of Advanced Server has PostGIS 1.x installed along with PostGIS databases:
+ - In your current Advanced Server cluster, use pg\_dump to create a custom-format backup of each PostGIS 1.x database.
+ - Drop the PostGIS databases that were backed up, drop database template template\_postgis, and uninstall PostGIS.
+ - Install Advanced Server 9.5, but do not install PostGIS at this time.
+ - Perform the upgrade to Advanced Server 9.5 using pg\_upgrade as described in [Section 8.3](#upgrading-to-advanced-server-9.5), *Upgrading to Advanced Server 9.5*. This upgrades all non-PostGIS databases to Advanced Server 9.5.
+ - Start up Advanced Server 9.5 and use StackBuilder Plus to install PostGIS 2.0.
+ - For each backup file created from a PostGIS 1.x database, create a new, empty PostGIS 2.0 database and restore each backup file into a new PostGIS database using Perl script postgis\_restore.pl.
+
+The following example illustrates an upgrade from Advanced Server 9.1 to Advanced Server 9.5 when PostGIS 1.5 is installed in Advanced Server 9.1, and a PostGIS database named roadmaps exists in the Advanced Server 9.1 cluster.
+
+The roadmaps PostGIS database was created in Advanced Server 9.1 using the following command given in EDB-PSQL:
+
+> CREATE DATABASE roadmaps TEMPLATE=template\_postgis;
+
+In the roadmaps database, table roads was created and loaded with some rows:
+
+> CREATE TABLE roads (id INTEGER, name VARCHAR2(128));
+>
+> SELECT AddGeometryColumn('roads', 'geom', -1, 'GEOMETRY', 2);
+>
+> INSERT INTO roads (id, geom, name) VALUES (1, GeomFromText('LINESTRING(0 10,0 0)', -1), 'Beacon Road');
+> INSERT INTO roads (id, geom, name) VALUES (2, GeomFromText('LINESTRING(0 0,0 10)', -1), 'Violet Road');
+> INSERT INTO roads (id, geom, name) VALUES (3, GeomFromText('LINESTRING(0 0,10 0)', -1), 'Skelton Street');
+> INSERT INTO roads (id, geom, name) VALUES (4, GeomFromText('LINESTRING(0 0,10 10)', -1), 'Fifth Avenue');
+> INSERT INTO roads (id, geom, name) VALUES (5, GeomFromText('LINESTRING(10 0,0 0)', -1), 'Lipton Street');
+>
+> CREATE INDEX roads\_index ON roads USING GIST(geom);
+
+For purposes of this example, roadmaps is assumed to be the only PostGIS database in the cluster.
+
+**Step 1 - Back up PostGIS databases**
+
+Following the directions for performing a hard upgrade, run pg\_dump to create a backup file for the roadmaps database using the following command:
+
+> export PATH=$PATH:/opt/PostgresPlus/9.1AS/bin
+>
+> pg\_dump -U enterprisedb -Fc -b -v -f "/tmp/roadmaps.backup" roadmaps
+
+Please Note: The backup file must be in custom-format as specified by the -Fc option. This is required by the Perl script you will later use to load the new PostGIS 2.0 database.
+
+**Step 2 - Drop the PostGIS database template**
+
+While connected to database template1 as a superuser, drop the database template template\_postgis as shown by the following:
+
+> template1=\# UPDATE pg\_database SET datistemplate = false WHERE datname = 'template\_postgis';
+> UPDATE 1
+> template1=\# DROP DATABASE template\_postgis;
+> DROP DATABASE
+
+**Step 3 - Drop PostGIS databases**
+
+Before dropping a PostGIS database, be sure you have a backup (see Step 1). Then, drop the roadmaps database:
+
+> template1=\# DROP DATABASE roadmaps;
+> DROP DATABASE
+
+**Step 4 - Uninstall PostGIS**
+
+To uninstall PostGIS, assume superuser privileges and invoke the following script (located in the Advanced Server home directory):
+
+> uninstall-postgis
+
+**Step 5 - Perform the upgrade to Advanced Server 9.5 using pg\_upgrade**
+
+Perform steps 1 through 7 described in [Section 8.3](#upgrading-to-advanced-server-9.5) to upgrade to Advanced Server 9.5.
+
+Please Note: At this time, skip step 8 of [Section 8.3](#upgrading-to-advanced-server-9.5) - Do not restore the authentication settings in the pg\_hba.conf file; the server must use trust authentication when loading the new PostGIS 2.0 databases from the backup files.
+
+**Step 6 - Start Advanced Server 9.5 and use StackBuilder Plus to download and install PostGIS 2.0**
+
+For information about using StackBuilder Plus, see [Section 4.5](#_Using_StackBuilder_Plus_14), *Using StackBuilder Plus*.
+
+**Step 7 - Create a new PostGIS database**
+
+Create the PostGIS database with the template template\_postgis as shown by the following:
+
+> createdb -U enterprisedb -T template\_postgis -p 5445 roadmaps
+
+**Step 8 - Add legacy PostGIS objects if necessary**
+
+If your applications require legacy PostGIS functions, these can be added using the legacy.sql script:
+
+> edb-psql -d roadmaps -U enterprisedb -p 5445 -f "/opt/PostgresPlus/9.5AS/share/contrib/postgis-2.0/legacy.sql"
+
+These legacy functions can later be removed with the uninstall\_legacy.sql script.
+
+**Step 9 - Restore the PostGIS database from the backup file**
+
+Run the Perl script postgis\_restore.pl and pipe the output to EDB-PSQL to load the database from the backup file. This script contains functionality to skip objects known to PostGIS (since updated versions of these objects have been created in the new database you are loading) as well as convert certain old PostGIS constructs into new ones.
+
+Be sure trust authentication mode is set in pg\_hba.conf before running this script.
+
+$ export PATH=$PATH:/opt/PostgresPlus/9.5AS/bin
+
+$
+
+$ perl /opt/PostgresPlus/9.5AS/share/contrib/postgis-2.0/postgis\_restore.pl "/tmp/roadmaps.backup" | edb-psql -U enterprisedb -p 5445 roadmaps 2\> /tmp/roadmaps\_loaderr.txt
+
+Converting /tmp/roadmaps.backup to ASCII on stdout...
+
+Reading list of functions to ignore...
+
+Writing manifest of things to read from dump file...
+
+Writing ASCII to stdout...
+
+WARNING: SRID -1 converted to 0 (official UNKNOWN)
+
+ALTER TABLE
+
+ALTER TABLE
+
+SELECT 3911
+
+DELETE 3911
+
+SET
+
+SET
+
+SET
+
+.
+
+.
+
+.
+
+**Step 10 - Verify the PostGIS database has been properly restored**
+
+The following query verifies the content of the roads table in the roadmaps database:
+
+$ edb-psql -d roadmaps -U enterprisedb -p 5445
+
+edb-psql (9.5.0.0)
+
+Type "help" for help.
+
+roadmaps=\# SELECT id, ST\_AsText(geom) AS geom, name FROM roads ORDER BY id;
+
+id | geom | name
+
+\----+-----------------------+----------------
+
+1 | LINESTRING(0 10,0 0) | Beacon Road
+
+2 | LINESTRING(0 0,0 10) | Violet Road
+
+3 | LINESTRING(0 0,10 0) | Skelton Street
+
+4 | LINESTRING(0 0,10 10) | Fifth Avenue
+
+5 | LINESTRING(10 0,0 0) | Lipton Street
+
+(5 rows)
+
+**Step 11 - Repeat for each PostGIS database backup**
+
+Repeat steps 7 through 10 for each PostGIS database backup file created in Step 1.
+
+**Step 12 - Restore the authentication settings in the pg\_hba.conf file**
+
+Update the contents of the pg\_hba.conf file to reflect your preferred authentication settings.
+
+## Slony
+
+Unless otherwise noted, the commands and paths noted in the following section assume that you have performed an installation with the interactive installer.
+
+Slony is a master-standby replication environment that is well-suited for large databases with a limited number of standby systems. Slony replication:
+ - Shares data in one direction only: from a master node to a standby node.
+ - Is cascading; a standby node may pass data to another standby node.
+ - Does not allow modification of data on standby nodes.
+
+For more information about Slony replication features, visit the Slony website at:
+
+<http://slony.info/>
+
+By default, the Advanced Server installation wizard installs Slony and the Slony configuration files, but does not start the Slony service. After configuring the replication environment, you must manually start the service.
+ - On Linux, the Slony connection configuration file is named ppas-replication-9.5.ini, and resides in the /etc directory, under the Advanced Server installation. Use the configuration file to specify connection information for the master and standby nodes.
+ - On Windows, the configuration files are named master.conf.sample and slave.conf.sample, and reside in the \\share directory, under the Advanced Server installation; prior to configuring Slony, you must rename the configuration files to master.conf and slave.conf.
+
+For information about configuring a Slony replication environment, please refer to the official project documentation, available at:
+
+<http://slony.info/documentation/>
+
+***Starting the Slony Service***
+
+After specifying configuration options, you must start the Slony service on each node of the replication environment. For detailed information about controlling the service, see Section <span class="underline">5</span>.
+
+##  SQL Profiler
+
+SQL Profiler helps locate and optimize poorly running SQL code. Before using SQL Profiler, you must:
+
+1.  Modify the postgresql.conf parameter file for the instance to include the SQL Profiler library in the shared\_preload\_libraries configuration parameter.
+
+> For Linux installations, the parameter value should include:
+>
+> $libdir/sql-profiler
+>
+> On Windows, the parameter value should include:
+>
+> $libdir/sql-profiler.dll
+
+2.  Create the functions used by SQL Profiler. The SQL Profiler installation program places a SQL script (named sql-profiler.sql) in the share/contrib subdirectory of the main PostgreSQL installation directory on Linux systems. On Windows systems, this script is located in the share subdirectory.
+
+> Using the PEM Client Query Tool or the psql command line interface, run the sql-profiler.sql script in the database specified as the Maintenance Database on the server you wish to profile. If you are using Advanced Server, the default maintenance database is named edb. If you are using a PostgreSQL instance, the default maintenance database is named postgres.
+>
+> To use the PEM Query Tool to run the script, highlight the name of the maintenance database in the PEM Client tree control, and navigate through the Tools menu, selecting Query tool. When the Query Tool opens, use the Open option on the Files menu to open a web browser and navigate to the sql-profiler.sql script. When the script opens in the SQL Editor panel of the Query Tool, select the Execute option from the Query menu to invoke the script and configure SQL Profiler.
+>
+> You can also use the psql command line to invoke the configuration script. The following command uses the psql command line to invoke the sql-profiler.sql script on a Linux system:
+>
+> $ /opt/PostgresPlus/9.5AS/bin/psql -U *user\_name* *database\_name* \< /opt/PostgresPlus/9.5AS/share/contrib/sql-profiler.sql
+
+3.  Stop and re-start the server for the changes to take effect.
+
+After configuring SQL Profiler, it is ready to use with all databases that reside on the server.
+
+To open SQL Profiler on the PEM Client, highlight the name of a database you wish to profile in the tree control, and select SQL Profiler from the Management menu. The SQL Profiler wizard (shown in Figure 7.2) opens.
+
+![Screenshot-SQL Profiler - Startup dialog](./images/image83.png)
+
+*Figure 7.2 — The SQL Profiler wizard.*
+
+The SQL Profiler wizard will walk you through the process of defining a new trace, or opening an existing trace. For more information about using SQL Profiler, consult the Postgres Enterprise Manager online help text (accessed through the PEM Client Help menu), or the *EDB Postgres (Postgres Plus) Migration Guide*, available at:
+
+<http://www.enterprisedb.com/products-services-training/products/documentation/enterpriseedition>
+
+***Troubleshooting***
+
+If (after performing an upgrade to a newer version of SQL Profiler) you encounter an error that contains the following text:
+
+An error has occurred:
+ERROR: function return row and query-specified return row do not match.
+DETAIL: Returned row contains 11 attributes, but the query expects 10.
+
+To correct this error, you must replace the existing query set with a new query set. First, uninstall SQL Profiler by invoking the uninstall-sql-profiler.sql script, and then reinstall SQL Profiler by invoking the sql-profiler.sql script.
+
+##  sslutils
+
+sslutils is a Postgres extension that provides SSL certicate generation functions to Advanced Server, for use by the Postgres Enterprise Manager server. sslutils is installed by the Advanced Server RPM server meta installer and the Advanced Server graphical installer.
+
+***sslutils Functions***
+
+The sslutils package provides the functions described below.
+
+**openssl\_rsa\_generate\_key**
+
+The openssl\_rsa\_generate\_key function generates an RSA private key. The function signature is:
+
+> openssl\_rsa\_generate\_key(integer) RETURNS text
+
+When invoking the function, pass the number of bits as an integer value; the function returns the generated key.
+
+**openssl\_rsa\_key\_to\_csr**
+
+The openssl\_rsa\_key\_to\_csr function generates a certificate signing request (CSR). The signature is:
+
+> openssl\_rsa\_key\_to\_csr
+> (text, text, text, text, text, text, text) RETURNS text
+
+The text arguments expected by the rsa\_key\_to\_csr function are:
+
+> Argument 1: The name of the RSA key file.
+>
+> Argument 2: The common name (e.g. agentN) of the agent that will use the signing request.
+>
+> Argument 3: The name of the country in which the server resides.
+>
+> Argument 4: The name of the state in which the server resides.
+>
+> Argument 5: The location (city) within the state in which the server resides.
+>
+> Argument 6: The name of the organization unit requesting the certificate.
+>
+> Argument 7: The email address of the user requesting the certificate.
+
+The function generates and returns the certificate signing request.
+
+**openssl\_csr\_to\_crt**
+
+The openssl\_csr\_to\_crt function generates a self-signed certificate or a certificate authority certificate. The signature is:
+
+> openssl\_csr\_to\_crt(text, text, text) RETURNS text
+
+The text arguments expected by the rsa\_key\_to\_csr function are:
+
+> Argument 1: The name of the certificate signing request.
+>
+> Argument 2: The path to the certificate authority certificate, or NULL if generating a certificate authority certificate.
+>
+> Argument 3: The path to the certificate authority's private key or (if parameter 2 is NULL) the path to a private key.
+
+The function returns the self-signed certificate or certificate authority certificate.
+
+**openssl\_rsa\_generate\_crl**
+
+The openssl\_rsa\_generate\_crl function generates a default certificate revocation list. The signature is:
+
+> openssl\_rsa\_generate\_crl(text, text) RETURNS text
+
+The text arguments expected by the openssl\_rsa\_generate\_crl function are:
+
+> Argument 1: The path to the certificate authority certificate.
+>
+> Argument 2: The path to the certificate authority private key.
+
+The function returns the certificate revocation list.

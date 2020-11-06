@@ -20,7 +20,7 @@ const replacePathVersion = (path, version = 'latest') => {
 };
 
 const filePathToDocType = (filePath) => {
-  if (filePath.includes('/sources/docs/')) {
+  if (filePath.includes('/product_docs/')) {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
     return 'advocacy';

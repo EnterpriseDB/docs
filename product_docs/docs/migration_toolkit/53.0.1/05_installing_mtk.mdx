@@ -1,0 +1,357 @@
+---
+title: "Installing Migration Toolkit"
+---
+
+<div id="installing_mtk" class="registered_link"></div>
+
+
+This chapter describes how to install Migration Toolkit.
+
+Before installing the Migration Toolkit, you must have:
+
+>   - Java 1.7.0 installed on your system; you can download a Java installer that matches your environment from the Oracle Java Downloads website.
+>
+>   - Credentials to access EnterpriseDB repository. For information about requesting credentials, visit:
+>
+>     > <https://info.enterprisedb.com/rs/069-ALB-339/images/Repository%20Access%2004-09-2019.pdf>
+
+The following are the various installation methods:
+
+  - [Installing Migration Toolkit on a CentOS or RHEL host](../edb_migration_toolkit/#rpm_installation)
+  - [Installing Migration Toolkit on a SLES Host](../edb_migration_toolkit/#sles_installation)
+  - [Installing Migration Toolkit on a Debian or Ubuntu Host](../edb_migration_toolkit/#debian_or_ubuntu_installation)
+  - [Installing Migration Toolkit on Windows](../edb_migration_toolkit/#windows_installation)
+
+<div id="rpm_installation" class="registered_link"></div>
+
+## Installing Migration Toolkit on a CentOS or RHEL 6,7, and 8 host
+
+You can use an RPM package to install Migration Toolkit on a CentOS or RHEL host.
+
+After receiving your repository credentials you can:
+
+1.  Create the repository configuration file.
+2.  Modify the file, providing your user name and password.
+3.  Install Migration Toolkit.
+
+**Creating a Repository Configuration File**
+
+To create the repository configuration file, assume superuser privileges and invoke the following command:
+
+**On RHEL or CentOs 6 and 7**
+
+`yum -y install https://yum.enterprisedb.com/edb-repo-rpms/edb-repo-latest.noarch.rpm`
+
+**On RHEL or CentOs 8**
+
+`dnf -y install https://yum.enterprisedb.com/edb-repo-rpms/edb-repo-latest.noarch.rpm`
+
+The repository configuration file is named `edb.repo`. The file resides in `/etc/yum.repos.d`.
+
+After creating the `edb.repo` file, use your choice of editor to ensure that the value of the `enabled` parameter is `1`, and replace the `username` and `password` placeholders in the `baseurl` specification with the name and password of a registered EnterpriseDB user.
+
+``` text
+[edb]
+name=EnterpriseDB RPMs $releasever - $basearch
+baseurl=https://<username>:<password>@yum.enterprisedb.com/edb/redhat/rhel-$releasever-$basearch
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/ENTERPRISEDB-GPG-KEY
+```
+
+After saving your changes to the configuration file, you can use the `yum install` command to install Migration Toolkit:
+
+**On RHEL or CentOs 6 and 7**
+
+`yum install edb-migrationtoolkit`
+
+**On RHEL or CentOs 8**
+
+`dnf install edb-migrationtoolkit`
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter a `y`, and press `Return` to continue.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+After installing Migration Toolkit, you must configure the installation. Perform the following steps before invoking Migration Toolkit.
+
+
+
+**Using Migration Toolkit with IDENT Authentication**
+
+By default, the `pg_hba.conf` file for the RPM installer enforces `IDENT` authentication for remote clients. Before invoking Migration Toolkit, you must either modify the `pg_hba.conf` file, changing the authentication method to a form other than `IDENT` (and restarting the server), or perform the following steps to ensure that an `IDENT` server is accessible:
+
+1.  Confirm that an `identd` server is installed and running. You can use the yum package manager to install an `identd` server by invoking the command:
+
+    `yum install xinetd authd`
+
+    The command should create a file named `/etc/xinetd.d/auth` that contains:
+
+<!-- end list -->
+
+``` text
+service auth
+{
+disable = yes
+socket_type = stream
+wait = no
+user = ident
+cps = 4096 10
+instances = UNLIMITED
+server = /usr/sbin/in.authd
+server_args = -t60 --xerror --os
+}
+```
+
+**Note**: if the file includes a `-E` argument at the end of `server_args`, please erase the `-E`.
+
+Then, to start the `identd` server, invoke the commands:
+
+``` text
+systemctl enable xinetd
+systemctl start xinetd
+```
+
+2.  Open the `pg_ident.conf` file and create a user mapping:
+
+<!-- end list -->
+
+``` text
+# map_name system_username postgres_username
+edbas enterprisedb enterprisedb
+```
+
+Where:
+
+The name specified in the `map_name` column is a user-defined name that will identify the mapping in the pg_hba.conf file.
+
+The name specified in the `system_username` column is enterprisedb.
+
+The name specified in the `postgres_username` column is enterprisedb.
+
+3.  Open the `pg_hba.conf` file and modify the `IDENT` entries.
+
+    > On an IPv4 host:
+    >
+    > `host all all 127.0.0.0/0 ident map=edbas`
+    >
+    > On an IPv6 host:
+    >
+    > `host all all ::1/128 ident map=edbas`
+
+4.  Restart the Advanced Server service before invoking Migration Toolkit.
+
+### Upgrading an RPM Installation
+
+If you have an existing RPM installation, you can use `yum` to upgrade your repository configuration file and update to a more recent product version. To update the edb.repo file, assume superuser privileges and enter:
+
+> `yum upgrade edb-repo`
+
+yum will update the edb.repo file to enable access to the current EnterpriseDB repository, configured to connect with the credentials specified in your edb.repo file. Then, you can use yum to upgrade Migration toolkit:
+
+> `yum upgrade edb-migrationtoolkit`
+
+<div id="sles_installation" class="registered_link"></div>
+
+## Installing Migration Toolkit on a SLES Host
+
+For detailed information about installing Advanced Server and supporting components on a SLES host, refer the [EDB Postgres Advanced Server Installation Guide](https://www.enterprisedb.com/edb-docs/p/edb-postgres-advanced-server).
+
+SLES packages are available at <https://zypp.enterprisedb.com>.
+
+Before installing Migration Toolkit, you must also add SUSEConnect and the SUSE Package Hub extension to the SLES host and register the host with SUSE, allowing access to SUSE repositories. Use the commands:
+
+`zypper install SUSEConnect`
+
+`SUSEConnect -p PackageHub/12/x86_64`
+
+`SUSEConnect -p sle-sdk/12/x86_64`
+
+For detailed information about registering a SUSE host, visit: <https://www.suse.com/support/kb/doc/?id=7016626>
+
+The following sections provide information about the specific repositories that are not hosted by EnterpriseDB, but provides software that satisfies dependencies for each listed component. After adding repository access, you must use the zypper refresh command to process the repository content:
+
+`zypper refresh`
+
+**Java Components:**
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+Only OpenJDK (version 1.7) is supported on SLES hosts of Java components. Before using an RPM package to add Advanced Server or a supporting component that requires Java, use zypper to add supporting repository locations to your system.
+
+</div>
+
+Use the commands:
+
+`zypper addrepo`
+
+`https://zypp.enterprisedb.com/suse/edb-sles.repo`
+
+`zypper refresh`
+
+Then, you can use the zypper utility to install Migration Toolkit:
+
+`zypper install edb-migrationtoolkit`
+
+<div id="debian_or_ubuntu_installation" class="registered_link"></div>
+
+## Installing Migration Toolkit on a Debian or Ubuntu Host
+
+To install a Debian package using the EnterpriseDB apt, complete the following steps. In addition, when using the commands, replace the `username` and `password` with the credentials provided by EnterpriseDB.
+
+1.  Assume superuser privileges:
+
+`sudo su –`
+
+2.  Configure the EnterpriseDB repository:
+
+<!-- end list -->
+
+``` text
+sh -c 'echo "deb
+https://username:password@apt.enterprisedb.com/$(lsb_release -
+cs)-edb/ $(lsb_release -cs) main" >
+/etc/apt/sources.list.d/edb-$(lsb_release -cs).list'
+```
+
+3.  Add support to your system for secure APT repositories:
+
+`apt-get install apt-transport-https`
+
+4.  Add the EBD signing key:
+
+`wget -q -O - https://username:password @apt.enterprisedb.com/edb-deb.gpg.key | apt-key add -`
+
+5.  Update the repository metadata:
+
+`apt-get update`
+
+6.  Install Debian package:
+
+`apt-get install edb-migrationtoolkit`
+
+<div id="windows_installation" class="registered_link"></div>
+
+## Installing Migration Toolkit on Windows
+
+You can use the graphical installer to install the Migration Toolkit on Windows. You can download the installer from [www.enterprisedb.com](www.enterprisedb.com).
+
+Once you download the installer, right-click the installer icon, and select `Run As Administrator` from the context menu. When the `Language Selection` popup opens, select an installation language and click `OK` to continue to the `Setup` window.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+This guide uses the term Stack Builder to refer to either StackBuilder Plus (distributed with Advanced Server) or Stack Builder (distributed with the PostgreSQL one-click installer from EnterpriseDB).
+
+</div>
+
+You must have a Java JVM (version 1.7.0) in place before Stack Builder can perform a Migration Toolkit installation.
+
+The Java executable must be in your search path `(%PATH% on Windows)` Use the following commands to set the search path (substituting the name of the directory that holds the Java executable for javadir):
+
+On Windows, use the command: `SET PATH=javadir;%PATH%`
+
+After setting the search path, you can use the Stack Builder installation wizard to install Migration Toolkit into either Advanced Server or PostgreSQL.
+
+The Java executable must be in your search path (`%PATH%` on Windows, `$PATH` on Linux/Unix). Use the following commands to set the search path (substituting the name of the directory that holds the Java executable for *javadir*):
+
+> On Windows, use the command:
+>
+> `SET PATH=\ *javadir*;%PATH%`
+>
+> On Linux, use the command:
+>
+> `PATH=\ *javadir*:$PATH`
+
+After setting the search path, you can use the Stack Builder installation wizard to install Migration Toolkit into either Advanced Server or PostgreSQL.
+
+**Launching StackBuilder Plus from Advanced Server**
+
+To launch StackBuilder Plus from an existing Advanced Server installation, navigate through the `Start` (or `Applications`) menu to the EDB Postgres menu; open the `EDB Add-ons` menu, and select the `StackBuilder Plus` menu option.
+
+**Launching Stack Builder from PostgreSQL**
+
+To launch Stack Builder from a PostgreSQL installation, navigate through the `Start` (or `Applications`) menu to the PostgreSQL menu, and select the `Application StackBuilder Plus` menu option.
+
+Stack Builder opens as shown below.
+
+![*The Stack Builder welcome window.*](images/installing_mtk_sbp_welcome.png)
+
+Use the drop-down listbox to select the target server installation from the list of available servers. If your network requires you to use a proxy server to access the Internet, use the `Proxy servers` button to open the `Proxy servers` dialog and specify a server; if you do not need to use a proxy server, click `Next` to open the application selection window.
+
+If you are using StackBuilder Plus to add Migration Toolkit to your Advanced Server installation, expand the `Add-ons, tools and utilities` node of the tree control, and check the box next to `EnterpriseDB Migration Toolkit`. Click `Next` to continue.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+If you are using Stack Builder to add Migration Toolkit to your PostgreSQL installation, expand the `EnterpriseDB Tools` node of the tree control (`located under the Registration-required and trial productsnode`), and select `Migration Toolkit` checkbox. Click `Next` to continue.
+
+</div>
+
+![*The Stack Builder application selection window.*](images/installing_mtk_sbp_categories.png)
+
+Confirm that Migration Toolkit is included in the `Selected Packages` list and that the `Download directory` field contains an acceptable download location.
+
+![*The Stack Builder selection confirmation window.*](images/installing_mtk_sbp_selected_packages.png)
+
+Click `Next` to start the Migration Toolkit download.
+
+![*Stack Builder confirms the file download.*](images/installing_mtk_sbp_download_complete.png)
+
+When the download completes, Stack Builder confirms that the installation files have been successfully downloaded. Choose `Next` to open the Migration Toolkit installation wizard.
+
+When prompted by the Migration Toolkit installation wizard, specify a language for the installation and click `OK` to continue.
+
+The Migration Toolkit installation wizard opens. Click `Next` to continue.
+
+![*The Migration Toolkit installation wizard.*](images/installing_mtk_setup.png)
+
+Carefully review the license agreement before highlighting the appropriate radio button; click `Next` to continue.
+
+![*The EnterpriseDB license agreement.*](images/installing_mtk_license.png)
+
+By default, Migration Toolkit will be installed in the `mtk` directory; accept the default installation directory as displayed, or modify the directory, and click `Next` to continue.
+
+![*Specify a Migration Toolkit installation directory.*](images/installing_mtk_inst_dir.png)
+
+The installation wizard confirms that the `Setup` program is ready to install Migration Toolkit; click `Next` to start the installation.
+
+![*Setup is ready to start the Migration Toolkit installation.*](images/installing_mtk_start_inst.png)
+
+A dialog confirms that the Migration Toolkit installation is complete; click `Finish` to exit the Migration Toolkit installer.
+
+![*The Migration Toolkit wizard has finished.*](images/installing_mtk_inst_complete.png)
+
+When Stack Builder finalizes installation of the last selected component, it displays the `Installation Completed` window. Click `Finish` to close Stack Builder.
+
+![*Stack Builder confirms the installation is complete.*](images/installing_mtk_sbp_inst_complete.png)
+
+After installing Migration Toolkit with Stack Builder, you must install the appropriate source-specific drivers before performing a migration; please see [Installing Source-Specific Drivers](../edb_migration_toolkit/#installing_drivers) for more information.
+
+<div id="installing_drivers" class="registered_link"></div>
+
+
+
+## Installing Source-Specific Drivers
+
+Before invoking Migration Toolkit, you must download and install a freely available source-specific driver. To download a driver, or for a link to a vendor download site, visit the `Third Party JDBC Drivers` section of the `Advanced Downloads` page at the EnterpriseDB website:
+
+<https://www.enterprisedb.com/advanced-downloads>
+
+After downloading the source-specific driver, move the driver file into the `JAVA_HOME/jre/lib/ext` directory.

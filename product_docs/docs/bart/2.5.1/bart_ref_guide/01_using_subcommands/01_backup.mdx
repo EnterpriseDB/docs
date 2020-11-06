@@ -1,0 +1,293 @@
+---
+title: "BACKUP"
+---
+
+
+
+Use the `BACKUP` subcommand to create a full or incremental backup.
+
+**Syntax for a Full Backup:**
+
+    bart BACKUP –s { <server_name> | all } [ -F { p | t } ]
+
+    [ -z ] [ –c <compression_level> ]
+
+    [ --backup-name <backup_name> ]
+
+    [ --thread-count <number_of_threads> ]
+
+    [ { --with-pg_basebackup | --no-pg_basebackup } ]
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+While a `BACKUP` subcommand is in progress, no other subcommands (`INIT, DELETE, MANAGE, SHOW BACKUPS, VERIFY-CHKSUM`) must be issued. Any subcommands issued while a backup is in progress will skip and ignore the backups.
+
+</div>
+
+**Syntax for an Incremental Backup:**
+
+    bart BACKUP –s { <server_name> | all } [ -F p]
+
+    [ --parent { <backup_id> | <backup_name> } ]
+
+    [ --backup-name <backup_name> ]
+
+    [ --thread-count <number_of_threads> ]
+
+    [ --check ]
+
+Before performing an incremental backup, you must take a full backup.
+
+For more details about incremental backup, refer to the *Block-Level Incremental Backup* section of the *EDB Postgres Backup and Recovery User Guide* available at:
+
+> <https://www.enterprisedb.com/edb-docs/>
+
+**Options**
+
+-   `-s { <server_name> | all }` or `--server {<server_name> | all`}
+
+> `<server_name>` is the name of the database server to be backed up (as specified in the BART configuration file). If `all` is specified, all servers are backed up.
+
+-   `-F { p | t }` or `--format { p | t }`
+    -   Use this option to specify the backup file format.
+    -   Specify `p` to take backup in plain text format and specify `t` to take backup in tar format. If the `p` or `t` option is omitted, the default is `tar` format.
+    -   Use `p` option with the `BACKUP` subcommand when streaming is used as a backup method.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+Specify `p` option while taking an incremental backup since an incremental backup can only be taken in plain text format.
+
+</div>
+
+-   `-z` or `--gzip` (applicable only for full backup and `tar` format)
+
+> Use this option to enable gzip compression of tar files using the default compression level (typically 6).
+
+-   `-c <compression_level>` or `--compress-level <compression_level>` (applicable only for full backup and `tar` format)
+
+> Use this option to specify the gzip compression level on the tar file output. `<compression_level>` is a digit from 1 through 9, with 9 being the best compression.
+
+-   `--parent { <backup_id> | <backup_name> }`
+    -   Use this option to take an incremental backup. The parent backup is a backup taken prior to the incremental backup; it can be either a full backup or an incremental backup.
+    -   `<backup_id>` is the backup identifier of a parent backup and `<backup_name>` is the user-defined alphanumeric name of a parent backup.
+    -   You must specify the `–F p` option as an incremental backup can only be taken in plain text format.
+-   `--backup-name <backup_name>`
+    -   `<backup_name>` is a user-defined, alphanumeric friendly name to be assigned to the backup. The maximum permitted length of backup name is 49 characters.
+
+    -   The backup name may include the following variables to be substituted by the timestamp values when the backup is taken:
+
+        > -   1.  `%year` – 4-digit year
+        >
+        > -   1.  `%month` – 2-digit month
+        >
+        > -   1.  `%day` – 2-digit day
+        >
+        > -   1.  `%hour` – 2-digit hour
+        >
+        > -   1.  `%minute`– 2-digit minute
+        >
+        > -   1.  `%second`– 2-digit second
+
+        The following example demonstrates invoking `BACKUP`:
+
+            ./bart backup -s ppas12 -Ft --backup-name "YEAR = %year MONTH =
+            %month DAY = %day"
+
+    -   To include the percent sign (`%`) as a character in the backup name, specify `%%` in the alphanumeric string.
+
+        For example,
+
+            ./bart backup -s ppas12 -Ft --backup-name "YEAR = %year MONTH =
+            %month DAY = %day %%"
+
+    -   If the backup name contains space characters or when backup name is referenced with the option `-i` by other subcommands (such as `restore`), enclose the string in single quotes (') or double quotes (").
+
+        For example,
+
+            ./bart show-backups -s ppas12 -i "test backup"
+
+    -   If the option `--backup-name` is not specified and the `backup_name` parameter is not set for this database server in the BART configuration file, then the backup can only be referenced in other BART subcommands by the BART assigned backup identifier.
+-   `--thread-count number_of_threads`
+    -   `number_of_threads` is the number of worker threads to run in parallel to copy blocks for a backup.
+
+    -   If the option `--thread-count` is omitted, then the `thread_count` parameter in the BART configuration file applicable to this database server is used.
+
+    -   If the option `--thread-count` is not enabled for this database server, then the `thread_count` setting in the global section of the BART configuration file is used.
+
+    -   If the option `--thread-count` is not set in the global section as well, the default number of threads is `1`.
+
+        > -   If parallel backup is run with N number of worker threads, then it will initiate N+ 1 concurrent connections with the server.
+        > -   Thread count will not be effective if backup is taken on a standby server.
+
+For detailed information about the `--thread-count` parameter, see the configuration section of the *EDB Postgres Backup and Recovery Installation and Upgrade Guide* available at:
+
+> <https://www.enterprisedb.com/edb-docs/>
+
+-   `--with-pg_basebackup` (applicable only for full backup)
+    -   Specifies that `pg_basebackup` is to be used to take a full backup. The number of thread counts in effect is ignored as given by the `thread_count` parameter in the BART configuration file.
+    -   When taking a full backup, if the thread count in effect is greater than `1`, then the `pg_basebackup` utility is not used to take the full backup (parallel worker threads are used) unless the `--with-pg_basebackup` option is specified with the `BACKUP` subcommand.
+-   `--no-pg_basebackup` (applicable only for full backup)
+    -   Specifies that `pg_basebackup` is not to be used to take a full backup.
+    -   When taking a full backup, if the thread count in effect is only `1`, then the `pg_basebackup` utility is used to take the full backup unless the `--no-pg_basebackup` option is specified with the `BACKUP` subcommand.
+-   `--check` (applicable only for incremental backup)
+    -   Use this option to verify if the required MBM files are present in the BART backup catalog before taking an incremental backup. However, an actual incremental backup is not taken when the `--check` option is specified.
+    -   `--parent` option must be used along with the `--check` option.
+
+**Examples**
+
+The following example creates a full backup in the default tar format with gzip compression. Note that checksums are generated for the full backup and user-defined tablespaces for the tar format backup.
+
+    [edb@localhost bin]$ ./bart BACKUP -s hr -z
+    INFO:  DebugTarget - getVar(checkDiskSpace.bytesAvailable)
+    INFO:  new backup identifier generated 1567591909098
+    INFO:  creating 5 harvester threads
+    NOTICE:  all required WAL segments have been archived
+    /home/edb/bkup_new/hr/1567591909098
+    INFO:  backup completed successfully
+    INFO:
+    BART VERSION: 2.5
+    BACKUP DETAILS:
+    BACKUP STATUS: active
+    BACKUP IDENTIFIER: 1567591909098
+    BACKUP NAME: none
+    BACKUP PARENT: none
+    BACKUP LOCATION: /home/edb/bkup_new/hr/1567591909098
+    BACKUP SIZE: 13.91 MB
+    BACKUP FORMAT: tar.gz
+    BACKUP TIMEZONE: America/New_York
+    XLOG METHOD: fetch
+    BACKUP CHECKSUM(s): 0
+    TABLESPACE(s): 3
+    Oid     Name    Location
+    16387   test1   /home/edb/tbl1
+    16388   test2   /home/edb/tbl2
+    16389   test3   /home/edb/tbl3
+
+    START WAL LOCATION: 000000010000000000000025
+    STOP WAL LOCATION: 000000010000000000000026
+    BACKUP METHOD: streamed
+    BACKUP FROM: master
+    START TIME: 2019-09-04 06:11:49 EDT
+    STOP TIME: 2019-09-04 06:11:53 EDT
+    TOTAL DURATION: 4 sec(s)
+
+The following example shows the directory containing the full backup:
+
+    [edb@localhost bin]$number_of_threads>
+    [edb@localhost bin]$ ls -l /home/edb/bkup_new/hr/
+    total 8
+    drwxrwxr-x. 3 edb edb   34 Aug 27 05:57 1566899819709
+    drwxrwxr-x. 3 edb edb   58 Aug 27 05:57 1566899827751
+    drwxrwxr-x. 3 edb edb 4096 Sep  4 06:11 1567591909098
+    drwxrwxr-x. 2 edb edb 4096 Sep  4 06:11 archived_wals
+    [edb@localhost bin]$
+
+The following example shows the creation of a full backup while streaming the transaction log. Note that the `-F p` option must be specified with the `BACKUP` subcommand when streaming is used.
+
+    [edb@localhost bin]$ ./bart BACKUP -s ACCTG -F p
+    INFO: DebugTarget - getVar(checkDiskSpace.bytesAvailable)
+    INFO: new backup identifier generated 1566898964200
+    INFO: creating 5 harvester threads
+    NOTICE: pg_stop_backup complete, all required WAL segments have been archived
+    INFO: backup completed successfully
+    INFO:
+    BART VERSION: 2.5
+    BACKUP DETAILS:
+    BACKUP STATUS: active
+    BACKUP IDENTIFIER: 1566898964200
+    BACKUP NAME: none
+    BACKUP PARENT: none
+    BACKUP LOCATION: /home/edb/bkup_new/acctg/1566898964200
+    BACKUP SIZE: 46.03 MB
+    BACKUP FORMAT: plain
+    BACKUP TIMEZONE: US/Eastern
+    XLOG METHOD: fetch
+    BACKUP CHECKSUM(s): 0
+    TABLESPACE(s): 0
+    START WAL LOCATION: 000000010000000000000017
+    BACKUP METHOD: streamed
+    BACKUP FROM: master
+    START TIME: 2019-08-27 05:42:44 EDT
+    STOP TIME: 2019-08-27 05:42:46 EDT
+    TOTAL DURATION: 2 sec(s)
+
+The following example shows the assignment of a user-defined backup name with the `--backup-name` option:
+
+    [edb@localhost bin]$ ./bart BACKUP -s acctg --backup-name acctg_%year-%month-%day
+    INFO: DebugTarget - getVar(checkDiskSpace.bytesAvailable)
+    INFO: new backup identifier generated 1566899004804
+    INFO: creating 5 harvester threads
+    NOTICE: pg_stop_backup complete, all required WAL segments have been archived
+    /home/edb/bkup_new/acctg/1566899004804
+    INFO: backup completed successfully
+    INFO:
+    BART VERSION: 2.5
+    BACKUP DETAILS:
+    BACKUP STATUS: active
+    BACKUP IDENTIFIER: 1566899004804
+    BACKUP NAME: acctg_2019-08-27
+    BACKUP PARENT: none
+    BACKUP LOCATION: /home/edb/bkup_new/acctg/1566899004804
+    BACKUP SIZE: 46.86 MB
+    BACKUP FORMAT: tar
+    BACKUP TIMEZONE: US/Eastern
+    XLOG METHOD: fetch
+    BACKUP CHECKSUM(s): 0
+    TABLESPACE(s): 0
+    START WAL LOCATION: 00000001000000000000001A
+    BACKUP METHOD: streamed
+    BACKUP FROM: master
+    START TIME: 2019-08-27 05:43:24 EDT
+    STOP TIME: 2019-08-27 05:43:24 EDT
+    TOTAL DURATION: 0 sec(s)
+
+The following example shows an incremental backup taken by specifying the `--parent` option. The option `-F p` must be specified as well for plain text format.
+
+    [edb@localhost bin]$ ./bart BACKUP -s hr -F p --parent hr_full_1 --backup-name
+    hr_incr_1
+    INFO: DebugTarget - getVar(checkDiskSpace.bytesAvailable)
+    INFO: checking /home/edb/bkup_new/hr/archived_wals for MBM files from 0/20000028 to
+    0/22000000
+    INFO: new backup identifier generated 1566899827751
+    INFO: creating 5 harvester threads
+    NOTICE: all required WAL segments have been archived
+    INFO: backup completed successfully
+    INFO:
+    BART VERSION: 2.5
+    BACKUP DETAILS:
+    BACKUP STATUS: active
+    BACKUP IDENTIFIER: 1566899827751
+    BACKUP NAME: hr_incr_1
+    BACKUP PARENT: 1566899819709
+    BACKUP LOCATION: /home/edb/bkup_new/hr/1566899827751
+    BACKUP SIZE: 7.19 MB
+    BACKUP FORMAT: plain
+    BACKUP TIMEZONE: America/New_York
+    XLOG METHOD: fetch
+    BACKUP CHECKSUM(s): 0
+    TABLESPACE(s): 0
+    START WAL LOCATION: 000000010000000000000022
+    STOP WAL LOCATION: 000000010000000000000023
+    BACKUP METHOD: streamed
+    BACKUP FROM: master
+    START TIME: 2019-08-27 05:57:07 EDT
+    STOP TIME: 2019-08-27 05:57:08 EDT
+    TOTAL DURATION: 1 sec(s)
+
+**Error messages**
+
+The following table lists the error messages that may be encountered when using BART with the `BACKUP` subcommand.
+
+<table><colgroup><col style="width: 43%" /><col style="width: 56%" /></colgroup><thead><tr class="header"><th>error message</th><th>Cause</th></tr></thead><tbody><tr class="odd"><td><p><a href="mailto:edb@localhost">edb@localhost</a> bin]$ ./bart backup -s mktg -Ft</p><p>WARNING: xlog_method is empty, defaulting to global policy</p><p>ERROR: backup failed for server 'mktg'</p><p>free disk space is not enough to backup the server 'mktg'</p><p>space available 13.35 GB, approximately required 14.65 GB</p></td><td><blockquote><p>Insufficient free disk space.</p></blockquote></td></tr><tr class="even"><td><p>ERROR: backup failed for server 'mktg'</p><p>command failed with exit code 1</p><p>pg_basebackup: could not get transaction log end position from server: ERROR: requested WAL segment 00000001000000D50000006B has already been removed</p></td><td><blockquote><p>The wal_keep_segments configuration parameter is not set to a sufficiently large value in the postgresql.conf file.</p></blockquote></td></tr><tr class="odd"><td><p>ERROR: backup failed for server 'mktg'</p><p>connection to the server failed: could not connect to server: Connection refused</p><p>Is the server running on host "172.16.114.132" and accepting</p><p>TCP/IP connections on port 5444?</p></td><td><blockquote><p>A connection to a database server listed in the BART configuration file fails. As a result the backup for that database server is skipped, but the backup operation continues for other database servers</p></blockquote></td></tr></tbody></table>
