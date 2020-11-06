@@ -13,7 +13,7 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 
 ## Sources
 - Advocacy (default, part of this repo)
-- Product Docs - [rocketinsights/edb_docs](rocketinsights/edb_docs)
+- Product Docs - [EnterpriseDB/docs-products](EnterpriseDB/docs-products)
 
 ### Configuring
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
@@ -51,7 +51,7 @@ Review builds are automatically created for pull requests. These builds are crea
 Because the site pulls docs from multiple repositories, these source repositories may trigger rebuilds of the site when appropriate.
 
 # Advocacy Docs
-Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/rocketinsights/edb_docs_advocacy/tree/master/advocacy_docs/getting-started)
+Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
 
 New docs need a `.mdx` suffix to be used by Gatsby.
 
@@ -83,7 +83,7 @@ The `description` is used in cards as well.
 
 ## Markdown styling
 
-All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/rocketinsights/edb_docs_advocacy/blob/master/docs/playground/1/01_examples/index.mdx)
+All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/docs/playground/1/01_examples/index.mdx)
 
 ## Ordering of files
 
