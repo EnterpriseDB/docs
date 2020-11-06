@@ -1,7 +1,7 @@
 const config = {
   gatsby: {
-    pathPrefix: '/edb_docs',
-    siteUrl: 'https://github.com/rocketinsights/edb_docs',
+    pathPrefix: '/docs',
+    siteUrl: 'https://github.com/EnterpriseDB/docs',
     gaTrackingId: null,
     trailingSlash: false,
   },

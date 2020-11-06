@@ -11,13 +11,23 @@ const isBuild = process.env.NODE_ENV === 'production';
 const sortVersionArray = (versions) => {
   return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
                  .map(version => version.replace(/\d+/g, n => +n-100000));
-}
+};
 
 const replacePathVersion = (path, version = 'latest') => {
   const splitPath = path.split('/');
   const postVersionPath = splitPath.slice(3).join('/');
   return `/${splitPath[1]}/${version}${postVersionPath.length > 0 ? `/${postVersionPath}` : ''}`;
-}
+};
+
+const filePathToDocType = (filePath) => {
+  if (filePath.includes('/sources/docs/')) {
+    return 'doc';
+  } else if (filePath.includes('/advocacy_docs/')) {
+    return 'advocacy';
+  } else {
+    return 'gh_doc';
+  }
+};
 
 const productLatestVersionCache = [];
 
@@ -27,14 +37,13 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
   if (node.internal.type === 'Mdx') {
     const fileNode = getNode(node.parent);
     const nodeFields = {
-      docType: node.fileAbsolutePath.includes('/docs/') ? 'doc' : 'advocacy',
+      docType: filePathToDocType(node.fileAbsolutePath),
       mtime: fileNode.mtime,
     };
 
     const relativeFilePath = createFilePath({
       node,
       getNode,
-      basePath: nodeFields.docType === 'doc' ? 'docs' : 'advocacy_docs',
     }).slice(0, -1); // remove last character
 
     Object.assign(nodeFields, {
@@ -47,11 +56,17 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
         version: relativeFilePath.split('/')[2],
         topic: 'null',
       });
-    } else { // advocacy
+    } else if (nodeFields.docType === 'advocacy') {
       Object.assign(nodeFields, {
         product: 'null',
         version: '0',
         topic: relativeFilePath.split('/')[2],
+      });
+    } else { // gh_doc
+      Object.assign(nodeFields, {
+        product: 'null',
+        version: '0',
+        topic: relativeFilePath.split('/')[1],
       });
     }
 
@@ -76,6 +91,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               scenario
               account
             }
+            originalFilePath
           }
           excerpt(pruneLength: 280)
           fields {
@@ -111,6 +127,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   const docs = nodes.filter(file => file.fields.docType === 'doc');
   const learn = nodes.filter(file => file.fields.docType === 'advocacy');
+  const gh_docs = nodes.filter(file => file.fields.docType === 'gh_doc');
 
   const folderIndex = {};
 
@@ -183,7 +200,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
-    const docsRepoUrl = 'https://github.com/rocketinsights/edb_docs';
+    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs-products';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
@@ -211,7 +228,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
+    const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
     const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
@@ -244,6 +261,26 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           },
         },
       })
+    });
+  });
+
+  const kubeDocsGithubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
+  gh_docs.forEach(doc => {
+    const navLinks = gh_docs.filter(
+      node => node.fields.topic === doc.fields.topic,
+    );
+
+    const githubFileLink = `${kubeDocsGithubLink}/tree/master/${doc.frontmatter.originalFilePath.replace('README.md', '')}`;
+    const githubFileHistoryLink = `${kubeDocsGithubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+
+    actions.createPage({
+      path: doc.fields.path,
+      component: require.resolve('./src/templates/gh-doc.js'),
+      context: {
+        navLinks: navLinks,
+        githubFileLink: githubFileLink,
+        githubFileHistoryLink: githubFileHistoryLink,
+      },
     });
   });
 
@@ -288,6 +325,20 @@ exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDig
       contentDigest: createContentDigest(nodeData),
     },
   });
+}
+
+exports.createSchemaCustomization = ({ actions }) => {
+  const { createTypes } = actions
+  const typeDefs = `
+    type Mdx implements Node {
+      frontmatter: Frontmatter
+    }
+
+    type Frontmatter {
+      originalFilePath: String
+    }
+  `
+  createTypes(typeDefs)
 }
 
 exports.onPreBootstrap = () => {
