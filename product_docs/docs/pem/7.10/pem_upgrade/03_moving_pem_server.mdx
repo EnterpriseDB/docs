@@ -1,0 +1,277 @@
+---
+title: "Moving the Postgres Enterprise ManagerServer"
+---
+
+<div id="moving_pem_server" class="registered_link"></div>
+
+
+The steps in this section describe how to move a PEM server from one host machine to a new host machine. The PEM server on the new host (the target) must be installed with the same version of the PEM server installer as the original host (the source). Please note that if you do not use the same installer version, you may encounter a schema-mismatch error.
+
+The backing database of the target server (either PostgreSQL or Advanced Server) may be of the same type and version, or a different type and version than the backing database of the source PEM server. A PEM server that resides on a PostgreSQL host can be migrated to an Advanced Server host, or vice versa.
+
+Before starting the server migration, you should ensure that the firewalls between the source host, the target host, and the host of any PEM agent will allow connections between the services.
+
+**Step One - Prepare the Target Host**
+
+Invoke the installer for the PEM server on the target host. Please note that you must use the same version of the PEM server installer that you used when installing the source PEM server.
+
+The backing database of the target server may be a different version or type than the backing database of the source. If the new PEM server does *not* reside on the same type of backing database as the original server, you must ensure that the same version of the `sslutils` extension is installed on the new server host. The version of `sslutils` that is distributed with the PEM installers is freely available for download from the EnterpriseDB website at:
+
+> <http://www.enterprisedb.com/downloads/component-source-code>
+
+For information about installing the PEM server or the `sslutils` extension, please refer to the *PEM Installation Guide*, available at:
+
+> <https://www.enterprisedb.com/edb-docs/p/edb-postgres-enterprise-manager>
+
+**Step Two – Drop Existing Schemas from the New PEM Server**
+
+The migration process re-creates the `pem`, `pemdata`, and `pemhistory` schemas from the source PEM server on the target PEM server. In preparation for the move, use the `psql` client to delete these schemas from the pem database on the target host. You can open the `psql` client at the command line, or by selecting `SQL Shell (psql)` from the `Postgres Enterprise Manager` menu.
+
+When the `psql` client opens, connect to the `pem` backing database as the database superuser. After connecting to the pem database on the target host, use the following commands to drop the schemas:
+
+-   `DROP SCHEMA pem CASCADE;`
+-   `DROP SCHEMA pemdata CASCADE;`
+-   `DROP SCHEMA pemhistory CASCADE;`
+
+When dropping the schemas, you must include the `CASCADE` keyword, instructing the server to delete all dependent objects. When executing the command, the `psql`<span class="title-ref"> client displays a list of the dependent objects; the client confirms each the schema is removed by displaying </span><span class="title-ref">DROP SCHEMA</span>\`.
+
+![*Dropping the pem schema*](images/move_pem_server_drop_schema.png)
+
+**Step Three - Prepare the PEM Agents on the New PEM Server**
+
+Before moving the PEM server, you must identify the number of agents that are monitored by the source PEM server, and create identities for that number of agents (less one) on the target server. To discover the total number of `PEM` agents monitored by the PEM server, connect to the pem database on the source host with the `psql` client, and query the `pem.agent` table.
+
+> `SELECT id FROM pem.agent WHERE active = true;`
+
+You must manually create the number of agents that reside on the original PEM server, less one; the PEM server installer has already created one agent on the target host. For example, if the source server contains three agents, you must manually create two additional agents. Open a `psql` session with the `pem` database on the target server, and create the required agents. Use the command:
+
+> `CREATE USER agent <x>;`
+
+Where `<x>` specifies an agent number. Remember, `agent1` is created on the target host by the PEM server installer.
+
+Then, use the `GRANT` command to assign each agent that resides on the target PEM server `pem_agent` permissions:
+
+> `GRANT pem_agent TO agent <x>;`
+
+Where `<x>` specifies an agent number.
+
+**Step Four - Generate a Backup Script of the Source PEM Server**
+
+You can use the `pg_dump` utility to generate a script that contains the commands required to recreate the pem database on the target host. By default, `pg_dump` is installed in the `bin` directory under your Postgres installation. To invoke `pg_dump`, open a command line, navigate to the `bin` directory, and enter:
+
+> `pg_dump -U <user_name> <db_name> > <file_name>`
+
+Where:
+
+`<user_name>` specifies the name of the database superuser for the PEM backing database.
+
+`<db_name>` specifies the name of the PEM backing database.
+
+`<file_name>` specifies the name of the script generated by pg\_dump.
+
+When prompted, provide the password associated with the user specified.
+
+The command shown instructs `pg_dump` to generate a script that (when executed) will re-create the `pem` database. The script will be named `backup.sql`, and will be created in the `tmp` directory. `pg_dump` is connecting to the server using the credentials of the user, `postgres`.
+
+Note that invoking the `pg_dump` utility will not interrupt current database users.
+
+**Step Five - Move the Backup to the Target Host**
+
+Move the script generated by the `pg_dump` utility to the target host of the PEM server.
+
+**Step Six - Restore the Backup on the Target Host**
+
+Open a command line on the target host and navigate into the `bin` directory (under the Postgres backing database installation directory). Start `psql`, executing the script generated by the `pg_dump` utility:
+
+> `psql -U <user_name> -d pem -f <file_name>`
+
+Where:
+
+`<user_name>` specifies the name of the database superuser. The user specified must have connection privileges for the backing database.
+
+`<file_name>` specifies the complete path to the backup script generated by pg\_dump.
+
+When prompted, provide the password associated with the database superuser.
+
+![*Restoring a backup script*](images/move_pem_server_restore_backup.png)
+
+The example shown uses the `psql` client to invoke a script named `backup.sql` to recreate the `pem` database. The script is invoked using the privileges associated with the database superuser, `postgres`.
+
+**Step Seven - Stop the Database Server on the Target Host**
+
+To stop the PEM server on Linux, use the command:
+
+> `/etc/init.d/<service_name> stop`
+
+`<service_name>` specifies the name of the backing database server. For a PostgreSQL backing database, the service name is `postgresql-x.x`, and for an Advanced Server backing database, the service name is `ppas-x.x`, where `x.x` specifies the version number.
+
+If you are using Windows, you can use the `Services` dialog to control the service. To open the `Services` dialog, navigate through the `Control Panel` to the `System and Security` menu. Select `Administrative Tools`, and then double-click the `Services` icon. When the `Services` dialog opens, highlight the service name in the list, and use the option provided on the dialog to Stop the service.
+
+**Step Eight - Copy the Certificate Files to the Target Host**
+
+You must replace the certificate files that are created when the target host is installed with the certificate files of the source host. Copy the following files from the source PEM server to the target PEM server:
+
+-   `ca_certificate.crt`
+-   `ca_key.key`
+-   `root.crt`
+-   `root.crl`
+-   `server.key`
+-   `server.crt`
+
+Copy the files to the `data` directory under the Postgres installation that provides the backing database for the target cluster. On Linux, by default, the files reside in:
+
+> `/opt/PostgreSQL/<x.x>/data/`
+
+On Windows, the files reside in:
+
+> `C:\Program Files\PostgreSQL\<x.x>\data`
+
+Where:
+
+> `<x.x>` specifies the version of PostgresSQL on your system.
+
+The files will already exist on the target cluster; delete the existing files before performing the copy, or overwrite the existing files with the files from the source server. Once in place on the target server, the files should have the (platform-specific) permissions described in the sections that follow.
+
+**Permissions and Ownership on Linux**
+
+|                     |          |             |
+|---------------------|----------|-------------|
+| File Name           | Owner    | Permissions |
+| ca\_certificate.crt | postgres | -rw-------  |
+| ca\_key.key         | postgres | -rw-------  |
+| root.crt            | postgres | -rw-------  |
+| root.crl            | postgres | -rw-------  |
+| server.key          | postgres | -rw-------  |
+| server.crt          | postgres | -rw-r--r--  |
+
+On Linux, the certificate files must be owned by postgres. You can use the following command at the command line to modify the ownership of the files:
+
+> `chown postgres <file_name>`
+
+Where `file_name` specifies the name of the certificate file.
+
+The server.crt file may only be modified by the owner of the file, but may be read by any user. You can use the following command to set the file permissions for the server.crt file:
+
+> `chmod 644 server.crt`
+
+The other certificate files may only be modified or read by the owner of the file. You can use the following command to set the file permissions:
+
+> `chmod 600 <file_name>`
+
+Where `file_name` specifies the name of the file.
+
+**Permissions and Ownership on Windows**
+
+On Windows, the certificate files moved from the source host must be owned by the service account that performed the PEM server and backing database installation on the target host. If you invoked the PEM server and Postgres installer using the `Run as Administrator` option (selected from the context menu of the installer), the owner of the certificate files will be `Administrators`.
+
+To review and modify file permissions on Windows, right-click on the file name, and select `Properties`.
+
+![*The Permissions tab*](images/move_server_windows_permission.png)
+
+Navigate to the `Security` tab and highlight a `Group or user name` to view the assigned permissions. Select `Edit` or `Advanced` to access dialogs that allow you to modify the permissions associated with the selected user.
+
+**Step Nine - Move the PEM Agent Certificate Files to the PEM Server Host**
+
+You must move the certificate files used by the PEM agent of the source PEM server to the target host. This step is platform-specific.
+
+**On Linux**
+
+Copy the `agent1.key` and `agent1.crt` files from the source host to the target host. By default, on Linux, the files are installed in `/root/.pem`; copy the files to the same directory on the target host.
+
+File ownership and permissions of the files must be set to:
+
+|            |       |             |
+|------------|-------|-------------|
+| File Name  | Owner | Permissions |
+| agent1.key | root  | -rw-------  |
+| agent1.crt | root  | -rw-r--r--  |
+
+If necessary, navigate to `/root/.pem`, and use the following commands to modify the permissions and ownership of the `agent1.key` file:
+
+> `chmod 600 agent1.key`
+>
+> `chown root agent1.key`
+
+Use the following commands to modify the permissions and ownership of the `agent1.crt` file:
+
+> `chmod 644 agent1.crt`
+>
+> `chown root agent1.crt`
+
+**On Windows**
+
+Copy the `agent1.key` and `agent1.crt` files from the source host to the target host. On Windows, the files are located in:
+
+> `C:\Users\<user_name>\AppData\Roaming\pem`
+
+Where *user\_name* is the name of the user that invoked the PEM installer.
+
+The ownership and permissions associated with the certificate files on the target machine should match the ownership and permissions of the certificate files on the source machine. If you invoked the PEM server and Postgres installer using the `Run as Administrator` option (selected from the context menu of the installer), the owner of the agent certificate files will be `Administrators`.
+
+To review and modify file permissions on Windows, right-click on the file name, and select `Properties`. Navigate to the `Security` tab and highlight a `Group or user name` to view the assigned permissions. Select `Edit` or `Advanced` to access dialogs that allow you to modify the permissions associated with the selected user.
+
+**Step Ten - Update the \`\`pg\_hba.conf\`\` Files on the Target Host**
+
+Modify the `pg_hba.conf` file on the target host to allow connections from each PEM agent. By default, the `pg_hba.conf` file is located in the data directory under your Postgres installation.
+
+**Step Eleven - Start the Server on the Target Host**
+
+After modifying the `pg_hba.conf` file, you must restart the server for the changes to take effect.
+
+To restart the database server on Linux, use the command:
+
+> `/etc/init.d/<service_name> start`
+
+Where `service_name` is the name of the backing database server.
+
+If you are using Windows, you can use the `Services` dialog to control the service. To open the `Services` dialog, navigate through the `Control Panel` to the `System and Security` menu. Select `Administrative Tools`, and then double-click the `Services` icon. When the `Services` dialog opens, highlight the service name in the list, and use the option provided on the dialog to Start the service.
+
+**Step Twelve - Connecting Monitored Agents to the New PEM Server Host**
+
+To instruct existing PEM agents to connect to the new PEM server host, you must:
+
+-   Ensure that the PEM agent host can connect to the new PEM server host.
+-   Modify the registry (on each Windows host with a PEM agent) or the agent configuration files (on each Linux host with a PEM agent), specifying the IP address and port of the new PEM server.
+-   Restart the PEM agent's service.
+
+These steps are platform-specific.
+
+**If the PEM Agent Resides on Linux**
+
+Use your choice of editor to modify the `agent.cfg` file, specifying the new IP address and port number of the PEM server in the `pem_host` and `pem_port` parameters.
+
+By default, the `agent.cfg` file is located in:
+
+> `/opt/PEM/agent/etc/agent.cfg`
+
+![*The agent.cfg file*](images/move_pem_server_agent_cfg.png)
+
+After modifying the `agent.cfg` file, you must restart the PEM agent service; you can use the `pemagent` service script on the Linux command line to restart the service:
+
+> `/etc/init.d/pemagent restart`
+
+**If the PEM Agent Resides on Windows**
+
+<span class="title-ref">Before modifying the Windows registry on the monitored node, confirm that the firewall on the host of the PEM agent will allow connections to the PEM server</span>. After confirming that the PEM agent host can connect to the PEM server host, you can use the Windows `Registry Editor` to review and edit the `PEM_HOST` and `PEM_PORT` entries to ensure that they correctly identify the host and port used by the PEM server. To open the `Registry Editor`, enter `regedit` in the Windows `Run` dialog or in the Windows start menu search box.
+
+Navigate through the registry tree control to view or modify registry entries. On 64-bit Windows, the PEM agent registry entries are located:
+
+> `HKEY_LOCAL_MACHINE SOFTWARE wow6432Mode EnterpriseDB PEM agent`
+
+On 32-bit Windows, the PEM agent registry entries are located:
+
+> `HKEY_LOCAL_MACHINE SOFTWARE EnterpriseDB PEM agent`
+
+![*The Windows Registry Editor*](images/move_pem_server_windows_registry.png)
+
+The `PEM_HOST` and `PEM_PORT` entries must specify the address and port number of the new PEM server on the target host. To modify a registry entry, right click on the entry `Name`, and select `Modify` from the context menu to open the `Edit String` dialog.
+
+![*The Windows Registry Editor*](images/move_pem_server_windows_registry_edit.png)
+
+Use the `Edit String` dialog to make any changes to the value of the entry. When you're finished, click `OK` to save your changes, or `Cancel` to exit without saving.
+
+After modifying the registry, you must restart the PEM agent's service; you can use the `Services` dialog (accessed through the Windows `Control Panel`) to restart the `Postgres Enterprise Manager - pemAgent` service .
+
+![*Restarting the PEM Agent&#39;s service*](images/move_pem_server_restart_agent.png)
+
+After moving the server, change the connection properties in any installed PEM clients to connect to the new host of the PEM server, agents, and monitored servers.

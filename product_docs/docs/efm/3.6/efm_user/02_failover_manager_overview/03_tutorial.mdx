@@ -1,0 +1,146 @@
+---
+title: "Tutorial - Configuring a Simple Failover Manager Cluster"
+---
+
+<div id="tutorial" class="registered_link"></div>
+
+
+This tutorial describes quickly configuring a Failover Manager cluster in a test environment. Other sections in this guide provide key information that you should read and understand before configuring Failover Manager for a production deployment.
+
+This tutorial assumes that:
+
+-   A database server is running and streaming replication is set up between a master and one or two standby nodes.
+-   You have installed Failover Manager on each node.
+
+The example that follows creates a cluster named `efm`.
+
+You should start the configuration process on a master or standby node. Then, copy the configuration files to other nodes to save time.
+
+**Step 1: Create Working Configuration Files**
+
+Copy the provided sample files to create EFM configuration files, and correct the ownership:
+
+> `cd /etc/edb/efm-3.6`
+>
+> `cp efm.properties.in efm.properties`
+>
+> `cp efm.nodes.in efm.nodes`
+>
+> `chown efm:efm efm.properties`
+>
+> `chown efm:efm efm.nodes`
+
+**Step 2: Create an Encrypted Password**
+
+Create the encrypted password (needed for the properties file):
+
+> `/usr/edb/efm-3.6/bin/efm encrypt efm`
+
+Follow the onscreen instructions to produce the encrypted version of your database password.
+
+**Step 3: Update the efm.properties File**
+
+The `cluster_name.properties` file contains parameters that specify connection properties and behaviors for your Failover Manager cluster. Modifications to property settings are applied when Failover Manager starts.
+
+The following properties are the minimal properties required to configure a Failover Manager cluster. If you are configuring a production system, please see `The Cluster Properties File <cluster_properties>` for a complete list of properties.
+
+Database connection properties (needed even on the witness so it can connect to other databases when needed):
+
+> `db.user`
+>
+> `db.password.encrypted`
+>
+> `db.port`
+>
+> `db.database`
+
+Owner of the data directory (usually postgres or enterprisedb):
+
+> `db.service.owner`
+
+EFM uses the `db.service.name` and `db.bin` properties when restarting the server. The service name provided with the `db.service.name` property is used when restarting the server with `service` or `systemctl`; the value you provide in the `db.bin` property (the path to the Postgres `bin` directory), will be used for calls to `pg_ctl`. Please note that `db.bin` is a required field. `db.service.name` is required if you are running the database as a service.
+
+> `db.service.name`
+>
+> `db.bin`
+
+The data directory in which EFM will find or create recovery.conf files:
+
+> `db.recovery.conf.dir`
+
+Set to receive email notifications (the notification text is also included in the agent log):
+
+> `user.email`
+
+This is the local address of the node and the port to use for EFM. Other nodes will use this address to reach the agent, and the agent will also use this address for connecting to the local database (as opposed to connecting to localhost). An example of the format is included below:
+
+> `bind.address=1.2.3.4:7800`
+
+Set this property to `true` on a witness node and `false` if it is a master or standby:
+
+> `is.witness`
+
+If you are running on a network without access to the Internet, change this to an address that is available on your network:
+
+> `pingServerIp=8.8.8.8`
+
+When configuring a production cluster, the following properties can be either true or false depending on your system configuration and usage. Set them both to true to simplify startup if you're configuring an EFM test cluster.
+
+> `auto.allow.hosts=true`
+>
+> `stable.nodes.file=true`
+
+**Step 4: Update the efm.nodes File**
+
+The `cluster_name.nodes` file is read at startup to tell an agent how to find the rest of the cluster or, in the case of the first node started, can be used to simplify authorization of subsequent nodes.
+
+Add the addresses and ports of each node in the cluster to this file. One node will act as the membership coordinator; the list should include at least the membership coordinator's address; for example:
+
+> `1.2.3.4:7800`
+>
+> `1.2.3.5:7800`
+>
+> `1.2.3.6:7800`
+
+Please note that the Failover Manager agent will not verify the content of the `efm.nodes` file; the agent expects that some of the addresses in the file cannot be reached (e.g. that another agent hasn’t been started yet). For more information about the `efm.nodes` file, see `The Cluster Members File <cluster_members>`
+
+**Step 5: Configure the Other Nodes**
+
+Copy the `efm.properties` and `efm.nodes` files to the `/etc/edb/efm-3.6` directory on the other nodes in your sample cluster. After copying the files, change the file ownership so the files are owned by `efm:efm`. The `efm.properties` file can be the same on every node, except for the following properties:
+
+-   Modify the `bind.address` property to use the node’s local address.
+-   Set `is.witness` to `true` if the node is a witness node. If the node is a witness node, the properties relating to a local database installation will be ignored.
+
+**Step 6: Start the EFM Cluster**
+
+On any node, start the Failover Manager agent. The agent is named `efm-3.6`; you can use your platform-specific service command to control the service. For example, on a CentOS or RHEL 7.x host use the command:
+
+> `systemctl start efm-3.6`
+
+On a a CentOS or RHEL 6.x host use the command:
+
+> `service efm-3.6 start`
+
+After the agent starts, run the following command to see the status of the single-node cluster. You should see the addresses of the other nodes in the Allowed node host list.
+
+> `/usr/edb/efm-3.6/bin/efm cluster-status efm`
+
+Start the agent on the other nodes. Run the `efm cluster-status efm` command on any node to see the cluster status.
+
+If any agent fails to start, see the startup log for information about what went wrong:
+
+> `cat /var/log/efm-3.6/startup-efm.log`
+
+**Performing a Switchover**
+
+If the cluster status output shows that the master and standby(s) are in sync, you can perform a switchover with the following command:
+
+> `/usr/edb/efm-3.6/bin/efm promote efm -switchover`
+
+The command will promote a standby and reconfigure the master database as a new standby in the cluster. To switch back, run the command again.
+
+For quick access to online help, you can invoke the following command:
+
+> `/usr/edb/efm-3.6/bin/efm promote efm --help`
+
+For detailed information about using the efm command line tool, see `Using the EFM Utility <using_efm_utility>`.

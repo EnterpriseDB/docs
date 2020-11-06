@@ -1,0 +1,409 @@
+---
+title: Using a Package Manager to Install Advanced Server
+---
+
+
+You can use the Yum (Yellowdog Updater, Modified) package manager to install Advanced Server or Advanced Server supporting components. Yum will attempt to satisfy package dependencies as it installs a package, but requires access to the Advanced Server repositories. If your system does not have access to a repository via the Internet, you can use RPM to install a package or create a local repository, but you may be required to manually satisfy package dependencies.
+
+The ppas95 meta RPM installs Advanced Server, and its core supporting components. You can use the Advanced Server meta RPM for installation convenience, or pick and choose any sub-component that you need on a particular machine. Note that some sub-components require the installation of other Advanced Server component packages, while other packages may be installed individually. For a complete list of the RPM installers available for Advanced Server and its supporting components, see [Section 3.3](#advanced-server-rpm-installers).
+
+The installation of the server package creates a database superuser named enterprisedb. The user is assigned a UID and a GID of 26. The user has no default password; use the passwd command to assign a password for the user. The default shell for the user is bash, and the user's home directory is /var/lib/ppas.
+
+By default, Advanced Server logging is configured to write files to the pg\_log subdirectory of the data directory, rotating the files each day and retaining one week of log entries. You can customize the logging behavior of the server by modifying the postgresql.conf file, located in /var/lib/ppas/9.5/data.
+
+The RPM installers place Advanced Server components in the directories listed in the table below:
+
+| PPAS Component       | Path to Installation Directory          |
+| -------------------- | --------------------------------------- |
+| Executables          | /usr/ppas-9.5/bin                       |
+| Libraries            | /usr/ppas-9.5/lib                       |
+| Documentation        | /usr/ppas-9.5/share/doc                 |
+| Contrib              | /usr/ppas-9.5/share/contrib             |
+| Data                 | /var/lib/ppas/9.5/data                  |
+| Backup area          | /var/lib/ppas/9.5/backups               |
+| Templates            | /usr/ppas-9.5/share                     |
+| Procedural Languages | /usr/ppas-9.5/lib                       |
+| Development Headers  | /usr/ppas-9.5/include                   |
+| Shared data          | /usr/ppas-9.5/share                     |
+| Regression tests     | /usr/ppas-9.5/lib/pgxs/src/test/regress |
+| SGML Documentation   | /usr/ppas-9.5/share/doc                 |
+
+The file locations are Linux Standard Base (LSB) compliant.
+
+## Installing an RPM Package
+
+Before installing the Advanced Server or a supporting component via an RPM package, you must request access to the EnterpriseDB repository. For information about requesting credentials, visit:
+
+<https://info.enterprisedb.com/rs/069-ALB-339/images/Repository%20Access%2004-09-2019.pdf>
+
+After receiving your repository credentials you can:
+
+> 1\. Create the repository configuration file.
+>
+> 2\. Modify the file, providing your user name and password.
+>
+> 3\. Install Advanced Server and its supporting components.
+
+**Creating a Repository Configuration File and Installing Advanced Server**
+
+To create the repository configuration file, assume superuser privileges and invoke the following command:
+
+> yum -y install https://yum.enterprisedb.com/edb-repo-rpms/edb-repo-latest.noarch.rpm
+
+The repository configuration file is named edb.repo. The file resides in /etc/yum.repos.d.
+
+After creating the edb.repo file, use your choice of editor to ensure that the value of the enabled parameter is 1, and replace the username and password placeholders in the baseurl specification with the name and password of a registered EnterpriseDB user.
+
+\[edb\]
+
+name=EnterpriseDB RPMs $releasever - $basearch
+
+baseurl=https://\<*username\>*:\<*password\>*@yum.enterprisedb.com/edb/redhat/rhel-$releasever-$basearch
+
+enabled=1
+
+gpgcheck=1
+
+gpgkey=file:///etc/pki/rpm-gpg/ENTERPRISEDB-GPG-KEY
+
+After saving your changes to the configuration file, you can use yum install command to install Advanced Server. For example, to install the server and its core components, use the command:
+
+> yum install ppas95-server
+
+When you install an RPM package that is signed by a source that is not recognized by your system, yum may ask for your permission to import the key to your local server. If prompted, and you are satisfied that the packages come from a trustworthy source, enter a y, and press Return to continue.
+
+After installing Advanced Server, you must configure the installation; see [Section 3.2](#advanced-server-rpm-installers), *Configuring an Advanced Server Installation*, for details.
+
+During the installation, yum may encounter a dependency that it cannot resolve. If it does, it will provide a list of the required dependencies that you must manually resolve.
+
+### Updating an RPM Installation
+
+If you have an existing Advanced Server RPM installation, you can use yum to upgrade your repository configuration file and update to a more recent product version. To update the edb.repo file, assume superuser privileges and enter:
+
+> yum upgrade edb-repo
+
+yum will update the edb.repo file to enable access to the current EDB repository, configured to connect with the credentials specified in your edb.repo file. Then, you can use yum to upgrade all packages whose names include the expression ppas:
+
+> yum upgrade ppas\*
+
+Please note that the yum upgrade command will only perform an update between minor releases; to update between major releases, you must use pg\_upgrade. For more information about using pg\_upgrade, see Section <span class="underline">8</span>.
+
+For more information about using yum commands and options, enter yum --help on your command line, or visit:
+
+<https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Deployment_Guide/ch-yum.html>
+
+### Installing Advanced Server on an Isolated Network
+
+You can create a local yum repository to act as a host for the Advanced Server RPM packages if the server on which you wish to install Advanced Server (or supporting components) cannot directly access the EnterpriseDB repository. Please note that this is a high-level listing of the steps required; you will need to modify the process for your individual network.
+
+To create and use a local repository, you must:
+
+1.  Use yum to install the yum-utils and createrepo packages:
+
+> yum install yum-utils
+> yum install createrepo
+
+2.  Create a directory in which to store the repository:
+
+> mkdir /srv/repos
+
+3.  Copy the RPM installation packages to your local network repository. You can download the individual RPM files from:
+
+> [yum.enterprisedb.com](yum.enterprisedb.com)
+
+4.  Sync the RPM packages and create the repository.
+
+> reposync -r ppas95 -p /srv/repos
+> createrepo /srv/repos
+
+5.  Install your preferred webserver on the host that will act as your local repository, and ensure that the repository directory is accessible to the other servers on your network. For example, you might install lighttpd:
+
+> yum install lighttpd
+
+6.  If you are using lighttpd, you must provide a configuration file that identifies the location of the repository on your local network. For example, the configuration file might contain:
+
+> $HTTP\["host"\] == "yum.domain.com"{
+> server.document-root = "/srv/repos"
+> server.errorlog="/var/log/lighttpd/yum\_error.log"
+> accesslog.filename = "/var/log/lighttpd/yum\_access.log"}
+>
+> For detailed information about installing, configuring and using lighttpd, visit the official project site at:
+
+<http://redmine.lighttpd.net/projects/1/wiki/Docs>
+
+7.  On each isolated database server, configure yum to pull updates from the mirrored repository on your local network. For example, you might create a file called /etc/yum.repos.d/edb-repo with connection information that specifies:
+
+> \[ppas95\]
+> name=EnterpriseDB Advanced Server 9.5
+> baseurl=http://yum.domain.com/ppas95
+> enabled=1
+> gpgcheck=0
+
+After specifying the location and connection information for your local repository, you can use yum commands to install Advanced Server and its supporting components on the isolated servers. For example:
+
+> yum install ppas95
+
+For more information about creating a local repository, visit:
+
+<http://yum.baseurl.org/>
+
+## Configuring a Package Installation
+
+The packages that install the database server component also create a service configuration file and service startup scripts. The service configuration file is named ppas-9.5 and resides in /etc/sysconfig/ppas.
+
+The file contains environment variables that specify default values that are used by the service startup script when initializing a database and configuring the service for use.
+
+!\[image\]\(./images/image3.png)
+
+*Figure 3.5 — The Advanced Server service configuration file.*
+
+The file contains the following environment variables:
+ - PGENGINE specifies the location of the engine and utility executable files.
+ - PGPORT specifies the listener port for the database server.
+ - PGDATA specifies the path to the data directory.
+ - PGLOG specifies the location of the log file to which the server writes startup information.
+ - Use the INITDBOPTS variable to specify any initdb option or options that you wish to apply to the new cluster.
+
+You can modify the ppas-9.5 file before invoking the startup script to change the listener port, data directory location, startup log location or installation mode. Note that if you plan to create more than one instance on the same system, you may wish to copy the ppas-9.5 file (and the associated startup script that resides in /etc/init.d), and modify the file contents for each additional instance that resides on the same host.
+
+Please note that the options specified in the service configuration file are only enforced if initdb is invoked via the service command; if you manually invoke initdb (at the command line), you must specify the other options (such as the data directory and installation mode) on the command line.
+
+### Specifying initdb Options in the Service Configuration File
+
+By default, the INITDBOPTS variable is commented out in the service configuration file; unless modified, when you run the service startup script, the new cluster will be created in a mode compatible with Oracle databases. Clusters created in this mode will contain a database named edb, and have a database superuser named enterprisedb.
+
+To create a new cluster in PostgreSQL mode, remove the pound sign (\#) in front of the INITDBOPTS variable, enabling the "--no-redwood-compat" option. Clusters created in PostgreSQL mode will contain a database named postgres, and have a database superuser named enterprisedb.
+
+You may also specify multiple initdb options. For example, the following statement:
+
+> INITDBOPTS="--no-redwood-compat -U alice --locale=en\_US.UTF-8"
+
+Creates a database cluster (without compatibility features for Oracle) that contains a database named postgres that is owned by a user named alice; the cluster uses UTF-8 encoding.
+
+For more information about creating a custom cluster with initdb, see Section <span class="underline">5.4</span>.
+
+### Creating a Database Cluster and Starting the Service
+
+After specifying any options in the service configuration file, you must create the database cluster and start the service; these steps are platform specific.
+
+***On RHEL or CentOS 6.x***
+
+To create a database cluster in the PGDATA directory that listens on the port specified by the PGPORT specified in the service configuration file described in Section <span class="underline">3.2</span>, assume root privileges, navigate into the /usr/ppas-9.5/bin directory, and invoke the service script:
+
+> service ppas-9.5 initdb
+
+You can also assign a locale to the cluster when invoking initdb. By default, initdb will use the value specified by the $LANG operating system variable, but if you append a preferred locale when invoking the script, the cluster will use the alternate value. For example, to create a database cluster that uses simplified Chinese, invoke the command:
+
+> service ppas-9.5 initdb zh\_CH.UTF-8
+
+After creating a database cluster, start the database server with the command:
+
+> service ppas-9.5 start
+
+The command starts a postmaster listening on the port specified in the service configuration file; by default, an Advanced Server postmaster listens on port 5444.
+
+For more information about using the service command, please see Section <span class="underline">5.2</span>.
+
+***On RHEL or CentOS 7.x***
+
+To invoke initdb on a RHEL or CentOS 7.x system, with the options specified in the service configuration file, assume the identity of the operating system superuser:
+
+> su - root
+
+Then, invoke initdb:
+
+> /usr/lib/systemd/system/ppas-9.5.sh initdb
+
+After creating the cluster, use systemctl to start the service:
+
+For more information about using initdb, see Section <span class="underline">5.4</span>.
+
+## Advanced Server RPM Installers
+
+The tables that follow list the packages that are available from EnterpriseDB. Please note that you can also use the yum search command to access a list of the packages that are currently available from your configured repository. To use the yum search command, open a command line, assume root privileges, and enter:
+
+> yum search *package*
+
+Where *package* is the search term that specifies the name (or partial name) of a package. The repository search will return a list of available packages that include the specified search term.
+
+The following table lists the packages that are stored in the ppas95 repository:
+
+<table>
+<thead>
+<tr class="header">
+<th>Package Name</th>
+<th>Package Installs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ppas95</td>
+<td><p>The ppas95 meta RPM installs Advanced Server, and its core supporting components. This package installs:</p>
+<p>Database server</p>
+<p>Client programs (edb-psql, pg_dump, pg_restore, and other client utilities)</p>
+<p>Community contributed modules</p>
+<p>Community documentation</p>
+<p>ecpg/ecpgPlus</p>
+<p>EDB Plus</p>
+<p>Index Advisor</p>
+<p>Infinite Cache</p>
+<p>pgAgent</p>
+<p>pgsnmpd</p>
+<p>PL Debugger</p>
+<p>PL/Java</p>
+<p>PL/Perl</p>
+<p>PL/Python</p>
+<p>PL/Tcl</p>
+<p>pgpool-extensions</p>
+<p>Slony Replication</p>
+<p>SQL Profiler</p>
+<p>SQL Protect</p>
+<p>sslutils</p>
+<p>Supporting library files</p>
+<p>Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</p></td>
+</tr>
+<tr class="even">
+<td>ppas95-server</td>
+<td>This package contains an Advanced Server meta installer that installs the database server.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-client</td>
+<td>The ppas95-server-client package contains client programs and utilities that you can use to access and manage Advanced Server.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-contrib</td>
+<td>The ppas95-contrib package installs contributed tools and utilities that are distributed with Advanced Server. Files for these modules are installed in:<br />
+Documentation: /usr/ppas-9.5/share/doc<br />
+Loadable modules: /usr/ppas-9.5/lib<br />
+Binaries: /usr/ppas-9.5/bin</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-core</td>
+<td>The ppas95-server-core package includes the programs needed to create the core functionality behind the Advanced Server database.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-devel</td>
+<td>The ppas95-server-devel package contains the header files and libraries needed to compile C or C++ applications that directly interact with an Advanced Server server and the ecpg or ecpgPlus C preprocessor.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-docs</td>
+<td>The ppas95-server-docs package installs the SGML source for the PostgreSQL documentation, as well as the documentation in HTML and PDF format.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-indexadvisor</td>
+<td>This package installs Advanced Server's Index Advisor feature. The Index Advisor utility helps determine which columns you should index to improve performance in a given workload.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-libs</td>
+<td>The ppas95-server-libs package provides the essential shared libraries for any ppas client program or interface.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-pldebugger</td>
+<td>This package implements an API for debugging PL/pgSQL functions on Advanced Server.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-plperl</td>
+<td>The ppas95-server-plperl package installs the PL/Perl procedural language for Advanced Server. Please note that the ppas95-server-plperl package is dependent on the platform-supplied version of Perl.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-plpython</td>
+<td>The ppas95-server-plpython package installs the PL/Python procedural language for Advanced Server. Please note that the ppas95-server-plpython package is dependent on the platform-supplied version of Python.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-pltcl</td>
+<td>The ppas95-pltcl package installs the PL/Tcl procedural language for Advanced Server. Please note that the ppas95-server-pltcl package is dependent on the platform-supplied version of TCL.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-sqlprofiler</td>
+<td>This package installs Advanced Server's SQL Profiler feature. SQL Profiler helps identify and optimize SQL code.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-server-sqlprotect</td>
+<td>This package installs Advanced Server's SQL Protect feature. SQL Protect provides protection against SQL injection attacks.</td>
+</tr>
+<tr class="even">
+<td>ppas95-server-sslutils</td>
+<td>This package installs functionality that provides SSL support for the PEM Client.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-edbplus</td>
+<td>The ppas95-edbplus package contains the files required to install the EDB Plus command line client. EDB Plus commands are compatible with Oracle's SQL*Plus.</td>
+</tr>
+<tr class="even">
+<td>ppas95-icache</td>
+<td>This package contains the files required to install the Infinite Cache service on a cache server node. Infinite Cache is a high-performance, distributed memory object caching system that distributes database load across multiple cache servers.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-pgagent</td>
+<td>This package installs pgAgent; pgAgent is a job scheduler for Advanced Server. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+<tr class="even">
+<td>ppas95-pgsnmpd</td>
+<td>SNMP (Simple Network Management Protocol) is a protocol that allows you to supervise an apparatus connected to the network.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-pljava</td>
+<td>This package installs PL/Java, providing access to Java stored procedures, triggers and functions via the JDBC interface.</td>
+</tr>
+<tr class="even">
+<td>ppas95-pgpool34-extensions</td>
+<td>This package creates server extensions required by the server.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-postgis</td>
+<td>This package installs PostGIS (geographic information systems) extensions for Advanced Server. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+<tr class="even">
+<td>ppas95-postgis-core</td>
+<td>This package installs packages that support PostGIS functionality. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-postgis-docs</td>
+<td>This package installs PostGIS community documentation. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+<tr class="even">
+<td>ppas-postgis-jdbc</td>
+<td>This package installs the JDBC driver for PostGIS and EDB Plus.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-postgis-utils</td>
+<td>This package installs PostGIS utilities. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+<tr class="even">
+<td>ppas95-replication</td>
+<td>This package contains the meta installer for Slony-I replication and documentation. Slony-I facilitates master-standby replication, and is suited for large databases with a limited number of standbys.</td>
+</tr>
+<tr class="odd">
+<td>ppas95-replication-core</td>
+<td>This package contains the files required to install Slony-I replication. Slony-I facilitates master-standby replication, and is suited for large databases with a limited number of standby systems.</td>
+</tr>
+<tr class="even">
+<td>ppas95-replication-docs</td>
+<td>This package contains the Slony-I project documentation (in pdf form).</td>
+</tr>
+<tr class="odd">
+<td>ppas95-replication-tools</td>
+<td>This package contains the Slony altperl tools and utilities that are useful when deploying Slony-I replication environments. Before installing this package, you must install EPEL; for detailed information about installing EPEL, see Section <span class="underline">2.3</span>.</td>
+</tr>
+</tbody>
+</table>
+
+The following table lists the packages for Advanced Server supporting components:
+
+| Package Name          | Package Installs                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| edb-bart              | The edb-bart package installs the EnterpriseDB Backup and Recovery Tool. For more information, visit <http://www.enterprisedb.com/edb-backup-and-recovery-tool>.                                                                                                                   |
+| efm20                 | The efm20 package installs EnterpriseDB Failover Manager. Failover Manager is a high-availability module that enables automatic failover. For more information, visit <http://www.enterprisedb.com/products/edb-failover-manager>.                                                 |
+| pem-agent             | The pem-agent package installs the Postgres Enterprise Manager (PEM) agent. PEM allows you to manage, monitor and tune single or multiple servers from a single console. For more information about PEM, visit <http://www.enterprisedb.com/products/postgres-enterprise-manager>. |
+| ppas-jdbc             | The ppas-jdbc package includes the .jar files needed for Java programs to access an Advanced Server database.                                                                                                                                                                      |
+| ppas-migrationtoolkit | The ppas-migrationtoolkit package installs Migration Toolkit; the Migration Toolkit utility facilitates migration to an Advanced Server database from Oracle, PostgreSQL, MySQL, Sybase and SQL Server.                                                                            |
+| ppas-oci              | The ppas-oci package installs the EnterpriseDB Open Client library, allowing applications that use the Oracle Call Interface API to connect to an Advanced Server database.                                                                                                        |
+| ppas-oci-devel        | This package installs the OCI include files; install this package if you are developing C/C++ applications that require these files.                                                                                                                                               |
+| ppas-odbc             | This package installs the driver needed for applications to access an Advanced Server system via ODBC (Open Database Connectivity).                                                                                                                                                |
+| ppas-odbc-devel       | This package installs the ODBC include files; install this package if you are developing C/C++ applications that require these files.                                                                                                                                              |
+| ppas-pgbouncer16      | This package contains pgBouncer (a lightweight connection pooler). This package requires the libevent package.                                                                                                                                                                     |
+| ppas-pgpool34         | This package contains the PgPool meta installer. PgPool provides connection pooling and load balancing for Advanced Server installations.                                                                                                                                          |
+| ppas-xdb              | This package contains the xDB meta installer; xDB provides asynchronous cross-database replication. For more information, visit <http://www.enterprisedb.com/download-xdb-replication-server-mmr>.                                                                                 |
+
+Please Note: The available packages are subject to change.
+

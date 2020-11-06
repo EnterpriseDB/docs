@@ -1,0 +1,347 @@
+---
+title: Error Handling
+---
+
+
+ECPGPlus provides two methods to detect and handle errors in embedded SQL code:
+ - A client application can examine the sqlca data structure for error messages, and supply customized error handling for your client application.
+ - A client application can include EXEC SQL WHENEVER directives to instruct the ECPGPlus compiler to add error-handling code.
+
+## Error Handling with sqlca
+
+sqlca (SQL communications area) is a global variable used by ecpglib to communicate information from the server to the client application. After executing a SQL statement (for example, an INSERT or SELECT statement) you can inspect the contents of sqlca to determine if the statement has completed successfully or if the statement has failed.
+
+sqlca has the following structure:
+
+struct
+
+{
+
+char sqlcaid\[8\];
+
+long sqlabc;
+
+long sqlcode;
+
+struct
+
+{
+
+int sqlerrml;
+
+char sqlerrmc\[SQLERRMC\_LEN\];
+
+} sqlerrm;
+
+char sqlerrp\[8\];
+
+long sqlerrd\[6\];
+
+char sqlwarn\[8\];
+
+char sqlstate\[5\];
+
+} sqlca;
+
+Use the following directive to implement sqlca functionality:
+
+> EXEC SQL INCLUDE sqlca;
+
+If you include the ecpg directive, you do not need to \#include the sqlca.h file in the client application's header declaration.
+
+The Advanced Server sqlca structure contains the following members:
+
+sqlcaid
+
+> sqlcaid contains the string: "SQLCA".
+
+sqlabc
+
+> sqlabc contains the size of the sqlca structure.
+
+sqlcode
+
+> The sqlcode member has been deprecated with SQL 92; Advanced Server supports sqlcode for backward compatibility, but you should use the sqlstate member when writing new code.
+>
+> sqlcode is an integer value; a positive sqlcode value indicates that the client application has encountered a harmless processing condition, while a negative value indicates a warning or error.
+>
+> If a statement processes without error, sqlcode will contain a value of 0. If the client application encounters an error (or warning) during a statement's execution, sqlcode will contain the last code returned.
+>
+> The SQL standard defines only a positive value of 100, which indicates that he most recent SQL statement processed returned/affected no rows. Since the SQL standard does not define other sqlcode values, please be aware that the values assigned to each condition may vary from database to database.
+
+sqlerrm is a structure embedded within sqlca, composed of two members:
+
+> sqlerrml
+>
+> sqlerrml contains the length of the error message currently stored in sqlerrmc.
+>
+> sqlerrmc
+>
+> sqlerrmc contains the null-terminated message text associated with the code stored in sqlstate. If a message exceeds 149 characters in length, ecpglib will truncate the error message.
+
+sqlerrp
+
+sqlerrp contains the string "NOT SET".
+
+sqlerrd is an array that contains six elements:
+
+> sqlerrd\[1\] contains the OID of the processed row (if applicable).
+>
+> sqlerrd\[2\] contains the number of processed or returned rows.
+>
+> sqlerrd\[0\], sqlerrd\[3\], sqlerrd\[4\] and sqlerrd\[5\] are unused.
+
+sqlwarn is an array that contains 8 characters:
+
+> sqlwarn\[0\] contains a value of 'W' if any other element within sqlwarn is set to 'W'.
+>
+> sqlwarn\[1\] contains a value of 'W' if a data value was truncated when it was stored in a host variable.
+>
+> sqlwarn\[2\] contains a value of 'W' if the client application encounters a non-fatal warning.
+>
+> sqlwarn\[3\], sqlwarn\[4\], sqlwarn\[5\], sqlwarn\[6\], and sqlwarn\[7\] are unused.
+
+sqlstate
+
+> sqlstate is a 5 character array that contains a SQL-compliant status code after the execution of a statement from the client application. If a statement processes without error, sqlstate will contain a value of 00000. Please note that sqlstate is *not* a null-terminated string.
+>
+> sqlstate codes are assigned in a hierarchical scheme:
+ - The first two characters of sqlstate indicate the general class of the condition.
+ - The last three characters of sqlstate indicate a specific status within the class.
+
+> If the client application encounters multiple errors (or warnings) during an SQL statement's execution sqlstate will contain the last code returned.
+
+The following table lists the sqlstate and sqlcode values, as well as the symbolic name and error description for the related condition:
+
+<table>
+<thead>
+<tr class="header">
+<th>sqlstate</th>
+<th><p>sqlcode</p>
+<p>(Deprecated)</p></th>
+<th>Symbolic Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>YE001</td>
+<td>-12</td>
+<td>ECPG_OUT_OF_MEMORY</td>
+<td>Virtual memory is exhausted.</td>
+</tr>
+<tr class="even">
+<td>YE002</td>
+<td>-200</td>
+<td>ECPG_UNSUPPORTED</td>
+<td>The preprocessor has generated an unrecognized item. Could indicate incompatibility between the preprocessor and the library.</td>
+</tr>
+<tr class="odd">
+<td>07001, or 07002</td>
+<td>-201</td>
+<td>ECPG_TOO_MANY_ARGUMENTS</td>
+<td>The program specifies more variables than the command expects.</td>
+</tr>
+<tr class="even">
+<td>07001, or 07002</td>
+<td>-202</td>
+<td>ECPG_TOO_FEW_ARGUMENTS</td>
+<td>The program specified fewer variables than the command expects.</td>
+</tr>
+<tr class="odd">
+<td>21000</td>
+<td>-203</td>
+<td>ECPG_TOO_MANY_MATCHES</td>
+<td>The SQL command has returned multiple rows, but the statement was prepared to receive a single row.</td>
+</tr>
+<tr class="even">
+<td>42804</td>
+<td>-204</td>
+<td>ECPG_INT_FORMAT</td>
+<td>The host variable (defined in the C code) is of type INT, and the selected data is of a type that cannot be converted into an INT. ecpglib uses the strtol() function to convert string values into numeric form.</td>
+</tr>
+<tr class="odd">
+<td>42804</td>
+<td>-205</td>
+<td>ECPG_UINT_FORMAT</td>
+<td>The host variable (defined in the C code) is an unsigned INT, and the selected data is of a type that cannot be converted into an unsigned INT. ecpglib uses the strtoul() function to convert string values into numeric form.</td>
+</tr>
+<tr class="even">
+<td>42804</td>
+<td>-206</td>
+<td>ECPG_FLOAT_FORMAT</td>
+<td>The host variable (defined in the C code) is of type FLOAT, and the selected data is of a type that cannot be converted into an FLOAT. ecpglib uses the strtod() function to convert string values into numeric form.</td>
+</tr>
+<tr class="odd">
+<td>42804</td>
+<td>-211</td>
+<td>ECPG_CONVERT_BOOL</td>
+<td>The host variable (defined in the C code) is of type BOOL, and the selected data cannot be stored in a BOOL.</td>
+</tr>
+<tr class="even">
+<td>YE002</td>
+<td>-2-1</td>
+<td>ECPG_EMPTY</td>
+<td>The statement sent to the server was empty.</td>
+</tr>
+<tr class="odd">
+<td>22002</td>
+<td>-213</td>
+<td>ECPG_MISSING_INDICATOR</td>
+<td>A NULL indicator variable has not been supplied for the NULL value returned by the server (the client application has received an unexpected NULL value).</td>
+</tr>
+<tr class="even">
+<td>42804</td>
+<td>-214</td>
+<td>ECPG_NO_ARRAY</td>
+<td>The server has returned an array, and the corresponding host variable is not capable of storing an array.</td>
+</tr>
+<tr class="odd">
+<td>42804</td>
+<td>-215</td>
+<td>ECPG_DATA_NOT_ARRAY</td>
+<td>The server has returned a value that is not an array into a host variable that expects an array value.</td>
+</tr>
+<tr class="even">
+<td>08003</td>
+<td>-220</td>
+<td>ECPG_NO_CONN</td>
+<td>The client application has attempted to use a non-existent connection.</td>
+</tr>
+<tr class="odd">
+<td>YE002</td>
+<td>-221</td>
+<td>ECPG_NOT_CONN</td>
+<td>The client application has attempted to use an allocated, but closed connection.</td>
+</tr>
+<tr class="even">
+<td>26000</td>
+<td>-230</td>
+<td>ECPG_INVALID_STMT</td>
+<td>The statement has not been prepared.</td>
+</tr>
+<tr class="odd">
+<td>33000</td>
+<td>-240</td>
+<td>ECPG_UNKNOWN_DESCRIPTOR</td>
+<td>The specified descriptor is not found.</td>
+</tr>
+<tr class="even">
+<td>07009</td>
+<td>-241</td>
+<td>ECPG_INVALID_DESCRIPTOR_INDEX</td>
+<td>The descriptor index is out-of-range.</td>
+</tr>
+<tr class="odd">
+<td>YE002</td>
+<td>-242</td>
+<td>ECPG_UNKNOWN_DESCRIPTOR_ITEM</td>
+<td>The client application has requested an invalid descriptor item (internal error).</td>
+</tr>
+<tr class="even">
+<td>07006</td>
+<td>-243</td>
+<td>ECPG_VAR_NOT_NUMERIC</td>
+<td>A dynamic statement has returned a numeric value for a non-numeric host variable.</td>
+</tr>
+<tr class="odd">
+<td>07006</td>
+<td>-244</td>
+<td>ECPG_VAR_NOT_CHAR</td>
+<td>A dynamic SQL statement has returned a CHAR value, and the host variable is not a CHAR.</td>
+</tr>
+<tr class="even">
+<td></td>
+<td>-400</td>
+<td>ECPG_PGSQL</td>
+<td>The server has returned an error message; the resulting message contains the error text.</td>
+</tr>
+<tr class="odd">
+<td>08007</td>
+<td>-401</td>
+<td>ECPG_TRANS</td>
+<td>The server cannot start, commit or rollback the specified transaction.</td>
+</tr>
+<tr class="even">
+<td>08001</td>
+<td>-402</td>
+<td>ECPG_CONNECT</td>
+<td>The client application's attempt to connect to the database has failed.</td>
+</tr>
+<tr class="odd">
+<td>02000</td>
+<td>100</td>
+<td>ECPG_NOT_FOUND</td>
+<td>The last command retrieved or processed no rows, or you have reached the end of a cursor.</td>
+</tr>
+</tbody>
+</table>
+
+## EXEC SQL WHENEVER
+
+Use the EXEC SQL WHENEVER directive to implement simple error handling for client applications compiled with ECPGPlus. The syntax of the directive is:
+
+> EXEC SQL WHENEVER *condition* *action*;
+
+This directive instructs the ECPG compiler to insert error-handling code into your program.
+
+The code instructs the client application that it should perform a specified action if the client application detects a given condition. The *condition* may be one of the following:
+
+> SQLERROR
+>
+> A SQLERROR condition exists when sqlca.sqlcode is less than zero.
+>
+> SQLWARNING
+>
+> A SQLWARNING condition exists when sqlca.sqlwarn\[0\] contains a 'W'.
+>
+> NOT FOUND
+>
+> A NOT FOUND condition exists when sqlca.sqlcode is ECPG\_NOT\_FOUND (when a query returns no data).
+
+You can specify that the client application perform one of the following *actions* if it encounters one of the previous conditions:
+
+> CONTINUE
+>
+> Specify CONTINUE to instruct the client application to continue processing, ignoring the current condition. CONTINUE is the default action.
+>
+> DO CONTINUE
+>
+> An action of DO CONTINUE will generate a CONTINUE statement in the emitted C code that if it encounters the condition, skips the rest of the code in the loop and continues with the next iteration. You can only use it within a loop.
+>
+> GOTO *label*
+> or
+> GO TO *label*
+>
+> Use a C goto statement to jump to the specified *label*.
+>
+> SQLPRINT
+>
+> Print an error message to stderr (standard error), using the sqlprint() function. The sqlprint() function prints sql error, followed by the contents of sqlca.sqlerrm.sqlerrmc.
+>
+> STOP
+>
+> Call exit(1) to signal an error, and terminate the program.
+>
+> DO BREAK
+>
+> Execute the C break statement. Use this action in loops, or switch statements.
+>
+> CALL *name*(*args*)
+> or
+> DO *name*(*args*)
+>
+> Invoke the C function specified by the name *parameter*, using the parameters specified in the *args* parameter.
+
+**Example:**
+
+The following code fragment prints a message if the client application encounters a warning, and aborts the application if it encounters an error:
+
+> EXEC SQL WHENEVER SQLWARNING SQLPRINT;
+>
+> EXEC SQL WHENEVER SQLERROR STOP;
+
+Please Note: The ECPGPlus compiler processes your program from top to bottom, even though the client application may not *execute* from top to bottom. The compiler directive is applied to each line in order, and remains in effect until the compiler encounters another directive.
+
+If the control of the flow within your program is not top-to-bottom, you should consider adding error-handling directives to any parts of the program that may be inadvertently missed during compilation.
+

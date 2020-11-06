@@ -1,0 +1,76 @@
+---
+title: "Performing a Restore Operation"
+---
+
+<div id="performing_a_restore_operation" class="registered_link"></div>
+
+
+Perform the following steps for restore operation:
+
+**Step 1:** Stop the Postgres database server on which you will be performing the restore operation.
+
+**Step 2:** Inspect the `pg_xlog` subdirectory of the data directory and save any WAL files that have not yet been archived to the BART backup catalog (`backup_path/server_name/archived_wals`). If there are files that have not been archived, save them to a temporary location.
+
+**Step 3:** If you are restoring to:
+
+> -   the current data directory, delete all files and subdirectories under the data directory.
+> -   a new directory, create the directory on which you want to restore the backed up database cluster. Ensure the data directory can be written to by the BART user account or by the user account specified by the `remote_host` configuration parameter, or by the `--remote-host` option of the `RESTORE` subcommand (if these are to be used).
+
+**Step 4:** Perform the same process for tablespaces as described in Step 3. The `tablespace_path` parameter in the BART configuration file must contain the tablespace directory paths to which the tablespace data files are to be restored. See the *Configuration* section of the *EDB Postgres Backup and Recovery Installation and Upgrade Guide* for more information.
+
+**Step 5:** Identify the timeline ID you wish to use to perform the restore operation.
+
+The available timeline IDs can be identified by the first non-zero digit of the WAL file names reading from left to right.
+
+**Step 6:** Identify the backup to use for the restore operation and obtain the backup ID or backup name.
+
+To use the latest backup, omit the `-i` option; the `RESTORE` subcommand uses that backup by default. The backups can be listed with the `SHOW-BACKUPS` subcommand.
+
+**Step 7:** Run the BART `RESTORE` subcommand.
+
+> -   If you have specified the `-t timeline_id, -x target_xid`, or `-g target_timestamp` option, then recovery settings will be saved in the `postgresql.auto.conf` file and point-in-time recovery will be performed when you restart the database server.
+> -   If you do not specify `-t timeline_id`, `-x target_xid`, or `-g target_timestamp`, then minimal recovery settings will be saved in the `postgresql.auto.conf` file and archive recovery will proceed only until consistency is reached, with no restoration of files from the archive. See the [Restore](../../04_using_bart/03_basic_bart_subcommand_usage/#restore) section for detailed information about `Restore` subcommand.
+
+-   If the `-c` option is specified or if the enabled setting of the `copy_wals_during_restore` BART configuration parameter is in effect for this database server, then the following actions occur:
+
+    > -   In addition to restoring the database cluster to the directory specified by the `-p restore_path` option, the archived WAL files of the backup are copied from the BART backup catalog to the subdirectory `restore_path/archived_wals`.
+    > -   If recovery settings are saved in the `postgresql.auto.conf` file, the command string set in the `restore_command` parameter retrieves the WAL files from this `archived_wals` subdirectory relative to the `restore_path` parent directory as: `restore_command = cp archived_wals/%f %p`
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+You must ensure that valid options are specified when using the `RESTORE` subcommand. BART will not generate an error message if invalid option values or invalid option combinations are provided. BART will accept the invalid options and pass them to the `postgresql.auto.conf` file, which will then be processed by the database server when it is restarted.
+
+</div>
+
+**Step 8:** Copy any saved WAL files from Step 2 to the `restore_path/pg_xlog` subdirectory.
+
+**Step 9:** Inspect the restored directories and data files of the restored database cluster in directory `restore_path`.
+
+All files and directories must be owned by the user account that you intend to use to start the database server. Recursively change the user and group ownership of the `restore_path` directory, its files, and its subdirectories if necessary. There must only be directory access privileges for the user account that will start the database server. No other groups or users can have access to the directory.
+
+**Step 10:** Inspect the `postgresql.auto.conf` file (if you are performing a point-in-time recovery) located in the `restore_path` directory to verify if it contains the appropriate parameter settings to recover to the indicated point. Otherwise, the `postgresql.auto.conf` file should be configured to recover only until the cluster reaches consistency. In either case, the settings may be modified as desired.
+
+**Step 11:** Disable WAL archiving at this point. The BART `RESTORE` subcommand adds `archive_mode = off` to the end of the `postgresql.conf` file.
+
+-   If you want to restart the database server with WAL archiving activated, ensure that this additional parameter is deleted.
+-   The original `archive_mode` parameter still resides in the `postgresql.conf` file in its initial location with its last setting.
+
+**Step 12:** Start the database server to initiate recovery. After completion, check the database server log file to ensure the recovery was successful.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+If the backup is restored to a different location than where the original database cluster resided, operations dependent upon the database cluster location may fail if supporting service scripts are not updated to reflect the location where the backup has been restored. For information about the use and modification of service scripts, see the [EDB Postgres Advanced Server Installation Guide](https://www.enterprisedb.com/edb-docs).
+
+</div>
