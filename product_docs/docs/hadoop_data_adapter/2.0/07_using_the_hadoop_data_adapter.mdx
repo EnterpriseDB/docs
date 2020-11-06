@@ -1,0 +1,55 @@
+---
+title: "Using the Hadoop Data Adapter"
+---
+
+<div id="using_the_hadoop_data_adapter" class="registered_link"></div>
+
+
+After configuring the data adapter, and creating a table on the Postgres server that mirrors the table on the distributed file system, you can seamlessly access the data from a Postgres server.
+
+To query data on the Hadoop file system, connect to your Postgres database with your choice of client (for example, the PEM client or EDB-PSQL). When you query the table that resides on the Postgres host, the queries will be re-directed to the Hadoop host.
+
+<div id="query_pushdown" class="registered_link"></div>
+
+**Query Pushdown**
+
+When possible, the data adapter pushes down the `WHERE` predicate and target column list to the Hive server. Supporting operations (aggregates, foreign joins, and sorts) are performed by the database server. Remote push down provides better performance and improves network traffic by distributing processing to the remote server when possible, decreasing the amount of data that must travel to the database server.
+
+You can demonstrate command push-down by including the `EXPLAIN` clause in a query of a foreign table:
+
+``` text
+EXPLAIN VERBOSE SELECT DISTINCT client_ip IP, count(*) FROM weblogs WHERE uri = '/demo' GROUP BY IP HAVING count(*) > 10;
+                           QUERY PLAN
+---------------------------------------------------------------
+ HashAggregate  (cost=21.00..23.00 rows=200 width=32)
+   Output: client_ip, (count(*))
+   Group Key: weblogs.client_ip, count(*)
+   ->  HashAggregate  (cost=17.50..20.00 rows=200 width=32)
+         Output: client_ip, count(*)
+         Group Key: weblogs.client_ip
+         Filter: (count(*) > 10)
+         ->  Foreign Scan on public.weblogs  (cost=100.00..10.00 rows=1000 width=32)
+               Output: client_ip, full_request_date, day, month, month_num, year, hour, minute, second, timezone, http_verb, uri, http_status_code, bytes_returned, referrer, user_agent
+               Remote SQL: SELECT client_ip FROM fdw_db.weblogs WHERE ((uri = '/demo'))
+(10 rows)
+```
+
+As noted near the end of the query plan, the `WHERE` clause is performed on the `Remote` server.
+
+<div id="identifying_data_adapter_version" class="registered_link"></div>
+
+## Identifying the Data Adapter Version
+
+The `HDFS_FDW` data adapter includes a function that you can use to identify the currently installed version of the `.so` file for the data adapter. To use the function, connect to the Postgres server, and enter:
+
+``` text
+SELECT hdfs_fdw_version();
+```
+
+The function returns the version number:
+
+``` text
+hdfs_fdw_version
+-----------------
+20003
+```
