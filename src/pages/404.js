@@ -1,5 +1,5 @@
 import React from 'react';
-import { graphql, Link } from 'gatsby';
+import { Link } from 'gatsby';
 import { Container } from 'react-bootstrap';
 import algoliasearch from 'algoliasearch/lite';
 import {
@@ -9,7 +9,7 @@ import {
   connectSearchBox,
   connectStateResults,
 } from 'react-instantsearch-dom';
-import { indexLinkList } from '../constants/index-link-list';
+import indexNavigation from '../constants/index-navigation';
 import {
   Footer,
   IndexLinks,
@@ -25,22 +25,6 @@ const searchClient = algoliasearch(
   'NQVJGNW933',
   '3c95fc5297e90a44b6467f3098a4e6ed',
 );
-
-export const query = graphql`
-  query {
-    file(name: { eq: "advocacy-index-nav" }) {
-      childAdvocacyDocsJson {
-        advocacyLinks {
-          sectionName
-          links {
-            title
-            url
-          }
-        }
-      }
-    }
-  }
-`;
 
 const buildQuery = (pathname) => {
   const tokens = pathname.replace('/edb-docs', '').replace(/-/g, ' ').split('/');
@@ -135,8 +119,6 @@ const SuggestedHit = ({ hit }) => (
 );
 
 export default data => {
-  const advocacyLinks =
-    data.data.file.childAdvocacyDocsJson.advocacyLinks || [];
   const query = buildQuery(data.location.pathname);
 
   return (
@@ -144,7 +126,7 @@ export default data => {
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
-          <IndexLinks indexLinkList={advocacyLinks.concat(indexLinkList)} />
+          <IndexLinks indexLinkList={ indexNavigation() } />
         </SideNavigation>
         <MainContent>
           <Ascii404 />
