@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
+import { kubernetesNavigation } from '../constants/index-navigation';
 import {
   DevFrontmatter,
   Footer,
@@ -28,17 +29,6 @@ export const query = graphql`
       body
       tableOfContents
     }
-    file(name: { eq: "advocacy-index-nav" }) {
-      childAdvocacyDocsJson {
-        advocacyLinks {
-          links {
-            title
-            url
-            iconName
-          }
-        }
-      }
-    }
   }
 `;
 
@@ -60,8 +50,7 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  const navigationLinkEntries = data.file.childAdvocacyDocsJson.advocacyLinks.map(al => al.links).flat();
-  const iconName = (navigationLinkEntries.find(
+  const iconName = (kubernetesNavigation.map(al => al.links).flat().find(
     link => mdx.fields.path.includes(link.url)
   ) || { iconName: null }).iconName;
 
