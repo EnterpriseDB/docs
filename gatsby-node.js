@@ -264,14 +264,18 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     });
   });
 
-  const kubeDocsGithubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
   gh_docs.forEach(doc => {
+    let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
+    if (doc.fields.path.includes('barman')) {
+      githubLink = 'https://github.com/2ndquadrant-it/barman';
+    }
+
     const navLinks = gh_docs.filter(
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const githubFileLink = `${kubeDocsGithubLink}/tree/master/${doc.frontmatter.originalFilePath.replace('README.md', '')}`;
-    const githubFileHistoryLink = `${kubeDocsGithubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+    const githubFileLink = `${githubLink}/tree/master/${(doc.frontmatter.originalFilePath || '').replace('README.md', '')}`;
+    const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
 
     actions.createPage({
       path: doc.fields.path,
