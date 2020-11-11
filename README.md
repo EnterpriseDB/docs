@@ -13,7 +13,7 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 
 ## Sources
 - Advocacy (default, part of this repo)
-- Product Docs - [EnterpriseDB/docs-products](EnterpriseDB/docs-products)
+- Product Docs - [EnterpriseDB/docs-products](https://github.com/EnterpriseDB/docs-products)
 
 ### Configuring
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
