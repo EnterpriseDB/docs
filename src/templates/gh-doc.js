@@ -40,7 +40,6 @@ const ContentRow = ({ children }) => (
 
 const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
-  const { mtime } = mdx.fields;
   const { navLinks, githubFileLink, githubFileHistoryLink } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
@@ -90,7 +89,7 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
-          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
+          <Footer githubFileLink={githubFileHistoryLink} />
         </MainContent>
       </Container>
     </Layout>
