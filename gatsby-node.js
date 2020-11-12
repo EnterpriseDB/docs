@@ -200,9 +200,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
-    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs-products';
+    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
+    const githubFileLink = `${docsRepoUrl}/commits/main/product_docs/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
@@ -230,8 +230,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
-    const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/main/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/main/advocacy_docs${fileUrlSegment}`;
     const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
