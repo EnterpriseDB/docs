@@ -14,8 +14,8 @@ const isBuild = process.env.NODE_ENV === 'production';
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
   'docs': { name: 'docs', path: 'product_docs/docs' },
-  'k8s_docs': { name: 'k8s_docs', path: 'sources/k8s_docs' },
-  'barman': { name: 'barman', path: 'sources/barman/doc/manual' },
+  'k8s_docs': { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
+  'barman': { name: 'barman', path: 'external_sources/barman/doc/manual' },
 };
 
 const externalSourcePlugins = () => {
