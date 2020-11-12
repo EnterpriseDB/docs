@@ -1,0 +1,61 @@
+---
+title: "Point-In-Time Recovery Operations"
+---
+
+<div id="point_in_time_recovery_operation" class="registered_link"></div>
+
+
+The following steps outline how to perform a point-in-time recovery operation for a database cluster:
+
+1.  Use your system-specific command to shut down the database server.
+
+2.  If you want to restore the database cluster and tablespace files to new directories, create the new directories with the appropriate directory ownership and permissions.
+
+    If you plan to reuse existing database cluster directories, delete all the files and subdirectories in the existing directories. We strongly recommended that you make a copy of this data before deleting it. Be sure to save any recent WAL files in the `pg_xlog` subdirectory that have not been archived to the BART backup catalog `server_name/archived_wals` subdirectory.
+
+3.  Run the BART `SHOW-BACKUPS -s <server_name>` subcommand to list the backup IDs and backup names of the backups for the database server. You will need to provide the appropriate backup ID or backup name with the BART `RESTORE` subcommand, unless you intend to restore the latest backup in which case the `-i` option of the `RESTORE` subcommand for specifying the backup ID or backup name may be omitted.
+
+4.  Run the BART `RESTORE` subcommand with the appropriate options.
+
+-   The backup is restored to the directory specified by the `-p restore_path` option.
+-   In addition, if the `RESTORE` subcommand `-c` option is specified or if the enabled setting of the `copy_wals_during_restore` BART configuration parameter is applicable to the database server, then the required, archived WAL files from the BART backup catalog are copied to the `restore_path/archived_wals` subdirectory.
+
+> <div class="note">
+>
+> <div class="title">
+>
+> Note
+>
+> </div>
+>
+> Ensure the `restore_path` directory and all subdirectories and files in the `restore_path` are owned by the proper Postgres user account (for example, `enterprisedb` or `postgres`). Also ensure that only the Postgres user account has access permission to the `restore_path` directory.
+>
+> Use the `chown` command to make the appropriate adjustments to file permissions; for example, the following command changes the ownership of `restore_path` to `enterprisedb`:
+>
+> `chown -R enterprisedb:enterprisedb restore_path`
+>
+> </div>
+
+The following command restricts access to `restore_path`:
+
+> `chmod 700 restore_path`
+
+1.  Copy any saved WAL files from Step 2 that were not archived to the BART backup catalog to the `restore_path/pg_xlog` subdirectory.
+2.  For point-in-time recovery, verify that the `postgresql.auto.conf` file created in the directory specified with the `RESTORE` subcommand’s `-p <restore_path>` option generated the correct recovery parameter settings.
+
+> <div class="note">
+>
+> <div class="title">
+>
+> Note
+>
+> </div>
+>
+> If the `RESTORE` subcommand `-c` option is specified or if the enabled setting of the `copy_wals_during_restore` BART configuration parameter is applicable to the database server, then the `restore_command` parameter retrieves the archived WAL files from the `<restore_path>/archived_wals` subdirectory that was created by the `RESTORE` subcommand, otherwise the `restore_command` retrieves the archived WAL files from the BART backup catalog.
+>
+> </div>
+
+1.  The BART `RESTORE` subcommand disables WAL archiving in the restored database cluster. If you want to immediately enable WAL archiving, modify the `postgresql.conf` file by deleting the `archive_mode = off` parameter that BART appends to the end of the file.
+2.  Start the database server, which will then perform the point-in-time recovery operation if recovery settings are saved in the `postgresql.auto.conf` file.
+
+A detailed description of the `RESTORE` subcommand is available in [Basic Bart Subcommand Usage](../../04_using_bart/03_basic_bart_subcommand_usage/#basic_bart_subcommand_usage); see the *EDB Postgres Backup and Recovery Reference Guide* for a Point-in-Time recovery example.
