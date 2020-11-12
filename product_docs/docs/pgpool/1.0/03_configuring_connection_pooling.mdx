@@ -1,0 +1,336 @@
+---
+title: "Configuring pgpool-II"
+---
+
+
+
+Please note that the configuration options for pgpool-II are extensive; the options listed below should be considered a starting point only. For more information about configuring and using pgpool-II, please consult the [project website](http://www.pgpool.net/mediawiki/index.php/Main_Page).
+
+<div id="commonly_used_parameters" class="registered_link"></div>
+
+## Commonly Used pgpool-II Parameters
+
+The following table lists `pgpool.conf` parameters that are used when implementing connection pooling:
+
+| Parameter Name            | Description                                                                                                                                                                                         |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pool_conn_dbname`        | Database name to which pgpool-II will connect. By default, pgpool-II will connect with Postgres.                                                                                                    |
+| `listen_addresses`        | Host name or IP address used by pgpool-II to listen for connections. Default is localhost. Change to '\*' for all addresses.                                                                        |
+| `port`                    | Port for pgpool-II connections. Default is 9999.                                                                                                                                                    |
+| `pcp_port`                | Port for PCP connections. Default is 9898.                                                                                                                                                          |
+| `backend_hostname0`       | Host name or IP address for backend 0. You can specify '' if the backend and pgpool-II are running on the same host.                                                                                |
+| `backend_port0`           | Port number for backend 0.                                                                                                                                                                          |
+| `backend_weight0`         | Weight for backend 0 (only in load balancing mode). Specify 1 for each backend if you want the load equally balanced, or decimal values (.9, .1, etc.) to weight the load towards certain backends. |
+| `backend_data_directory0` | Data directory for backend 0.                                                                                                                                                                       |
+| `enable_pool_hba`         | Set to on to use pool\_hba.conf for client authentication.                                                                                                                                          |
+| `num_init_children`       | Number of pools. Default is 32.                                                                                                                                                                     |
+| `max_pool`                | Number of connections per pool. Default is 4.                                                                                                                                                       |
+| `connection_cache`        | Set to on to enable connection pooling.                                                                                                                                                             |
+
+The following table lists `pgpool.conf` parameters that are used when implementing replication and load balancing:
+
+| Parameter Name               | Description                                                                                                                                                                                                                                                     |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `Allow_sql_comments`         | If on, ignore SQL comments; modifications to this parameter require a reload of the pgpool.conf file.                                                                                                                                                           |
+| `load_balance_mode`          | Set to on to activate load balancing mode. If load\_balance\_mode is on and replicate\_select is off, SELECT statements are sent to one backend. The proportion of SELECT statements each backend receives is determined by parameter backend\_weight&lt;N&gt;. |
+| `ignore_leading_white_space` | Ignore leading white spaces of each query. Certain APIs such as DBI/DBD::Pg for Perl add white space that the user cannot control. Default is on.                                                                                                               |
+
+<div id="configuring_connection_pooling" class="registered_link"></div>
+
+## Configuring Connection Pooling
+
+pgpool-II provides a set of child processes that maintain cached connections to one or more database servers. When a client connects, pgpool-II attempts to reuse a connection from its pool, thus avoiding the overhead of opening and closing client connections.
+
+A connection in the pool can be reused only if the target database and the connection user match a prior connection that is currently in the pool. Connection pooling configuration options (such as the number of child processes, and the maximum number of cached connections per child) are specified in the `pgpool.conf` file.
+
+To configure connection pooling with one database server:
+
+1.  Configure the `pg_hba.conf` file on the `pgpool-II` host to permit connections between the clients and the server.
+
+2.  Copy the `pgpool.conf.sample` file to `pgpool.conf`, and modify the file, setting the `connection_cache` parameter to `on`, and specifying connection properties for your database server.
+
+    For example:
+
+    `connection_cache = on`
+
+    `backend_hostname0 = 'localhost'` `backend_port0 = 5444` `backend_weight0 = 1` `backend_data_directory0 = '/var/lib/edb/as12/data'`
+
+    Note that in the `pgpool.conf` file, connection parameters have an appended digit that specifies a cluster node identifier. Database node `0` specifies values for the primary node.
+
+3.  Optionally, configure [pgpool-II client authentication](#pgpool-II_client_authentication_configuration).
+
+4.  Optionally, configure the [PCP administrative interface](#pcp_configuration).
+
+5.  Start pgpool-II and begin using your application using the following command:
+
+    >     systemctl start edb-pgpool-<x.y>.service
+
+> where &lt;x.y&gt; is the pgpool release version.
+
+<div id="configuring_pgpool-II_load_balancing" class="registered_link"></div>
+
+## Configuring pgpool-II Load Balancing
+
+EnterpriseDB supports replication scenarios that use pgpool-II load balancing with PostgreSQL streaming replication or Slony replication. The supported replication methods ensure that database updates made by client applications are applied to multiple backend servers. For detailed information about the benefits of each replication method and detailed configuration instructions, please review project documentation for each utility.
+
+When load balancing is enabled, pgpool-II distributes some types of `SELECT` statements to backend servers, allowing multiple database servers and hosts to share the processing load of `SELECT` statements issued by client applications.
+
+When configuring pgpool-II load balancing, the initial database environments in all backend servers must be identical:
+
+-   Tables must have the same name, definition, and row content.
+-   Schemas must exist in each backend application database.
+-   Roles and privileges must be comparably configured on each backend server to ensure that the result set of SQL statements are identical on all servers.
+
+If you use `password` authentication, the same password must be assigned to an associated user name on each database server. The same user name/password pair is used to connect pgpool-II to each backend connection.
+
+Within a replication scenario, each backend is uniquely identified by the hostname (or IP address) and the port number on which the database server instance is listening for connections. You must ensure that the `pool_hba.conf` and `pg_hba.conf` files allow a connection between that server and the host on which pgpool-II will be running.
+
+The following example demonstrates how to implement pgpool-II load balancing with two servers (the primary and replica nodes) in a Streaming Replication scenario. Configuring pgpool-II load balancing for a Slony replication scenario is similar; please see the Slony documentation for information about configuring Slony replication.
+
+**Configuring the Primary Node of the Replication Scenario**
+
+Open an SSH session with the primary node of the replication scenario, and modify the `pg_hba.conf` file (located in the `/var/lib/edb/as12/data` directory), adding connection information for the replication user (in the example that follows, `edbrepuser` resides on a standby node with an IP address of `107.178.217.178`):
+
+> `host replication edbrepuser 107.178.217.178/32 md5`
+
+The connection information should specify the address of the standby node of the replication scenario, and your preferred authentication method.
+
+Modify the `postgresql.conf` file (located in `/var/lib/edb/as12/data`), adding the following replication parameter and values to the end of the file:
+
+> `wal_level = replica`  
+> `max_wal_senders = 10`  
+> `checkpoint_segments = 8`  
+> `wal_keep_segments = 0`
+
+Save the configuration file, and restart the server:
+
+> `systemctl restart edb-as-12`
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+The above command is applicable for RHEL/CentOS 7 platforms. To restart the server on RHEL/CentOS 6 platform, use the below command:
+
+`/etc/init.d/edb-as-12 restart`
+
+</div>
+
+Use the `sudo su -` command to assume the identity of the `enterprisedb` database superuser:
+
+> `sudo su - enterprisedb`
+
+Then, start a `psql` session, connecting to the `edb` database:
+
+> `psql -d edb`
+
+At the `psql` command line, create a user with the `replication` attribute:
+
+> `CREATE ROLE edbrepuser WITH REPLICATION LOGIN PASSWORD 'password';`
+
+**Configuring the Standby Node of the Replication Scenario**
+
+Open an SSH session with the standby server, and assume the identity of the database superuser (`enterprisedb`):
+
+> `sudo su - enterprisedb`
+
+With your choice of editor, create a `.pgpass` file in the home directory of the `enterprisedb` user. The `.pgpass` file holds the password of the replication user in plain-text form; if you are using a `.pgpass` file, you should ensure that only trusted users have access to the `.pgpass` file:
+
+Add an entry that specifies connection information for the replication user:
+
+> `*:5444:*:edbrepuser:password`
+
+The server will enforce restrictive permissions on the `.pgpass` file; use the following command to set the file permissions:
+
+> `chmod 600 .pgpass`
+
+Relinquish the identity of the database superuser:
+
+> `exit`
+
+Then, assume superuser privileges:
+
+> `sudo su -`
+
+Use your platform-specific command to stop the database server before replacing the data directory on the standby node with the `data` directory of the primary node. For detailed information about controlling the pgpool-II service, see *Managing an Advanced Server Installation* in the [EDB Postgres Advanced Server Installation Guide for Linux](http://www.enterprisedb.com/edb-docs/p/edb-postgres-advanced-server).
+
+Then, delete the `data` directory on the standby node:
+
+> `rm -rf /var/lib/edb/as12/data`
+
+After deleting the existing `data` directory, use the `pg_basebackup` utility to copy the `data` directory of the primary node to the standby:
+
+    pg_basebackup --format=p --label=standby --host=146.148.46.44 --username=edbrepuser --password --wal-method=stream -R
+
+The call to `pg_basebackup` specifies the IP address of the primary node and the name of the replication user created on the primary node.
+
+Including the `-R` option creates the `standby.signal` file and appends connection settings to `postgresql.auto.conf` in the output directory (or into the base archive file when using tar format) to ease setting up a standby server.
+
+For more information about the options available with the `pg_basebackup` utility, see the PostgreSQL core documentation at:
+
+> <https://www.postgresql.org/docs/13/static/app-pgbasebackup.html>
+
+When prompted by `pg_basebackup`, provide the password associated with the replication user.
+
+After copying the `data` directory, change ownership of the directory to the database superuser (`enterprisedb`):
+
+> `chown -R enterprisedb /var/lib/edb/as12/data`
+
+Modify the `postgresql.conf` file (located in `/var/lib/edb/as12/data`), specifying the following values at the end of the file:
+
+> `wal_level = replica`  
+> `hot_standby = on`
+
+The `data` file has been copied from the primary node, and contains the replication parameters specified previously.
+
+Then, restart the server:
+
+> `systemctl restart edb-as-12`
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+The above command is applicable for RHEL/CentOS 7 platforms. To restart the server on RHEL/CentOS 6 platform, use the below command:
+
+`/etc/init.d/edb-as-12 restart`
+
+</div>
+
+At this point, the primary node will be replicating data to the standby node.
+
+**Configuring pgpool-II Load Balancing**
+
+Use your choice of editor to modify the `pgpool.conf` file. Within the `pgpool.conf` file, modify the parameter settings to specify that load balancing is enabled:
+
+> `load_balance_mode = on`
+
+Then, specify the connections settings for the primary database node in the parameter set that ends with a `0`. For example:
+
+> `backend_hostname0 = '146.148.46.44'`  
+> `backend_port0 = 5444`  
+> `backend_weight0 = 1`  
+> `backend_data_directory0 = '/var/lib/edb/as12/data'`
+
+Then, specify the connections settings for each node to which queries will be distributed. Increment the number that follows the parameter name for each node, and provide connection details:
+
+> `backend_hostname1 = '107.178.217.178'`  
+> `backend_port1 = 5444`  
+> `backend_weight1 = 1`  
+> `backend_data_directory1 = '/var/lib/edb/as12/data'`
+
+Use the `backend_weight` parameter to specify how queries will be distributed amongst the nodes. Specify a value of `1` to indicate that you wish (qualified) queries to be equally distributed across the nodes of the replication scenario.
+
+**Restart pgpool-II and begin using your application**
+
+    systemctl restart edb-pgpool-<x.y>.service
+
+where &lt;x.y&gt; is the pgpool release version.
+
+For detailed information about controlling the pgpool-II service, see `Managing an Advanced Server Installation` in the [EDB Postgres Advanced Server Installation Guide for Linux](http://www.enterprisedb.com/edb-docs/p/edb-postgres-advanced-server).
+
+<div id="pgpool-II_client_authentication_configuration" class="registered_link"></div>
+
+### pgpool-II Client Authentication
+
+When pgpool-II is enabled, client applications connect to pgpool-II, which acts as a middleman for a Postgres server. A connecting client application is first authenticated with the pgpool-II server, and then authenticated with the Postgres server.
+
+Parameter settings in the `pool_hba.conf` configuration file determine the pgpool-II authentication properties. The `pool_hba.conf` file is similar in format and function to the Postgres `pg_hba.conf` configuration file. Please refer to the pgpool-II documentation for detailed information about `pool_hba.conf` entries.
+
+To enable pgpool-II authentication:
+
+1.  Copy the `pool_hba.conf.sample` file to `pool_hba.conf`.
+2.  Modify the `pool_hba.conf` file, specifying authentication information for servers or users that you want to connect. Entries must follow the same format used in the `pg_hba.conf` file.
+3.  Modify the `pgpool.conf` file, setting the `enable_pool_hba` parameter to `on`.
+4.  Restart pgpool-II to reload the pgpool-II configuration files.
+
+>     systemctl restart edb-pgpool-<x.y>.service
+>
+> where &lt;x.y&gt; is the pgpool release version.
+
+<div class="note">
+
+<div class="title">
+
+Note
+
+</div>
+
+When authenticating with the database server, use the user names and passwords specified in the `pool_hba.conf` file; you must also specify those user names and passwords in the database server's `pg_hba.conf` file.
+
+</div>
+
+<div id="pcp_configuration" class="registered_link"></div>
+
+## Configuring PCP
+
+PCP is an administrative interface for pgpool-II that allows you to retrieve information about database nodes, pgpool-II child processes, and other information. You should issue PCP commands from the Linux command line.
+
+`pcp.conf` is the password configuration file for the PCP client. Before using PCP commands, you must modify the `pcp.conf` file, providing the user names and passwords that you supply when invoking a PCP command. The user names in the `pcp.conf` file are completely independent of the database server user names and passwords.
+
+Use the following steps to enable PCP:
+
+1.  Copy the `pcp.conf.sample` file to `pcp.conf`.
+
+2.  Add an entry to the `pcp.conf` file in the following form:
+
+    `username:md5_password`
+
+    where:
+
+    `username` is a PCP user name.
+
+    `md5_password` is the PCP password in `md5` format
+
+    You can use the `pg_md5` program to generate the encrypted password from the clear-text form as shown below:
+
+    `$ pg_md5 mypassword`
+
+    `34819d7beeabb9260a5c854bc85b3e44`
+
+    For example, the entry in the `pcp.conf` file for a PCP user named `pcpuser` with the password of `mypassword` is:
+
+    `# USERID:MD5PASSWD`  
+    `pcpuser:34819d7beeabb9260a5c854bc85b3e44`
+
+3.  Restart the pgpool service.
+
+        systemctl restart edb-pgpool-<x.y>.service
+
+    where &lt;x.y&gt; is the pgpool release version.
+
+4.  When issuing a PCP command, specify the PCP user name and the unencrypted form of the password:
+
+<!-- -->
+
+    $ pcp_node_info 5 localhost 9898 pcpuser mypassword 0
+    localhost 5432 1 1.000000
+
+After configuring PCP, you can use PCP commands to control pgpool-II and retrieve information. Specify the following arguments when calling PCP commands:
+
+| Argument   | Description                                                                                                         |
+|------------|---------------------------------------------------------------------------------------------------------------------|
+| `timeout`  | Timeout value in seconds. PCP will disconnect if pgpool-II does not respond within the specified number of seconds. |
+| `host`     | The name of the pgpool-II host.                                                                                     |
+| `port`     | The PCP port number; the default value is 9898.                                                                     |
+| `username` | The PCP user name (as specified in pcp.conf.)                                                                       |
+| `password` | The password associated with the user name (as specified in pcp.conf).                                              |
+
+PCP recognizes the following commands:
+
+| PCP Command                                                       | Description                                                                                                                                                                                             |
+|-------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `pcp_node_count timeout host port username password`              | Total number of nodes defined in pgpool.conf                                                                                                                                                            |
+| `pcp_node_info timeout host port username password nodeid`        | Displays information on the node given by &lt;nodeid&gt;                                                                                                                                                |
+| `pcp_proc_count timeout host port username password`              | Displays the pgpool-II child process IDs                                                                                                                                                                |
+| `pcp_proc_info timeout host port username password processid`     | Displays information on the pgpool-II child process given by &lt;processid&gt;                                                                                                                          |
+| `pcp_detach_node [-g] timeout host port username password nodeid` | Detaches the node specified by &lt;nodeid&gt; from pgpool-II. If -g is given, wait until all clients are disconnected (unless client\_idle\_limit\_in\_recovery is -1 or recovery\_timeout is expired). |
+| `pcp_attach_node timeout host port username password nodeid`      | Attaches the node specified by &lt;nodeid&gt; to pgpool-II.                                                                                                                                             |

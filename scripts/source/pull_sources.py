@@ -3,7 +3,6 @@ import shutil
 import json
 import sys
 
-from source_docs import source_docs
 from source_k8s_docs import source_k8s_docs
 from source_barman import source_barman
 
@@ -11,15 +10,15 @@ ANSI_RED = '\033[31m'
 ANSI_STOP = '\033[0m'
 
 DEV_SOURCES_TO_FUNCTION = {
-    'docs': source_docs,
+    'docs': None,
     'k8s_docs': source_k8s_docs,
     'barman': source_barman,
 }
 
 def wipe_sources():
-    if os.path.exists('sources'):
+    if os.path.exists('external_sources'):
         print('Wiping sources...')
-        shutil.rmtree('sources')
+        shutil.rmtree('external_sources')
 
 arg = None
 if len(sys.argv) > 1:
@@ -32,7 +31,7 @@ if is_build:
     source_filename = 'build-sources.json'
 
 if os.path.exists(source_filename):
-    if not force and os.path.exists('sources'):
+    if not force and os.path.exists('external_sources'):
         print(ANSI_RED + 'Pulling fresh sources will completely destroy any changes you have made inside the `source/` folder.' + ANSI_STOP)
         response = input('Do you want to continue (y/n)? ')
 

@@ -28,7 +28,7 @@ def process_md(file_path):
         with open(file_path, 'r') as md_file:
             copying = False
             previous_line_was_blank = False
-            gh_relative_path = file_path.replace('sources/k8s_docs/kubernetes/', '')
+            gh_relative_path = file_path.replace('external_sources/k8s_docs/kubernetes/', '')
 
             for line in md_file:
                 if copying:
@@ -54,10 +54,10 @@ def process_md(file_path):
 
 def source_k8s_docs():
     print('Pulling k8s_docs...')
-    os.system('git clone -b master https://github.com/EnterpriseDB/edb-k8s-doc.git sources/k8s_docs/kubernetes')
+    os.system('git clone -b master https://github.com/EnterpriseDB/edb-k8s-doc.git external_sources/k8s_docs/kubernetes')
 
     print('Processing k8s_docs...')
-    files = glob.glob('sources/k8s_docs/kubernetes/**/*.md', recursive=True)
+    files = glob.glob('external_sources/k8s_docs/kubernetes/**/*.md', recursive=True)
     for file_path in files:
         process_md(file_path)
 
