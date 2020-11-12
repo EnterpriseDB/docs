@@ -13,7 +13,7 @@ def process_md(file_path):
         with open(file_path, 'r') as md_file:
             copying = False
             previous_line_was_blank = False
-            gh_relative_path = file_path.replace('sources/barman', '')
+            gh_relative_path = file_path.replace('external_sources/barman', '')
 
             for line in md_file:
                 if copying:
@@ -35,16 +35,16 @@ def process_md(file_path):
         os.remove(file_path)
 
 def create_index():
-    with open('sources/barman/doc/manual/barman/index.mdx', 'w') as index_file:
+    with open('external_sources/barman/doc/manual/barman/index.mdx', 'w') as index_file:
         index_file.write("---\ntitle: 'BaRMan Manual'\n---\n\nAutomatically generated index file")
 
 def source_barman():
     print('Pulling barman...')
-    os.system('git clone -b master https://github.com/2ndquadrant-it/barman.git sources/barman')
-    os.system('mkdir sources/barman/doc/manual/barman')
+    os.system('git clone -b master https://github.com/2ndquadrant-it/barman.git external_sources/barman')
+    os.system('mkdir external_sources/barman/doc/manual/barman')
 
     print('Processing barman...')
-    files = glob.glob('sources/barman/doc/manual/**/*.md', recursive=True)
+    files = glob.glob('external_sources/barman/doc/manual/**/*.md', recursive=True)
     for file_path in files:
         process_md(file_path)
     create_index()
