@@ -31,6 +31,10 @@ export const AdvancedSearchForm = connectSearchBox(
       };
     }, [searchKeyboardShortcuts]);
 
+    useEffect(() => {
+      inputRef.current.focus();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     return (
       <form
         noValidate
