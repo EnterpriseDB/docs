@@ -31,6 +31,10 @@ export const AdvancedSearchForm = connectSearchBox(
       };
     }, [searchKeyboardShortcuts]);
 
+    useEffect(() => {
+      inputRef.current.focus();
+    }, []);
+
     return (
       <form
         noValidate
