@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'gatsby';
 import { Badge } from 'react-bootstrap';
 import {
   connectMenu,
@@ -8,7 +7,6 @@ import {
 } from 'react-instantsearch-dom';
 import { products } from '../../constants/products';
 import { capitalize } from '../../constants/utils';
-import Icon, { iconNames } from '../../components/icon';
 
 const typeToContentType = {
   doc: { name: 'Documentation' },
