@@ -128,20 +128,6 @@ const ClearRefinements = connectCurrentRefinements(
   }
 );
 
-const Back = () => (
-  <div className="ml-0 mb-3">
-    <Link to="/" className="d-block py-1 align-middle small text-dark">
-      <Icon
-        iconName={iconNames.ARROW_LEFT}
-        className="fill-black mt-n1 mr-1"
-        width="12"
-        height="12"
-      />
-      Back
-    </Link>
-  </div>
-);
-
 export const AdvancedSearchFiltering = connectCurrentRefinements(
   ({ items, queryActive }) => {
     const showProductVersionFilters = !items.find((item) => {
@@ -150,7 +136,6 @@ export const AdvancedSearchFiltering = connectCurrentRefinements(
 
     return (
       <>
-        <Back />
         <ContentTypeRefinement
           attribute='type'
           queryActive={queryActive}
