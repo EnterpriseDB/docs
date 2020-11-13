@@ -47,7 +47,7 @@ const RadioRefinement = ({ attribute, heading, items, queryActive, refine, show,
 
   return (
     <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
-      <div className='h5'>{heading || capitalize(attribute)}</div>
+      <div className='mb-2 font-weight-bold text-muted text-uppercase small'>{heading || capitalize(attribute)}</div>
       <RadioInput
         id={`radio-refinement-${attribute}-all`}
         name={radioName}

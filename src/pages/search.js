@@ -54,7 +54,7 @@ export default data => {
             facetingAfterDistinct={true}
           />
 
-          <SideNavigation background='white' footer={false}>
+          <SideNavigation background='white'>
             <AdvancedSearchFiltering queryActive={query && query.length > 0} />
           </SideNavigation>
 
