@@ -7,7 +7,7 @@ const DarkModeToggle = () => (
   <LayoutContext.Consumer>
     {({dark, toggleDark}) => (
       <li className="dark-mode-toggle d-flex mt-1" title="Toggle Color Theme">
-        <span className="mr-2">Toggle theme</span>
+        <label className="mr-2 link-label" htmlFor="darkmode-switch">Toggle Theme</label>
         <Form.Check type="switch" id="darkmode-switch" checked={dark} onChange={toggleDark} label="" />
         <Icon iconName={iconNames.MOON} className="sun" width="10" height="10" />
         <Icon iconName={iconNames.SUN} className="moon" width="10" height="10" />
