@@ -10,7 +10,6 @@ import {
   Layout,
   SideNavigation,
   TopBar,
-  SearchNavigationLinks,
 } from '../components';
 import {
   AdvancedSearchFiltering,
@@ -54,14 +53,13 @@ export default data => {
             facetingAfterDistinct={true}
           />
 
-          <SideNavigation background='white' footer={false}>
+          <SideNavigation background='white'>
             <AdvancedSearchFiltering queryActive={query && query.length > 0} />
           </SideNavigation>
 
           <div className="flex-grow-1 border-right min-w-50">
             <Navbar variant="light" className="flex-md-nowrap p-3">
               <AdvancedSearchForm query={query} />
-              <SearchNavigationLinks />
             </Navbar>
 
             <main role="main" className="content-container mt-0 p-3">

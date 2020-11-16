@@ -6,11 +6,12 @@ import { LayoutContext } from '../components';
 const DarkModeToggle = () => (
   <LayoutContext.Consumer>
     {({dark, toggleDark}) => (
-      <div className="dark-mode-toggle d-flex" title="Toggle Color Theme">
+      <li className="dark-mode-toggle d-flex mt-1" title="Toggle Color Theme">
+        <label className="mr-2 link-label" htmlFor="darkmode-switch">Toggle Theme</label>
         <Form.Check type="switch" id="darkmode-switch" checked={dark} onChange={toggleDark} label="" />
         <Icon iconName={iconNames.MOON} className="sun" width="10" height="10" />
         <Icon iconName={iconNames.SUN} className="moon" width="10" height="10" />
-      </div>
+      </li>
     )}
   </LayoutContext.Consumer>
 );

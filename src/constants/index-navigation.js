@@ -32,6 +32,19 @@ export const kubernetesNavigation = [
   },
 ];
 
+export const barmanNavigation = [
+  {
+    "sectionName": "2ndQuadrant",
+    "links": [
+      {
+        "title": "BaRMan Manual",
+        "url": "/barman",
+        "iconName": IconNames.BUSINESSMAN,
+      }
+    ] 
+  },
+];
+
 const productDocsNavigation = [
   {
     sectionName: 'EDB Products & Tools',
@@ -123,10 +136,11 @@ const productDocsNavigation = [
 ];
 
 export default () => {
-  const { docsActive, k8s_docsActive } = useActiveSources();
+  const { docsActive, k8s_docsActive, barmanActive } = useActiveSources();
 
   let navigationLinks = advocacyNavigation;
   if (k8s_docsActive) { navigationLinks = navigationLinks.concat(kubernetesNavigation); }
+  if (barmanActive) { navigationLinks = navigationLinks.concat(barmanNavigation); }
   if (docsActive) { navigationLinks = navigationLinks.concat(productDocsNavigation); }
 
   return navigationLinks;
