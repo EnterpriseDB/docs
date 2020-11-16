@@ -20,7 +20,7 @@ const replacePathVersion = (path, version = 'latest') => {
 };
 
 const filePathToDocType = (filePath) => {
-  if (filePath.includes('/sources/docs/')) {
+  if (filePath.includes('/product_docs/')) {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
     return 'advocacy';
@@ -200,9 +200,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
-    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs-products';
+    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${docsRepoUrl}/commits/master/docs${fileUrlSegment}`;
+    const githubFileLink = `${docsRepoUrl}/commits/main/product_docs/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
@@ -230,8 +230,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${advocacyDocsRepoUrl}/commits/master/advocacy_docs${fileUrlSegment}`;
-    const githubEditLink = `${advocacyDocsRepoUrl}/edit/master/advocacy_docs${fileUrlSegment}`;
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/main/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/main/advocacy_docs${fileUrlSegment}`;
     const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
@@ -264,14 +264,18 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     });
   });
 
-  const kubeDocsGithubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
   gh_docs.forEach(doc => {
+    let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
+    if (doc.fields.path.includes('barman')) {
+      githubLink = 'https://github.com/2ndquadrant-it/barman';
+    }
+
     const navLinks = gh_docs.filter(
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const githubFileLink = `${kubeDocsGithubLink}/tree/master/${doc.frontmatter.originalFilePath.replace('README.md', '')}`;
-    const githubFileHistoryLink = `${kubeDocsGithubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+    const githubFileLink = `${githubLink}/tree/master/${(doc.frontmatter.originalFilePath || '').replace('README.md', '')}`;
+    const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
 
     actions.createPage({
       path: doc.fields.path,
