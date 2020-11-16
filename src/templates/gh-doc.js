@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { kubernetesNavigation } from '../constants/index-navigation';
+import { kubernetesNavigation, barmanNavigation } from '../constants/index-navigation';
 import {
   DevFrontmatter,
   Footer,
@@ -40,7 +40,6 @@ const ContentRow = ({ children }) => (
 
 const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
-  const { mtime } = mdx.fields;
   const { navLinks, githubFileLink, githubFileHistoryLink } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
@@ -50,7 +49,7 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  const iconName = (kubernetesNavigation.map(al => al.links).flat().find(
+  const iconName = (kubernetesNavigation.concat(barmanNavigation).map(al => al.links).flat().find(
     link => mdx.fields.path.includes(link.url)
   ) || { iconName: null }).iconName;
 
@@ -90,7 +89,7 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
-          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
+          <Footer githubFileLink={githubFileHistoryLink} />
         </MainContent>
       </Container>
     </Layout>
