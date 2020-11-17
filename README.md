@@ -12,8 +12,10 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 7. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
 
 ## Sources
-- Advocacy (default, part of this repo)
-- Product Docs - [EnterpriseDB/docs-products](https://github.com/EnterpriseDB/docs-products)
+- Advocacy (`/advocacy_docs`, always loaded)
+- Product Docs (`/product_docs`)
+- Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
+- 2nd Quadrant BaRMan (https://github.com/2ndquadrant-it/barman)
 
 ### Configuring
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
@@ -21,8 +23,10 @@ When doing local development of the site or advocacy content, you may want to lo
 #### `yarn config-sources`
 Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby  which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
 
+Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
+
 #### `yarn pull-sources`
-Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all existing sources (besides advocacy_docs)**, so make sure you do not have any local changes to these files that you want to save!
+Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
 
 ## Resolving issues
 
@@ -47,8 +51,6 @@ Production is hosted on Netlify, and is built from the `main` branch. The build 
 #### Review Builds
 Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
-### Triggered Deployment
-Because the site pulls docs from multiple repositories, these source repositories may trigger rebuilds of the site when appropriate.
 
 # Advocacy Docs
 Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
