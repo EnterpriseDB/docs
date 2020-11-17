@@ -1,0 +1,41 @@
+.. raw:: html
+
+<div id="supported_versions" class="registered_link"></div>
+
+
+***************************
+`Supported Versions`:index:
+***************************
+
+.. index:: supported databases
+
+The Migration Portal supports assessment and migration from Oracle 11g and 12c to EDB Postgres Advanced Server 10, 11, or 12. Migration Portal is supported on the following browsers and operating systems:
+
+.. index:: supported browsers
+
+**Supported Browsers**
+
+For the best user experience, we recommend using the Google Chrome
+browser. Migration Portal is also supported on the following browsers:
+
+============================ =====================
+**Browser**                  **Supported Version**
+============================ =====================
+Apple Safari on Macintosh OS 11 and above
+Google Chrome                68 and above
+Microsoft Edge               42 and above
+Mozilla Firefox              60 and above
+============================ =====================
+
+.. index:: supported operating systems
+
+**Supported Operating Systems**
+
+
+===================== =====================
+**Operating Systems** **Supported Version**
+===================== =====================
+Macintosh             OS X Sierra
+Windows               10
+Linux                 CentOS 7
+===================== =====================
