@@ -51,6 +51,9 @@ const docQuery = `
     nodes {
       frontmatter {
         title
+        product
+        platform
+        tags
       }
       id
       fields {
@@ -60,6 +63,7 @@ const docQuery = `
         version
       }
       rawBody
+      mdxAST
     }
   }
  }
@@ -70,9 +74,8 @@ const transformNodeForAlgolia = node => {
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
   newNode['type'] = 'guide';
-  // if (node.frontmatter.product) { newNode['product'] = node.frontmatter.product; }
-  // if (node.frontmatter.platform) { newNode['platform'] = node.frontmatter.platform; }
-  newNode['platform'] = node.frontmatter.platform || 'unknown';
+  if (node.frontmatter.product) { newNode['product'] = node.frontmatter.product; }
+  if (node.frontmatter.platform) { newNode['platform'] = node.frontmatter.platform; }
 
   if (node.fields.docType == 'doc') {
     newNode['product'] = node.fields.product;
@@ -119,116 +122,141 @@ const addBreadcrumbsToNodes = nodes => {
   return newNodes;
 };
 
+const mdxTreeToText = (rootNode) => {
+  const stack = [rootNode];
+  const text = [];
+
+  let node = null; 
+  while (stack.length > 0) {
+    node = stack.pop();
+    if (!['export'].includes(node.type)) {
+      if (node.value && !['html', 'jsx'].includes(node.type)) {
+        text.push(node.value);
+      } else {
+        (node.children || []).reverse().forEach(node => stack.push(node));
+      }
+    }
+  }
+
+  return text.join(' ').replace(/\s+/g, ' ');
+}
+
+const mdxCompiler = createCompiler();
+
 const splitNodeContent = nodes => {
   let result = [];
   for (let node of nodes) {
     let order = 1;
-    let content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
-    const contentArray = content.split('\n');
-    let contentAggregator = '';
-    let hitTocTree = false;
-    for (let i = 0; i < contentArray.length; i++) {
-      const section = contentArray[i];
-      if (section.startsWith('<div class="toctree"')) {
-        hitTocTree = true;
-      }
-      const cleanedSection = cleanSection(section);
-      if (!hitTocTree && cleanedSection !== '') {
-        contentAggregator += cleanedSection + ' ';
-      }
-      if (
-        contentAggregator.length > 1000 ||
-        (contentAggregator.length > 0 && i == contentArray.length - 1)
-      ) {
-        let newNode = { ...node };
-        delete newNode['rawBody'];
-        newNode['excerpt'] = contentAggregator;
-        newNode.id = newNode.path + '-' + order;
-        order += 1;
-        result.push(newNode);
-        contentAggregator = '';
-      }
-    }
+
+    // const file = vfile(node.rawBody);
+    // mdxCompiler.process(file, (err, file) => {
+    //   console.log(file);
+    // });
+
+    // let content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
+    // console.log(content.length)
+    let content = utf8Truncate(mdxTreeToText(node.mdxAST), 8000);
+    console.log(content)
+
+    // content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
+    // console.log(content)
+
+
+    let newNode = { ...node };
+    delete newNode['rawBody'];
+    delete newNode['mdxAST'];
+    newNode['excerpt'] = content;
+    result.push(newNode)
+
+    // const contentArray = content.split('\n');
+    // let contentAggregator = '';
+    // let hitTocTree = false;
+    // for (let i = 0; i < contentArray.length; i++) {
+    //   const section = contentArray[i];
+    //   if (section.startsWith('<div class="toctree"')) {
+    //     hitTocTree = true;
+    //   }
+    //   const cleanedSection = cleanSection(section);
+    //   if (!hitTocTree && cleanedSection !== '') {
+    //     contentAggregator += cleanedSection + ' ';
+    //   }
+    //   if (
+    //     contentAggregator.length > 1000 ||
+    //     (contentAggregator.length > 0 && i == contentArray.length - 1)
+    //   ) {
+    //     let newNode = { ...node };
+    //     delete newNode['rawBody'];
+    //     delete newNode['mdxAST'];
+    //     newNode['excerpt'] = contentAggregator;
+    //     console.log('title: '+newNode.title)
+    //     console.log(contentAggregator.length);
+    //     newNode.id = newNode.path + '-' + order;
+    //     order += 1;
+    //     result.push(newNode);
+    //     contentAggregator = '';
+    //   }
+    // }
   }
+  console.log('total nodes: ' + nodes.length)
   return result;
 };
 
-const cleanSection = section => {
-  if (
-    section.length < 6 ||
-    RegExp('<div class=.*>').test(section) ||
-    section.includes('</div>') ||
-    notStartWith(section, [
-      '```',
-      'title:',
-      'navTitle:',
-      'description:',
-      '![',
-      '<table',
-      '</table',
-      '---',
-      '| ---',
-      'import ',
-    ])
-  ) {
-    return '';
-  }
-  return removeLeadingBrackets(
-    removeTheseCharacters(section, [/\s\|/g, /\|\s/g, /`/g]),
-  );
-};
+// const cleanSection = section => {
+//   if (
+//     section.length < 6 ||
+//     RegExp('<div class=.*>').test(section) ||
+//     section.includes('</div>') ||
+//     notStartWith(section, [
+//       '```',
+//       'title:',
+//       'navTitle:',
+//       'description:',
+//       '![',
+//       '<table',
+//       '</table',
+//       '---',
+//       '| ---',
+//       'import ',
+//     ])
+//   ) {
+//     return '';
+//   }
+//   return removeLeadingBrackets(
+//     removeTheseCharacters(section, [/\s\|/g, /\|\s/g, /`/g]),
+//   );
+// };
 
-const notStartWith = (section, list) => {
-  for (let item of list) {
-    if (section.startsWith(item)) {
-      return true;
-    }
-  }
-  return false;
-};
+// const notStartWith = (section, list) => {
+//   for (let item of list) {
+//     if (section.startsWith(item)) {
+//       return true;
+//     }
+//   }
+//   return false;
+// };
 
-const removeTheseCharacters = (section, list) => {
-  let newSection = section;
-  for (let item of list) {
-    newSection = newSection.replace(item, '');
-  }
-  return newSection;
-};
+// const removeTheseCharacters = (section, list) => {
+//   let newSection = section;
+//   for (let item of list) {
+//     newSection = newSection.replace(item, '');
+//   }
+//   return newSection;
+// };
 
-const removeLeadingBrackets = section => {
-  if (section.startsWith('> > > ')) {
-    return section.substring(6);
-  }
-  if (section.startsWith('> > ')) {
-    return section.substring(4);
-  }
-  if (section.startsWith('> ')) {
-    return section.substring(2);
-  }
-  return section;
-};
+// const removeLeadingBrackets = section => {
+//   if (section.startsWith('> > > ')) {
+//     return section.substring(6);
+//   }
+//   if (section.startsWith('> > ')) {
+//     return section.substring(4);
+//   }
+//   if (section.startsWith('> ')) {
+//     return section.substring(2);
+//   }
+//   return section;
+// };
 
-const queries = process.env.INDEX_ON_BUILD ? [
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(node => node.type === 'doc'),
-        ).map(node => transformNodeForAlgolia(node)),
-      ),
-    indexName: 'edb-products',
-  },
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(node => node.type === 'guide'),
-        ).map(node => transformNodeForAlgolia(node)),
-      ),
-    indexName: 'advocacy',
-  },
+const queries = true ? [
   {
     query: docQuery,
     transformer: ({ data }) =>
@@ -237,7 +265,7 @@ const queries = process.env.INDEX_ON_BUILD ? [
           transformNodeForAlgolia(node),
         ),
       ),
-    indexName: 'edb',
+    indexName: 'edb-test',
   },
 ] : [];
 
@@ -343,7 +371,7 @@ module.exports = {
   ],
 };
 
-if (process.env.INDEX_ON_BUILD) {
+if (true) {
   module.exports['plugins'].push(
     {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
