@@ -260,7 +260,7 @@ module.exports = {
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
     'gatsby-plugin-netlify',
-    'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
+    // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
