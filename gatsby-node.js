@@ -76,28 +76,6 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
   }
 };
 
-const mdxTreeToText = (node) => {
-  if (['export', 'html'].includes(node.type)) { return ''; }
-  if (node.value) { return node.value; }
-  return (node.children || []).map(node => mdxTreeToText(node)).join(' ').replace(/\s+/g, ' '); 
-}
-
-const mdxTreeToTextIterative = (rootNode) => {
-  const stack = [{ value: rootNode.value, children: rootNode.children}];
-  const text = [];
-
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (node.value) {
-      text.push(node.value);
-    } else {
-      (node.children || []).reverse().forEach(node => stack.push({ value: node.value, children: node.children}));
-    }
-  }
-
-  return text.join(' ').replace(/\s+/g, ' ');
-}
-
 exports.createPages = async ({ actions, graphql, reporter }) => {
   const result = await graphql(`
     query {
@@ -145,9 +123,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       }
       reporter.warn(file + ' has no title');
     }
-
-    // console.log('\n### ' + node.fileAbsolutePath)
-    // console.log(mdxTreeToTextIterative(node.mdxAST))
   }
 
   const docs = nodes.filter(file => file.fields.docType === 'doc');
