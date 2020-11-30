@@ -62,7 +62,6 @@ const docQuery = `
         path
         version
       }
-      rawBody
       mdxAST
     }
   }
@@ -122,139 +121,47 @@ const addBreadcrumbsToNodes = nodes => {
   return newNodes;
 };
 
-const mdxTreeToText = (rootNode) => {
+const mdxTreeToTextBlocks = (rootNode) => {
   const stack = [rootNode];
-  const text = [];
+  const textBlocks = [];
 
+  let textBlock = '';
   let node = null; 
   while (stack.length > 0) {
     node = stack.pop();
-    if (!['export'].includes(node.type)) {
-      if (node.value && !['html', 'jsx'].includes(node.type)) {
-        text.push(node.value);
-      } else {
-        (node.children || []).reverse().forEach(node => stack.push(node));
-      }
+
+    if (['import', 'export'].includes(node.type)) { continue; } // skip these nodes
+
+    if (['heading'].includes(node.type)) { // break on headings
+      if (textBlock.length > 0) { textBlocks.push(textBlock); }
+      textBlock = '';
+    }
+
+    if (node.value && !['html', 'jsx'].includes(node.type)) {
+      textBlock = `${textBlock} ${node.value}`;
+    } else {
+      (node.children || []).slice().reverse().forEach(node => stack.push(node));
     }
   }
+  if (textBlock.length > '') { textBlocks.push(textBlock); }
 
-  return text.join(' ').replace(/\s+/g, ' ');
+  return textBlocks.map(textBlock => textBlock.replace(/\s+/g, ' ').trim());
 }
 
-const mdxCompiler = createCompiler();
-
 const splitNodeContent = nodes => {
-  let result = [];
-  for (let node of nodes) {
-    let order = 1;
-
-    // const file = vfile(node.rawBody);
-    // mdxCompiler.process(file, (err, file) => {
-    //   console.log(file);
-    // });
-
-    // let content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
-    // console.log(content.length)
-    let content = utf8Truncate(mdxTreeToText(node.mdxAST), 8000);
-    console.log(content)
-
-    // content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
-    // console.log(content)
-
-
-    let newNode = { ...node };
-    delete newNode['rawBody'];
-    delete newNode['mdxAST'];
-    newNode['excerpt'] = content;
-    result.push(newNode)
-
-    // const contentArray = content.split('\n');
-    // let contentAggregator = '';
-    // let hitTocTree = false;
-    // for (let i = 0; i < contentArray.length; i++) {
-    //   const section = contentArray[i];
-    //   if (section.startsWith('<div class="toctree"')) {
-    //     hitTocTree = true;
-    //   }
-    //   const cleanedSection = cleanSection(section);
-    //   if (!hitTocTree && cleanedSection !== '') {
-    //     contentAggregator += cleanedSection + ' ';
-    //   }
-    //   if (
-    //     contentAggregator.length > 1000 ||
-    //     (contentAggregator.length > 0 && i == contentArray.length - 1)
-    //   ) {
-    //     let newNode = { ...node };
-    //     delete newNode['rawBody'];
-    //     delete newNode['mdxAST'];
-    //     newNode['excerpt'] = contentAggregator;
-    //     console.log('title: '+newNode.title)
-    //     console.log(contentAggregator.length);
-    //     newNode.id = newNode.path + '-' + order;
-    //     order += 1;
-    //     result.push(newNode);
-    //     contentAggregator = '';
-    //   }
-    // }
+  const result = [];
+  for (const node of nodes) {
+    const textBlocks = mdxTreeToTextBlocks(node.mdxAST);
+    textBlocks.forEach((textBlock, i) => {
+      let newNode = { ...node };
+      newNode.id = `${newNode.path}-${i + 1}`
+      delete newNode['mdxAST'];
+      newNode['excerpt'] = utf8Truncate(textBlock, 8000);
+      result.push(newNode)
+    });
   }
-  console.log('total nodes: ' + nodes.length)
   return result;
 };
-
-// const cleanSection = section => {
-//   if (
-//     section.length < 6 ||
-//     RegExp('<div class=.*>').test(section) ||
-//     section.includes('</div>') ||
-//     notStartWith(section, [
-//       '```',
-//       'title:',
-//       'navTitle:',
-//       'description:',
-//       '![',
-//       '<table',
-//       '</table',
-//       '---',
-//       '| ---',
-//       'import ',
-//     ])
-//   ) {
-//     return '';
-//   }
-//   return removeLeadingBrackets(
-//     removeTheseCharacters(section, [/\s\|/g, /\|\s/g, /`/g]),
-//   );
-// };
-
-// const notStartWith = (section, list) => {
-//   for (let item of list) {
-//     if (section.startsWith(item)) {
-//       return true;
-//     }
-//   }
-//   return false;
-// };
-
-// const removeTheseCharacters = (section, list) => {
-//   let newSection = section;
-//   for (let item of list) {
-//     newSection = newSection.replace(item, '');
-//   }
-//   return newSection;
-// };
-
-// const removeLeadingBrackets = section => {
-//   if (section.startsWith('> > > ')) {
-//     return section.substring(6);
-//   }
-//   if (section.startsWith('> > ')) {
-//     return section.substring(4);
-//   }
-//   if (section.startsWith('> ')) {
-//     return section.substring(2);
-//   }
-//   return section;
-// };
 
 const queries = true ? [
   {
