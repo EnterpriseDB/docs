@@ -61,7 +61,11 @@ def create_index():
 
 def source_pgbackrest():
     print('Pulling pgbackrest...')
-    os.system('git clone -b docs_development git@github.com:EnterpriseDB/pgbackrest-docs.git external_sources/pgbackrest')
+
+    # Commented out as the repo is private, use included files for now
+    # os.system('git clone -b docs_development git@github.com:EnterpriseDB/pgbackrest-docs.git external_sources/pgbackrest')
+    os.system('cp -r temp_pgbackrest/. external_sources/pgbackrest')
+
     os.system('mkdir external_sources/pgbackrest/docs/pgbackrest')
 
     print('Processing pgbackrest...')
