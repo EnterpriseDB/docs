@@ -5,6 +5,7 @@ import sys
 
 from source_k8s_docs import source_k8s_docs
 from source_barman import source_barman
+from source_pgbackrest import source_pgbackrest
 
 ANSI_RED = '\033[31m'
 ANSI_STOP = '\033[0m'
@@ -13,6 +14,7 @@ DEV_SOURCES_TO_FUNCTION = {
     'docs': None,
     'k8s_docs': source_k8s_docs,
     'barman': source_barman,
+    'pgbackrest': source_pgbackrest,
 }
 
 def wipe_sources():
