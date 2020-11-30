@@ -72,10 +72,12 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
-              <Alert variant='primary' className="mb-4">
-                This documentation is sourced from GitHub. To view the original file and context,
-                <a href={githubFileLink}> click here</a>.
-              </Alert>
+              { githubFileLink &&
+                <Alert variant='primary' className="mb-4">
+                  This documentation is sourced from GitHub. To view the original file and context,
+                  <a href={githubFileLink}> click here</a>.
+                </Alert>
+              }
 
               <MDXRenderer>{mdx.body}</MDXRenderer>
             </Col>

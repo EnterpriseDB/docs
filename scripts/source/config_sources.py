@@ -10,12 +10,14 @@ OPTIONS = [
     { 'name': 'EDB Product Docs', 'key': 'docs' },
     { 'name': 'Kubernetes Docs', 'key': 'k8s_docs' },
     { 'name': 'BaRMan Docs', 'key': 'barman' },
+    { 'name': 'pgBackRest Docs', 'key': 'pgbackrest' }
 ]
 
 BASE_OUTPUT = {
     'docs': False,
     'k8s_docs': False,
     'barman': False,
+    'pgbackrest': False,
 }
 
 print('Which sources would you like loaded when you run `yarn develop`?')
