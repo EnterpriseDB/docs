@@ -40,6 +40,11 @@ export const barmanNavigation = [
         "title": "BaRMan Manual",
         "url": "/barman",
         "iconName": IconNames.BUSINESSMAN,
+      },
+      {
+        "title": "pgBackRest Docs",
+        "url": "/pgbackrest",
+        "iconName": IconNames.POSTGRES_SUPPORT,
       }
     ] 
   },
