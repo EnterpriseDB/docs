@@ -11,7 +11,6 @@ import {
   ClearButton,
   SearchPane,
 } from './formComps';
-import { allIndex } from './indices';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -142,7 +141,7 @@ const SearchBar = () => {
     <div className="global-search w-100 position-relative" ref={ref}>
       <InstantSearch
         searchClient={searchClient}
-        indexName={allIndex.index}
+        indexName='edb'
         onSearchStateChange={({ query }) => setQuery(query)}
         className='dropdown'
       >
