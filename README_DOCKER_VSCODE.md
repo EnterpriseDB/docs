@@ -1,6 +1,6 @@
 # Working on Docs in a Docker container using VSCode
 
-If you cannot or do not wish to install the prerequestite versions of Python, Node, Yarn, Gatsby, etc. on your local machine, *and* you're fond of using VSCode, then you can skip past the first seven steps under the "installation" section in the [README](README.md) and work with Docs entirely from within a Docker container managed by VSCode.
+If you cannot or do not wish to install the prerequisite versions of Python, Node, Yarn, Gatsby, etc. on your local machine, *and* you're fond of using VSCode, then you can skip past the first seven steps under the "installation" section in the [README](README.md) and work with Docs entirely from within a Docker container managed by VSCode.
 
 ## Prerequesites
 
