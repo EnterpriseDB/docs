@@ -258,6 +258,7 @@ module.exports = {
     'gatsby-plugin-react-helmet',
     'gatsby-transformer-sharp',
     'gatsby-transformer-json',
+    'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
     'gatsby-plugin-netlify',
