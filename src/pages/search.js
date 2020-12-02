@@ -18,7 +18,6 @@ import {
   queryParamsToState,
   writeStateToQueryParams,
 } from '../components/advanced-search';
-import { allIndex } from '../components/search/indices';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -41,7 +40,7 @@ export default data => {
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}
-          indexName={allIndex.index}
+          indexName='edb'
           onSearchStateChange={(searchState) => {
             setQuery(searchState.query);
             setSearchState(searchState);

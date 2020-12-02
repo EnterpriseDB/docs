@@ -46,7 +46,7 @@ const externalSourcePlugins = () => {
 }
 
 /******** Algolia Index ********/
-const docQuery = `
+const indexQuery = `
 {
   allMdx {
     nodes {
@@ -123,6 +123,7 @@ const addBreadcrumbsToNodes = nodes => {
 };
 
 const mdxTreeToTextBlocks = (rootNode) => {
+  rootNode.depth = 0;
   const stack = [rootNode];
   const textBlocks = [];
 
@@ -141,7 +142,10 @@ const mdxTreeToTextBlocks = (rootNode) => {
     if (node.value && !['html', 'jsx'].includes(node.type)) {
       textBlock = `${textBlock} ${node.value}`;
     } else {
-      (node.children || []).slice().reverse().forEach(node => stack.push(node));
+      (node.children || []).slice().reverse().forEach(child => {
+        child.depth = node.depth + 1;
+        stack.push(child);
+      });
     }
   }
   if (textBlock.length > '') { textBlocks.push(textBlock); }
@@ -163,19 +167,6 @@ const splitNodeContent = nodes => {
   }
   return result;
 };
-
-const queries = true ? [
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
-          transformNodeForAlgolia(node),
-        ),
-      ),
-    indexName: 'edb-test',
-  },
-] : [];
 
 /********** Gatsby config *********/
 module.exports = {
@@ -277,11 +268,6 @@ module.exports = {
         ],
       },
     },
-  ],
-};
-
-if (true) {
-  module.exports['plugins'].push(
     {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
       resolve: `gatsby-plugin-algolia`,
@@ -289,10 +275,22 @@ if (true) {
         appId: process.env.ALGOLIA_APP_ID,
         apiKey: process.env.ALGOLIA_API_KEY,
         indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
-        queries,
-        chunkSize: 10000, // default: 1000,
+        queries: [
+          {
+            query: indexQuery,
+            transformer: ({ data }) =>
+              splitNodeContent(
+                addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
+                  transformNodeForAlgolia(node),
+                ),
+               ),
+            indexName: 'edb',
+          },
+        ],
+        chunkSize: 1000, // default: 1000,
         enablePartialUpdates: false,
+        skipIndexing: !process.env.INDEX_ON_BUILD
       },
     },
-  )
-}
+  ],
+};
