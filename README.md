@@ -6,10 +6,17 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 1. Clone the repo!
 2. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
 3. Install Node.js. We're currently using Node.js version 12. To install this version, first install `nvm` (Node Version Manager). This can be done with (MacOS) `brew install nvm`, followed by `nvm install`. Optionally, you can skip installing `nvm` and install Node.js 12 directly if you prefer.
-4. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
-5. Install all required packages with `yarn`
-6. Pull the shared icon files down with `git submodule update --init`
-7. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+4. Install Python 3.6 or higher (this is not needed for the core system, but is required by several source scripts)
+5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
+6. Install all required packages with `yarn`
+7. Pull the shared icon files down with `git submodule update --init`
+8. Select sources with `yarn config-sources` (see section below for details)
+9. Pull sources with `yarn pull-sources` (see section below for details)
+10. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+
+## Running without a local installation
+
+If you wish to work with Docs without installing the prerequesites locally, you can do so from within a Docker container using VSCode. See: [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
 ## Sources
 - Advocacy (`/advocacy_docs`, always loaded)
