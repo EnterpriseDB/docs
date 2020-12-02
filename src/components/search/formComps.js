@@ -24,11 +24,12 @@ const TryAdvancedSearch = connectStateResults(
 const Hits = ({ hits, arrowIndex }) => (
   <>
     {hits.map((hit, i) => (
-      <PageHit
-        key={i}
-        hit={hit}
-        className={arrowIndex === i && 'arrow-focus'}
-      />
+      <div className="mb-3" key={i}>
+        <PageHit
+          hit={hit}
+          className={arrowIndex === i && 'arrow-focus'}
+        />
+      </div>
     ))}
   </>
 );
@@ -36,7 +37,7 @@ const PageHits = connectHits(Hits);
 
 export const SearchPane = ({ arrowIndex }) => (
   <div className="h-100 search-pane">
-    <div className="h-100 d-flex flex-column">
+    <div className="h-100 d-flex flex-column pt-3">
       <Results>
         <PageHits arrowIndex={arrowIndex} />
         <TryAdvancedSearch />

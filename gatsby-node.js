@@ -269,6 +269,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (doc.fields.path.includes('barman')) {
       githubLink = 'https://github.com/2ndquadrant-it/barman';
     }
+    const showGithubLink = !doc.fields.path.includes('pgbackrest');
 
     const navLinks = gh_docs.filter(
       node => node.fields.topic === doc.fields.topic,
@@ -282,8 +283,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       component: require.resolve('./src/templates/gh-doc.js'),
       context: {
         navLinks: navLinks,
-        githubFileLink: githubFileLink,
-        githubFileHistoryLink: githubFileHistoryLink,
+        githubFileLink: showGithubLink ? githubFileLink : null,
+        githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
       },
     });
   });
