@@ -4,7 +4,7 @@ import { Link } from 'gatsby';
 
 export const PageHit = ({ hit, className }) => (
   <>
-    <Link to={hit.path}>
+    <Link to={hit.path} className={`pl-5 pr-5 dropdown-item ${className}`}>
       <Highlight attribute="title" hit={hit} tagName="mark" />
       <div className="mb-n1 small text-green break-word">
         {hit.path}
