@@ -19,7 +19,6 @@ import {
   TopBar,
 } from '../components';
 import Icon, { iconNames } from '../components/icon';
-import { allIndex } from '../components/search/indices';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -69,7 +68,7 @@ const Ascii404 = () => (
 const SuggestedLinksSearch = ({ query }) => (
   <InstantSearch
     searchClient={searchClient}
-    indexName={allIndex.index}
+    indexName='edb'
     searchState={{ query: query }}
   >
     <SuggestedLinks />
