@@ -16,6 +16,7 @@ const sourceToPluginConfig = {
   'docs': { name: 'docs', path: 'product_docs/docs' },
   'k8s_docs': { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
   'barman': { name: 'barman', path: 'external_sources/barman/doc/manual' },
+  'pgbackrest': { name: 'pgbackrest', path: 'external_sources/pgbackrest/docs' },
 };
 
 const externalSourcePlugins = () => {
@@ -192,10 +193,11 @@ module.exports = {
     'gatsby-plugin-react-helmet',
     'gatsby-transformer-sharp',
     'gatsby-transformer-json',
+    'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
     'gatsby-plugin-netlify',
-    'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
+    // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
