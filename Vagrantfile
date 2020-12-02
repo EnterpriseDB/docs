@@ -20,6 +20,7 @@ module OS
   Vagrant.configure("2") do |config|
     
     config.vm.box = "centos/7"
+    config.vagrant.plugins = ["vagrant-notify-forwarder"]
     
     if OS.windows?
       puts "Launching from windows host"
@@ -50,12 +51,12 @@ module OS
     if OS.mac? || OS.linux?
       # if mac or linux host machines, we use private network + nfs sharing
       config.vm.network "private_network", ip: "192.168.1.77"
-      config.vm.synced_folder "./output", "/home/vagrant/output", type: "nfs", create: true
+      config.vm.synced_folder ".", "/home/vagrant/code", type: "nfs", create: true
     else
     # Configure forward port as needed
     # config.vm.network "forwarded_port", 
     # guest: 4201, host: 4201, 
-      config.vm.synced_folder "./output", "/home/vagrant/output", create: true
+      config.vm.synced_folder ".", "/home/vagrant/code", create: true
     end
   
     config.ssh.forward_agent = true
