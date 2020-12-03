@@ -7,6 +7,9 @@ import DevOnly from './dev-only';
 import DevFrontmatter from './dev-frontmatter';
 import Footer from './footer';
 import IndexLinks from './index-links';
+import KatacodaPageEmbed from './katacoda-page-embed';
+import KatacodaPageLink from './katacoda-page-link';
+import KatacodaPanel from './katacoda-panel';
 import Layout from './layout';
 import LayoutContext from './layout-context';
 import LeftNav from './left-nav';
@@ -33,6 +36,9 @@ export {
   DevFrontmatter,
   Footer,
   IndexLinks,
+  KatacodaPageEmbed,
+  KatacodaPageLink,
+  KatacodaPanel,
   Layout,
   LayoutContext,
   LeftNav,
