@@ -9,6 +9,7 @@ const useSiteMetadata = () => {
           description
           baseUrl
           imageUrl
+          algoliaIndex
         }
       }
     }

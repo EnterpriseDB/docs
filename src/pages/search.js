@@ -18,6 +18,7 @@ import {
   queryParamsToState,
   writeStateToQueryParams,
 } from '../components/advanced-search';
+import useSiteMetadata from '../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -26,6 +27,8 @@ const searchClient = algoliasearch(
 
 export default data => {
   const paramSearchState = queryParamsToState(data.location.search);
+
+  const { algoliaIndex } = useSiteMetadata();
 
   const [query, setQuery] = useState(paramSearchState.query || '');
   const [searchState, setSearchState] = useState(paramSearchState || {});
@@ -40,7 +43,7 @@ export default data => {
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}
-          indexName='edb'
+          indexName={algoliaIndex}
           onSearchStateChange={(searchState) => {
             setQuery(searchState.query);
             setSearchState(searchState);
