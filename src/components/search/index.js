@@ -11,6 +11,7 @@ import {
   ClearButton,
   SearchPane,
 } from './formComps';
+import useSiteMetadata from '../../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -137,11 +138,13 @@ const SearchBar = () => {
   const ref = createRef();
   const [query, setQuery] = useState(``);
 
+  const { algoliaIndex } = useSiteMetadata();
+
   return (
     <div className="global-search w-100 position-relative" ref={ref}>
       <InstantSearch
         searchClient={searchClient}
-        indexName='edb'
+        indexName={algoliaIndex}
         onSearchStateChange={({ query }) => setQuery(query)}
         className='dropdown'
       >

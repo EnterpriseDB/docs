@@ -9,6 +9,7 @@ const ANSI_BLUE = '\033[34m';
 const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
+const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-staging';
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
@@ -178,6 +179,7 @@ module.exports = {
     baseUrl: 'https://edb-docs.netlify.com',
     imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
     siteUrl: 'https://edb-docs.netlify.com',
+    algoliaIndex: algoliaIndex,
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -274,7 +276,7 @@ module.exports = {
       options: {
         appId: process.env.ALGOLIA_APP_ID,
         apiKey: process.env.ALGOLIA_API_KEY,
-        indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
+        indexName: algoliaIndex,
         queries: [
           {
             query: indexQuery,
@@ -284,7 +286,7 @@ module.exports = {
                   transformNodeForAlgolia(node),
                 ),
                ),
-            indexName: 'edb',
+            indexName: algoliaIndex,
           },
         ],
         chunkSize: 1000, // default: 1000,
