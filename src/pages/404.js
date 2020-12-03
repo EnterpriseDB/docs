@@ -19,6 +19,7 @@ import {
   TopBar,
 } from '../components';
 import Icon, { iconNames } from '../components/icon';
+import useSiteMetadata from '../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -65,19 +66,23 @@ const Ascii404 = () => (
   <Icon iconName={iconNames.NOT_FOUND} height={null} width='60%' className="fill-green mb-5"/>
 );
 
-const SuggestedLinksSearch = ({ query }) => (
-  <InstantSearch
-    searchClient={searchClient}
-    indexName='edb'
-    searchState={{ query: query }}
-  >
-    <SuggestedLinks />
-    <div>
-      Not finding what you need?
-      <Link to={`/search?query=${query}`} className="ml-2">Try Advanced Search</Link>
-    </div>
-  </InstantSearch>
-);
+const SuggestedLinksSearch = ({ query }) => {
+  const { algoliaIndex } = useSiteMetadata();
+
+  return (
+    <InstantSearch
+      searchClient={searchClient}
+      indexName={algoliaIndex}
+      searchState={{ query: query }}
+    >
+      <SuggestedLinks />
+      <div>
+        Not finding what you need?
+        <Link to={`/search?query=${query}`} className="ml-2">Try Advanced Search</Link>
+      </div>
+    </InstantSearch>
+  );
+};
 
 const SuggestedLinks = connectStateResults(
   ({ searchResults }) => {
