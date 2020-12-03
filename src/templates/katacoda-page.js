@@ -2,10 +2,10 @@ import React from 'react';
 import { Container } from 'react-bootstrap';
 import {
   BackButton,
+  KatacodaPageEmbed,
   Layout,
   Logo,
 } from '../components';
-import { KatacodaPageEmbed } from '../advocacy_components';
 
 const KatacodaPageTemplate = ({ pageContext, path }) => {
   const pageMeta = {
