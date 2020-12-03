@@ -4,15 +4,13 @@ import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
   Attention,
   CodeBlock,
+  KatacodaPageLink,
+  KatacodaPanel,
   LayoutContext,
   TextBalancer,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
-import { 
-  KatacodaPageLink,
-  KatacodaPanel,
-} from '../advocacy_components';
 
 import '../styles/index.scss';
 
