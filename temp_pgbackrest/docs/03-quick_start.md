@@ -1,14 +1,14 @@
-## Quick start
-
-### Description
+## Quick Start
 
 This section walks you through basic _pgBackRest_ configuration process and how to take a first backup of the database cluster running locally. It also gives a brief introduction of the `backup`, `restore`, and `info` commands.
+
+The [installation](02-installation.md) procedure must be followed before proceeding to this section.
 
 ---
 
 ### Configuration
 
-The default _pgBackRest_ configuration file location is `/etc/pgbackrest/pgbackrest.conf` or `/etc/pgbackrest.conf`.
+The default _pgBackRest_ configuration file location is `/etc/pgbackrest/pgbackrest.conf`. If it does not exist, then `/etc/pgbackrest.conf` is used next.
 
 For more information about configuration parameters, see the [appendix section](97-appendix.md#configuration-reference).
 
@@ -22,6 +22,8 @@ repo1-path=/var/lib/pgsql/13/backups
 
 [demo]
 pg1-path=/var/lib/pgsql/13/data
+pg1-user=postgres
+pg1-port=5432
 ```
 
 For **EDB Postgres Advanced Server**:
@@ -44,7 +46,7 @@ archive_mode = on
 archive_command = 'pgbackrest --stanza=demo archive-push %p'
 ```
 
-Changing the `archive_mode` parameter requires a service restart, while changing the `archive_command` requires only a configuration reload. We recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
+Because changing the `archive_mode` parameter requires a service restart, and changing the `archive_command` only requires a configuration reload, EDB recommends enabling `archive_mode` with an empty `archive_command` (or pointing to /bin/true) when initiating a new database cluster.
 
 Assume the identity of a system user (`postgres` or `enterprisedb`) and initiate the _pgBackRest_ repository:
 
@@ -75,7 +77,7 @@ $ pgbackrest --stanza=demo --type=full backup
 ```
 
 * `incr`
-  * Copies only those database cluster files that have changed since the last backup (either full or a differential backup).
+  * Copies only the database cluster files that have changed since the last backup.
   * Depends on other backups to restore the incremental backup. 
 
 For example:
@@ -85,8 +87,8 @@ $ pgbackrest --stanza=demo --type=incr backup
 ```
 
 * `diff`
-  * Copies only those database cluster files that have changed since the last full backup. 
-  * Similar to an incremental backup, but always dependent on the last full backup.
+  * Copies only the database cluster files that have changed since the last full backup. 
+  * Similar to an incremental backup, but always dependents on the last full backup.
 
 For example:
 
@@ -94,9 +96,11 @@ For example:
 $ pgbackrest --stanza=demo --type=diff backup
 ```
 
+If there is no full backup to base an incremental or differential backup on, _pgBackRest_ will automatically create a full backup instead.
+
 ---
 
-### Info
+### Backup Information
 
 Use the `info` command to get information about backups.
 
@@ -117,13 +121,13 @@ stanza: demo
 ...
 ```
 
-The info command operates on a single stanza or multiple stanzas. By default, this command provides a human-readable summary of backups for the stanza(s) requested.
+By default, the `info` command provides a human-readable summary of backups for the stanza requested. Without specifying `--stanza`, the `info` command will operate on all stanzas.
 
 ---
 
 ### Restore
 
-Use the `restore` command to restore a backup. Stop the database cluster and remove all files from the data directory (and from tablespaces), unless the `delta` option is used.
+Use the `restore` command to restore a backup. The `--delta` option allows to keep the existing database cluster files and only recover as required, where as without the `--delta` option all files will be restored. Before running the restore command, stop the database cluster and (unless the `--delta` option is used) remove all files from the data directory, and from tablespaces.
 
 ```bash
 $ pgbackrest --stanza=demo restore
@@ -144,11 +148,12 @@ To choose the recovery target type for the restore, include the `--type` command
 * standby - add `standby_mode=on` or `standby.signal`;
 * none - no recovery settings provided.
 
-Use the `--target` option to specify a restore point when `--type` is (**name**), transaction id (**xid**) or **time**.
+When `--type` is set to **name**, transaction id (**xid**), or **time**, use the `--target` option to specify a restore point.
 
 _pgBackRest_ will automatically select the correct backup set to restore if a recovery target time is specified. Otherwise, the latest backup set will be used. To restore a specific backup set, use the `--set` option.
 
 To change the `recovery_target_action` **PostgreSQL** setting, use the restore `--target-action` option:
+
 * pause - pause when recovery target is reached (default);
 * promote - promote and switch timeline when recovery target is reached;
 * shutdown - shutdown server when recovery target is reached.

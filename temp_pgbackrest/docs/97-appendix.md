@@ -2,6 +2,12 @@
 
 ### Configuration Reference
 
+You can find a complete list of commands and configuration keys in the project documentation:
+
+- [Command reference](http://www.pgbackrest.org/command.html) for command-line operations.
+
+- [Configuration reference](http://www.pgbackrest.org/configuration.html) for creating _pgBackRest_ configurations.
+
 You can use _pgBackRest_ entirely with command-line parameters, but a configuration file is more practical for complex installations when configuring multiple options instantly. The default location for the configuration file is `/etc/pgbackrest/pgbackrest.conf`. If the configuration file does not exist in that location, then the old `/etc/pgbackrest.conf` file will be loaded instead (if it exists).
 
 #### Global
@@ -56,16 +62,6 @@ For all options, the order of precedence (highest to lowest) is as follows:
 #### Configuring Multiple Database Hosts in a Stanza
 
 Each stanza could configure multiple database hosts. As such, you can also configure every `pg1-*` configuration option for host 2 with `pg2-*`, for host 3 with `pg3-*`, etc. This assume that those database clusters are linked together (e.g. using _Streaming Replication_).
-
----
-
-### Glossary
-
-You can find a complete list of commands and configuration keys in the project documentation:
-
-- [Command reference](http://www.pgbackrest.org/command.html) for command-line operations.
-
-- [Configuration reference](http://www.pgbackrest.org/configuration.html) for creating _pgBackRest_ configurations.
 
 ---
 
