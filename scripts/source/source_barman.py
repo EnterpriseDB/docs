@@ -36,7 +36,7 @@ def process_md(file_path):
 
 def create_index():
     with open('external_sources/barman/doc/manual/barman/index.mdx', 'w') as index_file:
-        index_file.write("---\ntitle: 'BaRMan Manual'\n---\n\nAutomatically generated index file")
+        index_file.write("---\ntitle: 'Barman Manual'\n---\n\nAutomatically generated index file")
 
 def source_barman():
     print('Pulling barman...')
