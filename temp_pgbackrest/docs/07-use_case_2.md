@@ -1,4 +1,4 @@
-## Use case 2: Run pgBackRest from a Dedicated Repository Host
+## Use Case 2: Running pgBackRest from a Dedicated Repository Host
 
 ### Description
 
