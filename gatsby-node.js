@@ -203,6 +203,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/main/product_docs/docs${fileUrlSegment}`;
+    const githubEditLink = `${docsRepoUrl}/edit/main/product_docs/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
 
     actions.createPage({
@@ -213,6 +214,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
         githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(

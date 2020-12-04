@@ -151,45 +151,45 @@ const Section = ({ section }) => (
 
 const FeedbackDropdown = ({ githubIssuesLink }) => (
   <DropdownButton
-      className="float-right position-relative py-1"
-      size="sm"
-      variant="outline-info"
-      id="page-actions-button"
-      title={
-        //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
-        <Icon
-          iconName="ellipsis"
-          className="fill-orange mr-2"
-          width="15"
-          height="15"
-        />
-      }
+    className="ml-3"
+    size="sm"
+    variant="outline-info"
+    id="page-actions-button"
+    title={
+      //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
+      <Icon
+        iconName="ellipsis"
+        className="fill-orange mr-2"
+        width="15"
+        height="15"
+      />
+    }
+  >
+    <Dropdown.Item
+      href={githubIssuesLink + '&template=documentation-feedback.md'}
+      target="_blank"
+      rel="noreferrer"
     >
-      <Dropdown.Item
-        href={githubIssuesLink + '&template=documentation-feedback.md'}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Report a problem
-      </Dropdown.Item>
-      <Dropdown.Item
-        href={
-          githubIssuesLink +
-          '&template=product-feedback.md&labels=feedback'
-        }
-        target="_blank"
-        rel="noreferrer"
-      >
-        Give product feedback
-      </Dropdown.Item>
-    </DropdownButton>
+      Report a problem
+    </Dropdown.Item>
+    <Dropdown.Item
+      href={
+        githubIssuesLink +
+        '&template=product-feedback.md&labels=feedback'
+      }
+      target="_blank"
+      rel="noreferrer"
+    >
+      Give product feedback
+    </Dropdown.Item>
+  </DropdownButton>
 )
 
 const DocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
   const depth = path.split('/').length;
-  const { navLinks, versions, githubFileLink, githubIssuesLink } = pageContext;
+  const { navLinks, versions, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
@@ -221,14 +221,23 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
           />
         </SideNavigation>
         <MainContent>
-          <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
-
-          <h1 className="balance-text">
-            {frontmatter.title}{' '}
-            <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-              v{version}
-            </span>
-          </h1>
+          <div className="d-flex justify-content-between align-items-center">
+            <h1 className="balance-text">
+              {frontmatter.title}{' '}
+              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                v{version}
+              </span>
+            </h1>
+            <div className='d-flex'>
+              <a
+                href={githubEditLink || '#'}
+                className="btn btn-sm btn-primary px-4 text-nowrap"
+              >
+                Edit this page
+              </a>
+              <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
+            </div>
+          </div>
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
