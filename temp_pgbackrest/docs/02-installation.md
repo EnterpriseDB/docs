@@ -1,12 +1,12 @@
 ## Installation
 
-### PGDG Repositories
+### Available platforms
 
-Packages for _pgBackRest_ are available on the following platforms.
+_pgBackRest_ packages are available on the following platforms.
 
 #### Debian/Ubuntu
 
-To install _pgBackRest_, configure the [apt.postgresql.org](https://www.postgresql.org/download/linux/ubuntu/) repository and then run:
+To install _pgBackRest_, configure the [PostgreSQL](https://www.postgresql.org/download/linux/ubuntu/) or the [EDB](https://www.enterprisedb.com/repository-access-thank-you-page) **apt** repository and then run:
 
 ```bash
 $ sudo apt-get install pgbackrest
@@ -19,7 +19,7 @@ The following additional packages will be installed:
 
 #### RHEL/CentOS
 
-To install _pgBackRest_, configure the [yum.postgresql.org](https://yum.postgresql.org/) repository and then run:
+To install _pgBackRest_, configure the [PostgreSQL](https://yum.postgresql.org/) or the [EDB](https://www.enterprisedb.com/repository-access-thank-you-page) **yum** repository and then run:
 
 ```bash
 $ sudo yum install pgbackrest
