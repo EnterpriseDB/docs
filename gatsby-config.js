@@ -123,25 +123,45 @@ const addBreadcrumbsToNodes = nodes => {
   return newNodes;
 };
 
-const mdxTreeToTextBlocks = (rootNode) => {
+const mdxTreeToSearchNodes = (rootNode) => {
   rootNode.depth = 0;
   const stack = [rootNode];
-  const textBlocks = [];
+  const searchNodes = [];
+  const initialSearchNode = { text: '', heading: '' };
 
-  let textBlock = '';
+  let parseState = { attribute: 'text', nextAttribute: null, transitionDepth: null };
+  const nextParseStateIfDepth = (depth) => {
+    if (!parseState.transitionDepth || (depth > parseState.transitionDepth)) return;
+    parseState = {
+      attribute: parseState.nextAttribute,
+      nextAttribute: null,
+      transitionDepth: null,
+    };
+  }
+  const setHeadingParseState = (depth) => {
+    parseState = { 
+      attribute: 'heading',
+      nextAttribute: 'text',
+      transitionDepth: depth,
+    };
+  }
+
+  let searchNode = { ...initialSearchNode };
   let node = null; 
   while (stack.length > 0) {
     node = stack.pop();
+    nextParseStateIfDepth(node.depth);
 
     if (['import', 'export'].includes(node.type)) { continue; } // skip these nodes
 
-    if (['heading'].includes(node.type)) { // break on headings
-      if (textBlock.length > 0) { textBlocks.push(textBlock); }
-      textBlock = '';
+    if (node.type === 'heading') { // break on headings
+      if (searchNode.text.length > 0) { searchNodes.push(searchNode); }
+      searchNode = { ...initialSearchNode };
+      setHeadingParseState(node.depth);
     }
 
     if (node.value && !['html', 'jsx'].includes(node.type)) {
-      textBlock = `${textBlock} ${node.value}`;
+      searchNode[parseState.attribute] += ` ${node.value}`;
     } else {
       (node.children || []).slice().reverse().forEach(child => {
         child.depth = node.depth + 1;
@@ -149,20 +169,35 @@ const mdxTreeToTextBlocks = (rootNode) => {
       });
     }
   }
-  if (textBlock.length > '') { textBlocks.push(textBlock); }
+  if (searchNode.text.length > '') { searchNodes.push(searchNode); }
 
-  return textBlocks.map(textBlock => textBlock.replace(/\s+/g, ' ').trim());
+  return searchNodes;
+}
+
+const trimSpaces = str => {
+  return str.replace(/\s+/g, ' ').trim();
 }
 
 const splitNodeContent = nodes => {
   const result = [];
   for (const node of nodes) {
-    const textBlocks = mdxTreeToTextBlocks(node.mdxAST);
-    textBlocks.forEach((textBlock, i) => {
+    // if (node.path != '/playground/1/01_examples/search-test') { continue; }
+    const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
+    searchNodes.forEach((searchNode, i) => {
       let newNode = { ...node };
-      newNode.id = `${newNode.path}-${i + 1}`
       delete newNode['mdxAST'];
-      newNode['excerpt'] = utf8Truncate(textBlock, 8000);
+
+      newNode.id = `${newNode.path}-${i + 1}`;
+      newNode.heading = trimSpaces(searchNode.heading);
+      newNode.excerpt = utf8Truncate(
+        trimSpaces(`${searchNode.heading}: ${searchNode.text}`),
+        8000,
+      );
+      if (searchNode.heading.length > 0) {
+        const anchor = newNode.heading.split(' ').join('-').toLowerCase();
+        newNode.path = `${newNode.path}#${anchor}`;
+      }
+
       result.push(newNode)
     });
   }
@@ -270,6 +305,11 @@ module.exports = {
         ],
       },
     },
+  ],
+};
+
+if (process.env.INDEX_ON_BUILD) {
+  module.exports['plugins'].push(
     {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
       resolve: `gatsby-plugin-algolia`,
@@ -291,8 +331,8 @@ module.exports = {
         ],
         chunkSize: 1000, // default: 1000,
         enablePartialUpdates: false,
-        skipIndexing: !process.env.INDEX_ON_BUILD
+        skipIndexing: !process.env.INDEX_ON_BUILD, // useless on plugin version 0.13.0, just for posterity
       },
     },
-  ],
-};
+  )
+}
