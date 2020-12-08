@@ -181,8 +181,8 @@ const trimSpaces = str => {
 const splitNodeContent = nodes => {
   const result = [];
   for (const node of nodes) {
-    // if (node.path != '/playground/1/01_examples/search-test') { continue; }
     const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
+
     searchNodes.forEach((searchNode, i) => {
       let newNode = { ...node };
       delete newNode['mdxAST'];
@@ -194,7 +194,7 @@ const splitNodeContent = nodes => {
         8000,
       );
       if (searchNode.heading.length > 0) {
-        const anchor = newNode.heading.split(' ').join('-').toLowerCase();
+        const anchor = newNode.heading.split(' ').join('-').toLowerCase().replace('/','');
         newNode.path = `${newNode.path}#${anchor}`;
       }
 
