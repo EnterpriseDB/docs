@@ -71,7 +71,7 @@ const indexQuery = `
       mdxAST
     }
   }
- }
+}
 `;
 
 const transformNodeForAlgolia = node => {
@@ -166,8 +166,9 @@ const mdxTreeToSearchNodes = rootNode => {
     nextParseStateIfDepth(node.depth);
 
     if (['import', 'export'].includes(node.type)) {
+      // skip these nodes
       continue;
-    } // skip these nodes
+    }
 
     if (node.type === 'heading') {
       // break on headings

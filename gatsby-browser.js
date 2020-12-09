@@ -21,7 +21,7 @@ function scrollToAnchor(location, mainNavHeight = 0) {
         });
       }
     } catch (error) {
-      // is hash is bad exception will be raised
+      // if hash is bad exception will be raised
       console.error(error);
     }
   }
