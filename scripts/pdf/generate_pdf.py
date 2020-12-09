@@ -80,12 +80,14 @@ def main():
         pass
 
     splitDirName = dirName.split('/')
+    product = splitDirName[2]
+    version = splitDirName[3]
 
-    mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, splitDirName[1], splitDirName[2])
-    htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, splitDirName[1], splitDirName[2])
-    coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, splitDirName[1], splitDirName[2])
-    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, splitDirName[1], splitDirName[2])
-    
+    mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, product, version)
+    htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, product, version)
+    coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, product, version)
+    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, product, version)
+
     if not os.path.exists(dirName):
         raise Exception('directory does not exist')
 
