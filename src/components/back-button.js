@@ -5,10 +5,11 @@ import Icon, { iconNames } from './icon/';
 const BackButton = ({ path, currentPath }) => {
   let url = path;
   if (!url && currentPath) {
-    const splitPath = currentPath.split('/')
-    url = splitPath.length > 3 ?
-      splitPath.slice(0, splitPath.length - 1).join('/') :
-      '/'
+    const splitPath = currentPath.split('/');
+    url =
+      splitPath.length > 3
+        ? splitPath.slice(0, splitPath.length - 1).join('/')
+        : '/';
   } else if (!url) {
     url = '/';
   }

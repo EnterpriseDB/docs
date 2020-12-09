@@ -4,9 +4,7 @@ import Markdown from 'markdown-to-jsx';
 
 const Attention = ({ children, ...otherProps }) => (
   <Alert variant="warning" {...otherProps}>
-    <Markdown>
-      { children }
-    </Markdown>
+    <Markdown>{children}</Markdown>
   </Alert>
 );
 
