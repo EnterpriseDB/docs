@@ -10,7 +10,9 @@ const DevFrontmatter = ({ frontmatter }) => {
         <br />
         {keys.map(key => {
           let val = frontmatter[key];
-          if (typeof val !== 'string') { val = JSON.stringify(val); }
+          if (typeof val !== 'string') {
+            val = JSON.stringify(val);
+          }
 
           return (
             <div key={key}>
