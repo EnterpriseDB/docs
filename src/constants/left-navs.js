@@ -150,7 +150,7 @@ export const leftNavs = {
       {
         path: 'inst_guide',
       },
-    ]
+    ],
   },
 
   ark: {

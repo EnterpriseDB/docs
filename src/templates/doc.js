@@ -173,23 +173,26 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={
-        githubIssuesLink +
-        '&template=product-feedback.md&labels=feedback'
-      }
+      href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
       target="_blank"
       rel="noreferrer"
     >
       Give product feedback
     </Dropdown.Item>
   </DropdownButton>
-)
+);
 
 const DocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
   const depth = path.split('/').length;
-  const { navLinks, versions, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
+  const {
+    navLinks,
+    versions,
+    githubFileLink,
+    githubEditLink,
+    githubIssuesLink,
+  } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
@@ -228,7 +231,7 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
                 v{version}
               </span>
             </h1>
-            <div className='d-flex'>
+            <div className="d-flex">
               <a
                 href={githubEditLink || '#'}
                 className="btn btn-sm btn-primary px-4 text-nowrap"
