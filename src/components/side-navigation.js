@@ -38,7 +38,7 @@ const SideNavigation = ({ children, background = 'light', footer = true }) => {
       <div className="sidebar-sticky pl-4 pr-4 pb-4">
         <LogoLink />
         {children}
-        { footer && <SideNavigationFooter /> }
+        {footer && <SideNavigationFooter />}
       </div>
     </nav>
   );
