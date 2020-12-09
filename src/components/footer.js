@@ -5,10 +5,11 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
   if (timestamp) {
     return (
       <div>
-        { githubFileLink ?
-          <a href={githubFileLink}> Modified { timestamp.split('T')[0] } </a> :
-          <span>Modified { timestamp.split('T')[0] }</span>
-        }
+        {githubFileLink ? (
+          <a href={githubFileLink}> Modified {timestamp.split('T')[0]} </a>
+        ) : (
+          <span>Modified {timestamp.split('T')[0]}</span>
+        )}
       </div>
     );
   } else if (githubFileLink) {
