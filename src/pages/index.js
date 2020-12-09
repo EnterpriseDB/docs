@@ -16,7 +16,7 @@ export default () => (
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
       <SideNavigation>
-        <IndexLinks indexLinkList={ indexNavigation() } />
+        <IndexLinks indexLinkList={indexNavigation()} />
       </SideNavigation>
       <MainContent>
         <h2 className="balance-text">Getting Started</h2>
@@ -24,7 +24,7 @@ export default () => (
         <div className="card-deck mt-4">
           <div className="card rounded shadow-sm d-flex flex-row align-items-center">
             <div className="ml-4">
-            <Icon
+              <Icon
                 iconName={iconNames.INSTALL}
                 className="fill-orange"
                 width="38"
@@ -42,13 +42,14 @@ export default () => (
                 Installing Postgres
               </a>
               <p className="card-text">
-                Learn how to quickly install PostgreSQL on Docker, Linux, MacOS and Windows
+                Learn how to quickly install PostgreSQL on Docker, Linux, MacOS
+                and Windows
               </p>
             </div>
           </div>
           <div className="card rounded shadow-sm d-flex flex-row align-items-center">
             <div className="ml-4">
-            <Icon
+              <Icon
                 iconName={iconNames.CONNECT}
                 className="fill-orange"
                 width="50"
@@ -66,7 +67,8 @@ export default () => (
                 Connecting to Postgres
               </a>
               <p className="card-text">
-                Using common libraries to abstract away low-level connection details. Available in Java and Python.
+                Using common libraries to abstract away low-level connection
+                details. Available in Java and Python.
               </p>
             </div>
           </div>
@@ -78,23 +80,25 @@ export default () => (
           <div className="card-body">
             <div className="card-title d-flex justify-content-start align-items-start">
               <a href="epas/12">
-              <Icon
-                iconName={iconNames.EDB_EPAS}
-                className="fill-orange"
-                width="50"
-                height="50"
-                circle={true}
-                circleClassName="bg-blue-10"
-                circleDiameter={90}
-              />
+                <Icon
+                  iconName={iconNames.EDB_EPAS}
+                  className="fill-orange"
+                  width="50"
+                  height="50"
+                  circle={true}
+                  circleClassName="bg-blue-10"
+                  circleDiameter={90}
+                />
               </a>
               <div className="ml-4">
                 <h3 className="balance-text">
                   <a href="epas/latest">EDB Postgres Advanced Server</a>
                 </h3>
                 <p className="card-text">
-                EDB Postgres Advanced Server gives you the best of both worlds—all the advantages of PostgreSQL,
-enhanced with mission-critical features that help you maintain greater consistency across your PostgreSQL deployments.
+                  EDB Postgres Advanced Server gives you the best of both
+                  worlds—all the advantages of PostgreSQL, enhanced with
+                  mission-critical features that help you maintain greater
+                  consistency across your PostgreSQL deployments.
                 </p>
               </div>
             </div>
@@ -104,45 +108,78 @@ enhanced with mission-critical features that help you maintain greater consisten
             <div className="row">
               <div className="col-md">
                 <h3 className="mt-4">Getting Started</h3>
-                <a href="epas/latest/01_epas_inst_linux" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/01_epas_inst_linux"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Installation Guide for Linux
                 </a>
-                <a href="epas/latest/02_epas_inst_windows" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/02_epas_inst_windows"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Installation Guide for Windows
                 </a>
-                <a href="epas/latest/03_epas_rel_notes" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/03_epas_rel_notes"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Release Notes
                 </a>
-                <a href="epas/latest/04_epas_upgrade_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/04_epas_upgrade_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Upgrade Guide
                 </a>
               </div>
 
               <div className="col-md">
                 <h3 className="mt-4">For Oracle Developers</h3>
-                <a href="epas/latest/07_epas_compat_ora_dev_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/07_epas_compat_ora_dev_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Database Compatibility for Oracle Developers (User Guide)
                 </a>
-                <a href="epas/latest/05_epas_compat_reference" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/05_epas_compat_reference"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   SQL Reference
                 </a>
-                <a href="epas/latest/06_epas_compat_bip_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/06_epas_compat_bip_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Built-in Package Guide
                 </a>
-                <a href="epas/latest/08_epas_compat_tools_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/08_epas_compat_tools_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Tools and Utilities
                 </a>
               </div>
 
               <div className="col-md">
                 <h3 className="mt-4">User Guides</h3>
-                <a href="epas/latest/11_epas_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/11_epas_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   EDB Postgres Advanced Server
                 </a>
-                <a href="epas/latest/09_ecpgplus_guide" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/09_ecpgplus_guide"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   ECPGPlus
                 </a>
-                <a href="epas/latest/10_language_pack" className="btn btn-link btn-block text-left p-0">
+                <a
+                  href="epas/latest/10_language_pack"
+                  className="btn btn-link btn-block text-left p-0"
+                >
                   Language Pack
                 </a>
               </div>
@@ -196,7 +233,7 @@ enhanced with mission-critical features that help you maintain greater consisten
         <div className="card-deck mt-4">
           <div className="card rounded shadow-sm p-2">
             <a href="pem/latest">
-            <Icon
+              <Icon
                 iconName={iconNames.EDB_PEM}
                 className="fill-orange"
                 width="50"
@@ -217,15 +254,15 @@ enhanced with mission-critical features that help you maintain greater consisten
                 </a>
               </h3>
               <p className="card-text">
-              Monitor and manage multiple Postgres
-clusters from one convenient GUI
+                Monitor and manage multiple Postgres clusters from one
+                convenient GUI
               </p>
             </div>
           </div>
 
           <div className="card rounded shadow-sm p-2">
             <a href="bart/latest">
-            <Icon
+              <Icon
                 iconName={iconNames.EDB_BART}
                 className="fill-orange"
                 width="50"
@@ -243,16 +280,13 @@ clusters from one convenient GUI
                   Recovery Tool
                 </a>
               </h3>
-              <p className="card-text">
-              Disaster Recovery
-for PostgreSQL
-              </p>
+              <p className="card-text">Disaster Recovery for PostgreSQL</p>
             </div>
           </div>
 
           <div className="card rounded shadow-sm p-2">
             <a href="efm/latest">
-            <Icon
+              <Icon
                 iconName={iconNames.EDB_EFM}
                 className="fill-orange"
                 width="50"
@@ -266,9 +300,7 @@ for PostgreSQL
               <h3 className="card-title balance-text">
                 <a href="efm/latest">Failover Manager</a>
               </h3>
-              <p className="card-text">
-              High Availability for PostgreSQL
-              </p>
+              <p className="card-text">High Availability for PostgreSQL</p>
             </div>
           </div>
         </div>

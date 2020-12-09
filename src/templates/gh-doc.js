@@ -2,7 +2,10 @@ import React from 'react';
 import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { kubernetesNavigation, barmanNavigation } from '../constants/index-navigation';
+import {
+  kubernetesNavigation,
+  barmanNavigation,
+} from '../constants/index-navigation';
 import {
   DevFrontmatter,
   Footer,
@@ -49,9 +52,13 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  const iconName = (kubernetesNavigation.concat(barmanNavigation).map(al => al.links).flat().find(
-    link => mdx.fields.path.includes(link.url)
-  ) || { iconName: null }).iconName;
+  const iconName = (
+    kubernetesNavigation
+      .concat(barmanNavigation)
+      .map(al => al.links)
+      .flat()
+      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+  ).iconName;
 
   return (
     <Layout pageMeta={pageMeta}>
@@ -72,21 +79,22 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
-              { githubFileLink &&
-                <Alert variant='primary' className="mb-4">
-                  This documentation is sourced from GitHub. To view the original file and context,
+              {githubFileLink && (
+                <Alert variant="primary" className="mb-4">
+                  This documentation is sourced from GitHub. To view the
+                  original file and context,
                   <a href={githubFileLink}> click here</a>.
                 </Alert>
-              }
+              )}
 
               <MDXRenderer>{mdx.body}</MDXRenderer>
             </Col>
 
-            { showToc &&
+            {showToc && (
               <Col xs={3}>
                 <TableOfContents toc={mdx.tableOfContents.items} />
               </Col>
-            }
+            )}
           </ContentRow>
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
