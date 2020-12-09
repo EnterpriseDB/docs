@@ -20,7 +20,8 @@ function scrollToAnchor(location, mainNavHeight = 0) {
           behavior: 'smooth',
         });
       }
-    } catch (error) { // is hash is bad exception will be raised
+    } catch (error) {
+      // is hash is bad exception will be raised
       console.error(error);
     }
   }
