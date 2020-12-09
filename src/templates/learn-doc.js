@@ -76,7 +76,12 @@ const Tiles = ({ mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  const { navLinks, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
+  const {
+    navLinks,
+    githubFileLink,
+    githubEditLink,
+    githubIssuesLink,
+  } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
@@ -86,9 +91,12 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const showToc = !!mdx.tableOfContents.items;
   const katacodaPanelData = mdx.frontmatter.katacodaPanel;
 
-  const iconName = (advocacyNavigation.map(al => al.links).flat().find(
-    link => mdx.fields.path.includes(link.url)
-  ) || { iconName: null }).iconName;
+  const iconName = (
+    advocacyNavigation
+      .map(al => al.links)
+      .flat()
+      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+  ).iconName;
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
@@ -119,22 +127,35 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
               <Tiles mdx={mdx} navLinks={navLinks} />
             </Col>
 
-            { showToc &&
+            {showToc && (
               <Col xs={3}>
                 <TableOfContents toc={mdx.tableOfContents.items} />
               </Col>
-            }
+            )}
           </ContentRow>
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
           <hr />
           <p>
-            Could this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>
+            Could this page could be better?{' '}
+            <a
+              href={
+                githubIssuesLink + '&template=problem-with-topic.md&labels=bug'
+              }
+            >
               Report a problem
-            </a> or <a href={githubIssuesLink + "&template=suggest-addition-to-topic.md&labels=enhancement"}>
+            </a>{' '}
+            or{' '}
+            <a
+              href={
+                githubIssuesLink +
+                '&template=suggest-addition-to-topic.md&labels=enhancement'
+              }
+            >
               suggest an addition
-            </a>!
+            </a>
+            !
           </p>
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />

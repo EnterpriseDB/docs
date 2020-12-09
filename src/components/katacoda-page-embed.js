@@ -4,16 +4,16 @@ import { Helmet } from 'react-helmet';
 const KatacodaPageEmbed = ({ account, scenario }) => {
   const scenarioId = account ? [account, scenario].join('/') : scenario;
 
-  return(
+  return (
     <>
       <Helmet>
         <script src="https://katacoda.com/embed.js" />
       </Helmet>
 
       <div
-        data-katacoda-id = {scenarioId}
-        data-katacoda-color = 'e94621' 
-        className = 'katacoda-page-embed'
+        data-katacoda-id={scenarioId}
+        data-katacoda-color="e94621"
+        className="katacoda-page-embed"
       />
     </>
   );

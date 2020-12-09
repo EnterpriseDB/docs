@@ -1,16 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Navbar } from 'react-bootstrap';
 import algoliasearch from 'algoliasearch/lite';
-import {
-  InstantSearch,
-  Configure,
-} from 'react-instantsearch-dom';
-import {
-  Footer,
-  Layout,
-  SideNavigation,
-  TopBar,
-} from '../components';
+import { InstantSearch, Configure } from 'react-instantsearch-dom';
+import { Footer, Layout, SideNavigation, TopBar } from '../components';
 import {
   AdvancedSearchFiltering,
   AdvancedSearchResults,
@@ -38,24 +30,21 @@ export default data => {
   });
 
   return (
-    <Layout background='white'>
+    <Layout background="white">
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
-          onSearchStateChange={(searchState) => {
+          onSearchStateChange={searchState => {
             setQuery(searchState.query);
             setSearchState(searchState);
           }}
           searchState={searchState}
         >
-          <Configure
-            hitsPerPage={30}
-            facetingAfterDistinct={true}
-          />
+          <Configure hitsPerPage={30} facetingAfterDistinct={true} />
 
-          <SideNavigation background='white'>
+          <SideNavigation background="white">
             <AdvancedSearchFiltering queryActive={query && query.length > 0} />
           </SideNavigation>
 
