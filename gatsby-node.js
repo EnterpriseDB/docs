@@ -265,7 +265,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
       if (!katacodaPage.scenario || !katacodaPage.account) {
-        raise`katacoda scenario or account missing for ${doc.fields.path}`;
+        throw new Error(
+          `katacoda scenario or account missing for ${doc.fields.path}`,
+        );
       }
 
       actions.createPage({
