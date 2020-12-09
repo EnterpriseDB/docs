@@ -147,7 +147,7 @@ def main():
     "-f gfm " \
     "--self-contained " \
     '--highlight-style tango ' \
-    "--css=../../../scripts/pdf/pdf-styles.css " \
+    "--css=../../../../scripts/pdf/pdf-styles.css " \
     "--resource-path={2} " \
     "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths))
     )
@@ -182,6 +182,7 @@ def main():
 
         os.system(
         "wkhtmltopdf " \
+        "--log-level error " \
         "--title '{3}' " \
         "--margin-top 15mm " \
         "--margin-bottom 15mm " \
