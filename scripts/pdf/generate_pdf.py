@@ -155,9 +155,8 @@ def main():
     )
 
     if not os.path.exists(htmlFilePath):
-        print("\033[91m html file failed to generate! \033[0m")
         os.remove(mdxFilePath)
-        return
+        raise Exception("\033[91m html file failed to generate! \033[0m")
 
     if html:
         os.system("open " + htmlFilePath)
