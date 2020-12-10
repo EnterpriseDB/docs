@@ -140,9 +140,7 @@ def main():
                     fp.write(newLine)
             fp.write('\n')
 
-    product = getTitle(dirName) or splitDirName[1]
-    version = splitDirName[2]
-    title = "{0} - Version {1}".format(product, version)
+    title = getTitle(dirName) or product
 
     os.system(
     "pandoc {0} " \
@@ -167,7 +165,7 @@ def main():
         "-e 's/\[VERSION\]/{2}/' " \
         "scripts/pdf/cover.html " \
         "> {0}" \
-        "".format(coverFilePath, product, version)
+        "".format(coverFilePath, title, version)
         )
 
         headerFooterOptions = "" \
