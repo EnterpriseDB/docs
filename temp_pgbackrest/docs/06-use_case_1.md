@@ -2,9 +2,9 @@
 
 ### Description
 
-* _pgBackRest_ runs locally on database servers and stores repository on remote storage (NFS, S3, or Azure object stores);
-* cron task active on the node where to take backups;
-* manually reconfigure cron task to take backup from another server.
+* _pgBackRest_ runs locally on database servers and stores repository on remote storage (NFS, S3, or Azure object stores).
+* Cron task active on the node where to take backups.
+* Manually reconfigure cron task to take backup from another server.
 
 ![Use case diagram](images/use_case_1-01.png)
 
@@ -46,14 +46,7 @@ The backups and archives will be stored in `bucket-name/repo1`.
 
 It is possible to automatically retrieve temporary credentials when the AWS instance is associated with an IAM role. Credentials are automatically updated when they are <= 5 minutes from expiring.
 
-Then, instead of:
-
-```ini 
-repo1-s3-key=accessKey1
-repo1-s3-key-secret=***
-```
-
-use:
+To do this, instead of setting `repo1-s3-key` and `repo1-s3-key-secret`, use:
 
 ```ini
 repo1-s3-key-type=auto
@@ -75,7 +68,7 @@ To use the shared access signatures, set the `repo1-azure-key-type` option to **
 
 ##### Recommended Settings
 
-See the [Recommended settings](04-recommended_settings.md) page for more details.
+Use those settings to enable encryption, parallel operations and ensure displaying enough information in the console and in the log file:
 
 ```ini
 repo1-cipher-type=aes-256-cbc
@@ -87,15 +80,19 @@ start-fast=y
 delta=y
 ```
 
+Adjust the encryption passphrase and the maximum number of processes to use for compression usage and file transfer.
+
+See the [Recommended settings](04-recommended_settings.md) page for more details.
+
 ##### Retention Policy
 
-See the [Retention policy](05-retention_policy.md) page for more details.
+To be able to delete old backups and archives, you have to define a retention policy. Use the following setting to only keep the latest full backup:
 
 ```ini
-repo1-retention-full=2
+repo1-retention-full=1
 ```
 
----
+See the [Retention policy](05-retention_policy.md) page for more options and details.
 
 #### Stanza Section
 
@@ -136,8 +133,6 @@ pg2-path=/var/lib/edb/as13/data
 recovery-option=primary_conninfo=host=primary_vip user=replication_user ...
 ```
 
----
-
 #### Setup Archiving
 
 Once _pgBackRest_ is configured, set up the database archiver process on each node:
@@ -148,7 +143,7 @@ archive_mode = on
 archive_command = 'pgbackrest --stanza=demo archive-push %p'
 ```
 
-Changing the `archive_mode` requires a service restart while changing the `archive_command` requires only a configuration reload. Hence, we recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
+As changing the `archive_mode` requires a service restart and changing the `archive_command` requires only a configuration reload, we recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
 
 See the [Quick start](03-quick_start.md) page to set up a simple **demo** stanza configuration.
 
@@ -164,13 +159,9 @@ Check the configuration and the archiving process:
 $ pgbackrest --stanza=demo check
 ```
 
----
-
 ### Backup and Restore
 
-See the **Quick start** [backups](03-quick_start.md#backups) and [restore](03-quick_start.md#restore) sections for more details.
-
----
+See the **Quick start** [backups](03-quick_start.md#backups) and [restore](03-quick_start.md#restore) sections for more details about those two commands.
 
 ### Glossary
 
@@ -203,8 +194,6 @@ See the **Quick start** [backups](03-quick_start.md#backups) and [restore](03-qu
 [`repo-s3-role`](https://pgbackrest.org/configuration.html#section-repository/option-repo-s3-role)
 [`repo-type`](https://pgbackrest.org/configuration.html#section-repository/option-repo-type)
 [`start-fast`](https://pgbackrest.org/configuration.html#section-backup/option-start-fast)
-
----
 
 #### PostgreSQL
 
