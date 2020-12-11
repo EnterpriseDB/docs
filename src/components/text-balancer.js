@@ -7,6 +7,6 @@ const TextBalancer = () => {
     balanceText.updateWatched();
   });
   return null;
-}
+};
 
 export default TextBalancer;

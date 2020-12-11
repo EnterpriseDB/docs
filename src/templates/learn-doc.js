@@ -2,6 +2,7 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
+import { advocacyNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -29,20 +30,10 @@ export const query = graphql`
       }
       fields {
         path
+        mtime
       }
       body
       tableOfContents
-    }
-    file(name: { eq: "advocacy-index-nav" }) {
-      childAdvocacyDocsJson {
-        advocacyLinks {
-          links {
-            title
-            url
-            iconName
-          }
-        }
-      }
     }
   }
 `;
@@ -74,40 +65,56 @@ const Tiles = ({ mdx, navLinks }) => {
 
     return <CardDecks cards={tiles} colSize={6} cardType="full" />;
   }
-  if (depth === 4) {
+  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
+  if (depth >= 4) {
     const tiles = getChildren(path, navLinks);
     return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
   }
   return null;
 };
 
-const LearnDocTemplate = ({ data, pageContext }) => {
+const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { mdx } = data;
-  const { navLinks, githubLink, githubIssuesLink } = pageContext;
+  const { mtime } = mdx.fields;
+  const {
+    navLinks,
+    githubFileLink,
+    githubEditLink,
+    githubIssuesLink,
+  } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
     path: mdx.fields.path,
   };
 
-  const katacodaPanelData = mdx.frontmatter.katacodaPanel;
-  const iconName = (data.file.childAdvocacyDocsJson.advocacyLinks[0].links.find(
-    link => mdx.fields.path.includes(link.url)
-  ) || { iconName: null }).iconName;
   const showToc = !!mdx.tableOfContents.items;
+  const katacodaPanelData = mdx.frontmatter.katacodaPanel;
+
+  const iconName = (
+    advocacyNavigation
+      .map(al => al.links)
+      .flat()
+      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+  ).iconName;
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
-          <LeftNav navLinks={navLinks} path={mdx.fields.path} iconName={iconName} />
+          <LeftNav
+            navLinks={navLinks}
+            path={mdx.fields.path}
+            pagePath={pagePath}
+            iconName={iconName}
+          />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{mdx.frontmatter.title}</h1>
             <a
-              href={githubLink || '#'}
+              href={githubEditLink || '#'}
               className="btn btn-sm btn-primary px-4 text-nowrap"
             >
               Edit this page
@@ -120,25 +127,38 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               <Tiles mdx={mdx} navLinks={navLinks} />
             </Col>
 
-            { showToc &&
+            {showToc && (
               <Col xs={3}>
                 <TableOfContents toc={mdx.tableOfContents.items} />
               </Col>
-            }
+            )}
           </ContentRow>
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
           <hr />
           <p>
-            Could this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>
+            Could this page could be better?{' '}
+            <a
+              href={
+                githubIssuesLink + '&template=problem-with-topic.md&labels=bug'
+              }
+            >
               Report a problem
-            </a> or <a href={githubIssuesLink + "&template=suggest-addition-to-topic.md&labels=enhancement"}>
+            </a>{' '}
+            or{' '}
+            <a
+              href={
+                githubIssuesLink +
+                '&template=suggest-addition-to-topic.md&labels=enhancement'
+              }
+            >
               suggest an addition
-            </a>!
+            </a>
+            !
           </p>
 
-          <Footer />
+          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
         </MainContent>
       </Container>
     </Layout>

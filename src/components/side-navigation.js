@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'gatsby';
-import Logo from './logo';
+import { DarkModeToggle, Logo } from './';
 
 const LogoLink = () => {
   return (
@@ -28,6 +28,7 @@ const SideNavigationFooter = () => (
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
     <FooterItem url="/community/feedback/">Feedback?</FooterItem>
+    <DarkModeToggle />
   </ul>
 );
 
@@ -37,7 +38,7 @@ const SideNavigation = ({ children, background = 'light', footer = true }) => {
       <div className="sidebar-sticky pl-4 pr-4 pb-4">
         <LogoLink />
         {children}
-        { footer && <SideNavigationFooter /> }
+        {footer && <SideNavigationFooter />}
       </div>
     </nav>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Container, Row, Col } from 'react-bootstrap';
+import { Container, Row, Col, Dropdown, DropdownButton } from 'react-bootstrap';
 import { graphql, Link } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
@@ -15,6 +15,7 @@ import {
   TopBar,
 } from '../components';
 import { leftNavs } from '../constants/left-navs';
+import Icon from '../components/icon';
 
 export const query = graphql`
   query($nodePath: String!, $potentialLatestNodePath: String) {
@@ -27,6 +28,7 @@ export const query = graphql`
       }
       fields {
         path
+        mtime
       }
       body
       tableOfContents
@@ -101,9 +103,11 @@ const getLinkItemFromPath = (path, navLinks) => {
 };
 
 const determineCanonicalPath = (hasLatest, latestPath) => {
-  if (hasLatest) { return latestPath; } // latest will also have hasLatest=true
+  if (hasLatest) {
+    return latestPath;
+  } // latest will also have hasLatest=true
   return null;
-}
+};
 
 const Sections = ({ sections }) => (
   <>
@@ -145,11 +149,50 @@ const Section = ({ section }) => (
   </div>
 );
 
+const FeedbackDropdown = ({ githubIssuesLink }) => (
+  <DropdownButton
+    className="ml-3"
+    size="sm"
+    variant="outline-info"
+    id="page-actions-button"
+    title={
+      //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
+      <Icon
+        iconName="ellipsis"
+        className="fill-orange mr-2"
+        width="15"
+        height="15"
+      />
+    }
+  >
+    <Dropdown.Item
+      href={githubIssuesLink + '&template=documentation-feedback.md'}
+      target="_blank"
+      rel="noreferrer"
+    >
+      Report a problem
+    </Dropdown.Item>
+    <Dropdown.Item
+      href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+      target="_blank"
+      rel="noreferrer"
+    >
+      Give product feedback
+    </Dropdown.Item>
+  </DropdownButton>
+);
+
 const DocTemplate = ({ data, pageContext, path: pagePath }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
-  const { path } = fields;
+  const { path, mtime } = fields;
   const depth = path.split('/').length;
-  const { navLinks, versions } = pageContext;
+  const {
+    navLinks,
+    versions,
+    githubFileLink,
+    githubEditLink,
+    githubIssuesLink,
+  } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
@@ -161,7 +204,7 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
     path: pagePath,
     canonicalPath: determineCanonicalPath(
       !!data.potentialLatest,
-      pageContext.potentialLatestPath
+      pageContext.potentialLatestPath,
     ),
   };
 
@@ -175,29 +218,46 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
           <LeftNav
             navLinks={navLinks}
             path={path}
+            pagePath={pagePath}
             versionArray={versionArray}
             navOrder={navOrder}
           />
         </SideNavigation>
         <MainContent>
-          <h1 className="balance-text">{frontmatter.title} <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">v{version}</span></h1>
+          <div className="d-flex justify-content-between align-items-center">
+            <h1 className="balance-text">
+              {frontmatter.title}{' '}
+              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                v{version}
+              </span>
+            </h1>
+            <div className="d-flex">
+              <a
+                href={githubEditLink || '#'}
+                className="btn btn-sm btn-primary px-4 text-nowrap"
+              >
+                Edit this page
+              </a>
+              <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
+            </div>
+          </div>
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
 
-            { showToc &&
+            {showToc && (
               <Col xs={3}>
                 <TableOfContents toc={tableOfContents.items} />
               </Col>
-            }
+            )}
           </ContentRow>
           {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
           <DevFrontmatter frontmatter={frontmatter} />
-          <Footer />
 
+          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
         </MainContent>
       </Container>
     </Layout>

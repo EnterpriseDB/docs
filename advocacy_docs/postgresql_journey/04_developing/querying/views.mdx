@@ -1,0 +1,261 @@
+---
+title: How to create, modify, delete, and manage views in PostgreSQL
+navTitle: Views
+description: "This article discusses VIEW in PostgreSQL. It describes how a VIEW functions as a shortcut if calling the same query multiple times, then defines the following commands: CREATE VIEW, ALTER VIEW, DROP VIEW" 
+product: postgresql
+platform: ubuntu
+tags:
+    - postgresql
+    - ubuntu
+    - psql
+    - live-demo
+katacodaPanel:
+    account: enterprisedb
+    scenario: sandbox
+    codelanguages: sql
+---
+
+*adapted from: https://www.enterprisedb.com/postgres-tutorials/how-create-modify-delete-and-manage-views-postgresql*
+
+### Introduction
+
+PostgreSQL’s VIEW is a versatile tool for “viewing” the data in a database. A VIEW is a query that you give a name to so that you can reference it just like you would a table. There are also MATERIALIZED VIEWs, which are similar but slightly different, and we cover that here. A VIEW doesn’t replace a table—VIEWs require tables to pull information from them. However, once those tables are in place, you can use VIEWs to examine and use those tables’ data. This can be useful for a number of situations. For example, if there’s a query that you run really often, and you don’t want to keep typing it, you can use a VIEW. 
+
+This is an interactive tutorial - you can run the examples below against a sample database right in your browser.
+
+<KatacodaPanel />
+
+## Creating a view
+
+Here, I have an example of a situation where I have two tables that I pull information from, “customer_table” and “city_table.”
+
+```sql
+select first_name, last_name, email, city 
+from customer
+join address on address.address_id=customer.address_id
+join city on city.city_id=address.city_id
+where city='London';
+__OUTPUT__
+ first_name | last_name |               email               |  city
+------------+-----------+-----------------------------------+--------
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London
+(2 rows)
+```
+
+If this is a query that is run often, or we want to run a query that involves information that this query already involves, we can create a VIEW with this query:
+
+```sql
+create view my_view as 
+    select first_name, last_name, email, city 
+    from customer
+    join address on address.address_id=customer.address_id
+    join city on city.city_id=address.city_id
+    where city='London';
+__OUTPUT__
+CREATE VIEW
+```
+
+Then in the future, we can just call the VIEW itself:
+
+```sql
+select * from my_view;
+__OUTPUT__
+ first_name | last_name |               email               |  city
+------------+-----------+-----------------------------------+--------
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London
+(2 rows)
+```
+
+Once we’ve created a VIEW, we can look at the details of that view using the \d+ command:
+
+```sql
+\d+ my_view
+__OUTPUT__
+                            View "public.my_view"
+   Column   | Type | Collation | Nullable | Default | Storage  | Description
+------------+------+-----------+----------+---------+----------+-------------
+ first_name | text |           |          |         | extended |
+ last_name  | text |           |          |         | extended |
+ email      | text |           |          |         | extended |
+ city       | text |           |          |         | extended |
+View definition:
+ SELECT customer.first_name,
+    customer.last_name,
+    customer.email,
+    city.city
+   FROM customer
+     JOIN address ON address.address_id = customer.address_id
+     JOIN city ON city.city_id = address.city_id
+  WHERE city.city = 'London'::text;
+```
+
+The view itself doesn't store data - every time it's used, the defining query is run. Observe that changing the tables used in the definition will cause the results to change:
+
+```sql
+update address set city_id=312 where city_id=544;
+select * from my_view;
+__OUTPUT__
+UPDATE 1
+ first_name | last_name |               email               |  city
+------------+-----------+-----------------------------------+--------
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London
+ VIRGINIA   | GREEN     | VIRGINIA.GREEN@sakilacustomer.org | London
+(3 rows)
+```
+
+We can make VIEWs that pull information from other VIEWs as well, giving you even more flexibility over how you want to access your data.
+
+## Creating or replacing a view
+
+If you ever need to change an existing VIEW, the command you use depends on what you want to change. If you want to change the query that is being used, you can use a modified version of the CREATE command:
+
+```sql
+create or replace view my_view as 
+select first_name, last_name, email, city, country
+from customer
+join address on address.address_id=customer.address_id
+join city on city.city_id=address.city_id
+join country on country.country_id=city.country_id
+where city='London';
+__OUTPUT__
+CREATE VIEW
+```
+
+Examining the view shows the updated definition: 
+
+```sql
+\d+ my_view
+__OUTPUT__
+                            View "public.my_view"
+   Column   | Type | Collation | Nullable | Default | Storage  | Description
+------------+------+-----------+----------+---------+----------+-------------
+ first_name | text |           |          |         | extended |
+ last_name  | text |           |          |         | extended |
+ email      | text |           |          |         | extended |
+ city       | text |           |          |         | extended |
+ country    | text |           |          |         | extended |
+View definition:
+ SELECT customer.first_name,
+    customer.last_name,
+    customer.email,
+    city.city,
+    country.country
+   FROM customer
+     JOIN address ON address.address_id = customer.address_id
+     JOIN city ON city.city_id = address.city_id
+     JOIN country ON country.country_id = city.country_id
+  WHERE city.city = 'London'::text;
+```
+
+## Altering a view
+
+On the other hand, if you want to change the properties of the VIEW, such as the owner, or rename the VIEW, you can use the ALTER VIEW command.
+
+```sql
+alter view my_view rename to customers_london;
+__OUTPUT__
+ALTER VIEW
+```
+
+One way to manage your VIEWs is to use “pg_views.” This will allow you to see all of the VIEWs that currently exist, who created them, the name of the VIEW, the schema they are in, and the definition.
+
+```sql
+select * from pg_views where viewname='customers_london'; 
+__OUTPUT__
+ schemaname |     viewname     | viewowner |                             definition
+------------+------------------+-----------+--------------------------------------------------------------------
+ public     | customers_london | postgres  |  SELECT customer.first_name,                                      +
+            |                  |           |     customer.last_name,                                           +
+            |                  |           |     customer.email,                                               +
+            |                  |           |     city.city,                                                    +
+            |                  |           |     country.country                                               +
+            |                  |           |    FROM (((customer                                               +
+            |                  |           |      JOIN address ON ((address.address_id = customer.address_id)))+
+            |                  |           |      JOIN city ON ((city.city_id = address.city_id)))             +
+            |                  |           |      JOIN country ON ((country.country_id = city.country_id)))    +
+            |                  |           |   WHERE (city.city = 'London'::text);
+(1 row)
+```
+
+## Dropping a view
+
+Finally, if you decide you no longer need a VIEW, simply use the DROP VIEW command to remove it.
+
+```sql
+drop view customers_london;
+__OUTPUT__
+DROP VIEW
+```
+
+## Materializing a view
+
+[A "materialized" view](https://www.postgresql.org/docs/current/rules-materializedviews.html) is one where the results are stored - in effect, it's a table that remembers the query used to create it. Unlike the example above, a materialized view does *not* automatically reflect changes made to the tables in its definition.
+
+Let's create the view used above again, but as a materialized view:
+
+```sql
+create materialized view customers_london as 
+select first_name, last_name, email, city, country
+from customer
+join address on address.address_id=customer.address_id
+join city on city.city_id=address.city_id
+join country on country.country_id=city.country_id
+where city='London';
+__OUTPUT__
+SELECT 3
+```
+
+Query the new view:
+
+```sql
+select * from customers_london;
+__OUTPUT__
+ first_name | last_name |               email               |  city  |    country
+------------+-----------+-----------------------------------+--------+----------------
+ VIRGINIA   | GREEN     | VIRGINIA.GREEN@sakilacustomer.org | London | United Kingdom
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London | United Kingdom
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London | United Kingdom
+(3 rows)
+```
+
+And now modify the underlying data and re-query:
+
+```sql
+update address set city_id=312 where city_id=545;
+select * from customers_london;
+__OUTPUT__
+UPDATE 1
+ first_name | last_name |               email               |  city  |    country
+------------+-----------+-----------------------------------+--------+----------------
+ VIRGINIA   | GREEN     | VIRGINIA.GREEN@sakilacustomer.org | London | United Kingdom
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London | United Kingdom
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London | United Kingdom
+(3 rows)
+```
+
+Observe that the results *haven't* changed, even though the data has - the materialized view maintains its own copy of the results. To refresh those results, we must use `refresh materialized view`:
+
+```sql
+refresh materialized view customers_london;
+__OUTPUT__
+REFRESH MATERIALIZED VIEW
+```
+
+Querying the view again will now return current results:
+
+```sql
+select * from customers_london;
+__OUTPUT__
+ first_name | last_name |               email               |  city  |    country
+------------+-----------+-----------------------------------+--------+----------------
+ EDWARD     | BAUGH     | EDWARD.BAUGH@sakilacustomer.org   | London | United Kingdom
+ VIRGINIA   | GREEN     | VIRGINIA.GREEN@sakilacustomer.org | London | United Kingdom
+ CECIL      | VINES     | CECIL.VINES@sakilacustomer.org    | London | United Kingdom
+ MATTIE     | HOFFMAN   | MATTIE.HOFFMAN@sakilacustomer.org | London | United Kingdom
+(4 rows)
+```
+
+Materialized views are useful in situations where results are expensive to obtain, and *don't* always need to be current - you can refresh them on a schedule or as-needed without imposing the cost of the defining query on every query that uses them.
