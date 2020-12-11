@@ -4,92 +4,81 @@ const gracefulFs = require('graceful-fs');
 gracefulFs.gracefulify(realFs);
 
 const { createFilePath } = require(`gatsby-source-filesystem`);
-const { exec } = require("child_process");
+const { exec, execSync } = require('child_process');
 
-const sortVersionArray = (versions) => {
-  return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
-                 .map(version => version.replace(/\d+/g, n => +n-100000));
-}
+const isBuild = process.env.NODE_ENV === 'production';
+const isProduction = process.env.APP_ENV === 'production';
+
+const sortVersionArray = versions => {
+  return versions
+    .map(version => version.replace(/\d+/g, n => +n + 100000))
+    .sort()
+    .map(version => version.replace(/\d+/g, n => +n - 100000));
+};
 
 const replacePathVersion = (path, version = 'latest') => {
   const splitPath = path.split('/');
   const postVersionPath = splitPath.slice(3).join('/');
-  return `/${splitPath[1]}/${version}${postVersionPath.length > 0 ? `/${postVersionPath}` : ''}`;
-}
+  return `/${splitPath[1]}/${version}${
+    postVersionPath.length > 0 ? `/${postVersionPath}` : ''
+  }`;
+};
+
+const filePathToDocType = filePath => {
+  if (filePath.includes('/product_docs/')) {
+    return 'doc';
+  } else if (filePath.includes('/advocacy_docs/')) {
+    return 'advocacy';
+  } else {
+    return 'gh_doc';
+  }
+};
 
 const productLatestVersionCache = [];
 
 exports.onCreateNode = async ({ node, getNode, actions }) => {
   const { createNodeField } = actions;
-  // Ensures we are processing only markdown files
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
+
+  if (node.internal.type === 'Mdx') {
+    const fileNode = getNode(node.parent);
+    const nodeFields = {
+      docType: filePathToDocType(node.fileAbsolutePath),
+      mtime: fileNode.mtime,
+    };
+
+    const relativeFilePath = createFilePath({
       node,
       getNode,
-      basePath: 'docs',
+    }).slice(0, -1); // remove last character
+
+    Object.assign(nodeFields, {
+      path: relativeFilePath,
     });
 
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const product = relativeFilePath.split('/')[1];
-    const version = relativeFilePath.split('/')[2];
+    if (nodeFields.docType === 'doc') {
+      Object.assign(nodeFields, {
+        product: relativeFilePath.split('/')[1],
+        version: relativeFilePath.split('/')[2],
+        topic: 'null',
+      });
+    } else if (nodeFields.docType === 'advocacy') {
+      Object.assign(nodeFields, {
+        product: 'null',
+        version: '0',
+        topic: relativeFilePath.split('/')[2],
+      });
+    } else {
+      // gh_doc
+      Object.assign(nodeFields, {
+        product: 'null',
+        version: '0',
+        topic: relativeFilePath.split('/')[1],
+      });
+    }
 
-    // Creates new query'able fields
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'product',
-      value: product,
-    });
-    createNodeField({
-      node,
-      name: 'version',
-      value: version,
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: 'null',
-    });
-  }
-  if (
-    node.internal.type === 'Mdx' &&
-    node.fileAbsolutePath.includes('/advocacy_docs/')
-  ) {
-    // Use `createFilePath` to turn markdown files in our `data/faqs` directory into `/faqs/slug`
-    let relativeFilePath = createFilePath({
-      node,
-      getNode,
-      basePath: 'advocacy_docs',
-    });
-
-    relativeFilePath = relativeFilePath.substring(
-      0,
-      relativeFilePath.length - 1,
-    );
-    const topic = relativeFilePath.split('/')[2];
-
-    // Creates new query'able field with name of 'path'
-    createNodeField({
-      node,
-      name: 'path',
-      value: relativeFilePath,
-    });
-    createNodeField({
-      node,
-      name: 'topic',
-      value: topic,
-    });
+    for (const [name, value] of Object.entries(nodeFields)) {
+      createNodeField({ node, name: name, value: value });
+    }
   }
 };
 
@@ -108,9 +97,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               scenario
               account
             }
+            originalFilePath
           }
           excerpt(pruneLength: 280)
           fields {
+            docType
             path
             product
             version
@@ -140,8 +131,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
 
-  const docs = nodes.filter(file => !!file.fields.version);
-  const learn = nodes.filter(file => !file.fields.version);
+  const docs = nodes.filter(file => file.fields.docType === 'doc');
+  const learn = nodes.filter(file => file.fields.docType === 'advocacy');
+  const gh_docs = nodes.filter(file => file.fields.docType === 'gh_doc');
 
   const folderIndex = {};
 
@@ -214,6 +206,17 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
+    const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
+    const branch = isProduction ? 'main' : 'develop';
+    const fileUrlSegment =
+      doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
+    const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
+    const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(
+      fileUrlSegment,
+    )}`;
+
     actions.createPage({
       path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
       component: require.resolve('./src/templates/doc.js'),
@@ -221,10 +224,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
+        githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
+        githubIssuesLink: githubIssuesLink,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(
           doc.fields.path,
-          versionIndex[doc.fields.product][0]
+          versionIndex[doc.fields.product][0],
         ), // the latest version number path (may not exist!), needed for query
       },
     });
@@ -234,29 +240,34 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navLinks = learn.filter(
       node => node.fields.topic === doc.fields.topic,
     );
-    const advocacyDocsRepoUrl = 'https://github.com/rocketinsights/edb_docs_advocacy';
-    const githubLink = advocacyDocsRepoUrl +
-      '/edit/master/advocacy_docs' +
+
+    const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
+    const branch = isProduction ? 'main' : 'develop';
+    const fileUrlSegment =
       doc.fields.path +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubIssuesLink = advocacyDocsRepoUrl +
-      '/issues/new?title=Regarding%20' +
-      encodeURIComponent(doc.fields.path) +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
+    const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
+      fileUrlSegment,
+    )}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
         navLinks: navLinks,
-        githubLink: githubLink,
+        githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
       },
     });
 
     (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
       if (!katacodaPage.scenario || !katacodaPage.account) {
-        raise `katacoda scenario or account missing for ${doc.fields.path}`;
+        throw new Error(
+          `katacoda scenario or account missing for ${doc.fields.path}`,
+        );
       }
 
       actions.createPage({
@@ -269,16 +280,45 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             description: doc.frontmatter.description,
           },
         },
-      })
+      });
+    });
+  });
+
+  gh_docs.forEach(doc => {
+    let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
+    if (doc.fields.path.includes('barman')) {
+      githubLink = 'https://github.com/2ndquadrant-it/barman';
+    }
+    const showGithubLink = !doc.fields.path.includes('pgbackrest');
+
+    const navLinks = gh_docs.filter(
+      node => node.fields.topic === doc.fields.topic,
+    );
+
+    const githubFileLink = `${githubLink}/tree/master/${(
+      doc.frontmatter.originalFilePath || ''
+    ).replace('README.md', '')}`;
+    const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+
+    actions.createPage({
+      path: doc.fields.path,
+      component: require.resolve('./src/templates/gh-doc.js'),
+      context: {
+        navLinks: navLinks,
+        githubFileLink: showGithubLink ? githubFileLink : null,
+        githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
+      },
     });
   });
 
   const sha = await new Promise((resolve, reject) => {
-    exec("git rev-parse HEAD", (error, stdout, stderr) => resolve(stdout));
+    exec('git rev-parse HEAD', (error, stdout, stderr) => resolve(stdout));
   });
 
   const branch = await new Promise((resolve, reject) => {
-    exec("git branch --show-current", (error, stdout, stderr) => resolve(stdout));
+    exec('git branch --show-current', (error, stdout, stderr) =>
+      resolve(stdout),
+    );
   });
 
   actions.createPage({
@@ -290,4 +330,60 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       buildTime: Date.now(),
     },
   });
+};
+
+exports.sourceNodes = ({
+  actions: { createNode },
+  createNodeId,
+  createContentDigest,
+}) => {
+  const activeSources = ['advocacy'];
+
+  if (!process.env.SKIP_SOURCING) {
+    const sources = JSON.parse(
+      gracefulFs.readFileSync(
+        isBuild ? 'build-sources.json' : 'dev-sources.json',
+      ),
+    );
+    for (const [source, enabled] of Object.entries(sources)) {
+      if (enabled) {
+        activeSources.push(source);
+      }
+    }
+  }
+
+  const nodeData = { activeSources: activeSources };
+
+  createNode({
+    ...nodeData,
+    id: createNodeId('edb-sources'),
+    internal: {
+      type: 'edbSources',
+      contentDigest: createContentDigest(nodeData),
+    },
+  });
+};
+
+exports.createSchemaCustomization = ({ actions }) => {
+  const { createTypes } = actions;
+  const typeDefs = `
+    type Mdx implements Node {
+      frontmatter: Frontmatter
+    }
+
+    type Frontmatter {
+      originalFilePath: String
+    }
+  `;
+  createTypes(typeDefs);
+};
+
+exports.onPreBootstrap = () => {
+  console.log(`
+ _____  ____   _____    ____                 
+|   __||    \\ | __  |  |    \\  ___  ___  ___ 
+|   __||  |  || __ -|  |  |  || . ||  _||_ -|
+|_____||____/ |_____|  |____/ |___||___||___|
+                                                                                                                   
+  `);
 };

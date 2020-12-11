@@ -28,7 +28,6 @@ const makeTree = edges => {
   return newEdges[0].items;
 };
 
-
 const orderTree = (tree, order) => {
   if (!order) {
     return tree;
@@ -66,7 +65,12 @@ const SectionHeading = ({ newList, path, iconName }) => {
   );
 };
 
-const SectionHeadingWithVersions = ({ newList, path, versionArray, iconName }) => {
+const SectionHeadingWithVersions = ({
+  newList,
+  path,
+  versionArray,
+  iconName,
+}) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
       <Icon
@@ -94,14 +98,22 @@ const SectionHeadingWithVersions = ({ newList, path, versionArray, iconName }) =
   );
 };
 
-const LeftNav = ({ navLinks, path, versionArray, iconName, navOrder = null }) => {
+const LeftNav = ({
+  navLinks,
+  path,
+  pagePath,
+  versionArray,
+  iconName,
+  navOrder = null,
+}) => {
   const newList = versionArray
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
     : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
+
   return (
     <ul className="list-unstyled mt-0">
-      <BackButton />
+      <BackButton currentPath={pagePath} />
       {versionArray ? (
         <SectionHeadingWithVersions
           newList={newList}
@@ -116,7 +128,7 @@ const LeftNav = ({ navLinks, path, versionArray, iconName, navOrder = null }) =>
         <TreeNode node={node} path={path} key={node.path + node.title} />
       ))}
       <li>
-      <PdfDownload path={path} />
+        <PdfDownload path={path} />
       </li>
     </ul>
   );
