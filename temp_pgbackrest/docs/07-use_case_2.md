@@ -2,13 +2,11 @@
 
 ### Description
 
-* _pgBackRest_ runs on a dedicated backup server and stores repository on local or remote storage (NFS, S3, or Azure object stores);
-* cron task active to take backups from the primary database cluster;
-* manually reconfigure cron task to take backup from another server.
+* _pgBackRest_ runs on a dedicated backup server and stores repository on local or remote storage (NFS, S3, or Azure object stores).
+* Cron task active to take backups from the primary database cluster.
+* Manually reconfigure cron task to take backup from another server.
 
 ![Use case diagram](images/use_case_2-01.png)
-
----
 
 ### Create a Dedicated User on the Repository Host
 
@@ -19,8 +17,6 @@ $ sudo groupadd pgbackrest
 $ sudo adduser -g pgbackrest -n pgbackrest
 $ sudo chown pgbackrest: /var/log/pgbackrest
 ```
-
----
 
 ### Setup Passwordless SSH Connection
 
@@ -40,8 +36,6 @@ $ sudo -u pgbackrest ssh postgres@postgres-node-1
 $ sudo -u pgbackrest ssh postgres@postgres-node-2
 $ ...
 ```
-
----
 
 ### Configuration
 
@@ -70,6 +64,8 @@ log-level-file=debug
 start-fast=y
 delta=y
 ```
+
+Adjust the encryption passphrase and the maximum number of processes to use for compression usage and file transfer.
 
 See the [Recommended settings](04-recommended_settings.md) and the [Retention policy](05-retention_policy.md) pages for more details.
 
@@ -137,7 +133,7 @@ archive_mode = on
 archive_command = 'pgbackrest --stanza=demo archive-push %p'
 ```
 
-Changing the `archive_mode` parameter requires a service restart, while changing the `archive_command` requires only a configuration reload. We recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
+As changing the `archive_mode` parameter requires a service restart, and changing the `archive_command` requires only a configuration reload, we recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
 
 From the backup server (also called repository host), initiate the _pgBackRest_ repository with the system user we created earlier:
 
@@ -151,15 +147,11 @@ Check the configuration and the archiving process:
 $ sudo -u pgbackrest pgbackrest --stanza=demo check
 ```
 
----
-
 ### Backup and Restore
 
-See the **Quick Start** [Backups](03-quick_start.md#backups) and [Restore](03-quick_start.md#restore) pages for more details.
+See the **Quick Start** [Backups](03-quick_start.md#backups) and [Restore](03-quick_start.md#restore) pages for more details about those two commands.
 
 The `backup` command will be executed on the repository host (aka. _backup-server_), while the `restore` command should be executed on database nodes (aka. _postgres-node-1_,...).
-
----
 
 ### Glossary
 
@@ -181,8 +173,6 @@ The `backup` command will be executed on the repository host (aka. _backup-serve
 [`repo-path`](https://pgbackrest.org/configuration.html#section-repository/option-repo-path)
 [`repo-retention-full`](https://pgbackrest.org/configuration.html#section-repository/option-repo-retention-full)
 [`start-fast`](https://pgbackrest.org/configuration.html#section-backup/option-start-fast)
-
----
 
 #### PostgreSQL
 

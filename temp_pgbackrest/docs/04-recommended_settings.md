@@ -4,10 +4,10 @@ This section walks you through the recommended settings while using _pgBackRest_
 
 ### Encryption
 
-Use the following settings to encrypt the files in the repository: 
+Use the following settings to encrypt the files in the repository `repo1`: 
 
 ```ini
-repo1-cipher-pass=xxx
+repo1-cipher-pass=FIXME
 repo1-cipher-type=aes-256-cbc
 ```
 
@@ -17,8 +17,6 @@ The `cipher-pass` should be **base64** encoded. For example, to generate a rando
 $ openssl rand -base64 48
 ```
 
----
-
 ### Maximum Number of Processes
 
 Use the following setting to set the maximum number of processes for compression usage and file transfer: 
@@ -27,13 +25,11 @@ Use the following setting to set the maximum number of processes for compression
 process-max=FIXME
 ```
 
----
+Each process will perform compression and transfer to make the command run faster, but do not set `process-max` so high that it impacts server load and performance.
 
 ### Backup Fast Start
 
 Use the `start-fast=y` setting to force a checkpoint to start the backup quickly. This is achieved inside _pgBackRest_ by passing **true** to the fast parameter of the **pg_start_backup()** database function. The backup will then begin immediately rather than waiting for the next regular checkpoint triggered by the database server itself.
-
----
 
 ### Delta
 
@@ -42,8 +38,6 @@ Use the `delta=y` setting to restore or backup using checksums.
 During a restore, the data and tablespaces directories are expected to be present, but empty. This option performs a delta restore using checksums.
 
 During a backup, this option will use checksums instead of timestamps to determine if files will be copied.
-
----
 
 ### Log Levels
 
@@ -67,8 +61,6 @@ To add more output in the log file in case the executed command encounters an er
 log-level-console=info
 log-level-file=debug
 ```
-
----
 
 ### Glossary
 
