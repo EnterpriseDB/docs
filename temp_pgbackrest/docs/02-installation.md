@@ -29,8 +29,6 @@ The following additional package will be installed:
 
 * `postgresql-libs`
 
----
-
 ### EDB Postgres Advanced Server
 
 The PGDG packages will fetch **PostgreSQL** libraries and create the `postgres` system user.
