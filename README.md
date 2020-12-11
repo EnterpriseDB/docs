@@ -1,5 +1,9 @@
 # <img src="static/images/edb-docs-logo-dark.svg" alt='EDB Docs' width="350">
 
+![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
+![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
+![Update PDFs on Develop](https://github.com/EnterpriseDB/docs/workflows/Update%20PDFs%20on%20Develop/badge.svg)
+
 This repo contains the Gatsby application that powers EDB's documentation website, as well as the advocacy content. The site pulls additional content from other repos, in a process called 'sourcing'.
 
 ## Installation
@@ -22,7 +26,8 @@ If you wish to work with Docs without installing the prerequesites locally, you 
 - Advocacy (`/advocacy_docs`, always loaded)
 - Product Docs (`/product_docs`)
 - Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
-- 2nd Quadrant BaRMan (https://github.com/2ndquadrant-it/barman)
+- BaRMan (https://github.com/2ndquadrant-it/barman)
+- pgBackRest (https://github.com/EnterpriseDB/pgbackrest-docs)
 
 ### Configuring
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
