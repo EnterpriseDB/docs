@@ -150,7 +150,7 @@ export const leftNavs = {
       {
         path: 'inst_guide',
       },
-    ]
+    ],
   },
 
   ark: {
@@ -189,6 +189,31 @@ export const leftNavs = {
   },
 
   bart: {
+    '2.6': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'bart_inst',
+      },
+      {
+        path: 'bart_qs_7',
+      },
+      {
+        path: 'bart_qs_8',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'bart_user',
+      },
+      {
+        path: 'bart_ref',
+      },
+    ],
     '2.5.5': [
       {
         path: null,
@@ -388,6 +413,43 @@ export const leftNavs = {
   },
 
   pem: {
+    '7.16': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'pem_inst_guide_linux',
+      },
+      {
+        path: 'pem_pgbouncer',
+      },
+      {
+        path: 'pem_upgrade',
+      },
+      {
+        path: 'pem_inst_guide_windows',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'pem_admin',
+      },
+      {
+        path: 'pem_agent',
+      },
+      {
+        path: 'pem_bart',
+      },
+      {
+        path: 'pem_ent_feat',
+      },
+      {
+        path: 'pem_sqlprofiler',
+      },
+    ],
     '7.15': [
       {
         path: null,
