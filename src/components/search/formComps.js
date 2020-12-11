@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  connectHits,
-  connectStateResults,
-} from 'react-instantsearch-dom';
+import { connectHits, connectStateResults } from 'react-instantsearch-dom';
 import { Link } from 'gatsby';
 import { Button } from 'react-bootstrap';
 import Icon, { iconNames } from '../icon/';
@@ -13,22 +10,20 @@ const Results = connectStateResults(
     res ? children : null,
 );
 
-const TryAdvancedSearch = connectStateResults(
-  ({ searchResults: res }) =>
-    <div className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
-      { res && res.nbHits > 0 ? 'Not finding what you need?' : 'No results found.' }
-      <Link to={`/search?query=${res.query}`} className="ml-2">Try Advanced Search</Link>
-    </div>
-);
+const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
+  <div className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
+    {res && res.nbHits > 0 ? 'Not finding what you need?' : 'No results found.'}
+    <Link to={`/search?query=${res.query}`} className="ml-2">
+      Try Advanced Search
+    </Link>
+  </div>
+));
 
 const Hits = ({ hits, arrowIndex }) => (
   <>
     {hits.map((hit, i) => (
       <div className="mb-3" key={i}>
-        <PageHit
-          hit={hit}
-          className={arrowIndex === i && 'arrow-focus'}
-        />
+        <PageHit hit={hit} className={arrowIndex === i && 'arrow-focus'} />
       </div>
     ))}
   </>
@@ -54,21 +49,28 @@ export const AdvancedSearchTabLink = ({ query }) => (
 
 export const SlashIndicator = ({ query }) => (
   <span
-    className={`slash-indicator text-orange text-center opacity-5 bg-white mr-3 ${(query || '').length > 0 && 'd-none'}`}
+    className={`slash-indicator text-orange text-center opacity-5 bg-white mr-3 ${(
+      query || ''
+    ).length > 0 && 'd-none'}`}
   >
     /
   </span>
 );
 
 export const ClearButton = ({ onClick, className }) => {
-  const click = (e) => {
+  const click = e => {
     e.preventDefault();
     onClick();
-  }
+  };
 
   return (
     <Button variant="link" onClick={click} className={className}>
-      <Icon iconName={iconNames.CLOSE} className="opacity-5" width="20" height="20" />
+      <Icon
+        iconName={iconNames.CLOSE}
+        className="opacity-5"
+        width="20"
+        height="20"
+      />
     </Button>
   );
 };
