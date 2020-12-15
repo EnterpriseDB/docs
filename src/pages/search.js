@@ -30,7 +30,7 @@ export default data => {
   });
 
   return (
-    <Layout background="white">
+    <Layout background="white" pageMeta={{ title: 'Advanced Search' }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
