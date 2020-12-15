@@ -20,7 +20,7 @@ const Layout = ({
   katacodaPanelData,
   background = 'light',
 }) => {
-  const { baseUrl, imageUrl, title, description } = useSiteMetadata();
+  const { baseUrl, imageUrl, title } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
 
@@ -51,17 +51,20 @@ const Layout = ({
       <Helmet>
         <html lang="en" className={`${dark && 'dark'}`} />
         <title>{meta.title || title}</title>
-        <meta name="description" content={meta.description || description} />
+        {meta.description && (
+          <meta name="description" content={meta.description} />
+        )}
         <meta property="og:title" content={meta.title || title} />
-        <meta
-          property="og:description"
-          content={meta.description || description}
-        />
+        {meta.description && (
+          <meta property="og:description" content={meta.description} />
+        )}
         <meta property="og:image" content={imageUrl} />
         <meta property="og:url" content={url} />
+        {/* Disabling this for now
         {meta.canonicalPath && (
           <link rel="canonical" href={baseUrl + meta.canonicalPath} />
         )}
+        */}
         <meta name="twitter:card" content="summary_large_image" />
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
