@@ -123,7 +123,7 @@ export default data => {
   const query = buildQuery(data.location.pathname);
 
   return (
-    <Layout>
+    <Layout pageMeta={{ title: 'Page Not Found' }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
