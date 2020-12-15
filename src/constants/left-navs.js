@@ -413,6 +413,46 @@ export const leftNavs = {
   },
 
   pem: {
+    '8.0': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'pem_inst_guide_linux',
+      },
+      {
+        path: 'pem_pgbouncer',
+      },
+      {
+        path: 'pem_upgrade',
+      },
+      {
+        path: 'pem_inst_guide_windows',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'pem_admin',
+      },
+      {
+        path: 'pem_agent',
+      },
+      {
+        path: 'pem_bart',
+      },
+      {
+        path: 'pem_ent_feat',
+      },
+      {
+        path: 'pem_security_best_practices',
+      },
+      {
+        path: 'pem_sqlprofiler',
+      },
+    ],
     '7.16': [
       {
         path: null,
