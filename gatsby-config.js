@@ -237,8 +237,6 @@ module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
     title: 'EDB Docs',
-    description:
-      'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
     baseUrl: 'https://edb-docs.netlify.com',
     imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
     siteUrl: 'https://edb-docs.netlify.com',

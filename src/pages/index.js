@@ -12,7 +12,12 @@ import {
 } from '../components';
 
 export default () => (
-  <Layout>
+  <Layout
+    pageMeta={{
+      description:
+        'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
+    }}
+  >
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
       <SideNavigation>
