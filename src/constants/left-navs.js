@@ -399,7 +399,6 @@ export const leftNavs = {
       },
     ],
   },
-  //todo:recheck efm content
   efm: {
     '4.1': [
       {
@@ -414,7 +413,7 @@ export const leftNavs = {
         title: 'Guides',
       },
       {
-        path: 'efm_ha_scalability',
+        path: 'efm_pgpool_ha_guide',
       },
       {
         path: 'efm_user',
