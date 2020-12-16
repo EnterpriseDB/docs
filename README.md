@@ -97,7 +97,7 @@ The `description` is used in cards as well.
 
 ## Markdown styling
 
-All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/docs/playground/1/01_examples/index.mdx)
+All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/advocacy_docs/playground/1/01_examples/index.mdx)
 
 ## Ordering of files
 
