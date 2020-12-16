@@ -1,4 +1,4 @@
-# <img src="static/images/edb-docs-logo-dark.svg" alt='EDB Docs' width="350">
+# <img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="350">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
