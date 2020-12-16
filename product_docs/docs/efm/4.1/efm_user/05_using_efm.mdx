@@ -7,7 +7,7 @@ title: "Using Failover Manager"
 
 offers support for monitoring and failover of clusters with one or more Standby servers. You can add or remove nodes from the cluster as your demand for resources grows or shrinks.
 
-If a primary node reboots, may detect the database is down on the Primary node and promote a Standby node to the role of Primary. If this happens, the agent on the (rebooted) Primary node will not get a chance to write the `recovery.conf` file (for server version 11 or prior) or `standby.signal` file (for server version 12 or later); the rebooted Primary node will return to the cluster as a second Primary node. To prevent this, start the agent before starting the database server. The agent will start in idle mode, and check to see if there is already a primary in the cluster. If there is a primary node, the agent will verify that a `recovery.conf` or `standby.signal` file exists, and the database will not start as a second primary.
+If a primary node reboots, may detect the database is down on the Primary node and promote a Standby node to the role of Primary. If this happens, the agent on the (rebooted) Primary node will not get a chance to write the `recovery.conf` file; the rebooted Primary node will return to the cluster as a second Primary node. To prevent this, start the agent before starting the database server. The agent will start in idle mode, and check to see if there is already a primary in the cluster. If there is a primary node, the agent will verify that a `recovery.conf` or `standby.signal` file exists, and the database will not start as a second primary.
 
 ## Managing a Failover Manager Cluster
 
@@ -30,14 +30,6 @@ By default, `some of the efm commands <using_efm_utility>` must be invoked by `e
 ### Starting the Failover Manager Cluster
 
 You can start the nodes of a cluster in any order.
-
-To start the cluster on RHEL 6.x or CentOS 6.x, assume superuser privileges, and invoke the command:
-
-<div class="parsed-literal">
-
-service edb-efm- start
-
-</div>
 
 To start the cluster on RHEL/CentOS 7.x or RHEL/CentOS 8.x, assume superuser privileges, and invoke the command:
 
@@ -75,9 +67,9 @@ If you are running `/var/lock` or `/var/run` on `tmpfs` (Temporary File System),
 
 You can add a node to a cluster at any time. When you add a node to a cluster, you must modify the cluster to allow the new node, and then tell the new node how to find the cluster. The following steps detail adding a node to a cluster:
 
-1.  Unless `auto.allow.hosts` is set to `true`, use the `efm allow-node` command, to add the IP address of the new node to the Failover Manager allowed node host list. When invoking the command, specify the cluster name and the IP address of the new node:
+1.  Unless `auto.allow.hosts` is set to `true`, use the `efm allow-node` command, to add the address of the new node to the Failover Manager allowed node host list. When invoking the command, specify the cluster name and the address of the new node:
 
-    `efm allow-node <cluster_name ip_address>`
+    `efm allow-node <cluster_name> <address>`
 
     For more information about using the `efm allow-node` command or controlling a service, see [Using the EFM Utility](#efm_allow_node).
 
@@ -85,21 +77,13 @@ You can add a node to a cluster at any time. When you add a node to a cluster, y
 
 2.  Configure the cluster members file on the new node, adding an entry for the Membership Coordinator. For more information about modifying the cluster members file, see `The Cluster Members File <cluster_members>`.
 
-3.  Assume superuser privileges on the new node, and start the Failover Manager agent. To start the cluster on RHEL 6.x or CentOS 6.x, assume superuser privileges, and invoke the command:
+3.  Assume superuser privileges on the new node, and start the Failover Manager agent. To start the cluster on RHEL/CentOS 7.x or RHEL/CentOS 8.x, invoke the command:
 
-<div class="parsed-literal">
+    <div class="parsed-literal">
 
-service edb-efm- start
+    systemctl start edb-efm-
 
-</div>
-
-To start the cluster on RHEL/CentOS 7.x or RHEL/CentOS 8.x, assume superuser privileges, and invoke the command:
-
-<div class="parsed-literal">
-
-systemctl start edb-efm-
-
-</div>
+    </div>
 
 When the new node joins the cluster, will send a notification to the administrator email provided in the `user.email` property, and/or will invoke the specified notification script.
 
@@ -161,20 +145,20 @@ During switchover:
 -   A standby is promoted to replace the primary node, and acquires the VIP.
 -   The address of the new primary node is added to the `recovery.conf` file or the `primary_conninfo` details are stored in memory.
 -   If the `application.name` property is set for this node, the application\_name property will be added to the `recovery.conf` file or the `primary_conninfo` information will be stored in memory.
--   If you are using server version 12 or later, the recovery settings that have been stored in memory are written to the `postgresql.auto.conf` file.
+-   If you are using server version 12 or later, the recovery settings that have been stored in memory are written to the `postgresql.auto.conf` file. A `standby.signal` file is created.
 -   The old primary is started; the agent will resume monitoring it as a standby.
 
-During a manual promotion, the Primary agent releases the virtual IP address before creating a `recovery.conf` file in the directory specified by the `db.data.dir` property. The `recovery.conf` file is created on all server versions, and is used to prevent the old primary database from starting until the file is removed, preventing the node from starting as a second primary in the cluster.
+During a promotion, the Primary agent releases the virtual IP address. If it is not a switchover, a recovery.conf file is created in the directory specified by the db.data.dir property. The recovery.conf file is used to prevent the old primary database from starting until the file is removed, preventing the node from starting as a second primary in the cluster. If the promotion is part of a switchover, recovery settings are handled as described above.
 
-The Primary agent remains running, and assumes a status of `Idle`.
+The Primary agent remains running, and assumes a status of Idle.
 
-The Standby agent confirms that the virtual IP address is no longer in use before pinging a well-known address to ensure that the agent is not isolated from the network. The Standby agent runs the fencing script and promotes the Standby database to Primary. The Standby agent then assigns the virtual IP address to the Standby node, and runs the post-promotion script (if applicable).
+The Standby agent confirms that the virtual IP address is no longer in use before pinging a well- known address to ensure that the agent is not isolated from the network. The Standby agent runs the fencing script and promotes the Standby database to Primary. The Standby agent then assigns the virtual IP address to the Standby node, and runs the post-promotion script (if applicable).
 
 Please note that this command instructs the service to ignore the value specified in the `auto.failover` parameter in the cluster properties file.
 
 To return a node to the role of primary, place the node first in the promotion list:
 
-> `efm set-priority <cluster_name> <ip_address> <priority>`
+> `efm set-priority <cluster_name> <address> <priority>`
 
 Then, perform a manual promotion:
 
@@ -190,14 +174,6 @@ For more information about the efm utility, see `Using the EFM Utility <using_ef
 
 When you stop an agent, will remove the node's address from the cluster members list on all of the running nodes of the cluster, but will not remove the address from the Allowed node host list.
 
-To stop the agent on RHEL 6.x or CentOS 6.x, assume superuser privileges, and invoke the command:
-
-<div class="parsed-literal">
-
-service edb-efm- stop
-
-</div>
-
 To stop the agent on RHEL/CentOS 7.x or RHEL/CentOS 8.x, assume superuser privileges, and invoke the command:
 
 <div class="parsed-literal">
@@ -206,7 +182,7 @@ systemctl stop edb-efm-
 
 </div>
 
-Until you invoke the `efm disallow-node` command (removing the node's address of the node from the Allowed node host list), you can use the `service edb-efm-4.0 start` command to restart the node at a later date without first running the `efm allow-node` command again.
+Until you invoke the `efm disallow-node` command (removing the node's address of the node from the Allowed node host list), you can use the `service edb-efm-4.1 start` command to restart the node at a later date without first running the `efm allow-node` command again.
 
 Please note that stopping an agent does not signal the cluster that the agent has failed unless the [primary.shutdown.as.failure](04_configuring_efm/01_cluster_properties/#primary_shutdown_as_failure) property is set to `true`.
 
@@ -230,7 +206,7 @@ The command will cause *all* agents to exit. Terminating the agents completely d
 
 The `efm disallow-node` command removes the IP address of a node from the Allowed Node host list. Assume the identity of `efm` or the OS superuser on any existing node (that is currently part of the running cluster), and invoke the `efm disallow-node` command, specifying the cluster name and the IP address of the node:
 
-> `efm disallow-node <cluster_name> <ip_address>`
+> `efm disallow-node <cluster_name> <address>`
 
 The `efm disallow-node` command will not stop a running agent; the service will continue to run on the node until you [stop the agent](#stop_efm_agent). If the agent or cluster is subsequently stopped, the node will not be allowed to rejoin the cluster, and will be removed from the failover priority list (and will be ineligible for promotion).
 
@@ -246,7 +222,7 @@ You can monitor multiple database clusters that reside on the same host by runni
 
 1.  Create a cluster properties file for each member of each cluster that defines a unique set of properties and the role of the node within the cluster.
 2.  Create a cluster members file for each member of each cluster that lists the members of the cluster.
-3.  Customize the service script (on a RHEL or CentOS 6.x system) or the unit file (on a RHEL/CentOS 7.x or RHEL/CentOS 8.x system) for each cluster to specify the names of the cluster properties and the cluster members files.
+3.  Customize the unit file (on a RHEL/CentOS 7.x or RHEL/CentOS 8.x system) for each cluster to specify the names of the cluster properties and the cluster members files.
 4.  Start the services for each cluster.
 
 The examples that follow uses two database clusters (acctg and sales) running on the same node:
@@ -304,41 +280,15 @@ The following parameters are used when assigning the virtual IP address to a nod
 
 This parameter value is determined by the virtual IP addresses being used and may or may not be the same for both `acctg.properties` and `sales.properties`.
 
-After creating the `acctg.properties` and `sales.properties` files, create a service script or unit file for each cluster that points to the respective property files; this step is platform specific. If you are using RHEL 6.x or CentOS 6.x, see [RHEL 6.x or CentOS 6.x](#rhel_or_centos_6); if you are using RHEL/CentOS 7.x or RHEL/CentOS 8.x, see <span class="title-ref">RHEL/CentOS 7.x or RHEL/CentOS 8.x &lt;rhel\_or\_centos\_7&gt;</span>.
+After creating the `acctg.properties` and `sales.properties` files, create a service script or unit file for each cluster that points to the respective property files; this step is platform specific. If you are using RHEL/CentOS 7.x or RHEL/CentOS 8.x, see <span class="title-ref">RHEL/CentOS 7.x or RHEL/CentOS 8.x &lt;rhel\_or\_centos\_7&gt;</span>.
 
-**Please note:** : If you are using a custom service script or unit file, you must manually update the file to reflect the new service name when you upgrade .
-
-<div id="rhel_or_centos_6" class="registered_link"></div>
-
-### RHEL 6.x or CentOS 6.x
-
-If you are using RHEL 6.x or CentOS 6.x, you should copy the `edb-efm-4.0` service script to new file with a name that is unique for each cluster. For example:
-
-<div class="parsed-literal">
-
-\# cp /etc/init.d/edb-efm- /etc/init.d/efm-acctg
-
-\# cp /etc/init.d/edb-efm- /etc/init.d/efm-sales
-
-</div>
-
-Then edit the `CLUSTER` variable, modifying the cluster name from `efm` to `acctg` or `sales`.
-
-After creating the service scripts, run:
-
-> `# chkconfig efm-acctg on`
->
-> `# chkconfig efm-sales on`
-
-Then, use the new service scripts to start the agents. For example, you can start the `acctg` agent with the command:
-
-> `# service efm-acctg start`
+**Please note:** : If you are using a unit file, you must manually update the file to reflect the new service name when you upgrade .
 
 <div id="rhel_or_centos_7" class="registered_link"></div>
 
 ### RHEL/CentOS 7.x or RHEL/CentOS 8.x
 
-If you are using RHEL/CentOS 7.x or RHEL/CentOS 8.x, you should copy the `edb-efm-4.0` unit file to new file with a name that is unique for each cluster. For example, if you have two clusters (named acctg and sales), the unit file names might be:
+If you are using RHEL/CentOS 7.x or RHEL/CentOS 8.x, you should copy the `edb-efm-4.1` unit file to new file with a name that is unique for each cluster. For example, if you have two clusters (named acctg and sales), the unit file names might be:
 
 > `/usr/lib/systemd/system/efm-acctg.service`
 >
