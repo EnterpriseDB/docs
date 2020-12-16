@@ -8,6 +8,8 @@ If you cannot or do not wish to install the prerequisite versions of Python, Nod
 2. [Visual Studio Code](https://code.visualstudio.com/docs/setup/setup-overview)
 3. The [Remote Development Extension Pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) for VSCode
 
+If you intend to edit using VSCode, I also recommend installing the [MDX extension](https://marketplace.visualstudio.com/items?itemName=silvenon.mdx) - this is not required, but it is handy!
+
 ## Installation
 
 1. In VSCode, from the command pallet select the `Remote-Containers: Clone Repository in Container Volume...` command
