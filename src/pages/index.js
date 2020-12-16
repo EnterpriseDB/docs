@@ -199,7 +199,14 @@ export default () => (
                 role="button"
                 className="btn btn-outline-primary px-4"
               >
-                12 <span className="muted">&mdash; Latest</span>
+                13 <span className="muted">&mdash; Latest</span>
+              </a>
+              <a
+                href="epas/12"
+                role="button"
+                className="btn btn-outline-primary px-4"
+              >
+                12
               </a>
               <a
                 href="epas/11"

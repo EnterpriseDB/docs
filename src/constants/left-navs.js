@@ -1,5 +1,76 @@
 export const leftNavs = {
   epas: {
+    '13': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'epas_inst_linux',
+      },
+      {
+        path: 'epas_inst_windows',
+      },
+      {
+        path: 'epas_rel_notes',
+      },
+      {
+        path: 'epas_upgrade_guide',
+      },
+      {
+        path: null,
+        title: 'For Oracle Developers',
+      },
+      {
+        path: 'epas_compat_ora_dev_guide',
+      },
+      {
+        path: 'epas_compat_reference',
+      },
+      {
+        path: 'epas_compat_bip_guide',
+      },
+      {
+        path: 'epas_compat_tools_guide',
+      },
+      {
+        path: 'epas_compat_cat_views',
+      },
+      {
+        path: 'epas_compat_spl',
+      },
+      {
+        path: 'epas_compat_sql',
+      },
+      {
+        path: 'epas_compat_table_partitioning',
+      },
+      {
+        path: null,
+        title: 'Tools',
+      },
+
+      {
+        path: 'ecpgplus_guide',
+      },
+      {
+        path: 'language_pack',
+      },
+      {
+        path: null,
+        title: 'User Guides',
+      },
+
+      {
+        path: 'epas_security_guide',
+      },
+      {
+        path: 'epas_guide',
+      },
+      {
+        path: 'edb_plus',
+      },
+    ],
     '12': [
       {
         path: null,
@@ -328,8 +399,26 @@ export const leftNavs = {
       },
     ],
   },
-
   efm: {
+    '4.1': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'efm_quick_start',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'efm_pgpool_ha_guide',
+      },
+      {
+        path: 'efm_user',
+      },
+    ],
     '4.0': [
       {
         path: null,
@@ -413,6 +502,46 @@ export const leftNavs = {
   },
 
   pem: {
+    '8.0': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'pem_inst_guide_linux',
+      },
+      {
+        path: 'pem_pgbouncer',
+      },
+      {
+        path: 'pem_upgrade',
+      },
+      {
+        path: 'pem_inst_guide_windows',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'pem_admin',
+      },
+      {
+        path: 'pem_agent',
+      },
+      {
+        path: 'pem_bart',
+      },
+      {
+        path: 'pem_ent_feat',
+      },
+      {
+        path: 'pem_security_best_practices',
+      },
+      {
+        path: 'pem_sqlprofiler',
+      },
+    ],
     '7.16': [
       {
         path: null,
