@@ -1,5 +1,75 @@
 export const leftNavs = {
   epas: {
+    '13': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'epas_inst_linux',
+      },
+      {
+        path: 'epas_inst_windows',
+      },
+      {
+        path: 'epas_rel_notes',
+      },
+      {
+        path: 'epas_upgrade_guide',
+      },
+      {
+        path: null,
+        title: 'For Oracle Developers',
+      },
+      {
+        path: 'epas_compat_ora_dev_guide',
+      },
+      {
+        path: 'epas_compat_reference',
+      },
+      {
+        path: 'epas_compat_bip_guide',
+      },
+      {
+        path: 'epas_compat_tools_guide',
+      },
+      {
+        path: 'epas_compat_cat_views',
+      },
+      {
+        path: 'epas_compat_spl',
+      },
+      {
+        path: 'epas_compat_sql',
+      },
+      {
+        path: 'epas_compat_table_partitioning',
+      },
+      {
+        path: null,
+        title: 'Tools',
+      },
+      {
+        path: 'edb_plus',
+      },
+      {
+        path: 'ecpgplus_guide',
+      },
+      {
+        path: 'language_pack',
+      },
+      {
+        path: null,
+        title: 'User Guides',
+      },
+
+      {
+        path: 'epas_security_guide',
+      },
+      {
+        path: 'epas_guide',
+      },
+    ],
     '12': [
       {
         path: null,
@@ -328,8 +398,27 @@ export const leftNavs = {
       },
     ],
   },
-
+  //todo:recheck efm content
   efm: {
+    '4.1': [
+      {
+        path: null,
+        title: 'Getting Started',
+      },
+      {
+        path: 'efm_quick_start',
+      },
+      {
+        path: null,
+        title: 'Guides',
+      },
+      {
+        path: 'efm_ha_scalability',
+      },
+      {
+        path: 'efm_user',
+      },
+    ],
     '4.0': [
       {
         path: null,
