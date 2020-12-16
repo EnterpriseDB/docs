@@ -234,6 +234,7 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
+  cacheBuster: 1,
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
     title: 'EDB Docs',
