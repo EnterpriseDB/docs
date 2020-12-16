@@ -49,9 +49,7 @@ export const leftNavs = {
         path: null,
         title: 'Tools',
       },
-      {
-        path: 'edb_plus',
-      },
+
       {
         path: 'ecpgplus_guide',
       },
@@ -68,6 +66,9 @@ export const leftNavs = {
       },
       {
         path: 'epas_guide',
+      },
+      {
+        path: 'edb_plus',
       },
     ],
     '12': [
