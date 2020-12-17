@@ -241,7 +241,7 @@ module.exports = {
     imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
     siteUrl: 'https://edb-docs.netlify.com',
     algoliaIndex: algoliaIndex,
-    cacheBuster: 1,
+    cacheBuster: 1, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
