@@ -3,10 +3,6 @@ export const leftNavs = {
     '13': [
       {
         path: null,
-        title: 'Quick Start Guides',
-      },
-      {
-        path: null,
         title: 'Getting Started',
       },
       {
@@ -20,6 +16,19 @@ export const leftNavs = {
       },
       {
         path: 'epas_upgrade_guide',
+      },
+      {
+        path: null,
+        title: 'Quick Start Guides',
+      },
+      {
+        path: 'epas_qs_linux_7',
+      },
+      {
+        path: 'epas_qs_linux_8',
+      },
+      {
+        path: 'epas_qs_windows',
       },
       {
         path: null,
