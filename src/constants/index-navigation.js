@@ -3,7 +3,7 @@ import useActiveSources from '../hooks/use-active-sources';
 
 export const advocacyNavigation = [
   {
-    sectionName: 'PostgreSQL Journey',
+    sectionName: 'PostgreSQL Tutorials',
     links: [
       {
         title: 'Installing',
@@ -14,6 +14,11 @@ export const advocacyNavigation = [
         title: 'Developing',
         url: '/postgresql_journey/04_developing',
         iconName: IconNames.CONNECT,
+      },
+      {
+        title: 'Backup and Recovery',
+        url: '/postgresql_journey/07_disaster_recovery/backup',
+        iconName: IconNames.DATABASE_BACKUP,
       },
     ],
   },
