@@ -19,6 +19,19 @@ export const leftNavs = {
       },
       {
         path: null,
+        title: 'Quick Start Guides',
+      },
+      {
+        path: 'epas_qs_linux_7',
+      },
+      {
+        path: 'epas_qs_linux_8',
+      },
+      {
+        path: 'epas_qs_windows',
+      },
+      {
+        path: null,
         title: 'For Oracle Developers',
       },
       {
