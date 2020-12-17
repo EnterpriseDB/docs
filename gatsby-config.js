@@ -234,7 +234,6 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
-  cacheBuster: 1,
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
     title: 'EDB Docs',
@@ -242,6 +241,7 @@ module.exports = {
     imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
     siteUrl: 'https://edb-docs.netlify.com',
     algoliaIndex: algoliaIndex,
+    cacheBuster: 1,
   },
   plugins: [
     'gatsby-plugin-sass',
