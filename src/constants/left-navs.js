@@ -3,6 +3,10 @@ export const leftNavs = {
     '13': [
       {
         path: null,
+        title: 'Quick Start Guides',
+      },
+      {
+        path: null,
         title: 'Getting Started',
       },
       {
