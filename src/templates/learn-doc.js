@@ -55,7 +55,7 @@ const getChildren = (path, navLinks) => {
 const Tiles = ({ mdx, navLinks }) => {
   const { path } = mdx.fields;
   const depth = path.split('/').length;
-  if (depth === 3) {
+  if (depth >= 2 || depth < 4) {
     const tiles = getChildren(path, navLinks).map(child => {
       let newChild = { ...child };
       const { path } = newChild.fields;

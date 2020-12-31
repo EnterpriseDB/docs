@@ -50,6 +50,7 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
       node,
       getNode,
     }).slice(0, -1); // remove last character
+    const directories = relativeFilePath.split('/');
 
     Object.assign(nodeFields, {
       path: relativeFilePath,
@@ -57,22 +58,25 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
 
     if (nodeFields.docType === 'doc') {
       Object.assign(nodeFields, {
-        product: relativeFilePath.split('/')[1],
-        version: relativeFilePath.split('/')[2],
+        product: directories[1],
+        version: directories[2],
         topic: 'null',
       });
     } else if (nodeFields.docType === 'advocacy') {
       Object.assign(nodeFields, {
         product: 'null',
         version: '0',
-        topic: relativeFilePath.split('/')[2],
+        topic:
+          directories[1] === 'postgresql_journey'
+            ? directories[2]
+            : directories[1],
       });
     } else {
       // gh_doc
       Object.assign(nodeFields, {
         product: 'null',
         version: '0',
-        topic: relativeFilePath.split('/')[1],
+        topic: directories[1],
       });
     }
 
