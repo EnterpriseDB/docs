@@ -23,7 +23,9 @@ const FooterItem = ({ url, children }) => (
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
+    <FooterItem url="/postgresql-docs/postgresql/">
+      Supporting Open Source
+    </FooterItem>
     <FooterItem url="/community/contribute/">Contribute</FooterItem>
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>

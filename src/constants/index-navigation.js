@@ -3,7 +3,7 @@ import useActiveSources from '../hooks/use-active-sources';
 
 export const advocacyNavigation = [
   {
-    sectionName: 'PostgreSQL Tutorials',
+    sectionName: 'Working with PostgreSQL',
     links: [
       {
         title: 'Installing',
@@ -16,9 +16,79 @@ export const advocacyNavigation = [
         iconName: IconNames.CONNECT,
       },
       {
+        title: 'High Availability',
+        url: '/#',
+        iconName: IconNames.REPLICATION,
+      },
+      {
         title: 'Backup and Recovery',
-        url: '/postgresql_journey/07_disaster_recovery/backup',
+        url: '/postgresql_journey/07_backup_and_recovery',
         iconName: IconNames.DATABASE_BACKUP,
+      },
+      {
+        title: 'Containers / Kubernetes',
+        url: '/#',
+        iconName: IconNames.KUBERNETES,
+      },
+      {
+        title: 'Interactive Tutorials',
+        url: '/postgresql_journey/08_tutorials',
+        iconName: IconNames.TUTORIAL,
+      },
+    ],
+  },
+  {
+    sectionName: 'Databases',
+    links: [
+      {
+        title: 'EDB Postgres Advanced Server',
+        url: '/#',
+        iconName: IconNames.DATABASE,
+      },
+      {
+        title: 'EDB Postgres Extended',
+        url: '/#',
+        iconName: IconNames.DATABASE,
+      },
+      {
+        title: 'PostgreSQL',
+        url: '/#',
+        iconName: IconNames.DATABASE,
+      },
+    ],
+  },
+  {
+    sectionName: 'Replication',
+    links: [
+      {
+        title: 'BDR',
+        url: '/#',
+        iconName: IconNames.EDB_REPLICATION,
+      },
+      {
+        title: 'EDB Replication Server',
+        url: '/#',
+        iconName: IconNames.REPLICATION,
+      },
+    ],
+  },
+  {
+    sectionName: 'Backup & Recovery',
+    links: [
+      {
+        title: 'Barman',
+        url: '/barman',
+        iconName: IconNames.EDB_BART,
+      },
+      {
+        title: 'pgBackrest',
+        url: '/#',
+        iconName: IconNames.EDB_BART,
+      },
+      {
+        title: 'BART',
+        url: '/#',
+        iconName: IconNames.EDB_BART,
       },
     ],
   },
