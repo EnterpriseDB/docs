@@ -6,34 +6,75 @@ ANSI_GREEN = '\033[32m'
 ANSI_YELLOW = '\033[33m'
 ANSI_RED = '\033[31m'
 
-OPTIONS = [
-    { 'name': 'None (Advocacy Docs only)', 'key': None },
-    { 'name': 'EDB Product Docs', 'key': 'docs' },
-    { 'name': 'Kubernetes Docs', 'key': 'k8s_docs' },
-    { 'name': 'BaRMan Docs', 'key': 'barman' },
-    { 'name': 'pgBackRest Docs', 'key': 'pgbackrest' }
+PRODUCT_DOCS = [
+    'ark',
+    'bart',
+    'efm',
+    'epas',
+    'hadoop_data_adapter',
+    'jdbc_connector',
+    'migration_portal',
+    'migration_toolkit',
+    'net_connector',
+    'ocl_connector',
+    'odbc_connector',
+    'pem',
+    'pgbouncer',
+    'pgpool',
+    'postgis',
+    'slony', 
 ]
 
 BASE_OUTPUT = {
-    'docs': False,
     'k8s_docs': False,
     'barman': False,
     'pgbackrest': False,
 }
+BASE_OUTPUT.update({ doc : False for doc in PRODUCT_DOCS })
+
+OPTIONS = [
+    { 'index': 0, 'name': 'None (Advocacy Docs only)', 'key': None },
+    { 'index': 1, 'name': 'All EDB Product Docs', 'output': { doc : True for doc in PRODUCT_DOCS } },
+    { 'index': '1a', 'name': 'Ark Platform', 'key': 'ark', 'indent': True },
+    { 'index': '1b', 'name': 'Backup and Recovery Tool', 'key': 'bart', 'indent': True },
+    { 'index': '1c', 'name': 'Failover Manager', 'key': 'efm', 'indent': True },
+    { 'index': '1d', 'name': 'EDB Postgres Advanced Server', 'key': 'epas', 'indent': True },
+    { 'index': '1e', 'name': 'Hadoop Data Adapter', 'key': 'hadoop_data_adapter', 'indent': True },
+    { 'index': '1f', 'name': 'JDBC Connector', 'key': 'jdbc_connector', 'indent': True },
+    { 'index': '1g', 'name': 'Migration Portal', 'key': 'migration_portal', 'indent': True },
+    { 'index': '1h', 'name': 'Migration Toolkit', 'key': 'migration_toolkit', 'indent': True },
+    { 'index': '1i', 'name': '.NET Connector', 'key': 'net_connector', 'indent': True },
+    { 'index': '1j', 'name': 'OCL Connector', 'key': 'ocl_connector', 'indent': True },
+    { 'index': '1k', 'name': 'ODBC Connector', 'key': 'odbc_connector', 'indent': True },
+    { 'index': '1l', 'name': 'Postgres Enterprise Manager', 'key': 'pem', 'indent': True },
+    { 'index': '1m', 'name': 'PgBouncer', 'key': 'pgbouncer', 'indent': True },
+    { 'index': '1n', 'name': 'Pgpool-II', 'key': 'pgpool', 'indent': True },
+    { 'index': '1o', 'name': 'PostGIS', 'key': 'postgis', 'indent': True },
+    { 'index': '1p', 'name': 'Slony Replication', 'key': 'slony', 'indent': True },
+    { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs' },
+    { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman' },
+    { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest' }
+]
 
 print('Which sources would you like loaded when you run `yarn develop`?')
 for i, option in enumerate(OPTIONS):
-    print("{0}: {1}".format(i, option['name']))
+    print("{2}{0}: {1}".format(
+        option['index'],
+        option['name'],
+        '  ' if option.get('indent') else ''
+    )
+)
 
 selections = []
 while len(selections) == 0:
-    user_input = input('Enter your choices separated by commas, e.g. "1,3": ')
+    user_input = input('Enter your choices separated by commas, e.g. "1b,1m,3": ')
 
     split_user_input = user_input.strip().split(',')
     for selection_index in split_user_input:
-        option = OPTIONS[int(selection_index)]
-        if option:
-            selections.append(option)
+        for option in OPTIONS:
+            if str(option['index']) == selection_index:
+                selections.append(option)
+                break
 
     if len(selections) != len(split_user_input):
         print(ANSI_RED + 'Invalid input' + ANSI_STOP)
@@ -44,7 +85,9 @@ for option in selections:
 with open('dev-sources.json', 'w') as outfile:
     output = BASE_OUTPUT.copy()
     for option in selections:
-        if option['key']:
+        if option.get('output'):
+            output.update(option['output'])
+        elif option.get('key'):
             output[option['key']] = True
-    json.dump(output, outfile)
+    json.dump(output, outfile, indent=2)
     print(ANSI_GREEN + 'Wrote to dev-sources.json' + ANSI_STOP)
