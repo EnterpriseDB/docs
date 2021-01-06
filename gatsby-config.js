@@ -14,7 +14,44 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-staging';
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
-  docs: { name: 'docs', path: 'product_docs/docs' },
+  ark: { name: 'ark', path: 'product_docs/docs/ark' },
+  bart: { name: 'bart', path: 'product_docs/docs/bart' },
+  efm: { name: 'efm', path: 'product_docs/docs/efm' },
+  epas: { name: 'epas', path: 'product_docs/docs/epas' },
+  hadoop_data_adapter: {
+    name: 'hadoop_data_adapter',
+    path: 'product_docs/docs/hadoop_data_adapter',
+  },
+  jdbc_connector: {
+    name: 'jdbc_connector',
+    path: 'product_docs/docs/jdbc_connector',
+  },
+  migration_portal: {
+    name: 'migration_portal',
+    path: 'product_docs/docs/migration_portal',
+  },
+  migration_toolkit: {
+    name: 'migration_toolkit',
+    path: 'product_docs/docs/migration_toolkit',
+  },
+  net_connector: {
+    name: 'net_connector',
+    path: 'product_docs/docs/net_connector',
+  },
+  ocl_connector: {
+    name: 'ocl_connector',
+    path: 'product_docs/docs/ocl_connector',
+  },
+  odbc_connector: {
+    name: 'odbc_connector',
+    path: 'product_docs/docs/odbc_connector',
+  },
+  pem: { name: 'pem', path: 'product_docs/docs/pem' },
+  pgbouncer: { name: 'pgbouncer', path: 'product_docs/docs/pgbouncer' },
+  pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
+  postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
+  slony: { name: 'slony', path: 'product_docs/docs/slony' },
+
   k8s_docs: { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
   barman: { name: 'barman', path: 'external_sources/barman/doc/manual' },
   pgbackrest: { name: 'pgbackrest', path: 'external_sources/pgbackrest/docs' },
