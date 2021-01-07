@@ -41,17 +41,19 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
 
   if (node.internal.type === 'Mdx') {
     const fileNode = getNode(node.parent);
+    const docType = filePathToDocType(node.fileAbsolutePath);
     const nodeFields = {
       docType: filePathToDocType(node.fileAbsolutePath),
       mtime: fileNode.mtime,
     };
 
-    const productPath = fileNode.sourceInstanceName;
-    const productRelativeFilePath = createFilePath({
+    let relativeFilePath = createFilePath({
       node,
       getNode,
     }).slice(0, -1); // remove last character
-    const relativeFilePath = `/${productPath}${productRelativeFilePath}`;
+    if (docType === 'doc') {
+      relativeFilePath = `/${fileNode.sourceInstanceName}${relativeFilePath}`;
+    }
 
     Object.assign(nodeFields, {
       path: relativeFilePath,
