@@ -1,5 +1,7 @@
 import json
 
+from pull_sources import pull_sources
+
 ANSI_STOP = '\033[0m'
 ANSI_BLUE = '\033[34m'
 ANSI_GREEN = '\033[32m'
@@ -51,17 +53,18 @@ OPTIONS = [
     { 'index': '1n', 'name': 'Pgpool-II', 'key': 'pgpool', 'indent': True },
     { 'index': '1o', 'name': 'PostGIS', 'key': 'postgis', 'indent': True },
     { 'index': '1p', 'name': 'Slony Replication', 'key': 'slony', 'indent': True },
-    { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs' },
-    { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman' },
-    { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest' }
+    { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs', 'external': True },
+    { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman', 'external': True },
+    { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest', 'external': True }
 ]
 
 print('Which sources would you like loaded when you run `yarn develop`?')
 for i, option in enumerate(OPTIONS):
-    print("{2}{0}: {1}".format(
+    print("{2}{0}: {1} {3}".format(
         option['index'],
         option['name'],
-        '  ' if option.get('indent') else ''
+        '  ' if option.get('indent') else '',
+        '(external)' if option.get('external') else ''
     )
 )
 
@@ -82,12 +85,21 @@ while len(selections) == 0:
 for option in selections:
     print(ANSI_BLUE + 'Selected {0}'.format(option['name']) + ANSI_STOP)
 
+external_sources_loaded = False
 with open('dev-sources.json', 'w') as outfile:
     output = BASE_OUTPUT.copy()
     for option in selections:
+        if option.get('external'):
+            external_sources_loaded = True
         if option.get('output'):
             output.update(option['output'])
         elif option.get('key'):
             output[option['key']] = True
     json.dump(output, outfile, indent=2)
     print(ANSI_GREEN + 'Wrote to dev-sources.json' + ANSI_STOP)
+
+if external_sources_loaded:
+    print('You have selected some external sources, running command `yarn pull-sources`.')
+    print('-' * 50)
+    pull_sources()
+

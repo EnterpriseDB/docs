@@ -2,10 +2,7 @@ import React from 'react';
 import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import {
-  kubernetesNavigation,
-  barmanNavigation,
-} from '../constants/index-navigation';
+import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   DevFrontmatter,
   Footer,
@@ -53,8 +50,7 @@ const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const showToc = !!mdx.tableOfContents.items;
 
   const iconName = (
-    kubernetesNavigation
-      .concat(barmanNavigation)
+    rawIndexNavigation
       .map(al => al.links)
       .flat()
       .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
