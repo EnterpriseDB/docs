@@ -4,7 +4,7 @@ import useActiveSources from '../hooks/use-active-sources';
 /*
   `rawIndexNavigation` contains the entire index navigation tree.
   The default export of this file is a function that filers this list down
-  only active sources.
+  to only active sources.
 */
 
 export const rawIndexNavigation = [
