@@ -2,7 +2,7 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { advocacyNavigation } from '../constants/index-navigation';
+import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -92,7 +92,7 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
   const katacodaPanelData = mdx.frontmatter.katacodaPanel;
 
   const iconName = (
-    advocacyNavigation
+    rawIndexNavigation
       .map(al => al.links)
       .flat()
       .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }

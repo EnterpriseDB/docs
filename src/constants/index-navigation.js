@@ -1,7 +1,13 @@
 import IconNames from '../components/icon/iconNames';
 import useActiveSources from '../hooks/use-active-sources';
 
-export const advocacyNavigation = [
+/*
+  `rawIndexNavigation` contains the entire index navigation tree.
+  The default export of this file is a function that filers this list down
+  only active sources.
+*/
+
+export const rawIndexNavigation = [
   {
     sectionName: 'PostgreSQL Journey',
     links: [
@@ -17,9 +23,6 @@ export const advocacyNavigation = [
       },
     ],
   },
-];
-
-export const kubernetesNavigation = [
   {
     sectionName: 'EDB Containers',
     links: [
@@ -31,9 +34,6 @@ export const kubernetesNavigation = [
       },
     ],
   },
-];
-
-export const barmanNavigation = [
   {
     sectionName: '2ndQuadrant',
     links: [
@@ -51,9 +51,6 @@ export const barmanNavigation = [
       },
     ],
   },
-];
-
-const productDocsNavigation = [
   {
     sectionName: 'EDB Products & Tools',
     links: [
@@ -161,15 +158,9 @@ const productDocsNavigation = [
 export default () => {
   const activeSources = useActiveSources();
 
-  const navigationLinks = [
-    ...advocacyNavigation,
-    ...kubernetesNavigation,
-    ...barmanNavigation,
-    ...productDocsNavigation,
-  ];
-  return navigationLinks.map(section => {
-    section.links = section.links.filter(link =>
-      link.source ? activeSources[`${link.source}Active`] : true,
+  return rawIndexNavigation.map(section => {
+    section.links = section.links.filter(
+      link => !link.source || activeSources[`${link.source}Active`],
     );
     return section;
   });
