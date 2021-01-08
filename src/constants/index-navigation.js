@@ -31,7 +31,7 @@ export const advocacyNavigation = [
         iconName: IconNames.KUBERNETES,
       },
       {
-        title: 'Interactive Tutorials',
+        title: 'Tutorials',
         url: '/postgresql_journey/08_tutorials',
         iconName: IconNames.TUTORIAL,
       },
@@ -52,7 +52,7 @@ export const advocacyNavigation = [
       },
       {
         title: 'PostgreSQL',
-        url: '/#',
+        url: '/postgresql',
         iconName: IconNames.DATABASE,
       },
     ],
