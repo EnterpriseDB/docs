@@ -46,10 +46,13 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
       mtime: fileNode.mtime,
     };
 
-    const relativeFilePath = createFilePath({
+    let relativeFilePath = createFilePath({
       node,
       getNode,
     }).slice(0, -1); // remove last character
+    if (nodeFields.docType === 'doc') {
+      relativeFilePath = `/${fileNode.sourceInstanceName}${relativeFilePath}`;
+    }
 
     Object.assign(nodeFields, {
       path: relativeFilePath,
