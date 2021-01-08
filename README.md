@@ -14,22 +14,23 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
 6. Install all required packages with `yarn`
 7. Pull the shared icon files down with `git submodule update --init`
-8. Select sources with `yarn config-sources` (see section below for details)
-9. Pull sources with `yarn pull-sources` (see section below for details)
+8. Select sources with `yarn config-sources`, running `yarn pull-sources` as part of this process if prompted (see section below for details)
 10. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
 
-## Running without a local installation
+## Running Without a Local Installation
 
 If you wish to work with Docs without installing the prerequesites locally, you can do so from within a Docker container using VSCode. See: [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
 ## Sources
 - Advocacy (`/advocacy_docs`, always loaded)
-- Product Docs (`/product_docs`)
-- Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
-- BaRMan (https://github.com/2ndquadrant-it/barman)
-- pgBackRest (https://github.com/EnterpriseDB/pgbackrest-docs)
+- EDB Product Docs (`/product_docs`)
+  - For a list of these sources, see [product_docs/docs](https://github.com/EnterpriseDB/docs/tree/develop/product_docs/docs)
+- GitHub-Sourced Docs (entirety of `/external_sources` at present)
+  - Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
+  - BaRMan (https://github.com/2ndquadrant-it/barman)
+  - pgBackRest (https://github.com/EnterpriseDB/pgbackrest-docs)
 
-### Configuring
+### Configuring Which Sources are Loaded
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
 
 #### `yarn config-sources`
@@ -37,8 +38,24 @@ Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
 
+If you select an "external" source, you will be prompted to run the next command, `yarn pull-sources`, to download and load this content from the internet.
+
 #### `yarn pull-sources`
 Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
+
+### Types of Sources
+
+**Advocacy Docs** are tutorial content, getting-started material, and anything that is about a subject matter area, but not explicitly tied to a product version.
+
+**Product Docs** are versioned documentation for products. They follow a slightly stricter file structure to allow for version switching and other features.
+
+**GitHub Docs** are a low-touch way to display markdown content from GitHub. These docs will link back to the relavent GitHub url on each page, in order to provide any missing context.
+
+More details can be found on the [Adding New Sources](README_ADDING_NEW_SOURCES.md) page.
+
+### Adding New Sources
+
+See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a source type, adding the files, and other configuration.
 
 ## Resolving issues
 
@@ -64,7 +81,7 @@ Production is hosted on Netlify, and is built from the `main` branch. The build 
 Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
 
-# Advocacy Docs
+# Advocacy Docs (left over from previous README, needs attention)
 Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
 
 New docs need a `.mdx` suffix to be used by Gatsby.
