@@ -27,7 +27,7 @@ export const advocacyNavigation = [
       },
       {
         title: 'Containers / Kubernetes',
-        url: '/#',
+        url: '/postgresql_journey/containers',
         iconName: IconNames.KUBERNETES,
       },
       {
