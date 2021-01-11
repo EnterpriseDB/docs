@@ -8,6 +8,7 @@ import {
   KatacodaPanel,
   LayoutContext,
   TextBalancer,
+  TutorialsDirectory,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
 import Icon from '../components/icon/';
@@ -92,6 +93,7 @@ const Layout = ({
           ),
           KatacodaPageLink,
           Attention,
+          TutorialsDirectory,
           Icon,
         }}
       >

@@ -1,4 +1,5 @@
 import Attention from './attention';
+import TutorialsDirectory from './tutorials-directory';
 import BackButton from './back-button';
 import CardDecks from './card-decks';
 import CodeBlock from './code-block';
@@ -27,6 +28,7 @@ import TreeNode from './tree-node';
 import VersionDropdown from './version-dropdown';
 
 export {
+  TutorialsDirectory,
   Attention,
   BackButton,
   CardDecks,
