@@ -7,17 +7,17 @@
 This repo contains the Gatsby application that powers EDB's documentation website, as well as the advocacy content. The site pulls additional content from other repos, in a process called 'sourcing'.
 
 ## Installation
-1. Clone the repo!
-2. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
-3. Install Node.js. We're currently using Node.js version 12. To install this version, first install `nvm` (Node Version Manager). This can be done with (MacOS) `brew install nvm`, followed by `nvm install`. Optionally, you can skip installing `nvm` and install Node.js 12 directly if you prefer.
-4. Install Python 3.6 or higher (this is not needed for the core system, but is required by several source scripts)
-5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
-6. Install all required packages with `yarn`
+1. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
+2. Clone the repo with `git clone git@github.com:EnterpriseDB/docs.git`. If you do not have git installed, install it with (MacOS) `brew install git`.
+3. Install Node.js. We're currently using Node.js version 14, the long term support (LTS) release. You can install the latests version 14 LTS release at [nodejs.org](https://nodejs.org/en/download/).
+4. Ensure you have Python 3.6 or higher by running `python3 -V`. This should return a version number. If your version is less than 3.6, or you get an error, install Python with (MacOS) `brew install python3`. Python is not needed for the core Gatsby system, but is required by several source scripts.
+5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`. Gatsby is the software that runs the docs site, and Yarn is an alternative package manager which will replace `npm` for this project.
+6. Install all required packages by simply running `yarn`.
 7. Pull the shared icon files down with `git submodule update --init`
 8. Select sources with `yarn config-sources`, running `yarn pull-sources` as part of this process if prompted (see section below for details)
-10. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+9. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
 
-## Running Without a Local Installation
+## Running Without a Local Installation (Recommended for Windows)
 
 If you wish to work with Docs without installing the prerequesites locally, you can do so from within a Docker container using VSCode. See: [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
