@@ -32,7 +32,7 @@ export const advocacyNavigation = [
       },
       {
         title: 'Tutorials',
-        url: '/postgresql_journey/08_tutorials',
+        url: '/postgresql_journey/tutorials',
         iconName: IconNames.TUTORIAL,
       },
     ],
