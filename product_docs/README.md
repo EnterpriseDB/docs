@@ -17,6 +17,9 @@ __!!! THIS README IS COMPLETELY BOGUS AND NEEDS TO BE UPDATED !!!__
 6. Pull the shared icon files down with `git submodule update --init`
 7. Run the site locally with `gatsby develop`. The site should now be running at `http://localhost:8000/`!
 
+## Detailed Setup Guide
+If you encounter difficulties using these steps or are a newer developer, please see the [Detailed Setup Guide](https://github.com/EnterpriseDB/docs/commmunity/authoring) for MacOS.
+
 ### Resolving issues
 
 If you experience errors or other issues with the site, the first step you should take is to run `gatsby clean`, and then try `gatsby develop` again. This clears gatsby cache, and can often resolve issues.
