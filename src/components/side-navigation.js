@@ -25,6 +25,7 @@ const SideNavigationFooter = () => (
     <hr />
     <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
     <FooterItem url="/community/contribute/">Contribute</FooterItem>
+    <FooterItem url="/community/authoring/">Authoring</FooterItem>
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
     <FooterItem url="/community/feedback/">Feedback?</FooterItem>
