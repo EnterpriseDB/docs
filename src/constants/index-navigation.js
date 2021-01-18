@@ -102,7 +102,18 @@ export const rawIndexNavigation = [
         iconName: IconNames.CONNECT,
         source: 'jdbc_connector',
       },
-
+      {
+        title: 'Mongo Foreign Data Wrapper',
+        url: '/mongo_data_adapter/latest',
+        iconName: IconNames.CONNECT,
+        source: 'mongo_data_adapter',
+      },
+      {
+        title: 'MySQL Foreign Data Wrapper',
+        url: '/mysql_data_adapter/latest',
+        iconName: IconNames.CONNECT,
+        source: 'mysql_data_adapter',
+      },
       {
         title: '.NET Connector',
         url: '/net_connector/latest',
