@@ -63,7 +63,7 @@ If your new doc is a Product Doc or a GitHub Doc, you will need to update the so
 
 ### `config_sources.py`
 
-This is the script that is run when a user runs `yarn config-sources`. It will need to be edited to present your new option to the user, and to write the source name to `dev-sources.json`. **This source name should match the top level folder name for your doc!** 
+This is the script that is run when a user runs `yarn config-sources`. It will need to be edited to present your new option to the user, and to write the source name to `dev-sources.json`. **This source name should match the top level folder name for your doc!**
 
 If you're adding a Product Doc, you'll want to add your source name to `PRODUCT_DOCS`. If you're adding a GitHub Doc, you'll add your source name to `BASE_OUTPUT` directly.
 
@@ -75,9 +75,9 @@ Once you've made your changes, run `yarn config-sources` and confirm that the ou
 
 Once `dev-sources.json` looks as expected, you'll need to update `gatsby-config.js` to tell gatsby to load your source. To do this, you need to update `sourceToPluginConfig` with your source name and path.
 
-### `build-sources.js`
+### `build-sources.json`
 
-This file must be updated with your source if you intend for it to be deployed to a server. This file shares the same structure with `dev-sources.json`, only it is used to deermine which sources to load on a full build of the site.
+This file must be updated with your source if you intend for it to be deployed to a server. This file shares the same structure with `dev-sources.json`, only it is used to determine which sources to load on a full build of the site.
 
 ### `dev-sources.sample`
 

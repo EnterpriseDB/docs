@@ -20,6 +20,14 @@ export const products = {
   },
   jdbc_connector: { name: 'JDBC Connector', iconName: IconNames.CONNECT },
   net_connector: { name: '.NET Connector', iconName: IconNames.CONNECT },
+  mongo_data_adapter: {
+    name: 'Mongo Data Adapter',
+    iconName: IconNames.CONNECT,
+  },
+  mysql_data_adapter: {
+    name: 'MySQL Data Adapter',
+    iconName: IconNames.CONNECT,
+  },
   ocl_connector: { name: 'OCL Connector', iconName: IconNames.CONNECT },
   odbc_connector: { name: 'ODBC Connector', iconName: IconNames.CONNECT },
   pgbouncer: { name: 'PgBouncer', iconName: IconNames.POSTGRESQL },

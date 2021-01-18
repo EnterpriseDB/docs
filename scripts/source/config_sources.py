@@ -17,6 +17,8 @@ PRODUCT_DOCS = [
     'jdbc_connector',
     'migration_portal',
     'migration_toolkit',
+    'mongo_data_adapter',
+    'mysql_data_adapter',
     'net_connector',
     'ocl_connector',
     'odbc_connector',
@@ -24,7 +26,7 @@ PRODUCT_DOCS = [
     'pgbouncer',
     'pgpool',
     'postgis',
-    'slony', 
+    'slony',
 ]
 
 BASE_OUTPUT = {
@@ -53,6 +55,8 @@ OPTIONS = [
     { 'index': '1n', 'name': 'Pgpool-II', 'key': 'pgpool', 'indent': True },
     { 'index': '1o', 'name': 'PostGIS', 'key': 'postgis', 'indent': True },
     { 'index': '1p', 'name': 'Slony Replication', 'key': 'slony', 'indent': True },
+    { 'index': '1q', 'name': 'Mongo Data Adapter', 'key': 'mongo_data_adapter', 'indent': True },
+    { 'index': '1r', 'name': 'MySQL Data Adapter', 'key': 'mysql_data_adapter', 'indent': True },
     { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs', 'external': True },
     { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman', 'external': True },
     { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest', 'external': True }
