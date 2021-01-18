@@ -24,35 +24,7 @@ export const rawIndexNavigation = [
     ],
   },
   {
-    sectionName: 'EDB Containers',
-    links: [
-      {
-        title: 'Containers and K8S Operator',
-        url: '/kubernetes',
-        iconName: IconNames.KUBERNETES,
-        source: 'k8s_docs',
-      },
-    ],
-  },
-  {
-    sectionName: '2ndQuadrant',
-    links: [
-      {
-        title: 'BaRMan Manual',
-        url: '/barman',
-        iconName: IconNames.BUSINESSMAN,
-        source: 'barman',
-      },
-      {
-        title: 'pgBackRest Docs',
-        url: '/pgbackrest',
-        iconName: IconNames.POSTGRES_SUPPORT,
-        source: 'pgbackrest',
-      },
-    ],
-  },
-  {
-    sectionName: 'EDB Products & Tools',
+    sectionName: 'Databases',
     links: [
       {
         title: 'EDB Postgres Advanced Server',
@@ -61,10 +33,36 @@ export const rawIndexNavigation = [
         source: 'epas',
       },
       {
-        title: 'Backup and Recovery Tool',
-        url: '/bart/latest',
-        iconName: IconNames.EDB_BART,
-        source: 'bart',
+        title: 'PostgreSQL',
+        url: '/postgresql',
+        iconName: IconNames.POSTGRES,
+      },
+    ],
+  },
+  {
+    sectionName: 'Monitoring & Management Tools',
+    links: [
+      {
+        title: 'Postgres Enterprise Manager',
+        url: '/pem/latest',
+        iconName: IconNames.EDB_PEM,
+        source: 'pem',
+      },
+      {
+        title: 'pgAdmin',
+        url: '/pgadmin',
+        iconName: IconNames.POSTGRES,
+      },
+    ],
+  },
+  {
+    sectionName: 'High Availability Tools',
+    links: [
+      {
+        title: 'EDB Replication Server ',
+        url: '/eprs/latest',
+        iconName: IconNames.EDB_EPRS,
+        source: 'eprs',
       },
       {
         title: 'Failover Manager',
@@ -72,12 +70,11 @@ export const rawIndexNavigation = [
         iconName: IconNames.EDB_EFM,
         source: 'efm',
       },
-      {
-        title: 'Postgres Enterprise Manager',
-        url: '/pem/latest',
-        iconName: IconNames.EDB_PEM,
-        source: 'pem',
-      },
+    ],
+  },
+  {
+    sectionName: 'Migration Tools',
+    links: [
       {
         title: 'Migration Portal',
         url: '/migration_portal/latest',
@@ -90,47 +87,65 @@ export const rawIndexNavigation = [
         iconName: IconNames.EDB_MIGRATION_TOOLKIT,
         source: 'migration_toolkit',
       },
+    ],
+  },
+  {
+    sectionName: 'Backup & Recovery Tools',
+    links: [
       {
-        title: 'Hadoop Data Adapter',
-        url: '/hadoop_data_adapter/latest',
-        iconName: IconNames.HADOOP,
-        source: 'hadoop_data_adapter',
+        title: 'Barman',
+        url: '/barman',
+        iconName: IconNames.BUSINESSMAN,
+        source: 'barman',
       },
       {
-        title: 'JDBC Connector',
-        url: '/jdbc_connector/latest',
-        iconName: IconNames.CONNECT,
-        source: 'jdbc_connector',
+        title: 'pgBackRest',
+        url: '/pgbackrest',
+        iconName: IconNames.POSTGRES_SUPPORT,
+        source: 'pgbackrest',
       },
       {
-        title: 'Mongo Foreign Data Wrapper',
-        url: '/mongo_data_adapter/latest',
-        iconName: IconNames.CONNECT,
-        source: 'mongo_data_adapter',
+        title: 'Backup & Recovery Tool',
+        url: '/bart/latest',
+        iconName: IconNames.EDB_BART,
+        source: 'bart',
+      },
+    ],
+  },
+  {
+    sectionName: 'Kubernetes',
+    links: [
+      {
+        title: 'Cloud Native PostgreSQL Operator',
+        url: '/kubernetes',
+        iconName: IconNames.KUBERNETES,
+        source: 'k8s_docs',
+      },
+    ],
+  },
+  {
+    sectionName: 'Extensions',
+    links: [
+      {
+        title: 'PostGIS',
+        url: '/postgis/latest',
+        iconName: IconNames.GLOBE,
+        source: 'postgis',
+      },
+    ],
+  },
+  {
+    sectionName: 'Working with PostgreSQL',
+    links: [
+      {
+        title: 'Foreign Data Wrappers',
+        url: '/fdw',
+        iconName: IconNames.CHANGE,
       },
       {
-        title: 'MySQL Foreign Data Wrapper',
-        url: '/mysql_data_adapter/latest',
+        title: 'EDB Connectors',
+        url: '/connectors',
         iconName: IconNames.CONNECT,
-        source: 'mysql_data_adapter',
-      },
-      {
-        title: '.NET Connector',
-        url: '/net_connector/latest',
-        iconName: IconNames.CONNECT,
-        source: 'net_connector',
-      },
-      {
-        title: 'OCL Connector',
-        url: '/ocl_connector/latest',
-        iconName: IconNames.CONNECT,
-        source: 'ocl_connector',
-      },
-      {
-        title: 'ODBC Connector',
-        url: '/odbc_connector/latest',
-        iconName: IconNames.CONNECT,
-        source: 'odbc_connector',
       },
       {
         title: 'PgBouncer',
@@ -145,22 +160,9 @@ export const rawIndexNavigation = [
         source: 'pgpool',
       },
       {
-        title: 'PostGIS',
-        url: '/postgis/latest',
-        iconName: IconNames.GLOBE,
-        source: 'postgis',
-      },
-      {
-        title: 'Slony Replication',
-        url: '/slony/latest',
-        iconName: IconNames.NETWORK2,
-        source: 'slony',
-      },
-      {
-        title: 'Ark Platform',
-        url: '/ark/latest',
-        iconName: IconNames.EDB_ARK,
-        source: 'ark',
+        title: 'Third-party JDBC Drivers',
+        url: '/fdw',
+        iconName: IconNames.JAVA,
       },
     ],
   },
