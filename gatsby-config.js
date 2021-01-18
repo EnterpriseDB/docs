@@ -34,6 +34,14 @@ const sourceToPluginConfig = {
     name: 'migration_toolkit',
     path: 'product_docs/docs/migration_toolkit',
   },
+  mysql_data_adapter: {
+    name: 'mysql_data_adapter',
+    path: 'product_docs/docs/mysql_data_adapter',
+  },
+  mongo_data_adapter: {
+    name: 'mongo_data_adapter',
+    path: 'product_docs/docs/mongo_data_adapter',
+  },
   net_connector: {
     name: 'net_connector',
     path: 'product_docs/docs/net_connector',
