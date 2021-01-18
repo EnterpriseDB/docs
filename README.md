@@ -41,7 +41,7 @@ Alternatively, you can setup your `dev-sources.json` file manually by copying `d
 If you select an "external" source, you will be prompted to run the next command, `yarn pull-sources`, to download and load this content from the internet.
 
 #### `yarn pull-sources`
-Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
+Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files (in the `external_sources` subdirectory) that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
 
 ### Types of Sources
 
