@@ -48,7 +48,7 @@ def getListOfFiles(dirName, parentChapter):
     allFiles = list()
     chapter = 0
 
-    # Iterate over all of the entries
+    # Iterate over all the entries
     for entry in listOfFiles:
         # Create full path
         fullPath = os.path.join(dirName, entry)
