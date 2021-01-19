@@ -35,7 +35,7 @@ export const rawIndexNavigation = [
       {
         title: 'PostgreSQL',
         url: '/postgresql',
-        iconName: IconNames.POSTGRES,
+        iconName: IconNames.POSTGRESQL,
       },
     ],
   },
@@ -51,7 +51,7 @@ export const rawIndexNavigation = [
       {
         title: 'pgAdmin',
         url: '/pgadmin',
-        iconName: IconNames.POSTGRES,
+        iconName: IconNames.POSTGRESQL,
       },
     ],
   },
