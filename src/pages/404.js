@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'gatsby';
 import { Container } from 'react-bootstrap';
 import algoliasearch from 'algoliasearch/lite';
 import {
@@ -14,6 +13,7 @@ import {
   Footer,
   IndexLinks,
   Layout,
+  Link,
   MainContent,
   SideNavigation,
   TopBar,

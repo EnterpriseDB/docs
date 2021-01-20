@@ -1,6 +1,5 @@
 import React from 'react';
-import { Link } from 'gatsby';
-import { DarkModeToggle, Logo } from './';
+import { DarkModeToggle, Link, Logo } from './';
 
 const LogoLink = () => {
   return (
