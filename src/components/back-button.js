@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'gatsby';
+import { Link } from './';
 import Icon, { iconNames } from './icon/';
 
 const BackButton = ({ path, currentPath }) => {
@@ -7,8 +7,8 @@ const BackButton = ({ path, currentPath }) => {
   if (!url && currentPath) {
     const splitPath = currentPath.split('/');
     url =
-      splitPath.length > 3
-        ? splitPath.slice(0, splitPath.length - 1).join('/')
+      splitPath.length > 4
+        ? splitPath.slice(0, splitPath.length - 2).join('/') + '/'
         : '/';
   } else if (!url) {
     url = '/';
