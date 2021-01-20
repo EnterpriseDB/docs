@@ -49,7 +49,7 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
     let relativeFilePath = createFilePath({
       node,
       getNode,
-    }).slice(0, -1); // remove last character
+    }); //.slice(0, -1); // remove last character
     if (nodeFields.docType === 'doc') {
       relativeFilePath = `/${fileNode.sourceInstanceName}${relativeFilePath}`;
     }
@@ -155,7 +155,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       });
     }
 
-    const splitPath = path.split('/');
+    const trailingSlashFreePath = path.endsWith('/') ? path.slice(0, -1) : path;
+    const splitPath = trailingSlashFreePath.split('/');
     const subPath = splitPath.slice(0, splitPath.length - 1).join('/');
     const { fileAbsolutePath } = doc;
     if (fileAbsolutePath.includes('index.mdx')) {
