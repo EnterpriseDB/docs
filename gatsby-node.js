@@ -221,13 +221,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       fileUrlSegment,
     )}`;
 
+    const path = isLatest
+      ? replacePathVersion(doc.fields.path)
+      : doc.fields.path;
     actions.createPage({
-      path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
+      path: path,
       component: require.resolve('./src/templates/doc.js'),
       context: {
-        pagePath: isLatest
-          ? replacePathVersion(doc.fields.path)
-          : doc.fields.path,
+        pagePath: path,
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
@@ -263,6 +264,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
+        pagePage: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
@@ -277,11 +279,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         );
       }
 
+      const path = `${doc.fields.path}/${katacodaPage.scenario}`;
       actions.createPage({
-        path: `${doc.fields.path}/${katacodaPage.scenario}`,
+        path: path,
         component: require.resolve('./src/templates/katacoda-page.js'),
         context: {
           ...katacodaPage,
+          pagePath: path,
           learn: {
             title: doc.frontmatter.title,
             description: doc.frontmatter.description,
@@ -311,6 +315,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: doc.fields.path,
       component: require.resolve('./src/templates/gh-doc.js'),
       context: {
+        pagePath: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: showGithubLink ? githubFileLink : null,
         githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
