@@ -264,7 +264,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
-        pagePage: doc.fields.path,
+        pagePath: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
