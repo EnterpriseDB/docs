@@ -4,22 +4,27 @@ const gracefulFs = require('graceful-fs');
 gracefulFs.gracefulify(realFs);
 
 const { createFilePath } = require(`gatsby-source-filesystem`);
-const { exec, execSync } = require("child_process");
+const { exec, execSync } = require('child_process');
 
 const isBuild = process.env.NODE_ENV === 'production';
+const isProduction = process.env.APP_ENV === 'production';
 
-const sortVersionArray = (versions) => {
-  return versions.map(version => version.replace(/\d+/g, n => +n+100000)).sort()
-                 .map(version => version.replace(/\d+/g, n => +n-100000));
+const sortVersionArray = versions => {
+  return versions
+    .map(version => version.replace(/\d+/g, n => +n + 100000))
+    .sort()
+    .map(version => version.replace(/\d+/g, n => +n - 100000));
 };
 
 const replacePathVersion = (path, version = 'latest') => {
   const splitPath = path.split('/');
   const postVersionPath = splitPath.slice(3).join('/');
-  return `/${splitPath[1]}/${version}${postVersionPath.length > 0 ? `/${postVersionPath}` : ''}`;
+  return `/${splitPath[1]}/${version}${
+    postVersionPath.length > 0 ? `/${postVersionPath}` : ''
+  }`;
 };
 
-const filePathToDocType = (filePath) => {
+const filePathToDocType = filePath => {
   if (filePath.includes('/product_docs/')) {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
@@ -41,10 +46,13 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
       mtime: fileNode.mtime,
     };
 
-    const relativeFilePath = createFilePath({
+    let relativeFilePath = createFilePath({
       node,
       getNode,
     }).slice(0, -1); // remove last character
+    if (nodeFields.docType === 'doc') {
+      relativeFilePath = `/${fileNode.sourceInstanceName}${relativeFilePath}`;
+    }
 
     Object.assign(nodeFields, {
       path: relativeFilePath,
@@ -62,7 +70,8 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
         version: '0',
         topic: relativeFilePath.split('/')[2],
       });
-    } else { // gh_doc
+    } else {
+      // gh_doc
       Object.assign(nodeFields, {
         product: 'null',
         version: '0',
@@ -201,23 +210,34 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     );
 
     const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
-    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${docsRepoUrl}/commits/main/product_docs/docs${fileUrlSegment}`;
-    const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(fileUrlSegment)}`;
+    const branch = isProduction ? 'main' : 'develop';
+    const fileUrlSegment =
+      doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
+    const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
+    const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(
+      fileUrlSegment,
+    )}`;
 
+    const path = isLatest
+      ? replacePathVersion(doc.fields.path)
+      : doc.fields.path;
     actions.createPage({
-      path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
+      path: path,
       component: require.resolve('./src/templates/doc.js'),
       context: {
+        pagePath: path,
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
         githubFileLink: githubFileLink,
+        githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(
           doc.fields.path,
-          versionIndex[doc.fields.product][0]
+          versionIndex[doc.fields.product][0],
         ), // the latest version number path (may not exist!), needed for query
       },
     });
@@ -229,15 +249,21 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     );
 
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
-    const fileUrlSegment = doc.fields.path + (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
-    const githubFileLink = `${advocacyDocsRepoUrl}/commits/main/advocacy_docs${fileUrlSegment}`;
-    const githubEditLink = `${advocacyDocsRepoUrl}/edit/main/advocacy_docs${fileUrlSegment}`;
-    const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(fileUrlSegment)}`;
+    const branch = isProduction ? 'main' : 'develop';
+    const fileUrlSegment =
+      doc.fields.path +
+      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+    const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
+    const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
+    const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
+      fileUrlSegment,
+    )}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
+        pagePath: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
@@ -247,20 +273,24 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
       if (!katacodaPage.scenario || !katacodaPage.account) {
-        raise `katacoda scenario or account missing for ${doc.fields.path}`;
+        throw new Error(
+          `katacoda scenario or account missing for ${doc.fields.path}`,
+        );
       }
 
+      const path = `${doc.fields.path}/${katacodaPage.scenario}`;
       actions.createPage({
-        path: `${doc.fields.path}/${katacodaPage.scenario}`,
+        path: path,
         component: require.resolve('./src/templates/katacoda-page.js'),
         context: {
           ...katacodaPage,
+          pagePath: path,
           learn: {
             title: doc.frontmatter.title,
             description: doc.frontmatter.description,
           },
         },
-      })
+      });
     });
   });
 
@@ -269,31 +299,37 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (doc.fields.path.includes('barman')) {
       githubLink = 'https://github.com/2ndquadrant-it/barman';
     }
+    const showGithubLink = !doc.fields.path.includes('pgbackrest');
 
     const navLinks = gh_docs.filter(
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const githubFileLink = `${githubLink}/tree/master/${(doc.frontmatter.originalFilePath || '').replace('README.md', '')}`;
+    const githubFileLink = `${githubLink}/tree/master/${(
+      doc.frontmatter.originalFilePath || ''
+    ).replace('README.md', '')}`;
     const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/gh-doc.js'),
       context: {
+        pagePath: doc.fields.path,
         navLinks: navLinks,
-        githubFileLink: githubFileLink,
-        githubFileHistoryLink: githubFileHistoryLink,
+        githubFileLink: showGithubLink ? githubFileLink : null,
+        githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
       },
     });
   });
 
   const sha = await new Promise((resolve, reject) => {
-    exec("git rev-parse HEAD", (error, stdout, stderr) => resolve(stdout));
+    exec('git rev-parse HEAD', (error, stdout, stderr) => resolve(stdout));
   });
 
   const branch = await new Promise((resolve, reject) => {
-    exec("git branch --show-current", (error, stdout, stderr) => resolve(stdout));
+    exec('git branch --show-current', (error, stdout, stderr) =>
+      resolve(stdout),
+    );
   });
 
   actions.createPage({
@@ -307,15 +343,23 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   });
 };
 
-exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDigest }) => {
+exports.sourceNodes = ({
+  actions: { createNode },
+  createNodeId,
+  createContentDigest,
+}) => {
   const activeSources = ['advocacy'];
 
   if (!process.env.SKIP_SOURCING) {
     const sources = JSON.parse(
-      gracefulFs.readFileSync(isBuild ? 'build-sources.json' : 'dev-sources.json')
+      gracefulFs.readFileSync(
+        isBuild ? 'build-sources.json' : 'dev-sources.json',
+      ),
     );
     for (const [source, enabled] of Object.entries(sources)) {
-      if (enabled) { activeSources.push(source) }
+      if (enabled) {
+        activeSources.push(source);
+      }
     }
   }
 
@@ -329,10 +373,10 @@ exports.sourceNodes = ({ actions: { createNode }, createNodeId, createContentDig
       contentDigest: createContentDigest(nodeData),
     },
   });
-}
+};
 
 exports.createSchemaCustomization = ({ actions }) => {
-  const { createTypes } = actions
+  const { createTypes } = actions;
   const typeDefs = `
     type Mdx implements Node {
       frontmatter: Frontmatter
@@ -341,9 +385,9 @@ exports.createSchemaCustomization = ({ actions }) => {
     type Frontmatter {
       originalFilePath: String
     }
-  `
-  createTypes(typeDefs)
-}
+  `;
+  createTypes(typeDefs);
+};
 
 exports.onPreBootstrap = () => {
   console.log(`
@@ -352,5 +396,5 @@ exports.onPreBootstrap = () => {
 |   __||  |  || __ -|  |  |  || . ||  _||_ -|
 |_____||____/ |_____|  |____/ |___||___||___|
                                                                                                                    
-  `)
-}
+  `);
+};

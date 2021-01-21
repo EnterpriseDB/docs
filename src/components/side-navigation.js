@@ -25,6 +25,7 @@ const SideNavigationFooter = () => (
     <hr />
     <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
     <FooterItem url="/community/contribute/">Contribute</FooterItem>
+    <FooterItem url="/community/authoring/">Authoring</FooterItem>
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
     <FooterItem url="/community/feedback/">Feedback?</FooterItem>
@@ -38,7 +39,7 @@ const SideNavigation = ({ children, background = 'light', footer = true }) => {
       <div className="sidebar-sticky pl-4 pr-4 pb-4">
         <LogoLink />
         {children}
-        { footer && <SideNavigationFooter /> }
+        {footer && <SideNavigationFooter />}
       </div>
     </nav>
   );

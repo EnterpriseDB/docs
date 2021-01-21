@@ -1,7 +1,4 @@
 import os
+import sys
 
-mtime_opts = ''
-if os.environ.get('FORCE_MTIME') == 'true':
-    mtime_opts = ' --force'
-
-os.system('python3 scripts/source/git-restore-mtime.py' + mtime_opts)
+os.system('python3 scripts/source/git-restore-mtime.py {0}'.format(sys.argv[1]))

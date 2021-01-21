@@ -4,14 +4,15 @@ import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 
 const FullCard = ({ card }) => {
-  const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX
+  const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
 
   return (
     <div className="card rounded shadow-sm p-2 mt-4">
       <Link to={card.fields.path}>
         <Icon
           iconName={iconName}
-          className={`${(iconName === iconNames.DOTTED_BOX) && 'opacity-1'} mt-3 ml-3`}
+          className={`${iconName === iconNames.DOTTED_BOX &&
+            'opacity-1'} mt-3 ml-3`}
           width="100"
           height="100"
         />

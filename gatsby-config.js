@@ -2,27 +2,76 @@ const config = require('./config');
 require('dotenv').config({
   path: `.env.${process.env.NODE_ENV}`,
 });
-const utf8Truncate = require("truncate-utf8-bytes");
+const utf8Truncate = require('truncate-utf8-bytes');
 const gracefulFs = require('graceful-fs');
 
 const ANSI_BLUE = '\033[34m';
 const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
+const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-staging';
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
-  'docs': { name: 'docs', path: 'product_docs/docs' },
-  'k8s_docs': { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
-  'barman': { name: 'barman', path: 'external_sources/barman/doc/manual' },
+  ark: { name: 'ark', path: 'product_docs/docs/ark' },
+  bart: { name: 'bart', path: 'product_docs/docs/bart' },
+  efm: { name: 'efm', path: 'product_docs/docs/efm' },
+  epas: { name: 'epas', path: 'product_docs/docs/epas' },
+  hadoop_data_adapter: {
+    name: 'hadoop_data_adapter',
+    path: 'product_docs/docs/hadoop_data_adapter',
+  },
+  jdbc_connector: {
+    name: 'jdbc_connector',
+    path: 'product_docs/docs/jdbc_connector',
+  },
+  migration_portal: {
+    name: 'migration_portal',
+    path: 'product_docs/docs/migration_portal',
+  },
+  migration_toolkit: {
+    name: 'migration_toolkit',
+    path: 'product_docs/docs/migration_toolkit',
+  },
+  mysql_data_adapter: {
+    name: 'mysql_data_adapter',
+    path: 'product_docs/docs/mysql_data_adapter',
+  },
+  mongo_data_adapter: {
+    name: 'mongo_data_adapter',
+    path: 'product_docs/docs/mongo_data_adapter',
+  },
+  net_connector: {
+    name: 'net_connector',
+    path: 'product_docs/docs/net_connector',
+  },
+  ocl_connector: {
+    name: 'ocl_connector',
+    path: 'product_docs/docs/ocl_connector',
+  },
+  odbc_connector: {
+    name: 'odbc_connector',
+    path: 'product_docs/docs/odbc_connector',
+  },
+  pem: { name: 'pem', path: 'product_docs/docs/pem' },
+  pgbouncer: { name: 'pgbouncer', path: 'product_docs/docs/pgbouncer' },
+  pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
+  postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
+  slony: { name: 'slony', path: 'product_docs/docs/slony' },
+
+  k8s_docs: { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
+  barman: { name: 'barman', path: 'external_sources/barman/doc/manual' },
+  pgbackrest: { name: 'pgbackrest', path: 'external_sources/pgbackrest/docs' },
 };
 
 const externalSourcePlugins = () => {
   const sourcePlugins = [];
 
   if (!process.env.SKIP_SOURCING && gracefulFs.existsSync(sourceFilename)) {
-    console.log(`${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`)
+    console.log(
+      `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
+    );
 
     const sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
     for (const [source, enabled] of Object.entries(sources)) {
@@ -33,24 +82,29 @@ const externalSourcePlugins = () => {
           options: {
             name: config.name,
             path: config.path,
-          }
+          },
         });
       }
     }
   } else if (isBuild) {
-    console.error('Configure sources with `yarn config-sources`. Defaulting to advocacy content only!')
+    console.error(
+      'Configure sources with `yarn config-sources`. Defaulting to advocacy content only!',
+    );
   }
 
   return sourcePlugins;
-}
+};
 
 /******** Algolia Index ********/
-const docQuery = `
+const indexQuery = `
 {
   allMdx {
     nodes {
       frontmatter {
         title
+        product
+        platform
+        tags
       }
       id
       fields {
@@ -59,10 +113,10 @@ const docQuery = `
         path
         version
       }
-      rawBody
+      mdxAST
     }
   }
- }
+}
 `;
 
 const transformNodeForAlgolia = node => {
@@ -70,9 +124,12 @@ const transformNodeForAlgolia = node => {
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
   newNode['type'] = 'guide';
-  // if (node.frontmatter.product) { newNode['product'] = node.frontmatter.product; }
-  // if (node.frontmatter.platform) { newNode['platform'] = node.frontmatter.platform; }
-  newNode['platform'] = node.frontmatter.platform || 'unknown';
+  if (node.frontmatter.product) {
+    newNode['product'] = node.frontmatter.product;
+  }
+  if (node.frontmatter.platform) {
+    newNode['platform'] = node.frontmatter.platform;
+  }
 
   if (node.fields.docType == 'doc') {
     newNode['product'] = node.fields.product;
@@ -119,148 +176,135 @@ const addBreadcrumbsToNodes = nodes => {
   return newNodes;
 };
 
-const splitNodeContent = nodes => {
-  let result = [];
-  for (let node of nodes) {
-    let order = 1;
-    let content = utf8Truncate(node.rawBody.replace(/(\n)+/g, '\n'), 9800); // 9.8kB
-    const contentArray = content.split('\n');
-    let contentAggregator = '';
-    let hitTocTree = false;
-    for (let i = 0; i < contentArray.length; i++) {
-      const section = contentArray[i];
-      if (section.startsWith('<div class="toctree"')) {
-        hitTocTree = true;
-      }
-      const cleanedSection = cleanSection(section);
-      if (!hitTocTree && cleanedSection !== '') {
-        contentAggregator += cleanedSection + ' ';
-      }
-      if (
-        contentAggregator.length > 1000 ||
-        (contentAggregator.length > 0 && i == contentArray.length - 1)
-      ) {
-        let newNode = { ...node };
-        delete newNode['rawBody'];
-        newNode['excerpt'] = contentAggregator;
-        newNode.id = newNode.path + '-' + order;
-        order += 1;
-        result.push(newNode);
-        contentAggregator = '';
-      }
+const mdxTreeToSearchNodes = rootNode => {
+  rootNode.depth = 0;
+  const stack = [rootNode];
+  const searchNodes = [];
+  const initialSearchNode = { text: '', heading: '' };
+
+  let parseState = {
+    attribute: 'text',
+    nextAttribute: null,
+    transitionDepth: null,
+  };
+  const nextParseStateIfDepth = depth => {
+    if (!parseState.transitionDepth || depth > parseState.transitionDepth)
+      return;
+    parseState = {
+      attribute: parseState.nextAttribute,
+      nextAttribute: null,
+      transitionDepth: null,
+    };
+  };
+  const setHeadingParseState = depth => {
+    parseState = {
+      attribute: 'heading',
+      nextAttribute: 'text',
+      transitionDepth: depth,
+    };
+  };
+
+  let searchNode = { ...initialSearchNode };
+  let node = null;
+  while (stack.length > 0) {
+    node = stack.pop();
+    nextParseStateIfDepth(node.depth);
+
+    if (['import', 'export'].includes(node.type)) {
+      // skip these nodes
+      continue;
     }
+
+    if (node.type === 'heading') {
+      // break on headings
+      if (searchNode.text.length > 0) {
+        searchNodes.push(searchNode);
+      }
+      searchNode = { ...initialSearchNode };
+      setHeadingParseState(node.depth);
+    }
+
+    if (node.value && !['html', 'jsx'].includes(node.type)) {
+      searchNode[parseState.attribute] += ` ${node.value}`;
+    } else {
+      (node.children || [])
+        .slice()
+        .reverse()
+        .forEach(child => {
+          child.depth = node.depth + 1;
+          stack.push(child);
+        });
+    }
+  }
+  if (searchNode.text.length > '') {
+    searchNodes.push(searchNode);
+  }
+
+  return searchNodes;
+};
+
+const trimSpaces = str => {
+  return str.replace(/\s+/g, ' ').trim();
+};
+
+const splitNodeContent = nodes => {
+  const result = [];
+  for (const node of nodes) {
+    const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
+
+    searchNodes.forEach((searchNode, i) => {
+      let newNode = { ...node };
+      delete newNode['mdxAST'];
+
+      newNode.id = `${newNode.path}-${i + 1}`;
+      newNode.heading = trimSpaces(searchNode.heading);
+      newNode.excerpt = utf8Truncate(
+        trimSpaces(`${searchNode.heading}: ${searchNode.text}`),
+        8000,
+      );
+      if (searchNode.heading.length > 0) {
+        const anchor = newNode.heading
+          .split(' ')
+          .join('-')
+          .toLowerCase()
+          .replace('/', '');
+        newNode.path = `${newNode.path}#${anchor}`;
+      }
+
+      result.push(newNode);
+    });
   }
   return result;
 };
-
-const cleanSection = section => {
-  if (
-    section.length < 6 ||
-    RegExp('<div class=.*>').test(section) ||
-    section.includes('</div>') ||
-    notStartWith(section, [
-      '```',
-      'title:',
-      'navTitle:',
-      'description:',
-      '![',
-      '<table',
-      '</table',
-      '---',
-      '| ---',
-      'import ',
-    ])
-  ) {
-    return '';
-  }
-  return removeLeadingBrackets(
-    removeTheseCharacters(section, [/\s\|/g, /\|\s/g, /`/g]),
-  );
-};
-
-const notStartWith = (section, list) => {
-  for (let item of list) {
-    if (section.startsWith(item)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const removeTheseCharacters = (section, list) => {
-  let newSection = section;
-  for (let item of list) {
-    newSection = newSection.replace(item, '');
-  }
-  return newSection;
-};
-
-const removeLeadingBrackets = section => {
-  if (section.startsWith('> > > ')) {
-    return section.substring(6);
-  }
-  if (section.startsWith('> > ')) {
-    return section.substring(4);
-  }
-  if (section.startsWith('> ')) {
-    return section.substring(2);
-  }
-  return section;
-};
-
-const queries = process.env.INDEX_ON_BUILD ? [
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(node => node.type === 'doc'),
-        ).map(node => transformNodeForAlgolia(node)),
-      ),
-    indexName: 'edb-products',
-  },
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(
-          data.allMdx.nodes.filter(node => node.type === 'guide'),
-        ).map(node => transformNodeForAlgolia(node)),
-      ),
-    indexName: 'advocacy',
-  },
-  {
-    query: docQuery,
-    transformer: ({ data }) =>
-      splitNodeContent(
-        addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
-          transformNodeForAlgolia(node),
-        ),
-      ),
-    indexName: 'edb',
-  },
-] : [];
 
 /********** Gatsby config *********/
 module.exports = {
   pathPrefix: config.gatsby.pathPrefix,
   siteMetadata: {
     title: 'EDB Docs',
-    description:
-      'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
     baseUrl: 'https://edb-docs.netlify.com',
     imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
     siteUrl: 'https://edb-docs.netlify.com',
+    algoliaIndex: algoliaIndex,
+    cacheBuster: 1, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
     'gatsby-plugin-react-helmet',
     'gatsby-transformer-sharp',
     'gatsby-transformer-json',
+    'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
-    'gatsby-plugin-netlify',
-    'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
+    {
+      resolve: 'gatsby-plugin-netlify',
+      options: {
+        headers: {
+          '/*': ['X-Robots-Tag: noindex'],
+        },
+      },
+    },
+    // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
@@ -304,9 +348,9 @@ module.exports = {
         },
         gatsbyRemarkPlugins: [
           {
-            resolve: process.env.OPTIMIZE_IMAGES ?
-              'gatsby-remark-images' :
-              'gatsby-remark-static-images'
+            resolve: process.env.OPTIMIZE_IMAGES
+              ? 'gatsby-remark-images'
+              : 'gatsby-remark-static-images',
           },
           {
             resolve: `gatsby-remark-autolink-headers`,
@@ -344,18 +388,28 @@ module.exports = {
 };
 
 if (process.env.INDEX_ON_BUILD) {
-  module.exports['plugins'].push(
-    {
-      // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
-      resolve: `gatsby-plugin-algolia`,
-      options: {
-        appId: process.env.ALGOLIA_APP_ID,
-        apiKey: process.env.ALGOLIA_API_KEY,
-        indexName: process.env.ALGOLIA_INDEX_NAME, // for all queries
-        queries,
-        chunkSize: 10000, // default: 1000,
-        enablePartialUpdates: false,
-      },
+  module.exports['plugins'].push({
+    // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
+    resolve: `gatsby-plugin-algolia`,
+    options: {
+      appId: process.env.ALGOLIA_APP_ID,
+      apiKey: process.env.ALGOLIA_API_KEY,
+      indexName: algoliaIndex,
+      queries: [
+        {
+          query: indexQuery,
+          transformer: ({ data }) =>
+            splitNodeContent(
+              addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
+                transformNodeForAlgolia(node),
+              ),
+            ),
+          indexName: algoliaIndex,
+        },
+      ],
+      chunkSize: 1000, // default: 1000,
+      enablePartialUpdates: false,
+      skipIndexing: !process.env.INDEX_ON_BUILD, // useless on plugin version 0.13.0, just for posterity
     },
-  )
+  });
 }
