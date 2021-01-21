@@ -208,6 +208,7 @@ const DocTemplate = ({ data, pageContext, path: pagePath }) => {
     ),
   };
 
+  console.log(pagePath);
   const showToc = !!tableOfContents.items;
 
   return (
