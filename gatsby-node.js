@@ -225,6 +225,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
       component: require.resolve('./src/templates/doc.js'),
       context: {
+        pagePath: isLatest
+          ? replacePathVersion(doc.fields.path)
+          : doc.fields.path,
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
