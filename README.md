@@ -1,28 +1,61 @@
-# <img src="static/images/edb-docs-logo-dark.svg" alt='EDB Docs' width="350">
+# <img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="350">
+
+![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
+![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
+![Update PDFs on Develop](https://github.com/EnterpriseDB/docs/workflows/Update%20PDFs%20on%20Develop/badge.svg)
 
 This repo contains the Gatsby application that powers EDB's documentation website, as well as the advocacy content. The site pulls additional content from other repos, in a process called 'sourcing'.
 
 ## Installation
-1. Clone the repo!
-2. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
-3. Install Node.js. We're currently using Node.js version 12. To install this version, first install `nvm` (Node Version Manager). This can be done with (MacOS) `brew install nvm`, followed by `nvm install`. Optionally, you can skip installing `nvm` and install Node.js 12 directly if you prefer.
-4. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`
-5. Install all required packages with `yarn`
-6. Pull the shared icon files down with `git submodule update --init`
-7. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+1. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
+2. Clone the repo with `git clone git@github.com:EnterpriseDB/docs.git`. If you do not have git installed, install it with (MacOS) `brew install git`.
+3. Install Node.js. We're currently using Node.js version 14, the long term support (LTS) release. You can install the latest version 14 LTS release at [nodejs.org](https://nodejs.org/en/download/).
+4. Ensure you have Python 3.6 or higher by running `python3 -V`. This should return a version number. If your version is less than 3.6, or you get an error, install Python with (MacOS) `brew install python3`. Python is not needed for the core Gatsby system, but is required by several source scripts.
+5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`. Gatsby is the software that runs the docs site, and Yarn is an alternative package manager which will replace `npm` for this project.
+6. Install all required packages by simply running `yarn`.
+7. Pull the shared icon files down with `git submodule update --init`
+8. Select sources with `yarn config-sources`, running `yarn pull-sources` as part of this process if prompted (see section below for details)
+9. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+
+## Running Without a Local Installation (Recommended for Windows)
+
+If you wish to work with Docs without installing the prerequesites locally, you can do so from within a Docker container using VSCode. See: [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
 ## Sources
-- Advocacy (default, part of this repo)
-- Product Docs - [EnterpriseDB/docs-products](https://github.com/EnterpriseDB/docs-products)
+- Advocacy (`/advocacy_docs`, always loaded)
+- EDB Product Docs (`/product_docs`)
+  - For a list of these sources, see [product_docs/docs](https://github.com/EnterpriseDB/docs/tree/develop/product_docs/docs)
+- GitHub-Sourced Docs (entirety of `/external_sources` at present)
+  - Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
+  - BaRMan (https://github.com/2ndquadrant-it/barman)
+  - pgBackRest (https://github.com/EnterpriseDB/pgbackrest-docs)
 
-### Configuring
+### Configuring Which Sources are Loaded
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
 
 #### `yarn config-sources`
 Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby  which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
 
+Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
+
+If you select an "external" source, you will be prompted to run the next command, `yarn pull-sources`, to download and load this content from the internet.
+
 #### `yarn pull-sources`
-Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all existing sources (besides advocacy_docs)**, so make sure you do not have any local changes to these files that you want to save!
+Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files (in the `external_sources` subdirectory) that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
+
+### Types of Sources
+
+**Advocacy Docs** are tutorial content, getting-started material, and anything that is about a subject matter area, but not explicitly tied to a product version.
+
+**Product Docs** are versioned documentation for products. They follow a slightly stricter file structure to allow for version switching and other features.
+
+**GitHub Docs** are a low-touch way to display markdown content from GitHub. These docs will link back to the relavent GitHub url on each page, in order to provide any missing context.
+
+More details can be found on the [Adding New Sources](README_ADDING_NEW_SOURCES.md) page.
+
+### Adding New Sources
+
+See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a source type, adding the files, and other configuration.
 
 ## Resolving issues
 
@@ -47,10 +80,8 @@ Production is hosted on Netlify, and is built from the `main` branch. The build 
 #### Review Builds
 Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
-### Triggered Deployment
-Because the site pulls docs from multiple repositories, these source repositories may trigger rebuilds of the site when appropriate.
 
-# Advocacy Docs
+# Advocacy Docs (left over from previous README, needs attention)
 Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
 
 New docs need a `.mdx` suffix to be used by Gatsby.
@@ -83,7 +114,7 @@ The `description` is used in cards as well.
 
 ## Markdown styling
 
-All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/docs/playground/1/01_examples/index.mdx)
+All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/advocacy_docs/playground/1/01_examples/index.mdx)
 
 ## Ordering of files
 

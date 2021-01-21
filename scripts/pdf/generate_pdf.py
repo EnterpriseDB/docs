@@ -80,12 +80,14 @@ def main():
         pass
 
     splitDirName = dirName.split('/')
+    product = splitDirName[2]
+    version = splitDirName[3]
 
-    mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, splitDirName[1], splitDirName[2])
-    htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, splitDirName[1], splitDirName[2])
-    coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, splitDirName[1], splitDirName[2])
-    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, splitDirName[1], splitDirName[2])
-    
+    mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, product, version)
+    htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, product, version)
+    coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, product, version)
+    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, product, version)
+
     if not os.path.exists(dirName):
         raise Exception('directory does not exist')
 
@@ -138,24 +140,21 @@ def main():
                     fp.write(newLine)
             fp.write('\n')
 
-    product = getTitle(dirName) or splitDirName[1]
-    version = splitDirName[2]
-    title = "{0} - Version {1}".format(product, version)
+    title = getTitle(dirName) or product
 
     os.system(
     "pandoc {0} " \
     "-f gfm " \
     "--self-contained " \
     '--highlight-style tango ' \
-    "--css=../../../scripts/pdf/pdf-styles.css " \
+    "--css=../../../../scripts/pdf/pdf-styles.css " \
     "--resource-path={2} " \
     "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths))
     )
 
     if not os.path.exists(htmlFilePath):
-        print("\033[91m html file failed to generate! \033[0m")
         os.remove(mdxFilePath)
-        return
+        raise Exception("\033[91m html file failed to generate! \033[0m")
 
     if html:
         os.system("open " + htmlFilePath)
@@ -166,7 +165,7 @@ def main():
         "-e 's/\[VERSION\]/{2}/' " \
         "scripts/pdf/cover.html " \
         "> {0}" \
-        "".format(coverFilePath, product, version)
+        "".format(coverFilePath, title, version)
         )
 
         headerFooterOptions = "" \
@@ -182,6 +181,7 @@ def main():
 
         os.system(
         "wkhtmltopdf " \
+        "--log-level error " \
         "--title '{3}' " \
         "--margin-top 15mm " \
         "--margin-bottom 15mm " \

@@ -539,4 +539,4 @@ export default function IconType({ iconName, ...rest }) {
     default:
       return null;
   }
-};
+}

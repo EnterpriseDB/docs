@@ -1,16 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Navbar } from 'react-bootstrap';
 import algoliasearch from 'algoliasearch/lite';
-import {
-  InstantSearch,
-  Configure,
-} from 'react-instantsearch-dom';
-import {
-  Footer,
-  Layout,
-  SideNavigation,
-  TopBar,
-} from '../components';
+import { InstantSearch, Configure } from 'react-instantsearch-dom';
+import { Footer, Layout, SideNavigation, TopBar } from '../components';
 import {
   AdvancedSearchFiltering,
   AdvancedSearchResults,
@@ -18,7 +10,7 @@ import {
   queryParamsToState,
   writeStateToQueryParams,
 } from '../components/advanced-search';
-import { allIndex } from '../components/search/indices';
+import useSiteMetadata from '../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
@@ -28,6 +20,8 @@ const searchClient = algoliasearch(
 export default data => {
   const paramSearchState = queryParamsToState(data.location.search);
 
+  const { algoliaIndex } = useSiteMetadata();
+
   const [query, setQuery] = useState(paramSearchState.query || '');
   const [searchState, setSearchState] = useState(paramSearchState || {});
 
@@ -36,24 +30,21 @@ export default data => {
   });
 
   return (
-    <Layout background='white'>
+    <Layout background="white" pageMeta={{ title: 'Advanced Search' }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}
-          indexName={allIndex.index}
-          onSearchStateChange={(searchState) => {
+          indexName={algoliaIndex}
+          onSearchStateChange={searchState => {
             setQuery(searchState.query);
             setSearchState(searchState);
           }}
           searchState={searchState}
         >
-          <Configure
-            hitsPerPage={30}
-            facetingAfterDistinct={true}
-          />
+          <Configure hitsPerPage={30} facetingAfterDistinct={true} />
 
-          <SideNavigation background='white'>
+          <SideNavigation background="white">
             <AdvancedSearchFiltering queryActive={query && query.length > 0} />
           </SideNavigation>
 
