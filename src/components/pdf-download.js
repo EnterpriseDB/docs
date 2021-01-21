@@ -8,7 +8,7 @@ const PdfDownload = ({ path }) => {
       allFile(filter: { ext: { eq: ".pdf" } }) {
         nodes {
           publicURL
-          relativeDirectory
+          absolutePath
         }
       }
     }
@@ -18,9 +18,14 @@ const PdfDownload = ({ path }) => {
     .split('/')
     .slice(0, 3)
     .join('/');
-  const file = data.allFile.nodes.find(
-    pdf => `/${pdf.relativeDirectory}` === productPath,
-  );
+
+  const file = data.allFile.nodes.find(pdf => {
+    const productVersionPath = pdf.absolutePath
+      .split('/')
+      .slice(-3, -1)
+      .join('/');
+    return `/${productVersionPath}` === productPath;
+  });
 
   if (file) {
     return (

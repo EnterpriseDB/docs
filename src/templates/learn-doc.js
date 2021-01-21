@@ -2,7 +2,7 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { advocacyNavigation } from '../constants/index-navigation';
+import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -73,22 +73,31 @@ const Tiles = ({ mdx, navLinks }) => {
   return null;
 };
 
-const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
+const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  const { navLinks, githubFileLink, githubEditLink, githubIssuesLink } = pageContext;
+  const {
+    pagePath,
+    navLinks,
+    githubFileLink,
+    githubEditLink,
+    githubIssuesLink,
+  } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
-    path: mdx.fields.path,
+    path: pagePath,
   };
 
   const showToc = !!mdx.tableOfContents.items;
   const katacodaPanelData = mdx.frontmatter.katacodaPanel;
 
-  const iconName = (advocacyNavigation.map(al => al.links).flat().find(
-    link => mdx.fields.path.includes(link.url)
-  ) || { iconName: null }).iconName;
+  const iconName = (
+    rawIndexNavigation
+      .map(al => al.links)
+      .flat()
+      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+  ).iconName;
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
@@ -119,22 +128,35 @@ const LearnDocTemplate = ({ data, pageContext, path: pagePath }) => {
               <Tiles mdx={mdx} navLinks={navLinks} />
             </Col>
 
-            { showToc &&
+            {showToc && (
               <Col xs={3}>
                 <TableOfContents toc={mdx.tableOfContents.items} />
               </Col>
-            }
+            )}
           </ContentRow>
 
           <DevFrontmatter frontmatter={mdx.frontmatter} />
 
           <hr />
           <p>
-            Could this page could be better? <a href={githubIssuesLink + "&template=problem-with-topic.md&labels=bug"}>
+            Could this page could be better?{' '}
+            <a
+              href={
+                githubIssuesLink + '&template=problem-with-topic.md&labels=bug'
+              }
+            >
               Report a problem
-            </a> or <a href={githubIssuesLink + "&template=suggest-addition-to-topic.md&labels=enhancement"}>
+            </a>{' '}
+            or{' '}
+            <a
+              href={
+                githubIssuesLink +
+                '&template=suggest-addition-to-topic.md&labels=enhancement'
+              }
+            >
               suggest an addition
-            </a>!
+            </a>
+            !
           </p>
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />

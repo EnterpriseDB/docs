@@ -11,12 +11,19 @@ exports.onRouteUpdate = ({ location }) => scrollToAnchor(location);
 function scrollToAnchor(location, mainNavHeight = 0) {
   // Check for location so build does not fail
   if (location && location.hash) {
-    const item = document.querySelector(`${location.hash}`).offsetTop;
+    try {
+      const item = document.querySelector(`${location.hash}`);
 
-    window.scrollTo({
-      top: item - mainNavHeight,
-      behavior: 'smooth',
-    });
+      if (item) {
+        window.scrollTo({
+          top: item.offsetTop - mainNavHeight,
+          behavior: 'smooth',
+        });
+      }
+    } catch (error) {
+      // if hash is bad exception will be raised
+      console.error(error);
+    }
   }
 
   return true;
