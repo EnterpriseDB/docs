@@ -1,4 +1,3 @@
-const config = require('./config');
 require('dotenv').config({
   path: `.env.${process.env.NODE_ENV}`,
 });
@@ -279,12 +278,12 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
-  pathPrefix: config.gatsby.pathPrefix,
+  pathPrefix: '/docs2',
   siteMetadata: {
     title: 'EDB Docs',
-    baseUrl: 'https://edb-docs.netlify.com',
-    imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
-    siteUrl: 'https://edb-docs.netlify.com',
+    baseUrl: 'https://enterprisedb.com/docs2',
+    imageUrl: 'https://enterprisedb.com/docs2/images/social.jpg',
+    siteUrl: 'https://enterprisedb.com/docs2',
     algoliaIndex: algoliaIndex,
     cacheBuster: 1, // for busting gh actions cache if needed
   },
