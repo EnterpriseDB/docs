@@ -182,7 +182,7 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
   </DropdownButton>
 );
 
-const DocTemplate = ({ data, pageContext, path: ogPagePath }) => {
+const DocTemplate = ({ data, pageContext }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
   const depth = path.split('/').length;
@@ -209,7 +209,6 @@ const DocTemplate = ({ data, pageContext, path: ogPagePath }) => {
     ),
   };
 
-  console.log(pagePath);
   const showToc = !!tableOfContents.items;
 
   return (
