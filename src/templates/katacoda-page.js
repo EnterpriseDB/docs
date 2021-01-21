@@ -2,7 +2,9 @@ import React from 'react';
 import { Container } from 'react-bootstrap';
 import { BackButton, KatacodaPageEmbed, Layout, Logo } from '../components';
 
-const KatacodaPageTemplate = ({ pageContext, path }) => {
+const KatacodaPageTemplate = ({ pageContext }) => {
+  const path = pageContext.pagePath;
+
   const pageMeta = {
     title: `${pageContext.learn.title} - Tutorial`,
     description: pageContext.learn.description,

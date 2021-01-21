@@ -38,9 +38,14 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const GhDocTemplate = ({ data, pageContext, path: pagePath }) => {
+const GhDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { navLinks, githubFileLink, githubFileHistoryLink } = pageContext;
+  const {
+    pagePath,
+    navLinks,
+    githubFileLink,
+    githubFileHistoryLink,
+  } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
