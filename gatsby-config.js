@@ -296,7 +296,14 @@ module.exports = {
     'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
-    'gatsby-plugin-netlify',
+    {
+      resolve: 'gatsby-plugin-netlify',
+      options: {
+        headers: {
+          '/*': ['X-Robots-Tag: noindex'],
+        },
+      },
+    },
     // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
