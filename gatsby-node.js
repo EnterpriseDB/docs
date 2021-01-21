@@ -34,6 +34,13 @@ const filePathToDocType = filePath => {
   }
 };
 
+const removeTrailingSlash = url => {
+  if (url.endsWith('/')) {
+    return url.slice(0, -1);
+  }
+  return url;
+};
+
 const productLatestVersionCache = [];
 
 exports.onCreateNode = async ({ node, getNode, actions }) => {
@@ -128,7 +135,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       if (node.fileAbsolutePath.includes('index.mdx')) {
         file = node.fields.path + 'index.mdx';
       } else {
-        file = node.fields.path.slice(0, -1) + '.mdx';
+        file = removeTrailingSlash(node.fields.path) + '.mdx';
       }
       reporter.warn(file + ' has no title');
     }
@@ -212,7 +219,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
     const fileUrlSegment =
-      doc.fields.path +
+      removeTrailingSlash(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
     const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
@@ -251,7 +258,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
     const fileUrlSegment =
-      doc.fields.path +
+      removeTrailingSlash(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
     const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
@@ -305,10 +312,15 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const githubFileLink = `${githubLink}/tree/master/${(
-      doc.frontmatter.originalFilePath || ''
-    ).replace('README.md', '')}`;
-    const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+    const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
+      /^\//,
+      '',
+    );
+    const githubFileLink = `${githubLink}/tree/master/${originalFilePath.replace(
+      'README.md',
+      '',
+    )}`;
+    const githubFileHistoryLink = `${githubLink}/commits/master/${originalFilePath}`;
 
     actions.createPage({
       path: doc.fields.path,
