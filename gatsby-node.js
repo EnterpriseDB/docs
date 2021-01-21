@@ -20,7 +20,7 @@ const replacePathVersion = (path, version = 'latest') => {
   const splitPath = path.split('/');
   const postVersionPath = splitPath.slice(3).join('/');
   return `/${splitPath[1]}/${version}${
-    postVersionPath.length > 0 ? `/${postVersionPath}` : ''
+    postVersionPath.length > 0 ? `/${postVersionPath}` : '/'
   }`;
 };
 
@@ -126,9 +126,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (!node.frontmatter.title) {
       let file;
       if (node.fileAbsolutePath.includes('index.mdx')) {
-        file = node.fields.path + '/index.mdx';
+        file = node.fields.path + 'index.mdx';
       } else {
-        file = node.fields.path + '.mdx';
+        file = node.fields.path.slice(0, -1) + '.mdx';
       }
       reporter.warn(file + ' has no title');
     }
@@ -155,9 +155,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       });
     }
 
-    const trailingSlashFreePath = path.endsWith('/') ? path.slice(0, -1) : path;
-    const splitPath = trailingSlashFreePath.split('/');
-    const subPath = splitPath.slice(0, splitPath.length - 1).join('/');
+    const splitPath = path.split('/');
+    const subPath = splitPath.slice(0, splitPath.length - 2).join('/') + '/';
     const { fileAbsolutePath } = doc;
     if (fileAbsolutePath.includes('index.mdx')) {
       folderIndex[path] = true;
