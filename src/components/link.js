@@ -1,6 +1,7 @@
 import React from 'react';
 import path from 'path';
 import { Link as GatsbyLink } from 'gatsby';
+import isAbsoluteUrl from 'is-absolute-url';
 
 const forceTrailingBackslash = url => {
   const splitUrl = url.split('/');
@@ -18,15 +19,15 @@ const rewriteUrl = (url, pageUrl) => {
     return link;
   }
 
+  if (!link.startsWith('.')) {
+    link = '../' + link;
+  }
+
   const directoryUrl = pageUrl
     .split('/')
-    .slice(0, -2)
+    .slice(0, -1)
     .join('/');
   return path.join(directoryUrl, link);
-};
-
-const isAbsoluteUrl = url => {
-  return url.indexOf('://') > 0 || url.indexOf('//') === 0;
 };
 
 const Link = ({ to, pageUrl, ...rest }) => {
