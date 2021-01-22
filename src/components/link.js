@@ -5,7 +5,7 @@ import { Link as GatsbyLink } from 'gatsby';
 const forceTrailingBackslash = url => {
   const splitUrl = url.split('/');
   // if does not end with extension
-  if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/)) {
+  if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/) || url.startsWith('#')) {
     return url;
   }
   return url.replace(/\/?(\?|#|$)/, '/$1');
@@ -14,7 +14,7 @@ const forceTrailingBackslash = url => {
 const rewriteUrl = (url, pageUrl) => {
   let link = forceTrailingBackslash(url);
 
-  if (!pageUrl || link.startsWith('/')) {
+  if (!pageUrl || link.startsWith('/') || link.startsWith('#')) {
     return link;
   }
 
