@@ -20,7 +20,7 @@ const replacePathVersion = (path, version = 'latest') => {
   const splitPath = path.split('/');
   const postVersionPath = splitPath.slice(3).join('/');
   return `/${splitPath[1]}/${version}${
-    postVersionPath.length > 0 ? `/${postVersionPath}` : ''
+    postVersionPath.length > 0 ? `/${postVersionPath}` : '/'
   }`;
 };
 
@@ -32,6 +32,13 @@ const filePathToDocType = filePath => {
   } else {
     return 'gh_doc';
   }
+};
+
+const removeTrailingSlash = url => {
+  if (url.endsWith('/')) {
+    return url.slice(0, -1);
+  }
+  return url;
 };
 
 const productLatestVersionCache = [];
@@ -126,9 +133,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (!node.frontmatter.title) {
       let file;
       if (node.fileAbsolutePath.includes('index.mdx')) {
-        file = node.fields.path + '/index.mdx';
+        file = node.fields.path + 'index.mdx';
       } else {
-        file = node.fields.path + '.mdx';
+        file = removeTrailingSlash(node.fields.path) + '.mdx';
       }
       reporter.warn(file + ' has no title');
     }
@@ -155,9 +162,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       });
     }
 
-    const trailingSlashFreePath = path.endsWith('/') ? path.slice(0, -1) : path;
-    const splitPath = trailingSlashFreePath.split('/');
-    const subPath = splitPath.slice(0, splitPath.length - 1).join('/');
+    const splitPath = path.split('/');
+    const subPath = splitPath.slice(0, splitPath.length - 2).join('/') + '/';
     const { fileAbsolutePath } = doc;
     if (fileAbsolutePath.includes('index.mdx')) {
       folderIndex[path] = true;
@@ -213,7 +219,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
     const fileUrlSegment =
-      doc.fields.path +
+      removeTrailingSlash(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
     const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
@@ -221,10 +227,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       fileUrlSegment,
     )}`;
 
+    const path = isLatest
+      ? replacePathVersion(doc.fields.path)
+      : doc.fields.path;
     actions.createPage({
-      path: isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path,
+      path: path,
       component: require.resolve('./src/templates/doc.js'),
       context: {
+        pagePath: path,
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
         nodePath: doc.fields.path,
@@ -248,7 +258,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
     const fileUrlSegment =
-      doc.fields.path +
+      removeTrailingSlash(doc.fields.path) +
       (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
     const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
     const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
@@ -260,6 +270,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
+        pagePath: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
@@ -274,11 +285,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         );
       }
 
+      const path = `${doc.fields.path}/${katacodaPage.scenario}`;
       actions.createPage({
-        path: `${doc.fields.path}/${katacodaPage.scenario}`,
+        path: path,
         component: require.resolve('./src/templates/katacoda-page.js'),
         context: {
           ...katacodaPage,
+          pagePath: path,
           learn: {
             title: doc.frontmatter.title,
             description: doc.frontmatter.description,
@@ -299,15 +312,21 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       node => node.fields.topic === doc.fields.topic,
     );
 
-    const githubFileLink = `${githubLink}/tree/master/${(
-      doc.frontmatter.originalFilePath || ''
-    ).replace('README.md', '')}`;
-    const githubFileHistoryLink = `${githubLink}/commits/master/${doc.frontmatter.originalFilePath}`;
+    const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
+      /^\//,
+      '',
+    );
+    const githubFileLink = `${githubLink}/tree/master/${originalFilePath.replace(
+      'README.md',
+      '',
+    )}`;
+    const githubFileHistoryLink = `${githubLink}/commits/master/${originalFilePath}`;
 
     actions.createPage({
       path: doc.fields.path,
       component: require.resolve('./src/templates/gh-doc.js'),
       context: {
+        pagePath: doc.fields.path,
         navLinks: navLinks,
         githubFileLink: showGithubLink ? githubFileLink : null,
         githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
