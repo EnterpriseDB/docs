@@ -1,35 +1,45 @@
 import React from 'react';
+import path from 'path';
 import { Link as GatsbyLink } from 'gatsby';
 
-const dirUpRegex = /\.\.\//g;
+const forceTrailingBackslash = url => {
+  const splitUrl = url.split('/');
+  // if does not end with extension
+  if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/)) {
+    return url;
+  }
+  return url.replace(/\/?(\?|#|$)/, '/$1');
+};
 
-const Link = ({ to, pageUrl, ...rest }) => {
-  // force trailing backslash
-  let link = to.replace(/\/?(\?|#|$)/, '/$1');
+const rewriteUrl = (url, pageUrl) => {
+  let link = forceTrailingBackslash(url);
 
-  // rewrite links that include directory navigation
-  if (pageUrl && link.includes('../')) {
-    const dirsUp = link.match(dirUpRegex).length;
-    console.log(dirsUp);
-    const baseComponent = pageUrl
-      .split('/')
-      .slice(0, -dirsUp - 2)
-      .join('/');
-    console.log(baseComponent);
-    const linkComponent = link.replace(dirUpRegex, '');
-    console.log(linkComponent);
-    // link = `${baseComponent}/${linkComponent}`;
-    console.log(`${baseComponent}/${linkComponent}`);
+  if (!pageUrl || link.startsWith('/')) {
+    return link;
   }
 
-  if (link.startsWith('/')) {
-    return <GatsbyLink to={link} {...rest} />;
-  } else {
+  const directoryUrl = pageUrl
+    .split('/')
+    .slice(0, -2)
+    .join('/');
+  return path.join(directoryUrl, link);
+};
+
+const isAbsoluteUrl = url => {
+  return url.indexOf('://') > 0 || url.indexOf('//') === 0;
+};
+
+const Link = ({ to, pageUrl, ...rest }) => {
+  const url = rewriteUrl(to, pageUrl);
+
+  if (isAbsoluteUrl(url)) {
     return (
-      <a href={link} {...rest}>
+      <a href={url} {...rest}>
         {rest.children}
       </a>
     );
+  } else {
+    return <GatsbyLink data-gatsby-link to={url} {...rest} />;
   }
 };
 
