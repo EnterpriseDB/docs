@@ -30,15 +30,14 @@ const isAbsoluteUrl = url => {
 };
 
 const Link = ({ to, pageUrl, ...rest }) => {
-  const url = rewriteUrl(to, pageUrl);
-
-  if (isAbsoluteUrl(url)) {
+  if (isAbsoluteUrl(to)) {
     return (
-      <a href={url} {...rest}>
+      <a href={to} {...rest}>
         {rest.children}
       </a>
     );
   } else {
+    const url = rewriteUrl(to, pageUrl);
     return <GatsbyLink data-gatsby-link to={url} {...rest} />;
   }
 };
