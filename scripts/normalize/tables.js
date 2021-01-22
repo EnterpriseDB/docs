@@ -1,4 +1,4 @@
-// run: node scripts/normalizeTables.js "product_docs/**/*.mdx"
+// run: node scripts/normalize/tables.js "product_docs/**/*.mdx"
 // purpose: 
 // GFM tables require pipe characters in cells to be escaped EVEN IF WITHIN INLINE CODE
 // Ref: https://github.github.com/gfm/#example-200

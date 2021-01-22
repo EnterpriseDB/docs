@@ -1,4 +1,4 @@
-// run: node scripts/normalizeMarkdown.js "product_docs/**/*.mdx"
+// run: node scripts/normalize/markdown.js "product_docs/**/*.mdx"
 // purpose: 
 //  read in mdx files, parse them, stringify them, write them back out again
 //  optionally, do some other stuff to the AST in between parsing and stringifying. 
@@ -14,7 +14,6 @@ const rehypeParse = require('rehype-parse')
 const hast2html = require('hast-util-to-html')
 const versionComp = require("semver-compare")
 const path = require("path")
-const url = require("url")
 const slugger = require('github-slugger')
 const mdast2string = require('mdast-util-to-string')
 
