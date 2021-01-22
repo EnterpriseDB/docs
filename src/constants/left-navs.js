@@ -579,6 +579,13 @@ export const leftNavs = {
       {
         path: 'pem_sqlprofiler',
       },
+      {
+        path: null,
+        title: 'Online Help',
+      },
+      {
+        path: 'pem_online_help',
+      },
     ],
     '7.16': [
       {
