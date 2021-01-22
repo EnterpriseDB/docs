@@ -182,11 +182,12 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
   </DropdownButton>
 );
 
-const DocTemplate = ({ data, pageContext, path: pagePath }) => {
+const DocTemplate = ({ data, pageContext }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
   const depth = path.split('/').length;
   const {
+    pagePath,
     navLinks,
     versions,
     githubFileLink,

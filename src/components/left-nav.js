@@ -108,6 +108,7 @@ const LeftNav = ({
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
     : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
+  // console.log(pagePath);
 
   return (
     <ul className="list-unstyled mt-0">
