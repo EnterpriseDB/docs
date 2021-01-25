@@ -96,6 +96,8 @@ def main():
 
     # Get the list of all files in directory tree at given path
     listOfFiles = getListOfFiles(dirName, "")
+    if len(listOfFiles) == 0:
+        raise Exception('no files in {}'.format(dirName));
     listOfFiles.pop(0) # remove base product index page, which are empty
 
     toc = list()
@@ -154,7 +156,7 @@ def main():
 
     if not os.path.exists(htmlFilePath):
         os.remove(mdxFilePath)
-        raise Exception("\033[91m html file failed to generate! \033[0m")
+        raise Exception("\033[91m html file failed to generate for {} \033[0m".format(mdxFilePath))
 
     if html:
         os.system("open " + htmlFilePath)

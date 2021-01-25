@@ -1,4 +1,3 @@
-const config = require('./config');
 require('dotenv').config({
   path: `.env.${process.env.NODE_ENV}`,
 });
@@ -279,14 +278,14 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
-  pathPrefix: config.gatsby.pathPrefix,
+  pathPrefix: '/docs2',
   siteMetadata: {
     title: 'EDB Docs',
-    baseUrl: 'https://edb-docs.netlify.com',
-    imageUrl: 'https://edb-docs.netlify.com/images/social.jpg',
-    siteUrl: 'https://edb-docs.netlify.com',
+    baseUrl: 'https://enterprisedb.com/docs2',
+    imageUrl: 'https://enterprisedb.com/docs2/images/social.jpg',
+    siteUrl: 'https://enterprisedb.com/docs2',
     algoliaIndex: algoliaIndex,
-    cacheBuster: 1, // for busting gh actions cache if needed
+    cacheBuster: 2, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -296,7 +295,14 @@ module.exports = {
     'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
     'gatsby-plugin-meta-redirect',
-    'gatsby-plugin-netlify',
+    {
+      resolve: 'gatsby-plugin-netlify',
+      options: {
+        headers: {
+          '/*': ['X-Robots-Tag: noindex'],
+        },
+      },
+    },
     // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
@@ -375,6 +381,12 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+      },
+    },
+    {
+      resolve: 'gatsby-plugin-google-tagmanager',
+      options: {
+        id: process.env.GTM_ID,
       },
     },
   ],
