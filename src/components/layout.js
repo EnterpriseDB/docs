@@ -73,7 +73,12 @@ const Layout = ({
       <MDXProvider
         components={{
           a: ({ href, ...rest }) => (
-            <Link to={href} pageUrl={meta.path} {...rest} />
+            <Link
+              to={href}
+              pageUrl={meta.path}
+              pageIsIndex={meta.isIndexPage}
+              {...rest}
+            />
           ),
           table: props => (
             <div className="table-with-scroll">
