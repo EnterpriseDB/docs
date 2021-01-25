@@ -34,7 +34,7 @@ function linkTargetIndexer()
   }
 }
 
-function relativeLinkRewriter(index)
+function relativeLinkRewriter()
 {
   return transformer;
 
