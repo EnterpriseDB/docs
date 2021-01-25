@@ -2,8 +2,6 @@
 title: "Restoring an Incremental Backup"
 ---
 
-
-
 Restoring an incremental backup may require additional setup steps depending upon the host on which the incremental backup is to be restored. For more information, see the *Restoring an Incremental Backup* section of the *EDB Postgres Backup and Recovery User Guide* available at:
 
 > <https://www.enterprisedb.com/edb-docs/>
@@ -16,124 +14,134 @@ A *backup chain* is the set of backups consisting of a full backup and all of it
 
 In the following example, the `allow_incremental_backups` parameter is set to `enabled` in the BART configuration file to permit incremental backups on the listed database server:
 
-    [BART]
+```
+[BART]
 
-    bart_host= enterprisedb@192.168.2.27
-    backup_path = /opt/backup
-    pg_basebackup_path = /usr/edb/as11/bin/pg_basebackup
-    logfile = /tmp/bart.log
-    scanner_logfile = /tmp/bart_scanner.log
+bart_host= enterprisedb@192.168.2.27
+backup_path = /opt/backup
+pg_basebackup_path = /usr/edb/as11/bin/pg_basebackup
+logfile = /tmp/bart.log
+scanner_logfile = /tmp/bart_scanner.log
 
-    [ACCTG]
+[ACCTG]
 
-    host = 127.0.0.1
-    port = 5445
-    user = enterprisedb
-    cluster_owner = enterprisedb
-    allow_incremental_backups = enabled
-    description = "Accounting"
+host = 127.0.0.1
+port = 5445
+user = enterprisedb
+cluster_owner = enterprisedb
+allow_incremental_backups = enabled
+description = "Accounting"
+```
 
 After the database server has been started with WAL archiving enabled to the BART backup catalog, the WAL scanner is started:
 
-    -bash-4.2$ bart-scanner --daemon
+```
+-bash-4.2$ bart-scanner --daemon
+```
 
 First, a full backup is taken.
 
-    -bash-4.2$ bart BACKUP -s acctg --backup-name full_1
-    INFO: creating backup for server 'acctg'
-    INFO: backup identifier: '1490649204327'\
-    63364/63364 kB (100%), 1/1 tablespace
-    INFO: backup completed successfully
-    INFO: backup checksum: aae27d4a7c09dffc82f423221154db7e of base.tar
-    INFO:
-    BACKUP DETAILS:
-    BACKUP STATUS: active
-    BACKUP IDENTIFIER: 1490649204327
-    BACKUP NAME: full_1
-    BACKUP PARENT: none
-    BACKUP LOCATION: /opt/backup/acctg/1490649204327
-    BACKUP SIZE: 61.88 MB
-    BACKUP FORMAT: tar
-    BACKUP TIMEZONE: US/Eastern
-    XLOG METHOD: fetch
-    BACKUP CHECKSUM(s): 1
-    ChkSum File
-    aae27d4a7c09dffc82f423221154db7e base.tar
-    TABLESPACE(s): 0
-    START WAL LOCATION: 00000001000000000000000E
-    BACKUP METHOD: streamed
-    BACKUP FROM: master
-    START TIME: 2017-03-27 17:13:24 EDT
-    STOP TIME: 2017-03-27 17:13:25 EDT
-    TOTAL DURATION: 1 sec(s)
+```
+-bash-4.2$ bart BACKUP -s acctg --backup-name full_1
+INFO: creating backup for server 'acctg'
+INFO: backup identifier: '1490649204327'\
+63364/63364 kB (100%), 1/1 tablespace
+INFO: backup completed successfully
+INFO: backup checksum: aae27d4a7c09dffc82f423221154db7e of base.tar
+INFO:
+BACKUP DETAILS:
+BACKUP STATUS: active
+BACKUP IDENTIFIER: 1490649204327
+BACKUP NAME: full_1
+BACKUP PARENT: none
+BACKUP LOCATION: /opt/backup/acctg/1490649204327
+BACKUP SIZE: 61.88 MB
+BACKUP FORMAT: tar
+BACKUP TIMEZONE: US/Eastern
+XLOG METHOD: fetch
+BACKUP CHECKSUM(s): 1
+ChkSum File
+aae27d4a7c09dffc82f423221154db7e base.tar
+TABLESPACE(s): 0
+START WAL LOCATION: 00000001000000000000000E
+BACKUP METHOD: streamed
+BACKUP FROM: master
+START TIME: 2017-03-27 17:13:24 EDT
+STOP TIME: 2017-03-27 17:13:25 EDT
+TOTAL DURATION: 1 sec(s)
+```
 
 A series of incremental backups are taken. The first incremental backup specifies the full backup as the parent. Each successive incremental backup then uses the preceding incremental backup as its parent.
 
-    -bash-4.2$ bart BACKUP -s acctg -F p --parent full_1 --backup-name
-    incr_1-a
-    INFO: creating incremental backup for server 'acctg'
-    INFO: checking mbm files /opt/backup/acctg/archived_wals
-    INFO: new backup identifier generated 1490649255649
-    INFO: reading directory /opt/backup/acctg/archived_wals
-    INFO: all files processed
-    NOTICE: pg_stop_backup complete, all required WAL segments have been
-    archived
-    INFO: incremental backup completed successfully
-    INFO:
-    BACKUP DETAILS:
-    BACKUP STATUS: active
-    BACKUP IDENTIFIER: 1490649255649
-    BACKUP NAME: incr_1-a
-    BACKUP PARENT: 1490649204327
-    BACKUP LOCATION: /opt/backup/acctg/1490649255649
-    BACKUP SIZE: 16.56 MB
-    BACKUP FORMAT: plain
-    BACKUP TIMEZONE: US/Eastern
-    XLOG METHOD: fetch
-    BACKUP CHECKSUM(s): 0
-    TABLESPACE(s): 0
-    START WAL LOCATION: 000000010000000000000010
-    STOP WAL LOCATION: 000000010000000000000010
-    BACKUP METHOD: pg_start_backup
-    BACKUP FROM: master
-    START TIME: 2017-03-27 17:14:15 EDT
-    STOP TIME: 2017-03-27 17:14:16 EDT
-    TOTAL DURATION: 1 sec(s)
-    -bash-4.2$ bart BACKUP -s acctg -F p --parent incr_1-a --backup-name
-    incr_1-b
-    INFO: creating incremental backup for server 'acctg'
-    INFO: checking mbm files /opt/backup/acctg/archived_wals
-    INFO: new backup identifier generated 1490649336845
-    INFO: reading directory /opt/backup/acctg/archived_wals
-    INFO: all files processed
-    NOTICE: pg_stop_backup complete, all required WAL segments have been
-    archived
-    INFO: incremental backup completed successfully
-    .
-    .
-    .
-    -bash-4.2$ bart BACKUP -s acctg -F p --parent incr_1-b --backup-name
-    incr_1-c
-    INFO: creating incremental backup for server 'acctg'
-    INFO: checking mbm files /opt/backup/acctg/archived_wals
-    INFO: new backup identifier generated 1490649414316
-    INFO: reading directory /opt/backup/acctg/archived_wals
-    INFO: all files processed
-    NOTICE: pg_stop_backup complete, all required WAL segments have been
-    archived
-    INFO: incremental backup completed successfully
-    .
-    .
-    .
+```
+-bash-4.2$ bart BACKUP -s acctg -F p --parent full_1 --backup-name
+incr_1-a
+INFO: creating incremental backup for server 'acctg'
+INFO: checking mbm files /opt/backup/acctg/archived_wals
+INFO: new backup identifier generated 1490649255649
+INFO: reading directory /opt/backup/acctg/archived_wals
+INFO: all files processed
+NOTICE: pg_stop_backup complete, all required WAL segments have been
+archived
+INFO: incremental backup completed successfully
+INFO:
+BACKUP DETAILS:
+BACKUP STATUS: active
+BACKUP IDENTIFIER: 1490649255649
+BACKUP NAME: incr_1-a
+BACKUP PARENT: 1490649204327
+BACKUP LOCATION: /opt/backup/acctg/1490649255649
+BACKUP SIZE: 16.56 MB
+BACKUP FORMAT: plain
+BACKUP TIMEZONE: US/Eastern
+XLOG METHOD: fetch
+BACKUP CHECKSUM(s): 0
+TABLESPACE(s): 0
+START WAL LOCATION: 000000010000000000000010
+STOP WAL LOCATION: 000000010000000000000010
+BACKUP METHOD: pg_start_backup
+BACKUP FROM: master
+START TIME: 2017-03-27 17:14:15 EDT
+STOP TIME: 2017-03-27 17:14:16 EDT
+TOTAL DURATION: 1 sec(s)
+-bash-4.2$ bart BACKUP -s acctg -F p --parent incr_1-a --backup-name
+incr_1-b
+INFO: creating incremental backup for server 'acctg'
+INFO: checking mbm files /opt/backup/acctg/archived_wals
+INFO: new backup identifier generated 1490649336845
+INFO: reading directory /opt/backup/acctg/archived_wals
+INFO: all files processed
+NOTICE: pg_stop_backup complete, all required WAL segments have been
+archived
+INFO: incremental backup completed successfully
+.
+.
+.
+-bash-4.2$ bart BACKUP -s acctg -F p --parent incr_1-b --backup-name
+incr_1-c
+INFO: creating incremental backup for server 'acctg'
+INFO: checking mbm files /opt/backup/acctg/archived_wals
+INFO: new backup identifier generated 1490649414316
+INFO: reading directory /opt/backup/acctg/archived_wals
+INFO: all files processed
+NOTICE: pg_stop_backup complete, all required WAL segments have been
+archived
+INFO: incremental backup completed successfully
+.
+.
+.
+```
 
 The following output of the `SHOW-BACKUPS` subcommand lists the backup chain, which are backups `full_1, incr_1-a, incr_1-b, and incr_1-c`.
 
-    -bash-4.2$ bart SHOW-BACKUPS -s acctg
-    SERVER NAME BACKUP ID BACKUP NAME BACKUP PARENT BACKUP TIME ...
-    acctg 1490649414316 incr_1-c incr_1-b 2017-03-27 17:16:55 ...
-    acctg 1490649336845 incr_1-b incr_1-a 2017-03-27 17:15:37 ...
-    acctg 1490649255649 incr_1-a full_1 2017-03-27 17:14:16 ...
-    acctg 1490649204327 full_1 none 2017-03-27 17:13:25 ...
+```
+-bash-4.2$ bart SHOW-BACKUPS -s acctg
+SERVER NAME BACKUP ID BACKUP NAME BACKUP PARENT BACKUP TIME ...
+acctg 1490649414316 incr_1-c incr_1-b 2017-03-27 17:16:55 ...
+acctg 1490649336845 incr_1-b incr_1-a 2017-03-27 17:15:37 ...
+acctg 1490649255649 incr_1-a full_1 2017-03-27 17:14:16 ...
+acctg 1490649204327 full_1 none 2017-03-27 17:13:25 ...
+```
 
 <div class="note">
 
@@ -149,40 +157,46 @@ For the `full backup full_1`, the `BACKUP PARENT` field contains `none`. For eac
 
 A second backup chain is created in the same manner with the `BACKUP` subcommand. The following example shows the addition of the resulting, second backup chain consisting of full backup `full_2` and incremental backups `incr_2-a` and `incr_2-b`.
 
-    -bash-4.2$ bart SHOW-BACKUPS -s acctg
-    SERVER NAME BACKUP ID     BACKUP NAME  BACKUP PARENT  BACKUP TIME ...
-    acctg       1490649605607 incr_2-b     incr_2-a       2017-03-27 17:20:06 ...
-    acctg       1490649587702 incr_2-a     full_2         2017-03-27 17:19:48 ...
-    acctg       1490649528633 full_2       none           2017-03-27 17:18:49 ...
-    acctg       1490649414316 incr_1-c     incr_1-b       2017-03-27 17:16:55 ...
-    acctg       1490649336845 incr_1-b     incr_1-a       2017-03-27 17:15:37 ...
-    acctg       1490649255649 incr_1-a     full_1         2017-03-27 17:14:16 ...
-    acctg       1490649204327 full_1       none           2017-03-27 17:13:25 ...
+```
+-bash-4.2$ bart SHOW-BACKUPS -s acctg
+SERVER NAME BACKUP ID     BACKUP NAME  BACKUP PARENT  BACKUP TIME ...
+acctg       1490649605607 incr_2-b     incr_2-a       2017-03-27 17:20:06 ...
+acctg       1490649587702 incr_2-a     full_2         2017-03-27 17:19:48 ...
+acctg       1490649528633 full_2       none           2017-03-27 17:18:49 ...
+acctg       1490649414316 incr_1-c     incr_1-b       2017-03-27 17:16:55 ...
+acctg       1490649336845 incr_1-b     incr_1-a       2017-03-27 17:15:37 ...
+acctg       1490649255649 incr_1-a     full_1         2017-03-27 17:14:16 ...
+acctg       1490649204327 full_1       none           2017-03-27 17:13:25 ...
+```
 
 The following additional incremental backups starting with `incr_1-b-1`, which designates `incr_1-b` as the parent, results in the forking from that backup into a second line of backups in the chain consisting of `full_1, incr_1-a, incr_1-b, incr_1-b-1, incr_1-b-2`, and `incr_1-b-3` as shown in the following list:
 
-    -bash-4.2$ bart SHOW-BACKUPS -s acctg
-    SERVER NAME  BACKUP ID     BACKUP NAME   BACKUP PARENT   BACKUP TIME         ...
-    acctg        1490649791430 incr_1-b-3    incr_1-b-2      2017-03-27 17:23:12 ...
-    acctg        1490649763929 incr_1-b-2    incr_1-b-1      2017-03-27 17:22:44 ...
-    acctg        1490649731672 incr_1-b-1    incr_1-b        2017-03-27 17:22:12 ...
-    acctg        1490649605607 incr_2-b      incr_2-a        2017-03-27 17:20:06 ...
-    acctg        1490649587702 incr_2-a      full_2          2017-03-27 17:19:48 ...
-    acctg        1490649528633 full_2        none            2017-03-27 17:18:49 ...
-    acctg        1490649414316 incr_1-c      incr_1-b        2017-03-27 17:16:55 ...
-    acctg        1490649336845 incr_1-b      incr_1-a        2017-03-27 17:15:37 ...
-    acctg        1490649255649 incr_1-a      full_1          2017-03-27 17:14:16 ...
-    acctg        1490649204327 full_1        none            2017-03-27 17:13:25 ...
+```
+-bash-4.2$ bart SHOW-BACKUPS -s acctg
+SERVER NAME  BACKUP ID     BACKUP NAME   BACKUP PARENT   BACKUP TIME         ...
+acctg        1490649791430 incr_1-b-3    incr_1-b-2      2017-03-27 17:23:12 ...
+acctg        1490649763929 incr_1-b-2    incr_1-b-1      2017-03-27 17:22:44 ...
+acctg        1490649731672 incr_1-b-1    incr_1-b        2017-03-27 17:22:12 ...
+acctg        1490649605607 incr_2-b      incr_2-a        2017-03-27 17:20:06 ...
+acctg        1490649587702 incr_2-a      full_2          2017-03-27 17:19:48 ...
+acctg        1490649528633 full_2        none            2017-03-27 17:18:49 ...
+acctg        1490649414316 incr_1-c      incr_1-b        2017-03-27 17:16:55 ...
+acctg        1490649336845 incr_1-b      incr_1-a        2017-03-27 17:15:37 ...
+acctg        1490649255649 incr_1-a      full_1          2017-03-27 17:14:16 ...
+acctg        1490649204327 full_1        none            2017-03-27 17:13:25 ...
+```
 
 **Restoring an Incremental Backup**
 
 Restoring an incremental backup is done with the `RESTORE` subcommand in the same manner as for restoring a full backup. Specify the backup identifier or backup name of the incremental backup to be restored as shown in the following example.
 
-    -bash-4.2$ bart RESTORE -s acctg -p /opt/restore -i incr_1-b
-    INFO: restoring incremental backup 'incr_1-b' of server 'acctg'
-    INFO: base backup restored
-    INFO: archiving is disabled
-    INFO: permissions set on $PGDATA
-    INFO: incremental restore completed successfully
+```
+-bash-4.2$ bart RESTORE -s acctg -p /opt/restore -i incr_1-b
+INFO: restoring incremental backup 'incr_1-b' of server 'acctg'
+INFO: base backup restored
+INFO: archiving is disabled
+INFO: permissions set on $PGDATA
+INFO: incremental restore completed successfully
+```
 
 Restoring incremental backup `incr_1-b` as shown by the preceding example results in the restoration of full backup `full_1`, then incremental backups `incr_1-a` and finally, `incr_1-b`.
