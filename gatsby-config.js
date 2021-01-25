@@ -285,7 +285,7 @@ module.exports = {
     imageUrl: 'https://enterprisedb.com/docs2/images/social.jpg',
     siteUrl: 'https://enterprisedb.com/docs2',
     algoliaIndex: algoliaIndex,
-    cacheBuster: 1, // for busting gh actions cache if needed
+    cacheBuster: 2, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -381,6 +381,12 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+      },
+    },
+    {
+      resolve: 'gatsby-plugin-google-tagmanager',
+      options: {
+        id: process.env.GTM_ID,
       },
     },
   ],
