@@ -1,0 +1,157 @@
+---
+title: Link Test
+---
+
+## Expected behavior base paths correspond to named file & end without slash
+
+**Base path:** /playground/1/01_examples/link-test
+
+*this is the **desired** behavior for our link rewriters - it matches what one would 
+expect if there were no alterations to the original filesystem (i.e., path ended with filename not slash)*
+
+| Relative path                  | Result                                    |
+| ------------------------------ | ----------------------------------------- |
+| [icons](icons)                 | /playground/1/01_examples/icons           |
+| [./icons](./icons)             | /playground/1/01_examples/icons           |
+| [../icons](../icons)           | /playground/1/icons                       |
+| [#links](#links)               | /playground/1/01_examples/link-test#links |
+| [.#links](.#links)             | /playground/1/01_examples/#links          |
+| [./#links](./#links)           | /playground/1/01_examples/#links          |
+| [..#links](..#links)           | /playground/1/#links                      |
+| [../#links](../#links)         | /playground/1/#links                      |
+| [link-tests](link-tests)       | /playground/1/01_examples/link-tests      |
+| [./link-tests](./link-tests)   | /playground/1/01_examples/link-tests      |
+| [../link-tests](../link-tests) | /playground/1/link-tests                  |
+
+## Expected behavior base paths correspond to named file & end with slash
+
+**Base path:** /playground/1/01_examples/link-test/
+
+| Relative path                  | Result                                         |
+| ------------------------------ | ---------------------------------------------- |
+| [icons](icons)                 | /playground/1/01_examples/link-test/icons      |
+| [./icons](./icons)             | /playground/1/01_examples/link-test/icons      |
+| [../icons](../icons)           | /playground/1/01_examples/icons                |
+| [#links](#links)               | /playground/1/01_examples/link-test/#links     |
+| [.#links](.#links)             | /playground/1/01_examples/link-test/#links     |
+| [./#links](./#links)           | /playground/1/01_examples/link-test/#links     |
+| [..#links](..#links)           | /playground/1/01_examples/#links               |
+| [../#links](../#links)         | /playground/1/01_examples/#links               |
+| [link-tests](link-tests)       | /playground/1/01_examples/link-test/link-tests |
+| [./link-tests](./link-tests)   | /playground/1/01_examples/link-test/link-tests |
+| [../link-tests](../link-tests) | /playground/1/01_examples/link-tests           |
+
+(see (link-tests)[/playground/1/01_examples/link-tests/] for how these work with default (index) files)
+
+## Other tests
+
+[evan@rocketinsights.com](mailto:evan@rocketinsights.com)
+
+[http://www.google.com](http://www.google.com)
+
+[//www.google.com](//www.google.com)
+
+[ftp://user:password@host:port/path](ftp://user:password@host:port/path)
+
+## Rationale for our weird-ass URL rewriting
+
+Ok, so here's the deal: links are written in these files while looking at a filesystem heirarchy. Then, that heirarchy is transformed into a *similar* but *different* heirarchy. And those links, even with relative paths in them, still gotta work. 
+
+To put it another way: people (and scripts) have to be able to write links while looking at one heirarchy without making assumptions that won't hold in a different heirarchy. 
+
+## The gritty details
+
+[RFC 3986](https://tools.ietf.org/html/rfc3986) tells us how relative paths work in URLs. Of particular interest is [section 5.2.3](https://tools.ietf.org/html/rfc3986#section-5.2.3) as well as section 5.2.4 that follows it, which together detail the particular steps that must be followed when merging a relative path with a base path. 
+
+There's a wrinkle though: the filesystem that Gatsby generates from our nested directories and MDX files, and how browsers merge relative and base paths.
+
+To examine this, let's examine how they might work for a relative URL, `../link.mdx`, contained within the source file for this very page, `playground/1/01_examples/link-test.mdx`. First...
+
+### Browsers and path merging
+
+RFC 3986 describes path merging in [section 5.2.3](https://tools.ietf.org/html/rfc3986#section-5.2.3):
+
+> The pseudocode above refers to a "merge" routine for merging a
+> relative-path reference with the path of the base URI.  This is
+> accomplished as follows:
+>
+> -   If the base URI has a defined authority component and an empty
+>     path, then return a string consisting of "/" concatenated with the
+>     reference's path; otherwise,
+>
+> -   return a string consisting of the reference's path component
+>     appended to all but the last segment of the base URI's path (i.e.,
+>     **excluding any characters after the right-most "/" in the base URI
+>     path,** or excluding the entire base URI path if it does not contain
+>     any "/" characters).
+
+The emphasis there is mine: it means that the merged path for our example becomes, `playground/1/01_examples/../link-test.mdx` - resolving the dots (described in [section 5.2.4](https://tools.ietf.org/html/rfc3986#section-5.2.4)) then leaves us with `playground/1/link` when what we intended was `playground/1/01_examples/link.mdx`. 
+
+That's fine though; everyone is pretty used to it, because if you think of the path as a filesystem path (which it may or may not be), then you just ignore the file and treat the rest as if you were walking the filesystem. So the ACTUAL relative path we'd use would be one of,
+
+-   `../01_examples/link.mdx` -> `playground/1/01_examples/../01_examples/link-test.mdx` -> `playground/1/01_examples/link.mdx`
+-   `./link.mdx` -> `playground/1/01_examples/./link.mdx` -> `playground/1/01_examples/link.mdx`
+-   `link.mdx` -> `playground/1/01_examples/link.mdx`
+
+### Gatsby's build output
+
+Things get weird when Gatsby builds HTML from the MDX files though.
+
+See, Gatsby wants a filesystem where the only HTML files are named `index.html`, and live in directories named after the files they were generated from. So `playground/1/01_examples/link-test.mdx` (this file) becomes `playground/1/01_examples/link-test/index.html` and `playground/1/01_examples/link.mdx` becomes `playground/1/01_examples/link/index.html`. The `index.html` files are considered "defaults" - the web server provides them for a directory when no actual file is specified in the matching path. The practical effect of this is that you can have URLs with less extranious information in them: instead of every path ending with `.html`, the last word is whatever meaningful name you gave the file.
+
+There's a problem though: paths now end with a slash, which means a relative URL here to `link` is now appended to `playground/1/01_examples/link-test/` to give us `playground/1/01_examples/link-test/link` - an invalid path. The alternative `../01_examples/link` is also a problem, resulting in the equally-invalid `playground/1/01_examples/01_examples/link`. Our original attempt works though: `../link` results in `playground/1/01_examples/link`...
+
+...but note the slight of hand: the files we're authoring are, uh, files - they end with `.mdx`. The behavior of the browser assumes that we naturally calculate relative paths based on the directory the file lives in, which means we have to assume that folks will write `link` or `./link` NOT `../link`. And in fact, they do and have been.
+
+Gatsby tried to get around this by dropping the slash at the end of the directory name, leading the browsers to interpret it as a filename and drop it from the base path during merging. Unfortunately, getting web servers to do the same thing ends up being... Difficult. 
+
+So we need another way of making relative URLs written based on the authoring filesystem work reliably in the browser...
+
+## Solution: build-time link-rewriting
+
+Turns out, we can just rewrite relative URLs at the same time Gatsby is restructuring the filesystem. The *web server* and *browser* may not know that the last segment of the path is logically a filename, but *we* do - so, we can just as easily implement the behavior described in RFC3986 Section 5.2.3 with that in mind. In effect, we would rewrite the last requirement as follows:
+
+> -   return a string consisting of the reference's path component
+>     appended to all but the last segment of the base URI's path (i.e.,
+>     excluding any characters after the right-most "/" in the base URI
+>     path **after stripping the right-most slash on the base path** or 
+>     excluding the entire base URI > path if it does not contain any "/" 
+>     characters left of the right-most position).
+
+That should do it! Except... For `index.mdx` files. These also get turned into `index.html`, but they *don't* get their own subdirectory - because logically they're *already* the index for a subdirectory! And now that subdirectory *should* be the base path for any relative links... **Which the rewritten spec above would ruin!**
+
+Now we need information beyond what's contained in the URLs being merged: we need the path of the file that *generated* the base URL. With this information, we can determine if the base path corresponds to an `index.mdx` file (logically, a complete path) or from a different `.mdx` file (logically, the last segment of the path is a filename). And our 3rd revision of the spec might become:
+
+> -   return a string consisting of the reference's path component
+>     appended to the base URI's path, OR all but the last segment of the
+>     base URI's path if that path corresponds to a non-index file (i.e.,
+>     for source files other than index.mdx, excluding any characters after 
+>     the right-most "/" in the base URI path **after stripping the right-
+>     most slash on the base path** or excluding the entire base URI path
+>     if it does not contain any "/" characters left of the right-most position).
+
+Or, in pseudo-JavaScript:
+
+```javascript
+let basePath = `playground/1/01_examples/link-test/`;
+let baseOriginalFilepath = `playground/1/01_examples/link-test.mdx`;
+const relativePath = `link`;
+
+// normalize base path
+if (basePath.endsWith('/')) basePath = basePath.slice(0,-1);
+if (basePath.startsWith('/')) basePath = basePath.slice(1);
+
+// relative path normalization omitted for brevity
+
+// remove right-most segment, if it exists, unless source is index.mdx
+if (!baseOriginalFilepath.endsWith('index.mdx'))
+{
+    const segments = basePath.split('/');
+    if (segments.length > 0) segments.pop();
+    basePath = segments.join('/');
+}
+
+const mergedPath = basePath + '/' + relativePath;
+```
+
+An actual implementation of this should also resolve dot segments as per RFC 3986 Section 3.2.4 here, and probably also ensure that the path *does* end with a slash in order to avoid unnecessary redirects.
