@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'gatsby';
+import { Link } from '../components/';
 import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 

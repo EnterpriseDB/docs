@@ -13,6 +13,7 @@ import KatacodaPanel from './katacoda-panel';
 import Layout from './layout';
 import LayoutContext from './layout-context';
 import LeftNav from './left-nav';
+import Link from './link';
 import Logo from './logo';
 import MainContent from './main-content';
 import PdfDownload from './pdf-download.js';
@@ -42,6 +43,7 @@ export {
   Layout,
   LayoutContext,
   LeftNav,
+  Link,
   Logo,
   MainContent,
   PdfDownload,
