@@ -11,6 +11,10 @@ const forceTrailingSlash = url => {
   return url.replace(/\/?(\?|#|$)/, '/$1');
 };
 
+const isAbsoluteOrProtocolRelativeUrl = url => {
+  return isAbsoluteUrl(url) || url.trim().startsWith('//');
+};
+
 const rewriteUrl = (url, pageUrl, pageIsIndex) => {
   if (!pageUrl) return forceTrailingSlash(url);
 
@@ -27,13 +31,12 @@ const rewriteUrl = (url, pageUrl, pageIsIndex) => {
   // URL here, but it doesn't matter
   const base = new URL(pageUrl, 'loc:/');
   const result = new URL(url, base);
-  // if does not end with extension, end with a slash
-  if (!result.pathname.match(/\/$|\.\w+$/)) result.pathname += '/';
-  return result.href.replace(/^loc:/, '');
+
+  return forceTrailingSlash(result.href.replace(/^loc:/, ''));
 };
 
 const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
-  if (isAbsoluteUrl(to)) {
+  if (isAbsoluteOrProtocolRelativeUrl(to)) {
     return (
       <a href={to} {...rest}>
         {rest.children}
