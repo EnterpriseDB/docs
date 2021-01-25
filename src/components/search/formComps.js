@@ -1,6 +1,6 @@
 import React from 'react';
 import { connectHits, connectStateResults } from 'react-instantsearch-dom';
-import { Link } from 'gatsby';
+import { Link } from '../';
 import { Button } from 'react-bootstrap';
 import Icon, { iconNames } from '../icon/';
 import { PageHit } from './hitComps';

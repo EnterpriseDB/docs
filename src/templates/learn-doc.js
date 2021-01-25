@@ -82,11 +82,13 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubFileLink,
     githubEditLink,
     githubIssuesLink,
+    isIndexPage,
   } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
     path: pagePath,
+    isIndexPage: isIndexPage,
   };
 
   const showToc = !!mdx.tableOfContents.items;
