@@ -2,6 +2,7 @@ const visit = require('unist-util-visit')
 const versionComp = require("semver-compare")
 const path = require("path")
 const slugger = require('github-slugger')
+const yaml = require('js-yaml')
 const mdast2string = require('mdast-util-to-string')
 
 function linkTargetIndexer()
@@ -21,7 +22,13 @@ function linkTargetIndexer()
       }
       else if (node.type === "heading")
       {
-        index.indexId(file.path, fragmentForHeading(node));
+        index.indexId(file.path, slugger.slug(mdast2string(node)));
+      }
+      else if (node.type === 'yaml')
+      {
+        let metadata = yaml.load(node.value);
+        if (metadata.title)
+          index.indexId(file.path, slugger.slug(metadata.title));
       }
     }
   }
@@ -105,7 +112,13 @@ const index = {
   linkIdByKey: {},
   versionsForProduct: {},
 
-  keyId: (id) => '#' + cleanseId(id),
+  keyId: (id) => 
+  {
+    return '#' + slugger.slug(id.replace(/^[^#]*#+/, '')
+        .replace(/[_-]/g, "")
+        .replace(/\s+/g, ""))
+      .toLowerCase();
+  },
   valuePathId: (filepath, id, product, version) => 
   {
     return {path: filepath, id, product, version};
@@ -184,25 +197,24 @@ const index = {
   {
     // this should be available in the file where it is referenced 
     // and in other files in the same subdirectory
+    // index.mdx files effectively live in their "parent" directory
     let key = index.keyFilepath(filepath, id);
     let value = index.valuePathId(filepath, id);
     index.addValue(key, value);
-    key = index.keySubdir(path.dirname(filepath), id);
+    let subdir = path.dirname(filepath);
+    if (path.basename(filepath) === 'index.mdx')
+      subdir = path.dirname(subdir);
+    key = index.keySubdir(subdir, id);
     index.addValue(key, value);
     index.stats.localIdsIndexed = (index.stats.localIdsIndexed||0)+1;
   },
 };    
 
-function fragmentForHeading(node)
-{
-  return slugger.slug(mdast2string(node));
-}
-
 function cleanseId(id)
 {
   return slugger.slug(id.replace(/^[^#]*#+/, '')
-      .replace(/[_-]/g, " ")
-      .replace(/\s+/g, " "))
+      .replace(/[_-]/g, "")
+      .replace(/\s+/g, ""))
     .toLowerCase();
 }
 
@@ -221,7 +233,8 @@ function generateRelativeUrl(source, dest, id)
   // generate the results from both ends: walking up the tree from the source, down from the dest
   while (pos < sourceChunks.length || pos < destChunks.length)
   {
-    // this needs to change if NOT canonicalizing paths ending in slashes - we would refrain from prepending for ANY mdx file
+    // base URI for normal mdx files is the directory it is in; 
+    // for index.mdx, the parent of the directory it is in
     if (pos < sourceChunks.length && sourceChunks[pos] !== 'index.mdx')
       result.unshift("..");
     if (pos < destChunks.length && destChunks[pos] !== 'index.mdx')
@@ -229,7 +242,7 @@ function generateRelativeUrl(source, dest, id)
     pos++;
   }
   // append ID and run away
-  return result.join('/') + "#" + encodeURIComponent(id);
+  return result.join('/') + (result.length ? '/' : '') + "#" + encodeURIComponent(id);
 }
 
 module.exports = {linkTargetIndexer, relativeLinkRewriter, index}

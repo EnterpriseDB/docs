@@ -11,6 +11,7 @@ const remarkFrontmatter = require('remark-frontmatter')
 const glob = require('fast-glob')
 const remarkMdxEmbeddedHast = require('./lib/mast-embedded-hast')
 const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relativelinks')
+const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 
 ;(async () => {
 
@@ -39,12 +40,8 @@ example:
     .use(mdx)
     .use(remarkFrontmatter)
     .use(remarkMdxEmbeddedHast)
+    .use(noEscapeImageAlt)
 
-  //const mdxes = await glob('product_docs/docs/epas/13/epas_compat_sql/*rollback*.mdx')
-  //const mdxes = await glob('product_docs/docs/efm/4.1/efm_user/04_configuring_efm/01_cluster_properties/index.mdx')
-  //const mdxes = await glob('product_docs/docs/efm/3.10/efm_user/04_configuring_efm/05_using_vip_addresses.mdx')
-  //const mdxes = await glob("product_docs/docs/epas/**/*.mdx");
-  //const mdxes = await glob("product_docs/docs/epas/9.6/01_epas_inst/002_requirements_overview.mdx");
   const mdxes = await glob(process.argv[2]);
   
   // indexing 
