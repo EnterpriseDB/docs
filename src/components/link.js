@@ -2,7 +2,7 @@ import React from 'react';
 import { Link as GatsbyLink } from 'gatsby';
 import isAbsoluteUrl from 'is-absolute-url';
 
-const forceTrailingBackslash = url => {
+const forceTrailingSlash = url => {
   const splitUrl = url.split('/');
   // if does not end with extension
   if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/) || url.startsWith('#')) {
@@ -12,7 +12,7 @@ const forceTrailingBackslash = url => {
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex) => {
-  if (!pageUrl) return forceTrailingBackslash(url);
+  if (!pageUrl) return forceTrailingSlash(url);
 
   // consistent behavior while authoring: base path for relative links
   // should always be the directory containing the file holding the link
