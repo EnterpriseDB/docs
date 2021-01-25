@@ -41,6 +41,9 @@ const removeTrailingSlash = url => {
   return url;
 };
 
+const isPathAnIndexPage = filePath =>
+  filePath.endsWith('/index.mdx') || filePath === 'index.mdx';
+
 const productLatestVersionCache = [];
 
 exports.onCreateNode = async ({ node, getNode, actions }) => {
@@ -216,11 +219,12 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         node.fields.version === doc.fields.version,
     );
 
+    const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
     const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
     const fileUrlSegment =
       removeTrailingSlash(doc.fields.path) +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+      (isIndexPage ? '/index.mdx' : '.mdx');
     const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
     const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
     const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(
@@ -241,6 +245,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
+        isIndexPage: isIndexPage,
         potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
         potentialLatestNodePath: replacePathVersion(
           doc.fields.path,
@@ -257,9 +262,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
     const branch = isProduction ? 'main' : 'develop';
+    const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
     const fileUrlSegment =
       removeTrailingSlash(doc.fields.path) +
-      (doc.fileAbsolutePath.includes('index.mdx') ? '/index.mdx' : '.mdx');
+      (isIndexPage ? '/index.mdx' : '.mdx');
     const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
     const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
     const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
@@ -275,6 +281,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
+        isIndexPage: isIndexPage,
       },
     });
 
@@ -312,6 +319,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       node => node.fields.topic === doc.fields.topic,
     );
 
+    const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
     const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
       /^\//,
       '',
@@ -330,6 +338,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         navLinks: navLinks,
         githubFileLink: showGithubLink ? githubFileLink : null,
         githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
+        isIndexPage: isIndexPage,
       },
     });
   });
