@@ -10,8 +10,8 @@
 // This must be run on juiced content BEFORE the markdown normalizer. 
 // It should do no harm if run twice.
 
-const { read, write } = require('to-vfile')
-const glob = require('fast-glob')
+const { read, write } = require('to-vfile');
+const glob = require('fast-glob');
 
 ;(async () => {
 
@@ -55,9 +55,11 @@ example:
     for (let i = 0; i < lines.length; ++i) {
       if (!lines[i].trim().length) rowFormatRegex = null;
 
-      if (rowFormatRegex) {
+      if (rowFormatRegex) 
+      {
         const row = lines[i].match(rowFormatRegex);
-        if (row) {
+        if (row) 
+        {
           lines[i] = row[1] + '|' + row.slice(2).map(c => {
             // rewrite multiline cells with <br> tags
             if (c.startsWith(" |"))
@@ -73,13 +75,18 @@ example:
       }
 
       const tableFormat = lines[i].match(tableFmtRegex);
-      if (tableFormat) {
+      if (tableFormat) 
+      {
+        // we've identified a table and captured the formatted width of each column, now this takes those
+        // captures and creates a new expression that will match similarly well-formatted rows, with captures
+        // for each cell. This ONLY works because markdown writers try to create nice-looking text tables;
+        // it allows for cell widths to differ by up to 10% from those in the dividing row, but more than that
+        // and it will fail to recognize them.
         rowFormatRegex = new RegExp("([^\|]*)"
           + tableFormat.map(c =>
             c.replace(/\|/g, '(?<!\\\\)\\|(')
               .replace(/[- ]+/g, `.{${Math.floor(c.length * .9)},${Math.ceil(c.length * 1.1)}}?`))
             .join(')') + ")(?<!\\\\)\\|");
-
       }
     }
 

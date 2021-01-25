@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import shutil
+import re
 
 class Node:
     def __init__(self, filename):
@@ -15,17 +16,24 @@ def number_prefix(int):
 
 # return an array of Nodes that are included in page's ToC section
 def extract_table_of_contents(readfile):
-  appending = False
+  parsingTOC = False
   toc = []
   tocItems = {}
   for line in readfile.readlines():
-    if appending and len(line) > 4 and "::" not in line and "newpage" not in line:
+    # stop processing TOC if the line isn't indented, and isn't a blank line
+    if re.match(r'^\S+', line):
+      parsingTOC = False
+
+    # if we're parsing the TOC and the line seems to be a TOC entry
+    if parsingTOC and len(line) > 4 and ":" not in line and "newpage" not in line:
       filename = line.replace(" ", "").replace("\n", "")
       if not filename in tocItems:
         toc.append(Node(filename))
         tocItems[filename] = "1"
-    if "maxdepth" in line:
-      appending = True
+
+    # start processing TOC when we see toctree
+    if "toctree" in line:
+      parsingTOC = True
   return toc
 
 # recursive function for building ToC tree
