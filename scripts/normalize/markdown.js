@@ -11,6 +11,7 @@ const remarkFrontmatter = require('remark-frontmatter')
 const glob = require('fast-glob')
 const remarkMdxEmbeddedHast = require('./lib/mast-embedded-hast')
 const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relativelinks')
+const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 
 ;(async () => {
@@ -36,7 +37,7 @@ example:
     .use(relativeLinkRewriter);
   const compiler = unified()
     .use(remarkParse)
-    .use(require('remark-stringify'), {emphasis: '*', bullet: '-', fences: true})
+    .use(remarkStringify, {emphasis: '*', bullet: '-', fences: true})
     .use(mdx)
     .use(remarkFrontmatter)
     .use(remarkMdxEmbeddedHast)
