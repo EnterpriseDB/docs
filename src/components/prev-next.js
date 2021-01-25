@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'gatsby';
+import { Link } from './';
 import { filterAndSortLinks, getBaseUrl } from '../constants/utils';
 
 const getPrevAndNextLinks = (links, path) => {

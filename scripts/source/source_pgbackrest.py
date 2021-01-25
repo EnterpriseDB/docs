@@ -11,8 +11,8 @@ def rewrite_any_relative_links(line, file_path):
         if not domain:
             # this is pretty fragile but it works for the POC
             new_link = match[1].replace('.md', '')
-            if file_path.endswith('index.mdx'):
-                new_link = 'pgbackrest/' + new_link
+            #if file_path.endswith('index.mdx'):
+             #   new_link = 'pgbackrest/' + new_link
             return re.sub(r'\]\(.+\)', ']({})'.format(new_link), line)
     return line    
 

@@ -45,11 +45,13 @@ const GhDocTemplate = ({ data, pageContext }) => {
     navLinks,
     githubFileLink,
     githubFileHistoryLink,
+    isIndexPage,
   } = pageContext;
   const pageMeta = {
     title: mdx.frontmatter.title,
     description: mdx.frontmatter.description,
     path: mdx.fields.path,
+    isIndexPage: isIndexPage,
   };
 
   const showToc = !!mdx.tableOfContents.items;
