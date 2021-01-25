@@ -278,7 +278,7 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
-  pathPrefix: '/docs2',
+  pathPrefix: isBuild ? '/docs2' : '',
   siteMetadata: {
     title: 'EDB Docs',
     baseUrl: 'https://enterprisedb.com/docs2',
@@ -381,6 +381,12 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+      },
+    },
+    {
+      resolve: 'gatsby-plugin-google-tagmanager',
+      options: {
+        id: process.env.GTM_ID,
       },
     },
   ],
