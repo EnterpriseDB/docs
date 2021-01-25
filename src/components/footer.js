@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from './';
 
 const TimestampLink = ({ timestamp, githubFileLink }) => {
   if (timestamp) {
@@ -26,22 +25,15 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
 const Footer = ({ timestamp, githubFileLink }) => (
   <footer className="mt-5 opacity-6 small d-flex justify-content-between">
     <div>
-      <span className="text-muted mx-2">© EDB</span>·
-      <Link className="text-muted mx-2" to="/">
-        GDPR
-      </Link>
+      <span className="text-muted mx-2">© EDB</span>
       ·
-      <Link className="text-muted mx-2" to="/">
-        Privacy Policy
-      </Link>
+      <a className="text-muted mx-2" href="https://www.enterprisedb.com/gdpr"> GDPR </a>
       ·
-      <Link className="text-muted mx-2" to="/">
-        Terms of Use
-      </Link>
+      <a className="text-muted mx-2" href="https://www.enterprisedb.com/privacy-policy"> Privacy Policy </a>
       ·
-      <Link className="text-muted mx-2" to="/">
-        Trademarks
-      </Link>
+      <a className="text-muted mx-2" href="https://www.enterprisedb.com/terms-use"> Terms of Use </a>
+      ·
+      <a className="text-muted mx-2" href="https://www.enterprisedb.com/trademarks"> Trademarks </a>
     </div>
 
     <TimestampLink timestamp={timestamp} githubFileLink={githubFileLink} />
