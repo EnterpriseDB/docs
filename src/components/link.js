@@ -31,11 +31,7 @@ const rewriteUrl = (url, pageUrl, pageIsIndex) => {
   // URL here, but it doesn't matter
   const base = new URL(pageUrl, 'loc:/');
   const result = new URL(url, base);
-  // if does not end with extension, end with a slash
-  // if (!result.pathname.match(/\/$|\.\w+$/)) {
-  //   console.log(result);
-  //   result.pathname += '/';
-  // }
+
   return forceTrailingSlash(result.href.replace(/^loc:/, ''));
 };
 
