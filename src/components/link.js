@@ -35,16 +35,15 @@ const rewriteUrl = (url, pageUrl, pageIsIndex) => {
   return forceTrailingSlash(result.href.replace(/^loc:/, ''));
 };
 
-const Link = ({ to, href, pageUrl, pageIsIndex, ...rest }) => {
-  const inputUrl = to || href;
-  if (isAbsoluteOrProtocolRelativeUrl(inputUrl)) {
+const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
+  if (isAbsoluteOrProtocolRelativeUrl(to)) {
     return (
-      <a href={inputUrl} {...rest}>
+      <a href={to} {...rest}>
         {rest.children}
       </a>
     );
   } else {
-    const outputUrl = rewriteUrl(inputUrl, pageUrl, pageIsIndex);
+    const outputUrl = rewriteUrl(to, pageUrl, pageIsIndex);
     return <GatsbyLink data-gatsby-link to={outputUrl} {...rest} />;
   }
 };
