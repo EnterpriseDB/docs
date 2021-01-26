@@ -4,10 +4,10 @@ import { SearchNavigationLinks } from '.';
 import SearchBar from './search/';
 import { Logo } from './';
 
-const SearchNavigation = ({ children }) => {
+const SearchNavigation = ({ children, logo = false }) => {
   return (
     <Navbar variant="light" className="flex-md-nowrap p-3 border-bottom">
-      <Logo width="200" height="50" className="mr-3" />
+      {logo && <Logo width="200" height="50" className="mr-3" />}
       <SearchBar />
       <SearchNavigationLinks />
     </Navbar>
