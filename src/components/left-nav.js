@@ -103,6 +103,7 @@ const LeftNav = ({
   versionArray,
   iconName,
   navOrder = null,
+  hideEmptySections = false,
 }) => {
   const newList = versionArray
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
@@ -124,7 +125,12 @@ const LeftNav = ({
         <SectionHeading newList={newList} path={path} iconName={iconName} />
       )}
       {tree.map(node => (
-        <TreeNode node={node} path={path} key={node.path + node.title} />
+        <TreeNode
+          node={node}
+          path={path}
+          key={node.path + node.title}
+          hideIfEmpty={hideEmptySections}
+        />
       ))}
       <li>
         <PdfDownload path={path} />
