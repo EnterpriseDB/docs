@@ -3,6 +3,7 @@ import { Container } from 'react-bootstrap';
 import indexNavigation from '../constants/index-navigation';
 import Icon, { iconNames } from '../components/icon/';
 import {
+  DarkModeToggle,
   Footer,
   IndexLinks,
   Layout,
@@ -10,6 +11,14 @@ import {
   SideNavigation,
   TopBar,
 } from '../components';
+
+const IndexSubLink = ({ url, children }) => (
+  <li className="list-inline-item">
+    <a href={url} className="d-inline-block px-3 align-middle">
+      {children}
+    </a>
+  </li>
+);
 
 export default () => (
   <Layout
@@ -20,302 +29,329 @@ export default () => (
   >
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
-      <SideNavigation>
+      {/* <SideNavigation>
         <IndexLinks indexLinkList={indexNavigation()} />
-      </SideNavigation>
+      </SideNavigation> */}
       <MainContent>
-        <h2 className="balance-text">Getting Started</h2>
+        <h1 className="balance-text mb-5">EDB Docs</h1>
 
-        <div className="card-deck mt-4">
-          <div className="card rounded shadow-sm d-flex flex-row align-items-center">
-            <div className="ml-4">
-              <Icon
-                iconName={iconNames.INSTALL}
-                className="fill-orange"
-                width="38"
-                height="38"
-                circle={true}
-                circleClassName="bg-blue-10"
-                circleDiameter={80}
-              />
-            </div>
+        <div className="card-columns mb-4">
+          <div className="card rounded shadow-sm mb-4">
             <div className="card-body">
-              <a
-                href="postgresql_journey/02_installing"
-                className="h3 card-title stretched-link"
-              >
-                Installing Postgres
-              </a>
-              <p className="card-text">
-                Learn how to quickly install PostgreSQL on Docker, Linux, MacOS
-                and Windows
-              </p>
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.POSTGRESQL}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  PostgreSQL Journey
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/postgresql_journey/02_installing">
+                    Installing PostgreSQL
+                  </a>
+                </li>
+                <li className="my-2">
+                  <a href="/postgresql_journey/04_developing/connecting_to_postgres">
+                    Developing with PostgreSQL
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
-          <div className="card rounded shadow-sm d-flex flex-row align-items-center">
-            <div className="ml-4">
-              <Icon
-                iconName={iconNames.CONNECT}
-                className="fill-orange"
-                width="50"
-                height="50"
-                circle={true}
-                circleClassName="bg-blue-10"
-                circleDiameter={80}
-              />
-            </div>
+
+          <div className="card rounded shadow-sm mb-4">
             <div className="card-body">
-              <a
-                href="postgresql_journey/04_developing/connecting_to_postgres"
-                className="h3 card-title stretched-link"
-              >
-                Connecting to Postgres
-              </a>
-              <p className="card-text">
-                Using common libraries to abstract away low-level connection
-                details. Available in Java and Python.
-              </p>
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.BIG_DATA}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">Databases</h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/epas/latest">EDB Postgres Advanced Server</a>
+                </li>
+                <li className="my-2">
+                  <a href="#">PostgreSQL</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.CONTROL}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  Monitoring &amp; Admin Tools
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/pem/latest">Postgres Enterprise Manager</a>
+                </li>
+                <li className="my-2">
+                  <a href="#">pgAdmin</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.HIGH_AVAILABILITY}
+                    className="fill-orange ny-n2"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  High Availability Tools
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/eprs/latest">EDB Replication Server</a>
+                </li>
+                <li className="my-2">
+                  <a href="/efm/latest">Failover Manager</a>
+                </li>
+                <li className="my-2">
+                  <a href="/ark/latest">Ark Platform</a>
+                </li>
+                <li className="my-2">
+                  <a href="/slony/latest">Slony</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.CONVERT}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  Migration Tools
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/migration_portal/latest">Migration Portal</a>
+                </li>
+                <li className="my-2">
+                  <a href="/migration_toolkit/latest">Migration Toolkit</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.DRIVES}
+                    className="fill-orange"
+                    width="22"
+                    height="22"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  Backup &amp; Recovery Tools
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/barman/">Barman</a>
+                </li>
+                <li className="my-2">
+                  <a href="/pgbackrest/">pgBackrest</a>
+                </li>
+                <li className="my-2">
+                  <a href="/bart/latest">Backup &amp; Recovery Tool</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.KUBERNETES}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">Kubernetes</h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/kubernetes">Cloud Native PostgreSQL Operator</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.MODULE}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">Extensions</h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <a href="/postgis/latest">PostGIS</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card rounded shadow-sm mb-4">
+            <div className="card-body">
+              <div className="d-flex align-items-center mb-3">
+                <div className="d-inline-block mr-3">
+                  <Icon
+                    iconName={iconNames.CODE_WRITING}
+                    className="fill-orange"
+                    width="24"
+                    height="24"
+                    circle={false}
+                    circleClassName="bg-blue-10"
+                    circleDiameter={30}
+                  />
+                </div>
+                <h4 className="d-inline-block card-title m-0">
+                  PostgreSQL Development
+                </h4>
+              </div>
+              <ul className="list-unstyled mb-0">
+                <li className="my-2">
+                  <span className="text-muted">Foreign Data Wrappers</span>
+                  <ul className="list-unstyled mb-0">
+                    <li className="my-2">
+                      <span className="text-muted small pr-2">∟</span>
+                      <a href="/hadoop_data_adapter/latest" className="px-2">
+                        Hadoop
+                      </a>
+                      <a href="/mongo_data_adapter/latest" className="px-2">
+                        Mongo
+                      </a>
+                      <a href="/mysql_data_adapter/latest" className="px-2">
+                        MySQL
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+                <li className="my-2">
+                  <span className="text-muted">EDB Connectors</span>
+                  <ul className="list-unstyled mb-0">
+                    <li className="my-2">
+                      <span className="text-muted small pr-2">∟</span>
+                      <a href="/jdbc_connector/latest" className="px-2">
+                        JDBC
+                      </a>
+                      <a href="/net_connector/latest" className="px-2">
+                        .NET
+                      </a>
+                      <a href="/ocl_connector/latest" className="px-2">
+                        OCL
+                      </a>
+                      <a href="/odbc_connector/latest" className="px-2">
+                        ODBC
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+                <li className="my-2">
+                  <a href="/pgbouncer/latest">pgBouncer</a>
+                </li>
+                <li className="my-2">
+                  <a href="/pgpool/latest">pgPool-II</a>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
 
-        <h2 className="mb-4 mt-5">EDB Products</h2>
-
-        <div className="card rounded shadow-sm p-2 mt-4">
-          <div className="card-body">
-            <div className="card-title d-flex justify-content-start align-items-start">
-              <a href="epas/12">
-                <Icon
-                  iconName={iconNames.EDB_EPAS}
-                  className="fill-orange"
-                  width="50"
-                  height="50"
-                  circle={true}
-                  circleClassName="bg-blue-10"
-                  circleDiameter={90}
-                />
-              </a>
-              <div className="ml-4">
-                <h3 className="balance-text">
-                  <a href="epas/latest">EDB Postgres Advanced Server</a>
-                </h3>
-                <p className="card-text">
-                  EDB Postgres Advanced Server gives you the best of both
-                  worlds—all the advantages of PostgreSQL, enhanced with
-                  mission-critical features that help you maintain greater
-                  consistency across your PostgreSQL deployments.
-                </p>
-              </div>
-            </div>
-
-            <hr className="mt-4 mb-1" />
-
-            <div className="row">
-              <div className="col-md">
-                <h3 className="mt-4">Getting Started</h3>
-                <a
-                  href="epas/latest/01_epas_inst_linux"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Installation Guide for Linux
-                </a>
-                <a
-                  href="epas/latest/02_epas_inst_windows"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Installation Guide for Windows
-                </a>
-                <a
-                  href="epas/latest/03_epas_rel_notes"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Release Notes
-                </a>
-                <a
-                  href="epas/latest/04_epas_upgrade_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Upgrade Guide
-                </a>
-              </div>
-
-              <div className="col-md">
-                <h3 className="mt-4">For Oracle Developers</h3>
-                <a
-                  href="epas/latest/07_epas_compat_ora_dev_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Database Compatibility for Oracle Developers (User Guide)
-                </a>
-                <a
-                  href="epas/latest/05_epas_compat_reference"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  SQL Reference
-                </a>
-                <a
-                  href="epas/latest/06_epas_compat_bip_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Built-in Package Guide
-                </a>
-                <a
-                  href="epas/latest/08_epas_compat_tools_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Tools and Utilities
-                </a>
-              </div>
-
-              <div className="col-md">
-                <h3 className="mt-4">User Guides</h3>
-                <a
-                  href="epas/latest/11_epas_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  EDB Postgres Advanced Server
-                </a>
-                <a
-                  href="epas/latest/09_ecpgplus_guide"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  ECPGPlus
-                </a>
-                <a
-                  href="epas/latest/10_language_pack"
-                  className="btn btn-link btn-block text-left p-0"
-                >
-                  Language Pack
-                </a>
-              </div>
-            </div>
-
-            <hr className="mt-4 mb-1" />
-
-            <h4 className="mt-4">Versions</h4>
-            <div className="btn-group" role="group">
-              <a
-                href="epas/latest"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                13 <span className="muted">&mdash; Latest</span>
-              </a>
-              <a
-                href="epas/12"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                12
-              </a>
-              <a
-                href="epas/11"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                11
-              </a>
-              <a
-                href="epas/10"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                10
-              </a>
-              <a
-                href="epas/9.6"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                9.6
-              </a>
-              <a
-                href="epas/9.5"
-                role="button"
-                className="btn btn-outline-primary px-4"
-              >
-                9.5
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <h2 className="mb-4 mt-5">EDB Postgres Tools</h2>
-
-        <div className="card-deck mt-4">
-          <div className="card rounded shadow-sm p-2">
-            <a href="pem/latest">
-              <Icon
-                iconName={iconNames.EDB_PEM}
-                className="fill-orange"
-                width="50"
-                height="50"
-                circle={true}
-                circleClassName="bg-blue-10 mt-4 mb-2"
-                circleDiameter={90}
-              />
-            </a>
-            <div className="card-body">
-              <h3 className="card-title balance-text">
-                <a href="pem/latest">
-                  Postgres
-                  <br data-owner="balance-text" />
-                  Enterprise
-                  <br data-owner="balance-text" />
-                  Manager
-                </a>
-              </h3>
-              <p className="card-text">
-                Monitor and manage multiple Postgres clusters from one
-                convenient GUI
-              </p>
-            </div>
-          </div>
-
-          <div className="card rounded shadow-sm p-2">
-            <a href="bart/latest">
-              <Icon
-                iconName={iconNames.EDB_BART}
-                className="fill-orange"
-                width="50"
-                height="50"
-                circle={true}
-                circleClassName="bg-blue-10 mt-4 mb-2"
-                circleDiameter={90}
-              />
-            </a>
-            <div className="card-body">
-              <h3 className="card-title balance-text">
-                <a href="bart/latest">
-                  Backup and
-                  <br data-owner="balance-text" />
-                  Recovery Tool
-                </a>
-              </h3>
-              <p className="card-text">Disaster Recovery for PostgreSQL</p>
-            </div>
-          </div>
-
-          <div className="card rounded shadow-sm p-2">
-            <a href="efm/latest">
-              <Icon
-                iconName={iconNames.EDB_EFM}
-                className="fill-orange"
-                width="50"
-                height="50"
-                circle={true}
-                circleClassName="bg-blue-10 mt-4 mb-2"
-                circleDiameter={90}
-              />
-            </a>
-            <div className="card-body">
-              <h3 className="card-title balance-text">
-                <a href="efm/latest">Failover Manager</a>
-              </h3>
-              <p className="card-text">High Availability for PostgreSQL</p>
-            </div>
-          </div>
-        </div>
+        <ul className="list-inline text-center mt-5">
+          <hr />
+          <IndexSubLink url="/postgresql-docs/postgresql/">
+            PostgreSQL Docs
+          </IndexSubLink>
+          <IndexSubLink url="/community/contribute/">Contribute</IndexSubLink>
+          <IndexSubLink url="/community/authoring/">Authoring</IndexSubLink>
+          <IndexSubLink url="https://support.enterprisedb.com">
+            Support
+          </IndexSubLink>
+          <IndexSubLink url="https://enterprisedb.com/contact">
+            Contact Us
+          </IndexSubLink>
+          <IndexSubLink url="/community/feedback/">Feedback?</IndexSubLink>
+          <DarkModeToggle />
+        </ul>
 
         <Footer />
       </MainContent>
