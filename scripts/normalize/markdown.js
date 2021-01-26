@@ -58,7 +58,7 @@ example:
   {
     const file = await read(mdxPath);
     let ast = await parser.parse(file);
-    //ast = await transformer.run(ast, file);
+    ast = await transformer.run(ast, file);
     const normalized = await compiler.stringify(ast);
 
     if (normalized !== file.contents.toString())
