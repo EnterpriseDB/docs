@@ -193,6 +193,7 @@ const DocTemplate = ({ data, pageContext }) => {
     githubFileLink,
     githubEditLink,
     githubIssuesLink,
+    isIndexPage,
   } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
@@ -203,6 +204,7 @@ const DocTemplate = ({ data, pageContext }) => {
     title: frontmatter.title,
     description: frontmatter.description,
     path: pagePath,
+    isIndexPage: isIndexPage,
     canonicalPath: determineCanonicalPath(
       !!data.potentialLatest,
       pageContext.potentialLatestPath,

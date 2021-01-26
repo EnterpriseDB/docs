@@ -7,6 +7,7 @@ import {
   KatacodaPageLink,
   KatacodaPanel,
   LayoutContext,
+  Link,
   TextBalancer,
 } from '../components';
 import { MDXProvider } from '@mdx-js/react';
@@ -23,6 +24,7 @@ const Layout = ({
   const { baseUrl, imageUrl, title } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
+  // console.log(url);
 
   const [dark, setDark] = useState(false);
 
@@ -70,6 +72,14 @@ const Layout = ({
       </Helmet>
       <MDXProvider
         components={{
+          a: ({ href, ...rest }) => (
+            <Link
+              to={href}
+              pageUrl={meta.path}
+              pageIsIndex={meta.isIndexPage}
+              {...rest}
+            />
+          ),
           table: props => (
             <div className="table-with-scroll">
               <table {...props} className="table" />
