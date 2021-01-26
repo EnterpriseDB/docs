@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'gatsby';
+import { Link } from './';
 
 const Title = ({ node }) =>
   node.navTitle ? node.navTitle : node.title ? node.title : 'TITLE NEEDED';
