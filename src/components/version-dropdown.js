@@ -1,8 +1,10 @@
 import React from 'react';
 import { Dropdown } from 'react-bootstrap';
+import usePathPrefix from '../hooks/use-path-prefix';
 
 const VersionDropdown = ({ versionArray, path }) => {
   const activeVersion = path.split('/')[2];
+  const pathPrefix = usePathPrefix();
 
   return (
     <Dropdown>
@@ -16,7 +18,7 @@ const VersionDropdown = ({ versionArray, path }) => {
       <Dropdown.Menu className="version-dropdown">
         {versionArray.map(version => (
           <Dropdown.Item
-            href={version.url}
+            href={pathPrefix + version.url}
             key={version.url}
             active={activeVersion === version.version}
             className={activeVersion === version.version && 'font-weight-bold'}

@@ -5,15 +5,16 @@ import {
   DarkModeToggle,
   Footer,
   Layout,
+  Link,
   MainContent,
   TopBar,
 } from '../components';
 
 const IndexSubLink = ({ url, children }) => (
   <li className="list-inline-item">
-    <a href={url} className="d-inline-block px-3 align-middle">
+    <Link to={url} className="d-inline-block px-3 align-middle">
       {children}
-    </a>
+    </Link>
   </li>
 );
 
@@ -52,14 +53,14 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/postgresql_journey/02_installing">
+                  <Link to="/postgresql_journey/02_installing">
                     Installing PostgreSQL
-                  </a>
+                  </Link>
                 </li>
                 <li className="my-2">
-                  <a href="/postgresql_journey/04_developing/connecting_to_postgres">
+                  <Link to="/postgresql_journey/04_developing/connecting_to_postgres">
                     Developing with PostgreSQL
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -83,10 +84,10 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/epas/latest">EDB Postgres Advanced Server</a>
+                  <Link to="/epas/latest">EDB Postgres Advanced Server</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/#">PostgreSQL</a>
+                  <Link to="/#">PostgreSQL</Link>
                 </li>
               </ul>
             </div>
@@ -112,10 +113,10 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/pem/latest">Postgres Enterprise Manager</a>
+                  <Link to="/pem/latest">Postgres Enterprise Manager</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/#">pgAdmin</a>
+                  <Link to="/#">pgAdmin</Link>
                 </li>
               </ul>
             </div>
@@ -141,16 +142,16 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/eprs/latest">EDB Replication Server</a>
+                  <Link to="/eprs/latest">EDB Replication Server</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/efm/latest">Failover Manager</a>
+                  <Link to="/efm/latest">Failover Manager</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/ark/latest">Ark Platform</a>
+                  <Link to="/ark/latest">Ark Platform</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/slony/latest">Slony</a>
+                  <Link to="/slony/latest">Slony</Link>
                 </li>
               </ul>
             </div>
@@ -176,10 +177,10 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/migration_portal/latest">Migration Portal</a>
+                  <Link to="/migration_portal/latest">Migration Portal</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/migration_toolkit/latest">Migration Toolkit</a>
+                  <Link to="/migration_toolkit/latest">Migration Toolkit</Link>
                 </li>
               </ul>
             </div>
@@ -205,13 +206,13 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/barman/">Barman</a>
+                  <Link to="/barman/">Barman</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/pgbackrest/">pgBackrest</a>
+                  <Link to="/pgbackrest/">pgBackrest</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/bart/latest">Backup &amp; Recovery Tool</a>
+                  <Link to="/bart/latest">Backup &amp; Recovery Tool</Link>
                 </li>
               </ul>
             </div>
@@ -235,7 +236,7 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/kubernetes">Cloud Native PostgreSQL Operator</a>
+                  <Link to="/kubernetes">Cloud Native PostgreSQL Operator</Link>
                 </li>
               </ul>
             </div>
@@ -259,7 +260,7 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
-                  <a href="/postgis/latest">PostGIS</a>
+                  <Link to="/postgis/latest">PostGIS</Link>
                 </li>
               </ul>
             </div>
@@ -289,15 +290,15 @@ export default () => (
                   <ul className="list-unstyled mb-0">
                     <li className="my-2">
                       <span className="text-muted small pr-2">∟</span>
-                      <a href="/hadoop_data_adapter/latest" className="px-2">
+                      <Link to="/hadoop_data_adapter/latest" className="px-2">
                         Hadoop
-                      </a>
-                      <a href="/mongo_data_adapter/latest" className="px-2">
+                      </Link>
+                      <Link to="/mongo_data_adapter/latest" className="px-2">
                         Mongo
-                      </a>
-                      <a href="/mysql_data_adapter/latest" className="px-2">
+                      </Link>
+                      <Link to="/mysql_data_adapter/latest" className="px-2">
                         MySQL
-                      </a>
+                      </Link>
                     </li>
                   </ul>
                 </li>
@@ -306,26 +307,26 @@ export default () => (
                   <ul className="list-unstyled mb-0">
                     <li className="my-2">
                       <span className="text-muted small pr-2">∟</span>
-                      <a href="/jdbc_connector/latest" className="px-2">
+                      <Link to="/jdbc_connector/latest" className="px-2">
                         JDBC
-                      </a>
-                      <a href="/net_connector/latest" className="px-2">
+                      </Link>
+                      <Link to="/net_connector/latest" className="px-2">
                         .NET
-                      </a>
-                      <a href="/ocl_connector/latest" className="px-2">
+                      </Link>
+                      <Link to="/ocl_connector/latest" className="px-2">
                         OCL
-                      </a>
-                      <a href="/odbc_connector/latest" className="px-2">
+                      </Link>
+                      <Link to="/odbc_connector/latest" className="px-2">
                         ODBC
-                      </a>
+                      </Link>
                     </li>
                   </ul>
                 </li>
                 <li className="my-2">
-                  <a href="/pgbouncer/latest">pgBouncer</a>
+                  <Link to="/pgbouncer/latest">pgBouncer</Link>
                 </li>
                 <li className="my-2">
-                  <a href="/pgpool/latest">pgPool-II</a>
+                  <Link to="/pgpool/latest">pgPool-II</Link>
                 </li>
               </ul>
             </div>

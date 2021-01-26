@@ -34,7 +34,7 @@ function linkTargetIndexer()
   }
 }
 
-function relativeLinkRewriter(index)
+function relativeLinkRewriter()
 {
   return transformer;
 
@@ -210,14 +210,6 @@ const index = {
   },
 };    
 
-function cleanseId(id)
-{
-  return slugger.slug(id.replace(/^[^#]*#+/, '')
-      .replace(/[_-]/g, "")
-      .replace(/\s+/g, ""))
-    .toLowerCase();
-}
-
 function generateRelativeUrl(source, dest, id)
 {
   let sourceChunks = source.split(path.sep),
@@ -233,14 +225,18 @@ function generateRelativeUrl(source, dest, id)
   // generate the results from both ends: walking up the tree from the source, down from the dest
   while (pos < sourceChunks.length || pos < destChunks.length)
   {
-    // base URI for normal mdx files is the directory it is in; 
-    // for index.mdx, the parent of the directory it is in
-    if (pos < sourceChunks.length && sourceChunks[pos] !== 'index.mdx')
-      result.unshift("..");
+    // base path in our system is always the directory the file is in, so no need to back up 
+    if (pos < sourceChunks.length-1 )
+        result.unshift("..");
     if (pos < destChunks.length && destChunks[pos] !== 'index.mdx')
       result.push(encodeURIComponent(destChunks[pos].replace(/\.mdx$/, '')))
     pos++;
   }
+  // there's a bit of potential ambiguity here: a bare fragment could refer to
+  // either an ID in the file where it is referenced, or in the index.mdx file
+  // next to it. To refer to the latter, a CWD path (single dot) is needed
+  if (!result.length && source !== dest)
+    result.push('.');
   // append ID and run away
   return result.join('/') + (result.length ? '/' : '') + "#" + encodeURIComponent(id);
 }
