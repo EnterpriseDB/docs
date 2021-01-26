@@ -214,16 +214,17 @@ const DocTemplate = ({ data, pageContext }) => {
   };
 
   return (
-    <Layout pageMeta={pageMeta} background="white">
+    <Layout pageMeta={pageMeta}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation footer={false} background="white">
+        <SideNavigation>
           <LeftNav
             navLinks={navLinks}
             path={path}
             pagePath={pagePath}
             versionArray={versionArray}
             navOrder={navOrder}
+            hideEmptySections={true}
           />
         </SideNavigation>
 
