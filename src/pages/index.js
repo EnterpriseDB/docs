@@ -1,14 +1,11 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
-import indexNavigation from '../constants/index-navigation';
 import Icon, { iconNames } from '../components/icon/';
 import {
   DarkModeToggle,
   Footer,
-  IndexLinks,
   Layout,
   MainContent,
-  SideNavigation,
   TopBar,
 } from '../components';
 
@@ -26,13 +23,12 @@ export default () => (
       description:
         'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
     }}
+    background="white"
   >
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
-      {/* <SideNavigation>
-        <IndexLinks indexLinkList={indexNavigation()} />
-      </SideNavigation> */}
-      <MainContent>
+      {/* TODO connect an updated IndexNavagation file to this index page */}
+      <MainContent searchNavLogo={true}>
         <h1 className="balance-text mb-5">EDB Docs</h1>
 
         <div className="card-columns mb-4">
@@ -90,7 +86,7 @@ export default () => (
                   <a href="/epas/latest">EDB Postgres Advanced Server</a>
                 </li>
                 <li className="my-2">
-                  <a href="#">PostgreSQL</a>
+                  <a href="/#">PostgreSQL</a>
                 </li>
               </ul>
             </div>
@@ -119,7 +115,7 @@ export default () => (
                   <a href="/pem/latest">Postgres Enterprise Manager</a>
                 </li>
                 <li className="my-2">
-                  <a href="#">pgAdmin</a>
+                  <a href="/#">pgAdmin</a>
                 </li>
               </ul>
             </div>
@@ -336,22 +332,24 @@ export default () => (
           </div>
         </div>
 
-        <ul className="list-inline text-center mt-5">
-          <hr />
-          <IndexSubLink url="/postgresql-docs/postgresql/">
-            PostgreSQL Docs
-          </IndexSubLink>
-          <IndexSubLink url="/community/contribute/">Contribute</IndexSubLink>
-          <IndexSubLink url="/community/authoring/">Authoring</IndexSubLink>
-          <IndexSubLink url="https://support.enterprisedb.com">
-            Support
-          </IndexSubLink>
-          <IndexSubLink url="https://enterprisedb.com/contact">
-            Contact Us
-          </IndexSubLink>
-          <IndexSubLink url="/community/feedback/">Feedback?</IndexSubLink>
+        <hr />
+        <div className="mt-5 d-flex justify-content-center">
+          <ul className="list-inline mr-3">
+            <IndexSubLink url="/postgresql-docs/postgresql/">
+              PostgreSQL Docs
+            </IndexSubLink>
+            <IndexSubLink url="/community/contribute/">Contribute</IndexSubLink>
+            <IndexSubLink url="/community/authoring/">Authoring</IndexSubLink>
+            <IndexSubLink url="https://support.enterprisedb.com">
+              Support
+            </IndexSubLink>
+            <IndexSubLink url="https://enterprisedb.com/contact">
+              Contact Us
+            </IndexSubLink>
+            <IndexSubLink url="/community/feedback/">Feedback?</IndexSubLink>
+          </ul>
           <DarkModeToggle />
-        </ul>
+        </div>
 
         <Footer />
       </MainContent>
