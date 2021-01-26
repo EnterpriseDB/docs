@@ -328,6 +328,12 @@ export default () => (
                 <li className="my-2">
                   <Link to="/pgpool/latest">pgPool-II</Link>
                 </li>
+                <li className="my-2">
+                  <Link to="/edb_plus/latest">EDB*Plus</Link>
+                </li>
+                <li className="my-2">
+                  <Link to="/language_pack/latest">Language Pack</Link>
+                </li>
               </ul>
             </div>
           </div>
