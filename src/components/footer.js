@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'gatsby';
 
 const TimestampLink = ({ timestamp, githubFileLink }) => {
   if (timestamp) {
@@ -32,21 +31,21 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
 const Footer = ({ timestamp, githubFileLink }) => (
   <footer className="mt-5 opacity-6 small text-center">
     <span className="text-muted mx-2">© EDB</span>·
-    <Link className="text-muted mx-2" to="/">
+    <a className="text-muted mx-2" href="/">
       GDPR
-    </Link>
+    </a>
     ·
-    <Link className="text-muted mx-2" to="/">
+    <a className="text-muted mx-2" href="/">
       Privacy Policy
-    </Link>
+    </a>
     ·
-    <Link className="text-muted mx-2" to="/">
+    <a className="text-muted mx-2" href="/">
       Terms of Use
-    </Link>
+    </a>
     ·
-    <Link className="text-muted mx-2" to="/">
+    <a className="text-muted mx-2" href="/">
       Trademarks
-    </Link>
+    </a>
     <TimestampLink timestamp={timestamp} githubFileLink={githubFileLink} />
   </footer>
 );

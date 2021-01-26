@@ -278,7 +278,7 @@ const splitNodeContent = nodes => {
 
 /********** Gatsby config *********/
 module.exports = {
-  pathPrefix: '/docs2',
+  pathPrefix: isBuild ? '/docs2' : '',
   siteMetadata: {
     title: 'EDB Docs',
     baseUrl: 'https://enterprisedb.com/docs2',

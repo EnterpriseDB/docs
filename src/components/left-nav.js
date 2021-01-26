@@ -1,11 +1,9 @@
 import React from 'react';
-import { Link } from 'gatsby';
-import PdfDownload from '../components/pdf-download';
 import Icon, { iconNames } from './icon/';
 import VersionDropdown from './version-dropdown';
 import { products } from '../constants/products';
 import { filterAndSortLinks, getBaseUrl } from '../constants/utils';
-import { BackButton, TreeNode } from './';
+import { Link, PdfDownload, BackButton, TreeNode } from './';
 
 const productIcon = path => {
   const product = path.split('/')[1];
@@ -110,6 +108,7 @@ const LeftNav = ({
     ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
     : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
   const tree = orderTree(makeTree(newList), navOrder);
+  // console.log(pagePath);
 
   return (
     <ul className="list-unstyled mt-0">
