@@ -30,10 +30,10 @@ export default () => (
     <Container fluid className="p-0 d-flex bg-white">
       {/* TODO connect an updated IndexNavagation file to this index page */}
       <MainContent searchNavLogo={true}>
-        <h1 className="balance-text mb-5">EDB Docs</h1>
+        <h1 className="balance-text mb-5">enterprisedb.com/docs</h1>
 
         <div className="card-columns mb-4">
-          <div className="card rounded shadow-sm mb-4">
+          {/* <div className="card rounded shadow-sm mb-4">
             <div className="card-body">
               <div className="d-flex align-items-center mb-3">
                 <div className="d-inline-block mr-3">
@@ -52,19 +52,19 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/postgresql_journey/02_installing">
                     Installing PostgreSQL
                   </Link>
                 </li>
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/postgresql_journey/04_developing/connecting_to_postgres">
                     Developing with PostgreSQL
                   </Link>
                 </li>
               </ul>
             </div>
-          </div>
+          </div> */}
 
           <div className="card rounded shadow-sm mb-4">
             <div className="card-body">
@@ -83,30 +83,54 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Databases</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
-                  <Link to="/epas/latest">EDB Postgres Advanced Server</Link>
-                  <br></br>
-                  <span className="text-muted small ">∟</span>
-                  <Link to="/epas/latest" className="px-1">
-                    13
+                <li className="my-3">
+                  <Link to="/epas/latest" className="font-weight-bold">
+                    EDB Postgres Advanced Server
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/epas/latest" className="px-1">
+                    13 — Latest
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/epas/12" className="px-1">
                     12
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/epas/11" className="px-1">
                     11
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/epas/10" className="px-1">
                     10
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/epas/9.6" className="px-1">
                     9.6
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/epas/9.5" className="px-1">
                     9.5
                   </Link>
                 </li>
-                <li className="my-2">
+                <li>
                   <Link to="/#">PostgreSQL</Link>
                 </li>
               </ul>
@@ -132,10 +156,10 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/pem/latest">Postgres Enterprise Manager</Link>
                 </li>
-                <li className="my-2">
+                <li>
                   <Link to="/#">pgAdmin</Link>
                 </li>
               </ul>
@@ -161,16 +185,16 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/eprs/latest">EDB Replication Server</Link>
                 </li>
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/efm/latest">Failover Manager</Link>
                 </li>
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/ark/latest">Ark Platform</Link>
                 </li>
-                <li className="my-2">
+                <li>
                   <Link to="/slony/latest">Slony</Link>
                 </li>
               </ul>
@@ -196,10 +220,10 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/migration_portal/latest">Migration Portal</Link>
                 </li>
-                <li className="my-2">
+                <li>
                   <Link to="/migration_toolkit/latest">Migration Toolkit</Link>
                 </li>
               </ul>
@@ -225,19 +249,27 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/barman/">Barman</Link>
                 </li>
-                <li className="my-2">
+                <li className="my-3">
                   <Link to="/pgbackrest/">pgBackrest</Link>
                 </li>
-                <li className="my-2">
-                  <Link to="/bart/latest">Backup &amp; Recovery Tool</Link>
-                  <br></br>
-                  <span className="text-muted small">∟</span>
-                  <Link to="/bart/latest" className="px-1">
-                    2.6.1
+                <li>
+                  <Link to="/bart/latest" className="font-weight-bold">
+                    Backup &amp; Recovery Tool
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/bart/latest/" className="px-1">
+                    2.6.1 — Latest
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
                   <Link to="/bart/2.6/" className="px-1">
                     2.6
                   </Link>
@@ -263,7 +295,7 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Kubernetes</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li>
                   <Link to="/kubernetes">Cloud Native PostgreSQL Operator</Link>
                 </li>
               </ul>
@@ -287,7 +319,7 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Extensions</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
+                <li>
                   <Link to="/postgis/latest">PostGIS</Link>
                 </li>
               </ul>
@@ -308,53 +340,145 @@ export default () => (
                     circleDiameter={30}
                   />
                 </div>
-                <h4 className="d-inline-block card-title m-0">
-                  PostgreSQL Development
-                </h4>
+                <h4 className="d-inline-block card-title m-0">Integration</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-2">
-                  <span className="text-muted">Foreign Data Wrappers</span>
-                  <br></br>
-                  <span className="text-muted small ">∟</span>
+                {/* <span className="font-weight-bold">Foreign Data Wrappers</span> */}
+                <li className="my-3">
                   <Link to="/hadoop_data_adapter/latest" className="px-1">
-                    Hadoop
+                    Hadoop Data Adapter
                   </Link>
-                  <Link to="/mongo_data_adapter/latest" className="px-1">
-                    Mongo
-                  </Link>
-                  <Link to="/mysql_data_adapter/latest" className="px-1">
-                    MySQL
-                  </Link>
-                </li>
-                <li className="my-2">
-                  <span className="text-muted">EDB Connectors</span>
                   <br></br>
-                  <span className="text-muted small ">∟</span>
-                  <Link to="/jdbc_connector/latest" className="px-1">
-                    JDBC
-                  </Link>
-                  <Link to="/net_connector/latest" className="px-1">
-                    .NET
-                  </Link>
-                  <Link to="/ocl_connector/latest" className="px-1">
-                    OCL
-                  </Link>
-                  <Link to="/odbc_connector/latest" className="px-1">
-                    ODBC
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                </li>
+                <li className="my-3">
+                  <Link to="/mongo_data_adapter/latest" className="px-1">
+                    Mongo Data Adapter
                   </Link>
                 </li>
-                <li className="my-2">
+                <li className="my-3">
+                  <Link to="/mysql_data_adapter/latest" className="px-1">
+                    MySQL Data Adapter
+                  </Link>
+                </li>
+                <li className="my-3">
+                  <Link
+                    to="/jdbc_connector/latest"
+                    className="px-1 font-weight-bold"
+                  >
+                    JDBC Connector
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/jdbc_connector/latest">42.2.12.13 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/jdbc_connector/42.2.12.1">42.2.12.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/jdbc_connector/42.2.9.1">42.2.9.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/jdbc_connector/42.2.8.1">42.2.8.1</Link>
+                </li>
+                <li className="my-3">
+                  <Link to="/net_connector/latest" className="font-weight-bold">
+                    .NET Connector
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/latest">4.1.6.1 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/4.1.5.1">4.1.5.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/4.1.3.1">4.1.3.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/4.0.10.2">4.0.10.2</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/4.0.10.1">4.0.10.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/net_connector/4.0.6.1">4.0.6.1</Link>
+                </li>
+                <li className="my-3">
+                  <Link to="/ocl_connector/latest" className="font-weight-bold">
+                    OCL Connector
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/ocl_connector/latest">13.1.4.2 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/ocl_connector/13.1.4.1">13.1.4.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/ocl_connector/12.1.2.1">12.1.2.1</Link>
+                </li>
+                <li className="my-3">
+                  <Link
+                    to="/odbc_connector/latest"
+                    className="font-weight-bold"
+                  >
+                    ODBC Connector
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/odbc_connector/latest">12.2.0.2 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/odbc_connector/12.2.0.1">12.2.0.1</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/odbc_connector/12.0.0.2">12.0.0.2</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/odbc_connector/12.0.0.1">12.0.0.1</Link>
+                </li>
+                <li className="my-3">
                   <Link to="/pgbouncer/latest">pgBouncer</Link>
                 </li>
-                <li className="my-2">
+                <li>
                   <Link to="/pgpool/latest">pgPool-II</Link>
-                </li>
-                <li className="my-2">
-                  <Link to="/edb_plus/latest">EDB*Plus</Link>
-                </li>
-                <li className="my-2">
-                  <Link to="/language_pack/latest">Language Pack</Link>
                 </li>
               </ul>
             </div>

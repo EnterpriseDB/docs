@@ -518,6 +518,182 @@ export const productStubs = {
       ],
     },
   },
+  net_connector: {
+    '4.1.5.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: '.NET Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-net-connector/user-guides/net-guide/4.1.5.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/net/4.1.5.1/edb_net.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '4.1.3.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: '.NET Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-net-connector/user-guides/net-guide/4.1.3.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/net/4.1.3.1/edb_net.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '4.0.10.2': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: '.NET Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-net-connector/user-guides/net-guide/4.0.10.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/net/4.0.10.2/edb_net.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '4.0.10.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: '.NET Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-net-connector/user-guides/net-guide/4.0.10.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/net/4.0.10.1/edb_net.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '4.0.6.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: '.NET Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-net-connector/user-guides/net-guide/4.0.6.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/net/4.0.6.1/edb_net.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  ocl_connector: {
+    '13.1.4.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'OCL Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-ocl-connector/user-guides/ocl-guide/13.1.4.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/ocl/13.1.4.1/edb_ocl.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '12.1.2.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'OCL Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-ocl-connector/user-guides/ocl-guide/12.1.2.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/ocl/12.1.2.1/edb_ocl.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  odbc_connector: {
+    '12.2.0.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'ODBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-odbc-connector/user-guides/odbc-guide/12.2.0.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/odbc/12.2.0.1/edb_odbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '12.0.0.2': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'ODBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-odbc-connector/user-guides/odbc-guide/12.0.0.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/odbc/12.0.0.2/edb_odbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '12.0.0.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'ODBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-odbc-connector/user-guides/odbc-guide/12.0.0.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/odbc/12.0.0.1/edb_odbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
   epas: {
     '12': {
       sections: [
