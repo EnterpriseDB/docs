@@ -83,7 +83,7 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Databases</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3 border-bottom pb-3">
+                <li className="">
                   <Link to="/epas/latest" className="font-weight-bold">
                     EDB Postgres Advanced Server
                   </Link>
@@ -130,9 +130,9 @@ export default () => (
                     9.5
                   </Link>
                 </li>
-                <li>
+                {/* <li>
                   <Link to="/#">PostgreSQL</Link>
-                </li>
+                </li> */}
               </ul>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3 border-bottom pb-3">
+                <li className="">
                   <Link to="/pem/latest" className="font-weight-bold">
                     Postgres Enterprise Manager
                   </Link>
@@ -221,9 +221,9 @@ export default () => (
                   </span>
                   <Link to="/pem/7.6">7.6</Link>
                 </li>
-                <li>
+                {/* <li>
                   <Link to="/#">pgAdmin</Link>
-                </li>
+                </li> */}
               </ul>
             </div>
           </div>
@@ -247,13 +247,55 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3">
-                  <Link to="/eprs/latest">EDB Replication Server</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/eprs/latest" className="font-weight-bold">
+                    EDB Replication Server
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/eprs/latest">6.2 — Latest</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
                   <Link to="/efm/latest" className="font-weight-bold">
                     Failover Manager
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/latest">4.10 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/4.0">4.0</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/3.9">3.9</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/3.8">3.8</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/3.7">3.7</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/3.6">3.6</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/efm/3.5">3.5</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
                   <Link to="/ark/latest" className="font-weight-bold">
@@ -266,7 +308,14 @@ export default () => (
                   <Link to="/ark/latest">3.5 — Latest</Link>
                 </li>
                 <li>
-                  <Link to="/slony/latest">Slony</Link>
+                  <Link to="/slony/latest" className="font-weight-bold">
+                    Slony
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/slony/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>
@@ -291,11 +340,41 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3">
-                  <Link to="/migration_portal/latest">Migration Portal</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link
+                    to="/migration_portal/latest"
+                    className="font-weight-bold"
+                  >
+                    Migration Portal
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/migration_portal/latest">3.0.1 — Latest</Link>
                 </li>
                 <li>
-                  <Link to="/migration_toolkit/latest">Migration Toolkit</Link>
+                  <Link
+                    to="/migration_toolkit/latest"
+                    className="font-weight-bold"
+                  >
+                    Migration Toolkit
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/migration_toolkit/latest">54.0.0 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/migration_toolkit/53.0.2">53.0.2</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/migration_toolkit/53.0.1">53.0.1</Link>
                 </li>
               </ul>
             </div>
@@ -320,11 +399,15 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3">
-                  <Link to="/barman/">Barman</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/barman/" className="font-weight-bold">
+                    Barman
+                  </Link>
                 </li>
-                <li className="my-3">
-                  <Link to="/pgbackrest/">pgBackrest</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/pgbackrest/" className="font-weight-bold">
+                    pgBackrest
+                  </Link>
                 </li>
                 <li>
                   <Link to="/bart/latest" className="font-weight-bold">
@@ -367,7 +450,9 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/kubernetes">Cloud Native PostgreSQL Operator</Link>
+                  <Link to="/kubernetes" className="font-weight-bold">
+                    Cloud Native PostgreSQL Operator
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -391,7 +476,14 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/postgis/latest">PostGIS</Link>
+                  <Link to="/postgis/latest" className="font-weight-bold">
+                    PostGIS
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/postgis/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>
@@ -415,26 +507,56 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 {/* <span className="font-weight-bold">Foreign Data Wrappers</span> */}
-                <li className="my-3">
-                  <Link to="/hadoop_data_adapter/latest" className="px-1">
+                <li className="my-3 border-bottom pb-3">
+                  <Link
+                    to="/hadoop_data_adapter/latest"
+                    className="font-weight-bold"
+                  >
                     Hadoop Data Adapter
                   </Link>
                   <br></br>
                   <span className="text-muted small position-relative top-minus-3">
                     ∟
                   </span>
+                  <Link to="/hadoop_data_adapter/latest">2.0.7 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/hadoop_data_adapter/2.0.5">2.0.5</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/hadoop_data_adapter/2.0">2.0</Link>
                 </li>
-                <li className="my-3">
-                  <Link to="/mongo_data_adapter/latest" className="px-1">
+                <li className="my-3 border-bottom pb-3">
+                  <Link
+                    to="/mongo_data_adapter/latest"
+                    className="font-weight-bold"
+                  >
                     Mongo Data Adapter
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/mongo_data_adapter/latest">5.2.8 — Latest</Link>
                 </li>
-                <li className="my-3">
-                  <Link to="/mysql_data_adapter/latest" className="px-1">
+                <li className="my-3 border-bottom pb-3">
+                  <Link
+                    to="/mysql_data_adapter/latest"
+                    className="font-weight-bold"
+                  >
                     MySQL Data Adapter
                   </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/mysql_data_adapter/latest">2.5.5 — Latest</Link>
                 </li>
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link
                     to="/jdbc_connector/latest"
                     className="px-1 font-weight-bold"
@@ -462,7 +584,7 @@ export default () => (
                   </span>
                   <Link to="/jdbc_connector/42.2.8.1">42.2.8.1</Link>
                 </li>
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link to="/net_connector/latest" className="font-weight-bold">
                     .NET Connector
                   </Link>
@@ -497,7 +619,7 @@ export default () => (
                   </span>
                   <Link to="/net_connector/4.0.6.1">4.0.6.1</Link>
                 </li>
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link to="/ocl_connector/latest" className="font-weight-bold">
                     OCL Connector
                   </Link>
@@ -517,7 +639,7 @@ export default () => (
                   </span>
                   <Link to="/ocl_connector/12.1.2.1">12.1.2.1</Link>
                 </li>
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link
                     to="/odbc_connector/latest"
                     className="font-weight-bold"
@@ -545,11 +667,25 @@ export default () => (
                   </span>
                   <Link to="/odbc_connector/12.0.0.1">12.0.0.1</Link>
                 </li>
-                <li className="my-3">
-                  <Link to="/pgbouncer/latest">pgBouncer</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/pgbouncer/latest" className="font-weight-bold">
+                    pgBouncer
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pgbouncer/latest">1.0 — Latest</Link>
                 </li>
                 <li>
-                  <Link to="/pgpool/latest">pgPool-II</Link>
+                  <Link to="/pgpool/latest" className="font-weight-bold">
+                    pgPool-II
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pgpool/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>

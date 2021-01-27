@@ -2142,4 +2142,95 @@ export const productStubs = {
       ],
     },
   },
+  hadoop_data_adapter: {
+    '2.0.5': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-hadoop-data-adapter/user-guides/user-guide/2.0.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/hdfs_fdw/2.0.5/edb_hdfs_fdw.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.0': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-hadoop-data-adapter/user-guides/user-guide/2.0/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/hdfs_fdw/2.0/EDB_Postgres_Hadoop_Data_Adapters_Guide_v2.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  migration_toolkit: {
+    '53.0.2': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-migration-toolkit/user-guides/user-guide/53.0.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/mtk/53.0.2/edb_migration_toolkit.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '53.0.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-migration-toolkit/user-guides/user-guide/53.0.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/mtk/53.0.1/edb_migration_toolkit.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  eprs: {
+    '6.2': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-replication-server/user-guides/user-guide/6.2/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/eprs/6.2/EDB_Postgres_Replication_Server_Users_Guide_v6.2.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
