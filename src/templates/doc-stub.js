@@ -1,15 +1,13 @@
 import React from 'react';
 import { Container, Row, Col, Dropdown, DropdownButton } from 'react-bootstrap';
-import { graphql, Link } from 'gatsby';
+import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
-  DevOnly,
   DevFrontmatter,
   Footer,
   Layout,
   LeftNav,
   MainContent,
-  PrevNext,
   SideNavigation,
   TableOfContents,
   TopBar,
@@ -73,81 +71,12 @@ const getNavOrder = (product, version, leftNavs) => {
   return null;
 };
 
-const convertOrderToObjects = (navOrder, navLinks) => {
-  let result = [];
-  let navObject = { title: null, guides: [] };
-  for (let item of navOrder) {
-    if (!item.path && item.title) {
-      if (navObject.guides.length > 0) {
-        result.push({ ...navObject });
-      }
-      navObject = { title: item.title, guides: [] };
-    } else if (item.path) {
-      navObject.guides.push(getLinkItemFromPath(item.path, navLinks));
-    }
-  }
-  result.push({ ...navObject });
-
-  return result;
-};
-
-const getLinkItemFromPath = (path, navLinks) => {
-  for (let item of navLinks) {
-    const linkPath = item.fields.path;
-    if (linkPath.includes(path) && linkPath.split('/').length === 4) {
-      return item;
-    }
-  }
-  console.error('No page found for ' + path + ' from left-navs');
-  return null;
-};
-
 const determineCanonicalPath = (hasLatest, latestPath) => {
   if (hasLatest) {
     return latestPath;
   } // latest will also have hasLatest=true
   return null;
 };
-
-const Sections = ({ sections }) => (
-  <>
-    {sections.map(section => (
-      <Section section={section} key={section.title} />
-    ))}
-  </>
-);
-
-const Section = ({ section }) => (
-  <div className="card-deck my-4" key={section.title}>
-    <div className="card rounded shadow-sm p-2">
-      <div className="card-body">
-        <h3 className="card-title balance-text">{section.title}</h3>
-        {section.guides.map(guide =>
-          guide ? (
-            <p className="card-text" key={`${guide.frontmatter.title}`}>
-              <Link
-                to={guide.fields.path}
-                className="btn btn-link btn-block text-left p-0"
-              >
-                {guide.frontmatter.navTitle || guide.frontmatter.title}
-              </Link>
-              {/* <div className="text-small">
-                <span>{guide.frontmatter.description || guide.excerpt}
-                </span>
-              </div> */}
-            </p>
-          ) : (
-            <DevOnly key={Math.random()}>
-              <span className="badge badge-light">
-                Link Missing! Check left-navs.js
-              </span>
-            </DevOnly>
-          ),
-        )}
-      </div>
-    </div>
-  </div>
-);
 
 const FeedbackDropdown = ({ githubIssuesLink }) => (
   <DropdownButton
@@ -182,12 +111,9 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
   </DropdownButton>
 );
 
-const LogoSidebar = () => {};
-
 const DocTemplate = ({ data, pageContext }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
-  const depth = path.split('/').length;
   const {
     pagePath,
     navLinks,
@@ -200,8 +126,6 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
-  const sections =
-    navOrder && depth === 3 ? convertOrderToObjects(navOrder, navLinks) : null;
   const pageMeta = {
     title: frontmatter.title,
     description: frontmatter.description,
