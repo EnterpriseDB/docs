@@ -3,33 +3,21 @@ import { Link } from './';
 import { Row, Col } from 'react-bootstrap';
 import { productStubs } from '../constants/product-stubs';
 import Icon from './icon';
-import isAbsoluteUrl from 'is-absolute-url';
 
 const StubLink = ({ link }) => {
-  const pdf = link.href.trim().endsWith('.pdf');
-  const external = isAbsoluteUrl(link.href);
-
   return (
     <li>
       <Link to={link.href}>{link.text}</Link>
-      {external && (
-        <Icon
-          iconName="export"
-          className="fill-blue ml-2 position-relative top-minus-2"
-          width="16"
-          height="auto"
-        />
-      )}
-      {pdf && (
-        <span>
+      {link.pdf && (
+        <Link to={link.pdf} className="ml-2">
           PDF
           <Icon
             iconName="PDF"
-            className="fill-orange ml-2 position-relative top-minus-2"
+            className="fill-orange ml-1 position-relative top-minus-2"
             width="16"
             height="auto"
           />
-        </span>
+        </Link>
       )}
     </li>
   );
