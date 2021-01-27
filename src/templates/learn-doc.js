@@ -27,6 +27,7 @@ export const query = graphql`
           scenario
           codelanguages
         }
+        iconName
       }
       fields {
         path
@@ -76,6 +77,8 @@ const Tiles = ({ mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
+  const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
+
   const {
     pagePath,
     navLinks,
@@ -85,24 +88,26 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage,
   } = pageContext;
   const pageMeta = {
-    title: mdx.frontmatter.title,
-    description: mdx.frontmatter.description,
+    title: title,
+    description: description,
     path: pagePath,
     isIndexPage: isIndexPage,
   };
 
   const showToc = !!mdx.tableOfContents.items;
-  const katacodaPanelData = mdx.frontmatter.katacodaPanel;
 
-  const iconName = (
+  // Determine side bar icon. This might need some future rework.
+  const finalIconName = (
     rawIndexNavigation
       .map(al => al.links)
       .flat()
-      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+      .find(link => mdx.fields.path.includes(link.url)) || {
+      iconName: iconName,
+    }
   ).iconName;
 
   return (
-    <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanelData}>
+    <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
@@ -110,12 +115,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
-            iconName={iconName}
+            iconName={finalIconName}
           />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">{mdx.frontmatter.title}</h1>
+            <h1 className="balance-text">{title}</h1>
             <a
               href={githubEditLink || '#'}
               className="btn btn-sm btn-primary px-4 text-nowrap"
