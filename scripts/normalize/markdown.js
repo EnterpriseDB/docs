@@ -19,9 +19,11 @@ const noEscapeImageAlt = require('./lib/no-escape-image-alt')
   if (!process.argv[2])
   {
     console.log(`usage:
-  ${process.argv[1]} "glob pattern"
+  ${process.argv[1]} <glob pattern index> [glob pattern rewrite]
+
+  (if no rewrite pattern is given, all indexed files will be rewritten)
 example:
-  ${process.argv[1]} "product_docs/**/*.mdx"`);
+  ${process.argv[1]} "product_docs/**/*.mdx" product_docs/docs/pem/8.0/index.mdx`);
     return;
   }
 
@@ -43,10 +45,11 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(noEscapeImageAlt)
 
-  const mdxes = await glob(process.argv[2]);
+    const mdxesToIndex = await glob(process.argv[2]);
+    const mdxesToWrite = (process.argv[3] && await glob(process.argv[3])) || mdxesToIndex;
   
   // indexing 
-  for (const mdxPath of mdxes)
+  for (const mdxPath of mdxesToIndex)
   {
     const file = await read(mdxPath);
     const ast = await parser.parse(file);
@@ -54,11 +57,11 @@ example:
   }
 
   // analysis / rewriting
-  for (const mdxPath of mdxes)
+  for (const mdxPath of mdxesToWrite)
   {
     const file = await read(mdxPath);
     let ast = await parser.parse(file);
-    //ast = await transformer.run(ast, file);
+    ast = await transformer.run(ast, file);
     const normalized = await compiler.stringify(ast);
 
     if (normalized !== file.contents.toString())
