@@ -21,6 +21,7 @@ import PrevNext from './prev-next';
 import SearchNavigationLinks from './search-navigation-links';
 import SearchNavigation from './search-navigation';
 import SideNavigation from './side-navigation';
+import StubCards from './stub-cards';
 import TableOfContents from './table-of-contents';
 import TextBalancer from './text-balancer';
 import TopBar from './top-bar';
@@ -51,6 +52,7 @@ export {
   SearchNavigationLinks,
   SearchNavigation,
   SideNavigation,
+  StubCards,
   TableOfContents,
   TextBalancer,
   TopBar,
