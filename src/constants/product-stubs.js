@@ -8,11 +8,11 @@ export const productStubs = {
           links: [
             {
               text: 'Installation Guide for Linux',
-              href: 'https://www.google.com',
+              href: '/test',
             },
             {
               text: 'Installation Guide for Windows',
-              href: 'https://www.google.com',
+              href: '/test',
             },
             { text: 'Release Notes', href: 'https://www.google.com' },
             { text: 'Upgrade Guide', href: 'https://www.google.com' },
@@ -51,7 +51,7 @@ export const productStubs = {
             {
               text:
                 'Database Compatibility for Oracle Developers Reference Guide',
-              href: 'https://www.google.com',
+              href: 'https://www.google.com/asdasda.pdf',
             },
           ],
         },
