@@ -9,7 +9,10 @@ This repo contains the Gatsby application that powers EDB's documentation websit
 ## Installation
 1. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
 2. Clone the repo with GitHub desktop, or on the command line with `git clone https://github.com/EnterpriseDB/docs.git`. If you do not have git installed, install it with (MacOS) `brew install git`.
+    - If you have not set up your local git with GitHub, you may want to setup an SSH key on your computer to authenticate you to GitHub. See [GitHub's SSH Docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for help doing that!
 3. Install Node.js. We're currently using Node.js version 14, the long term support (LTS) release. You can install the latest version 14 LTS release at [nodejs.org](https://nodejs.org/en/download/).
+    - You can verify your node version by running `node -v` in the project directory.
+    - If you want a simpler way to manage multiple versions of node, you can use Node Version Manager (AKA nvm) to install the version docs requires. Follow the directions [here](https://github.com/nvm-sh/nvm#installing-and-updating) to install NVM. Then run `nvm install` in the project directory, followed by `nvm use` to use the version specified in the project's `.nvmrc` file.
 4. Ensure you have Python 3.6 or higher by running `python3 -V`. This should return a version number. If your version is less than 3.6, or you get an error, install Python with (MacOS) `brew install python3`. Python is not needed for the core Gatsby system, but is required by several source scripts.
 5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`. Gatsby is the software that runs the docs site, and Yarn is an alternative package manager which will replace `npm` for this project.
 6. Install all required packages by simply running `yarn`.
