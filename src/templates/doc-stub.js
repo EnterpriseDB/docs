@@ -213,6 +213,8 @@ const DocTemplate = ({ data, pageContext }) => {
     ),
   };
 
+  const showToc = !!tableOfContents.items;
+
   return (
     <Layout pageMeta={pageMeta}>
       <TopBar />
@@ -248,9 +250,15 @@ const DocTemplate = ({ data, pageContext }) => {
           </div>
 
           <ContentRow>
-            <Col xs={12}>
+            <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{body}</MDXRenderer>
             </Col>
+
+            {showToc && (
+              <Col xs={3}>
+                <TableOfContents toc={tableOfContents.items} />
+              </Col>
+            )}
           </ContentRow>
 
           <DevFrontmatter frontmatter={frontmatter} />
