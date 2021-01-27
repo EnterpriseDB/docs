@@ -4,18 +4,33 @@ import { Row, Col } from 'react-bootstrap';
 import { productStubs } from '../constants/product-stubs';
 import Icon from './icon';
 
+const PdfIcon = ({ className }) => (
+  <Icon
+    iconName="PDF"
+    className={`fill-orange position-relative top-minus-2 ${className}`}
+    width="16"
+    height="auto"
+  />
+);
+
 const StubLink = ({ link }) => {
+  const primaryLink = link.href ? link.href : link.pdf;
+  const primaryLinkIsPdf = !link.href;
+
+  if (!primaryLink) {
+    return <>{link.text}</>;
+  }
+
   return (
     <li>
-      <Link to={link.href}>{link.text}</Link>
-      {link.pdf && (
+      <Link to={primaryLink}>
+        {link.text}
+        {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
+      </Link>
+
+      {link.pdf && link.href && (
         <Link to={link.pdf} className="ml-2">
-          <Icon
-            iconName="PDF"
-            className="fill-orange ml-1 position-relative top-minus-2"
-            width="16"
-            height="auto"
-          />
+          <PdfIcon />
         </Link>
       )}
     </li>
