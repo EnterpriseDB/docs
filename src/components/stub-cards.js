@@ -10,7 +10,6 @@ const StubLink = ({ link }) => {
       <Link to={link.href}>{link.text}</Link>
       {link.pdf && (
         <Link to={link.pdf} className="ml-2">
-          PDF
           <Icon
             iconName="PDF"
             className="fill-orange ml-1 position-relative top-minus-2"
