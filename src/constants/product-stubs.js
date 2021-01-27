@@ -1002,6 +1002,7 @@ export const productStubs = {
             },
             {
               text: 'Release Notes',
+              href: 'https://enterprisedb.com',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/EDBPostgresAdvancedServer9.6ReleaseNotes.pdf',
             },
@@ -1098,6 +1099,868 @@ export const productStubs = {
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/9.5/toc.html',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.5/EDB_Postgres_Enterprise_Guide_v9.5.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  pem: {
+    '7.16': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Linux Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/linux-installation-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/pem_inst_guide_linux.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_pgbouncer.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_upgrade.pdf',
+            },
+            {
+              text: 'Windows Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/windows-installation-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/pem_inst_guide_windows.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.16/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Administrators Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/administrators-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_admin.pdf',
+            },
+            {
+              text: 'Agent User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_agent.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_bart.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_ent_feat.pdf',
+            },
+            {
+              text: 'PEM Rest API	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/pem-rest-api/7.16/api.html',
+              pdf: null,
+            },
+            {
+              text: 'SQL Profiler Configuration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/sql-profiler-configuration-guide/7.16/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.16/edb_pem_sql_profiler.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.15': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Linux Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/linux-installation-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/pem_inst_guide_linux.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_pgbouncer.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_upgrade.pdf',
+            },
+            {
+              text: 'Windows Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/windows-installation-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/pem_inst_guide_windows.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.15/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Administrators Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/administrators-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_admin.pdf',
+            },
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_agent.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_bart.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_ent_feat.pdf',
+            },
+            {
+              text: 'PEM Rest API',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/pem-rest-api/7.15/api.html',
+              pdf: null,
+            },
+            {
+              text: 'SQL Profiler Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/sql-profiler-configuration-guide/7.15/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.15/edb_pem_sql_profiler.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.14': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Linux Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/linux-installation-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/pem_inst_guide_linux.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_pgbouncer.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_upgrade.pdf',
+            },
+            {
+              text: 'Windows Installation Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/windows-installation-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/pem_inst_guide_windows.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.14/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Administrators Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/administrators-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_admin.pdf',
+            },
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_agent.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_bart.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_ent_feat.pdf',
+            },
+            {
+              text: 'SQL Profiler Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/sql-profiler-configuration-guide/7.14/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.14/edb_pem_sql_profiler.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.13': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Administrators Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/administrators-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_administrators_guide.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_installation_guide.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_PgBouncer_configuration_guide.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_upgrade_guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_agent_user_guide.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.13/index.html',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.13/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.13/PEM_enterprise_features_guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.12': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_getting_started_guide.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_installation_guide.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_pgbouncer_configuration_guide.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_upgrade_guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.12/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_agent_user_guide.pdf',
+            },
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_Ark_management_guide.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/BART_management_features_guide.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.12/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.12/PEM_enterprise_features_guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.11': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_getting_started_guide.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_installation_guide.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_pgbouncer_configuration_guide.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_upgrade_guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_agent_user_guide.pdf',
+            },
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_Ark_management_guide.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/BART_management_features_guide.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.11/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.11/PEM_enterprise_features_guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.10': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_getting_started_guide.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_installation_guide.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_pgbouncer_configuration_guide.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_upgrade_guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_agent_user_guide.pdf',
+            },
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_Ark_management_guide.pdf',
+            },
+            {
+              text: 'BART Management Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/bart-management-features-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/BART_management_features_guide.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.10/PEM_enterprise_features_guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.9': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/pem_gsg/PEM_getting_started_guide.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/PEM_installation_guide.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/pem_pgbouncer_configuration_guide/PEM_pgBouncer_configuration.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/PEM_upgrade_guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Agent User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/agent-user-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/PEM_agent_user_guide.pdf',
+            },
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/pem_ark_guide/PEM_ark_management.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.9/pem_enterprise_features_guide/PEM_enterprise_features_guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.8': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_Getting_Started_Guide_v7.8.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_Installation_Guide_v7.8.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_pgBouncer_Configuration_Guide_v7.8.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_Upgrade_and_Migration_Guide_v7.8.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.8/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_EDB_Ark_Management_Features_Guide_v7.8.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_Enterprise_Features_Guide_v7.8.pdf',
+            },
+            {
+              text: 'PEM Agent Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/pem-agent-guide/7.8/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.8/PEM_Agent_User_Guide_v7.8.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.7': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_Getting_Started_Guide_v7.7.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_Installation_Guide_v7.7.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_pgBouncer_Configuration_Guide_v7.7.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_Upgrade_and_Migration_Guide_v7.7.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.7/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_EDB_Ark_Management_Features_Guide_v7.7.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.7/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.7/PEM_Enterprise_Features_Guide_v7.7.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '7.6': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Getting Started Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/getting-started-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_Getting_Started_Guide_v7.6.pdf',
+            },
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/installation-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_Installation_Guide_v7.6.pdf',
+            },
+            {
+              text: 'pgBouncer Configuration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/pgbouncer-configuration-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_pgBouncer_Configuration_Guide_v7.6.pdf',
+            },
+            {
+              text: 'Upgrade & Migration Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/installation-getting-started/upgrade-migration-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_Upgrade_and_Migration_Guide_v7.6.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text: 'Online Documentation',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/reference/online-documentation/7.6/index.html',
+              pdf: null,
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Ark Management Features Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/ark-management-features-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_EDB_Ark_Management_Features_Guide_v7.6.pdf',
+            },
+            {
+              text: 'Enterprise Features Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-enterprise-manager/user-guides/enterprise-features-guide/7.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/pem/7.6/PEM_Enterprise_Features_Guide_v7.6.pdf',
             },
           ],
         },

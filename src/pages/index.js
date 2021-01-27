@@ -192,7 +192,14 @@ export default () => (
                   <Link to="/efm/latest">Failover Manager</Link>
                 </li>
                 <li className="my-3">
-                  <Link to="/ark/latest">Ark Platform</Link>
+                  <Link to="/ark/latest" className="font-weight-bold">
+                    Ark Platform
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/ark/latest">3.5 — Latest</Link>
                 </li>
                 <li>
                   <Link to="/slony/latest">Slony</Link>
