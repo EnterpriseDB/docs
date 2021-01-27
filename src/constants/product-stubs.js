@@ -703,50 +703,401 @@ export const productStubs = {
           links: [
             {
               text: 'Installation Guide for Linux',
-              href: '/test',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide-for-linux/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EDB_Postgres_Advanced_Server_Installation_Guide_Linux_v12.pdf',
             },
             {
               text: 'Installation Guide for Windows',
-              href: '/test',
-            },
-            { text: 'Release Notes', href: 'https://www.google.com' },
-            { text: 'Upgrade Guide', href: 'https://www.google.com' },
-          ],
-        },
-        {
-          title: 'User Guides',
-          column: 1,
-          links: [
-            {
-              text: 'Database Compatibility for Oracle',
-              href: 'https://www.google.com',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide-for-windows/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EDB_Postgres_Advanced_Server_Installation_Guide_Windows_v12.pdf',
             },
             {
-              text: 'Developers Built-in Package Guide',
-              href: 'https://www.google.com',
+              text: 'Release Notes',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/release-notes/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EPAS_Release_Notes_v12.pdf',
             },
             {
-              text: 'Database Compatibility for Oracle',
-              href: 'https://www.google.com',
+              text: 'Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/upgrade-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EDB_Postgres_Advanced_Server_Upgrade_Guide_v12.pdf',
             },
-            { text: "Developer's Guide", href: 'https://www.google.com' },
-            {
-              text: 'Developers Tools and Utilities Guide',
-              href: 'https://www.google.com',
-            },
-            { text: 'ECPGPlus Guide', href: 'https://www.google.com' },
-            { text: 'Language Pack Guide', href: 'https://www.google.com' },
-            { text: 'User Guide', href: 'https://www.google.com' },
           ],
         },
         {
           title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/Database_Compatibility_for_Oracle_Developers_Reference_Guide_v12.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
           column: 2,
           links: [
             {
               text:
-                'Database Compatibility for Oracle Developers Reference Guide',
-              href: 'https://www.google.com/asdasda.pdf',
+                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v12.pdf',
+            },
+            {
+              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/Database_Compatibility_for_Oracle_Developers_Guide_v12.pdf',
+            },
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/Database_Compatibility_for_Oracle_Developers_Tools_and_Utilities_Guide_v12.pdf',
+            },
+            {
+              text: 'ECPGPlus Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EDB_Postgres_Advanced_Server_ecpgPlus_Guide_v12.pdf',
+            },
+            {
+              text: 'Language Pack Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/language-pack-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/language_pack/1.0/EDB_Postgres_Language_Pack_Guide_v1.pdf',
+            },
+            {
+              text: 'User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/12/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/EDB_Postgres_Advanced_Server_Guide_v12.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '11': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation Guide for Linux',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide-for-linux/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Advanced_Server_Installation_Guide_Linux_v11.pdf',
+            },
+            {
+              text: 'Installation Guide for Windows',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide-for-windows/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Advanced_Server_Installation_Guide_Windows_v11.pdf',
+            },
+            {
+              text: 'Release Notes',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/release-notes/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EPAS_Release_Notes_v11.pdf',
+            },
+            {
+              text: 'Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/upgrade-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Advanced_Server_Upgrade_Guide_v11.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/Database_Compatibility_for_Oracle_Developers_Reference_Guide_v11.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v11.pdf',
+            },
+            {
+              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/Database_Compatibility_for_Oracle_Developers_Guide_v11.pdf',
+            },
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/Database_Compatibility_for_Oracle_Developers_Tools_and_Utilities_Guide_v11.pdf',
+            },
+            {
+              text: 'ECPGPlus Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Advanced_Server_ecpgPlus_Guide_v11.pdf',
+            },
+            {
+              text: 'Language Pack Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/language-pack-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Language_Pack_Guide_v11.pdf',
+            },
+            {
+              text: 'User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/11/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/EDB_Postgres_Advanced_Server_Guide_v11.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '10': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/EDB_Postgres_Advanced_Server_Installation_Guide_v10.pdf',
+            },
+            {
+              text: 'Release Notes',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/release-notes/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/EPAS_Release_Notes_V10.1.5.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/Database_Compatibility_for_Oracle_Developers_Reference_Guide_v10.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v10.pdf',
+            },
+            {
+              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/Database_Compatibility_for_Oracle_Developers_Guide_v10.pdf',
+            },
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/Database_Compatibility_for_Oracle_Developers_Tools_and_Utilities_Guide_v10.pdf',
+            },
+            {
+              text: 'ECPGPlus Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/EDB_Postgres_Advanced_Server_ecpgPlus_Guide_v10.pdf',
+            },
+            {
+              text: 'Language Pack Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/language-pack-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/EDB_Postgres_Language_Pack_Guide_v10.pdf',
+            },
+            {
+              text: 'User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/10/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/EDB_Postgres_Advanced_Server_Guide_v10.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '9.6': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/EDB_Postgres_Advanced_Server_Installation_Guide_v9.6.pdf',
+            },
+            {
+              text: 'Release Notes',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/EDBPostgresAdvancedServer9.6ReleaseNotes.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 1,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/Database_Compatibility_for_Oracle_Developers_Reference_Guide_v9.6.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v9.6.pdf',
+            },
+            {
+              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/Database_Compatibility_for_Oracle_Developers_Guide_v9.6.pdf',
+            },
+            {
+              text:
+                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/Database_Compatibility_for_Oracle_Developers_Tools_and_Utilities_Guide_v9.6.pdf',
+            },
+            {
+              text: 'ECPGPlus Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/EDB_Postgres_Advanced_Server_ecpgPlus_Guide_v9.6.pdf',
+            },
+            {
+              text: 'User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/9.6/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/EDB_Postgres_Advanced_Server_Guide_v9.6.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '9.5': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide/9.5/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.5/Postgres_Plus_Advanced_Server_Installation_Guide_v9.5.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Database Compatibility for Oracle® Developer’s Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/9.5/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.5/Database_Compatibility_for_Oracle_Developers_Guide_v9.5.pdf',
+            },
+            {
+              text: 'User Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/9.5/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.5/EDB_Postgres_Enterprise_Guide_v9.5.pdf',
             },
           ],
         },
