@@ -465,6 +465,59 @@ export const productStubs = {
       ],
     },
   },
+  jdbc_connector: {
+    '42.2.12.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'JDBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/jdbc-connector/user-guides/jdbc-guide/42.2.12.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/jdbc/42.2.12.1/edb_jdbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '42.2.9.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'JDBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/jdbc-connector/user-guides/jdbc-guide/42.2.9.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/jdbc/42.2.9.1/edb_jdbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '42.2.8.1': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'JDBC Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/jdbc-connector/user-guides/jdbc-guide/42.2.8.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/jdbc/42.2.8.1/edb_jdbc.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
   epas: {
     '12': {
       sections: [
