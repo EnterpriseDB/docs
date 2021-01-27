@@ -85,6 +85,26 @@ export default () => (
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
                   <Link to="/epas/latest">EDB Postgres Advanced Server</Link>
+                  <br></br>
+                  <span className="text-muted small ">∟</span>
+                  <Link to="/epas/latest" className="px-1">
+                    13
+                  </Link>
+                  <Link to="/epas/12" className="px-1">
+                    12
+                  </Link>
+                  <Link to="/epas/11" className="px-1">
+                    11
+                  </Link>
+                  <Link to="/epas/10" className="px-1">
+                    10
+                  </Link>
+                  <Link to="/epas/9.6" className="px-1">
+                    9.6
+                  </Link>
+                  <Link to="/epas/9.5" className="px-1">
+                    9.5
+                  </Link>
                 </li>
                 <li className="my-2">
                   <Link to="/#">PostgreSQL</Link>
@@ -213,6 +233,14 @@ export default () => (
                 </li>
                 <li className="my-2">
                   <Link to="/bart/latest">Backup &amp; Recovery Tool</Link>
+                  <br></br>
+                  <span className="text-muted small">∟</span>
+                  <Link to="/bart/latest" className="px-1">
+                    2.6.1
+                  </Link>
+                  <Link to="/bart/2.6/" className="px-1">
+                    2.6
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -287,40 +315,34 @@ export default () => (
               <ul className="list-unstyled mb-0">
                 <li className="my-2">
                   <span className="text-muted">Foreign Data Wrappers</span>
-                  <ul className="list-unstyled mb-0">
-                    <li className="my-2">
-                      <span className="text-muted small pr-2">∟</span>
-                      <Link to="/hadoop_data_adapter/latest" className="px-2">
-                        Hadoop
-                      </Link>
-                      <Link to="/mongo_data_adapter/latest" className="px-2">
-                        Mongo
-                      </Link>
-                      <Link to="/mysql_data_adapter/latest" className="px-2">
-                        MySQL
-                      </Link>
-                    </li>
-                  </ul>
+                  <br></br>
+                  <span className="text-muted small ">∟</span>
+                  <Link to="/hadoop_data_adapter/latest" className="px-1">
+                    Hadoop
+                  </Link>
+                  <Link to="/mongo_data_adapter/latest" className="px-1">
+                    Mongo
+                  </Link>
+                  <Link to="/mysql_data_adapter/latest" className="px-1">
+                    MySQL
+                  </Link>
                 </li>
                 <li className="my-2">
                   <span className="text-muted">EDB Connectors</span>
-                  <ul className="list-unstyled mb-0">
-                    <li className="my-2">
-                      <span className="text-muted small pr-2">∟</span>
-                      <Link to="/jdbc_connector/latest" className="px-2">
-                        JDBC
-                      </Link>
-                      <Link to="/net_connector/latest" className="px-2">
-                        .NET
-                      </Link>
-                      <Link to="/ocl_connector/latest" className="px-2">
-                        OCL
-                      </Link>
-                      <Link to="/odbc_connector/latest" className="px-2">
-                        ODBC
-                      </Link>
-                    </li>
-                  </ul>
+                  <br></br>
+                  <span className="text-muted small ">∟</span>
+                  <Link to="/jdbc_connector/latest" className="px-1">
+                    JDBC
+                  </Link>
+                  <Link to="/net_connector/latest" className="px-1">
+                    .NET
+                  </Link>
+                  <Link to="/ocl_connector/latest" className="px-1">
+                    OCL
+                  </Link>
+                  <Link to="/odbc_connector/latest" className="px-1">
+                    ODBC
+                  </Link>
                 </li>
                 <li className="my-2">
                   <Link to="/pgbouncer/latest">pgBouncer</Link>

@@ -1,4 +1,470 @@
 export const productStubs = {
+  bart: {
+    '2.6': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.6/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 7',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-7/2.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.6/edb_bart_qs_7.pdf',
+            },
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 8	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-8/2.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.6/edb_bart_qs_8.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.6/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.6/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.7': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.7/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 7',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-7/2.5.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.7/edb_bart_qs_7.pdf',
+            },
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 8	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-8/2.5.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.7/edb_bart_qs_8.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.7/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.7/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.5': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.5/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 7',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-7/2.5.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.5/edb_bart_qs_7.pdf',
+            },
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 8	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-8/2.5.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.5/edb_bart_qs_8.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.5/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.5/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.5/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.4': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.4/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.4/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 7',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-7/2.5.4/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.4/edb_bart_qs_7.pdf',
+            },
+            {
+              text: 'Quick Start Guide for RHEL/CentOS 8	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide-for-rhelcentos-8/2.5.4/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.4/edb_bart_qs_8.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.4/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.4/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.4/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.4/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.3': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.3/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.3/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/quick-start/quick-start-guide/2.5.3/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.3/edb_bart_qs.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.3/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.3/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.3/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.3/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.2': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/quick-start-guide/2.5.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/BART_QuickStart_Guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/edb_bart_ref.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.2/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/edb_bart_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.5.1': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.5.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.1/edb_bart_inst.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Quick Start',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/quick-start-guide/2.5.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.1/BART_QuickStart_Guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'Reference',
+          column: 2,
+          links: [
+            {
+              text:
+                'Database Compatibility for Oracle Developers Reference Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.1/EDB_Postgres_Backup_and_Recovery_Reference_Guide.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.1/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.1/EDB_Postgres_Backup_and_Recovery_User_Guide.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '2.4': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Installation & Upgrade Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/installation-upgrade-guide/2.4/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.4/edb_bart_inst.pdf',
+            },
+            {
+              text: 'Quick Start Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/installation-getting-started/quick-start-guide/2.4/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.4/EDB_Postgres_Backup_and_Recovery_QuickStart_Guide_v2.4.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'Backup & Recovery Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.4/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.4/EDB_Postgres_Backup_and_Recovery_Guide_v2.4.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
   epas: {
     '12': {
       sections: [

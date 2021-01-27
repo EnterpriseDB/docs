@@ -21,12 +21,15 @@ const StubLink = ({ link }) => {
         />
       )}
       {pdf && (
-        <Icon
-          iconName="PDF"
-          className="fill-orange ml-2 position-relative top-minus-2"
-          width="16"
-          height="auto"
-        />
+        <span>
+          PDF
+          <Icon
+            iconName="PDF"
+            className="fill-orange ml-2 position-relative top-minus-2"
+            width="16"
+            height="auto"
+          />
+        </span>
       )}
     </li>
   );
