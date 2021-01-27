@@ -83,7 +83,7 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Databases</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link to="/epas/latest" className="font-weight-bold">
                     EDB Postgres Advanced Server
                   </Link>
@@ -156,8 +156,70 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3">
-                  <Link to="/pem/latest">Postgres Enterprise Manager</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/pem/latest" className="font-weight-bold">
+                    Postgres Enterprise Manager
+                  </Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/latest">8.0 — Latest</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.16">7.16</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.15">7.15</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.14">7.14</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.13">7.13</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.12">7.12</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.11">7.11</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.10">7.10</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.9">7.9</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.8">7.8</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.7">7.7</Link>
+                  <br></br>
+                  <span className="text-muted small position-relative top-minus-3">
+                    ∟
+                  </span>
+                  <Link to="/pem/7.6">7.6</Link>
                 </li>
                 <li>
                   <Link to="/#">pgAdmin</Link>
@@ -188,10 +250,12 @@ export default () => (
                 <li className="my-3">
                   <Link to="/eprs/latest">EDB Replication Server</Link>
                 </li>
-                <li className="my-3">
-                  <Link to="/efm/latest">Failover Manager</Link>
+                <li className="my-3 border-bottom pb-3">
+                  <Link to="/efm/latest" className="font-weight-bold">
+                    Failover Manager
+                  </Link>
                 </li>
-                <li className="my-3">
+                <li className="my-3 border-bottom pb-3">
                   <Link to="/ark/latest" className="font-weight-bold">
                     Ark Platform
                   </Link>

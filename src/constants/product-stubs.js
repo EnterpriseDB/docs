@@ -1967,4 +1967,179 @@ export const productStubs = {
       ],
     },
   },
+  efm: {
+    '4.0': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/installation-getting-started/quick-start/4.0/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/4.0/efm_quick_start.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'High Availability & Scalability Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/high-availability-scalability-guide/4.0/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/4.0/edb_ha_scalability.pdf',
+            },
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/4.0/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/4.0/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.10': {
+      sections: [
+        {
+          title: 'Installation & Getting Started',
+          column: 1,
+          links: [
+            {
+              text: 'Quick Start',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/installation-getting-started/quick-start/3.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.10/efm_quick_start.pdf',
+            },
+          ],
+        },
+        {
+          title: 'User Guides',
+          column: 2,
+          links: [
+            {
+              text: 'High Availability & Scalability Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/high-availability-scalability-guide/3.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.10/edb_ha_scalability.pdf',
+            },
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.10/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.9': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'High Availability & Scalability Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/high-availability-scalability-guide/3.10/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.10/edb_ha_scalability.pdf',
+            },
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.9/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.9/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.8': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'High Availability & Scalability Guide	',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/high-availability-scalability-guide/3.8/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.8/edb_ha_scalability.pdf',
+            },
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.8/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.8/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.7': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.7/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.7/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.6': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.6/index.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.6/edb_efm_user.pdf',
+            },
+          ],
+        },
+      ],
+    },
+    '3.5': {
+      sections: [
+        {
+          title: 'User Guides',
+          column: 1,
+          links: [
+            {
+              text: 'User Guide',
+              href:
+                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.5/toc.html',
+              pdf:
+                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.5/EDB_Failover_Manager_Guide_v3.5.pdf',
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
