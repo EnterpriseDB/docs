@@ -87,7 +87,7 @@ export default () => (
                   <Link to="/epas/latest">EDB Postgres Advanced Server</Link>
                 </li>
                 <li className="my-2">
-                  <Link to="/#">PostgreSQL</Link>
+                  <Link to="/postgresql">PostgreSQL</Link>
                 </li>
               </ul>
             </div>
@@ -116,7 +116,7 @@ export default () => (
                   <Link to="/pem/latest">Postgres Enterprise Manager</Link>
                 </li>
                 <li className="my-2">
-                  <Link to="/#">pgAdmin</Link>
+                  <Link to="/pgadmin">pgAdmin</Link>
                 </li>
               </ul>
             </div>
