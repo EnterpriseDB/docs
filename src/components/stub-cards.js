@@ -2,20 +2,41 @@ import React from 'react';
 import { Link } from './';
 import { Row, Col } from 'react-bootstrap';
 import { productStubs } from '../constants/product-stubs';
+import Icon from './icon';
+import isAbsoluteUrl from 'is-absolute-url';
 
 const StubLink = ({ link }) => {
+  const pdf = link.href.trim().endsWith('.pdf');
+  const external = isAbsoluteUrl(link.href);
+
   return (
     <li>
       <Link to={link.href}>{link.text}</Link>
+      {external && (
+        <Icon
+          iconName="export"
+          className="fill-blue ml-2 position-relative top-minus-2"
+          width="16"
+          height="auto"
+        />
+      )}
+      {pdf && (
+        <Icon
+          iconName="PDF"
+          className="fill-orange ml-2 position-relative top-minus-2"
+          width="16"
+          height="auto"
+        />
+      )}
     </li>
   );
 };
 
 const StubSection = ({ section }) => {
   return (
-    <div>
-      <h3>{section.title}</h3>
-      <ul>
+    <div className="mb-5">
+      <h3 className="mb-3">{section.title}</h3>
+      <ul className="list-unstyled">
         {section.links.map((link, i) => (
           <StubLink link={link} key={link.href + i} />
         ))}
