@@ -53,13 +53,13 @@ const StubCards = ({ product, version }) => {
   );
 
   return (
-    <Row>
+    <Row className="mt-5">
       {Array.from(Array(columnCount), (e, i) => {
         const sections = stubData.sections.filter(
           section => section.column === i + 1,
         );
         return (
-          <Col md={4} key={`column_${i}`}>
+          <Col md={6} key={`column_${i}`}>
             {sections.map(section => (
               <StubSection section={section} key={section.title} />
             ))}
