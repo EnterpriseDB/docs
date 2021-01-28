@@ -256,8 +256,8 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {depth > 4 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
+          {depth > 4 && <PrevNext navLinks={navLinks} path={path} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />
