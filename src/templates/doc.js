@@ -200,7 +200,6 @@ const DocTemplate = ({ data, pageContext }) => {
   const navOrder = getNavOrder(product, version, leftNavs);
   const sections =
     navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
-  console.log(depth);
   const pageMeta = {
     title: frontmatter.title,
     description: frontmatter.description,
