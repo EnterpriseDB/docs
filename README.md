@@ -1,37 +1,60 @@
-# <img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="350">
+<img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="200">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
 ![Update PDFs on Develop](https://github.com/EnterpriseDB/docs/workflows/Update%20PDFs%20on%20Develop/badge.svg)
 
-This repo contains the Gatsby application that powers EDB's documentation website, as well as the advocacy content. The site pulls additional content from other repos, in a process called 'sourcing'.
+This repo contains the React/Gatsby application that powers the EDB Docs website. The site pulls [Markdown](https://www.markdownguide.org/) content from several repos in a process called "sourcing", and then renders it all into high-performance markup. You can install the application on your local computer for easy editing, viewing, and eventually publishing to the GitHub repo.
 
-## Installation
-1. (MacOS) Install the [homebrew package manager](https://brew.sh/), if it's not already installed.
-2. Clone the repo with GitHub desktop, or on the command line with `git clone https://github.com/EnterpriseDB/docs.git`. If you do not have git installed, install it with (MacOS) `brew install git`.
-    - If you have not set up your local git with GitHub, you may want to setup an SSH key on your computer to authenticate you to GitHub. See [GitHub's SSH Docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for help doing that!
-3. Install Node.js. We're currently using Node.js version 14, the long term support (LTS) release. You can install the latest version 14 LTS release at [nodejs.org](https://nodejs.org/en/download/).
-    - You can verify your node version by running `node -v` in the project directory.
-    - If you want a simpler way to manage multiple versions of node, you can use Node Version Manager (AKA nvm) to install the version docs requires. Follow the directions [here](https://github.com/nvm-sh/nvm#installing-and-updating) to install NVM. Then run `nvm install` in the project directory, followed by `nvm use` to use the version specified in the project's `.nvmrc` file.
-4. Ensure you have Python 3.6 or higher by running `python3 -V`. This should return a version number. If your version is less than 3.6, or you get an error, install Python with (MacOS) `brew install python3`. Python is not needed for the core Gatsby system, but is required by several source scripts.
-5. Install yarn and gatsby with `npm i -g gatsby-cli` and `npm i -g yarn`. Gatsby is the software that runs the docs site, and Yarn is an alternative package manager which will replace `npm` for this project.
-6. Install all required packages by simply running `yarn`.
-7. Pull the shared icon files down with `git submodule update --init`
-8. Select sources with `yarn config-sources`, running `yarn pull-sources` as part of this process if prompted (see section below for details)
-9. Run the site locally with `yarn develop`. The site should now be running at `http://localhost:8000/`!
+## MacOS Installation
+We recommend using MacOS to work with the EDB Docs application.
 
-## Running Without a Local Installation (Recommended for Windows)
+1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-If you wish to work with Docs without installing the prerequesites locally, you can do so from within a Docker container using VSCode. See: [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
+1. Install Git using Homebrew with `brew install git`, if it's not already installed.  (Use `git --version` to check.)
+
+1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
+
+1. Clone the [EDB Docs GitHub repo](https://github.com/EnterpriseDB/docs) to your local machine using [GitHub Desktop](https://desktop.github.com/), or via the Terminal with `git clone https://github.com/EnterpriseDB/docs.git`
+
+1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
+
+1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
+
+    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
+
+    - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 14 LTS).
+
+1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.6 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
+
+1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM.
+
+1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
+
+1. Install all required packages by running `yarn`.
+
+1. Pull the shared icon files down with `git submodule update --init`.
+
+1. Now select which sources you want with `yarn config-sources`.
+
+1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
+
+## Windows Installation
+
+If you are a Windows user, you can work with Docs without installing it locally by using a Docker container and VSCode. See [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
 ## Sources
 - Advocacy (`/advocacy_docs`, always loaded)
+
 - EDB Product Docs (`/product_docs`)
+
   - For a list of these sources, see [product_docs/docs](https://github.com/EnterpriseDB/docs/tree/develop/product_docs/docs)
+
 - GitHub-Sourced Docs (entirety of `/external_sources` at present)
-  - Kubernetes Docs (https://github.com/EnterpriseDB/edb-k8s-doc)
-  - BaRMan (https://github.com/2ndquadrant-it/barman)
-  - pgBackRest (https://github.com/EnterpriseDB/pgbackrest-docs)
+
+  - [Kubernetes Docs](https://github.com/EnterpriseDB/edb-k8s-doc)
+  - [Barman](https://github.com/2ndquadrant-it/barman)
+  - [pgBackrest](https://github.com/EnterpriseDB/pgbackrest-docs)
 
 ### Configuring Which Sources are Loaded
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
