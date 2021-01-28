@@ -22,10 +22,12 @@ const Layout = ({
   katacodaPanelData,
   background = 'light',
 }) => {
-  const { baseUrl, imageUrl, title } = useSiteMetadata();
+  const { baseUrl, imageUrl, title: siteTitle } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
   // console.log(url);
+
+  const title = meta.title ? `EDB Docs - ${meta.title}` : siteTitle;
 
   const [dark, setDark] = useState(false);
 
@@ -53,7 +55,7 @@ const Layout = ({
     >
       <Helmet>
         <html lang="en" className={`${dark && 'dark'}`} />
-        <title>{meta.title || title}</title>
+        <title>{title}</title>
         {meta.description && (
           <meta name="description" content={meta.description} />
         )}
