@@ -89,9 +89,9 @@ const DocTemplate = ({ data, pageContext }) => {
           </div>
           <VersionDropdown versionArray={versionArray} path={path} />
 
-          <h4 className="text-muted mt-3 mb-3 font-weight-normal">
-            The product version you have requested hasn't been migrated. The
-            links below will direct you to the content on our old site:
+          <h4 className="text-muted mt-5 mb-3 font-weight-normal">
+            The product version you requested hasn't been migrated. The links
+            below will direct you to content on our old site.
           </h4>
 
           <ContentRow>
