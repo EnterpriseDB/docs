@@ -250,6 +250,15 @@ const trimSpaces = str => {
 const splitNodeContent = nodes => {
   const result = [];
   for (const node of nodes) {
+    // skip indexing this content for now
+    if (
+      node.path.includes('/postgresql_journey/') ||
+      node.path.includes('/playground/')
+    ) {
+      console.log(`skipped indexing ${node.path}`);
+      continue;
+    }
+
     const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
 
     searchNodes.forEach((searchNode, i) => {
