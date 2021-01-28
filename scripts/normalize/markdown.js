@@ -13,6 +13,7 @@ const remarkMdxEmbeddedHast = require('./lib/mast-embedded-hast')
 const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relativelinks')
 const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
+const tableFormatter = require('./lib/table-formatter')
 
 ;(async () => {
 
@@ -36,7 +37,8 @@ example:
     .use(linkTargetIndexer)
   const transformer = unified()
     .use(remarkMdxEmbeddedHast)
-    .use(relativeLinkRewriter);
+    .use(relativeLinkRewriter)
+    .use(tableFormatter);
   const compiler = unified()
     .use(remarkParse)
     .use(remarkStringify, {emphasis: '*', bullet: '-', fences: true})
