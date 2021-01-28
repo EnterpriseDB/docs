@@ -117,7 +117,7 @@ export default data => {
     <Layout pageMeta={{ title: 'Page Not Found' }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
-        <MainContent>
+        <MainContent searchNavLogo={true}>
           <div className="d-flex align-items-center flex-column">
             <Ascii404 />
             <div>
