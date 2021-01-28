@@ -111,6 +111,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               account
             }
             originalFilePath
+            productStub
           }
           excerpt(pruneLength: 280)
           fields {
@@ -231,12 +232,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       fileUrlSegment,
     )}`;
 
+    const template = doc.frontmatter.productStub ? 'doc-stub.js' : 'doc.js';
     const path = isLatest
       ? replacePathVersion(doc.fields.path)
       : doc.fields.path;
     actions.createPage({
       path: path,
-      component: require.resolve('./src/templates/doc.js'),
+      component: require.resolve(`./src/templates/${template}`),
       context: {
         pagePath: path,
         navLinks: navLinks,
