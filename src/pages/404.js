@@ -8,16 +8,7 @@ import {
   connectSearchBox,
   connectStateResults,
 } from 'react-instantsearch-dom';
-import indexNavigation from '../constants/index-navigation';
-import {
-  Footer,
-  IndexLinks,
-  Layout,
-  Link,
-  MainContent,
-  SideNavigation,
-  TopBar,
-} from '../components';
+import { Footer, Layout, Link, MainContent, TopBar } from '../components';
 import Icon, { iconNames } from '../components/icon';
 import useSiteMetadata from '../hooks/use-sitemetadata';
 
@@ -126,13 +117,14 @@ export default data => {
     <Layout pageMeta={{ title: 'Page Not Found' }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation>
-          <IndexLinks indexLinkList={indexNavigation()} />
-        </SideNavigation>
-        <MainContent>
-          <Ascii404 />
-          <PageNotFound path={data.location.href} />
-          <SuggestedLinksSearch query={query} />
+        <MainContent searchNavLogo={true}>
+          <div className="d-flex align-items-center flex-column">
+            <Ascii404 />
+            <div>
+              <PageNotFound path={data.location.href} />
+              <SuggestedLinksSearch query={query} />
+            </div>
+          </div>
           <Footer />
         </MainContent>
       </Container>
