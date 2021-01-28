@@ -94,7 +94,7 @@ const convertOrderToObjects = (navOrder, navLinks) => {
 const getLinkItemFromPath = (path, navLinks) => {
   for (let item of navLinks) {
     const linkPath = item.fields.path;
-    if (linkPath.includes(path) && linkPath.split('/').length === 4) {
+    if (linkPath.includes(path) && linkPath.split('/').length === 5) {
       return item;
     }
   }
@@ -199,7 +199,7 @@ const DocTemplate = ({ data, pageContext }) => {
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
   const sections =
-    navOrder && depth === 3 ? convertOrderToObjects(navOrder, navLinks) : null;
+    navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
   const pageMeta = {
     title: frontmatter.title,
     description: frontmatter.description,
@@ -256,8 +256,8 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
+          {depth > 4 && <PrevNext navLinks={navLinks} path={path} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />
