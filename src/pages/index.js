@@ -83,7 +83,7 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Databases</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="">
+                <li className="border-bottom pb-3">
                   <Link to="/epas/latest" className="font-weight-bold">
                     EDB Postgres Advanced Server
                   </Link>
@@ -130,9 +130,10 @@ export default () => (
                     9.5
                   </Link>
                 </li>
-
-                <li className="my-2">
-                  <Link to="/postgresql">PostgreSQL</Link>
+                <li className="pt-3">
+                  <Link to="/postgresql" className="font-weight-bold">
+                    PostgreSQL
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -157,7 +158,7 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="">
+                <li className="border-bottom pb-3">
                   <Link to="/pem/latest" className="font-weight-bold">
                     Postgres Enterprise Manager
                   </Link>
@@ -222,8 +223,10 @@ export default () => (
                   </span>
                   <Link to="/pem/7.6">7.6</Link>
                 </li>
-                <li className="my-2">
-                  <Link to="/pgadmin">pgAdmin</Link>
+                <li className="my-0 pt-3">
+                  <Link to="/pgadmin" className="font-weight-bold">
+                    pgAdmin
+                  </Link>
                 </li>
               </ul>
             </div>
