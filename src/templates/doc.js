@@ -201,7 +201,7 @@ const DocTemplate = ({ data, pageContext }) => {
   const sections =
     navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
   const pageMeta = {
-    title: frontmatter.title,
+    title: `${frontmatter.title} v${version}`,
     description: frontmatter.description,
     path: pagePath,
     isIndexPage: isIndexPage,
