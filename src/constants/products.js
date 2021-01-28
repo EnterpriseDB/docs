@@ -5,6 +5,7 @@ export const products = {
   ark: { name: 'Postgres Ark', iconName: IconNames.EDB_ARK },
   bart: { name: 'Backup and Recovery Tool', iconName: IconNames.EDB_BART },
   efm: { name: 'Failover Manager', iconName: IconNames.EDB_EFM },
+  eprs: { name: 'EDB Replication Server', iconName: IconNames.EDB_EPAS },
   pem: { name: 'Postgres Enterprise Manager', iconName: IconNames.EDB_PEM },
   migration_portal: {
     name: 'Migration Portal',
