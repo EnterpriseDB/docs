@@ -13,6 +13,7 @@ PRODUCT_DOCS = [
     'bart',
     'efm',
     'epas',
+    'eprs',
     'hadoop_data_adapter',
     'jdbc_connector',
     'migration_portal',
@@ -57,6 +58,7 @@ OPTIONS = [
     { 'index': '1p', 'name': 'Slony Replication', 'key': 'slony', 'indent': True },
     { 'index': '1q', 'name': 'Mongo Data Adapter', 'key': 'mongo_data_adapter', 'indent': True },
     { 'index': '1r', 'name': 'MySQL Data Adapter', 'key': 'mysql_data_adapter', 'indent': True },
+    { 'index': '1s', 'name': 'Replication Server', 'key': 'eprs', 'indent': True },
     { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs', 'external': True },
     { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman', 'external': True },
     { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest', 'external': True }
