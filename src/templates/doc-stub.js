@@ -1,19 +1,16 @@
 import React from 'react';
-import { Container, Row, Col, Dropdown, DropdownButton } from 'react-bootstrap';
+import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
 import {
-  DevFrontmatter,
   Footer,
+  IndexSubNav,
   Layout,
-  LeftNav,
   MainContent,
-  SideNavigation,
   TableOfContents,
   TopBar,
+  VersionDropdown,
 } from '../components';
-import { leftNavs } from '../constants/left-navs';
-import Icon from '../components/icon';
 
 export const query = graphql`
   query($nodePath: String!, $potentialLatestNodePath: String) {
@@ -44,13 +41,6 @@ const getProductUrlBase = path => {
     .join('/');
 };
 
-const getProductAndVersion = path => {
-  return {
-    product: path.split('/')[1],
-    version: path.split('/')[2],
-  };
-};
-
 const makeVersionArray = (versions, path) => {
   return versions.map((version, i) => ({
     version: version,
@@ -64,13 +54,6 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getNavOrder = (product, version, leftNavs) => {
-  if (leftNavs[product] && leftNavs[product][version]) {
-    return leftNavs[product][version];
-  }
-  return null;
-};
-
 const determineCanonicalPath = (hasLatest, latestPath) => {
   if (hasLatest) {
     return latestPath;
@@ -78,54 +61,11 @@ const determineCanonicalPath = (hasLatest, latestPath) => {
   return null;
 };
 
-const FeedbackDropdown = ({ githubIssuesLink }) => (
-  <DropdownButton
-    className="ml-3"
-    size="sm"
-    variant="outline-info"
-    id="page-actions-button"
-    title={
-      //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
-      <Icon
-        iconName="ellipsis"
-        className="fill-orange mr-2"
-        width="15"
-        height="15"
-      />
-    }
-  >
-    <Dropdown.Item
-      href={githubIssuesLink + '&template=documentation-feedback.md'}
-      target="_blank"
-      rel="noreferrer"
-    >
-      Report a problem
-    </Dropdown.Item>
-    <Dropdown.Item
-      href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
-      target="_blank"
-      rel="noreferrer"
-    >
-      Give product feedback
-    </Dropdown.Item>
-  </DropdownButton>
-);
-
 const DocTemplate = ({ data, pageContext }) => {
   const { fields, frontmatter, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
-  const {
-    pagePath,
-    navLinks,
-    versions,
-    githubFileLink,
-    githubEditLink,
-    githubIssuesLink,
-    isIndexPage,
-  } = pageContext;
+  const { pagePath, versions, githubFileLink, isIndexPage } = pageContext;
   const versionArray = makeVersionArray(versions, path);
-  const { product, version } = getProductAndVersion(path);
-  const navOrder = getNavOrder(product, version, leftNavs);
   const pageMeta = {
     title: frontmatter.title,
     description: frontmatter.description,
@@ -140,38 +80,14 @@ const DocTemplate = ({ data, pageContext }) => {
   const showToc = !!tableOfContents.items;
 
   return (
-    <Layout pageMeta={pageMeta}>
+    <Layout pageMeta={pageMeta} background="white">
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation>
-          <LeftNav
-            navLinks={navLinks}
-            path={path}
-            pagePath={pagePath}
-            versionArray={versionArray}
-            navOrder={navOrder}
-            hideEmptySections={true}
-          />
-        </SideNavigation>
-
-        <MainContent>
+        <MainContent searchNavLogo={true}>
           <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">
-              {frontmatter.title}{' '}
-              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                v{version}
-              </span>
-            </h1>
-            <div className="d-flex">
-              <a
-                href={githubEditLink || '#'}
-                className="btn btn-sm btn-primary px-4 text-nowrap"
-              >
-                Edit this page
-              </a>
-              <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
-            </div>
+            <h1 className="balance-text">{frontmatter.title} </h1>
           </div>
+          <VersionDropdown versionArray={versionArray} path={path} />
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
@@ -185,8 +101,8 @@ const DocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
 
-          <DevFrontmatter frontmatter={frontmatter} />
-
+          <hr />
+          <IndexSubNav />
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />
         </MainContent>
       </Container>
