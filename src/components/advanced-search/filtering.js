@@ -90,7 +90,9 @@ const RadioRefinement = ({
   );
 };
 
+/* eslint-disable no-unused-vars */
 const ContentTypeRefinement = connectMenu(
+  /* eslint-enable */
   ({ items, currentRefinement, refine, queryActive }) => (
     <RadioRefinement
       attribute="type"
@@ -155,11 +157,11 @@ export const AdvancedSearchFiltering = connectCurrentRefinements(
 
     return (
       <>
-        <ContentTypeRefinement
+        {/*        <ContentTypeRefinement
           attribute="type"
           queryActive={queryActive}
           heading="Content Type"
-        />
+        />*/}
         <ProductVersionRefinement
           attributes={['product', 'productVersion']}
           show={showProductVersionFilters}
