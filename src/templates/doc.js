@@ -15,6 +15,7 @@ import {
   TopBar,
 } from '../components';
 import { leftNavs } from '../constants/left-navs';
+import { products } from '../constants/products';
 import Icon from '../components/icon';
 
 export const query = graphql`
@@ -94,7 +95,7 @@ const convertOrderToObjects = (navOrder, navLinks) => {
 const getLinkItemFromPath = (path, navLinks) => {
   for (let item of navLinks) {
     const linkPath = item.fields.path;
-    if (linkPath.includes(path) && linkPath.split('/').length === 4) {
+    if (linkPath.includes(path) && linkPath.split('/').length === 5) {
       return item;
     }
   }
@@ -199,9 +200,21 @@ const DocTemplate = ({ data, pageContext }) => {
   const { product, version } = getProductAndVersion(path);
   const navOrder = getNavOrder(product, version, leftNavs);
   const sections =
-    navOrder && depth === 3 ? convertOrderToObjects(navOrder, navLinks) : null;
+    navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
+
+  let title = frontmatter.title;
+  if (depth === 4) {
+    // product version root
+    title += ` v${version}`;
+  } else if (depth > 4) {
+    const prettyProductName = (
+      products[product] || { name: product.toUpperCase() }
+    ).name;
+    title = `${prettyProductName} v${version} - ${title}`;
+  }
+
   const pageMeta = {
-    title: frontmatter.title,
+    title: title,
     description: frontmatter.description,
     path: pagePath,
     isIndexPage: isIndexPage,
@@ -256,8 +269,8 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {depth > 3 && <PrevNext navLinks={navLinks} path={path} />}
           {sections && <Sections sections={sections} />}
+          {depth > 4 && <PrevNext navLinks={navLinks} path={path} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />
