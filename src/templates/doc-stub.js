@@ -41,6 +41,13 @@ const getProductUrlBase = path => {
     .join('/');
 };
 
+const getProductAndVersion = path => {
+  return {
+    product: path.split('/')[1],
+    version: path.split('/')[2],
+  };
+};
+
 const makeVersionArray = (versions, path) => {
   return versions.map((version, i) => ({
     version: version,
@@ -66,8 +73,9 @@ const DocTemplate = ({ data, pageContext }) => {
   const { path, mtime } = fields;
   const { pagePath, versions, githubFileLink, isIndexPage } = pageContext;
   const versionArray = makeVersionArray(versions, path);
+  const { product, version } = getProductAndVersion(path);
   const pageMeta = {
-    title: frontmatter.title,
+    title: `${frontmatter.title} v${version}`,
     description: frontmatter.description,
     path: pagePath,
     isIndexPage: isIndexPage,
