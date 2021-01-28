@@ -130,9 +130,10 @@ export default () => (
                     9.5
                   </Link>
                 </li>
-                {/* <li>
-                  <Link to="/#">PostgreSQL</Link>
-                </li> */}
+
+                <li className="my-2">
+                  <Link to="/postgresql">PostgreSQL</Link>
+                </li>
               </ul>
             </div>
           </div>
@@ -221,9 +222,9 @@ export default () => (
                   </span>
                   <Link to="/pem/7.6">7.6</Link>
                 </li>
-                {/* <li>
-                  <Link to="/#">pgAdmin</Link>
-                </li> */}
+                <li className="my-2">
+                  <Link to="/pgadmin">pgAdmin</Link>
+                </li>
               </ul>
             </div>
           </div>
