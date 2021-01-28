@@ -17,6 +17,7 @@ const sourceToPluginConfig = {
   bart: { name: 'bart', path: 'product_docs/docs/bart' },
   efm: { name: 'efm', path: 'product_docs/docs/efm' },
   epas: { name: 'epas', path: 'product_docs/docs/epas' },
+  eprs: { name: 'eprs', path: 'product_docs/docs/eprs' },
   hadoop_data_adapter: {
     name: 'hadoop_data_adapter',
     path: 'product_docs/docs/hadoop_data_adapter',
