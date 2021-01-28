@@ -15,6 +15,7 @@ import {
   TopBar,
 } from '../components';
 import { leftNavs } from '../constants/left-navs';
+import { products } from '../constants/products';
 import Icon from '../components/icon';
 
 export const query = graphql`
@@ -200,8 +201,20 @@ const DocTemplate = ({ data, pageContext }) => {
   const navOrder = getNavOrder(product, version, leftNavs);
   const sections =
     navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
+
+  let title = frontmatter.title;
+  if (depth === 4) {
+    // product version root
+    title += ` v${version}`;
+  } else if (depth > 4) {
+    const prettyProductName = (
+      products[product] || { name: product.toUpperCase() }
+    ).name;
+    title = `${prettyProductName} v${version} - ${title}`;
+  }
+
   const pageMeta = {
-    title: `${frontmatter.title} v${version}`,
+    title: title,
     description: frontmatter.description,
     path: pagePath,
     isIndexPage: isIndexPage,
