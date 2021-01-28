@@ -22,15 +22,15 @@ const StubLink = ({ link }) => {
   }
 
   return (
-    <li>
-      <Link to={primaryLink}>
+    <li className="pb-3">
+      <Link to={primaryLink} className="border-bottom">
         {link.text}
         {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
-      </Link>
-
+      </Link>{' '}
+      <br></br>
       {link.pdf && link.href && (
-        <Link to={link.pdf} className="ml-2">
-          <PdfIcon />
+        <Link to={link.pdf} className="small">
+          <PdfIcon /> Download PDF
         </Link>
       )}
     </li>
