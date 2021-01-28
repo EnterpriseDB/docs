@@ -30,14 +30,14 @@ export default () => (
     <Container fluid className="p-0 d-flex bg-white">
       {/* TODO connect an updated IndexNavagation file to this index page */}
       <MainContent searchNavLogo={true}>
-        <h1 className="balance-text mb-4">enterprisedb.com/docs</h1>
-        <p className="border-left border-5 border-primary pl-3 mb-5">
+        <h1 className="balance-text mb-5">enterprisedb.com/docs</h1>
+        {/* <p className="border-left border-5 border-primary pl-3 mb-5">
           Thanks for checking out our beta docs site. Feel free to open and
           issue on our{' '}
           <Link to="https://github.com/EnterpriseDB/docs/issues">
             github repo
           </Link>
-        </p>
+        </p> */}
         <div className="card-columns mb-4">
           {/* <div className="card rounded shadow-sm mb-4">
             <div className="card-body">

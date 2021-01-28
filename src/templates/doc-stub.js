@@ -162,7 +162,7 @@ const DocTemplate = ({ data, pageContext }) => {
                 v{version}
               </span>
             </h1>
-            <div className="d-flex">
+            {/* <div className="d-flex">
               <a
                 href={githubEditLink || '#'}
                 className="btn btn-sm btn-primary px-4 text-nowrap"
@@ -170,8 +170,13 @@ const DocTemplate = ({ data, pageContext }) => {
                 Edit this page
               </a>
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
-            </div>
+            </div> */}
           </div>
+
+          <h4 className="text-muted mt-3 mb-3 font-weight-normal">
+            The product version you have requested hasn't been migrated. The
+            links below will direct you to the content on our old site:
+          </h4>
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
