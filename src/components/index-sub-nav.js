@@ -12,18 +12,13 @@ const IndexSubLink = ({ url, children }) => (
 const IndexSubNav = () => (
   <div className="mt-5 d-flex justify-content-center">
     <ul className="list-inline mr-3">
-      <IndexSubLink url="/postgresql-docs/postgresql/">
-        PostgreSQL Docs
-      </IndexSubLink>
-      <IndexSubLink url="/community/contribute/">Contribute</IndexSubLink>
-      <IndexSubLink url="/community/authoring/">Authoring</IndexSubLink>
       <IndexSubLink url="https://support.enterprisedb.com">
         Support
       </IndexSubLink>
       <IndexSubLink url="https://enterprisedb.com/contact">
         Contact Us
       </IndexSubLink>
-      <IndexSubLink url="/community/feedback/">Feedback?</IndexSubLink>
+      <IndexSubLink url="/feedback/">Have feedback?</IndexSubLink>
     </ul>
     <DarkModeToggle />
   </div>
