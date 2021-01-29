@@ -166,6 +166,7 @@ export const AdvancedSearchFiltering = connectCurrentRefinements(
           attributes={['product', 'productVersion']}
           show={showProductVersionFilters}
           queryActive={queryActive}
+          limit={30}
         />
         <ClearRefinements />
       </>
