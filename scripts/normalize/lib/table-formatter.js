@@ -13,11 +13,9 @@ function tableFormatter()
   {
     visit(tree, 'jsx-hast', function(hastRoot, index, parent)
     {
-      // keep this simple - extracting tables from complicated blocks of HTML is possible, but unnecessary
-      if (hastRoot.children && hastRoot.children.length === 1
-        && hastRoot.children[0].tagName === 'table')
+      const table = getTable(hastRoot);
+      if (table)
       {
-        let table = hastRoot.children[0];
         let converted = convertTable(table);
         if (converted)
           parent.children.splice(index, 1, converted);
@@ -26,6 +24,29 @@ function tableFormatter()
       }
     });
   };
+}
+
+function getTable(root)
+{
+  // keep this simple - extracting tables from complicated blocks of HTML is possible, but unnecessary
+  // we have two scenarios we care about here:
+  //   - a table, all by itself (<table>...</table>)
+  //   - a table wrapped in <div class="table-with-scroll"></div>
+  let table = null;
+  for (let node of root.children)
+  {
+    if (node.type === 'text' && !node.value.trim()) continue;
+    if (node.tagName === 'table')
+      table = node;
+    else if (node.tagName === 'div' && node?.properties?.className?.includes('table-with-scroll'))
+      table = getTable(node);
+    else
+    {
+      table = null;
+      break;
+    }
+  }
+  return table;
 }
 
 function convertTable(hastTable)
