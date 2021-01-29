@@ -14,16 +14,20 @@ const SubList = ({ children, collapsed }) => {
   }
 };
 
-const TreeNode = ({ node, path }) => {
+const TreeNode = ({ node, path, hideIfEmpty }) => {
   if (!node.path) {
-    return (
-      <li
-        className="mt-3 mb-2 font-weight-bold text-muted text-uppercase small"
-        key={node.path}
-      >
-        <Title node={node} />
-      </li>
-    );
+    if (hideIfEmpty) {
+      return null;
+    } else {
+      return (
+        <li
+          className="mt-3 mb-2 font-weight-bold text-muted text-uppercase small"
+          key={node.path}
+        >
+          <Title node={node} />
+        </li>
+      );
+    }
   }
 
   return (

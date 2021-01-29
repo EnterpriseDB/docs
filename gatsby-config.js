@@ -17,6 +17,7 @@ const sourceToPluginConfig = {
   bart: { name: 'bart', path: 'product_docs/docs/bart' },
   efm: { name: 'efm', path: 'product_docs/docs/efm' },
   epas: { name: 'epas', path: 'product_docs/docs/epas' },
+  eprs: { name: 'eprs', path: 'product_docs/docs/eprs' },
   hadoop_data_adapter: {
     name: 'hadoop_data_adapter',
     path: 'product_docs/docs/hadoop_data_adapter',
@@ -249,6 +250,15 @@ const trimSpaces = str => {
 const splitNodeContent = nodes => {
   const result = [];
   for (const node of nodes) {
+    // skip indexing this content for now
+    if (
+      node.path.includes('/postgresql_journey/') ||
+      node.path.includes('/playground/')
+    ) {
+      console.log(`skipped indexing ${node.path}`);
+      continue;
+    }
+
     const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
 
     searchNodes.forEach((searchNode, i) => {
