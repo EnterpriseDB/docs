@@ -7,6 +7,7 @@ import DevOnly from './dev-only';
 import DevFrontmatter from './dev-frontmatter';
 import Footer from './footer';
 import IndexLinks from './index-links';
+import IndexSubNav from './index-sub-nav';
 import KatacodaPageEmbed from './katacoda-page-embed';
 import KatacodaPageLink from './katacoda-page-link';
 import KatacodaPanel from './katacoda-panel';
@@ -21,6 +22,7 @@ import PrevNext from './prev-next';
 import SearchNavigationLinks from './search-navigation-links';
 import SearchNavigation from './search-navigation';
 import SideNavigation from './side-navigation';
+import StubCards from './stub-cards';
 import TableOfContents from './table-of-contents';
 import TextBalancer from './text-balancer';
 import TopBar from './top-bar';
@@ -37,6 +39,7 @@ export {
   DevFrontmatter,
   Footer,
   IndexLinks,
+  IndexSubNav,
   KatacodaPageEmbed,
   KatacodaPageLink,
   KatacodaPanel,
@@ -51,6 +54,7 @@ export {
   SearchNavigationLinks,
   SearchNavigation,
   SideNavigation,
+  StubCards,
   TableOfContents,
   TextBalancer,
   TopBar,
