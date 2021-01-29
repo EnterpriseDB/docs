@@ -82,54 +82,12 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="border-bottom pb-3">
-                  <Link to="/epas/latest" className="font-weight-bold">
+                  <Link to="/epas/latest" className="">
                     EDB Postgres Advanced Server
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/latest" className="px-1">
-                    13 — Latest
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/12" className="px-1">
-                    12
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/11" className="px-1">
-                    11
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/10" className="px-1">
-                    10
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/9.6" className="px-1">
-                    9.6
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/epas/9.5" className="px-1">
-                    9.5
                   </Link>
                 </li>
                 <li className="pt-3">
-                  <Link to="/postgresql" className="font-weight-bold">
+                  <Link to="/postgresql" className="">
                     PostgreSQL
                   </Link>
                 </li>
@@ -157,72 +115,12 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="border-bottom pb-3">
-                  <Link to="/pem/latest" className="font-weight-bold">
+                  <Link to="/pem/latest" className="">
                     Postgres Enterprise Manager
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/latest">8.0 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.16">7.16</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.15">7.15</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.14">7.14</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.13">7.13</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.12">7.12</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.11">7.11</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.10">7.10</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.9">7.9</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.8">7.8</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.7">7.7</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pem/7.6">7.6</Link>
                 </li>
                 <li className="my-0 pt-3">
-                  <Link to="/pgadmin" className="font-weight-bold">
+                  <Link to="/pgadmin" className="">
                     pgAdmin
                   </Link>
                 </li>
@@ -250,74 +148,24 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/eprs/latest" className="font-weight-bold">
+                  <Link to="/eprs/latest" className="">
                     EDB Replication Server
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/eprs/latest">6.2 — Latest</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/efm/latest" className="font-weight-bold">
+                  <Link to="/efm/latest" className="">
                     Failover Manager
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/latest">4.10 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/4.0">4.0</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/3.9">3.9</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/3.8">3.8</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/3.7">3.7</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/3.6">3.6</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/efm/3.5">3.5</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/ark/latest" className="font-weight-bold">
+                  <Link to="/ark/latest" className="">
                     Ark Platform
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/ark/latest">3.5 — Latest</Link>
                 </li>
                 <li>
-                  <Link to="/slony/latest" className="font-weight-bold">
+                  <Link to="/slony/latest" className="">
                     Slony
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/slony/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>
@@ -343,40 +191,14 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/migration_portal/latest"
-                    className="font-weight-bold"
-                  >
+                  <Link to="/migration_portal/latest" className="">
                     Migration Portal
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/migration_portal/latest">3.0.1 — Latest</Link>
                 </li>
                 <li>
-                  <Link
-                    to="/migration_toolkit/latest"
-                    className="font-weight-bold"
-                  >
+                  <Link to="/migration_toolkit/latest" className="">
                     Migration Toolkit
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/migration_toolkit/latest">54.0.0 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/migration_toolkit/53.0.2">53.0.2</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/migration_toolkit/53.0.1">53.0.1</Link>
                 </li>
               </ul>
             </div>
@@ -402,32 +224,18 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/barman/" className="font-weight-bold">
+                  <Link to="/barman/" className="">
                     Barman
                   </Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/pgbackrest/" className="font-weight-bold">
+                  <Link to="/pgbackrest/" className="">
                     pgBackrest
                   </Link>
                 </li>
                 <li>
-                  <Link to="/bart/latest" className="font-weight-bold">
+                  <Link to="/bart/latest" className="">
                     Backup &amp; Recovery Tool
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/bart/latest/" className="px-1">
-                    2.6.1 — Latest
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/bart/2.6/" className="px-1">
-                    2.6
                   </Link>
                 </li>
               </ul>
@@ -452,7 +260,7 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/kubernetes" className="font-weight-bold">
+                  <Link to="/kubernetes" className="">
                     Cloud Native PostgreSQL Operator
                   </Link>
                 </li>
@@ -478,14 +286,9 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/postgis/latest" className="font-weight-bold">
+                  <Link to="/postgis/latest" className="">
                     PostGIS
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/postgis/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>
@@ -508,186 +311,46 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Integration</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                {/* <span className="font-weight-bold">Foreign Data Wrappers</span> */}
+                {/* <span className="">Foreign Data Wrappers</span> */}
                 <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/hadoop_data_adapter/latest"
-                    className="font-weight-bold"
-                  >
+                  <Link to="/hadoop_data_adapter/latest" className="">
                     Hadoop Data Adapter
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/hadoop_data_adapter/latest">2.0.7 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/hadoop_data_adapter/2.0.5">2.0.5</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/hadoop_data_adapter/2.0">2.0</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/mongo_data_adapter/latest"
-                    className="font-weight-bold"
-                  >
+                  <Link to="/mongo_data_adapter/latest" className="">
                     Mongo Data Adapter
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/mongo_data_adapter/latest">5.2.8 — Latest</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/mysql_data_adapter/latest"
-                    className="font-weight-bold"
-                  >
-                    MySQL Data Adapter
-                  </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/mysql_data_adapter/latest">2.5.5 — Latest</Link>
-                </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/jdbc_connector/latest"
-                    className="px-1 font-weight-bold"
-                  >
+                  <Link to="/jdbc_connector/latest" className="px-1 ">
                     JDBC Connector
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/jdbc_connector/latest">42.2.12.13 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/jdbc_connector/42.2.12.1">42.2.12.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/jdbc_connector/42.2.9.1">42.2.9.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/jdbc_connector/42.2.8.1">42.2.8.1</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/net_connector/latest" className="font-weight-bold">
+                  <Link to="/net_connector/latest" className="">
                     .NET Connector
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/latest">4.1.6.1 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/4.1.5.1">4.1.5.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/4.1.3.1">4.1.3.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/4.0.10.2">4.0.10.2</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/4.0.10.1">4.0.10.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/net_connector/4.0.6.1">4.0.6.1</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/ocl_connector/latest" className="font-weight-bold">
+                  <Link to="/ocl_connector/latest" className="">
                     OCL Connector
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/ocl_connector/latest">13.1.4.2 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/ocl_connector/13.1.4.1">13.1.4.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/ocl_connector/12.1.2.1">12.1.2.1</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link
-                    to="/odbc_connector/latest"
-                    className="font-weight-bold"
-                  >
+                  <Link to="/odbc_connector/latest" className="">
                     ODBC Connector
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/odbc_connector/latest">12.2.0.2 — Latest</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/odbc_connector/12.2.0.1">12.2.0.1</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/odbc_connector/12.0.0.2">12.0.0.2</Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/odbc_connector/12.0.0.1">12.0.0.1</Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/pgbouncer/latest" className="font-weight-bold">
+                  <Link to="/pgbouncer/latest" className="">
                     pgBouncer
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pgbouncer/latest">1.0 — Latest</Link>
                 </li>
                 <li>
-                  <Link to="/pgpool/latest" className="font-weight-bold">
+                  <Link to="/pgpool/latest" className="">
                     pgPool-II
                   </Link>
-                  <br></br>
-                  <span className="text-muted small position-relative top-minus-3">
-                    ∟
-                  </span>
-                  <Link to="/pgpool/latest">1.0 — Latest</Link>
                 </li>
               </ul>
             </div>
