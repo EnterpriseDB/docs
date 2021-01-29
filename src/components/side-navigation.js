@@ -5,7 +5,7 @@ const LogoLink = () => {
   return (
     <h1 className="h3">
       <Link className="d-block py-4 text-dark" to="/">
-        <Logo width="149" height="40" />
+        <Logo width="200" height="50" />
       </Link>
     </h1>
   );
