@@ -14,6 +14,7 @@ const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relative
 const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
+const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
 
 ;(async () => {
 
@@ -36,9 +37,9 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(linkTargetIndexer)
   const transformer = unified()
-    .use(remarkMdxEmbeddedHast)
-    .use(relativeLinkRewriter)
-    .use(tableFormatter);
+//    .use(relativeLinkRewriter)
+//    .use(tableFormatter)
+    .use(docs1LinkRewriter);
   const compiler = unified()
     .use(remarkParse)
     .use(remarkStringify, {emphasis: '*', bullet: '-', fences: true})
@@ -49,7 +50,7 @@ example:
 
     const mdxesToIndex = await glob(process.argv[2]);
     const mdxesToWrite = (process.argv[3] && await glob(process.argv[3])) || mdxesToIndex;
-  
+  /*
   // indexing 
   for (const mdxPath of mdxesToIndex)
   {
@@ -57,7 +58,7 @@ example:
     const ast = await parser.parse(file);
     await indexing.run(ast, file);
   }
-
+*/
   // analysis / rewriting
   for (const mdxPath of mdxesToWrite)
   {
@@ -77,7 +78,7 @@ example:
 
   }
 
-  console.log(index.stats)
+  console.log(index.stats, linkStats)
 
 })()
 
