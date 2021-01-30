@@ -37,8 +37,8 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(linkTargetIndexer)
   const transformer = unified()
-//    .use(relativeLinkRewriter)
-//    .use(tableFormatter)
+    .use(relativeLinkRewriter)
+    .use(tableFormatter)
     .use(docs1LinkRewriter);
   const compiler = unified()
     .use(remarkParse)
@@ -50,7 +50,7 @@ example:
 
     const mdxesToIndex = await glob(process.argv[2]);
     const mdxesToWrite = (process.argv[3] && await glob(process.argv[3])) || mdxesToIndex;
-  /*
+  
   // indexing 
   for (const mdxPath of mdxesToIndex)
   {
@@ -58,7 +58,7 @@ example:
     const ast = await parser.parse(file);
     await indexing.run(ast, file);
   }
-*/
+
   // analysis / rewriting
   for (const mdxPath of mdxesToWrite)
   {
