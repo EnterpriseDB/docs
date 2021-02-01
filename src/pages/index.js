@@ -91,7 +91,7 @@ export default () => (
                 </li>
                 <li>
                   <Link
-                    to="/postgresql"
+                    to="/supported-open-source/postgresql/"
                     className="d-block border-top py-2 pl-1"
                   >
                     PostgreSQL
@@ -129,7 +129,10 @@ export default () => (
                   </Link>
                 </li>
                 <li>
-                  <Link to="/pgadmin" className="d-block border-top py-2 pl-1">
+                  <Link
+                    to="/supported-open-source/pgadmin/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     pgAdmin
                   </Link>
                 </li>
@@ -251,13 +254,16 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/barman/" className="d-block border-top py-2 pl-1">
+                  <Link
+                    to="/supported-open-source//barman/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Barman
                   </Link>
                 </li>
                 <li>
                   <Link
-                    to="/pgbackrest/"
+                    to="/supported-open-source//pgbackrest/"
                     className="d-block border-top py-2 pl-1"
                   >
                     pgBackrest
