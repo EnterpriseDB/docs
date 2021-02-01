@@ -255,7 +255,7 @@ export default () => (
               <ul className="list-unstyled mb-0">
                 <li>
                   <Link
-                    to="/supported-open-source//barman/"
+                    to="/supported-open-source/barman/"
                     className="d-block border-top py-2 pl-1"
                   >
                     Barman
@@ -263,7 +263,7 @@ export default () => (
                 </li>
                 <li>
                   <Link
-                    to="/supported-open-source//pgbackrest/"
+                    to="/supported-open-source/pgbackrest/"
                     className="d-block border-top py-2 pl-1"
                   >
                     pgBackrest
