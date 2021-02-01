@@ -24,7 +24,7 @@ const SideNavigationFooter = () => (
     <hr />
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
-    <FooterItem url="/feedback/">Have feedback?</FooterItem>
+    <FooterItem url="/community/contributing/">Have feedback?</FooterItem>
     <DarkModeToggle className="mt-1" />
   </ul>
 );
