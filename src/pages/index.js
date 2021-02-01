@@ -81,13 +81,19 @@ export default () => (
                 <h4 className="d-inline-block card-title m-0">Databases</h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="border-bottom pb-3">
-                  <Link to="/epas/latest" className="">
+                <li>
+                  <Link
+                    to="/epas/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     EDB Postgres Advanced Server
                   </Link>
                 </li>
-                <li className="pt-3">
-                  <Link to="/supported-open-source/postgresql" className="">
+                <li>
+                  <Link
+                    to="/supported-open-source/postgresql/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     PostgreSQL
                   </Link>
                 </li>
@@ -114,13 +120,19 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="border-bottom pb-3">
-                  <Link to="/pem/latest" className="">
+                <li>
+                  <Link
+                    to="/pem/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Postgres Enterprise Manager
                   </Link>
                 </li>
-                <li className="my-0 pt-3">
-                  <Link to="/supported-open-source/pgadmin" className="">
+                <li>
+                  <Link
+                    to="/supported-open-source/pgadmin/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     pgAdmin
                   </Link>
                 </li>
@@ -147,23 +159,35 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/eprs/latest" className="">
+                <li>
+                  <Link
+                    to="/eprs/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     EDB Replication Server
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/efm/latest" className="">
+                <li>
+                  <Link
+                    to="/efm/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Failover Manager
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/ark/latest" className="">
+                <li>
+                  <Link
+                    to="/ark/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Ark Platform
                   </Link>
                 </li>
                 <li>
-                  <Link to="/slony/latest" className="">
+                  <Link
+                    to="/slony/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Slony
                   </Link>
                 </li>
@@ -190,13 +214,19 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/migration_portal/latest" className="">
+                <li>
+                  <Link
+                    to="/migration_portal/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Migration Portal
                   </Link>
                 </li>
                 <li>
-                  <Link to="/migration_toolkit/latest" className="">
+                  <Link
+                    to="/migration_toolkit/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Migration Toolkit
                   </Link>
                 </li>
@@ -223,18 +253,27 @@ export default () => (
                 </h4>
               </div>
               <ul className="list-unstyled mb-0">
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/supported-open-source/barman/" className="">
+                <li>
+                  <Link
+                    to="/supported-open-source//barman/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Barman
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/supported-open-source/pgbackrest/" className="">
+                <li>
+                  <Link
+                    to="/supported-open-source//pgbackrest/"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     pgBackrest
                   </Link>
                 </li>
                 <li>
-                  <Link to="/bart/latest" className="">
+                  <Link
+                    to="/bart/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Backup &amp; Recovery Tool
                   </Link>
                 </li>
@@ -260,7 +299,10 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/kubernetes" className="">
+                  <Link
+                    to="/kubernetes"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Cloud Native PostgreSQL Operator
                   </Link>
                 </li>
@@ -286,7 +328,10 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li>
-                  <Link to="/postgis/latest" className="">
+                  <Link
+                    to="/postgis/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     PostGIS
                   </Link>
                 </li>
@@ -312,43 +357,67 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 {/* <span className="">Foreign Data Wrappers</span> */}
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/hadoop_data_adapter/latest" className="">
+                <li>
+                  <Link
+                    to="/hadoop_data_adapter/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Hadoop Data Adapter
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/mongo_data_adapter/latest" className="">
+                <li>
+                  <Link
+                    to="/mongo_data_adapter/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     Mongo Data Adapter
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/jdbc_connector/latest" className="px-1 ">
+                <li>
+                  <Link
+                    to="/jdbc_connector/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     JDBC Connector
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/net_connector/latest" className="">
+                <li>
+                  <Link
+                    to="/net_connector/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     .NET Connector
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/ocl_connector/latest" className="">
+                <li>
+                  <Link
+                    to="/ocl_connector/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     OCL Connector
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/odbc_connector/latest" className="">
+                <li>
+                  <Link
+                    to="/odbc_connector/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     ODBC Connector
                   </Link>
                 </li>
-                <li className="my-3 border-bottom pb-3">
-                  <Link to="/pgbouncer/latest" className="">
+                <li>
+                  <Link
+                    to="/pgbouncer/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     pgBouncer
                   </Link>
                 </li>
                 <li>
-                  <Link to="/pgpool/latest" className="">
+                  <Link
+                    to="/pgpool/latest"
+                    className="d-block border-top py-2 pl-1"
+                  >
                     pgPool-II
                   </Link>
                 </li>
