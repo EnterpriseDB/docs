@@ -18,7 +18,7 @@ const IndexSubNav = () => (
       <IndexSubLink url="https://enterprisedb.com/contact">
         Contact Us
       </IndexSubLink>
-      <IndexSubLink url="/feedback/">Have feedback?</IndexSubLink>
+      <IndexSubLink url="/community/contributing/">Have feedback?</IndexSubLink>
     </ul>
     <DarkModeToggle />
   </div>
