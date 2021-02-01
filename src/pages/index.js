@@ -87,7 +87,7 @@ export default () => (
                   </Link>
                 </li>
                 <li className="pt-3">
-                  <Link to="/postgresql" className="">
+                  <Link to="/supported-open-source/postgresql" className="">
                     PostgreSQL
                   </Link>
                 </li>
@@ -120,7 +120,7 @@ export default () => (
                   </Link>
                 </li>
                 <li className="my-0 pt-3">
-                  <Link to="/pgadmin" className="">
+                  <Link to="/supported-open-source/pgadmin" className="">
                     pgAdmin
                   </Link>
                 </li>
@@ -224,12 +224,12 @@ export default () => (
               </div>
               <ul className="list-unstyled mb-0">
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/barman/" className="">
+                  <Link to="/supported-open-source/barman/" className="">
                     Barman
                   </Link>
                 </li>
                 <li className="my-3 border-bottom pb-3">
-                  <Link to="/pgbackrest/" className="">
+                  <Link to="/supported-open-source/pgbackrest/" className="">
                     pgBackrest
                   </Link>
                 </li>
