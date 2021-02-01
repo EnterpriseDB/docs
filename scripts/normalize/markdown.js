@@ -14,6 +14,7 @@ const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relative
 const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
+const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
 
 ;(async () => {
 
@@ -36,9 +37,9 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(linkTargetIndexer)
   const transformer = unified()
-    .use(remarkMdxEmbeddedHast)
     .use(relativeLinkRewriter)
-    .use(tableFormatter);
+    .use(tableFormatter)
+    .use(docs1LinkRewriter);
   const compiler = unified()
     .use(remarkParse)
     .use(remarkStringify, {emphasis: '*', bullet: '-', fences: true})
@@ -77,7 +78,7 @@ example:
 
   }
 
-  console.log(index.stats)
+  console.log(index.stats, linkStats)
 
 })()
 
