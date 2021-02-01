@@ -15,6 +15,7 @@ const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
 const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
+const noteRewriter = require('./lib/note-rewriter.js')
 
 ;(async () => {
 
@@ -37,6 +38,8 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(linkTargetIndexer)
   const transformer = unified()
+    .use(remarkMdxEmbeddedHast)
+    .use(noteRewriter)
     .use(relativeLinkRewriter)
     .use(tableFormatter)
     .use(docs1LinkRewriter);
@@ -50,7 +53,7 @@ example:
 
     const mdxesToIndex = await glob(process.argv[2]);
     const mdxesToWrite = (process.argv[3] && await glob(process.argv[3])) || mdxesToIndex;
-  
+
   // indexing 
   for (const mdxPath of mdxesToIndex)
   {
