@@ -96,9 +96,7 @@ export default () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
-            <IndexCardLink to="/eprs/latest">
-              EDB Replication Server
-            </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
           </IndexCard>
