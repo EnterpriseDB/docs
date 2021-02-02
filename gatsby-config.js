@@ -378,8 +378,11 @@ module.exports = {
           },
         ],
         remarkPlugins: [
-          [require('remark-admonitions'), { tag: '!!!' }],
           [require('./src/plugins/code-in-tables')],
+          [
+            require('remark-admonitions'),
+            { tag: '!!!', icons: 'none', infima: true },
+          ],
         ],
       },
     },
