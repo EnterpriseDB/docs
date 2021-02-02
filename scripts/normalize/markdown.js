@@ -16,6 +16,7 @@ const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
 const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
 const noteRewriter = require('./lib/note-rewriter.js')
+const codeInTables = require('./lib/code-in-tables.js')
 
 ;(async () => {
 
@@ -37,11 +38,13 @@ example:
   const indexing = unified()
     .use(remarkMdxEmbeddedHast)
     .use(linkTargetIndexer)
+    .use(codeInTables)
   const transformer = unified()
     .use(remarkMdxEmbeddedHast)
     .use(noteRewriter)
     .use(relativeLinkRewriter)
     .use(tableFormatter)
+    .use(codeInTables)
     .use(docs1LinkRewriter);
   const compiler = unified()
     .use(remarkParse)
@@ -49,6 +52,7 @@ example:
     .use(mdx)
     .use(remarkFrontmatter)
     .use(remarkMdxEmbeddedHast)
+    .use(codeInTables)
     .use(noEscapeImageAlt)
 
     const mdxesToIndex = await glob(process.argv[2]);
