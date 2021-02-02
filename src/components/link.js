@@ -22,14 +22,14 @@ const rewriteUrl = (url, pageUrl, pageIsIndex) => {
   // should always be the directory containing the file holding the link
   // Trigger this behavior by judicious use of an ending slash
   // See: RFC 3986 section 5.2.3
-  if (pageIsIndex) pageUrl = pageUrl.replace(/(?<!\/)$/, '/');
-  else pageUrl = pageUrl.replace(/\/$/, '');
+  let modifiedPageUrl = pageUrl.replace(/\/$/, '');
+  if (pageIsIndex) modifiedPageUrl = modifiedPageUrl + '/';
 
   // let URL do the heavy lifting here, to ensure proper semantics
   // bogus "loc:" protocol used for convenience and stripped
   // we could go to the trouble of passing in the ACTUAL base
   // URL here, but it doesn't matter
-  const base = new URL(pageUrl, 'loc:/');
+  const base = new URL(modifiedPageUrl, 'loc:/');
   const result = new URL(url, base);
 
   return forceTrailingSlash(result.href.replace(/^loc:/, ''));
