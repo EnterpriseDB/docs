@@ -27,7 +27,7 @@ function transformer(tree, file)
         node.properties.href = newPath;
       } 
     }
-    if (docs1Url.test(node.url.trim()))
+    if (node.url && docs1Url.test(node.url.trim()))
     {
       const {newPath, newText} = mapUrl(node.url, node.children[0]?.value, getContext(node, ancestors), node.position);
       if (newPath)
