@@ -59,8 +59,16 @@ function convertTable(hastTable)
   });
   if (!convertible) return null;
 
+  const options = {
+    handlers: {
+      br: (h, node) => {
+        return {type: 'jsx', value: '<br />'};
+      },
+    },
+  };
+
   // this does all the heavy lifting
-  mdast = hast2mdast(hastTable);
+  mdast = hast2mdast(hastTable, options);
   
   // we kinda need paragraphs in cells; simulate with linebreak elements
   visit(mdast, function(node, index, parent)
