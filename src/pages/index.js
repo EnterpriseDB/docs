@@ -31,7 +31,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
 
 const IndexCardLink = ({ to, className, children }) => (
   <li>
-    <Link to={to} className={`d-block border-top py-2 pl-1 ${className}`}>
+    <Link to={to} className={`d-block py-2 pl-1 ${className}`}>
       {children}
     </Link>
   </li>
@@ -96,11 +96,8 @@ export default () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
-            <IndexCardLink to="/eprs/latest">
-              EDB Replication Server
-            </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/ark/latest">Ark Platform</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
           </IndexCard>
 
