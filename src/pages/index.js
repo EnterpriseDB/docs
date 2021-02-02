@@ -31,7 +31,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
 
 const IndexCardLink = ({ to, className, children }) => (
   <li>
-    <Link to={to} className={`d-block border-top py-2 pl-1 ${className}`}>
+    <Link to={to} className={`d-block py-2 pl-1 ${className}`}>
       {children}
     </Link>
   </li>
