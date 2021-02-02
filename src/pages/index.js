@@ -100,7 +100,6 @@ export default () => (
               EDB Replication Server
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/ark/latest">Ark Platform</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
           </IndexCard>
 
