@@ -5,9 +5,16 @@ const usePathPrefix = () => {
     {
       site {
         pathPrefix
+        siteMetadata {
+          isDevelopment
+        }
       }
     }
   `);
+
+  if (data.site.siteMetadata.isDevelopment) {
+    return '';
+  }
 
   return data.site.pathPrefix || '';
 };
