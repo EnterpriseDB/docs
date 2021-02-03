@@ -37,7 +37,7 @@ const IndexCardLink = ({ to, className, children }) => (
   </li>
 );
 
-export default () => (
+const Page = () => (
   <Layout
     pageMeta={{
       description:
@@ -170,3 +170,5 @@ export default () => (
     </Container>
   </Layout>
 );
+
+export default Page;
