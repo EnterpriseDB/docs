@@ -59,6 +59,9 @@ const RadioRefinement = ({
 
   const radioName = `radio-refinement-${attribute}`;
   const refinedItem = items.find((item) => item.isRefined);
+  const sortedItems = items.sort((a, b) => {
+    return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1;
+  });
 
   return (
     <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
@@ -74,7 +77,7 @@ const RadioRefinement = ({
         onChange={() => refine(refinedItem.value)}
         checked={!refinedItem}
       />
-      {items.map((item) => (
+      {sortedItems.map((item) => (
         <RadioInput
           key={item.label}
           id={`radio-refinement-${attribute}-${item.label}`}
