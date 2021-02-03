@@ -13,6 +13,12 @@ const typeToContentType = {
   guide: { name: 'Guides' },
 };
 
+const labelForItem = (item, translation) => {
+  return translation[item.label]
+    ? translation[item.label].name
+    : capitalize(item.label);
+};
+
 const RadioInput = ({
   labelText,
   badgeNumber,
@@ -60,7 +66,9 @@ const RadioRefinement = ({
   const radioName = `radio-refinement-${attribute}`;
   const refinedItem = items.find((item) => item.isRefined);
   const sortedItems = items.sort((a, b) => {
-    return a.label.toLowerCase() > b.label.toLowerCase() ? 1 : -1;
+    const aLabel = labelForItem(a, translation);
+    const bLabel = labelForItem(b, translation);
+    return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
   });
 
   return (
@@ -82,11 +90,7 @@ const RadioRefinement = ({
           key={item.label}
           id={`radio-refinement-${attribute}-${item.label}`}
           name={radioName}
-          labelText={
-            translation[item.label]
-              ? translation[item.label].name
-              : capitalize(item.label)
-          }
+          labelText={labelForItem(item, translation)}
           badgeNumber={item.count}
           showBadge={queryActive}
           onChange={() => refine(item.value)}
