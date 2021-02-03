@@ -17,7 +17,7 @@ const searchClient = algoliasearch(
   '3c95fc5297e90a44b6467f3098a4e6ed',
 );
 
-export default data => {
+const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
 
   const { algoliaIndex } = useSiteMetadata();
@@ -36,7 +36,7 @@ export default data => {
         <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
-          onSearchStateChange={searchState => {
+          onSearchStateChange={(searchState) => {
             setQuery(searchState.query);
             setSearchState(searchState);
           }}
@@ -63,3 +63,5 @@ export default data => {
     </Layout>
   );
 };
+
+export default Search;
