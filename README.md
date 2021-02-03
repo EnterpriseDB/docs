@@ -7,11 +7,12 @@
 This repo contains the React/Gatsby application that powers the EDB Docs website. The site pulls [Markdown](https://www.markdownguide.org/) content from several repos in a process called "sourcing", and then renders it all into high-performance markup. You can install the application on your local computer for easy editing, viewing, and eventually publishing to the GitHub repo.
 
 ## MacOS Installation
+
 We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git using Homebrew with `brew install git`, if it's not already installed.  (Use `git --version` to check.)
+1. Install Git using Homebrew with `brew install git`, if it's not already installed. (Use `git --version` to check.)
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
@@ -21,9 +22,9 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
-    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
+   - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
 
-    - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 14 LTS).
+   - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 14 LTS).
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.6 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
@@ -44,6 +45,7 @@ We recommend using MacOS to work with the EDB Docs application.
 If you are a Windows user, you can work with Docs without installing it locally by using a Docker container and VSCode. See [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
 ## Sources
+
 - Advocacy (`/advocacy_docs`, always loaded)
 
 - EDB Product Docs (`/product_docs`)
@@ -57,16 +59,19 @@ If you are a Windows user, you can work with Docs without installing it locally 
   - [pgBackrest](https://github.com/EnterpriseDB/pgbackrest-docs)
 
 ### Configuring Which Sources are Loaded
+
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
 
 #### `yarn config-sources`
-Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby  which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
+
+Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
 
 If you select an "external" source, you will be prompted to run the next command, `yarn pull-sources`, to download and load this content from the internet.
 
 #### `yarn pull-sources`
+
 Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files (in the `external_sources` subdirectory) that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
 
 ### Types of Sources
@@ -85,7 +90,12 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 
 ## Resolving issues
 
-If you experience errors or other issues with the site, the first step you should take is to run `yarn clean`, and then try `yarn develop` again. This clears gatsby's cache, and can often resolve strange issues.
+If you experience errors or other issues with the site, try the following in the project folder:
+
+1. `rm -rf node_modules` to clean out installed JavaScript packages
+1. `yarn` to reinstall JavaScript packages
+1. `yarn clean` to clean up Gatsby cache
+1. `yarn develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ## Development
 
@@ -98,16 +108,19 @@ To deploy to production, create a pull request merging `develop` into `main`. Wh
 Deployments of the site use the `build-sources.json` file to determine which sources need to be loaded. All environments are continuously deployed - new commits to relevant branches will trigger a build of the associated environment. The builds are done using Github Actions, so you can view deployment progress by clicking the "Actions" tab.
 
 #### Staging
+
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
 #### Production
+
 Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
 #### Review Builds
+
 Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
-
 # Advocacy Docs (left over from previous README, needs attention)
+
 Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
 
 New docs need a `.mdx` suffix to be used by Gatsby.
