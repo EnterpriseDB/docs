@@ -17,13 +17,13 @@ const searchClient = algoliasearch(
   '3c95fc5297e90a44b6467f3098a4e6ed',
 );
 
-const buildQuery = pathname => {
+const buildQuery = (pathname) => {
   const tokens = pathname
     .replace('/edb-docs', '')
     .replace(/-/g, ' ')
     .split('/');
 
-  const productIndex = tokens.findIndex(token => token.match(/edb\s/g));
+  const productIndex = tokens.findIndex((token) => token.match(/edb\s/g));
 
   let product = null;
   let title = null;
@@ -110,7 +110,7 @@ const SuggestedHit = ({ hit }) => (
   </Link>
 );
 
-export default data => {
+const NotFound = (data) => {
   const query = buildQuery(data.location.pathname);
 
   return (
@@ -131,3 +131,5 @@ export default data => {
     </Layout>
   );
 };
+
+export default NotFound;
