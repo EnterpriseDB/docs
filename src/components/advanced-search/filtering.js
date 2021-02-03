@@ -53,8 +53,12 @@ const RadioRefinement = ({
   show,
   translation = {},
 }) => {
+  if (items == null) {
+    return null;
+  }
+
   const radioName = `radio-refinement-${attribute}`;
-  const refinedItem = items.find(item => item.isRefined);
+  const refinedItem = items.find((item) => item.isRefined);
 
   return (
     <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
@@ -70,7 +74,7 @@ const RadioRefinement = ({
         onChange={() => refine(refinedItem.value)}
         checked={!refinedItem}
       />
-      {items.map(item => (
+      {items.map((item) => (
         <RadioInput
           key={item.label}
           id={`radio-refinement-${attribute}-${item.label}`}
@@ -107,7 +111,7 @@ const ContentTypeRefinement = connectMenu(
 
 const ProductVersionRefinement = connectHierarchicalMenu(
   ({ items, currentRefinement, refine, queryActive, show }) => {
-    const refinedProduct = items.find(item => item.isRefined);
+    const refinedProduct = items.find((item) => item.isRefined);
 
     return (
       <>
@@ -134,7 +138,7 @@ const ProductVersionRefinement = connectHierarchicalMenu(
 );
 
 const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
-  const clear = e => {
+  const clear = (e) => {
     refine(items);
     e.preventDefault();
   };
@@ -151,7 +155,7 @@ const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
 
 export const AdvancedSearchFiltering = connectCurrentRefinements(
   ({ items, queryActive }) => {
-    const showProductVersionFilters = !items.find(item => {
+    const showProductVersionFilters = !items.find((item) => {
       return item.attribute === 'type' && item.currentRefinement === 'guide';
     });
 
