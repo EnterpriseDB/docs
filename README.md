@@ -90,7 +90,12 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 
 ## Resolving issues
 
-If you experience errors or other issues with the site, the first step you should take is to run `yarn clean`, and then try `yarn develop` again. This clears gatsby's cache, and can often resolve strange issues.
+If you experience errors or other issues with the site, try the following in the project folder:
+
+1. `rm -rf node_modules` to clean out installed JavaScript packages
+1. `yarn` to reinstall JavaScript packages
+1. `yarn clean` to clean up Gatsby cache
+1. `yarn develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ## Development
 
