@@ -13,21 +13,18 @@ const LogoLink = () => {
 
 const FooterItem = ({ url, children }) => (
   <li className="ml-0">
-    <a href={url} className="d-block py-1 align-middle">
+    <Link to={url} className="d-block py-1 align-middle">
       {children}
-    </a>
+    </Link>
   </li>
 );
 
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="/postgresql-docs/postgresql/">PostgreSQL Docs</FooterItem>
-    <FooterItem url="/community/contribute/">Contribute</FooterItem>
-    <FooterItem url="/community/authoring/">Authoring</FooterItem>
     <FooterItem url="https://support.enterprisedb.com">Support</FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
-    <FooterItem url="/community/feedback/">Feedback?</FooterItem>
+    <FooterItem url="/community/contributing/">Have feedback?</FooterItem>
     <DarkModeToggle className="mt-1" />
   </ul>
 );
