@@ -16,7 +16,7 @@ const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
 const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
 const noteRewriter = require('./lib/note-rewriter.js')
-const codeInTables = require('./lib/code-in-tables.js')
+const codeInTables = require('../../src/plugins/code-in-tables.js')
 
 ;(async () => {
 

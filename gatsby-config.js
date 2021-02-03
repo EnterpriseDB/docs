@@ -376,6 +376,7 @@ module.exports = {
             },
           },
         ],
+        remarkPlugins: [require('./src/plugins/code-in-tables')],
       },
     },
     {
