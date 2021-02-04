@@ -119,7 +119,7 @@ const indexQuery = `
 }
 `;
 
-const transformNodeForAlgolia = node => {
+const transformNodeForAlgolia = (node) => {
   let newNode = node;
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
@@ -144,7 +144,7 @@ const transformNodeForAlgolia = node => {
   return newNode;
 };
 
-const makePathDictionary = nodes => {
+const makePathDictionary = (nodes) => {
   let dictionary = {};
   for (let node of nodes) {
     dictionary[node.fields.path] = node.frontmatter.title;
@@ -164,7 +164,7 @@ const makeBreadcrumbs = (node, dictionary, advocacy = false) => {
   return trail;
 };
 
-const addBreadcrumbsToNodes = nodes => {
+const addBreadcrumbsToNodes = (nodes) => {
   const pathDictionary = makePathDictionary(nodes);
   let newNodes = [];
   for (let node of nodes) {
@@ -176,7 +176,7 @@ const addBreadcrumbsToNodes = nodes => {
   return newNodes;
 };
 
-const mdxTreeToSearchNodes = rootNode => {
+const mdxTreeToSearchNodes = (rootNode) => {
   rootNode.depth = 0;
   const stack = [rootNode];
   const searchNodes = [];
@@ -187,7 +187,7 @@ const mdxTreeToSearchNodes = rootNode => {
     nextAttribute: null,
     transitionDepth: null,
   };
-  const nextParseStateIfDepth = depth => {
+  const nextParseStateIfDepth = (depth) => {
     if (!parseState.transitionDepth || depth > parseState.transitionDepth)
       return;
     parseState = {
@@ -196,7 +196,7 @@ const mdxTreeToSearchNodes = rootNode => {
       transitionDepth: null,
     };
   };
-  const setHeadingParseState = depth => {
+  const setHeadingParseState = (depth) => {
     parseState = {
       attribute: 'heading',
       nextAttribute: 'text',
@@ -230,7 +230,7 @@ const mdxTreeToSearchNodes = rootNode => {
       (node.children || [])
         .slice()
         .reverse()
-        .forEach(child => {
+        .forEach((child) => {
           child.depth = node.depth + 1;
           stack.push(child);
         });
@@ -243,11 +243,11 @@ const mdxTreeToSearchNodes = rootNode => {
   return searchNodes;
 };
 
-const trimSpaces = str => {
+const trimSpaces = (str) => {
   return str.replace(/\s+/g, ' ').trim();
 };
 
-const splitNodeContent = nodes => {
+const splitNodeContent = (nodes) => {
   const result = [];
   for (const node of nodes) {
     // skip indexing this content for now
@@ -331,7 +331,6 @@ module.exports = {
         // An optional attribute which provides support for CORS check.
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
-        optional_permissions: ['clipboardWrite'],
         crossOrigin: `use-credentials`,
       },
     },
@@ -358,9 +357,11 @@ module.exports = {
         },
         gatsbyRemarkPlugins: [
           {
-            resolve: process.env.OPTIMIZE_IMAGES
-              ? 'gatsby-remark-images'
-              : 'gatsby-remark-static-images',
+            resolve: 'gatsby-remark-images',
+            options: {
+              linkImagesToOriginal: false,
+              showCaptions: false,
+            },
           },
           {
             resolve: `gatsby-remark-autolink-headers`,
@@ -376,6 +377,7 @@ module.exports = {
             },
           },
         ],
+        remarkPlugins: [require('./src/plugins/code-in-tables')],
       },
     },
     {
@@ -416,7 +418,7 @@ if (process.env.INDEX_ON_BUILD) {
           query: indexQuery,
           transformer: ({ data }) =>
             splitNodeContent(
-              addBreadcrumbsToNodes(data.allMdx.nodes).map(node =>
+              addBreadcrumbsToNodes(data.allMdx.nodes).map((node) =>
                 transformNodeForAlgolia(node),
               ),
             ),
