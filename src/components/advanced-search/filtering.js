@@ -13,6 +13,12 @@ const typeToContentType = {
   guide: { name: 'Guides' },
 };
 
+const labelForItem = (item, translation) => {
+  return translation[item.label]
+    ? translation[item.label].name
+    : capitalize(item.label);
+};
+
 const RadioInput = ({
   labelText,
   badgeNumber,
@@ -53,8 +59,17 @@ const RadioRefinement = ({
   show,
   translation = {},
 }) => {
+  if (items == null) {
+    return null;
+  }
+
   const radioName = `radio-refinement-${attribute}`;
-  const refinedItem = items.find(item => item.isRefined);
+  const refinedItem = items.find((item) => item.isRefined);
+  const sortedItems = items.sort((a, b) => {
+    const aLabel = labelForItem(a, translation);
+    const bLabel = labelForItem(b, translation);
+    return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
+  });
 
   return (
     <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
@@ -70,16 +85,12 @@ const RadioRefinement = ({
         onChange={() => refine(refinedItem.value)}
         checked={!refinedItem}
       />
-      {items.map(item => (
+      {sortedItems.map((item) => (
         <RadioInput
           key={item.label}
           id={`radio-refinement-${attribute}-${item.label}`}
           name={radioName}
-          labelText={
-            translation[item.label]
-              ? translation[item.label].name
-              : capitalize(item.label)
-          }
+          labelText={labelForItem(item, translation)}
           badgeNumber={item.count}
           showBadge={queryActive}
           onChange={() => refine(item.value)}
@@ -107,7 +118,7 @@ const ContentTypeRefinement = connectMenu(
 
 const ProductVersionRefinement = connectHierarchicalMenu(
   ({ items, currentRefinement, refine, queryActive, show }) => {
-    const refinedProduct = items.find(item => item.isRefined);
+    const refinedProduct = items.find((item) => item.isRefined);
 
     return (
       <>
@@ -134,7 +145,7 @@ const ProductVersionRefinement = connectHierarchicalMenu(
 );
 
 const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
-  const clear = e => {
+  const clear = (e) => {
     refine(items);
     e.preventDefault();
   };
@@ -151,7 +162,7 @@ const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
 
 export const AdvancedSearchFiltering = connectCurrentRefinements(
   ({ items, queryActive }) => {
-    const showProductVersionFilters = !items.find(item => {
+    const showProductVersionFilters = !items.find((item) => {
       return item.attribute === 'type' && item.currentRefinement === 'guide';
     });
 
