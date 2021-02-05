@@ -23,7 +23,7 @@ function transformer(tree, file) {
       replacement = {
         type: "blockquote",
         children: [
-          { type: "strong", children: [...title, {type: 'text', value: ':'}], },
+          { type: "strong", children: [{type: 'text', value: mdast2string({children: title}) + ':'}], },
           ...node.children.filter(node => !node.type.startsWith("jsx")),
         ],
       };
