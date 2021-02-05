@@ -46,6 +46,7 @@ function getTable(root)
       break;
     }
   }
+  
   return table;
 }
 
@@ -69,16 +70,22 @@ function convertTable(hastTable)
 
   // this does all the heavy lifting
   mdast = hast2mdast(hastTable, options);
-  
-  // we kinda need paragraphs in cells; simulate with linebreak elements
+  const br = {type: 'jsx', value: '<br />'};
   visit(mdast, function(node, index, parent)
   {
+    // strip blockquotes; can't support those
+    if (is(node, 'blockquote'))
+    {
+      parent.children.splice(index, 1, br, ...node.children);
+    }
+    // we kinda need paragraphs in cells; simulate with linebreak elements
     if (is(node, 'paragraph'))
     {
-      let br = {type: 'jsx', value: '<br />'};
       let replace = index > 0
         ? [br, br, ...node.children]
         : node.children;
+      if (index === parent.children.length-1)
+        replace.push(br);
       parent.children.splice(index, 1, ...replace);
     }
   });
