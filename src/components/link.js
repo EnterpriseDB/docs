@@ -3,7 +3,7 @@ import { Link as GatsbyLink } from 'gatsby';
 import isAbsoluteUrl from 'is-absolute-url';
 import usePathPrefix from '../hooks/use-path-prefix';
 
-const forceTrailingSlash = url => {
+const forceTrailingSlash = (url) => {
   const splitUrl = url.split('/');
   // if does not end with extension
   if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/) || url.startsWith('#')) {
@@ -20,7 +20,11 @@ const stripPathPrefix = (path, pathPrefix) => {
   return path;
 };
 
-const isAbsoluteOrProtocolRelativeUrl = url => {
+const stripMarkdownExtension = (path) => {
+  return path.replace(/\.mdx?$/, '');
+};
+
+const isAbsoluteOrProtocolRelativeUrl = (url) => {
   return isAbsoluteUrl(url) || url.trim().startsWith('//');
 };
 
@@ -45,6 +49,7 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
 
   let resultHref = result.href.replace(/^loc:/, '');
   resultHref = stripPathPrefix(resultHref, pathPrefix);
+  resultHref = stripMarkdownExtension(resultHref);
   return forceTrailingSlash(resultHref);
 };
 
