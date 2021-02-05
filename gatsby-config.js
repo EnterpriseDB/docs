@@ -386,7 +386,14 @@ module.exports = {
           [require('./src/plugins/code-in-tables')],
           [
             require('remark-admonitions'),
-            { tag: '!!!', icons: 'none', infima: true },
+            {
+              tag: '!!!',
+              icons: 'none',
+              infima: true,
+              customTypes: {
+                seealso: 'note',
+              },
+            },
           ],
         ],
       },
