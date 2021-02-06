@@ -47,7 +47,7 @@ const ContentRow = ({ children }) => (
 
 const getChildren = (path, navLinks) => {
   return navLinks.filter(
-    node =>
+    (node) =>
       node.fields.path.includes(path) &&
       node.fields.path.split('/').length === path.split('/').length + 1,
   );
@@ -57,7 +57,7 @@ const Tiles = ({ mdx, navLinks }) => {
   const { path } = mdx.fields;
   const depth = path.split('/').length;
   if (depth === 4) {
-    const tiles = getChildren(path, navLinks).map(child => {
+    const tiles = getChildren(path, navLinks).map((child) => {
       let newChild = { ...child };
       const { path } = newChild.fields;
       newChild['children'] = getChildren(path, navLinks);
@@ -77,9 +77,10 @@ const Tiles = ({ mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
+  // const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
 
   const {
+    frontmatter,
     pagePath,
     navLinks,
     githubFileLink,
@@ -87,6 +88,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubIssuesLink,
     isIndexPage,
   } = pageContext;
+  const { iconName, title, description, katacodaPanel } = frontmatter;
   const pageMeta = {
     title: title,
     description: description,
@@ -97,11 +99,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const showToc = !!mdx.tableOfContents.items;
 
   // Determine side bar icon. This might need some future rework.
+  // EVAN this should be changes to respect frontmatter and not be generally insane
   const finalIconName = (
     rawIndexNavigation
-      .map(al => al.links)
+      .map((al) => al.links)
       .flat()
-      .find(link => mdx.fields.path.includes(link.url)) || {
+      .find((link) => mdx.fields.path.includes(link.url)) || {
       iconName: iconName,
     }
   ).iconName;
@@ -142,7 +145,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
 
-          <DevFrontmatter frontmatter={mdx.frontmatter} />
+          <DevFrontmatter frontmatter={frontmatter} />
 
           <hr />
           <p>
