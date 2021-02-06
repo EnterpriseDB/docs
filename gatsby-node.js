@@ -9,11 +9,11 @@ const { exec, execSync } = require('child_process');
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
 
-const sortVersionArray = versions => {
+const sortVersionArray = (versions) => {
   return versions
-    .map(version => version.replace(/\d+/g, n => +n + 100000))
+    .map((version) => version.replace(/\d+/g, (n) => +n + 100000))
     .sort()
-    .map(version => version.replace(/\d+/g, n => +n - 100000));
+    .map((version) => version.replace(/\d+/g, (n) => +n - 100000));
 };
 
 const replacePathVersion = (path, version = 'latest') => {
@@ -24,7 +24,7 @@ const replacePathVersion = (path, version = 'latest') => {
   }`;
 };
 
-const filePathToDocType = filePath => {
+const filePathToDocType = (filePath) => {
   if (filePath.includes('/product_docs/')) {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
@@ -34,15 +34,23 @@ const filePathToDocType = filePath => {
   }
 };
 
-const removeTrailingSlash = url => {
+const removeTrailingSlash = (url) => {
   if (url.endsWith('/')) {
     return url.slice(0, -1);
   }
   return url;
 };
 
-const isPathAnIndexPage = filePath =>
+const isPathAnIndexPage = (filePath) =>
   filePath.endsWith('/index.mdx') || filePath === 'index.mdx';
+
+const removeNullEntries = (obj) => {
+  if (!obj) return obj;
+  for (const [key, value] of Object.entries(obj)) {
+    if (value == null) delete obj[key];
+  }
+  return obj;
+};
 
 const productLatestVersionCache = [];
 
@@ -95,6 +103,61 @@ exports.onCreateNode = async ({ node, getNode, actions }) => {
   }
 };
 
+const pathToDepth = (path) => {
+  return path.split('/').filter((s) => s.length > 0).length;
+};
+
+const mdxNodesToTree = (nodes) => {
+  const buildNode = (path, parent) => {
+    return {
+      path: path,
+      parent: parent,
+      children: [],
+      mdxNode: null,
+      depth: pathToDepth(path),
+    };
+  };
+
+  const rootNode = buildNode('/', null);
+
+  const findOrInsertNode = (currentNode, path) => {
+    const node = currentNode.children.find((child) => child.path === path);
+    if (node) return node;
+
+    const newNode = buildNode(path, currentNode);
+    currentNode.children.push(newNode);
+    return newNode;
+  };
+
+  const addNode = (node) => {
+    const splitPath = node.fields.path.split('/');
+    let currentNode = rootNode;
+    for (let i = 2; i < splitPath.length; i++) {
+      const path = `/${splitPath.slice(1, i).join('/')}/`;
+      currentNode = findOrInsertNode(currentNode, path);
+      if (path === node.fields.path) {
+        currentNode.mdxNode = node;
+      }
+    }
+  };
+
+  nodes.forEach((node) => addNode(node));
+
+  return rootNode;
+};
+
+// const depthFirstPreorderTraversal = (rootNode, callback) => {
+//   const stack = [rootNode];
+//   let node = null;
+
+//   while (stack.length > 0) {
+//     node = stack.pop();
+//     // console.log(node.path);
+//     callback(node);
+//     node.children.forEach(child => stack.push(child));
+//   }
+// };
+
 exports.createPages = async ({ actions, graphql, reporter }) => {
   const result = await graphql(`
     query {
@@ -112,6 +175,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             }
             originalFilePath
             productStub
+            directoryDefaults {
+              description
+              iconName
+            }
           }
           excerpt(pruneLength: 280)
           fields {
@@ -127,11 +194,60 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   `);
 
-  const { nodes } = result.data.allMdx;
-
   if (result.errors) {
     reporter.panic('failed to create docs', result.errors);
   }
+
+  const { nodes } = result.data.allMdx;
+  const { createNode, createParentChildLink } = actions;
+
+  const treeRoot = mdxNodesToTree(nodes);
+
+  // perform depth first preorder traversal
+  const navStack = [treeRoot];
+  let frontmatterStack = [];
+  let curr = null;
+
+  while (navStack.length > 0) {
+    curr = navStack.pop();
+    curr.children.forEach((child) => navStack.push(child));
+
+    // compute frontmatter as we traverse
+    frontmatterStack = frontmatterStack.slice(0, curr.depth);
+    frontmatterStack.push(
+      removeNullEntries(curr.mdxNode?.frontmatter.directoryDefaults),
+    );
+    if (curr.mdxNode) {
+      curr.mdxNode.frontmatter = Object.assign(
+        {},
+        ...frontmatterStack,
+        ...[removeNullEntries(curr.mdxNode.frontmatter)],
+      );
+    }
+  }
+
+  // depthFirstPreorderTraversal(nodeTree, (treeNode) => {
+  //   if (treeNode.mdxNode) {
+  //     let frontmatter = {
+  //       ...removeNullEntries(treeNode.mdxNode.frontmatter.directoryDefaults),
+  //       ...removeNullEntries(treeNode.mdxNode.frontmatter),
+  //     };
+
+  //     let current;
+  //     let parent = treeNode.parent;
+  //     while (parent) {
+  //       current = parent;
+  //       parent = current.parent;
+  //       if (!current.mdxNode) continue;
+  //       frontmatter = {
+  //         ...removeNullEntries(current.mdxNode.frontmatter.directoryDefaults),
+  //         ...frontmatter,
+  //       };
+  //     }
+
+  //     treeNode.mdxNode.frontmatter = frontmatter;
+  //   }
+  // });
 
   for (let node of nodes) {
     if (!node.frontmatter.title) {
@@ -145,18 +261,18 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
   }
 
-  const docs = nodes.filter(file => file.fields.docType === 'doc');
-  const learn = nodes.filter(file => file.fields.docType === 'advocacy');
-  const gh_docs = nodes.filter(file => file.fields.docType === 'gh_doc');
+  const docs = nodes.filter((file) => file.fields.docType === 'doc');
+  const learn = nodes.filter((file) => file.fields.docType === 'advocacy');
+  const gh_docs = nodes.filter((file) => file.fields.docType === 'gh_doc');
 
   const folderIndex = {};
 
-  nodes.forEach(doc => {
+  nodes.forEach((doc) => {
     const { path } = doc.fields;
     const { redirects } = doc.frontmatter;
 
     if (redirects) {
-      redirects.forEach(fromPath => {
+      redirects.forEach((fromPath) => {
         actions.createRedirect({
           fromPath,
           toPath: path,
@@ -186,7 +302,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   const versionIndex = {};
 
-  docs.forEach(doc => {
+  docs.forEach((doc) => {
     const { product, version } = doc.fields;
 
     if (!versionIndex[product]) {
@@ -202,7 +318,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
   }
 
-  docs.forEach(doc => {
+  docs.forEach((doc) => {
     const isLatest = versionIndex[doc.fields.product][0] === doc.fields.version;
     if (isLatest) {
       actions.createRedirect({
@@ -215,7 +331,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     const navLinks = docs.filter(
-      node =>
+      (node) =>
         node.fields.product === doc.fields.product &&
         node.fields.version === doc.fields.version,
     );
@@ -240,6 +356,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: path,
       component: require.resolve(`./src/templates/${template}`),
       context: {
+        frontmatter: doc.frontmatter,
         pagePath: path,
         navLinks: navLinks,
         versions: versionIndex[doc.fields.product],
@@ -257,9 +374,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     });
   });
 
-  learn.forEach(doc => {
+  learn.forEach((doc) => {
     const navLinks = learn.filter(
-      node => node.fields.topic === doc.fields.topic,
+      (node) => node.fields.topic === doc.fields.topic,
     );
 
     const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
@@ -278,8 +395,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       path: doc.fields.path,
       component: require.resolve('./src/templates/learn-doc.js'),
       context: {
+        frontmatter: doc.frontmatter,
         pagePath: doc.fields.path,
-        navLinks: navLinks,
+        navLinks: navLinks, // WTF this needs to be much lighter
         githubFileLink: githubFileLink,
         githubEditLink: githubEditLink,
         githubIssuesLink: githubIssuesLink,
@@ -287,7 +405,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       },
     });
 
-    (doc.frontmatter.katacodaPages || []).forEach(katacodaPage => {
+    (doc.frontmatter.katacodaPages || []).forEach((katacodaPage) => {
       if (!katacodaPage.scenario || !katacodaPage.account) {
         throw new Error(
           `katacoda scenario or account missing for ${doc.fields.path}`,
@@ -310,7 +428,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     });
   });
 
-  gh_docs.forEach(doc => {
+  gh_docs.forEach((doc) => {
     let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
     if (doc.fields.path.includes('barman')) {
       githubLink = 'https://github.com/2ndquadrant-it/barman';
@@ -318,7 +436,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const showGithubLink = !doc.fields.path.includes('pgbackrest');
 
     const navLinks = gh_docs.filter(
-      node => node.fields.topic === doc.fields.topic,
+      (node) => node.fields.topic === doc.fields.topic,
     );
 
     const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
