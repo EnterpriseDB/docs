@@ -40,14 +40,11 @@ export const query = graphql`
   }
 `;
 
-const getProductUrlBase = path => {
-  return path
-    .split('/')
-    .slice(0, 2)
-    .join('/');
+const getProductUrlBase = (path) => {
+  return path.split('/').slice(0, 2).join('/');
 };
 
-const getProductAndVersion = path => {
+const getProductAndVersion = (path) => {
   return {
     product: path.split('/')[1],
     version: path.split('/')[2],
@@ -112,7 +109,7 @@ const determineCanonicalPath = (hasLatest, latestPath) => {
 
 const Sections = ({ sections }) => (
   <>
-    {sections.map(section => (
+    {sections.map((section) => (
       <Section section={section} key={section.title} />
     ))}
   </>
@@ -123,7 +120,7 @@ const Section = ({ section }) => (
     <div className="card rounded shadow-sm p-2">
       <div className="card-body">
         <h3 className="card-title balance-text">{section.title}</h3>
-        {section.guides.map(guide =>
+        {section.guides.map((guide) =>
           guide ? (
             <p className="card-text" key={`${guide.frontmatter.title}`}>
               <Link
@@ -184,10 +181,11 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
 );
 
 const DocTemplate = ({ data, pageContext }) => {
-  const { fields, frontmatter, body, tableOfContents } = data.mdx;
+  const { fields, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
   const depth = path.split('/').length;
   const {
+    frontmatter,
     pagePath,
     navLinks,
     versions,
