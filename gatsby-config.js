@@ -291,7 +291,6 @@ module.exports = {
   flags: {
     PRESERVE_WEBPACK_CACHE: true,
     FAST_REFRESH: true,
-    PARALLEL_SOURCING: true,
   },
   pathPrefix: '/docs',
   siteMetadata: {
