@@ -18,17 +18,6 @@ import {
 export const query = graphql`
   query($path: String!) {
     mdx(fields: { path: { eq: $path } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-        katacodaPanel {
-          account
-          scenario
-          codelanguages
-        }
-        iconName
-      }
       fields {
         path
         mtime
