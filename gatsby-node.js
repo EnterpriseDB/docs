@@ -184,6 +184,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               scenario
               account
             }
+            katacodaPanel {
+              scenario
+              account
+              codelanguages
+            }
             directoryDefaults {
               description
               iconName
