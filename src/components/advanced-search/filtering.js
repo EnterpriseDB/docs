@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Badge } from 'react-bootstrap';
 import {
   connectMenu,
-  connectHierarchicalMenu,
   connectCurrentRefinements,
+  connectRefinementList,
 } from 'react-instantsearch-dom';
 import { products } from '../../constants/products';
 import { capitalize } from '../../constants/utils';
@@ -82,7 +82,7 @@ const RadioRefinement = ({
         labelText="All"
         badgeNumber={items.reduce((total, item) => total + item.count, 0)}
         showBadge={queryActive}
-        onChange={() => refine(refinedItem.value)}
+        onChange={() => refine('')}
         checked={!refinedItem}
       />
       {sortedItems.map((item) => (
@@ -93,7 +93,7 @@ const RadioRefinement = ({
           labelText={labelForItem(item, translation)}
           badgeNumber={item.count}
           showBadge={queryActive}
-          onChange={() => refine(item.value)}
+          onChange={() => refine(item.label)}
           checked={refinedItem === item}
         />
       ))}
@@ -116,30 +116,19 @@ const ContentTypeRefinement = connectMenu(
   ),
 );
 
-const ProductVersionRefinement = connectHierarchicalMenu(
-  ({ items, currentRefinement, refine, queryActive, show }) => {
-    const refinedProduct = items.find((item) => item.isRefined);
+const SingleFacetRefinement = connectRefinementList(
+  ({ items, refine, queryActive, show, attribute, hideIfEmpty = false }) => {
+    const empty = !items || items.length === 0;
 
     return (
-      <>
-        <RadioRefinement
-          attribute="product"
-          items={items}
-          queryActive={queryActive}
-          refine={refine}
-          show={show}
-          translation={products}
-        />
-        {refinedProduct && (
-          <RadioRefinement
-            attribute="version"
-            items={refinedProduct.items}
-            queryActive={queryActive}
-            refine={refine}
-            show={show}
-          />
-        )}
-      </>
+      <RadioRefinement
+        attribute={attribute}
+        items={items}
+        queryActive={queryActive}
+        refine={refine}
+        show={show && !(hideIfEmpty && empty)}
+        translation={products}
+      />
     );
   },
 );
@@ -161,23 +150,44 @@ const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
 });
 
 export const AdvancedSearchFiltering = connectCurrentRefinements(
-  ({ items, queryActive }) => {
+  ({ items, queryActive, refine }) => {
     const showProductVersionFilters = !items.find((item) => {
       return item.attribute === 'type' && item.currentRefinement === 'guide';
     });
 
+    const productFilterApplied = items.some(
+      (item) => item.attribute === 'product',
+    );
+    const versionFilterApplied = items.some(
+      (item) => item.attribute === 'version',
+    );
+
+    // if we don't have a product filter applied, wipe any version filters
+    useEffect(() => {
+      if (versionFilterApplied && !productFilterApplied) {
+        const versionFilter = items.find(
+          (item) => item.attribute === 'version',
+        );
+        if (versionFilter.items[0]) {
+          refine(versionFilter.items[0].value);
+        }
+      }
+    });
+
     return (
       <>
-        {/*        <ContentTypeRefinement
-          attribute="type"
-          queryActive={queryActive}
-          heading="Content Type"
-        />*/}
-        <ProductVersionRefinement
-          attributes={['product', 'productVersion']}
+        <SingleFacetRefinement
+          attribute="product"
+          limit={30}
           show={showProductVersionFilters}
           queryActive={queryActive}
+        />
+        <SingleFacetRefinement
+          attribute="version"
           limit={30}
+          show={showProductVersionFilters && productFilterApplied}
+          queryActive={queryActive}
+          hideIfEmpty={!versionFilterApplied}
         />
         <ClearRefinements />
       </>
