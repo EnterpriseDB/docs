@@ -21,12 +21,6 @@ import Icon from '../components/icon';
 export const query = graphql`
   query($nodePath: String!, $potentialLatestNodePath: String) {
     mdx(fields: { path: { eq: $nodePath } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-        redirects
-      }
       fields {
         path
         mtime
