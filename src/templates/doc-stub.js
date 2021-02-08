@@ -15,12 +15,6 @@ import {
 export const query = graphql`
   query($nodePath: String!, $potentialLatestNodePath: String) {
     mdx(fields: { path: { eq: $nodePath } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-        redirects
-      }
       fields {
         path
         mtime
@@ -34,14 +28,11 @@ export const query = graphql`
   }
 `;
 
-const getProductUrlBase = path => {
-  return path
-    .split('/')
-    .slice(0, 2)
-    .join('/');
+const getProductUrlBase = (path) => {
+  return path.split('/').slice(0, 2).join('/');
 };
 
-const getProductAndVersion = path => {
+const getProductAndVersion = (path) => {
   return {
     product: path.split('/')[1],
     version: path.split('/')[2],

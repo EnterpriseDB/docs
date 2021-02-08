@@ -17,11 +17,6 @@ import {
 export const query = graphql`
   query($path: String!) {
     mdx(fields: { path: { eq: $path } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-      }
       fields {
         path
         mtime
@@ -58,9 +53,9 @@ const GhDocTemplate = ({ data, pageContext }) => {
 
   const iconName = (
     rawIndexNavigation
-      .map(al => al.links)
+      .map((al) => al.links)
       .flat()
-      .find(link => mdx.fields.path.includes(link.url)) || { iconName: null }
+      .find((link) => mdx.fields.path.includes(link.url)) || { iconName: null }
   ).iconName;
 
   return (
