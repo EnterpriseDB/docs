@@ -88,7 +88,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const showToc = !!mdx.tableOfContents.items;
 
   // Determine side bar icon. This might need some future rework.
-  // EVAN this should be changes to respect frontmatter and not be generally insane
   const finalIconName = (
     rawIndexNavigation
       .map((al) => al.links)

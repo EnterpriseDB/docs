@@ -94,7 +94,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             }
             directoryDefaults {
               description
-              iconName
             }
           }
           fields {
