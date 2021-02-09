@@ -172,6 +172,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     query {
       allMdx {
         nodes {
+          id
           frontmatter {
             title
             navTitle
@@ -342,7 +343,7 @@ const createDoc = (doc, productVersions, docs, actions) => {
       pagePath: path,
       navLinks: navLinks,
       versions: productVersions[doc.fields.product],
-      nodePath: doc.fields.path,
+      nodeId: doc.id,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
@@ -377,6 +378,7 @@ const createAdvocacy = (doc, learn, actions) => {
     path: doc.fields.path,
     component: require.resolve('./src/templates/learn-doc.js'),
     context: {
+      nodeId: doc.id,
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
       navLinks: navLinks,
@@ -436,6 +438,8 @@ const createGHDoc = (doc, gh_docs, actions) => {
     path: doc.fields.path,
     component: require.resolve('./src/templates/gh-doc.js'),
     context: {
+      nodeId: doc.id,
+      frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
       navLinks: navLinks,
       githubFileLink: showGithubLink ? githubFileLink : null,

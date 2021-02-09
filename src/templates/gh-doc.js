@@ -15,8 +15,8 @@ import {
 } from '../components';
 
 export const query = graphql`
-  query($path: String!) {
-    mdx(fields: { path: { eq: $path } }) {
+  query($nodeId: String!) {
+    mdx(id: { eq: $nodeId }) {
       fields {
         path
         mtime
@@ -36,6 +36,7 @@ const ContentRow = ({ children }) => (
 const GhDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const {
+    frontmatter,
     pagePath,
     navLinks,
     githubFileLink,
@@ -43,8 +44,8 @@ const GhDocTemplate = ({ data, pageContext }) => {
     isIndexPage,
   } = pageContext;
   const pageMeta = {
-    title: mdx.frontmatter.title,
-    description: mdx.frontmatter.description,
+    title: frontmatter.title,
+    description: frontmatter.description,
     path: mdx.fields.path,
     isIndexPage: isIndexPage,
   };
@@ -72,7 +73,7 @@ const GhDocTemplate = ({ data, pageContext }) => {
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">{mdx.frontmatter.title}</h1>
+            <h1 className="balance-text">{frontmatter.title}</h1>
           </div>
 
           <ContentRow>
@@ -95,7 +96,7 @@ const GhDocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
 
-          <DevFrontmatter frontmatter={mdx.frontmatter} />
+          <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer githubFileLink={githubFileHistoryLink} />
         </MainContent>
