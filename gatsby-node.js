@@ -115,8 +115,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   const { nodes } = result.data.allMdx;
 
-  // crap i want to make disappear
   const productVersions = buildProductVersions(nodes);
+
+  // it should be possible to remove these in the future,
+  // they are only used for navLinks generation
   const docs = nodes.filter((file) => file.fields.docType === 'doc');
   const learn = nodes.filter((file) => file.fields.docType === 'advocacy');
   const gh_docs = nodes.filter((file) => file.fields.docType === 'gh_doc');
