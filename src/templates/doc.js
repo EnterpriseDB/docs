@@ -34,33 +34,6 @@ export const query = graphql`
   }
 `;
 
-// export const query = graphql`
-//   query($nodeId: String!) {
-//     allMdx(limit: 1, filter: {id: {eq: $nodeId}}) {
-//       nodes {
-//         fields {
-//           path
-//           mtime
-//         }
-//         body
-//         tableOfContents
-//       }
-//     }
-//   }
-// `;
-
-// export const query = graphql`
-//   query {
-//     allEdbGit(limit: 1) {
-//       edges {
-//         node {
-//           id
-//         }
-//       }
-//     }
-//   }
-// `;
-
 const getProductUrlBase = (path) => {
   return path.split('/').slice(0, 2).join('/');
 };
