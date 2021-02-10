@@ -32,8 +32,6 @@ PRODUCT_DOCS = [
 
 BASE_OUTPUT = {
     'k8s_docs': False,
-    'barman': False,
-    'pgbackrest': False,
 }
 BASE_OUTPUT.update({ doc : False for doc in PRODUCT_DOCS })
 
@@ -60,8 +58,6 @@ OPTIONS = [
     { 'index': '1r', 'name': 'MySQL Data Adapter', 'key': 'mysql_data_adapter', 'indent': True },
     { 'index': '1s', 'name': 'Replication Server', 'key': 'eprs', 'indent': True },
     { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs', 'external': True },
-    { 'index': 3, 'name': 'BaRMan Docs', 'key': 'barman', 'external': True },
-    { 'index': 4, 'name': 'pgBackRest Docs', 'key': 'pgbackrest', 'external': True }
 ]
 
 print('Which sources would you like loaded when you run `yarn develop`?')
@@ -76,7 +72,7 @@ for i, option in enumerate(OPTIONS):
 
 selections = []
 while len(selections) == 0:
-    user_input = input('Enter your choices separated by commas, e.g. "1b,1m,3": ')
+    user_input = input('Enter your choices separated by commas, e.g. "1b,1m,2": ')
 
     split_user_input = user_input.strip().split(',')
     for selection_index in split_user_input:
