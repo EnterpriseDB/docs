@@ -9,26 +9,40 @@ import { AdvancedPageHit } from './index';
 import { products } from '../../constants/products';
 import { capitalize } from '../../constants/utils';
 
-const ResultsSummary = connectCurrentRefinements(connectStateResults(
-  ({ searchResults: res, items }) => {
+const prettyProductName = (product) => {
+  return products[product] ? products[product].name : capitalize(product);
+};
+
+const ResultsSummary = connectCurrentRefinements(
+  connectStateResults(({ searchResults: res, items }) => {
     const resultCount = res && res.nbHits;
     const query = res && res.query;
 
-    const productVersionFacet = items.find(item => item.attribute === 'product');
-    const [product, version] = productVersionFacet ? productVersionFacet.currentRefinement.split(' > ') : [null, null];
-    const productName = products[product] ? products[product].name : capitalize(product);
+    const productRefinement = items.find(
+      (item) => item.attribute === 'product',
+    );
+    const versionRefinement = items.find(
+      (item) => item.attribute === 'version',
+    );
+
+    const productName = productRefinement
+      ? prettyProductName(productRefinement.currentRefinement[0])
+      : null;
+    const version = versionRefinement
+      ? versionRefinement.currentRefinement[0]
+      : null;
 
     return (
       <p className="search-text-summary">
         {resultCount} result{resultCount !== 1 && 's'} for "{query}"
-        { productName && ' in ' }
-        { productName && <span className='font-weight-400'>{productName}</span> }
-        { version && ' and ' }
-        { version && <span className='font-weight-400'>Version {version}</span> }
+        {productName && ' in '}
+        {productName && <span className="font-weight-400">{productName}</span>}
+        {version && ' and '}
+        {version && <span className="font-weight-400">Version {version}</span>}
       </p>
     );
-  }
-));
+  }),
+);
 
 const Pagination = connectPagination(
   ({ currentRefinement, nbPages, refine }) => {
@@ -46,12 +60,14 @@ const Pagination = connectPagination(
     if (previousEnabled || nextEnabled) {
       return (
         <div className="mt-5">
-          <hr/>
+          <hr />
           <div className="d-flex justify-content-between align-items-center mt-3">
             <div className="max-w-40">
               <a
                 href="/"
-                className={`p-3 d-inline-block btn btn-outline-primary text-left ${!previousEnabled && 'disabled-grey'}`}
+                className={`p-3 d-inline-block btn btn-outline-primary text-left ${
+                  !previousEnabled && 'disabled-grey'
+                }`}
                 onClick={goPrevious}
                 disabled={!previousEnabled}
               >
@@ -64,7 +80,9 @@ const Pagination = connectPagination(
             <div className="max-w-40">
               <a
                 href="/"
-                className={`p-3 d-inline-block btn btn-outline-primary text-right ${!nextEnabled && 'disabled-grey'}`}
+                className={`p-3 d-inline-block btn btn-outline-primary text-right ${
+                  !nextEnabled && 'disabled-grey'
+                }`}
                 onClick={goNext}
                 disabled={!nextEnabled}
               >
@@ -76,13 +94,11 @@ const Pagination = connectPagination(
       );
     }
     return null;
-  }
+  },
 );
 
 const ResultsContent = ({ children }) => (
-  <div className="search-content mb-5">
-    {children}
-  </div>
+  <div className="search-content mb-5">{children}</div>
 );
 
 export const AdvancedSearchResults = connectStateResults(
@@ -92,7 +108,9 @@ export const AdvancedSearchResults = connectStateResults(
 
     if (queryLength === 0) {
       return (
-        <p className="search-text-summary">Please enter a search query to begin.</p>
+        <p className="search-text-summary">
+          Please enter a search query to begin.
+        </p>
       );
     }
 
@@ -100,8 +118,8 @@ export const AdvancedSearchResults = connectStateResults(
       <ResultsContent>
         <ResultsSummary />
         <Hits hitComponent={AdvancedPageHit} />
-        { showPagination && <Pagination /> }
+        {showPagination && <Pagination />}
       </ResultsContent>
     );
-  }
+  },
 );
