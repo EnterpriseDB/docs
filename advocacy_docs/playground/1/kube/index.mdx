@@ -1,0 +1,133 @@
+---
+title: "Cloud Native PostgreSQL Operator Quickstart - Katacoda demo"
+navTitle: Quickstart
+katacodaPanel:
+  scenario: minikube
+---
+
+This is a demonstration of using Katacoda to demonstrate the Cloud Native PostgreSQL operator - it is a demonstration of a demonstration, a meta-demo!
+
+You can follow along in your browser, via the magic of Katacoda:
+
+<KatacodaPanel />
+
+Once the environment initializes, you'll see a terminal open below. Minikube is already installed - you can verify this by asking for its version:
+
+```shell
+minikube version
+__OUTPUT__
+minikube version: v1.8.1
+commit: cbda04cf6bbe65e987ae52bb393c10099ab62014
+```
+
+Let's create the minikube cluster & get started!
+
+```shell
+minikube start
+__OUTPUT__
+* minikube v1.8.1 on Ubuntu 18.04
+* Using the none driver based on user configuration
+* Running on localhost (CPUs=2, Memory=2460MB, Disk=145651MB) ...
+* OS release is Ubuntu 18.04.4 LTS
+* Preparing Kubernetes v1.17.3 on Docker 19.03.6 ...
+  - kubelet.resolv-conf=/run/systemd/resolve/resolv.conf
+* Launching Kubernetes ... 
+* Enabling addons: default-storageclass, storage-provisioner
+* Configuring local host environment ...
+* Waiting for cluster to come online ...
+* Done! kubectl is now configured to use "minikube"
+```
+
+We'll verify that it worked:
+
+```shell
+kubectl get nodes
+__OUTPUT__
+NAME       STATUS   ROLES    AGE   VERSION
+minikube   Ready    master   66s   v1.17.3
+```
+
+If the status isn't yet "Ready", take a sip of tea and try again.
+
+Now we can install the operator:
+
+```shell
+kubectl apply -f https://docs.enterprisedb.io/cloud-native-postgresql/latest/samples/postgresql-operator-0.8.0.yaml
+__OUTPUT__
+customresourcedefinition.apiextensions.k8s.io/backups.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/clusters.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/scheduledbackups.postgresql.k8s.enterprisedb.io created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-mutating-webhook-configuration created
+serviceaccount/postgresql-operator-manager created
+clusterrole.rbac.authorization.k8s.io/postgresql-operator-manager created
+clusterrolebinding.rbac.authorization.k8s.io/postgresql-operator-manager-rolebinding created
+service/postgresql-operator-webhook-service created
+deployment.apps/postgresql-operator-controller-manager created
+validatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-validating-webhook-configuration created
+```
+
+And verify that it was successfully installed:
+
+```shell
+kubectl get deploy -n postgresql-operator-system postgresql-operator-controller-manager
+__OUTPUT__
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE
+postgresql-operator-controller-manager   1/1     1            1           52s
+```
+
+Let's create the example cluster configuration file:
+
+```shell
+cat <<EOF > cluster-example.yaml
+# Example of PostgreSQL cluster
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+
+  # Example of rolling update strategy:
+  # - unsupervised: automated update of the primary once all
+  #                 replicas have been upgraded (default)
+  # - supervised: requires manual supervision to perform
+  #               the switchover of the primary
+  primaryUpdateStrategy: unsupervised
+
+  # Require 1Gi of space
+  storage:
+    size: 1Gi
+EOF
+```
+
+...and FIRE IT UP!
+
+```shell
+kubectl apply -f cluster-example.yaml
+__OUTPUT__
+cluster.postgresql.k8s.enterprisedb.io/cluster-example created
+```
+
+It'll take a bit to initialize:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                             READY   STATUS            RESTARTS   AGE
+cluster-example-1-initdb-kq2vw   0/1     PodInitializing   0          18s
+```
+
+...so, give it a minute, and then check on it again:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                READY   STATUS    RESTARTS   AGE
+cluster-example-1   1/1     Running   0          56s
+cluster-example-2   1/1     Running   0          35s
+cluster-example-3   1/1     Running   0          19s
+```
+
+Congratulations! You're now running a PostgreSQL cluster, in a Kubernetes cluster.
+
+<!-- todo: make xzibit meme -->
