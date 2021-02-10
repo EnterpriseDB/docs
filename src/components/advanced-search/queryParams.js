@@ -6,7 +6,16 @@ export const queryParamsToState = (query) => {
     searchState.query = params.get('query');
   }
   if (params.get('product')) {
-    searchState.hierarchicalMenu = { product: params.get('product') };
+    searchState.refinementList = {
+      ...searchState.refinementList,
+      product: params.get('product'),
+    };
+  }
+  if (params.get('version')) {
+    searchState.refinementList = {
+      ...searchState.refinementList,
+      version: params.get('version'),
+    };
   }
   if (params.get('page')) {
     searchState.page = params.get('page');
@@ -24,8 +33,9 @@ export const writeStateToQueryParams = (searchState) => {
   if (searchState.query && searchState.query.length > 0) {
     setOrRemove(params, 'query', searchState.query);
   }
-  if (searchState.hierarchicalMenu) {
-    setOrRemove(params, 'product', searchState.hierarchicalMenu.product);
+  if (searchState.refinementList) {
+    setOrRemove(params, 'product', searchState.refinementList.product);
+    setOrRemove(params, 'version', searchState.refinementList.version);
   }
   if (searchState.page > 1) {
     setOrRemove(params, 'page', searchState.page);
@@ -35,7 +45,7 @@ export const writeStateToQueryParams = (searchState) => {
   }
 
   if (window && window.history) {
-    window.history.replaceState('', searchState.query, `?${params.toString()}`)
+    window.history.replaceState('', searchState.query, `?${params.toString()}`);
   }
 };
 
