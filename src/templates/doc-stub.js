@@ -13,14 +13,8 @@ import {
 } from '../components';
 
 export const query = graphql`
-  query($nodePath: String!, $potentialLatestNodePath: String) {
-    mdx(fields: { path: { eq: $nodePath } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-        redirects
-      }
+  query($nodeId: String!, $potentialLatestNodePath: String) {
+    mdx(id: { eq: $nodeId }) {
       fields {
         path
         mtime
@@ -34,14 +28,11 @@ export const query = graphql`
   }
 `;
 
-const getProductUrlBase = path => {
-  return path
-    .split('/')
-    .slice(0, 2)
-    .join('/');
+const getProductUrlBase = (path) => {
+  return path.split('/').slice(0, 2).join('/');
 };
 
-const getProductAndVersion = path => {
+const getProductAndVersion = (path) => {
   return {
     product: path.split('/')[1],
     version: path.split('/')[2],
@@ -69,9 +60,15 @@ const determineCanonicalPath = (hasLatest, latestPath) => {
 };
 
 const DocTemplate = ({ data, pageContext }) => {
-  const { fields, frontmatter, body, tableOfContents } = data.mdx;
+  const { fields, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
-  const { pagePath, versions, githubFileLink, isIndexPage } = pageContext;
+  const {
+    pagePath,
+    frontmatter,
+    versions,
+    githubFileLink,
+    isIndexPage,
+  } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { version } = getProductAndVersion(path);
   const pageMeta = {
