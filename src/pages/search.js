@@ -14,7 +14,7 @@ import useSiteMetadata from '../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
-  '3c95fc5297e90a44b6467f3098a4e6ed',
+  '3089ae4f190ea7c91590336eeba5f0ea',
 );
 
 const Search = (data) => {
