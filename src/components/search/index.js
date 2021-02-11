@@ -17,12 +17,12 @@ import useSiteMetadata from '../../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
-  '3c95fc5297e90a44b6467f3098a4e6ed',
+  '3089ae4f190ea7c91590336eeba5f0ea',
 );
 
 const useClickOutside = (ref, handler, events) => {
   if (!events) events = [`mousedown`, `touchstart`];
-  const detectClickOutside = event =>
+  const detectClickOutside = (event) =>
     !ref.current.contains(event.target) && handler();
   useEffect(() => {
     for (const event of events)
@@ -47,7 +47,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
   }, []);
 
   const moveArrowIndex = useCallback(
-    key => {
+    (key) => {
       const dropdownItems = searchContentRef.current
         .querySelector('.search-pane')
         .querySelectorAll('.dropdown-item');
@@ -70,7 +70,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
   );
 
   const searchKeyboardShortcuts = useCallback(
-    e => {
+    (e) => {
       const inputFocused = inputRef.current.id === document.activeElement.id;
 
       if (e.key === '/' && !inputFocused) {
@@ -126,9 +126,9 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
         action=""
         autoComplete="off"
         role="search"
-        className={`search-form d-flex align-items-center ${queryLength > 0 &&
-          focus &&
-          'open'}`}
+        className={`search-form d-flex align-items-center ${
+          queryLength > 0 && focus && 'open'
+        }`}
       >
         <Icon
           iconName={iconNames.SEARCH}
@@ -143,7 +143,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
           aria-label="search"
           placeholder="Search"
           value={currentRefinement}
-          onChange={e => refine(e.currentTarget.value)}
+          onChange={(e) => refine(e.currentTarget.value)}
           onFocus={() => setFocus(true)}
           ref={inputRef}
         />
@@ -157,9 +157,9 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
       </form>
 
       <div
-        className={`dropdown-menu w-100 p-0 ${queryLength > 0 &&
-          focus &&
-          'show'}`}
+        className={`dropdown-menu w-100 p-0 ${
+          queryLength > 0 && focus && 'show'
+        }`}
       >
         <div
           className="search-content quick-search-content mb-1 mt-1"
