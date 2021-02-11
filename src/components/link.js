@@ -28,6 +28,10 @@ const isAbsoluteOrProtocolRelativeUrl = (url) => {
   return isAbsoluteUrl(url) || url.trim().startsWith('//');
 };
 
+const hasNonMarkdownExtension = (url) => {
+  return url.match(/\.\w+$/) && !url.match(/\.mdx?$/);
+};
+
 const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
   if (!pageUrl) return forceTrailingSlash(url);
 
@@ -56,7 +60,7 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
 const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
   const pathPrefix = usePathPrefix();
 
-  if (isAbsoluteOrProtocolRelativeUrl(to)) {
+  if (isAbsoluteOrProtocolRelativeUrl(to) || hasNonMarkdownExtension(to)) {
     return (
       <a href={to} {...rest}>
         {rest.children}
