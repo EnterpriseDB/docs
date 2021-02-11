@@ -11,13 +11,14 @@ import {
 import { Footer, Layout, Link, MainContent, TopBar } from '../components';
 import Icon, { iconNames } from '../components/icon';
 import useSiteMetadata from '../hooks/use-sitemetadata';
+import usePathPrefix from '../hooks/use-path-prefix';
 
 const searchClient = algoliasearch(
   'NQVJGNW933',
   '3c95fc5297e90a44b6467f3098a4e6ed',
 );
 
-const buildQuery = (pathname) => {
+const buildQuery = (pathname, pathPrefix) => {
   const tokens = pathname
     .replace('/edb-docs', '')
     .replace(/-/g, ' ')
@@ -42,7 +43,9 @@ const buildQuery = (pathname) => {
   if (product) {
     return `${product} ${title ? title : ''} ${version ? version : ''}`;
   }
-  return pathname.replace(/-|\//g, ' ');
+
+  const regex = new RegExp(`\/${pathPrefix}\/|-|\/`, 'g');
+  return pathname.replace(regex, ' ').trim();
 };
 
 const PageNotFound = ({ path }) => (
@@ -111,7 +114,8 @@ const SuggestedHit = ({ hit }) => (
 );
 
 const NotFound = (data) => {
-  const query = buildQuery(data.location.pathname);
+  const pathPrefix = usePathPrefix();
+  const query = buildQuery(data.location.pathname, pathPrefix);
 
   return (
     <Layout pageMeta={{ title: 'Page Not Found' }}>
