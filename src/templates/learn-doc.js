@@ -35,30 +35,43 @@ const ContentRow = ({ children }) => (
 );
 
 const getChildren = (path, navLinks) => {
-  return navLinks.filter(
-    (node) =>
-      node.fields.path.includes(path) &&
-      node.fields.path.split('/').length === path.split('/').length + 1,
-  );
+  return navLinks
+    .filter(
+      (node) =>
+        node.fields.path.includes(path) &&
+        node.fields.path.split('/').length === path.split('/').length + 1,
+    )
+    .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
 };
 
-const Tiles = ({ mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks }) => {
+  const modes = {
+    None: 'none',
+    Simple: 'simple',
+    Full: 'full',
+  };
+  if (mode === modes.None) return null;
+
   const { path } = mdx.fields;
-  const depth = path.split('/').length;
-  if (depth === 4) {
+
+  if (!mode) {
+    const depth = path.split('/').length;
+    if (depth === 4) mode = modes.Full;
+    else if (depth >= 5) mode = modes.Simple;
+  }
+
+  if (Object.values(modes).includes(mode)) {
+    const colSize = mode === 'simple' ? 4 : 6;
     const tiles = getChildren(path, navLinks).map((child) => {
+      if (mode === 'simple') return child;
+
       let newChild = { ...child };
       const { path } = newChild.fields;
       newChild['children'] = getChildren(path, navLinks);
       return newChild;
     });
 
-    return <CardDecks cards={tiles} colSize={6} cardType="full" />;
-  }
-  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
-  if (depth >= 5) {
-    const tiles = getChildren(path, navLinks);
-    return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
+    return <CardDecks cards={tiles} colSize={colSize} cardType={mode} />;
   }
   return null;
 };
@@ -77,7 +90,13 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubIssuesLink,
     isIndexPage,
   } = pageContext;
-  const { iconName, title, description, katacodaPanel } = frontmatter;
+  const {
+    iconName,
+    title,
+    description,
+    katacodaPanel,
+    indexMode,
+  } = frontmatter;
   const pageMeta = {
     title: title,
     description: description,
@@ -123,7 +142,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mdx={mdx} navLinks={navLinks} />
+              <Tiles mode={indexMode} mdx={mdx} navLinks={navLinks} />
             </Col>
 
             {showToc && (
