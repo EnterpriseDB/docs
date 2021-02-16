@@ -56,7 +56,7 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
   - [Kubernetes Docs](https://github.com/EnterpriseDB/edb-k8s-doc)
   - [Barman](https://github.com/2ndquadrant-it/barman)
-  - [pgBackrest](https://github.com/EnterpriseDB/pgbackrest-docs)
+  - [pgBackRest](https://github.com/EnterpriseDB/pgbackrest-docs)
 
 ### Configuring Which Sources are Loaded
 
