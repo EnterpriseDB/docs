@@ -118,7 +118,7 @@ const Page = () => (
               Barman
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
-              pgBackrest
+              pgBackRest
             </IndexCardLink>
             <IndexCardLink to="/bart/latest">
               Backup &amp; Recovery Tool
