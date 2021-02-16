@@ -83,6 +83,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             iconName
             originalFilePath
             productStub
+            indexCards
             katacodaPages {
               scenario
               account
@@ -99,6 +100,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fields {
             docType
             path
+            depth
             product
             version
             topic
@@ -390,6 +392,13 @@ exports.createSchemaCustomization = ({ actions }) => {
 
     type Frontmatter {
       originalFilePath: String
+      indexCards: TileModes
+    }
+
+    enum TileModes {
+      none
+      simple
+      full
     }
   `;
   createTypes(typeDefs);
