@@ -118,7 +118,7 @@ const Page = () => (
               Barman
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
-              pgBackrest
+              pgBackRest
             </IndexCardLink>
             <IndexCardLink to="/bart/latest">
               Backup &amp; Recovery Tool
@@ -126,9 +126,9 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/kubernetes">
+            {/*            <IndexCardLink to="/kubernetes">
               Cloud Native PostgreSQL Operator
-            </IndexCardLink>
+            </IndexCardLink>*/}
           </IndexCard>
 
           <IndexCard iconName={iconNames.MODULE} headingText="Extensions">

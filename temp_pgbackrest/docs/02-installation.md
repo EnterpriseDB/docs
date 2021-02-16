@@ -19,15 +19,18 @@ The following additional packages will be installed:
 
 #### RHEL/CentOS
 
-To install _pgBackRest_, configure the [PostgreSQL](https://yum.postgresql.org/) or the [EDB](https://www.enterprisedb.com/repository-access-thank-you-page) **yum** repository and then run:
+_pgBackRest_ can be installed from the [PostgreSQL](https://yum.postgresql.org/) or the [EDB](https://www.enterprisedb.com/repository-access-thank-you-page) **yum** repositories, and requires Extra Packages for Enterprise Linux ([EPEL](https://fedoraproject.org/wiki/EPEL)).
+
+Once you configured the repositories, run the following command to install _pgBackRest_:
 
 ```bash
 $ sudo yum install pgbackrest
 ```
 
-The following additional package will be installed:
+The following additional packages will be installed:
 
 * `postgresql-libs`
+* `libzstd`
 
 ### EDB Postgres Advanced Server
 
