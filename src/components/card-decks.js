@@ -11,8 +11,9 @@ const FullCard = ({ card }) => {
       <Link to={card.fields.path}>
         <Icon
           iconName={iconName}
-          className={`${iconName === iconNames.DOTTED_BOX &&
-            'opacity-1'} mt-3 ml-3`}
+          className={`${
+            iconName === iconNames.DOTTED_BOX && 'opacity-1'
+          } mt-3 ml-3`}
           width="100"
           height="100"
         />
@@ -26,7 +27,7 @@ const FullCard = ({ card }) => {
 
         <p className="card-text">{card.frontmatter.description}</p>
 
-        {card.children.map(child => (
+        {card.children.map((child) => (
           <Link
             key={child.fields.path}
             to={child.fields.path}
@@ -54,12 +55,16 @@ const SimpleCard = ({ card }) => (
   </div>
 );
 
-const CardDecks = ({ cards, colSize = 4, cardType = 'simple' }) => {
+const CardDecks = ({ cards, cardType = 'simple' }) => {
   return (
     <div className="card-deck row no-gutters">
-      {cards.map(card => {
+      {cards.map((card) => {
         return (
-          <Col key={card.fields.path} md={colSize} className="d-flex">
+          <Col
+            key={card.fields.path}
+            md={cardType === 'full' ? 6 : 4}
+            className="d-flex"
+          >
             {cardType === 'full' ? (
               <FullCard card={card} />
             ) : (

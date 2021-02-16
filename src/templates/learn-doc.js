@@ -20,6 +20,7 @@ export const query = graphql`
     mdx(id: { eq: $nodeId }) {
       fields {
         path
+        depth
         mtime
       }
       body
@@ -34,44 +35,40 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (path, navLinks) => {
+const getChildren = (parentNode, navLinks) => {
   return navLinks
     .filter(
       (node) =>
-        node.fields.path.includes(path) &&
-        node.fields.path.split('/').length === path.split('/').length + 1,
+        node.fields.path.includes(parentNode.fields.path) &&
+        node.fields.depth === parentNode.fields.depth + 1,
     )
     .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
 };
 
+const TileModes = {
+  None: 'none',
+  Simple: 'simple',
+  Full: 'full',
+};
 const Tiles = ({ mode, mdx, navLinks }) => {
-  const modes = {
-    None: 'none',
-    Simple: 'simple',
-    Full: 'full',
-  };
-  if (mode === modes.None) return null;
-
-  const { path } = mdx.fields;
+  if (mode === TileModes.None) return null;
 
   if (!mode) {
-    const depth = path.split('/').length;
-    if (depth === 4) mode = modes.Full;
-    else if (depth >= 5) mode = modes.Simple;
+    if (mdx.fields.depth === 2) mode = TileModes.Full;
+    else if (mdx.fields.depth >= 3) mode = TileModes.Simple;
   }
 
-  if (Object.values(modes).includes(mode)) {
-    const colSize = mode === 'simple' ? 4 : 6;
-    const tiles = getChildren(path, navLinks).map((child) => {
+  if (Object.values(TileModes).includes(mode)) {
+    const tiles = getChildren(mdx, navLinks).map((child) => {
       if (mode === 'simple') return child;
 
-      let newChild = { ...child };
-      const { path } = newChild.fields;
-      newChild['children'] = getChildren(path, navLinks);
-      return newChild;
+      return {
+        ...child,
+        children: getChildren(child, navLinks),
+      };
     });
 
-    return <CardDecks cards={tiles} colSize={colSize} cardType={mode} />;
+    return <CardDecks cards={tiles} cardType={mode} />;
   }
   return null;
 };
@@ -95,7 +92,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     title,
     description,
     katacodaPanel,
-    indexMode,
+    indexCards,
   } = frontmatter;
   const pageMeta = {
     title: title,
@@ -142,7 +139,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mode={indexMode} mdx={mdx} navLinks={navLinks} />
+              <Tiles mode={indexCards} mdx={mdx} navLinks={navLinks} />
             </Col>
 
             {showToc && (
