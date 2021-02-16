@@ -126,9 +126,9 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/kubernetes">
+            {/*            <IndexCardLink to="/kubernetes">
               Cloud Native PostgreSQL Operator
-            </IndexCardLink>
+            </IndexCardLink>*/}
           </IndexCard>
 
           <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
