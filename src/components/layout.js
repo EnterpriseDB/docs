@@ -72,6 +72,16 @@ const Layout = ({
         */}
         <meta name="twitter:card" content="summary_large_image" />
         <body className={`bg-${background} fixed-container`} />
+        <script
+          type="text/javascript"
+          src="//edb-feedback-widget-staging.herokuapp.com/edb-feedback-widget.js"
+          data-edb-form-id="210345471469053"
+          data-form-delay-ms="20"
+          data-edb-hide-duration-days="365"
+          data-edb-target-url=""
+          data-edb-disable-cookies
+          data-display-mobile-and-tablet
+        ></script>
       </Helmet>
       <MDXProvider
         components={{
@@ -83,24 +93,24 @@ const Layout = ({
               {...rest}
             />
           ),
-          table: props => (
+          table: (props) => (
             <div className="table-with-scroll">
               <table {...props} className="table" />
             </div>
           ),
-          pre: props => (
+          pre: (props) => (
             <CodeBlock {...props} katacodaPanelData={katacodaPanelData} />
           ),
-          h2: props => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          h3: props => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          img: props => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
-          blockquote: props => (
+          h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+          h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+          img: (props) => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
+          blockquote: (props) => (
             <blockquote
               {...props}
               className="pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
             ></blockquote>
           ),
-          KatacodaPanel: props => (
+          KatacodaPanel: (props) => (
             <KatacodaPanel {...props} katacodaPanelData={katacodaPanelData} />
           ),
           KatacodaPageLink,
