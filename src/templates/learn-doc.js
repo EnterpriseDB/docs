@@ -16,21 +16,11 @@ import {
 } from '../components';
 
 export const query = graphql`
-  query($path: String!) {
-    mdx(fields: { path: { eq: $path } }) {
-      frontmatter {
-        title
-        navTitle
-        description
-        katacodaPanel {
-          account
-          scenario
-          codelanguages
-        }
-        iconName
-      }
+  query($nodeId: String!) {
+    mdx(id: { eq: $nodeId }) {
       fields {
         path
+        depth
         mtime
       }
       body
@@ -45,31 +35,40 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (path, navLinks) => {
-  return navLinks.filter(
-    node =>
-      node.fields.path.includes(path) &&
-      node.fields.path.split('/').length === path.split('/').length + 1,
-  );
+const getChildren = (parentNode, navLinks) => {
+  return navLinks
+    .filter(
+      (node) =>
+        node.fields.path.includes(parentNode.fields.path) &&
+        node.fields.depth === parentNode.fields.depth + 1,
+    )
+    .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
 };
 
-const Tiles = ({ mdx, navLinks }) => {
-  const { path } = mdx.fields;
-  const depth = path.split('/').length;
-  if (depth === 4) {
-    const tiles = getChildren(path, navLinks).map(child => {
-      let newChild = { ...child };
-      const { path } = newChild.fields;
-      newChild['children'] = getChildren(path, navLinks);
-      return newChild;
+const TileModes = {
+  None: 'none',
+  Simple: 'simple',
+  Full: 'full',
+};
+const Tiles = ({ mode, mdx, navLinks }) => {
+  if (mode === TileModes.None) return null;
+
+  if (!mode) {
+    if (mdx.fields.depth === 2) mode = TileModes.Full;
+    else if (mdx.fields.depth >= 3) mode = TileModes.Simple;
+  }
+
+  if (Object.values(TileModes).includes(mode)) {
+    const tiles = getChildren(mdx, navLinks).map((child) => {
+      if (mode === 'simple') return child;
+
+      return {
+        ...child,
+        children: getChildren(child, navLinks),
+      };
     });
 
-    return <CardDecks cards={tiles} colSize={6} cardType="full" />;
-  }
-  // this renders the simple cards at any depth; might prefer to make that a frontmatter option instead
-  if (depth >= 5) {
-    const tiles = getChildren(path, navLinks);
-    return <CardDecks cards={tiles} colSize={4} cardType="simple" />;
+    return <CardDecks cards={tiles} cardType={mode} />;
   }
   return null;
 };
@@ -77,9 +76,10 @@ const Tiles = ({ mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
+  // const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
 
   const {
+    frontmatter,
     pagePath,
     navLinks,
     githubFileLink,
@@ -87,6 +87,13 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubIssuesLink,
     isIndexPage,
   } = pageContext;
+  const {
+    iconName,
+    title,
+    description,
+    katacodaPanel,
+    indexCards,
+  } = frontmatter;
   const pageMeta = {
     title: title,
     description: description,
@@ -99,9 +106,9 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   // Determine side bar icon. This might need some future rework.
   const finalIconName = (
     rawIndexNavigation
-      .map(al => al.links)
+      .map((al) => al.links)
       .flat()
-      .find(link => mdx.fields.path.includes(link.url)) || {
+      .find((link) => mdx.fields.path.includes(link.url)) || {
       iconName: iconName,
     }
   ).iconName;
@@ -132,7 +139,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mdx={mdx} navLinks={navLinks} />
+              <Tiles mode={indexCards} mdx={mdx} navLinks={navLinks} />
             </Col>
 
             {showToc && (
@@ -142,7 +149,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
 
-          <DevFrontmatter frontmatter={mdx.frontmatter} />
+          <DevFrontmatter frontmatter={frontmatter} />
 
           <hr />
           <p>
