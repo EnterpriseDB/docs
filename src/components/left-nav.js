@@ -112,7 +112,7 @@ const LeftNav = ({
   const tree = orderTree(makeTree(newList), navOrder);
   // console.log(pagePath);
 
-  console.log(tree);
+  // console.log(tree);
   console.log(navTree);
 
   return (

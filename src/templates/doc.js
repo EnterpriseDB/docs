@@ -187,6 +187,7 @@ const DocTemplate = ({ data, pageContext }) => {
     githubEditLink,
     githubIssuesLink,
     isIndexPage,
+    navTree,
   } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
@@ -224,6 +225,7 @@ const DocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
+            navTree={navTree}
             navLinks={navLinks}
             path={path}
             pagePath={pagePath}
