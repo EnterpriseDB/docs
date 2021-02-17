@@ -119,6 +119,41 @@ const reportMissingIndex = (reporter, treeNode) => {
   }
 };
 
+const buildNavigationSortKey = (treeNode, navigationOrder) => {
+  const navName = treeNode.path.split('/').slice(-2)[0];
+  const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
+
+  return navIndex >= 0 ? `000000${navIndex}` : navName;
+};
+
+const treeToNavigation = (treeNode, pageNode) => {
+  const navItems = [];
+  const { depth, path } = pageNode.fields;
+
+  let curr = treeNode;
+  let items = navItems;
+  while (curr && curr.depth <= depth) {
+    let next = null;
+    let nextItems = null;
+
+    if (!curr.navigationNodes) break;
+
+    curr.navigationNodes.forEach((navNode) => {
+      const newNavNode = { ...navNode, items: [] };
+      items.push(newNavNode);
+      if (path.includes(newNavNode.path)) {
+        next = curr.children.find((child) => child.path === newNavNode.path);
+        nextItems = newNavNode.items;
+      }
+    });
+
+    curr = next ? next : null;
+    items = nextItems;
+  }
+
+  return navItems;
+};
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -130,4 +165,6 @@ module.exports = {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
+  buildNavigationSortKey,
+  treeToNavigation,
 };

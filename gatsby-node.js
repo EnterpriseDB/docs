@@ -17,6 +17,8 @@ const {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
+  buildNavigationSortKey,
+  treeToNavigation,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -170,34 +172,77 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     // build ordered navigation for immediate children
-    curr.navigationNodes = curr.children
+    // this exploits the tree navigation order - we can't
+    // visit children before the parent
+    // curr.navigationNodes = curr.children
+    //   .map((child) => {
+    //     return {
+    //       sortKey: buildNavigationSortKey(child, node.frontmatter.navigation),
+    //       path: child.mdxNode.fields.path,
+    //       navTitle: child.mdxNode.frontmatter.navTitle,
+    //       title: child.mdxNode.frontmatter.title,
+    //     };
+    //   })
+    //   .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    const addedChildPaths = {};
+    curr.navigationNodes = [];
+    (node.frontmatter.navigation || []).forEach((navEntry) => {
+      if (navEntry.startsWith('#')) {
+        curr.navigationNodes.push({
+          path: null,
+          title: navEntry.replace('#', '').trim(),
+        });
+        return;
+      }
+
+      const navChild = curr.children.find((child) => {
+        if (addedChildPaths[child.path]) return false;
+        const navName = child.path.split('/').slice(-2)[0];
+        return navName.toLowerCase() === navEntry.toLowerCase();
+      });
+      if (!navChild?.mdxNode) return;
+
+      addedChildPaths[navChild.path] = true;
+      curr.navigationNodes.push({
+        path: navChild.mdxNode.fields.path,
+        navTitle: navChild.mdxNode.frontmatter.navTitle,
+        title: navChild.mdxNode.frontmatter.title,
+      });
+    });
+
+    curr.children
+      .filter((child) => !addedChildPaths[child.path])
       .map((child) => {
         return {
-          sortKey: determineSortKey(child, node.frontmatter.navigation),
           path: child.mdxNode.fields.path,
           navTitle: child.mdxNode.frontmatter.navTitle,
           title: child.mdxNode.frontmatter.title,
         };
       })
-      .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .forEach((child) => curr.navigationNodes.push(child));
 
     // figure out appropriate root navigation node
     const navigationDepth = 2;
     let navRoot = curr;
     while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
 
+    // build complete navigation tree
+    const navTree = treeToNavigation(navRoot, node);
+
     const { docType } = node.fields;
     if (docType === 'doc') {
-      createDoc(navRoot, node, productVersions, docs, actions);
+      createDoc(navTree, node, productVersions, docs, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(navRoot, node, learn, actions);
+      createAdvocacy(navTree, node, learn, actions);
     } else if (docType === 'gh_doc') {
-      createGHDoc(navRoot, node, gh_docs, actions);
+      createGHDoc(navTree, node, gh_docs, actions);
     }
   }
 };
 
-const createDoc = (treeNode, doc, productVersions, docs, actions) => {
+const createDoc = (navTree, doc, productVersions, docs, actions) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
   if (isLatest) {
@@ -237,6 +282,7 @@ const createDoc = (treeNode, doc, productVersions, docs, actions) => {
       frontmatter: doc.frontmatter,
       pagePath: path,
       navLinks: navLinks,
+      navTree,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       githubFileLink: githubFileLink,
@@ -252,111 +298,10 @@ const createDoc = (treeNode, doc, productVersions, docs, actions) => {
   });
 };
 
-const determineSortKey = (treeNode, navigationOrder) => {
-  const navName = treeNode.path.split('/').slice(-2)[0];
-  const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
-  if (navIndex >= 0) {
-    console.log(navName);
-  }
-
-  return navIndex >= 0 ? `000000${navIndex}` : navName;
-};
-
-const treeToNavigation = (treeNode, pageNode) => {
-  const navItems = [];
-  const { depth, path } = pageNode.fields;
-
-  let curr = treeNode;
-  let items = navItems;
-  while (curr && curr.depth <= depth) {
-    let next = null;
-    let nextItems = null;
-
-    if (!curr.navigationNodes) break;
-
-    curr.navigationNodes.forEach((navNode) => {
-      const newNavNode = { ...navNode, items: [] };
-      items.push(newNavNode);
-      if (path.includes(newNavNode.path)) {
-        next = curr.children.find((child) => child.path === newNavNode.path);
-        nextItems = newNavNode.items;
-      }
-    });
-
-    curr = next ? next : null;
-    items = nextItems;
-  }
-
-  return navItems;
-};
-
-// const treeToNavigation = (treeNode, pageNode) => {
-//   const navItems = [];
-//   const { depth, path } = pageNode.fields;
-
-//   // const determineSortKey = (treeNode, navigationOrder) => {
-//   //   const navName = treeNode.path.split('/').slice(-2)[0];
-//   //   const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
-//   //   if (navIndex >= 0) {
-//   //     console.log(navName);
-//   //   }
-
-//   //   return navIndex >= 0 ? `000000${navIndex}` : navName;
-//   // }
-
-//   let curr = treeNode;
-//   let items = navItems;
-//   while (curr && curr.depth <= depth) {
-//     let next = null;
-//     let nextItems = null;
-
-//     const navigationOrder = curr.mdxNode?.frontmatter?.navigation;
-
-//     curr.children.forEach(child => {
-//       const navNode = {
-//         sortKey: determineSortKey(child, navigationOrder),
-//         path: child.mdxNode.fields.path,
-//         navTitle: child.mdxNode.frontmatter.navTitle,
-//         title: child.mdxNode.frontmatter.title,
-//         items: [],
-//       };
-
-//       items.push(navNode);
-
-//       if (path.includes(child.path)) {
-//         next = child;
-//         nextItems = navNode.items;
-//       };
-//     });
-
-//     // sorting
-//     items = items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-//     // items.
-//     // if (curr.mdxNode) {
-//     //   const { navigation } = curr.mdxNode.frontmatter;
-//     //   if (navigation) {
-//     //     console.log(navigation);
-//     //   }
-//     // }
-
-//     curr = next ? next : null;
-//     items = nextItems;
-//   }
-
-//   return navItems;
-// };
-
-const createAdvocacy = (treeNode, doc, learn, actions) => {
+const createAdvocacy = (navTree, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
-
-  const navTree = treeToNavigation(treeNode, doc);
-  // if (doc.fields.path === '/playground/1/01_examples/navigation/') {
-  //   console.log(navLinks);
-  //   // console.log(treeNode);
-  //   console.log(treeToNavigation(treeNode, doc));
-  // }
 
   const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
   const branch = isProduction ? 'main' : 'develop';
