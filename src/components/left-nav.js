@@ -5,12 +5,12 @@ import { products } from '../constants/products';
 import { filterAndSortLinks, getBaseUrl } from '../constants/utils';
 import { Link, PdfDownload, BackButton, TreeNode } from './';
 
-const productIcon = path => {
+const productIcon = (path) => {
   const product = path.split('/')[1];
   return products[product] ? products[product].iconName : null;
 };
 
-const makeTree = edges => {
+const makeTree = (edges) => {
   let newEdges = edges;
   for (let i = 0; i < newEdges.length - 1; i++) {
     const { path } = newEdges[i];
@@ -97,6 +97,7 @@ const SectionHeadingWithVersions = ({
 };
 
 const LeftNav = ({
+  navTree,
   navLinks,
   path,
   pagePath,
@@ -111,6 +112,9 @@ const LeftNav = ({
   const tree = orderTree(makeTree(newList), navOrder);
   // console.log(pagePath);
 
+  console.log(tree);
+  console.log(navTree);
+
   return (
     <ul className="list-unstyled mt-0">
       <BackButton currentPath={pagePath} />
@@ -124,7 +128,7 @@ const LeftNav = ({
       ) : (
         <SectionHeading newList={newList} path={path} iconName={iconName} />
       )}
-      {tree.map(node => (
+      {navTree.map((node) => (
         <TreeNode
           node={node}
           path={path}
