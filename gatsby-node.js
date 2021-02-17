@@ -84,6 +84,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            navigation
             katacodaPages {
               scenario
               account
@@ -168,18 +169,35 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       });
     }
 
+    // build ordered navigation for immediate children
+    curr.navigationNodes = curr.children
+      .map((child) => {
+        return {
+          sortKey: determineSortKey(child, node.frontmatter.navigation),
+          path: child.mdxNode.fields.path,
+          navTitle: child.mdxNode.frontmatter.navTitle,
+          title: child.mdxNode.frontmatter.title,
+        };
+      })
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    // figure out appropriate root navigation node
+    const navigationDepth = 2;
+    let navRoot = curr;
+    while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
+
     const { docType } = node.fields;
     if (docType === 'doc') {
-      createDoc(node, productVersions, docs, actions);
+      createDoc(navRoot, node, productVersions, docs, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(node, learn, actions);
+      createAdvocacy(navRoot, node, learn, actions);
     } else if (docType === 'gh_doc') {
-      createGHDoc(node, gh_docs, actions);
+      createGHDoc(navRoot, node, gh_docs, actions);
     }
   }
 };
 
-const createDoc = (doc, productVersions, docs, actions) => {
+const createDoc = (treeNode, doc, productVersions, docs, actions) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
   if (isLatest) {
@@ -234,10 +252,111 @@ const createDoc = (doc, productVersions, docs, actions) => {
   });
 };
 
-const createAdvocacy = (doc, learn, actions) => {
+const determineSortKey = (treeNode, navigationOrder) => {
+  const navName = treeNode.path.split('/').slice(-2)[0];
+  const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
+  if (navIndex >= 0) {
+    console.log(navName);
+  }
+
+  return navIndex >= 0 ? `000000${navIndex}` : navName;
+};
+
+const treeToNavigation = (treeNode, pageNode) => {
+  const navItems = [];
+  const { depth, path } = pageNode.fields;
+
+  let curr = treeNode;
+  let items = navItems;
+  while (curr && curr.depth <= depth) {
+    let next = null;
+    let nextItems = null;
+
+    if (!curr.navigationNodes) break;
+
+    curr.navigationNodes.forEach((navNode) => {
+      const newNavNode = { ...navNode, items: [] };
+      items.push(newNavNode);
+      if (path.includes(newNavNode.path)) {
+        next = curr.children.find((child) => child.path === newNavNode.path);
+        nextItems = newNavNode.items;
+      }
+    });
+
+    curr = next ? next : null;
+    items = nextItems;
+  }
+
+  return navItems;
+};
+
+// const treeToNavigation = (treeNode, pageNode) => {
+//   const navItems = [];
+//   const { depth, path } = pageNode.fields;
+
+//   // const determineSortKey = (treeNode, navigationOrder) => {
+//   //   const navName = treeNode.path.split('/').slice(-2)[0];
+//   //   const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
+//   //   if (navIndex >= 0) {
+//   //     console.log(navName);
+//   //   }
+
+//   //   return navIndex >= 0 ? `000000${navIndex}` : navName;
+//   // }
+
+//   let curr = treeNode;
+//   let items = navItems;
+//   while (curr && curr.depth <= depth) {
+//     let next = null;
+//     let nextItems = null;
+
+//     const navigationOrder = curr.mdxNode?.frontmatter?.navigation;
+
+//     curr.children.forEach(child => {
+//       const navNode = {
+//         sortKey: determineSortKey(child, navigationOrder),
+//         path: child.mdxNode.fields.path,
+//         navTitle: child.mdxNode.frontmatter.navTitle,
+//         title: child.mdxNode.frontmatter.title,
+//         items: [],
+//       };
+
+//       items.push(navNode);
+
+//       if (path.includes(child.path)) {
+//         next = child;
+//         nextItems = navNode.items;
+//       };
+//     });
+
+//     // sorting
+//     items = items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+//     // items.
+//     // if (curr.mdxNode) {
+//     //   const { navigation } = curr.mdxNode.frontmatter;
+//     //   if (navigation) {
+//     //     console.log(navigation);
+//     //   }
+//     // }
+
+//     curr = next ? next : null;
+//     items = nextItems;
+//   }
+
+//   return navItems;
+// };
+
+const createAdvocacy = (treeNode, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
+
+  const navTree = treeToNavigation(treeNode, doc);
+  // if (doc.fields.path === '/playground/1/01_examples/navigation/') {
+  //   console.log(navLinks);
+  //   // console.log(treeNode);
+  //   console.log(treeToNavigation(treeNode, doc));
+  // }
 
   const advocacyDocsRepoUrl = 'https://github.com/EnterpriseDB/docs';
   const branch = isProduction ? 'main' : 'develop';
@@ -259,6 +378,7 @@ const createAdvocacy = (doc, learn, actions) => {
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
       navLinks: navLinks,
+      navTree,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
@@ -289,7 +409,7 @@ const createAdvocacy = (doc, learn, actions) => {
   });
 };
 
-const createGHDoc = (doc, gh_docs, actions) => {
+const createGHDoc = (treeNode, doc, gh_docs, actions) => {
   let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
   if (doc.fields.path.includes('barman')) {
     githubLink = 'https://github.com/2ndquadrant-it/barman';
