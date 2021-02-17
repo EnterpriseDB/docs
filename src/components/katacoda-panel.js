@@ -53,9 +53,10 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
         onClick={onClick}
         variant="outline-info"
         className="katacoda-start-button"
+        title="Click to disable the Interactive Tutorial"
       >
         <div>Interactive Tutorial</div>
-        <div className="font-weight-bold cta">Enabled</div>
+        <div className="cta font-weight-bold">Enabled</div>
       </Button>
     </div>
     <div className="d-flex flex-column">
@@ -160,7 +161,7 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
       document.documentElement.classList.add('katacoda-panel-active');
 
       // detect when katacoda is closed via the internal button
-      const handler = e => {
+      const handler = (e) => {
         if (
           e.data.type === 'close-panel' &&
           (e.data.data || { target: null }).target === panelElementId
@@ -180,7 +181,7 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
 
 // adapted from Katacoda src to patch over http to https redirect issues
 // when testing locally - remove once Katacoda has this fixed
-const katacodaHttpsWriter = cmd => {
+const katacodaHttpsWriter = (cmd) => {
   let target = document.querySelectorAll('[data-katacoda-env]');
   if (target.length === 0)
     target = document.querySelectorAll('[data-katacoda-id]');
