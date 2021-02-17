@@ -76,8 +76,6 @@ const Tiles = ({ mode, mdx, navLinks }) => {
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime } = mdx.fields;
-  // const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
-
   const {
     frontmatter,
     pagePath,
@@ -86,6 +84,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubEditLink,
     githubIssuesLink,
     isIndexPage,
+    navTree,
   } = pageContext;
   const {
     iconName,
@@ -119,6 +118,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
+            navTree={navTree}
             navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
