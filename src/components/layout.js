@@ -108,6 +108,17 @@ const Layout = ({
         )}
         */}
         <meta name="twitter:card" content="summary_large_image" />
+        <script
+          type="text/javascript"
+          src="//edb-feedback-widget-staging.herokuapp.com/edb-feedback-widget.js"
+          // src="//localhost:3000/edb-feedback-widget.js"
+          data-edb-form-id="210345471469053"
+          data-form-delay-ms="120000"
+          data-edb-hide-duration-days="365"
+          data-edb-target-url=""
+          data-edb-disable-cookies
+          data-display-mobile-and-tablet
+        ></script>
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
       <MDXProvider components={mdxComponents}>{children}</MDXProvider>
