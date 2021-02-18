@@ -4,10 +4,88 @@ title: "Upgrading the PEM Backend Postgres Database"
 
 If you are updating both PEM components and the PEM backend database, you should perform PEM component updates (the server and Agent) before updating the backend database. For more information about updating PEM component software, see [Upgrading a PEM Installation](01_upgrading_pem_installation/#upgrading_pem_installation).
 
-!!! Note
-    From PEM 8.0 onwards, the PostgreSQL or EPAS version 11 or higher are only supported as backend database server. Hence if your backend database server is lower than version 11 then first you need to upgrade your backend database server and then upgrade the PEM components.
+!!! Note 
+From PEM 8.0 onwards, the PostgreSQL or EPAS version 11 or higher are only supported as backend database server. Hence if your backend database server is lower than version 11 then first you need to upgrade your backend database server and then upgrade the PEM components.
 
 The update process described in this section uses the `pg_upgrade` utility to migrate from one version of the backend server to a more recent version. `pg_upgrade` facilitates migration between any version of Postgres (version 9.5 or later), and any subsequent release of Postgres that is supported on the same platform.
+
+!!! Note
+If the source PEM Server is lower than the 7.16 version, then you need to replace the following functions before you run `pg_upgrade`:
+
+  - The `abstime`, `reltime`, and `tinterval` datatypes are depreacated from Postgres version 12 or later, hence to replace those dataypes  with `timestamptz` data type use below command:
+
+    ```text
+    DO
+    $$
+    DECLARE
+        rec record;
+        cnt integer;
+    BEGIN
+        -- Check for the deprecated type in our user info probe
+        SELECT count(*) INTO cnt
+        FROM pem.probe_column
+        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
+            IF cnt = 0 THEN
+                RETURN;
+            END IF;
+        ALTER TABLE pemdata.user_info
+            ALTER COLUMN valuntil SET DATA TYPE timestamptz;
+        ALTER TABLE pemhistory.user_info
+            ALTER COLUMN valuntil SET DATA TYPE timestamptz;
+        -- Now update the pem.probe_column itself
+        UPDATE pem.probe_column
+        SET sql_data_type = ‘timestamptz’
+        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
+    END;
+    $$ LANGUAGE ‘plpgsql’;
+    ```
+
+  - Replace the below function to avoid any alert errors:
+
+    ```text
+    CREATE OR REPLACE FUNCTION pem.check_alert_params_array_size(
+    template_id pem.alert_template.id%type, params text[]
+    )
+    RETURNS bool AS $FUNC$
+    DECLARE
+        res bool := TRUE;
+    BEGIN
+        /*
+         * During restoring the pem database, it does not maintain the order while
+         * inserting data in the table, and uses the sort table based on the
+         * names.
+         * Hence - we need to check the foreign key constraint is present before
+         * validating these values.
+         */
+        IF EXISTS(
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name='alert_template_id_fkey' AND
+          table_name='alert' AND table_schema='pem'
+        ) THEN
+          /*
+           * Need to use the IS TRUE construct outside the main query, because
+           * otherwise if there's no template by that ID then the query would return
+           * 0 rows and the result of the function would be undefined and CHECK
+           * constraint would succeed.
+           * Probably this is being over-cautious, because pem.alert.template_id
+           * references pem.alert_template.id. But the SQL standard (probably) does
+           * not define the order in which the CHECK or the FOREIGN KEY constraints
+           * should be validated; in case CHECK is validated first, we want it to
+           * fail.
+           */
+        EXECUTE $SQL$
+            SELECT (
+                SELECT pem.check_array_size_equal(t.param_names, $2)
+                FROM pem.alert_template AS t
+                WHERE id = $1
+            ) IS TRUE
+          $SQL$ INTO res USING template_id, params;
+        END IF;
+         RETURN res;
+    END
+    $FUNC$ LANGUAGE 'plpgsql';
+    ```
+
 
 `pg_upgrade` supports a transfer of data between servers of the same type. For example, you can use `pg_upgrade` to move data from a PostgreSQL 9.6 backend database to a PostgreSQL 11 backend database, but not to an Advanced Server 11 backend database. If you wish to migrate to a different type of backend database (i.e from a PostgreSQL server to Advanced Server), see [Moving the Postgres Enterprise Manager Server](03_moving_pem_server).
 
@@ -147,12 +225,6 @@ You can find more information about using pg_upgrade at:
         ```
 
 3.  Stop the services of both the old backend database and the new backend database.
-
-    On RHEL or CentOS 6.x, open a command line and assume the identity of a superuser. Enter the command:
-
-    ```text
-    /etc/init.d/<service_name> stop
-    ```
 
     On RHEL or CentOS 7.x or 8.x, open a command line and assume the identity of a superuser. Enter the command:
 
