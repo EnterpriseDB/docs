@@ -4,11 +4,11 @@ import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 
 const FullCard = ({ card }) => {
-  const iconName = card.iconName || iconNames.DOTTED_BOX;
+  const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
 
   return (
     <div className="card rounded shadow-sm p-2 mt-4">
-      <Link to={card.path}>
+      <Link to={card.fields.path}>
         <Icon
           iconName={iconName}
           className={`${
@@ -20,18 +20,20 @@ const FullCard = ({ card }) => {
       </Link>
       <div className="card-body">
         <h3 className="card-title balance-text">
-          <Link to={card.path}>{card.navTitle || card.title}</Link>
+          <Link to={card.fields.path}>
+            {card.frontmatter.navTitle || card.frontmatter.title}
+          </Link>
         </h3>
 
-        <p className="card-text">{card.description}</p>
+        <p className="card-text">{card.frontmatter.description}</p>
 
-        {(card.children || []).map((child) => (
+        {card.children.map((child) => (
           <Link
-            key={child.path}
-            to={child.path}
+            key={child.fields.path}
+            to={child.fields.path}
             className="btn btn-link btn-block text-left p-0"
           >
-            {child.navTitle || child.title}
+            {child.frontmatter.navTitle || child.frontmatter.title}
           </Link>
         ))}
       </div>
@@ -43,12 +45,12 @@ const SimpleCard = ({ card }) => (
   <div className="card rounded shadow-sm p-2 mt-4">
     <div className="card-body">
       <h3 className="card-title balance-text">
-        <Link className="stretched-link" to={card.path}>
-          {card.navTitle || card.title}
+        <Link className="stretched-link" to={card.fields.path}>
+          {card.frontmatter.navTitle || card.frontmatter.title}
         </Link>
       </h3>
 
-      <p className="card-text">{card.description}</p>
+      <p className="card-text">{card.frontmatter.description}</p>
     </div>
   </div>
 );
@@ -59,7 +61,7 @@ const CardDecks = ({ cards, cardType = 'simple' }) => {
       {cards.map((card) => {
         return (
           <Col
-            key={card.path}
+            key={card.fields.path}
             md={cardType === 'full' ? 6 : 4}
             className="d-flex"
           >
