@@ -17,8 +17,9 @@ const {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
-  buildNavigationSortKey,
   treeToNavigation,
+  treeNodeToNavNode,
+  findPrevNextNavNodes,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -174,17 +175,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // build ordered navigation for immediate children
     // this exploits the tree navigation order - we can't
     // visit children before the parent
-    // curr.navigationNodes = curr.children
-    //   .map((child) => {
-    //     return {
-    //       sortKey: buildNavigationSortKey(child, node.frontmatter.navigation),
-    //       path: child.mdxNode.fields.path,
-    //       navTitle: child.mdxNode.frontmatter.navTitle,
-    //       title: child.mdxNode.frontmatter.title,
-    //     };
-    //   })
-    //   .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-
     const addedChildPaths = {};
     curr.navigationNodes = [];
     (node.frontmatter.navigation || []).forEach((navEntry) => {
@@ -204,24 +194,43 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       if (!navChild?.mdxNode) return;
 
       addedChildPaths[navChild.path] = true;
-      curr.navigationNodes.push({
-        path: navChild.mdxNode.fields.path,
-        navTitle: navChild.mdxNode.frontmatter.navTitle,
-        title: navChild.mdxNode.frontmatter.title,
-      });
+      curr.navigationNodes.push(treeNodeToNavNode(navChild));
     });
 
     curr.children
       .filter((child) => !addedChildPaths[child.path])
-      .map((child) => {
-        return {
-          path: child.mdxNode.fields.path,
-          navTitle: child.mdxNode.frontmatter.navTitle,
-          title: child.mdxNode.frontmatter.title,
-        };
-      })
+      .map((child) => treeNodeToNavNode(child))
       .sort((a, b) => a.path.localeCompare(b.path))
       .forEach((child) => curr.navigationNodes.push(child));
+
+    // const prevNext = { prev: null, next: null };
+    // // if (curr.path === '/epas/13/epas_inst_windows/06_configuring_advanced_server/') {
+    //   // console.log(curr.parent.navigationNodes);
+
+    //   // currNavIndex = curr.parent.navigationNodes.findIndex(navNode => navNode.path === curr.path);
+    //   // const prevPath = curr.parent.navigationNodes[currNavIndex - 1].path;
+    //   // console.log(curr.parent.children.find(treeNode => treeNode.path === prevPath).navigationNodes.slice(-1)[0]);
+
+    //   // find our page in parent navigation nodes
+    //   const currNavIndex = curr.parent.navigationNodes.findIndex(navNode => navNode.path === curr.path);
+    //   // console.log(curr.parent.navigationNodes[currNavIndex]);
+
+    //   // get previous node
+    //   if (currNavIndex > 0) {
+    //     const prevNavNode = curr.parent.navigationNodes[currNavIndex - 1];
+    //     // check to see if previous node has children recursively so that we go as deep as possible (only one for now)
+    //     const prevTreeNode = curr.parent.children.find(treeNode => treeNode.path === prevNavNode.path);
+    //     const finalPrevNavNode = prevTreeNode.navigationNodes.slice(-1)[0];
+    //     if (finalPrevNavNode) {
+    //       prevNext.prev = finalPrevNavNode;
+    //     } else {
+    //       prevNext.prev = prevNavNode;
+    //     }
+    //   }
+
+    //   console.log(prevNext);
+    //   // get next node, if no node keep going up until we find something to go next
+    // // }
 
     // figure out appropriate root navigation node
     const navigationDepth = 2;
@@ -231,9 +240,12 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // build complete navigation tree
     const navTree = treeToNavigation(navRoot, node);
 
+    // determine next and previous nodes
+    const prevNext = findPrevNextNavNodes(navTree, curr);
+
     const { docType } = node.fields;
     if (docType === 'doc') {
-      createDoc(navTree, node, productVersions, docs, actions);
+      createDoc(navTree, prevNext, node, productVersions, docs, actions);
     } else if (docType === 'advocacy') {
       createAdvocacy(navTree, node, learn, actions);
     } else if (docType === 'gh_doc') {
@@ -242,7 +254,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   }
 };
 
-const createDoc = (navTree, doc, productVersions, docs, actions) => {
+const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
   if (isLatest) {
@@ -273,6 +285,13 @@ const createDoc = (navTree, doc, productVersions, docs, actions) => {
     fileUrlSegment,
   )}`;
 
+  if (
+    doc.fields.path ===
+    '/epas/13/epas_inst_windows/06_configuring_advanced_server/'
+  ) {
+    console.log(prevNext);
+  }
+
   const template = doc.frontmatter.productStub ? 'doc-stub.js' : 'doc.js';
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
   actions.createPage({
@@ -283,6 +302,7 @@ const createDoc = (navTree, doc, productVersions, docs, actions) => {
       pagePath: path,
       navLinks: navLinks,
       navTree,
+      prevNext,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       githubFileLink: githubFileLink,
