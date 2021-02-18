@@ -130,16 +130,6 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
   return navNode;
 };
 
-// const treeToNavigationFull = (rootNode, pageNode) => {
-//   const navTree = treeNodeToNavNode(rootNode);
-//   const stack = [...rootNode.children];
-//   let curr;
-
-//   while (stack.length > 0) {
-//     curr = stack.pop();
-//   }
-// }
-
 const treeToNavigation = (treeNode, pageNode) => {
   const rootNode = treeNodeToNavNode(treeNode, true);
   const { depth, path } = pageNode.fields;
@@ -221,14 +211,9 @@ const findPrevNextNavNodes = (navTree, currNode) => {
     while (prevNavNode) {
       const prevTreeNode = getTreeNodeForNavNode(parent, prevNavNode);
       if (!prevTreeNode) break;
-
       const lastNavNode = prevTreeNode.navigationNodes?.slice(-1)?.[0];
-
-      if (lastNavNode) {
-        prevNavNode = lastNavNode;
-      } else {
-        break;
-      }
+      if (!lastNavNode) break;
+      prevNavNode = lastNavNode;
     }
 
     prevNext.prev = prevNavNode;
@@ -243,6 +228,9 @@ const findPrevNextNavNodes = (navTree, currNode) => {
   if (index < flatTree.length - 1) {
     prevNext.next = flatTree[index + 1];
   }
+
+  if (!prevNext.prev?.path) prevNext.prev = null;
+  if (!prevNext.next?.path) prevNext.next = null;
 
   return prevNext;
 };
