@@ -119,22 +119,37 @@ const reportMissingIndex = (reporter, treeNode) => {
   }
 };
 
-const buildNavigationSortKey = (treeNode, navigationOrder) => {
-  const navName = treeNode.path.split('/').slice(-2)[0];
-  const navIndex = navigationOrder ? navigationOrder.indexOf(navName) : -1;
-
-  return navIndex >= 0 ? `000000${navIndex}` : navName;
+const treeNodeToNavNode = (treeNode, withItems = false) => {
+  const navNode = {
+    path: treeNode.mdxNode?.fields?.path,
+    navTitle: treeNode.mdxNode?.frontmatter?.navTitle,
+    title: treeNode.mdxNode?.frontmatter?.title,
+    depth: treeNode.mdxNode?.fields?.depth,
+  };
+  if (withItems) navNode.items = [];
+  return navNode;
 };
 
+// const treeToNavigationFull = (rootNode, pageNode) => {
+//   const navTree = treeNodeToNavNode(rootNode);
+//   const stack = [...rootNode.children];
+//   let curr;
+
+//   while (stack.length > 0) {
+//     curr = stack.pop();
+//   }
+// }
+
 const treeToNavigation = (treeNode, pageNode) => {
-  const navItems = [];
+  const rootNode = treeNodeToNavNode(treeNode, true);
   const { depth, path } = pageNode.fields;
 
   let curr = treeNode;
-  let items = navItems;
+  let items = rootNode.items;
   while (curr && curr.depth <= depth) {
-    let next = null;
-    let nextItems = null;
+    let next = [];
+    let nextItems = [];
+    let prevNavNode;
 
     if (!curr.navigationNodes) break;
 
@@ -142,16 +157,94 @@ const treeToNavigation = (treeNode, pageNode) => {
       const newNavNode = { ...navNode, items: [] };
       items.push(newNavNode);
       if (path.includes(newNavNode.path)) {
-        next = curr.children.find((child) => child.path === newNavNode.path);
-        nextItems = newNavNode.items;
+        if (prevNavNode) {
+          if (
+            prevNavNode.path ===
+            '/epas/13/epas_inst_windows/05_managing_an_advanced_server_installation/03_controlling_server_startup_behavior_on_windows/'
+          )
+            console.log('push prev');
+          const prev = curr.children.find(
+            (child) => child.path === prevNavNode.path,
+          );
+          next.push(prev);
+          nextItems.push(prevNavNode.items);
+        }
+        next.push(
+          curr.children.find((child) => child.path === newNavNode.path),
+        );
+        nextItems.push(newNavNode.items);
       }
+      prevNavNode = navNode;
     });
 
-    curr = next ? next : null;
-    items = nextItems;
+    curr = next.pop();
+    items = nextItems.pop();
   }
 
-  return navItems;
+  return rootNode;
+};
+
+const getNavNodeForTreeNode = (treeNode) => {
+  if (!treeNode.parent?.navigationNodes) return null;
+
+  return treeNode.parent.navigationNodes.find((navNode) => {
+    return navNode.path === treeNode.path;
+  });
+};
+
+const getTreeNodeForNavNode = (parent, navNode) => {
+  return parent.children.find((child) => child.path === navNode.path);
+};
+
+const flattenTree = (flatArray, nodes) => {
+  nodes.forEach((node) => {
+    const { items, ...newNode } = node;
+    flatArray.push(newNode);
+    flattenTree(flatArray, items || []);
+  });
+};
+
+const findPrevNextNavNodes = (navTree, currNode) => {
+  const prevNext = { prev: null, next: null };
+
+  const parent = currNode.parent; // parent nav nodes should contain treeNode
+  if (!parent.navigationNodes) return prevNext;
+
+  const currNavNodeIndex = parent.navigationNodes.findIndex((navNode) => {
+    return navNode.path === currNode.path;
+  });
+
+  // hunt for prev node
+  if (currNavNodeIndex > 0) {
+    let prevNavNode = parent.navigationNodes[currNavNodeIndex - 1];
+
+    while (prevNavNode) {
+      const prevTreeNode = getTreeNodeForNavNode(parent, prevNavNode);
+      if (!prevTreeNode) break;
+
+      const lastNavNode = prevTreeNode.navigationNodes?.slice(-1)?.[0];
+
+      if (lastNavNode) {
+        prevNavNode = lastNavNode;
+      } else {
+        break;
+      }
+    }
+
+    prevNext.prev = prevNavNode;
+  } else {
+    prevNext.prev = getNavNodeForTreeNode(parent);
+  }
+
+  // hunt for next node
+  const flatTree = [];
+  flattenTree(flatTree, navTree.items);
+  const index = flatTree.findIndex((navItem) => navItem.path === currNode.path);
+  if (index < flatTree.length - 1) {
+    prevNext.next = flatTree[index + 1];
+  }
+
+  return prevNext;
 };
 
 module.exports = {
@@ -165,6 +258,7 @@ module.exports = {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
-  buildNavigationSortKey,
   treeToNavigation,
+  treeNodeToNavNode,
+  findPrevNextNavNodes,
 };
