@@ -166,7 +166,6 @@ const DocTemplate = ({ data, pageContext }) => {
   const {
     frontmatter,
     pagePath,
-    navLinks,
     versions,
     githubFileLink,
     githubEditLink,
@@ -247,12 +246,7 @@ const DocTemplate = ({ data, pageContext }) => {
           </ContentRow>
           {sections && <Sections sections={sections} />}
           {depth > 2 && (
-            <PrevNext
-              prevNext={prevNext}
-              navTree={navTree}
-              navLinks={navLinks}
-              path={path}
-            />
+            <PrevNext prevNext={prevNext} path={path} depth={depth} />
           )}
           <DevFrontmatter frontmatter={frontmatter} />
 

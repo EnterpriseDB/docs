@@ -203,35 +203,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       .sort((a, b) => a.path.localeCompare(b.path))
       .forEach((child) => curr.navigationNodes.push(child));
 
-    // const prevNext = { prev: null, next: null };
-    // // if (curr.path === '/epas/13/epas_inst_windows/06_configuring_advanced_server/') {
-    //   // console.log(curr.parent.navigationNodes);
-
-    //   // currNavIndex = curr.parent.navigationNodes.findIndex(navNode => navNode.path === curr.path);
-    //   // const prevPath = curr.parent.navigationNodes[currNavIndex - 1].path;
-    //   // console.log(curr.parent.children.find(treeNode => treeNode.path === prevPath).navigationNodes.slice(-1)[0]);
-
-    //   // find our page in parent navigation nodes
-    //   const currNavIndex = curr.parent.navigationNodes.findIndex(navNode => navNode.path === curr.path);
-    //   // console.log(curr.parent.navigationNodes[currNavIndex]);
-
-    //   // get previous node
-    //   if (currNavIndex > 0) {
-    //     const prevNavNode = curr.parent.navigationNodes[currNavIndex - 1];
-    //     // check to see if previous node has children recursively so that we go as deep as possible (only one for now)
-    //     const prevTreeNode = curr.parent.children.find(treeNode => treeNode.path === prevNavNode.path);
-    //     const finalPrevNavNode = prevTreeNode.navigationNodes.slice(-1)[0];
-    //     if (finalPrevNavNode) {
-    //       prevNext.prev = finalPrevNavNode;
-    //     } else {
-    //       prevNext.prev = prevNavNode;
-    //     }
-    //   }
-
-    //   console.log(prevNext);
-    //   // get next node, if no node keep going up until we find something to go next
-    // // }
-
     // figure out appropriate root navigation node
     const navigationDepth = 2;
     let navRoot = curr;
@@ -285,13 +256,6 @@ const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
     fileUrlSegment,
   )}`;
 
-  if (
-    doc.fields.path ===
-    '/epas/13/epas_inst_windows/06_configuring_advanced_server/'
-  ) {
-    console.log(prevNext);
-  }
-
   const template = doc.frontmatter.productStub ? 'doc-stub.js' : 'doc.js';
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
   actions.createPage({
@@ -300,7 +264,6 @@ const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
     context: {
       frontmatter: doc.frontmatter,
       pagePath: path,
-      navLinks: navLinks,
       navTree,
       prevNext,
       versions: productVersions[doc.fields.product],
