@@ -125,9 +125,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   // it should be possible to remove these in the future,
   // they are only used for navLinks generation
-  const docs = nodes.filter((file) => file.fields.docType === 'doc');
   const learn = nodes.filter((file) => file.fields.docType === 'advocacy');
-  const gh_docs = nodes.filter((file) => file.fields.docType === 'gh_doc');
 
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes);
@@ -218,9 +216,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (docType === 'doc') {
       createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(navTree, curr.navigationNodes, node, learn, actions);
+      createAdvocacy(navTree, node, learn, actions);
     } else if (docType === 'gh_doc') {
-      createGHDoc(navTree, node, gh_docs, actions);
+      createGHDoc(navTree, node, actions);
     }
   }
 };
@@ -275,7 +273,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   });
 };
 
-const createAdvocacy = (navTree, cardNavNodes, doc, learn, actions) => {
+const createAdvocacy = (navTree, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
@@ -301,7 +299,6 @@ const createAdvocacy = (navTree, cardNavNodes, doc, learn, actions) => {
       pagePath: doc.fields.path,
       navLinks: navLinks,
       navTree,
-      cardNavNodes,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
@@ -332,16 +329,12 @@ const createAdvocacy = (navTree, cardNavNodes, doc, learn, actions) => {
   });
 };
 
-const createGHDoc = (treeNode, doc, gh_docs, actions) => {
+const createGHDoc = (navTree, doc, actions) => {
   let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
   if (doc.fields.path.includes('barman')) {
     githubLink = 'https://github.com/2ndquadrant-it/barman';
   }
   const showGithubLink = !doc.fields.path.includes('pgbackrest');
-
-  const navLinks = gh_docs.filter(
-    (node) => node.fields.topic === doc.fields.topic,
-  );
 
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
@@ -361,7 +354,7 @@ const createGHDoc = (treeNode, doc, gh_docs, actions) => {
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
-      navLinks: navLinks,
+      navTree,
       githubFileLink: showGithubLink ? githubFileLink : null,
       githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
       isIndexPage: isIndexPage,
