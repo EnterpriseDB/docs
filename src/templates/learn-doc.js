@@ -50,7 +50,7 @@ const TileModes = {
   Simple: 'simple',
   Full: 'full',
 };
-const Tiles = ({ mode, mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -68,7 +68,19 @@ const Tiles = ({ mode, mdx, navLinks }) => {
       };
     });
 
-    return <CardDecks cards={tiles} cardType={mode} />;
+    console.log(tiles);
+    const newTiles = cardNavNodes.map((navNode) => {
+      const { items, ...restNavNode } = navNode;
+      if (mode === 'simple') return restNavNode;
+
+      return {
+        ...restNavNode,
+        children: items,
+      };
+    });
+    console.log(newTiles);
+
+    return <CardDecks cards={newTiles} cardType={mode} />;
   }
   return null;
 };
@@ -85,6 +97,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubIssuesLink,
     isIndexPage,
     navTree,
+    cardNavNodes,
   } = pageContext;
   const {
     iconName,
@@ -139,7 +152,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mode={indexCards} mdx={mdx} navLinks={navLinks} />
+              <Tiles
+                mode={indexCards}
+                mdx={mdx}
+                navLinks={navLinks}
+                cardNavNodes={cardNavNodes}
+              />
             </Col>
 
             {showToc && (

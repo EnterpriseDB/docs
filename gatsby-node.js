@@ -216,16 +216,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     const { docType } = node.fields;
     if (docType === 'doc') {
-      createDoc(navTree, prevNext, node, productVersions, docs, actions);
+      createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(navTree, node, learn, actions);
+      createAdvocacy(navTree, curr.navigationNodes, node, learn, actions);
     } else if (docType === 'gh_doc') {
       createGHDoc(navTree, node, gh_docs, actions);
     }
   }
 };
 
-const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
+const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
   if (isLatest) {
@@ -237,12 +237,6 @@ const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
       force: true,
     });
   }
-
-  const navLinks = docs.filter(
-    (node) =>
-      node.fields.product === doc.fields.product &&
-      node.fields.version === doc.fields.version,
-  );
 
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
@@ -281,7 +275,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, docs, actions) => {
   });
 };
 
-const createAdvocacy = (navTree, doc, learn, actions) => {
+const createAdvocacy = (navTree, cardNavNodes, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
@@ -307,6 +301,7 @@ const createAdvocacy = (navTree, doc, learn, actions) => {
       pagePath: doc.fields.path,
       navLinks: navLinks,
       navTree,
+      cardNavNodes,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,

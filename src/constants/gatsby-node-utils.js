@@ -125,6 +125,8 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
     navTitle: treeNode.mdxNode?.frontmatter?.navTitle,
     title: treeNode.mdxNode?.frontmatter?.title,
     depth: treeNode.mdxNode?.fields?.depth,
+    iconName: treeNode.mdxNode?.frontmatter?.iconName,
+    description: treeNode.mdxNode?.frontmatter?.description,
   };
   if (withItems) navNode.items = [];
   return navNode;
@@ -139,7 +141,6 @@ const treeToNavigation = (treeNode, pageNode) => {
   while (curr && curr.depth <= depth) {
     let next = [];
     let nextItems = [];
-    let prevNavNode;
 
     if (!curr.navigationNodes) break;
 
@@ -147,24 +148,11 @@ const treeToNavigation = (treeNode, pageNode) => {
       const newNavNode = { ...navNode, items: [] };
       items.push(newNavNode);
       if (path.includes(newNavNode.path)) {
-        if (prevNavNode) {
-          if (
-            prevNavNode.path ===
-            '/epas/13/epas_inst_windows/05_managing_an_advanced_server_installation/03_controlling_server_startup_behavior_on_windows/'
-          )
-            console.log('push prev');
-          const prev = curr.children.find(
-            (child) => child.path === prevNavNode.path,
-          );
-          next.push(prev);
-          nextItems.push(prevNavNode.items);
-        }
         next.push(
           curr.children.find((child) => child.path === newNavNode.path),
         );
         nextItems.push(newNavNode.items);
       }
-      prevNavNode = navNode;
     });
 
     curr = next.pop();
