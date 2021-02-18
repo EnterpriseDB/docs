@@ -116,9 +116,7 @@ const Section = ({ section }) => (
             </p>
           ) : (
             <DevOnly key={Math.random()}>
-              <span className="badge badge-light">
-                Link Missing! Check left-navs.js
-              </span>
+              <span className="badge badge-light">Link Missing!</span>
             </DevOnly>
           ),
         )}
