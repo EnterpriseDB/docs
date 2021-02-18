@@ -381,7 +381,6 @@ module.exports = {
               noInlineHighlight: true,
             },
           },
-          'gatsby-remark-copy-linked-files',
         ],
         remarkPlugins: [
           [require('./src/plugins/code-in-tables')],
