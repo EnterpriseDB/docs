@@ -1,6 +1,6 @@
 export const productStubs = {
   bart: {
-    '2.6': {
+    2.6: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -427,7 +427,7 @@ export const productStubs = {
         },
       ],
     },
-    '2.4': {
+    2.4: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -695,7 +695,7 @@ export const productStubs = {
     },
   },
   epas: {
-    '12': {
+    12: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -737,7 +737,7 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Reference Guide',
+                'Database Compatibility for Oracle Developers Reference Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/12/toc.html',
               pdf:
@@ -751,14 +751,14 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+                'Database Compatibility for Oracle Developers Built-in Package Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/12/toc.html',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/12/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v12.pdf',
             },
             {
-              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              text: 'Database Compatibility for Oracle Developer’s Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/12/toc.html',
               pdf:
@@ -766,7 +766,7 @@ export const productStubs = {
             },
             {
               text:
-                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+                'Database Compatibility for Oracle Developers Tools and Utilities Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/12/toc.html',
               pdf:
@@ -797,7 +797,7 @@ export const productStubs = {
         },
       ],
     },
-    '11': {
+    11: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -839,7 +839,7 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Reference Guide',
+                'Database Compatibility for Oracle Developers Reference Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/11/toc.html',
               pdf:
@@ -853,14 +853,14 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+                'Database Compatibility for Oracle Developers Built-in Package Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/11/toc.html',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/11/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v11.pdf',
             },
             {
-              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              text: 'Database Compatibility for Oracle Developer’s Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/11/toc.html',
               pdf:
@@ -868,7 +868,7 @@ export const productStubs = {
             },
             {
               text:
-                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+                'Database Compatibility for Oracle Developers Tools and Utilities Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/11/toc.html',
               pdf:
@@ -899,7 +899,7 @@ export const productStubs = {
         },
       ],
     },
-    '10': {
+    10: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -927,7 +927,7 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Reference Guide',
+                'Database Compatibility for Oracle Developers Reference Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/10/toc.html',
               pdf:
@@ -941,14 +941,14 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+                'Database Compatibility for Oracle Developers Built-in Package Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/10/toc.html',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/10/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v10.pdf',
             },
             {
-              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              text: 'Database Compatibility for Oracle Developer’s Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/10/toc.html',
               pdf:
@@ -956,7 +956,7 @@ export const productStubs = {
             },
             {
               text:
-                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+                'Database Compatibility for Oracle Developers Tools and Utilities Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/10/toc.html',
               pdf:
@@ -987,7 +987,7 @@ export const productStubs = {
         },
       ],
     },
-    '9.6': {
+    9.6: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1014,7 +1014,7 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Reference Guide',
+                'Database Compatibility for Oracle Developers Reference Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/reference/database-compatibility-for-oracle-developers-reference-guide/9.6/toc.html',
               pdf:
@@ -1028,14 +1028,14 @@ export const productStubs = {
           links: [
             {
               text:
-                'Database Compatibility for Oracle® Developers Built-in Package Guide	',
+                'Database Compatibility for Oracle Developers Built-in Package Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-built-in-package-guide/9.6/toc.html',
               pdf:
                 'https://www.enterprisedb.com/edb-docs/static/docs/epas/9.6/Database_Compatibility_for_Oracle_Developers_Built-in_Package_Guide_v9.6.pdf',
             },
             {
-              text: 'Database Compatibility for Oracle® Developer’s Guide	',
+              text: 'Database Compatibility for Oracle Developer’s Guide	',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/9.6/toc.html',
               pdf:
@@ -1043,7 +1043,7 @@ export const productStubs = {
             },
             {
               text:
-                'Database Compatibility for Oracle® Developers Tools and Utilities Guide',
+                'Database Compatibility for Oracle Developers Tools and Utilities Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-tools-and-utilities-guide/9.6/toc.html',
               pdf:
@@ -1067,7 +1067,7 @@ export const productStubs = {
         },
       ],
     },
-    '9.5': {
+    9.5: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1087,7 +1087,7 @@ export const productStubs = {
           column: 2,
           links: [
             {
-              text: 'Database Compatibility for Oracle® Developer’s Guide',
+              text: 'Database Compatibility for Oracle Developer’s Guide',
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/9.5/toc.html',
               pdf:
@@ -1106,7 +1106,7 @@ export const productStubs = {
     },
   },
   pem: {
-    '7.16': {
+    7.16: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1203,7 +1203,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.15': {
+    7.15: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1300,7 +1300,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.14': {
+    7.14: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1391,7 +1391,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.13': {
+    7.13: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1456,7 +1456,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.12': {
+    7.12: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1540,7 +1540,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.11': {
+    7.11: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1684,7 +1684,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.9': {
+    7.9: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1749,7 +1749,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.8': {
+    7.8: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1826,7 +1826,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.7': {
+    7.7: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -1896,7 +1896,7 @@ export const productStubs = {
         },
       ],
     },
-    '7.6': {
+    7.6: {
       sections: [
         {
           title: 'Installation & Getting Started',
@@ -2042,7 +2042,7 @@ export const productStubs = {
         },
       ],
     },
-    '3.9': {
+    3.9: {
       sections: [
         {
           title: 'User Guides',
@@ -2066,7 +2066,7 @@ export const productStubs = {
         },
       ],
     },
-    '3.8': {
+    3.8: {
       sections: [
         {
           title: 'User Guides',
@@ -2090,7 +2090,7 @@ export const productStubs = {
         },
       ],
     },
-    '3.7': {
+    3.7: {
       sections: [
         {
           title: 'User Guides',
@@ -2107,7 +2107,7 @@ export const productStubs = {
         },
       ],
     },
-    '3.6': {
+    3.6: {
       sections: [
         {
           title: 'User Guides',
@@ -2124,7 +2124,7 @@ export const productStubs = {
         },
       ],
     },
-    '3.5': {
+    3.5: {
       sections: [
         {
           title: 'User Guides',
@@ -2215,7 +2215,7 @@ export const productStubs = {
     },
   },
   eprs: {
-    '6.2': {
+    6.2: {
       sections: [
         {
           title: 'User Guides',
