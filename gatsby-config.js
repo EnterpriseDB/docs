@@ -300,7 +300,7 @@ module.exports = {
     siteUrl: 'https://enterprisedb.com/docs',
     algoliaIndex: algoliaIndex,
     isDevelopment: !isBuild,
-    cacheBuster: 2, // for busting gh actions cache if needed
+    cacheBuster: 1, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -423,7 +423,8 @@ module.exports = {
   ],
 };
 
-if (process.env.INDEX_ON_BUILD) {
+console.log(`INDEX ON BUILD ${typeof process.env.INDEX_ON_BUILD}`);
+if (process.env.INDEX_ON_BUILD && process.env.INDEX_ON_BUILD !== 'false') {
   module.exports['plugins'].push({
     // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
     resolve: `gatsby-plugin-algolia`,
