@@ -20,8 +20,16 @@ const stripPathPrefix = (path, pathPrefix) => {
   return path;
 };
 
+const stripMarkdownExtension = (path) => {
+  return path.replace(/\.mdx?$/, '');
+};
+
 const isAbsoluteOrProtocolRelativeUrl = (url) => {
   return isAbsoluteUrl(url) || url.trim().startsWith('//');
+};
+
+const hasNonMarkdownExtension = (url) => {
+  return url.match(/\.\w+$/) && !url.match(/\.mdx?$/);
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
@@ -45,13 +53,18 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
 
   let resultHref = result.href.replace(/^loc:/, '');
   resultHref = stripPathPrefix(resultHref, pathPrefix);
+  resultHref = stripMarkdownExtension(resultHref);
   return forceTrailingSlash(resultHref);
 };
 
 const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
   const pathPrefix = usePathPrefix();
 
-  if (!to || isAbsoluteOrProtocolRelativeUrl(to)) {
+  if (
+    !to ||
+    isAbsoluteOrProtocolRelativeUrl(to) ||
+    hasNonMarkdownExtension(to)
+  ) {
     return (
       <a href={to || '#'} {...rest}>
         {rest.children}
