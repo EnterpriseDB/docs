@@ -15,6 +15,7 @@ const {
   removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
+  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
@@ -130,18 +131,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes);
   const navStack = [treeRoot];
-  let frontmatterStack = [];
   let curr = null;
 
   while (navStack.length > 0) {
     curr = navStack.pop();
     curr.children.forEach((child) => navStack.push(child));
-
-    // update frontmatter defaults
-    frontmatterStack = frontmatterStack.slice(0, curr.depth);
-    frontmatterStack.push(
-      removeNullEntries(curr.mdxNode?.frontmatter.directoryDefaults),
-    );
 
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode) {
@@ -152,11 +146,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const node = curr.mdxNode;
 
     // set computed frontmatter
-    node.frontmatter = Object.assign(
-      {},
-      ...frontmatterStack,
-      ...[removeNullEntries(node.frontmatter)],
-    );
+    node.frontmatter = computeFrontmatterForTreeNode(curr);
 
     // set up frontmatter redirects
     if (node.frontmatter.redirects) {
