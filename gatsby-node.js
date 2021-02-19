@@ -100,6 +100,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             }
             directoryDefaults {
               description
+              prevNext
             }
           }
           fields {
@@ -137,34 +138,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     curr = navStack.pop();
     curr.children.forEach((child) => navStack.push(child));
 
-    // exit here if we're not dealing with an actual page
-    if (!curr.mdxNode) {
-      reportMissingIndex(reporter, curr);
-      continue;
-    }
-
-    const node = curr.mdxNode;
-
-    // set computed frontmatter
-    node.frontmatter = computeFrontmatterForTreeNode(curr);
-
-    // set up frontmatter redirects
-    if (node.frontmatter.redirects) {
-      node.frontmatter.redirects.forEach((fromPath) => {
-        actions.createRedirect({
-          fromPath,
-          toPath: node.fields.path,
-          redirectInBrowser: true,
-          isPermanent: true,
-        });
-      });
-    }
-
     // build ordered navigation for immediate children
     // treeToNavigation will use this data
     const addedChildPaths = {};
     curr.navigationNodes = [];
-    (node.frontmatter.navigation || []).forEach((navEntry) => {
+    (curr.mdxNode?.frontmatter?.navigation || []).forEach((navEntry) => {
       if (navEntry.startsWith('#')) {
         curr.navigationNodes.push({
           path: null,
@@ -190,6 +168,29 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       .sort((a, b) => a.path.localeCompare(b.path))
       .forEach((child) => curr.navigationNodes.push(child));
 
+    // exit here if we're not dealing with an actual page
+    if (!curr.mdxNode) {
+      reportMissingIndex(reporter, curr);
+      continue;
+    }
+
+    const node = curr.mdxNode;
+
+    // set computed frontmatter
+    node.frontmatter = computeFrontmatterForTreeNode(curr);
+
+    // set up frontmatter redirects
+    if (node.frontmatter.redirects) {
+      node.frontmatter.redirects.forEach((fromPath) => {
+        actions.createRedirect({
+          fromPath,
+          toPath: node.fields.path,
+          redirectInBrowser: true,
+          isPermanent: true,
+        });
+      });
+    }
+
     // build navigation tree
     const navigationDepth = 2;
     let navRoot = curr;
@@ -203,7 +204,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     if (docType === 'doc') {
       createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(navTree, node, learn, actions);
+      createAdvocacy(navTree, prevNext, node, learn, actions);
     } else if (docType === 'gh_doc') {
       createGHDoc(navTree, node, actions);
     }
@@ -260,7 +261,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   });
 };
 
-const createAdvocacy = (navTree, doc, learn, actions) => {
+const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
@@ -285,6 +286,7 @@ const createAdvocacy = (navTree, doc, learn, actions) => {
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
       navLinks: navLinks,
+      prevNext,
       navTree,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
