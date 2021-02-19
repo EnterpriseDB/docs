@@ -10,6 +10,7 @@ import {
   Layout,
   LeftNav,
   MainContent,
+  PrevNext,
   SideNavigation,
   TableOfContents,
   TopBar,
@@ -75,7 +76,7 @@ const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
 
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { mtime } = mdx.fields;
+  const { mtime, path, depth } = mdx.fields;
   const {
     frontmatter,
     pagePath,
@@ -85,6 +86,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubIssuesLink,
     isIndexPage,
     navTree,
+    prevNext,
   } = pageContext;
   const {
     iconName,
@@ -92,6 +94,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description,
     katacodaPanel,
     indexCards,
+    prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
     title: title,
@@ -148,6 +151,14 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
+          {showPrevNext && depth > 1 && (
+            <PrevNext
+              prevNext={prevNext}
+              path={path}
+              depth={depth}
+              depthLimit={2}
+            />
+          )}
 
           <DevFrontmatter frontmatter={frontmatter} />
 
