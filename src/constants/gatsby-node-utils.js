@@ -84,6 +84,27 @@ const mdxNodesToTree = (nodes) => {
   return rootNode;
 };
 
+const computeFrontmatterForTreeNode = (treeNode) => {
+  let frontmatter = {
+    ...removeNullEntries(treeNode.mdxNode.frontmatter.directoryDefaults),
+    ...removeNullEntries(treeNode.mdxNode.frontmatter),
+  };
+
+  let current;
+  let parent = treeNode.parent;
+  while (parent) {
+    current = parent;
+    parent = current.parent;
+    if (!current.mdxNode) continue;
+    frontmatter = {
+      ...removeNullEntries(current.mdxNode.frontmatter.directoryDefaults),
+      ...frontmatter,
+    };
+  }
+
+  return frontmatter;
+};
+
 const buildProductVersions = (nodes) => {
   const versionIndex = {};
 
@@ -232,6 +253,7 @@ module.exports = {
   removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
+  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
