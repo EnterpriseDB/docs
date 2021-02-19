@@ -171,8 +171,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     // build ordered navigation for immediate children
-    // this exploits the tree navigation order - we can't
-    // visit children before the parent
+    // treeToNavigation will use this data
     const addedChildPaths = {};
     curr.navigationNodes = [];
     (node.frontmatter.navigation || []).forEach((navEntry) => {
@@ -201,12 +200,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       .sort((a, b) => a.path.localeCompare(b.path))
       .forEach((child) => curr.navigationNodes.push(child));
 
-    // figure out appropriate root navigation node
+    // build navigation tree
     const navigationDepth = 2;
     let navRoot = curr;
     while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
-
-    // build complete navigation tree
     const navTree = treeToNavigation(navRoot, node);
 
     // determine next and previous nodes
