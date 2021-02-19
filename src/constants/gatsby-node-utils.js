@@ -142,7 +142,7 @@ const reportMissingIndex = (reporter, treeNode) => {
 
 const treeNodeToNavNode = (treeNode, withItems = false) => {
   const navNode = {
-    path: treeNode.mdxNode?.fields?.path,
+    path: treeNode.path,
     navTitle: treeNode.mdxNode?.frontmatter?.navTitle,
     title: treeNode.mdxNode?.frontmatter?.title,
     depth: treeNode.mdxNode?.fields?.depth,
@@ -206,7 +206,7 @@ const flattenTree = (flatArray, nodes) => {
 const findPrevNextNavNodes = (navTree, currNode) => {
   const prevNext = { prev: null, next: null };
 
-  const parent = currNode.parent; // parent nav nodes should contain treeNode
+  const parent = currNode.parent; // parent nav nodes should contain currNode
   if (!parent.navigationNodes) return prevNext;
 
   const currNavNodeIndex = parent.navigationNodes.findIndex((navNode) => {
