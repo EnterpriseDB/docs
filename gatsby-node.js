@@ -26,9 +26,10 @@ const {
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
 
-exports.onCreateNode = async ({ node, getNode, actions }) => {
+exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
 
+  if (node.internal.mediaType === 'text/yaml') loadNodeContent(node);
   if (node.internal.type !== 'Mdx') return;
 
   const fileNode = getNode(node.parent);
@@ -114,12 +115,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
+      allFile(filter: { extension: { eq: "yaml" } }) {
+        nodes {
+          id
+          relativePath
+        }
+      }
     }
   `);
 
   if (result.errors) {
     reporter.panic('createPages graphql query has errors!', result.errors);
   }
+
+  processFileNodes(result.data.allFile.nodes, actions);
 
   const { nodes } = result.data.allMdx;
 
@@ -348,6 +357,18 @@ const createGHDoc = (navTree, doc, actions) => {
       githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
       isIndexPage: isIndexPage,
     },
+  });
+};
+
+const processFileNodes = (fileNodes, actions) => {
+  fileNodes.forEach((node) => {
+    actions.createPage({
+      path: node.relativePath,
+      component: require.resolve('./src/templates/file.js'),
+      context: {
+        nodeId: node.id,
+      },
+    });
   });
 };
 
