@@ -12,6 +12,12 @@ directoryDefaults:
 navigation:
 {0}"""
 
+def rewrite_yaml_links(line):
+    match = re.search(r'\[.+\]\((.+)\)', line)
+    if match and match[1] and match[1].endswith('.yaml'):
+        return line.replace(match[1], match[1].replace('samples/', '../samples/'))
+    return line   
+
 def index_frontmatter():
     nav = []
     with open('temp_kubernetes/original/mkdocs.yml') as mkdocs:
@@ -37,7 +43,7 @@ def process_md(file_path):
 
             for line in md_file:
                 if copying:
-                    new_file.write(line)
+                    new_file.write(rewrite_yaml_links(line))
                 if line.startswith('#') and not copying:
                     copying = True
                     new_file.write("---\ntitle: '{0}'\noriginalFilePath: '{1}'{2}\n---\n\n".format(
