@@ -413,6 +413,14 @@ module.exports = {
         id: process.env.GTM_ID,
       },
     },
+    {
+      resolve: 'gatsby-plugin-nginx-redirect',
+      options: {
+        inputConfigFile: `${__dirname}/static/nginx_redirects.template`,
+        outputConfigFile: `${__dirname}/static/nginx_redirects.generated`,
+        whereToIncludeRedirects: '', // defaults to: "server"
+      },
+    },
   ],
 };
 

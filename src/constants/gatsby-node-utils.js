@@ -119,6 +119,23 @@ const reportMissingIndex = (reporter, treeNode) => {
   }
 };
 
+const configureRedirects = (toPath, redirects, actions, config = {}) => {
+  if (!redirects) return;
+  redirects.forEach((fromPath) => {
+    actions.createRedirect(
+      Object.assign(
+        {
+          fromPath,
+          toPath: toPath,
+          redirectInBrowser: true,
+          isPermanent: true,
+        },
+        config,
+      ),
+    );
+  });
+};
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -130,4 +147,5 @@ module.exports = {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
+  configureRedirects,
 };

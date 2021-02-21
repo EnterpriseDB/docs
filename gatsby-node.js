@@ -17,6 +17,7 @@ const {
   mdxNodesToTree,
   buildProductVersions,
   reportMissingIndex,
+  configureRedirects,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -84,6 +85,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            legacyRedirects
             katacodaPages {
               scenario
               account
@@ -157,16 +159,27 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     );
 
     // set up frontmatter redirects
-    if (node.frontmatter.redirects) {
-      node.frontmatter.redirects.forEach((fromPath) => {
-        actions.createRedirect({
-          fromPath,
-          toPath: node.fields.path,
-          redirectInBrowser: true,
-          isPermanent: true,
-        });
-      });
-    }
+    // if (node.frontmatter.redirects) {
+    //   node.frontmatter.redirects.forEach((fromPath) => {
+    //     actions.createRedirect({
+    //       fromPath,
+    //       toPath: node.fields.path,
+    //       redirectInBrowser: true,
+    //       isPermanent: true,
+    //     });
+    //   });
+    // }
+
+    configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
+    configureRedirects(
+      node.fields.path,
+      node.frontmatter.legacyRedirects,
+      actions,
+      {
+        redirectInBrowser: false,
+        isPermanent: false,
+      },
+    );
 
     const { docType } = node.fields;
     if (docType === 'doc') {
