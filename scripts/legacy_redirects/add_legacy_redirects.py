@@ -14,26 +14,19 @@ ANSI_RED = '\033[31m'
 
 NEW_URLS_REMOVED_FILES = ['genindex', 'introduction', 'conclusion', 'whats_new']
 
-# Notes
-# ARK 3.5 API User's Guide uses old scheme, other 3.5 uses new scheme
-# epas 12 12_edb_plus folder not on legacy site
-# large amount of legacy epas content missing, 10 and below
-# migration portal on legacy site is only 3.0, which we don't have
-# lots of old migration toolkit versions we don't have
-# lots of net connector versions missing
-# pem 7.14 missing lots of content
-# pem 7.12 "Online Documentation" misisng (online doc in general missing)
-# no pem older than 7.9
-# slony 1.0, we only have 2.2.8
-# root product index pages not being matched
-
-
 def determine_url_scheme(url):
   if re.search(r'\.\d+\.html', url) or 'toc.html' in url:
     return 'old'
   else:
     return 'new'
 
+
+# Should we create generic rules to redirect a product/version to the root
+# if it's unmatched, instead of throwing it all in the index file frontmatter?
+
+# TODO double check this is what we want
+# should docs 1.0 /latest go to the actual latest, or latest at the time of generation?
+# what if the url doesn't exist for the actual latest version
 def build_latest_url(url):
   latest_url = re.sub(r'\/\d+(\.?\d+)*($|\/)', '/latest/', url)
   if latest_url.endswith('/'): # if version was at the end, like the product index pages
@@ -55,7 +48,7 @@ def write_redirects_to_mdx_files(output):
       if not injected_redirects and line.startswith('---'):
         if in_frontmatter:
           # print redirects at the end of the frontmatter
-          print('legacyRedirects:')
+          print('\nlegacyRedirects:')
           for redirect in redirects:
             relative_redirect = redirect.split('https://www.enterprisedb.com')[1]
             print('    - "{}"'.format(relative_redirect))
@@ -71,44 +64,29 @@ def write_redirects_to_mdx_files(output):
       if not in_existing_redirect_section:
         print(line, end="")
 
-def title_from_frontmatter(filepath):
-  mdx_file = open(filepath)
-  for line in mdx_file:
-    if line.startswith('title:'):
-      mdx_file.close()
-      return line.split('title:')[1].strip().replace('"', '')
-  mdx_file.close()
+# def title_from_frontmatter(filepath):
+#   mdx_file = open(filepath)
+#   for line in mdx_file:
+#     if line.startswith('title:'):
+#       mdx_file.close()
+#       return line.split('title:')[1].strip().replace('"', '')
+#   mdx_file.close()
 
-def headings_from_mdx(filepath):
-  headings = []
-  mdx_file = open(filepath)
-  for line in mdx_file:
-    if line.startswith('##'):
-      headings.append(
-        normalize_title(re.sub(r'##+', '', line))
-      )
-  mdx_file.close()
-  return headings
+# def headings_from_mdx(filepath):
+#   headings = []
+#   mdx_file = open(filepath)
+#   for line in mdx_file:
+#     if line.startswith('##'):
+#       headings.append(
+#         normalize_title(re.sub(r'##+', '', line))
+#       )
+#   mdx_file.close()
+#   return headings
 
-def normalize_title(title):
-  title = re.sub(r'^\d*\.?\d*\.?\d*\.?\d* ', '', title.strip())
-  title = title.lower().replace(' ', '').replace('*', '').replace('_', '').replace("\\", '').replace('™','').replace('®','')
-  return title
-
-# def find_root_title_from_subnav(sub_nav):
-#   for entry in sub_nav:
-#     entry = entry.replace(':','').strip()
-#     if entry:
-#       return re.sub(r'^\d*\t* *', '', entry).lower()
-
-# def find_titles_from_subnav(sub_nav):
-#   titles = []
-#   for entry in sub_nav:
-#     entry = entry.replace(':','').strip()
-#     if entry:
-#       # this regex supports up to 3 decimal points depth
-#       titles.append(re.sub(r'^\d*\.?\d*\.?\d*\.?\d*\t* *', '', entry).lower())
-#   return titles
+# def normalize_title(title):
+#   title = re.sub(r'^\d*\.?\d*\.?\d*\.?\d* ', '', title.strip())
+#   title = title.lower().replace(' ', '').replace('*', '').replace('_', '').replace("\\", '').replace('™','').replace('®','')
+#   return title
 
 def determine_root_mdx_file(docs_path, mdx_folder = None):
   root_path = docs_path
@@ -207,7 +185,6 @@ for product in legacy_urls_by_product_version.keys():
       if is_product_index:
         index_path = determine_root_mdx_file(docs_path)
         if index_path:
-          # output[index_path].append(url)
           add_urls_to_output(url, index_path, output, is_latest_version)
           processed_count += 1
           matched_count += 1
@@ -265,7 +242,6 @@ for product in legacy_urls_by_product_version.keys():
           mdx_page_filename = re.sub(r'^\d*_', '', mdx_page_filename.replace('.mdx', ''))
 
           if legacy_page_filename == mdx_page_filename:
-            # output[str(filename)].append(url)
             add_urls_to_output(url, filename, output, is_latest_version)
             matched_count += 1
             match_found = True
@@ -275,7 +251,6 @@ for product in legacy_urls_by_product_version.keys():
         if legacy_page_filename in NEW_URLS_REMOVED_FILES:
           index_path = determine_root_mdx_file(docs_path, mdx_folder)
           if index_path:
-            # output[index_path].append(url)
             add_urls_to_output(url, index_path, output, is_latest_version)
             matched_count += 1
             match_found = True
@@ -354,4 +329,5 @@ for path in Path('product_docs/docs').rglob('*.mdx'):
 print("wrote to {0} of {1} mdx files".format(len(output.keys()), mdx_file_count))
 
 print("")
-print_csv_report(new_failed_to_match)
+# print_csv_report(new_failed_to_match)
+print(len(new_failed_to_match))
