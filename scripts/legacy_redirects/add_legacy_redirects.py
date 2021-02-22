@@ -51,14 +51,14 @@ def write_redirects_to_mdx_files(output):
           print('\nlegacyRedirects:')
           for redirect in redirects:
             relative_redirect = redirect.split('https://www.enterprisedb.com')[1]
-            print('    - "{}"'.format(relative_redirect))
+            print('  - "{}"'.format(relative_redirect))
           injected_redirects = True
         in_frontmatter = True
 
       # block existing legacyRedirects from being written back out
       if line.startswith('legacyRedirects:'):
         in_existing_redirect_section = True
-      elif in_existing_redirect_section and not line.startswith('    -'):
+      elif in_existing_redirect_section and not line.startswith('  -'):
         in_existing_redirect_section = False
 
       if not in_existing_redirect_section:
