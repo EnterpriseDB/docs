@@ -38,10 +38,10 @@ const GhDocTemplate = ({ data, pageContext }) => {
   const {
     frontmatter,
     pagePath,
-    navLinks,
     githubFileLink,
     githubFileHistoryLink,
     isIndexPage,
+    navTree,
   } = pageContext;
   const pageMeta = {
     title: frontmatter.title,
@@ -65,7 +65,7 @@ const GhDocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
-            navLinks={navLinks}
+            navTree={navTree}
             path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
