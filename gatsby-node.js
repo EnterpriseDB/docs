@@ -158,28 +158,20 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       ...[removeNullEntries(node.frontmatter)],
     );
 
-    // set up frontmatter redirects
-    // if (node.frontmatter.redirects) {
-    //   node.frontmatter.redirects.forEach((fromPath) => {
-    //     actions.createRedirect({
-    //       fromPath,
-    //       toPath: node.fields.path,
-    //       redirectInBrowser: true,
-    //       isPermanent: true,
-    //     });
-    //   });
-    // }
-
+    // set up redirects
     configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
-    configureRedirects(
-      node.fields.path,
-      node.frontmatter.legacyRedirects,
-      actions,
-      {
-        redirectInBrowser: false,
-        isPermanent: false,
-      },
-    );
+    // safeguard against legacy redirects to stubs
+    if (!node.frontmatter.productStub) {
+      configureRedirects(
+        node.fields.path,
+        node.frontmatter.legacyRedirects,
+        actions,
+        {
+          redirectInBrowser: false,
+          isPermanent: false,
+        },
+      );
+    }
 
     const { docType } = node.fields;
     if (docType === 'doc') {

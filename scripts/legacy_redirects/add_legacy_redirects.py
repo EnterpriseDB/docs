@@ -24,9 +24,8 @@ def determine_url_scheme(url):
 # Should we create generic rules to redirect a product/version to the root
 # if it's unmatched, instead of throwing it all in the index file frontmatter?
 
-# TODO double check this is what we want
-# should docs 1.0 /latest go to the actual latest, or latest at the time of generation?
-# what if the url doesn't exist for the actual latest version
+# We want edb-docs/latest to go to docs/latest
+# So technically this should live outside of frontmatter?
 def build_latest_url(url):
   latest_url = re.sub(r'\/\d+(\.?\d+)*($|\/)', '/latest/', url)
   if latest_url.endswith('/'): # if version was at the end, like the product index pages
@@ -329,5 +328,5 @@ for path in Path('product_docs/docs').rglob('*.mdx'):
 print("wrote to {0} of {1} mdx files".format(len(output.keys()), mdx_file_count))
 
 print("")
-# print_csv_report(new_failed_to_match)
-print(len(new_failed_to_match))
+print_csv_report(new_failed_to_match)
+# print(len(new_failed_to_match))
