@@ -86,6 +86,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             productStub
             indexCards
             legacyRedirects
+            legacyRedirectsGenerated
             katacodaPages {
               scenario
               account
@@ -160,11 +161,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     // set up redirects
     configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
+
     // safeguard against legacy redirects to stubs
     if (!node.frontmatter.productStub) {
       configureRedirects(
         node.fields.path,
-        node.frontmatter.legacyRedirects,
+        (node.frontmatter.legacyRedirects || []).concat(
+          node.frontmatter.legacyRedirectsGenerated || [],
+        ),
         actions,
         {
           redirectInBrowser: false,
