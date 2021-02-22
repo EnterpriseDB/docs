@@ -90,7 +90,7 @@ const FeedbackButton = ({ githubIssuesLink }) => (
     rel="noreferrer"
     className="btn btn-sm btn-primary px-4 text-nowrap"
   >
-    Leave Feedback
+    Feedback
   </a>
 );
 
