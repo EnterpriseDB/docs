@@ -74,6 +74,26 @@ const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
   return null;
 };
 
+const EditButton = ({ githubEditLink }) => (
+  <a
+    href={githubEditLink || '#'}
+    className="btn btn-sm btn-primary px-4 text-nowrap"
+  >
+    Edit this page
+  </a>
+);
+
+const FeedbackButton = ({ githubIssuesLink }) => (
+  <a
+    href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+    target="_blank"
+    rel="noreferrer"
+    className="btn btn-sm btn-primary px-4 text-nowrap"
+  >
+    Leave Feedback
+  </a>
+);
+
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
   const { mtime, path, depth } = mdx.fields;
@@ -115,6 +135,14 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     }
   ).iconName;
 
+  // CNO isn't editable
+  // TODO unify docs/advo to share one smart component that knows what to show
+  const editOrFeedbackButton = path.includes('/cloud_native_operator/') ? (
+    <FeedbackButton githubIssuesLink={githubIssuesLink} />
+  ) : (
+    <EditButton githubEditLink={githubEditLink} />
+  );
+
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <TopBar />
@@ -131,12 +159,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
-            <a
-              href={githubEditLink || '#'}
-              className="btn btn-sm btn-primary px-4 text-nowrap"
-            >
-              Edit this page
-            </a>
+            {editOrFeedbackButton}
           </div>
 
           <ContentRow>
