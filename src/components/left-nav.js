@@ -2,49 +2,14 @@ import React from 'react';
 import Icon, { iconNames } from './icon/';
 import VersionDropdown from './version-dropdown';
 import { products } from '../constants/products';
-import { filterAndSortLinks, getBaseUrl } from '../constants/utils';
 import { Link, PdfDownload, BackButton, TreeNode } from './';
 
-const productIcon = path => {
+const productIcon = (path) => {
   const product = path.split('/')[1];
   return products[product] ? products[product].iconName : null;
 };
 
-const makeTree = edges => {
-  let newEdges = edges;
-  for (let i = 0; i < newEdges.length - 1; i++) {
-    const { path } = newEdges[i];
-    const tiers = path.split('/').length;
-    for (let j = i + 1; j < newEdges.length; j++) {
-      const innerPath = newEdges[j].path;
-      const innerTiers = innerPath.split('/').length;
-      if (innerPath.includes(path) && innerTiers - 1 === tiers) {
-        newEdges[i].items.push(newEdges[j]);
-      }
-    }
-  }
-  return newEdges[0].items;
-};
-
-const orderTree = (tree, order) => {
-  if (!order) {
-    return tree;
-  }
-  let result = [];
-  for (let navItem of order) {
-    for (let leaf of tree) {
-      if (leaf.path.includes(navItem.path)) {
-        result.push(leaf);
-      }
-    }
-    if (!navItem.path) {
-      result.push(navItem);
-    }
-  }
-  return result;
-};
-
-const SectionHeading = ({ newList, path, iconName }) => {
+const SectionHeading = ({ navTree, path, iconName }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
       <Icon
@@ -54,17 +19,17 @@ const SectionHeading = ({ newList, path, iconName }) => {
         height="50"
       />
       <Link
-        to={newList[0].path}
+        to={navTree.path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
-        {newList[0].title}
+        {navTree.title}
       </Link>
     </li>
   );
 };
 
 const SectionHeadingWithVersions = ({
-  newList,
+  navTree,
   path,
   versionArray,
   iconName,
@@ -79,10 +44,10 @@ const SectionHeadingWithVersions = ({
       />
       <div className="rightsidenoclass">
         <Link
-          to={newList[0].path}
+          to={navTree.path}
           className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
         >
-          {newList[0].title}
+          {navTree.title}
         </Link>
         {versionArray.length > 1 ? (
           <div>
@@ -97,34 +62,27 @@ const SectionHeadingWithVersions = ({
 };
 
 const LeftNav = ({
-  navLinks,
+  navTree,
   path,
   pagePath,
   versionArray,
   iconName,
-  navOrder = null,
   hideEmptySections = false,
 }) => {
-  const newList = versionArray
-    ? filterAndSortLinks(navLinks, getBaseUrl(path, 3))
-    : filterAndSortLinks(navLinks, getBaseUrl(path, 2));
-  const tree = orderTree(makeTree(newList), navOrder);
-  // console.log(pagePath);
-
   return (
     <ul className="list-unstyled mt-0">
       <BackButton currentPath={pagePath} />
       {versionArray ? (
         <SectionHeadingWithVersions
-          newList={newList}
+          navTree={navTree}
           path={path}
           versionArray={versionArray}
           iconName={iconName}
         />
       ) : (
-        <SectionHeading newList={newList} path={path} iconName={iconName} />
+        <SectionHeading navTree={navTree} path={path} iconName={iconName} />
       )}
-      {tree.map(node => (
+      {navTree.items.map((node) => (
         <TreeNode
           node={node}
           path={path}
