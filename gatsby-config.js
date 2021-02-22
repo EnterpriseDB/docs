@@ -423,7 +423,6 @@ module.exports = {
   ],
 };
 
-console.log(`INDEX ON BUILD ${typeof process.env.INDEX_ON_BUILD}`);
 if (process.env.INDEX_ON_BUILD && process.env.INDEX_ON_BUILD !== 'false') {
   module.exports['plugins'].push({
     // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
