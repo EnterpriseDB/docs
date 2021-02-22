@@ -84,6 +84,27 @@ const mdxNodesToTree = (nodes) => {
   return rootNode;
 };
 
+const computeFrontmatterForTreeNode = (treeNode) => {
+  let frontmatter = {
+    ...removeNullEntries(treeNode.mdxNode.frontmatter.directoryDefaults),
+    ...removeNullEntries(treeNode.mdxNode.frontmatter),
+  };
+
+  let current;
+  let parent = treeNode.parent;
+  while (parent) {
+    current = parent;
+    parent = current.parent;
+    if (!current.mdxNode) continue;
+    frontmatter = {
+      ...removeNullEntries(current.mdxNode.frontmatter.directoryDefaults),
+      ...frontmatter,
+    };
+  }
+
+  return frontmatter;
+};
+
 const buildProductVersions = (nodes) => {
   const versionIndex = {};
 
@@ -119,6 +140,110 @@ const reportMissingIndex = (reporter, treeNode) => {
   }
 };
 
+const treeNodeToNavNode = (treeNode, withItems = false) => {
+  const navNode = {
+    path: treeNode.path,
+    navTitle: treeNode.mdxNode?.frontmatter?.navTitle,
+    title: treeNode.mdxNode?.frontmatter?.title,
+    depth: treeNode.mdxNode?.fields?.depth,
+    iconName: treeNode.mdxNode?.frontmatter?.iconName,
+    description: treeNode.mdxNode?.frontmatter?.description,
+  };
+  if (withItems) navNode.items = [];
+  return navNode;
+};
+
+const treeToNavigation = (treeNode, pageNode) => {
+  const rootNode = treeNodeToNavNode(treeNode, true);
+  const { depth, path } = pageNode.fields;
+
+  let curr = treeNode;
+  let items = rootNode.items;
+  while (curr && curr.depth <= depth) {
+    let next = [];
+    let nextItems = [];
+
+    if (!curr.navigationNodes) break;
+
+    curr.navigationNodes.forEach((navNode) => {
+      const newNavNode = { ...navNode, items: [] };
+      items.push(newNavNode);
+      if (path.includes(newNavNode.path)) {
+        next.push(
+          curr.children.find((child) => child.path === newNavNode.path),
+        );
+        nextItems.push(newNavNode.items);
+      }
+    });
+
+    curr = next.pop();
+    items = nextItems.pop();
+  }
+
+  return rootNode;
+};
+
+const getNavNodeForTreeNode = (treeNode) => {
+  if (!treeNode.parent?.navigationNodes) return null;
+
+  return treeNode.parent.navigationNodes.find((navNode) => {
+    return navNode.path === treeNode.path;
+  });
+};
+
+const getTreeNodeForNavNode = (parent, navNode) => {
+  return parent.children.find((child) => child.path === navNode.path);
+};
+
+const flattenTree = (flatArray, nodes) => {
+  nodes.forEach((node) => {
+    const { items, ...newNode } = node;
+    flatArray.push(newNode);
+    flattenTree(flatArray, items || []);
+  });
+};
+
+const findPrevNextNavNodes = (navTree, currNode) => {
+  const prevNext = { prev: null, next: null };
+
+  const parent = currNode.parent; // parent nav nodes should contain currNode
+  if (!parent.navigationNodes) return prevNext;
+
+  const currNavNodeIndex = parent.navigationNodes.findIndex((navNode) => {
+    return navNode.path === currNode.path;
+  });
+
+  // hunt for prev node
+  if (currNavNodeIndex > 0) {
+    let prevNavNode = parent.navigationNodes[currNavNodeIndex - 1];
+
+    while (prevNavNode) {
+      const prevTreeNode = getTreeNodeForNavNode(parent, prevNavNode);
+      if (!prevTreeNode) break;
+      const lastNavNode = prevTreeNode.navigationNodes?.slice(-1)?.[0];
+      if (!lastNavNode) break;
+      prevNavNode = lastNavNode;
+    }
+
+    prevNext.prev = prevNavNode;
+  } else {
+    prevNext.prev = getNavNodeForTreeNode(parent);
+  }
+
+  // hunt for next node
+  const flatTree = [];
+  flattenTree(flatTree, navTree.items);
+  const index = flatTree.findIndex((navItem) => navItem.path === currNode.path);
+  if (index < flatTree.length - 1) {
+    prevNext.next = flatTree[index + 1];
+  }
+
+  if (!prevNext.prev?.path) prevNext.prev = null;
+  if (!prevNext.next?.path) prevNext.next = null;
+
+  return prevNext;
+};
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -128,6 +253,10 @@ module.exports = {
   removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
+  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
+  treeToNavigation,
+  treeNodeToNavNode,
+  findPrevNextNavNodes,
 };

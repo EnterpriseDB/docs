@@ -15,16 +15,21 @@ const {
   removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
+  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
+  treeToNavigation,
+  treeNodeToNavNode,
+  findPrevNextNavNodes,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
 
-exports.onCreateNode = async ({ node, getNode, actions }) => {
+exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
 
+  if (node.internal.mediaType === 'text/yaml') loadNodeContent(node);
   if (node.internal.type !== 'Mdx') return;
 
   const fileNode = getNode(node.parent);
@@ -84,6 +89,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            navigation
             katacodaPages {
               scenario
               account
@@ -95,6 +101,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             }
             directoryDefaults {
               description
+              prevNext
             }
           }
           fields {
@@ -108,6 +115,12 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
+      allFile(filter: { extension: { eq: "yaml" } }) {
+        nodes {
+          id
+          relativePath
+        }
+      }
     }
   `);
 
@@ -115,31 +128,54 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     reporter.panic('createPages graphql query has errors!', result.errors);
   }
 
+  processFileNodes(result.data.allFile.nodes, actions);
+
   const { nodes } = result.data.allMdx;
 
   const productVersions = buildProductVersions(nodes);
 
   // it should be possible to remove these in the future,
   // they are only used for navLinks generation
-  const docs = nodes.filter((file) => file.fields.docType === 'doc');
   const learn = nodes.filter((file) => file.fields.docType === 'advocacy');
-  const gh_docs = nodes.filter((file) => file.fields.docType === 'gh_doc');
 
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes);
   const navStack = [treeRoot];
-  let frontmatterStack = [];
   let curr = null;
 
   while (navStack.length > 0) {
     curr = navStack.pop();
     curr.children.forEach((child) => navStack.push(child));
 
-    // update frontmatter defaults
-    frontmatterStack = frontmatterStack.slice(0, curr.depth);
-    frontmatterStack.push(
-      removeNullEntries(curr.mdxNode?.frontmatter.directoryDefaults),
-    );
+    // build ordered navigation for immediate children
+    // treeToNavigation will use this data
+    const addedChildPaths = {};
+    curr.navigationNodes = [];
+    (curr.mdxNode?.frontmatter?.navigation || []).forEach((navEntry) => {
+      if (navEntry.startsWith('#')) {
+        curr.navigationNodes.push({
+          path: null,
+          title: navEntry.replace('#', '').trim(),
+        });
+        return;
+      }
+
+      const navChild = curr.children.find((child) => {
+        if (addedChildPaths[child.path]) return false;
+        const navName = child.path.split('/').slice(-2)[0];
+        return navName.toLowerCase() === navEntry.toLowerCase();
+      });
+      if (!navChild?.mdxNode) return;
+
+      addedChildPaths[navChild.path] = true;
+      curr.navigationNodes.push(treeNodeToNavNode(navChild));
+    });
+
+    curr.children
+      .filter((child) => !addedChildPaths[child.path])
+      .map((child) => treeNodeToNavNode(child))
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .forEach((child) => curr.navigationNodes.push(child));
 
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode) {
@@ -150,11 +186,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const node = curr.mdxNode;
 
     // set computed frontmatter
-    node.frontmatter = Object.assign(
-      {},
-      ...frontmatterStack,
-      ...[removeNullEntries(node.frontmatter)],
-    );
+    node.frontmatter = computeFrontmatterForTreeNode(curr);
 
     // set up frontmatter redirects
     if (node.frontmatter.redirects) {
@@ -168,18 +200,27 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       });
     }
 
+    // build navigation tree
+    const navigationDepth = 2;
+    let navRoot = curr;
+    while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
+    const navTree = treeToNavigation(navRoot, node);
+
+    // determine next and previous nodes
+    const prevNext = findPrevNextNavNodes(navTree, curr);
+
     const { docType } = node.fields;
     if (docType === 'doc') {
-      createDoc(node, productVersions, docs, actions);
+      createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === 'advocacy') {
-      createAdvocacy(node, learn, actions);
+      createAdvocacy(navTree, prevNext, node, learn, actions);
     } else if (docType === 'gh_doc') {
-      createGHDoc(node, gh_docs, actions);
+      createGHDoc(navTree, node, actions);
     }
   }
 };
 
-const createDoc = (doc, productVersions, docs, actions) => {
+const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
   if (isLatest) {
@@ -191,12 +232,6 @@ const createDoc = (doc, productVersions, docs, actions) => {
       force: true,
     });
   }
-
-  const navLinks = docs.filter(
-    (node) =>
-      node.fields.product === doc.fields.product &&
-      node.fields.version === doc.fields.version,
-  );
 
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const docsRepoUrl = 'https://github.com/EnterpriseDB/docs';
@@ -218,7 +253,8 @@ const createDoc = (doc, productVersions, docs, actions) => {
     context: {
       frontmatter: doc.frontmatter,
       pagePath: path,
-      navLinks: navLinks,
+      navTree,
+      prevNext,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       githubFileLink: githubFileLink,
@@ -234,7 +270,7 @@ const createDoc = (doc, productVersions, docs, actions) => {
   });
 };
 
-const createAdvocacy = (doc, learn, actions) => {
+const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
@@ -259,6 +295,8 @@ const createAdvocacy = (doc, learn, actions) => {
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
       navLinks: navLinks,
+      prevNext,
+      navTree,
       githubFileLink: githubFileLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
@@ -289,16 +327,12 @@ const createAdvocacy = (doc, learn, actions) => {
   });
 };
 
-const createGHDoc = (doc, gh_docs, actions) => {
+const createGHDoc = (navTree, doc, actions) => {
   let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
   if (doc.fields.path.includes('barman')) {
     githubLink = 'https://github.com/2ndquadrant-it/barman';
   }
   const showGithubLink = !doc.fields.path.includes('pgbackrest');
-
-  const navLinks = gh_docs.filter(
-    (node) => node.fields.topic === doc.fields.topic,
-  );
 
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
@@ -318,11 +352,23 @@ const createGHDoc = (doc, gh_docs, actions) => {
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
-      navLinks: navLinks,
+      navTree,
       githubFileLink: showGithubLink ? githubFileLink : null,
       githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
       isIndexPage: isIndexPage,
     },
+  });
+};
+
+const processFileNodes = (fileNodes, actions) => {
+  fileNodes.forEach((node) => {
+    actions.createPage({
+      path: node.relativePath,
+      component: require.resolve('./src/templates/file.js'),
+      context: {
+        nodeId: node.id,
+      },
+    });
   });
 };
 

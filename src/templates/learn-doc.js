@@ -10,6 +10,7 @@ import {
   Layout,
   LeftNav,
   MainContent,
+  PrevNext,
   SideNavigation,
   TableOfContents,
   TopBar,
@@ -50,7 +51,7 @@ const TileModes = {
   Simple: 'simple',
   Full: 'full',
 };
-const Tiles = ({ mode, mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -75,9 +76,7 @@ const Tiles = ({ mode, mdx, navLinks }) => {
 
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { mtime } = mdx.fields;
-  // const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
-
+  const { mtime, path, depth } = mdx.fields;
   const {
     frontmatter,
     pagePath,
@@ -86,6 +85,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubEditLink,
     githubIssuesLink,
     isIndexPage,
+    navTree,
+    prevNext,
   } = pageContext;
   const {
     iconName,
@@ -93,6 +94,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description,
     katacodaPanel,
     indexCards,
+    prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
     title: title,
@@ -119,6 +121,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
+            navTree={navTree}
             navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
@@ -148,6 +151,14 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
+          {showPrevNext && depth > 1 && (
+            <PrevNext
+              prevNext={prevNext}
+              path={path}
+              depth={depth}
+              depthLimit={2}
+            />
+          )}
 
           <DevFrontmatter frontmatter={frontmatter} />
 
