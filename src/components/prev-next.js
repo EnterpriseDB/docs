@@ -1,25 +1,11 @@
 import React from 'react';
 import { Link } from './';
-import { filterAndSortLinks, getBaseUrl } from '../constants/utils';
 
-const getPrevAndNextLinks = (links, path) => {
-  let result = { prevLink: null, nextLink: null };
-  const idx = links.findIndex((element, index, array) => {
-    return element.path === path;
-  });
-  if (idx > 0) {
-    result.prevLink = links[idx - 1];
-  }
-  if (idx < links.length - 1) {
-    result.nextLink = links[idx + 1];
-  }
-  return result;
-};
-
-const PrevNext = ({ navLinks, path }) => {
-  const baseUrl = getBaseUrl(path, 4);
-  const sortedLinks = filterAndSortLinks(navLinks, baseUrl);
-  const { prevLink, nextLink } = getPrevAndNextLinks(sortedLinks, path);
+const PrevNext = ({ prevNext, path, depth, depthLimit = 3 }) => {
+  let prevLink = prevNext.prev;
+  let nextLink = prevNext.next;
+  if (depth <= depthLimit) prevLink = null;
+  if ((nextLink?.depth || 0) <= depthLimit) nextLink = null;
 
   return (
     <div className="d-flex justify-content-between mt-5">
