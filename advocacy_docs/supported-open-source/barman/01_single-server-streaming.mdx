@@ -13,17 +13,48 @@ tags:
 katacodaPanel:
     account: enterprisedb
     scenario: sandbox
-    codelanguages: shell, sql
+    codelanguages: shell, sql, ini
 iconName: tutorial
 ---
 
-This provides a quick walk-through of setting up Barman *on* a PostgreSQL server. Normally, you would not do this: it adds extra load to the machine already taxed with running
-the database server, and provides little protection from attacks or hardware failure. This is intended only to demonstrate the core concepts - for more realistic scenarios, please
-refer to [the Barman Manual](http://docs.pgbarman.org/).
+This provides a quick walk-through of setting up Barman *on* a PostgreSQL server. It covers:
+
+1. Configuring the database server to allow Barman to collect data via streaming replication
+2. Installing Barman on an Ubuntu system
+3. Configuring Barman for streaming replication
+4. Validating a Barman configuration
+5. Running a full backup
+6. Restoring a full backup
+
+!!! Warning
+    Normally, you would never run or store backups on the same server where you're running your database: 
+    it adds extra load to the machine already taxed with running
+    the database server, and provides little protection from attacks or hardware failure. This is
+    intended only to demonstrate the core concepts - for more realistic scenarios, please
+    refer to [the Barman Manual](http://docs.pgbarman.org/).
+
+This example is based on a PostgreSQL 12 server running on Ubuntu with the [Pagila database](https://github.com/devrimgunduz/pagila) loaded. 
 
 You can follow along right in your browser, using Katacoda, by clicking the button below:
 
 <KatacodaPanel />
+
+Before we begin, let's run a simple query against the example Pagila database:
+
+```sql
+select * from actor where last_name='KILMER';
+__OUTPUT__
+ actor_id | first_name | last_name |      last_update       
+----------+------------+-----------+------------------------
+       23 | SANDRA     | KILMER    | 2020-02-15 09:34:33+00
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+(5 rows)
+```
+
+We'll verify later on that this data can be restored reliably.
 
 ## Database Server Configuration
 
@@ -41,6 +72,8 @@ and create it by executing the [Create Role command](https://www.postgresql.org/
 Create Role streaming_barman 
     Login Replication 
     Password 'example-password';
+__OUTPUT__
+CREATE ROLE
 ```
 
 !!! Note Make note of that password
@@ -64,15 +97,30 @@ We'll also need to make sure there are replication slots available, and that Pos
 ```sql
 Show max_wal_senders;
 Show max_replication_slots;
+__OUTPUT__
+ max_wal_senders 
+-----------------
+ 10
+(1 row)
+
+ max_replication_slots 
+-----------------------
+ 10
+(1 row)
 ```
 
 ...So we're fine - but if we needed more (or if they'd been previously set to 0, thus [disabling replication](https://www.postgresql.org/docs/current/runtime-config-replication.html)) then we'd need to increase them.
 
-With that out of the way, we can quit psql and move on to installing Barman:
+With that out of the way, we can quit psql, switch to root and move on to installing Barman:
 
 ```sql
 \q
 exit
+__OUTPUT__
+pagila=# \q
+postgres@host01:~$ exit
+logout
+$
 ```
 
 ## Installing Barman
@@ -86,12 +134,19 @@ curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
 
 sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 apt-get update
+__OUTPUT__
+...
+done.
 ```
 
 With the repository configured, we can use apt to install Barman:
 
 ```shell
 apt-get -y install barman
+__OUTPUT__
+...
+Setting up barman (2.12-1.pgdg18.04+1) ...
+Processing triggers for man-db (2.8.3-2ubuntu0.1) ...
 ```
 
 For more details on installation (including instructions for other supported operating systems), see: [Installation](http://docs.pgbarman.org/release/2.12/#installation) in the Barman guide.
@@ -100,7 +155,7 @@ For more details on installation (including instructions for other supported ope
 
 All the important details for a Barman server go into a server configuration file, by default located in `/etc/barman.d`. These are in the classic INI format, with relevant settings in a section named after the server we're going to back up. We'll also use that name for the configuration file itself. Since this is an example and we're running locally, we'll call it localhost:
 
-```shell
+```ini
 cat <<'EOF' >> /etc/barman.d/localhost.conf
 [localhost]
 description =  "Example of PostgreSQL Database (Streaming-Only)"
@@ -132,12 +187,34 @@ Note the change in ownership and permissions - these are necessary to protect th
 
 For more details on configuration files, see: [Configuration](http://docs.pgbarman.org/release/2.12/#configuration) in the pgBarman guide.
 
-## Verifying the configuration
+### Verifying the configuration
 
 Now that the configuration is done, we can use Barman's check command to verify that it works:
 
 ```shell
 barman check localhost
+__OUTPUT__
+Server localhost:
+        WAL archive: FAILED (please make sure WAL shipping is setup)
+        PostgreSQL: OK
+        superuser or standard user with backup privileges: OK
+        PostgreSQL streaming: OK
+        wal_level: OK
+        replication slot: OK
+        directories: OK
+        retention policy settings: OK
+        backup maximum age: OK (no last_backup_maximum_age provided)
+        compression settings: OK
+        failed backups: OK (there are 0 failed backups)
+        minimum redundancy requirements: OK (have 0 backups, expected at least 0)
+        pg_basebackup: OK
+        pg_basebackup compatible: OK
+        pg_basebackup supports tablespaces mapping: OK
+        systemid coherence: OK (no system Id stored on disk)
+        pg_receivexlog: OK
+        pg_receivexlog compatible: OK
+        receive-wal running: OK
+        archiver errors: OK
 ```
 
 Uh-oh! WAL archive failed? Not a problem - that just means Barman hasn't seen any new WAL archives come in yet, which isn't surprising given this is an example 
@@ -145,6 +222,8 @@ database with no writes happening! We can trigger an archive manually and verify
 
 ```shell
 barman switch-wal localhost
+__OUTPUT__
+The WAL file 000000010000000000000002 has been closed on server 'localhost'
 ```
 
 Now we just need to wait for Barman to notice! When installed via the package manager as we did above, Barman's cron job is automatically configured - 
@@ -152,13 +231,38 @@ it should run within a minute. If impatient, we can trigger that manually:
 
 ```shell
 barman cron
+__OUTPUT__
+Starting WAL archiving for server localhost
 ```
 
-Now, the check should pass:
+Give THAT a minute to run, and now the check should pass:
 
 ```shell
 barman check localhost
+__OUTPUT__
+Server localhost:
+        PostgreSQL: OK
+        superuser or standard user with backup privileges: OK
+        PostgreSQL streaming: OK
+        wal_level: OK
+        replication slot: OK
+        directories: OK
+        retention policy settings: OK
+        backup maximum age: OK (no last_backup_maximum_age provided)
+        compression settings: OK
+        failed backups: OK (there are 0 failed backups)
+        minimum redundancy requirements: OK (have 0 backups, expected at least 0)
+        pg_basebackup: OK
+        pg_basebackup compatible: OK
+        pg_basebackup supports tablespaces mapping: OK
+        systemid coherence: OK (no system Id stored on disk)
+        pg_receivexlog: OK
+        pg_receivexlog compatible: OK
+        receive-wal running: OK
+        archiver errors: OK
 ```
+
+(since this is dependant on the timing of various background processes, if you're firing off these commands quickly you may see errors if the machine is slow - give it just a bit to catch up)
 
 ## Backup & verify
 
@@ -166,14 +270,38 @@ Now we can fire off a backup:
 
 ```shell
 barman backup localhost --wait
+__OUTPUT__
+Starting backup using postgres method for server localhost in /var/lib/barman/localhost/base/20210223T200345
+Backup start at LSN: 0/3000060 (000000010000000000000003, 00000060)
+Starting backup copy via pg_basebackup for 20210223T200345
+WARNING: pg_basebackup does not copy the PostgreSQL configuration files that reside outside PGDATA. Please manually backup the following files:
+        /etc/postgresql/12/main/postgresql.conf
+        /etc/postgresql/12/main/pg_hba.conf
+        /etc/postgresql/12/main/pg_ident.conf
+
+Copy done (time: 2 seconds)
+Finalising the backup.
+This is the first backup for server localhost
+WAL segments preceding the current backup have been found:
+        000000010000000000000002 from server localhost has been removed
+Backup size: 39.7 MiB
+Backup end at LSN: 0/5000000 (000000010000000000000004, 00000000)
+Backup completed (start time: 2021-02-23 20:03:45.529237, elapsed time: 2 seconds)
+Waiting for the WAL file 000000010000000000000004 from server 'localhost'
+Processing xlog segments from streaming for localhost
+        000000010000000000000003
+Processing xlog segments from streaming for localhost
+        000000010000000000000004
 ```
 
 Verify that it completed by listing backups for the server:
 
 ```shell
 barman list-backup localhost
+__OUTPUT__
+localhost 20210223T200345 - Tue Feb 23 20:03:48 2021 - Size: 55.7 MiB - WAL Size: 0 B
 ```
-
+(well, the timestamps will be different for you)
 ## Restore server
 
 It's not a real backup until you've restored it - so let's end with that. 
@@ -181,6 +309,38 @@ It's not a real backup until you've restored it - so let's end with that.
 !!! Danger This process is for demonstration purposes, and is explicitly destructive!
     In a production scenario, you would restore to a new location and verify the data 
     Also, you wouldn't be running this on the same machine as your database!
+
+Let's connect to the database and destroy some data, necessitating a restoration:
+
+```shell
+su - postgres -c 'psql -d pagila'
+__OUTPUT__
+psql (12.4 (Ubuntu 12.4-1.pgdg18.04+1))
+Type "help" for help.
+
+pagila=#
+```
+
+```sql
+Drop Table actor Cascade;
+select * from actor;
+__OUTPUT__
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to view actor_info
+drop cascades to view film_list
+drop cascades to view nicer_but_slower_film_list
+drop cascades to constraint film_actor_actor_id_fkey on table film_actor
+DROP TABLE
+
+ERROR:  relation "actor" does not exist
+LINE 1: select * from actor;
+```
+
+Oops! No worries - **we have a backup.** Back to the shell to do some repair work:
+
+```sql
+\q
+```
 
 First, we'll stop the database:
 
@@ -192,26 +352,70 @@ Now we can restore the backup, running as the barman user, into a temporary dire
 
 ```shell
 su - barman -c "barman recover localhost last ~/recovered"
+__OUTPUT__
+Starting local restore for server localhost using backup 20210223T200345
+Destination directory: /var/lib/barman/recovered
+Copying the base backup.
+Copying required WAL segments.
+Generating archive status files
+Identify dangerous settings in destination directory.
+
+WARNING
+The following configuration files have not been saved during backup, hence they have not been restored.
+You need to manually restore them in order to start the recovered PostgreSQL instance:
+
+    postgresql.conf
+    pg_hba.conf
+    pg_ident.conf
+
+Recovery completed (start time: 2021-02-23 20:10:03.969282, elapsed time: less than one second)
+
+Your PostgreSQL server has been successfully prepared for recovery!
 ```
 
 At this point, you could examine the files:
 
 ```shell
 ls ~barman/recovered
+__OUTPUT__
+backup_label  pg_commit_ts  pg_multixact  pg_serial     pg_stat_tmp  pg_twophase  pg_xact
+base          pg_dynshmem   pg_notify     pg_snapshots  pg_subtrans  PG_VERSION   postgresql.auto.conf
+global        pg_logical    pg_replslot   pg_stat       pg_tblspc    pg_wal       postgresql.auto.conf.origin
 ```
 
 And finally, overwrite the original database, ownership to postgres and restart the server:
 
 ```shell
+rm -R /var/lib/postgresql/12/main
 mv ~barman/recovered /var/lib/postgresql/12/main
-chown postgres /var/lib/postgresql/12/main
+chown -R postgres /var/lib/postgresql/12/main
 systemctl start postgresql
 ```
 
-Now we should be able to query the data:
+Now we should be able to reconnect to the database:
 
 ```shell
-su - postgres -c 'psql -d pagila -c "select * from actor limit 10"'
+su - postgres -c 'psql -d pagila'
+__OUTPUT__
+psql (12.4 (Ubuntu 12.4-1.pgdg18.04+1))
+Type "help" for help.
+
+pagila=# 
+```
+
+...And re-run the query we started out with:
+
+```sql
+select * from actor where last_name='KILMER';
+__OUTPUT__
+ actor_id | first_name | last_name |      last_update       
+----------+------------+-----------+------------------------
+       23 | SANDRA     | KILMER    | 2020-02-15 09:34:33+00
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+(5 rows)
 ```
 
 ## Conclusion
