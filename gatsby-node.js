@@ -18,6 +18,7 @@ const {
   buildProductVersions,
   reportMissingIndex,
   configureRedirects,
+  configureLegacyRedirects,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -159,23 +160,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       ...[removeNullEntries(node.frontmatter)],
     );
 
-    // set up redirects
     configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
-
-    // safeguard against legacy redirects to stubs
-    if (!node.frontmatter.productStub) {
-      configureRedirects(
-        node.fields.path,
-        (node.frontmatter.legacyRedirects || []).concat(
-          node.frontmatter.legacyRedirectsGenerated || [],
-        ),
-        actions,
-        {
-          redirectInBrowser: false,
-          isPermanent: false,
-        },
-      );
-    }
 
     const { docType } = node.fields;
     if (docType === 'doc') {
@@ -198,6 +183,18 @@ const createDoc = (doc, productVersions, docs, actions) => {
       redirectInBrowser: true,
       isPermanent: false,
       force: true,
+    });
+  }
+
+  // configure legacy redirects
+  if (!doc.frontmatter.productStub) {
+    configureLegacyRedirects({
+      toPath: doc.fields.path,
+      toLatestPath: isLatest && replacePathVersion(doc.fields.path),
+      redirects: (doc.frontmatter.legacyRedirects || []).concat(
+        doc.frontmatter.legacyRedirectsGenerated || [],
+      ),
+      actions,
     });
   }
 
@@ -402,6 +399,7 @@ exports.createSchemaCustomization = ({ actions }) => {
     type Frontmatter {
       originalFilePath: String
       indexCards: TileModes
+      legacyRedirects: [String]
     }
 
     enum TileModes {

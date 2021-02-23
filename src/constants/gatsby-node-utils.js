@@ -136,6 +136,40 @@ const configureRedirects = (toPath, redirects, actions, config = {}) => {
   });
 };
 
+const configureLegacyRedirects = ({
+  toPath,
+  toLatestPath,
+  redirects,
+  actions,
+}) => {
+  if (!redirects) return;
+
+  const isFromPathLatest = (fromPath) => {
+    return !!fromPath.match(/\/latest($|\/)/);
+  };
+
+  redirects.forEach((fromPath) => {
+    // EVAN could create our own latest url here instead of having it in frontmatter
+    // if the redirect is a "latest" url, redirect to the latest path
+    if (isFromPathLatest(fromPath) && toLatestPath) {
+      actions.createRedirect({
+        fromPath,
+        toPath: toLatestPath,
+        redirectInBrowser: false,
+        isPermanent: false,
+      });
+    } else {
+      // redirect directly to the page
+      actions.createRedirect({
+        fromPath,
+        toPath: toPath,
+        redirectInBrowser: false,
+        isPermanent: false, // should be true when we're confident
+      });
+    }
+  });
+};
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -148,4 +182,5 @@ module.exports = {
   buildProductVersions,
   reportMissingIndex,
   configureRedirects,
+  configureLegacyRedirects,
 };
