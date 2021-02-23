@@ -1,0 +1,219 @@
+---
+title: "Barman Single-Server Streaming Configuration"
+description: "A quick walk-through of Barman installation, configuration, and basic backup and restore operations"
+navTitle: Single-Server Streaming Tutorial
+product: barman
+platform: ubuntu
+tags:
+    - ubuntu
+    - barman
+    - postgresql
+    - streaming-replication
+    - live-demo
+katacodaPanel:
+    account: enterprisedb
+    scenario: sandbox
+    codelanguages: shell, sql
+iconName: tutorial
+---
+
+This provides a quick walk-through of setting up Barman *on* a PostgreSQL server. Normally, you would not do this: it adds extra load to the machine already taxed with running
+the database server, and provides little protection from attacks or hardware failure. This is intended only to demonstrate the core concepts - for more realistic scenarios, please
+refer to [the Barman Manual](http://docs.pgbarman.org/).
+
+You can follow along right in your browser, using Katacoda, by clicking the button below:
+
+<KatacodaPanel />
+
+## Database Server Configuration
+
+We'll start by configuring the database itself to allow streaming replication. For this, we need two things:
+
+1. A dedicated user with the required permissions to access the server, run backups, and replication permissions
+2. Free replication slots
+
+### User provisioning
+
+Let's call our dedicated backup user `streaming_barman`. Since we need it to connect in replication mode, we'll specify that it will have the `REPLICATION` attribute,
+and create it by executing the [Create Role command](https://www.postgresql.org/docs/current/sql-createrole.html) in psql:
+
+```sql
+Create Role streaming_barman 
+    Login Replication 
+    Password 'example-password';
+```
+
+!!! Note Make note of that password
+    We'll use it later on when configuring Barman
+
+Now we can give this user access to the backup functions, settings, and stats:
+
+```sql
+GRANT EXECUTE ON FUNCTION pg_start_backup(text, boolean, boolean) to streaming_barman;
+GRANT EXECUTE ON FUNCTION pg_stop_backup() to streaming_barman;
+GRANT EXECUTE ON FUNCTION pg_stop_backup(boolean, boolean) to streaming_barman;
+GRANT EXECUTE ON FUNCTION pg_switch_wal() to streaming_barman;
+GRANT EXECUTE ON FUNCTION pg_create_restore_point(text) to streaming_barman;
+
+GRANT pg_read_all_settings TO streaming_barman;
+GRANT pg_read_all_stats TO streaming_barman;
+```
+
+We'll also need to make sure there are replication slots available, and that PostgreSQL will allow another sender to connect. The default for both of these (for PostgreSQL 10 and above) is 10:
+
+```sql
+Show max_wal_senders;
+Show max_replication_slots;
+```
+
+...So we're fine - but if we needed more (or if they'd been previously set to 0, thus [disabling replication](https://www.postgresql.org/docs/current/runtime-config-replication.html)) then we'd need to increase them.
+
+With that out of the way, we can quit psql and move on to installing Barman:
+
+```sql
+\q
+exit
+```
+
+## Installing Barman
+
+This walk-through uses an Ubuntu environment, so the first step is to configure the PostgreSQL repository (details are [on the PostgreSQL wiki](https://wiki.postgresql.org/wiki/Apt)):
+
+```shell
+apt-get update
+apt-get install -y curl ca-certificates gnupg lsb-release
+curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+apt-get update
+```
+
+With the repository configured, we can use apt to install Barman:
+
+```shell
+apt-get -y install barman
+```
+
+For more details on installation (including instructions for other supported operating systems), see: [Installation](http://docs.pgbarman.org/release/2.12/#installation) in the Barman guide.
+
+## Configuration
+
+All the important details for a Barman server go into a server configuration file, by default located in `/etc/barman.d`. These are in the classic INI format, with relevant settings in a section named after the server we're going to back up. We'll also use that name for the configuration file itself. Since this is an example and we're running locally, we'll call it localhost:
+
+```shell
+cat <<'EOF' >> /etc/barman.d/localhost.conf
+[localhost]
+description =  "Example of PostgreSQL Database (Streaming-Only)"
+conninfo = host=localhost user=streaming_barman dbname=pagila
+streaming_conninfo = host=localhost user=streaming_barman dbname=pagila
+backup_method = postgres
+streaming_archiver = on
+slot_name = barman
+create_slot = auto
+EOF
+```
+
+Note that this references the user (`streaming_barman`) that we created earlier. Also of interest is the value for `slot_name` - this is a replication slot that will also have to be created on the server - but we can instruct Barman to do that for us by setting `create_slot` to `auto`.
+
+In order for Barman to connect via the user specified, we'll need to add the password we specified earlier to Barman's [.pgpass file](https://www.postgresql.org/docs/current/libpq-pgpass.html):
+
+```shell
+cat <<'EOF' >>~barman/.pgpass
+localhost:*:*:streaming_barman:example-password
+EOF
+chown barman ~barman/.pgpass
+chmod 0600 ~barman/.pgpass
+```
+
+Note the change in ownership and permissions - these are necessary to protect the file, and it will not be used without them.
+
+!!! Important Remember, this is just a brief walk-through
+    You would certainly want to be a bit less cavalier about credential management on a production system!
+
+For more details on configuration files, see: [Configuration](http://docs.pgbarman.org/release/2.12/#configuration) in the pgBarman guide.
+
+## Verifying the configuration
+
+Now that the configuration is done, we can use Barman's check command to verify that it works:
+
+```shell
+barman check localhost
+```
+
+Uh-oh! WAL archive failed? Not a problem - that just means Barman hasn't seen any new WAL archives come in yet, which isn't surprising given this is an example 
+database with no writes happening! We can trigger an archive manually and verify that this works:
+
+```shell
+barman switch-wal localhost
+```
+
+Now we just need to wait for Barman to notice! When installed via the package manager as we did above, Barman's cron job is automatically configured - 
+it should run within a minute. If impatient, we can trigger that manually:
+
+```shell
+barman cron
+```
+
+Now, the check should pass:
+
+```shell
+barman check localhost
+```
+
+## Backup & verify
+
+Now we can fire off a backup:
+
+```shell
+barman backup localhost --wait
+```
+
+Verify that it completed by listing backups for the server:
+
+```shell
+barman list-backup localhost
+```
+
+## Restore server
+
+It's not a real backup until you've restored it - so let's end with that. 
+
+!!! Danger This process is for demonstration purposes, and is explicitly destructive!
+    In a production scenario, you would restore to a new location and verify the data 
+    Also, you wouldn't be running this on the same machine as your database!
+
+First, we'll stop the database:
+
+```shell
+systemctl stop postgresql
+```
+
+Now we can restore the backup, running as the barman user, into a temporary directory:
+
+```shell
+su - barman -c "barman recover localhost last ~/recovered"
+```
+
+At this point, you could examine the files:
+
+```shell
+ls ~barman/recovered
+```
+
+And finally, overwrite the original database, ownership to postgres and restart the server:
+
+```shell
+mv ~barman/recovered /var/lib/postgresql/12/main
+chown postgres /var/lib/postgresql/12/main
+systemctl start postgresql
+```
+
+Now we should be able to query the data:
+
+```shell
+su - postgres -c 'psql -d pagila -c "select * from actor limit 10"'
+```
+
+## Conclusion
+
+This walk-through barely scratches the surface of what is possible with Barman, but hopefully it has provided you with a taste of its capabilities! For more details, visit https://pgbarman.org/
