@@ -241,6 +241,15 @@ const createDoc = (doc, productVersions, docs, actions) => {
 };
 
 const createAdvocacy = (doc, learn, actions) => {
+  // configure legacy redirects
+  configureLegacyRedirects({
+    toPath: doc.fields.path,
+    redirects: (doc.frontmatter.legacyRedirects || []).concat(
+      doc.frontmatter.legacyRedirectsGenerated || [],
+    ),
+    actions,
+  });
+
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
