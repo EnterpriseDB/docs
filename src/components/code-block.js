@@ -145,7 +145,7 @@ const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
         katacodaPanelData.codelanguages.split(',').map((l) => l.trim()),
       )
     : [];
-  console.log(execLanguages);
+
   if (codeContent.length > 0) {
     return (
       <figure className="codeblock-wrapper katacoda-enabled">
