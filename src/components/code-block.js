@@ -142,7 +142,7 @@ const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
 
   const execLanguages = katacodaPanelData
     ? ['shell'].concat(
-        katacodaPanelData.codelanguages.split(',').map((l) => l.trim()),
+        katacodaPanelData.codelanguages?.split(',')?.map((l) => l.trim()),
       )
     : [];
 
