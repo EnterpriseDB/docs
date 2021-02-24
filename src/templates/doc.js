@@ -210,6 +210,7 @@ const DocTemplate = ({ data, pageContext }) => {
             path={path}
             pagePath={pagePath}
             versionArray={versionArray}
+            iconName={frontmatter.iconName}
           />
         </SideNavigation>
         <MainContent>
