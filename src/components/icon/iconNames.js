@@ -28,6 +28,7 @@ export default {
   CLOUD_PRIVATE: 'cloudprivate',
   CLOUD_PUBLIC: 'cloudpublic',
   CODE_WRITING: 'codewriting',
+  COFFEE: 'coffee',
   CONFIG_MANAGEMENT: 'configmanagement',
   CONFLICT: 'conflict',
   CONNECT: 'connect',
