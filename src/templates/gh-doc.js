@@ -2,7 +2,6 @@ import React from 'react';
 import { Alert, Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   DevFrontmatter,
   Footer,
@@ -52,13 +51,6 @@ const GhDocTemplate = ({ data, pageContext }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  const iconName = (
-    rawIndexNavigation
-      .map((al) => al.links)
-      .flat()
-      .find((link) => mdx.fields.path.includes(link.url)) || { iconName: null }
-  ).iconName;
-
   return (
     <Layout pageMeta={pageMeta}>
       <TopBar />
@@ -68,7 +60,7 @@ const GhDocTemplate = ({ data, pageContext }) => {
             navTree={navTree}
             path={mdx.fields.path}
             pagePath={pagePath}
-            iconName={iconName}
+            iconName={frontmatter.iconName}
           />
         </SideNavigation>
         <MainContent>
