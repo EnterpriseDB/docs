@@ -4,6 +4,13 @@ import glob
 import re
 from urllib.parse import urlparse
 
+STANDARD_FRONTMATTER = """---
+title: '{0}'
+originalFilePath: '{1}'
+product: 'Cloud Native Operator'{2}
+---
+"""
+
 INDEX_FRONTMATTER = """
 indexCards: none
 directoryDefaults:
@@ -47,7 +54,7 @@ def process_md(file_path):
                     new_file.write(rewrite_yaml_links(line))
                 if line.startswith('#') and not copying:
                     copying = True
-                    new_file.write("---\ntitle: '{0}'\noriginalFilePath: '{1}'{2}\n---\n\n".format(
+                    new_file.write(STANDARD_FRONTMATTER.format(
                         re.sub(r'#+ ', '', line).strip(),
                         gh_relative_path,
                         index_frontmatter() if new_file_path.split('/')[-1] == 'index.mdx' else ''
