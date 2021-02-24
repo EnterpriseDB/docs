@@ -409,6 +409,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       originalFilePath: String
       indexCards: TileModes
       legacyRedirects: [String]
+      legacyRedirectsGenerated: [String]
     }
 
     enum TileModes {
