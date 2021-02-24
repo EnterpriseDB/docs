@@ -2,7 +2,7 @@
 
 ### Description
 
-* _pgBackRest_ runs locally on database servers and stores repository on remote storage (NFS, S3, or Azure object stores).
+* pgBackRest runs locally on database servers and stores repository on remote storage (NFS, S3, or Azure object stores).
 * Cron task active on the node where to take backups.
 * Manually reconfigure cron task to take backup from another server.
 
@@ -135,7 +135,7 @@ recovery-option=primary_conninfo=host=primary_vip user=replication_user ...
 
 #### Setup Archiving
 
-Once _pgBackRest_ is configured, set up the database archiver process on each node:
+Once pgBackRest is configured, set up the database archiver process on each node:
 
 ```ini
 # postgresql.conf
@@ -147,7 +147,7 @@ As changing the `archive_mode` requires a service restart and changing the `arch
 
 See the [Quick start](03-quick_start.md) page to set up a simple **demo** stanza configuration.
 
-Assume the identity of the system user (`postgres` or `enterprisedb`) and initiate the _pgBackRest_ repository from the primary server:
+Assume the identity of the system user (`postgres` or `enterprisedb`) and initiate the pgBackRest repository from the primary server:
 
 ```bash
 $ pgbackrest --stanza=demo stanza-create
