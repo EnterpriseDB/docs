@@ -59,10 +59,6 @@ const sourceToPluginConfig = {
   pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
   postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
   slony: { name: 'slony', path: 'product_docs/docs/slony' },
-
-  k8s_docs: { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
-  barman: { name: 'barman', path: 'external_sources/barman/doc/manual' },
-  pgbackrest: { name: 'pgbackrest', path: 'external_sources/pgbackrest/docs' },
 };
 
 const externalSourcePlugins = () => {

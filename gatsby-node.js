@@ -60,13 +60,6 @@ exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
       version: '0',
       topic: relativeFilePath.split('/')[2],
     });
-  } else {
-    // gh_doc
-    Object.assign(nodeFields, {
-      product: 'null',
-      version: '0',
-      topic: relativeFilePath.split('/')[1],
-    });
   }
 
   for (const [name, value] of Object.entries(nodeFields)) {
@@ -215,8 +208,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === 'advocacy') {
       createAdvocacy(navTree, prevNext, node, learn, actions);
-    } else if (docType === 'gh_doc') {
-      createGHDoc(navTree, node, actions);
     }
   }
 };
@@ -325,39 +316,6 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
         },
       },
     });
-  });
-};
-
-const createGHDoc = (navTree, doc, actions) => {
-  let githubLink = 'https://github.com/EnterpriseDB/edb-k8s-doc';
-  if (doc.fields.path.includes('barman')) {
-    githubLink = 'https://github.com/2ndquadrant-it/barman';
-  }
-  const showGithubLink = !doc.fields.path.includes('pgbackrest');
-
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const originalFilePath = (doc.frontmatter.originalFilePath || '').replace(
-    /^\//,
-    '',
-  );
-  const githubFileLink = `${githubLink}/tree/master/${originalFilePath.replace(
-    'README.md',
-    '',
-  )}`;
-  const githubFileHistoryLink = `${githubLink}/commits/master/${originalFilePath}`;
-
-  actions.createPage({
-    path: doc.fields.path,
-    component: require.resolve('./src/templates/gh-doc.js'),
-    context: {
-      nodeId: doc.id,
-      frontmatter: doc.frontmatter,
-      pagePath: doc.fields.path,
-      navTree,
-      githubFileLink: showGithubLink ? githubFileLink : null,
-      githubFileHistoryLink: showGithubLink ? githubFileHistoryLink : null,
-      isIndexPage: isIndexPage,
-    },
   });
 };
 
