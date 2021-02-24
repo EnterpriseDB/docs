@@ -2,7 +2,7 @@
 
 ### Description
 
-* _pgBackRest_ runs on a dedicated backup server and stores repository on local or remote storage (NFS, S3, or Azure object stores).
+* pgBackRest runs on a dedicated backup server and stores repository on local or remote storage (NFS, S3, or Azure object stores).
 * Cron task active to take backups from the primary database cluster.
 * Manually reconfigure cron task to take backup from another server.
 
@@ -20,7 +20,7 @@ $ sudo chown pgbackrest: /var/log/pgbackrest
 
 ### Setup Passwordless SSH Connection
 
-_pgBackRest_ requires a passwordless SSH connection to enable communication between the hosts.
+pgBackRest requires a passwordless SSH connection to enable communication between the hosts.
 
 The following example SSH commands should succeed without prompting you for a password:
 
@@ -105,7 +105,7 @@ Define multiple nodes using `pg2`, `pg3`,... to reach standby servers only when 
 
 #### Database server(s)
 
-Update the _pgBackRest_ configuration file on the database server(s):
+Update the pgBackRest configuration file on the database server(s):
 
 ```ini
 # pgbackrest.conf
@@ -125,7 +125,7 @@ The `[demo]` stanza section will be different for **PostgreSQL** or for **EDB Po
 
 #### Setup Archiving
 
-Once _pgBackRest_ is configured, set up the database archiver process on each node:
+Once pgBackRest is configured, set up the database archiver process on each node:
 
 ```ini
 # postgresql.conf
@@ -135,7 +135,7 @@ archive_command = 'pgbackrest --stanza=demo archive-push %p'
 
 As changing the `archive_mode` parameter requires a service restart, and changing the `archive_command` requires only a configuration reload, we recommend enabling `archive_mode` with an empty `archive_command` (or pointing to `/bin/true`) when initiating a new database cluster.
 
-From the backup server (also called repository host), initiate the _pgBackRest_ repository with the system user we created earlier:
+From the backup server (also called repository host), initiate the pgBackRest repository with the system user we created earlier:
 
 ```bash
 $ sudo -u pgbackrest pgbackrest --stanza=demo stanza-create
