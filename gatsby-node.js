@@ -102,6 +102,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             directoryDefaults {
               description
               prevNext
+              iconName
             }
           }
           fields {
