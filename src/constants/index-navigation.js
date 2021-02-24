@@ -95,7 +95,7 @@ export const rawIndexNavigation = [
       {
         title: 'Barman',
         url: '/barman',
-        iconName: IconNames.BARMAN,
+        iconName: IconNames.COFFEE,
         source: 'barman',
       },
       {
