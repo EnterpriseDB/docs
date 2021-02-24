@@ -1,6 +1,6 @@
 ## Recommended Settings
 
-This section walks you through the recommended settings while using _pgBackRest_.
+This section walks you through the recommended settings while using pgBackRest.
 
 ### Encryption
 
@@ -29,7 +29,7 @@ Each process will perform compression and transfer to make the command run faste
 
 ### Backup Fast Start
 
-Use the `start-fast=y` setting to force a checkpoint to start the backup quickly. This is achieved inside _pgBackRest_ by passing **true** to the fast parameter of the **pg_start_backup()** database function. The backup will then begin immediately rather than waiting for the next regular checkpoint triggered by the database server itself.
+Use the `start-fast=y` setting to force a checkpoint to start the backup quickly. This is achieved inside pgBackRest by passing **true** to the fast parameter of the **pg_start_backup()** database function. The backup will then begin immediately rather than waiting for the next regular checkpoint triggered by the database server itself.
 
 ### Delta
 
