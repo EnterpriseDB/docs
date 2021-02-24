@@ -30,6 +30,7 @@ import CloudDbaSvg from '../../../static/edb-icons/cloud-dba.svg';
 import CloudPrivateSvg from '../../../static/edb-icons/cloud-private.svg';
 import CloudPublicSvg from '../../../static/edb-icons/cloud-public.svg';
 import CodeWritingSvg from '../../../static/edb-icons/code-writing.svg';
+import CoffeeSvg from '../../../static/edb-icons/coffee.svg';
 import ConfigManagementSvg from '../../../static/edb-icons/config-management.svg';
 import ConflictSvg from '../../../static/edb-icons/conflict.svg';
 import ConnectSvg from '../../../static/edb-icons/connect.svg';
@@ -248,6 +249,8 @@ export default function IconType({ iconName, ...rest }) {
       return <CloudPublicSvg {...rest} />;
     case iconNames.CODE_WRITING:
       return <CodeWritingSvg {...rest} />;
+    case iconNames.COFFEE:
+      return <CoffeeSvg {...rest} />;
     case iconNames.CONFIG_MANAGEMENT:
       return <ConfigManagementSvg {...rest} />;
     case iconNames.CONFLICT:
