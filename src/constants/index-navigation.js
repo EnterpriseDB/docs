@@ -95,7 +95,7 @@ export const rawIndexNavigation = [
       {
         title: 'Barman',
         url: '/barman',
-        iconName: IconNames.BUSINESSMAN,
+        iconName: IconNames.COFFEE,
         source: 'barman',
       },
       {
@@ -171,9 +171,9 @@ export const rawIndexNavigation = [
 export default () => {
   const activeSources = useActiveSources();
 
-  return rawIndexNavigation.map(section => {
+  return rawIndexNavigation.map((section) => {
     section.links = section.links.filter(
-      link => !link.source || activeSources[`${link.source}Active`],
+      (link) => !link.source || activeSources[`${link.source}Active`],
     );
     return section;
   });

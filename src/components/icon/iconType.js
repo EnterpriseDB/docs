@@ -6,6 +6,7 @@ import AngularjsColorSvg from '../../../static/edb-icons/angularjs-color.svg';
 import AnnounceSvg from '../../../static/edb-icons/announce.svg';
 import ArrowLeftSvg from '../../../static/edb-icons/arrow-left.svg';
 import ArrowRightSvg from '../../../static/edb-icons/arrow-right.svg';
+import BarmanSvg from '../../../static/edb-icons/barman.svg';
 import BigDataSvg from '../../../static/edb-icons/big-data.svg';
 import BrainCircuitSvg from '../../../static/edb-icons/brain-circuit.svg';
 import BriefcaseSvg from '../../../static/edb-icons/briefcase.svg';
@@ -29,6 +30,7 @@ import CloudDbaSvg from '../../../static/edb-icons/cloud-dba.svg';
 import CloudPrivateSvg from '../../../static/edb-icons/cloud-private.svg';
 import CloudPublicSvg from '../../../static/edb-icons/cloud-public.svg';
 import CodeWritingSvg from '../../../static/edb-icons/code-writing.svg';
+import CoffeeSvg from '../../../static/edb-icons/coffee.svg';
 import ConfigManagementSvg from '../../../static/edb-icons/config-management.svg';
 import ConflictSvg from '../../../static/edb-icons/conflict.svg';
 import ConnectSvg from '../../../static/edb-icons/connect.svg';
@@ -73,12 +75,14 @@ import EdbLogoSymbolBadgeSvg from '../../../static/edb-icons/edb-logo-symbol-bad
 import EdbMigrationPortalSvg from '../../../static/edb-icons/edb-migration-portal.svg';
 import EdbMigrationToolkitSvg from '../../../static/edb-icons/edb-migration-toolkit.svg';
 import EdbPemSvg from '../../../static/edb-icons/edb-pem.svg';
+import EdbReplicateSvg from '../../../static/edb-icons/edb-replicate.svg';
 import EdbReplicationSvg from '../../../static/edb-icons/edb-replication.svg';
 import EdbSymbolSvg from '../../../static/edb-icons/edb-symbol.svg';
 import EllipsisSvg from '../../../static/edb-icons/ellipsis.svg';
 import EnergySvg from '../../../static/edb-icons/energy.svg';
 import EnterpriseSvg from '../../../static/edb-icons/enterprise.svg';
 import ExportSvg from '../../../static/edb-icons/export.svg';
+import ExternalLinkSvg from '../../../static/edb-icons/external-link.svg';
 import FileSvg from '../../../static/edb-icons/file.svg';
 import GlobeSvg from '../../../static/edb-icons/globe.svg';
 import GolangColorSvg from '../../../static/edb-icons/golang-color.svg';
@@ -164,9 +168,12 @@ import SupportPortalSvg from '../../../static/edb-icons/support-portal.svg';
 import SupportSvg from '../../../static/edb-icons/support.svg';
 import SuseColorSvg from '../../../static/edb-icons/suse-color.svg';
 import SwiftColorSvg from '../../../static/edb-icons/swift-color.svg';
+import SynchronizeSvg from '../../../static/edb-icons/synchronize.svg';
 import TenYearsSvg from '../../../static/edb-icons/ten-years.svg';
+import TicketStarSvg from '../../../static/edb-icons/ticket-star.svg';
 import TicketSvg from '../../../static/edb-icons/ticket.svg';
 import ToolsSvg from '../../../static/edb-icons/tools.svg';
+import TrainingSvg from '../../../static/edb-icons/training.svg';
 import TreehouseSvg from '../../../static/edb-icons/treehouse.svg';
 import TutorialSvg from '../../../static/edb-icons/tutorial.svg';
 import TypescriptColorSvg from '../../../static/edb-icons/typescript-color.svg';
@@ -194,6 +201,8 @@ export default function IconType({ iconName, ...rest }) {
       return <ArrowLeftSvg {...rest} />;
     case iconNames.ARROW_RIGHT:
       return <ArrowRightSvg {...rest} />;
+    case iconNames.BARMAN:
+      return <BarmanSvg {...rest} />;
     case iconNames.BIG_DATA:
       return <BigDataSvg {...rest} />;
     case iconNames.BRAIN_CIRCUIT:
@@ -240,6 +249,8 @@ export default function IconType({ iconName, ...rest }) {
       return <CloudPublicSvg {...rest} />;
     case iconNames.CODE_WRITING:
       return <CodeWritingSvg {...rest} />;
+    case iconNames.COFFEE:
+      return <CoffeeSvg {...rest} />;
     case iconNames.CONFIG_MANAGEMENT:
       return <ConfigManagementSvg {...rest} />;
     case iconNames.CONFLICT:
@@ -328,6 +339,8 @@ export default function IconType({ iconName, ...rest }) {
       return <EdbMigrationToolkitSvg {...rest} />;
     case iconNames.EDB_PEM:
       return <EdbPemSvg {...rest} />;
+    case iconNames.EDB_REPLICATE:
+      return <EdbReplicateSvg {...rest} />;
     case iconNames.EDB_REPLICATION:
       return <EdbReplicationSvg {...rest} />;
     case iconNames.EDB_SYMBOL:
@@ -340,6 +353,8 @@ export default function IconType({ iconName, ...rest }) {
       return <EnterpriseSvg {...rest} />;
     case iconNames.EXPORT:
       return <ExportSvg {...rest} />;
+    case iconNames.EXTERNAL_LINK:
+      return <ExternalLinkSvg {...rest} />;
     case iconNames.FILE:
       return <FileSvg {...rest} />;
     case iconNames.GLOBE:
@@ -510,12 +525,18 @@ export default function IconType({ iconName, ...rest }) {
       return <SuseColorSvg {...rest} />;
     case iconNames.SWIFT_COLOR:
       return <SwiftColorSvg {...rest} />;
+    case iconNames.SYNCHRONIZE:
+      return <SynchronizeSvg {...rest} />;
     case iconNames.TEN_YEARS:
       return <TenYearsSvg {...rest} />;
+    case iconNames.TICKET_STAR:
+      return <TicketStarSvg {...rest} />;
     case iconNames.TICKET:
       return <TicketSvg {...rest} />;
     case iconNames.TOOLS:
       return <ToolsSvg {...rest} />;
+    case iconNames.TRAINING:
+      return <TrainingSvg {...rest} />;
     case iconNames.TREEHOUSE:
       return <TreehouseSvg {...rest} />;
     case iconNames.TUTORIAL:
