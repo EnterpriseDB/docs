@@ -8,6 +8,7 @@ INDEX_FRONTMATTER = """
 indexCards: none
 directoryDefaults:
   prevNext: true
+  iconName: kubernetes
 
 navigation:
 {0}"""
