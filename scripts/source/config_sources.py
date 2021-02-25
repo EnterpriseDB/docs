@@ -1,7 +1,5 @@
 import json
 
-from pull_sources import pull_sources
-
 ANSI_STOP = '\033[0m'
 ANSI_BLUE = '\033[34m'
 ANSI_GREEN = '\033[32m'
@@ -30,13 +28,11 @@ PRODUCT_DOCS = [
     'slony',
 ]
 
-BASE_OUTPUT = {
-    'k8s_docs': False,
-}
+BASE_OUTPUT = {}
 BASE_OUTPUT.update({ doc : False for doc in PRODUCT_DOCS })
 
 OPTIONS = [
-    { 'index': 0, 'name': 'None (Advocacy Docs only)', 'key': None },
+    { 'index': 0, 'name': 'None (load `advocacy_docs` only)', 'key': None },
     { 'index': 1, 'name': 'All EDB Product Docs', 'output': { doc : True for doc in PRODUCT_DOCS } },
     { 'index': '1a', 'name': 'Ark Platform', 'key': 'ark', 'indent': True },
     { 'index': '1b', 'name': 'Backup and Recovery Tool', 'key': 'bart', 'indent': True },
@@ -57,22 +53,20 @@ OPTIONS = [
     { 'index': '1q', 'name': 'Mongo Data Adapter', 'key': 'mongo_data_adapter', 'indent': True },
     { 'index': '1r', 'name': 'MySQL Data Adapter', 'key': 'mysql_data_adapter', 'indent': True },
     { 'index': '1s', 'name': 'Replication Server', 'key': 'eprs', 'indent': True },
-    { 'index': 2, 'name': 'Kubernetes Docs', 'key': 'k8s_docs', 'external': True },
 ]
 
 print('Which sources would you like loaded when you run `yarn develop`?')
 for i, option in enumerate(OPTIONS):
-    print("{2}{0}: {1} {3}".format(
+    print("{2}{0}: {1}".format(
         option['index'],
         option['name'],
         '  ' if option.get('indent') else '',
-        '(external)' if option.get('external') else ''
     )
 )
 
 selections = []
 while len(selections) == 0:
-    user_input = input('Enter your choices separated by commas, e.g. "1b,1m,2": ')
+    user_input = input('Enter your choices separated by commas, e.g. "1b,1m": ')
 
     split_user_input = user_input.strip().split(',')
     for selection_index in split_user_input:
@@ -87,21 +81,13 @@ while len(selections) == 0:
 for option in selections:
     print(ANSI_BLUE + 'Selected {0}'.format(option['name']) + ANSI_STOP)
 
-external_sources_loaded = False
 with open('dev-sources.json', 'w') as outfile:
     output = BASE_OUTPUT.copy()
     for option in selections:
-        if option.get('external'):
-            external_sources_loaded = True
         if option.get('output'):
             output.update(option['output'])
         elif option.get('key'):
             output[option['key']] = True
     json.dump(output, outfile, indent=2)
     print(ANSI_GREEN + 'Wrote to dev-sources.json' + ANSI_STOP)
-
-if external_sources_loaded:
-    print('You have selected some external sources, running command `yarn pull-sources`.')
-    print('-' * 50)
-    pull_sources()
 
