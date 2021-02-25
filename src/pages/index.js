@@ -49,11 +49,11 @@ const Page = () => (
     <Container fluid className="p-0 d-flex bg-white">
       {/* TODO connect an updated IndexNavagation file to this index page */}
       <MainContent searchNavLogo={true}>
-        <h1 className="mb-5">enterprisedb.com/docs</h1>
+        {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
 
         {/* Sign Post */}
         <div className="card-columns full-width mb-2">
-          <div className="card rounded shadow-sm mb-3">
+          <div className="card rounded shadow-sm mb-3 bg-dark">
             <div className="card-body pb-0">
               <div className="mb-3 pt-2">
                 <div className="d-flex align-items-top mb-0">
@@ -66,8 +66,10 @@ const Page = () => (
                     />
                   </div>
                   <div className="flex-fill">
-                    <h4 className="card-title mb-2">Cloud Native PostgreSQL</h4>
-                    <p>
+                    <h4 className="card-title mb-2 text-light">
+                      Cloud Native PostgreSQL
+                    </h4>
+                    <p className="text-light">
                       An operator designed by EnterpriseDB to manage PostgreSQL
                       workloads on a Kubernetes cluster.
                     </p>
