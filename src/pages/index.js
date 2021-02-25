@@ -52,41 +52,38 @@ const Page = () => (
         {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
 
         {/* Sign Post */}
-        <div className="card-columns full-width mb-2">
-          <div className="card rounded shadow-sm mb-3 bg-dark">
-            <div className="card-body pb-0">
-              <div className="mb-3 pt-2">
-                <div className="d-flex align-items-top mb-0">
-                  <div className="mr-3">
-                    <Icon
-                      iconName="KUBERNETES"
-                      className="fill-blue"
-                      width="48"
-                      height="48"
-                    />
-                  </div>
-                  <div className="flex-fill">
-                    <h4 className="card-title mb-2 text-light">
-                      Cloud Native PostgreSQL
-                    </h4>
-                    <p className="text-light">
-                      An operator designed by EnterpriseDB to manage PostgreSQL
-                      workloads on a Kubernetes cluster.
-                    </p>
-                    <p>
-                      <Link to="/kubernetes/cloud_native_operator">
-                        Read More &rarr;
-                      </Link>
-                    </p>
-                  </div>
-                  <div>
-                    <img
-                      src="/images/cli@2x.png"
-                      alt="Illustration of a Kubernetes Terminal Command"
-                      className="card-editorial-cnpo"
-                    />
-                  </div>
-                </div>
+        <div className="card-columns full-width mb-3">
+          <div className="card rounded pt-0">
+            <div className="card-body d-flex shadow-sm pb-0 pt-4 pr-3 bg-light">
+              <div className="mr-3 align-top pt-1">
+                <Icon
+                  iconName="KUBERNETES"
+                  className="fill-blue"
+                  width="48"
+                  height="48"
+                />
+              </div>
+              <div className="flex-fill">
+                <h2 className="card-title mb-2 font-weight-bold">
+                  Cloud Native PostgreSQL
+                </h2>
+
+                <p className="">
+                  An operator designed by EnterpriseDB to manage PostgreSQL
+                  workloads on a Kubernetes cluster.
+                </p>
+                <p className="pb-3">
+                  <Link to="/kubernetes/cloud_native_operator">
+                    Read More &rarr;
+                  </Link>
+                </p>
+              </div>
+              <div className="card-editorial-cnpo align-self-end">
+                <img
+                  src="/images/cli@2x.png"
+                  alt="Illustration of a Kubernetes Terminal Command"
+                  className="img-fluid shadow"
+                />
               </div>
             </div>
           </div>
@@ -150,6 +147,14 @@ const Page = () => (
           >
             <IndexCardLink to="/supported-open-source/barman/">
               Barman
+            </IndexCardLink>
+
+            <IndexCardLink
+              to="/supported-open-source/barman/"
+              className="nested-link"
+            >
+              Barman Basics{' '}
+              <span className="new-thing"> &mdash; Interactive Tutorial</span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
               pgBackRest
