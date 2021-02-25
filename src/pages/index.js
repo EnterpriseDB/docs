@@ -66,12 +66,16 @@ const Page = () => (
                     />
                   </div>
                   <div>
-                    <h4 className="card-title mb-3">Cloud Native PostgreSQL</h4>
+                    <h4 className="card-title mb-2">Cloud Native PostgreSQL</h4>
                     <p>
                       An operator designed by EnterpriseDB to manage PostgreSQL
                       workloads on a Kubernetes cluster.
                     </p>
-                    <p>Read More &rarr;</p>
+                    <p>
+                      <Link to="/kubernetes/cloud_native_operator">
+                        Read More &rarr;
+                      </Link>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -169,6 +173,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/jdbc_connector/latest">
               JDBC Connector
+            </IndexCardLink>
+            <IndexCardLink to="/mysql_data_adapter/latest">
+              MySQL Foreign Data Wrapper
             </IndexCardLink>
             <IndexCardLink to="/net_connector/latest">
               .NET Connector
