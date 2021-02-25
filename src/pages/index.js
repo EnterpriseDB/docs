@@ -150,11 +150,14 @@ const Page = () => (
             </IndexCardLink>
 
             <IndexCardLink
-              to="/supported-open-source/barman/"
+              to="/supported-open-source/barman/single-server-streaming/"
               className="nested-link"
             >
-              Barman Basics{' '}
-              <span className="new-thing"> &mdash; Interactive Tutorial</span>
+              Single Server Streaming
+              <span className="new-thing" title="Interactive Katacoda Tutorial">
+                {' '}
+                &mdash; Tutorial
+              </span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
               pgBackRest
