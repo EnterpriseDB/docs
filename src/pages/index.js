@@ -156,7 +156,7 @@ const Page = () => (
               Single Server Streaming
               <span className="new-thing" title="Interactive Katacoda Tutorial">
                 {' '}
-                &mdash; Tutorial
+                Tutorial
               </span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
