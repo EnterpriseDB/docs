@@ -65,7 +65,7 @@ const Page = () => (
                       height="48"
                     />
                   </div>
-                  <div>
+                  <div className="flex-fill">
                     <h4 className="card-title mb-2">Cloud Native PostgreSQL</h4>
                     <p>
                       An operator designed by EnterpriseDB to manage PostgreSQL
@@ -76,6 +76,13 @@ const Page = () => (
                         Read More &rarr;
                       </Link>
                     </p>
+                  </div>
+                  <div>
+                    <img
+                      src="/images/cli@2x.png"
+                      alt="Illustration of a Kubernetes Terminal Command"
+                      className="card-editorial-cnpo"
+                    />
                   </div>
                 </div>
               </div>
