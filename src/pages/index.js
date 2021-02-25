@@ -49,14 +49,45 @@ const Page = () => (
     <Container fluid className="p-0 d-flex bg-white">
       {/* TODO connect an updated IndexNavagation file to this index page */}
       <MainContent searchNavLogo={true}>
-        <h1 className="balance-text mb-5">enterprisedb.com/docs</h1>
-        {/* <p className="border-left border-5 border-primary pl-3 mb-5">
-          Thanks for checking out our beta docs site. Feel free to open and
-          issue on our{' '}
-          <Link to="https://github.com/EnterpriseDB/docs/issues">
-            github repo
-          </Link>
-        </p> */}
+        {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
+
+        {/* Sign Post */}
+        <div className="card-columns full-width mb-3">
+          <div className="card rounded pt-0">
+            <div className="card-body d-flex shadow-sm pb-0 pt-4 pr-3 bg-light">
+              <div className="mr-3 align-top pt-1">
+                <Icon
+                  iconName="KUBERNETES"
+                  className="fill-blue"
+                  width="48"
+                  height="48"
+                />
+              </div>
+              <div className="flex-fill">
+                <h2 className="card-title mb-2 font-weight-bold">
+                  Cloud Native PostgreSQL
+                </h2>
+
+                <p className="">
+                  An operator designed by EnterpriseDB to manage PostgreSQL
+                  workloads on a Kubernetes cluster.
+                </p>
+                <p className="pb-3">
+                  <Link to="/kubernetes/cloud_native_operator">
+                    Read More &rarr;
+                  </Link>
+                </p>
+              </div>
+              <div className="card-editorial-cnpo align-self-end">
+                <img
+                  src="/images/cli@2x.png"
+                  alt="Illustration of a Kubernetes Terminal Command"
+                  className="img-fluid shadow"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="card-columns mb-4">
           {/*          <IndexCard
@@ -117,6 +148,17 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/barman/">
               Barman
             </IndexCardLink>
+
+            <IndexCardLink
+              to="/supported-open-source/barman/single-server-streaming/"
+              className="nested-link"
+            >
+              Single Server Streaming
+              <span className="new-thing" title="Interactive Katacoda Tutorial">
+                {' '}
+                Tutorial
+              </span>
+            </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
               pgBackRest
             </IndexCardLink>
@@ -148,6 +190,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/jdbc_connector/latest">
               JDBC Connector
+            </IndexCardLink>
+            <IndexCardLink to="/mysql_data_adapter/latest">
+              MySQL Foreign Data Wrapper
             </IndexCardLink>
             <IndexCardLink to="/net_connector/latest">
               .NET Connector
