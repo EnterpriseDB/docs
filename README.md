@@ -52,12 +52,6 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
   - For a list of these sources, see [product_docs/docs](https://github.com/EnterpriseDB/docs/tree/develop/product_docs/docs)
 
-- GitHub-Sourced Docs (entirety of `/external_sources` at present)
-
-  - [Kubernetes Docs](https://github.com/EnterpriseDB/edb-k8s-doc)
-  - [Barman](https://github.com/2ndquadrant-it/barman)
-  - [pgBackRest](https://github.com/EnterpriseDB/pgbackrest-docs)
-
 ### Configuring Which Sources are Loaded
 
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
