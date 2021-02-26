@@ -158,7 +158,7 @@ const Page = () => (
               Single Server Streaming
               <span
                 className="new-thing"
-                title="Run through an interactive demonstration in Katacoda"
+                title="Walk through an interactive demo in Katacoda"
               >
                 10min Demo
               </span>
