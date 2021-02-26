@@ -62,7 +62,9 @@ const CardDecks = ({ cards, cardType = 'simple' }) => {
         return (
           <Col
             key={card.fields.path}
-            md={cardType === 'full' ? 6 : 4}
+            md={12}
+            lg={6}
+            xl={cardType === 'simple' && 4}
             className="d-flex"
           >
             {cardType === 'full' ? (
