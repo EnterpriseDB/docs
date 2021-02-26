@@ -69,8 +69,10 @@ const Page = () => (
                 </h2>
 
                 <p className="">
-                  An operator designed by EnterpriseDB to manage PostgreSQL
-                  workloads on a Kubernetes cluster.
+                  Cloud Native PostgreSQL is an operator designed by
+                  EnterpriseDB to manage PostgreSQL workloads on any supported
+                  Kubernetes cluster running in private, public, or hybrid cloud
+                  environments.
                 </p>
                 <p className="pb-3">
                   <Link to="/kubernetes/cloud_native_operator">
