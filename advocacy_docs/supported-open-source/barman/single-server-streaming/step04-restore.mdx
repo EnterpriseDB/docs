@@ -1,0 +1,134 @@
+---
+title: "Backup and Recovery: Single-Server Streaming - Recovery"
+description: "Recovering from data loss by using Barman to restore a full backup remotely"
+navTitle: "Restore"
+product: barman
+platform: ubuntu
+tags:
+    - ubuntu
+    - barman
+    - postgresql
+    - streaming-replication
+    - live-demo
+katacodaPanel:
+    scenario: ubuntu:2004
+    initializeCommand: wget -q https://raw.githubusercontent.com/josh-heyer/barmantutorial/main/step04-restore/docker-compose.yaml ; docker-compose up -d ; clear ; docker exec -it -u barman backup /bin/bash
+    codelanguages: shell, sql, ini
+iconName: coffee
+---
+
+In the previous step, [we created a full backup of the example database](step03-backup). But it's not a real backup until we've successfully restored it - so let's end with that. 
+
+This demo is interactive. You can follow along right in your browser, using Katacoda, by clicking the button below.
+
+!!! Note
+    When you click "Start Now," Katacoda will load a Docker Compose environment with two container images representing a
+    PostgreSQL 13 server with [the Pagila database](https://github.com/devrimgunduz/pagila) loaded (named `pg`)
+    and a backup server for Barman.    
+    
+    Once you see a `barman@backup` prompt, you can follow the steps below.
+
+<KatacodaPanel />
+
+Something terrible has happened to our example database! This should list all the tables:
+
+```shell
+psql -h pg -d pagila -U barman -c '\dt'
+__OUTPUT__
+Did not find any relations.
+```
+
+All the data is gone! 
+
+Ok, I just didn't populate the data for this step, in order to demonstrate a total loss. Fortunately, we still have a backup!
+
+```shell
+barman list-backup pg
+```
+
+Let's instruct Barman to ssh into the database server and restore the backup. 
+
+1. Connect to pg and shut down the database cluster:
+
+    ```shell
+    ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+        --pgdata=/var/lib/postgresql/data stop
+    ```
+
+2. Use [Barman's recover command](http://docs.pgbarman.org/release/2.12/#recover) to connect to pg and restore the latest backup 
+
+    ```shell
+    barman recover --remote-ssh-command 'ssh postgres@pg' \
+            pg latest \
+            /var/lib/postgresql/data
+    ```
+
+    Barman handles connecting to the destination server, but we do have to provide a valid path *on* that server. In this example, the PostgreSQL cluster lives in /var/lib/postgresql/data and we're asking Barman to overwrite it with the backup.
+
+3. Restart the server:
+
+    ```shell
+    ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+        --pgdata=/var/lib/postgresql/data start 
+    ```
+
+    (Hit <kbd>Ctrl</kbd>+<kbd>C</kbd> after that completes to regain control in the terminal)
+
+Now we should be able to reconnect to the database:
+
+```shell
+psql -h pg -d pagila -U barman
+__OUTPUT__
+psql (13.2 (Ubuntu 13.2-1.pgdg20.04+1))
+Type "help" for help.
+
+pagila=#
+```
+
+...And re-run the query we started out with:
+
+```sql
+select * from actor where last_name='KILMER';
+__OUTPUT__
+ actor_id | first_name | last_name |      last_update       
+----------+------------+-----------+------------------------
+       23 | SANDRA     | KILMER    | 2020-02-15 09:34:33+00
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+(5 rows)
+```
+
+<!-- This needs barman-cli on the database server - which means I can't use the std postgresql image. TODO!
+
+Ok, so far so good - but, we're missing the update we wrote to this data! Remember, that wasn't in the base backup, it was in a partial WAL file... Fortunately, Barman still has it and knows how to use it. 
+
+Let's try this recovery process again:
+
+1. Connect to pg and shut down the database cluster:
+
+    ```shell
+    ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+        --pgdata=/var/lib/postgresql/data stop
+    ```
+
+2. Instruct Barman to connect to pg and restore the latest backup 
+    ```shell
+    barman recover --remote-ssh-command 'ssh postgres@pg' \
+            --get-wal \
+            pg latest \
+            /var/lib/postgresql/data
+    ```
+
+3. Restart the server:
+
+    ```shell
+    ssh postgres@pg /usr/lib/postgresql/13/bin/pg_ctl \
+        --pgdata=/var/lib/postgresql/data start &
+    ```
+-->
+
+## Conclusion
+
+This demonstration barely scratches the surface of what is possible with Barman, but hopefully it has provided you with a taste of its capabilities! For more details, visit https://pgbarman.org/

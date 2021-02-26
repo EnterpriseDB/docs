@@ -1,0 +1,126 @@
+---
+title: "Backup and Recovery: Single-Server Streaming - Configuring PostgreSQL"
+description: "Configuring a PostgreSQL server for Barman streaming replication"
+navTitle: "Database Server Configuration"
+product: barman
+platform: ubuntu
+tags:
+    - ubuntu
+    - barman
+    - postgresql
+    - streaming-replication
+    - live-demo
+katacodaPanel:
+    scenario: ubuntu:2004
+    initializeCommand: wget -q https://raw.githubusercontent.com/josh-heyer/barmantutorial/main/step01-db-setup/docker-compose.yaml ; docker-compose up -d ; clear ; docker exec -it -u postgres pg /bin/bash
+    codelanguages: shell, sql, ini
+iconName: coffee
+---
+
+This demo is interactive. You can follow along right in your browser, using Katacoda, by clicking the button below.
+
+!!! Note
+    When you click "Start Now," Katacoda will load a Docker Compose environment with two container images representing a
+    PostgreSQL 13 server with [the Pagila database](https://github.com/devrimgunduz/pagila) loaded (named `pg`)
+    and a backup server for Barman.    
+    
+    Once you see a `postgres@pg` prompt, you can follow the steps below.
+
+<KatacodaPanel />
+
+We'll start by configuring the database itself to allow streaming replication. For this, we need two things:
+
+1. A dedicated superuser for Barman to connect as
+2. A dedicated streaming user with the replication attribute and remote login permissions
+3. Free replication slots
+
+### User provisioning
+
+Let's call our dedicated backup user, "barman". We'll create it interactively via the [`createuser`](https://www.postgresql.org/docs/current/app-createuser.html) utility:
+
+```shell
+createuser --superuser --replication -P barman
+__OUTPUT__
+Enter password for new role: 
+Enter it again: 
+```
+
+Enter `example-password` when prompted (twice).
+
+!!! Note Make note of that password
+    We'll need to add it to the ~/.pgpass file on the backup server later!
+
+We're making this a superuser account, which will allow it full control of all databases on this server. **Be very careful** with superuser credentials! Anyone who can connect as a superuser account owns your data.
+
+Now we will create the streaming replication user, "streaming_barman". This doesn't need to be a superuser, but it does need the replication attribute:
+
+```shell
+createuser --replication -P streaming_barman
+__OUTPUT__
+Enter password for new role: 
+Enter it again: 
+```
+
+Enter `example-password` when prompted (twice).
+
+We'll also need to edit `pg_hba.conf` to allow the streaming user to connect from the backup server, by [explicitly allowing it to connect in replication mode](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html):
+
+```shell
+sed -i '$ a host   replication    streaming_barman   all md5' /var/lib/postgresql/data/pg_hba.conf
+cat /var/lib/postgresql/data/pg_hba.conf
+__OUTPUT__
+...
+local   replication     all                                     trust
+host    replication     all             127.0.0.1/32            trust
+host    replication     all             ::1/128                 trust
+
+host all all all md5
+host   replication    streaming_barman   all md5
+```
+
+### Database settings for streaming
+
+We'll also need to make sure there are replication slots available, and that PostgreSQL will allow another sender to connect. We'll use psql to check the current settings:
+
+```shell
+psql -d pagila
+```
+
+```sql
+Show max_wal_senders;
+Show max_replication_slots;
+__OUTPUT__
+ max_wal_senders 
+-----------------
+ 10
+(1 row)
+
+ max_replication_slots 
+-----------------------
+ 10
+(1 row)
+```
+
+The default for both of these (for PostgreSQL 10 and above) is 10, so we're fine - but if we needed more (or if they'd been previously set to 0, thus [disabling replication](https://www.postgresql.org/docs/current/runtime-config-replication.html)) then we'd need to increase them.
+
+
+### Gazing fondly at data
+
+Before we end, let's query some data - this is what we're going to back up! 
+
+```sql
+select * from actor where last_name='KILMER';
+__OUTPUT__
+ actor_id | first_name | last_name |      last_update       
+----------+------------+-----------+------------------------
+       23 | SANDRA     | KILMER    | 2020-02-15 09:34:33+00
+       45 | REESE      | KILMER    | 2020-02-15 09:34:33+00
+       55 | FAY        | KILMER    | 2020-02-15 09:34:33+00
+      153 | MINNIE     | KILMER    | 2020-02-15 09:34:33+00
+      162 | OPRAH      | KILMER    | 2020-02-15 09:34:33+00
+(5 rows)
+```
+
+We'll verify later on that this can be restored reliably.
+
+Continue on with [Step #2: Backup Server Configuration](step02-backup-setup).
