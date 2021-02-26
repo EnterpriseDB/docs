@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from 'react-bootstrap';
 
-const childToString = child => {
+const childToString = (child) => {
   if (typeof child === 'string') {
     return child; // hit string, unroll
   } else if (child && child.props) {
@@ -11,7 +11,7 @@ const childToString = child => {
   return '';
 };
 
-const popExtraNewLines = code => {
+const popExtraNewLines = (code) => {
   while (
     code.length - 1 > 0 &&
     childToString(code[code.length - 1]).trim() === ''
@@ -20,7 +20,7 @@ const popExtraNewLines = code => {
   }
 };
 
-const splitChildrenIntoCodeAndOutput = rawChildren => {
+const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   if (!rawChildren) {
     return [[], []];
   }
@@ -60,7 +60,7 @@ const splitChildrenIntoCodeAndOutput = rawChildren => {
 const CodePre = ({ className, content, runnable }) => {
   const codeRef = React.createRef();
   const [copyButtonText, setCopyButtonText] = useState('Copy');
-  const copyClick = e => {
+  const copyClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
     navigator.clipboard.writeText(text).then(() => {
       setCopyButtonText('Copied!');
@@ -72,13 +72,13 @@ const CodePre = ({ className, content, runnable }) => {
   };
 
   const [wrap, setWrap] = useState(false);
-  const wrapClick = e => {
+  const wrapClick = (e) => {
     setWrap(!wrap);
     e.target.blur();
   };
 
   const [canRun, setCanRun] = useState(true);
-  const runClick = e => {
+  const runClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
     window.katacoda.write(text);
     setCanRun(false);
@@ -141,7 +141,9 @@ const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
     : 'text';
 
   const execLanguages = katacodaPanelData
-    ? ['shell'].concat(katacodaPanelData.codelanguages)
+    ? ['shell'].concat(
+        katacodaPanelData.codelanguages?.split(',')?.map((l) => l.trim()),
+      )
     : [];
 
   if (codeContent.length > 0) {
