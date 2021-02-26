@@ -82,7 +82,7 @@ const Page = () => (
               </div>
               <div className="card-editorial-cnpo align-self-end">
                 <img
-                  src="/images/cli@2x.png"
+                  src="images/cli@2x.png"
                   alt="Illustration of a Kubernetes Terminal Command"
                   className="img-fluid shadow"
                 />
