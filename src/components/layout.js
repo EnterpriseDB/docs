@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
-  Attention,
   CodeBlock,
   KatacodaPageLink,
   KatacodaPanel,
@@ -83,28 +82,27 @@ const Layout = ({
               {...rest}
             />
           ),
-          table: props => (
+          table: (props) => (
             <div className="table-with-scroll">
               <table {...props} className="table" />
             </div>
           ),
-          pre: props => (
+          pre: (props) => (
             <CodeBlock {...props} katacodaPanelData={katacodaPanelData} />
           ),
-          h2: props => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          h3: props => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          img: props => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
-          blockquote: props => (
+          h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+          h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+          img: (props) => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
+          blockquote: (props) => (
             <blockquote
               {...props}
               className="pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
             ></blockquote>
           ),
-          KatacodaPanel: props => (
+          KatacodaPanel: (props) => (
             <KatacodaPanel {...props} katacodaPanelData={katacodaPanelData} />
           ),
           KatacodaPageLink,
-          Attention,
           Icon,
           StubCards,
         }}
