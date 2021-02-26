@@ -154,9 +154,11 @@ const Page = () => (
               className="nested-link"
             >
               Single Server Streaming
-              <span className="new-thing" title="Interactive Katacoda Tutorial">
-                {' '}
-                Tutorial
+              <span
+                className="new-thing"
+                title="Run through and Interactive Demonstration in Katacoda"
+              >
+                10min Demo
               </span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
