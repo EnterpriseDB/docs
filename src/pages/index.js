@@ -82,7 +82,7 @@ const Page = () => (
               </div>
               <div className="card-editorial-cnpo align-self-end">
                 <img
-                  src="/images/cli@2x.png"
+                  src="images/cli@2x.png"
                   alt="Illustration of a Kubernetes Terminal Command"
                   className="img-fluid shadow"
                 />
@@ -158,7 +158,7 @@ const Page = () => (
               Single Server Streaming
               <span
                 className="new-thing"
-                title="Run through and Interactive Demonstration in Katacoda"
+                title="Walk through an interactive demo in Katacoda"
               >
                 10min Demo
               </span>
