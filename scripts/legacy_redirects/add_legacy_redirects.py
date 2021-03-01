@@ -24,18 +24,14 @@ def determine_url_scheme(url):
 # Should we create generic rules to redirect a product/version to the root
 # if it's unmatched, instead of throwing it all in the index file frontmatter?
 
-# We want edb-docs/latest to go to docs/latest
-# So technically this should live outside of frontmatter?
 def build_latest_url(url):
   latest_url = re.sub(r'\/\d+(\.?\d+)*($|\/)', '/latest/', url)
   if latest_url.endswith('/'): # if version was at the end, like the product index pages
     latest_url = latest_url[:-1]
   return latest_url
 
-def add_urls_to_output(url, path, output, isLatestVersion):
+def add_urls_to_output(url, path, output):
   output[str(path)].append(url);
-  if isLatestVersion:
-    output[str(path)].append(build_latest_url(url))
 
 def write_redirects_to_mdx_files(output):
   for filepath, redirects in output.items():
@@ -163,8 +159,6 @@ for product in legacy_urls_by_product_version.keys():
       no_metadata[product].append(version)
       continue
 
-    is_latest_version = version == metadata.get("latest")
-
     docs_path = 'product_docs/docs/{0}/{1}'.format(metadata['folder_name'], version)
     if not os.path.exists(docs_path):
       # version does not match a version we have
@@ -185,7 +179,7 @@ for product in legacy_urls_by_product_version.keys():
       if is_product_index:
         index_path = determine_root_mdx_file(docs_path)
         if index_path:
-          add_urls_to_output(url, index_path, output, is_latest_version)
+          add_urls_to_output(url, index_path, output)
           processed_count += 1
           matched_count += 1
           continue
@@ -242,7 +236,7 @@ for product in legacy_urls_by_product_version.keys():
           mdx_page_filename = re.sub(r'^\d*_', '', mdx_page_filename.replace('.mdx', ''))
 
           if legacy_page_filename == mdx_page_filename:
-            add_urls_to_output(url, filename, output, is_latest_version)
+            add_urls_to_output(url, filename, output)
             matched_count += 1
             match_found = True
             break # TODO handle duplicate url bug that affects some "new" style urls
@@ -251,7 +245,7 @@ for product in legacy_urls_by_product_version.keys():
         if legacy_page_filename in NEW_URLS_REMOVED_FILES:
           index_path = determine_root_mdx_file(docs_path, mdx_folder)
           if index_path:
-            add_urls_to_output(url, index_path, output, is_latest_version)
+            add_urls_to_output(url, index_path, output)
             matched_count += 1
             match_found = True
 

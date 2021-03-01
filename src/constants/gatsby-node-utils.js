@@ -261,6 +261,12 @@ const configureRedirects = (toPath, redirects, actions, config = {}) => {
   });
 };
 
+const convertLegacyDocsPathToLatest = (fromPath) => {
+  return fromPath
+    .replace(/\/\d+(\.?\d+)*\//, '/latest/') // version in middle of path
+    .replace(/\/\d+(\.?\d+)*$/, '/latest'); // version at end of path (product index)
+};
+
 const configureLegacyRedirects = ({
   toPath,
   toLatestPath,
@@ -269,27 +275,32 @@ const configureLegacyRedirects = ({
 }) => {
   if (!redirects) return;
 
-  const isFromPathLatest = (fromPath) => {
-    return !!fromPath.match(/\/latest($|\/)/);
-  };
-
   redirects.forEach((fromPath) => {
-    // EVAN could create our own latest url here instead of having it in frontmatter
-    // if the redirect is a "latest" url, redirect to the latest path
-    if (isFromPathLatest(fromPath) && toLatestPath) {
+    /*
+      Three kinds of redirects
+      - redirects from versioned path to new versioned path, not latest version
+        - these should be made permanent
+      - redirects from versioned path to new versioned path, latest version
+        - should these be permanent or temporary?
+        - latest versioned path will redirect to /latest, meaning you would have two redirects
+          - if the first redirect is permananet, will we have issues when this is no longer the latest version?
+      - redirects from latest path to new latest path
+        - these should be temporary
+    */
+
+    actions.createRedirect({
+      fromPath,
+      toPath: toPath,
+      redirectInBrowser: false,
+      isPermanent: false, // should be true when we're confident
+    });
+
+    if (toLatestPath) {
       actions.createRedirect({
-        fromPath,
+        fromPath: convertLegacyDocsPathToLatest(fromPath),
         toPath: toLatestPath,
         redirectInBrowser: false,
         isPermanent: false,
-      });
-    } else {
-      // redirect directly to the page
-      actions.createRedirect({
-        fromPath,
-        toPath: toPath,
-        redirectInBrowser: false,
-        isPermanent: false, // should be true when we're confident
       });
     }
   });
