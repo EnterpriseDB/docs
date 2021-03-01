@@ -114,6 +114,7 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
   }
   const account = katacodaPanelData.account;
   const scenario = katacodaPanelData.scenario;
+  const command = katacodaPanelData.initializeCommand;
 
   const [isShown, setShown] = useState(false);
   const scenarioId = account ? [account, scenario].join('/') : scenario;
@@ -146,6 +147,7 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
         className={`katacoda-panel${isShown ? '' : ' d-none'}`}
         data-katacoda-id={scenarioId}
         data-katacoda-ui="panel"
+        data-katacoda-command={command}
         data-katacoda-color="e94621"
         data-katacoda-ondemand="true"
       />
@@ -160,7 +162,7 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
       document.documentElement.classList.add('katacoda-panel-active');
 
       // detect when katacoda is closed via the internal button
-      const handler = e => {
+      const handler = (e) => {
         if (
           e.data.type === 'close-panel' &&
           (e.data.data || { target: null }).target === panelElementId
@@ -180,7 +182,7 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
 
 // adapted from Katacoda src to patch over http to https redirect issues
 // when testing locally - remove once Katacoda has this fixed
-const katacodaHttpsWriter = cmd => {
+const katacodaHttpsWriter = (cmd) => {
   let target = document.querySelectorAll('[data-katacoda-env]');
   if (target.length === 0)
     target = document.querySelectorAll('[data-katacoda-id]');

@@ -3,7 +3,7 @@ import { Link as GatsbyLink } from 'gatsby';
 import isAbsoluteUrl from 'is-absolute-url';
 import usePathPrefix from '../hooks/use-path-prefix';
 
-const forceTrailingSlash = url => {
+const forceTrailingSlash = (url) => {
   const splitUrl = url.split('/');
   // if does not end with extension
   if (splitUrl[splitUrl.length - 1].match(/^.+\.\w+$/) || url.startsWith('#')) {
@@ -20,8 +20,16 @@ const stripPathPrefix = (path, pathPrefix) => {
   return path;
 };
 
-const isAbsoluteOrProtocolRelativeUrl = url => {
+const stripMarkdownExtension = (path) => {
+  return path.replace(/\.mdx?$/, '');
+};
+
+const isAbsoluteOrProtocolRelativeUrl = (url) => {
   return isAbsoluteUrl(url) || url.trim().startsWith('//');
+};
+
+const hasNonMarkdownExtension = (url) => {
+  return url.match(/\.[a-zA-Z]+$/) && !url.match(/\.mdx?$/);
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
@@ -45,15 +53,20 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
 
   let resultHref = result.href.replace(/^loc:/, '');
   resultHref = stripPathPrefix(resultHref, pathPrefix);
+  resultHref = stripMarkdownExtension(resultHref);
   return forceTrailingSlash(resultHref);
 };
 
 const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
   const pathPrefix = usePathPrefix();
 
-  if (isAbsoluteOrProtocolRelativeUrl(to)) {
+  if (
+    !to ||
+    isAbsoluteOrProtocolRelativeUrl(to) ||
+    hasNonMarkdownExtension(to)
+  ) {
     return (
-      <a href={to} {...rest}>
+      <a href={to || '#'} {...rest}>
         {rest.children}
       </a>
     );

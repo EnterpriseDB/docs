@@ -2,7 +2,6 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -10,6 +9,7 @@ import {
   Layout,
   LeftNav,
   MainContent,
+  PrevNext,
   SideNavigation,
   TableOfContents,
   TopBar,
@@ -50,7 +50,7 @@ const TileModes = {
   Simple: 'simple',
   Full: 'full',
 };
-const Tiles = ({ mode, mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -73,11 +73,29 @@ const Tiles = ({ mode, mdx, navLinks }) => {
   return null;
 };
 
+const EditButton = ({ githubEditLink }) => (
+  <a
+    href={githubEditLink || '#'}
+    className="btn btn-sm btn-primary px-4 text-nowrap"
+  >
+    Edit this page
+  </a>
+);
+
+const FeedbackButton = ({ githubIssuesLink }) => (
+  <a
+    href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+    target="_blank"
+    rel="noreferrer"
+    className="btn btn-sm btn-primary px-4 text-nowrap"
+  >
+    Feedback
+  </a>
+);
+
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx } = data;
-  const { mtime } = mdx.fields;
-  // const { iconName, title, description, katacodaPanel } = mdx.frontmatter;
-
+  const { mtime, path, depth } = mdx.fields;
   const {
     frontmatter,
     pagePath,
@@ -86,6 +104,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     githubEditLink,
     githubIssuesLink,
     isIndexPage,
+    navTree,
+    prevNext,
   } = pageContext;
   const {
     iconName,
@@ -93,6 +113,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description,
     katacodaPanel,
     indexCards,
+    prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
     title: title,
@@ -103,15 +124,13 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  // Determine side bar icon. This might need some future rework.
-  const finalIconName = (
-    rawIndexNavigation
-      .map((al) => al.links)
-      .flat()
-      .find((link) => mdx.fields.path.includes(link.url)) || {
-      iconName: iconName,
-    }
-  ).iconName;
+  // CNO isn't editable
+  // TODO unify docs/advo to share one smart component that knows what to show
+  const editOrFeedbackButton = path.includes('/cloud_native_operator/') ? (
+    <FeedbackButton githubIssuesLink={githubIssuesLink} />
+  ) : (
+    <EditButton githubEditLink={githubEditLink} />
+  );
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
@@ -119,21 +138,17 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
+            navTree={navTree}
             navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
-            iconName={finalIconName}
+            iconName={iconName}
           />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
-            <a
-              href={githubEditLink || '#'}
-              className="btn btn-sm btn-primary px-4 text-nowrap"
-            >
-              Edit this page
-            </a>
+            {editOrFeedbackButton}
           </div>
 
           <ContentRow>
@@ -148,6 +163,14 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
+          {showPrevNext && depth > 1 && (
+            <PrevNext
+              prevNext={prevNext}
+              path={path}
+              depth={depth}
+              depthLimit={2}
+            />
+          )}
 
           <DevFrontmatter frontmatter={frontmatter} />
 

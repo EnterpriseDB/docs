@@ -59,10 +59,6 @@ const sourceToPluginConfig = {
   pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
   postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
   slony: { name: 'slony', path: 'product_docs/docs/slony' },
-
-  k8s_docs: { name: 'k8s_docs', path: 'external_sources/k8s_docs' },
-  barman: { name: 'barman', path: 'external_sources/barman/doc/manual' },
-  pgbackrest: { name: 'pgbackrest', path: 'external_sources/pgbackrest/docs' },
 };
 
 const externalSourcePlugins = () => {
@@ -386,7 +382,14 @@ module.exports = {
           [require('./src/plugins/code-in-tables')],
           [
             require('remark-admonitions'),
-            { tag: '!!!', icons: 'none', infima: true },
+            {
+              tag: '!!!',
+              icons: 'none',
+              infima: true,
+              customTypes: {
+                seealso: 'note',
+              },
+            },
           ],
         ],
       },
@@ -424,7 +427,7 @@ module.exports = {
   ],
 };
 
-if (process.env.INDEX_ON_BUILD) {
+if (process.env.INDEX_ON_BUILD && process.env.INDEX_ON_BUILD !== 'false') {
   module.exports['plugins'].push({
     // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
     resolve: `gatsby-plugin-algolia`,

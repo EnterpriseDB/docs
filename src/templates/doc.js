@@ -14,7 +14,6 @@ import {
   TableOfContents,
   TopBar,
 } from '../components';
-import { leftNavs } from '../constants/left-navs';
 import { products } from '../constants/products';
 import Icon from '../components/icon';
 
@@ -24,6 +23,7 @@ export const query = graphql`
       fields {
         path
         mtime
+        depth
       }
       body
       tableOfContents
@@ -52,54 +52,40 @@ const makeVersionArray = (versions, path) => {
   }));
 };
 
-const ContentRow = ({ children }) => (
-  <div className="container p-0 mt-4">
-    <Row>{children}</Row>
-  </div>
-);
-
-const getNavOrder = (product, version, leftNavs) => {
-  if (leftNavs[product] && leftNavs[product][version]) {
-    return leftNavs[product][version];
-  }
-  return null;
-};
-
-const convertOrderToObjects = (navOrder, navLinks) => {
-  let result = [];
-  let navObject = { title: null, guides: [] };
-  for (let item of navOrder) {
-    if (!item.path && item.title) {
-      if (navObject.guides.length > 0) {
-        result.push({ ...navObject });
-      }
-      navObject = { title: item.title, guides: [] };
-    } else if (item.path) {
-      navObject.guides.push(getLinkItemFromPath(item.path, navLinks));
-    }
-  }
-  result.push({ ...navObject });
-
-  return result;
-};
-
-const getLinkItemFromPath = (path, navLinks) => {
-  for (let item of navLinks) {
-    const linkPath = item.fields.path;
-    if (linkPath.includes(path) && linkPath.split('/').length === 5) {
-      return item;
-    }
-  }
-  console.error('No page found for ' + path + ' from left-navs');
-  return null;
-};
-
 const determineCanonicalPath = (hasLatest, latestPath) => {
   if (hasLatest) {
     return latestPath;
   } // latest will also have hasLatest=true
   return null;
 };
+
+const buildSections = (navTree) => {
+  const sections = [];
+  let nextSection;
+
+  navTree.items.forEach((navEntry) => {
+    if (navEntry.path) {
+      if (!nextSection) return;
+      nextSection.guides.push(navEntry);
+    } else {
+      // new section
+      if (nextSection) sections.push(nextSection);
+      nextSection = {
+        title: navEntry.title,
+        guides: [],
+      };
+    }
+  });
+  if (nextSection) sections.push(nextSection);
+
+  return sections;
+};
+
+const ContentRow = ({ children }) => (
+  <div className="container p-0 mt-4">
+    <Row>{children}</Row>
+  </div>
+);
 
 const Sections = ({ sections }) => (
   <>
@@ -116,12 +102,12 @@ const Section = ({ section }) => (
         <h3 className="card-title balance-text">{section.title}</h3>
         {section.guides.map((guide) =>
           guide ? (
-            <p className="card-text" key={`${guide.frontmatter.title}`}>
+            <p className="card-text" key={`${guide.title}`}>
               <Link
-                to={guide.fields.path}
+                to={guide.path}
                 className="btn btn-link btn-block text-left p-0"
               >
-                {guide.frontmatter.navTitle || guide.frontmatter.title}
+                {guide.navTitle || guide.title}
               </Link>
               {/* <div className="text-small">
                 <span>{guide.frontmatter.description || guide.excerpt}
@@ -130,9 +116,7 @@ const Section = ({ section }) => (
             </p>
           ) : (
             <DevOnly key={Math.random()}>
-              <span className="badge badge-light">
-                Link Missing! Check left-navs.js
-              </span>
+              <span className="badge badge-light">Link Missing!</span>
             </DevOnly>
           ),
         )}
@@ -176,29 +160,27 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
 
 const DocTemplate = ({ data, pageContext }) => {
   const { fields, body, tableOfContents } = data.mdx;
-  const { path, mtime } = fields;
-  const depth = path.split('/').length;
+  const { path, mtime, depth } = fields;
   const {
     frontmatter,
     pagePath,
-    navLinks,
     versions,
     githubFileLink,
     githubEditLink,
     githubIssuesLink,
     isIndexPage,
+    navTree,
+    prevNext,
   } = pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
-  const navOrder = getNavOrder(product, version, leftNavs);
-  const sections =
-    navOrder && depth === 4 ? convertOrderToObjects(navOrder, navLinks) : null;
+  const sections = depth === 2 ? buildSections(navTree) : null;
 
   let title = frontmatter.title;
-  if (depth === 4) {
+  if (depth === 2) {
     // product version root
     title += ` v${version}`;
-  } else if (depth > 4) {
+  } else if (depth > 2) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
@@ -224,11 +206,11 @@ const DocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
-            navLinks={navLinks}
+            navTree={navTree}
             path={path}
             pagePath={pagePath}
             versionArray={versionArray}
-            navOrder={navOrder}
+            iconName={frontmatter.iconName}
           />
         </SideNavigation>
         <MainContent>
@@ -262,7 +244,9 @@ const DocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
           {sections && <Sections sections={sections} />}
-          {depth > 4 && <PrevNext navLinks={navLinks} path={path} />}
+          {depth > 2 && (
+            <PrevNext prevNext={prevNext} path={path} depth={depth} />
+          )}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />
