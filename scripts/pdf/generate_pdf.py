@@ -86,10 +86,21 @@ def main():
     product = splitDirName[2]
     version = splitDirName[3]
 
+    fullProductPdf = True
+    guide = None
+    if len(splitDirName) > 4:
+        fullProductPdf = False
+        guide = splitDirName[4]
+
     mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, product, version)
     htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, product, version)
     coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, product, version)
-    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, product, version)
+    pdfFilePath = "{0}/{1}_v{2}_{3}documentation.pdf".format(
+        dirName,
+        product,
+        version,
+        guide + '_' if guide else ''
+    )
 
     if not os.path.exists(dirName):
         raise Exception('directory does not exist')
@@ -101,7 +112,8 @@ def main():
     listOfFiles = getListOfFiles(dirName, "")
     if len(listOfFiles) == 0:
         raise Exception('no files in {}'.format(dirName));
-    listOfFiles.pop(0) # remove base product index page, which are empty
+    if fullProductPdf:
+        listOfFiles.pop(0) # remove base product index page, which are empty
 
     toc = list()
     for elem in listOfFiles:
