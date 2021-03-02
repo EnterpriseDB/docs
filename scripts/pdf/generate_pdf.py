@@ -2,6 +2,9 @@ import os
 import re
 import sys
 import datetime
+import pathlib
+
+basePath = pathlib.Path(__file__).parent.absolute()
 
 # magic snippet for inline repl
 # import code; code.interact(local=dict(globals(), **locals()))
@@ -149,9 +152,9 @@ def main():
     "-f gfm " \
     "--self-contained " \
     '--highlight-style tango ' \
-    "--css=../../../../scripts/pdf/pdf-styles.css " \
+    "--css={3}/pdf-styles.css " \
     "--resource-path={2} " \
-    "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths))
+    "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths), basePath)
     )
 
     if not os.path.exists(htmlFilePath):
