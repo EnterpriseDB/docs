@@ -8,6 +8,7 @@ const ANSI_BLUE = '\033[34m';
 const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
+const isProduction = process.env.APP_ENV === 'production';
 const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-staging';
 
 /******** Sourcing *********/
@@ -282,6 +283,14 @@ const splitNodeContent = (nodes) => {
   return result;
 };
 
+const netlifyHeaders = () => {
+  if (isProduction) return {};
+
+  return {
+    '/*': ['X-Robots-Tag: noindex'],
+  };
+};
+
 /********** Gatsby config *********/
 module.exports = {
   flags: {
@@ -309,9 +318,7 @@ module.exports = {
     {
       resolve: 'gatsby-plugin-netlify',
       options: {
-        headers: {
-          '/*': ['X-Robots-Tag: noindex'],
-        },
+        headers: netlifyHeaders(),
       },
     },
     // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
