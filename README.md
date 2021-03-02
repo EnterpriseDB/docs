@@ -52,35 +52,21 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
   - For a list of these sources, see [product_docs/docs](https://github.com/EnterpriseDB/docs/tree/develop/product_docs/docs)
 
-- GitHub-Sourced Docs (entirety of `/external_sources` at present)
-
-  - [Kubernetes Docs](https://github.com/EnterpriseDB/edb-k8s-doc)
-  - [Barman](https://github.com/2ndquadrant-it/barman)
-  - [pgBackRest](https://github.com/EnterpriseDB/pgbackrest-docs)
-
 ### Configuring Which Sources are Loaded
 
 When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
 
 #### `yarn config-sources`
 
-Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load, and also provides the next script `yarn pull-sources` with the data it needs. The script is interactive!
+Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
-
-If you select an "external" source, you will be prompted to run the next command, `yarn pull-sources`, to download and load this content from the internet.
-
-#### `yarn pull-sources`
-
-Use this command to pull down all the sources you have specified in your `dev-sources.json` file. **This will wipe all external sources**, so make sure you do not have any local changes to these files (in the `external_sources` subdirectory) that you want to save! The `/advocacy_docs` and `/product_docs` folders will not be affected.
 
 ### Types of Sources
 
 **Advocacy Docs** are tutorial content, getting-started material, and anything that is about a subject matter area, but not explicitly tied to a product version.
 
 **Product Docs** are versioned documentation for products. They follow a slightly stricter file structure to allow for version switching and other features.
-
-**GitHub Docs** are a low-touch way to display markdown content from GitHub. These docs will link back to the relavent GitHub url on each page, in order to provide any missing context.
 
 More details can be found on the [Adding New Sources](README_ADDING_NEW_SOURCES.md) page.
 
