@@ -105,6 +105,36 @@ Production is hosted on Netlify, and is built from the `main` branch. The build 
 
 Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
 
+## Redirects
+
+The app is concerned with two different types of redirects that can be defined in frontmatter.
+
+### Internal Redirects (within Docs 2.0)
+
+#### `redirects`
+
+The `redirects` frontmatter is to be used for redirects internal to Docs. For example, if you had a file `great_file.mdx` with this following frontmatter...
+
+```yaml
+redirects:
+  - '/old_path'
+  - '/another_old_path'
+```
+
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
+
+### Docs 1.0 to Docs 2.0 redirects
+
+This app builds a list of nginx style redirects that are loaded into a separate server. These redirects direct users from links to the old docs site, to the appropriate page on the new docs site.
+
+#### `legacyRedirectsGenerated`
+
+This frontmatter is an automatically generated list of redirects for Docs 1.0 to Docs 2.0 (this repo). These redirects are built by `scripts/legacy_redirects/add_legecy_redirects.py`, and **should not be manually edited**.
+
+#### `legacyRedirects`
+
+If you need to setup a redirect from Docs 1.0 to Docs 2.0 manually, this is the place to do it. If the `legacyRedirectsGenerated` frontmatter does not include the redirect you need, you should add it here.
+
 # Advocacy Docs (left over from previous README, needs attention)
 
 Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
