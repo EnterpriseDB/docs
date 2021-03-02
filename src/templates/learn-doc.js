@@ -2,7 +2,6 @@ import React from 'react';
 import { Container, Row, Col } from 'react-bootstrap';
 import { graphql } from 'gatsby';
 import { MDXRenderer } from 'gatsby-plugin-mdx';
-import { rawIndexNavigation } from '../constants/index-navigation';
 import {
   CardDecks,
   DevFrontmatter,
@@ -125,16 +124,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   const showToc = !!mdx.tableOfContents.items;
 
-  // Determine side bar icon. This might need some future rework.
-  const finalIconName = (
-    rawIndexNavigation
-      .map((al) => al.links)
-      .flat()
-      .find((link) => mdx.fields.path.includes(link.url)) || {
-      iconName: iconName,
-    }
-  ).iconName;
-
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
   const editOrFeedbackButton = path.includes('/cloud_native_operator/') ? (
@@ -153,7 +142,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
-            iconName={finalIconName}
+            iconName={iconName}
           />
         </SideNavigation>
         <MainContent>
