@@ -2,6 +2,9 @@ import os
 import re
 import sys
 import datetime
+import pathlib
+
+basePath = pathlib.Path(__file__).parent.absolute()
 
 # magic snippet for inline repl
 # import code; code.interact(local=dict(globals(), **locals()))
@@ -83,10 +86,21 @@ def main():
     product = splitDirName[2]
     version = splitDirName[3]
 
+    fullProductPdf = True
+    guide = None
+    if len(splitDirName) > 4:
+        fullProductPdf = False
+        guide = splitDirName[4]
+
     mdxFilePath = "{0}/{1}_v{2}_documentation.mdx".format(dirName, product, version)
     htmlFilePath = "{0}/{1}_v{2}_documentation.html".format(dirName, product, version)
     coverFilePath = "{0}/{1}_v{2}_documentation_cover.html".format(dirName, product, version)
-    pdfFilePath = "{0}/{1}_v{2}_documentation.pdf".format(dirName, product, version)
+    pdfFilePath = "{0}/{1}_v{2}_{3}documentation.pdf".format(
+        dirName,
+        product,
+        version,
+        guide + '_' if guide else ''
+    )
 
     if not os.path.exists(dirName):
         raise Exception('directory does not exist')
@@ -98,7 +112,8 @@ def main():
     listOfFiles = getListOfFiles(dirName, "")
     if len(listOfFiles) == 0:
         raise Exception('no files in {}'.format(dirName));
-    listOfFiles.pop(0) # remove base product index page, which are empty
+    if fullProductPdf:
+        listOfFiles.pop(0) # remove base product index page, which are empty
 
     toc = list()
     for elem in listOfFiles:
@@ -149,9 +164,9 @@ def main():
     "-f gfm " \
     "--self-contained " \
     '--highlight-style tango ' \
-    "--css=../../../../scripts/pdf/pdf-styles.css " \
+    "--css={3}/pdf-styles.css " \
     "--resource-path={2} " \
-    "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths))
+    "-o {1}".format(mdxFilePath, htmlFilePath, ':'.join(resourceSearchPaths), basePath)
     )
 
     if not os.path.exists(htmlFilePath):
