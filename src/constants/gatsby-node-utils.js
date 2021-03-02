@@ -293,6 +293,7 @@ const configureLegacyRedirects = ({
       toPath: toPath,
       redirectInBrowser: false,
       isPermanent: false,
+      force: true,
     });
 
     if (toLatestPath) {
@@ -301,6 +302,7 @@ const configureLegacyRedirects = ({
         toPath: toLatestPath,
         redirectInBrowser: false,
         isPermanent: false,
+        force: true,
       });
     }
   });
