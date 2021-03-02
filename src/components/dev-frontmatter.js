@@ -5,10 +5,10 @@ const DevFrontmatter = ({ frontmatter }) => {
   let keys = Object.keys(frontmatter);
   return (
     <DevOnly>
-      <div className="alert alert-primary mt-5" role="alert">
+      <div className="alert alert-primary mt-5 break-word" role="alert">
         <div>Page frontmatter</div>
         <br />
-        {keys.map(key => {
+        {keys.map((key) => {
           let val = frontmatter[key];
           if (typeof val !== 'string') {
             val = JSON.stringify(val);
