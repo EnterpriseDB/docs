@@ -283,16 +283,16 @@ const configureLegacyRedirects = ({
       - redirects from versioned path to new versioned path, latest version
         - should these be permanent or temporary?
         - latest versioned path will redirect to /latest, meaning you would have two redirects
-          - if the first redirect is permananet, will we have issues when this is no longer the latest version?
+          - if the first redirect is permanent, will we have issues when this is no longer the latest version?
       - redirects from latest path to new latest path
-        - these should be temporary
+        - these should be permanent right?
     */
 
     actions.createRedirect({
       fromPath,
       toPath: toPath,
       redirectInBrowser: false,
-      isPermanent: false, // should be true when we're confident
+      isPermanent: false,
     });
 
     if (toLatestPath) {

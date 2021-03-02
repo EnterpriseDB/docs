@@ -225,7 +225,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   if (!doc.frontmatter.productStub) {
     configureLegacyRedirects({
       toPath: doc.fields.path,
-      toLatestPath: isLatest && replacePathVersion(doc.fields.path),
+      toLatestPath: replacePathVersion(doc.fields.path),
       redirects: (doc.frontmatter.legacyRedirects || []).concat(
         doc.frontmatter.legacyRedirectsGenerated || [],
       ),

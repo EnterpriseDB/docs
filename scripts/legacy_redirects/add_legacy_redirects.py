@@ -323,5 +323,4 @@ for path in Path('product_docs/docs').rglob('*.mdx'):
 print("wrote to {0} of {1} mdx files".format(len(output.keys()), mdx_file_count))
 
 print("")
-print_csv_report(new_failed_to_match)
-# print(len(new_failed_to_match))
+# print_csv_report(new_failed_to_match)
