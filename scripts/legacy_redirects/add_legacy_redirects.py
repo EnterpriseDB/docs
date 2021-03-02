@@ -5,6 +5,13 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+# This script is still very much a work in progress.
+# It does a pretty good job matching "new" style urls using a combination of
+# scraped Docs 1.0 site data, and the legacy_redirects_metadata.json file.
+# "Old" style urls have had initial work done to map them, but since 
+# we don't currently have any docs live that used "old" style urls,
+# this code is commented out until it's needed (and will need to be developed further)
+
 ANSI_STOP = '\033[0m'
 ANSI_BOLD = '\033[1m'
 ANSI_BLUE = '\033[34m'
@@ -19,16 +26,6 @@ def determine_url_scheme(url):
     return 'old'
   else:
     return 'new'
-
-
-# Should we create generic rules to redirect a product/version to the root
-# if it's unmatched, instead of throwing it all in the index file frontmatter?
-
-def build_latest_url(url):
-  latest_url = re.sub(r'\/\d+(\.?\d+)*($|\/)', '/latest/', url)
-  if latest_url.endswith('/'): # if version was at the end, like the product index pages
-    latest_url = latest_url[:-1]
-  return latest_url
 
 def add_urls_to_output(url, path, output):
   output[str(path)].append(url);
@@ -59,6 +56,8 @@ def write_redirects_to_mdx_files(output):
 
       if not in_existing_redirect_section:
         print(line, end="")
+
+# These functions are only used by the commented out "old" url style handling
 
 # def title_from_frontmatter(filepath):
 #   mdx_file = open(filepath)
@@ -302,9 +301,6 @@ print_report(missing_folder_metadata)
 print("\n{0}-- No Folder --{1}".format(ANSI_RED, ANSI_STOP))
 print_report(no_files_in_folder)
 
-# print_report(new_failed_to_match)
-# print_report(old_failed_to_match)
-
 print("\n{0}-- Summary --{1}".format(ANSI_GREEN, ANSI_STOP))
 print('matched {0} of {1} urls processed'.format(matched_count, processed_count))
 print('missing folder in metadata: {0}'.format(missing_folder_count))
@@ -321,6 +317,4 @@ for path in Path('product_docs/docs').rglob('*.mdx'):
   mdx_file_count += 1
 
 print("wrote to {0} of {1} mdx files".format(len(output.keys()), mdx_file_count))
-
-print("")
 # print_csv_report(new_failed_to_match)
