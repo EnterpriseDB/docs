@@ -284,7 +284,7 @@ const splitNodeContent = (nodes) => {
 };
 
 const netlifyHeaders = () => {
-  // if (isProduction) return {};
+  if (isProduction) return {};
 
   return {
     '/*': ['X-Robots-Tag: noindex'],
