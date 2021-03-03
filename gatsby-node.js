@@ -21,6 +21,8 @@ const {
   treeToNavigation,
   treeNodeToNavNode,
   findPrevNextNavNodes,
+  configureRedirects,
+  configureLegacyRedirects,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -82,6 +84,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            navigation
+            legacyRedirects
+            legacyRedirectsGenerated
             navigation
             katacodaPages {
               scenario
@@ -183,17 +188,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // set computed frontmatter
     node.frontmatter = computeFrontmatterForTreeNode(curr);
 
-    // set up frontmatter redirects
-    if (node.frontmatter.redirects) {
-      node.frontmatter.redirects.forEach((fromPath) => {
-        actions.createRedirect({
-          fromPath,
-          toPath: node.fields.path,
-          redirectInBrowser: true,
-          isPermanent: true,
-        });
-      });
-    }
+    configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
 
     // build navigation tree
     const navigationDepth = 2;
@@ -223,6 +218,18 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       redirectInBrowser: true,
       isPermanent: false,
       force: true,
+    });
+  }
+
+  // configure legacy redirects
+  if (!doc.frontmatter.productStub) {
+    configureLegacyRedirects({
+      toPath: doc.fields.path,
+      toLatestPath: replacePathVersion(doc.fields.path),
+      redirects: (doc.frontmatter.legacyRedirects || []).concat(
+        doc.frontmatter.legacyRedirectsGenerated || [],
+      ),
+      actions,
     });
   }
 
@@ -264,6 +271,16 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
 };
 
 const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
+  // configure legacy redirects
+  configureLegacyRedirects({
+    toPath: doc.fields.path,
+    toLatestPath: doc.fields.path,
+    redirects: (doc.frontmatter.legacyRedirects || []).concat(
+      doc.frontmatter.legacyRedirectsGenerated || [],
+    ),
+    actions,
+  });
+
   const navLinks = learn.filter(
     (node) => node.fields.topic === doc.fields.topic,
   );
@@ -399,6 +416,8 @@ exports.createSchemaCustomization = ({ actions }) => {
     type Frontmatter {
       originalFilePath: String
       indexCards: TileModes
+      legacyRedirects: [String]
+      legacyRedirectsGenerated: [String]
     }
 
     enum TileModes {
