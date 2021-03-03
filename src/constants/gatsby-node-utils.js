@@ -244,6 +244,70 @@ const findPrevNextNavNodes = (navTree, currNode) => {
   return prevNext;
 };
 
+const configureRedirects = (toPath, redirects, actions, config = {}) => {
+  if (!redirects) return;
+  redirects.forEach((fromPath) => {
+    actions.createRedirect(
+      Object.assign(
+        {
+          fromPath,
+          toPath: toPath,
+          redirectInBrowser: true,
+          isPermanent: true,
+        },
+        config,
+      ),
+    );
+  });
+};
+
+const convertLegacyDocsPathToLatest = (fromPath) => {
+  return fromPath
+    .replace(/\/\d+(\.?\d+)*\//, '/latest/') // version in middle of path
+    .replace(/\/\d+(\.?\d+)*$/, '/latest'); // version at end of path (product index)
+};
+
+const configureLegacyRedirects = ({
+  toPath,
+  toLatestPath,
+  redirects,
+  actions,
+}) => {
+  if (!redirects) return;
+
+  redirects.forEach((fromPath) => {
+    /*
+      Three kinds of redirects
+      - redirects from versioned path to new versioned path, not latest version
+        - these should be made permanent
+      - redirects from versioned path to new versioned path, latest version
+        - should these be permanent or temporary?
+        - latest versioned path will redirect to /latest, meaning you would have two redirects
+          - if the first redirect is permanent, will we have issues when this is no longer the latest version?
+      - redirects from latest path to new latest path
+        - these should be permanent right?
+    */
+
+    actions.createRedirect({
+      fromPath,
+      toPath: toPath,
+      redirectInBrowser: false,
+      isPermanent: false,
+      force: true,
+    });
+
+    if (toLatestPath) {
+      actions.createRedirect({
+        fromPath: convertLegacyDocsPathToLatest(fromPath),
+        toPath: toLatestPath,
+        redirectInBrowser: false,
+        isPermanent: false,
+        force: true,
+      });
+    }
+  });
+};
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -259,4 +323,6 @@ module.exports = {
   treeToNavigation,
   treeNodeToNavNode,
   findPrevNextNavNodes,
+  configureRedirects,
+  configureLegacyRedirects,
 };
