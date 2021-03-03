@@ -5,6 +5,7 @@ const utf8Truncate = require('truncate-utf8-bytes');
 const gracefulFs = require('graceful-fs');
 
 const ANSI_BLUE = '\033[34m';
+const ANSI_GREEN = '\033[32m';
 const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -65,12 +66,23 @@ const sourceToPluginConfig = {
 const externalSourcePlugins = () => {
   const sourcePlugins = [];
 
-  if (!process.env.SKIP_SOURCING && gracefulFs.existsSync(sourceFilename)) {
-    console.log(
-      `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
-    );
+  if (!process.env.SKIP_SOURCING) {
+    // default to full set of sources
+    let sources = Object.keys(sourceToPluginConfig).reduce((result, source) => {
+      result[source] = true;
+      return result;
+    }, {});
 
-    const sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
+    if (gracefulFs.existsSync(sourceFilename)) {
+      console.log(
+        `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
+      );
+      console.log(
+        `${ANSI_GREEN}Note that ${sourceFilename} is no longer strictly required - the full set of docs will be loaded in its absence.${ANSI_STOP}`,
+      );
+      sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
+    }
+
     for (const [source, enabled] of Object.entries(sources)) {
       const config = sourceToPluginConfig[source];
       if (enabled && config) {
@@ -83,10 +95,6 @@ const externalSourcePlugins = () => {
         });
       }
     }
-  } else if (isBuild) {
-    console.error(
-      'Configure sources with `yarn config-sources`. Defaulting to advocacy content only!',
-    );
   }
 
   return sourcePlugins;
