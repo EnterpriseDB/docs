@@ -314,7 +314,6 @@ module.exports = {
     'gatsby-transformer-json',
     'gatsby-plugin-catch-links',
     'gatsby-plugin-sharp',
-    // 'gatsby-plugin-meta-redirect',
     {
       resolve: 'gatsby-plugin-netlify',
       options: {
