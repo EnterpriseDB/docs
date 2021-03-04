@@ -130,7 +130,7 @@ const OutputPre = ({ content }) => (
   </div>
 );
 
-const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
+const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
   const childIsComponent = !!children.props; // true in normal usage, false if raw <pre> tags are used
 
   const [codeContent, outputContent] = childIsComponent
@@ -140,10 +140,8 @@ const CodeBlock = ({ children, katacodaPanelData, ...otherProps }) => {
     ? (children.props.className || '').replace('language-', '')
     : 'text';
 
-  const execLanguages = katacodaPanelData
-    ? ['shell'].concat(
-        katacodaPanelData.codelanguages?.split(',')?.map((l) => l.trim()),
-      )
+  const execLanguages = codeLanguages
+    ? ['shell'].concat(codeLanguages?.split(',')?.map((l) => l.trim()))
     : [];
 
   if (codeContent.length > 0) {
