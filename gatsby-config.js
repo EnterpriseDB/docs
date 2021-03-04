@@ -78,7 +78,7 @@ const externalSourcePlugins = () => {
         `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
       );
       console.log(
-        `${ANSI_GREEN}Note that ${sourceFilename} is no longer strictly required - the full set of docs will be loaded in its absence.${ANSI_STOP}`,
+        `${ANSI_GREEN}Note: ${sourceFilename} is no longer required; delete it to load the full set of docs.${ANSI_STOP}`,
       );
       sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
     }
