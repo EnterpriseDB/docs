@@ -354,32 +354,6 @@ exports.sourceNodes = async ({
   createNodeId,
   createContentDigest,
 }) => {
-  // create edb-sources node
-  const activeSources = ['advocacy'];
-
-  if (!process.env.SKIP_SOURCING) {
-    const sources = JSON.parse(
-      gracefulFs.readFileSync(
-        isBuild ? 'build-sources.json' : 'dev-sources.json',
-      ),
-    );
-    for (const [source, enabled] of Object.entries(sources)) {
-      if (enabled) {
-        activeSources.push(source);
-      }
-    }
-  }
-
-  const sourcesNodeData = { activeSources: activeSources };
-  createNode({
-    ...sourcesNodeData,
-    id: createNodeId('edb-sources'),
-    internal: {
-      type: 'edbSources',
-      contentDigest: createContentDigest(sourcesNodeData),
-    },
-  });
-
   // create edb-git node
   const sha = (
     await new Promise((resolve, reject) => {
