@@ -36,8 +36,6 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Pull the shared icon files down with `git submodule update --init`.
 
-1. Now select which sources you want with `yarn config-sources`.
-
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
 ### Installation of PDF / Doc Conversion Tools (optional)
@@ -64,7 +62,7 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
 ### Configuring Which Sources are Loaded
 
-When doing local development of the site or advocacy content, you may want to load other sources to experience the full site. The more sources you load, the slower the site will build, so it's recommended to typically only load the content you'll be working with the most.
+By default, all document sources will be loaded into the app during development. It's possible to set up a configuration file, `dev-sources.json`, to only load specific sources, but this is not required.
 
 #### `yarn config-sources`
 
