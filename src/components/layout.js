@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import useSiteMetadata from '../hooks/use-sitemetadata';
 import {
@@ -24,8 +24,6 @@ const Layout = ({
   const { baseUrl, imageUrl, title: siteTitle } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
-  // console.log(url);
-
   const title = meta.title ? `EDB Docs - ${meta.title}` : siteTitle;
 
   const [dark, setDark] = useState(false);
@@ -44,6 +42,43 @@ const Layout = ({
       setDark(true);
     }
   }, [setDark]);
+
+  const mdxComponents = useMemo(
+    () => ({
+      a: ({ href, ...rest }) => (
+        <Link
+          to={href}
+          pageUrl={meta.path}
+          pageIsIndex={meta.isIndexPage}
+          {...rest}
+        />
+      ),
+      table: (props) => (
+        <div className="table-with-scroll">
+          <table {...props} className="table" />
+        </div>
+      ),
+      pre: (props) => (
+        <CodeBlock {...props} codeLanguages={katacodaPanelData.codelanguages} />
+      ),
+      h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+      h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
+      img: (props) => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
+      blockquote: (props) => (
+        <blockquote
+          {...props}
+          className="pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
+        ></blockquote>
+      ),
+      KatacodaPanel: () => (
+        <KatacodaPanel katacodaPanelData={katacodaPanelData} />
+      ),
+      KatacodaPageLink,
+      Icon,
+      StubCards,
+    }),
+    [katacodaPanelData, meta],
+  );
 
   return (
     <LayoutContext.Provider
@@ -72,43 +107,7 @@ const Layout = ({
         <meta name="twitter:card" content="summary_large_image" />
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
-      <MDXProvider
-        components={{
-          a: ({ href, ...rest }) => (
-            <Link
-              to={href}
-              pageUrl={meta.path}
-              pageIsIndex={meta.isIndexPage}
-              {...rest}
-            />
-          ),
-          table: (props) => (
-            <div className="table-with-scroll">
-              <table {...props} className="table" />
-            </div>
-          ),
-          pre: (props) => (
-            <CodeBlock {...props} katacodaPanelData={katacodaPanelData} />
-          ),
-          h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-          img: (props) => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
-          blockquote: (props) => (
-            <blockquote
-              {...props}
-              className="pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
-            ></blockquote>
-          ),
-          KatacodaPanel: (props) => (
-            <KatacodaPanel {...props} katacodaPanelData={katacodaPanelData} />
-          ),
-          KatacodaPageLink,
-          Icon,
-          StubCards,
-        }}
-      >
-        {children}
-      </MDXProvider>
+      <MDXProvider components={mdxComponents}>{children}</MDXProvider>
       <TextBalancer />
     </LayoutContext.Provider>
   );
