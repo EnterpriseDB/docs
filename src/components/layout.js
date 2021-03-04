@@ -59,7 +59,10 @@ const Layout = ({
         </div>
       ),
       pre: (props) => (
-        <CodeBlock {...props} codeLanguages={katacodaPanelData.codelanguages} />
+        <CodeBlock
+          {...props}
+          codeLanguages={katacodaPanelData?.codelanguages}
+        />
       ),
       h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
       h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
