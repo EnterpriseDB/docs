@@ -126,14 +126,6 @@ const indexQuery = `
 `;
 
 /********** Gatsby config *********/
-const netlifyHeaders = () => {
-  if (isProduction) return {};
-
-  return {
-    '/*': ['X-Robots-Tag: noindex'],
-  };
-};
-
 module.exports = {
   flags: {
     PRESERVE_WEBPACK_CACHE: true,
@@ -159,7 +151,9 @@ module.exports = {
     {
       resolve: 'gatsby-plugin-netlify',
       options: {
-        headers: netlifyHeaders(),
+        headers: {
+          '/*': isProduction ? [] : ['X-Robots-Tag: noindex'],
+        },
       },
     },
     // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
