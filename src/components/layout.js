@@ -80,7 +80,7 @@ const Layout = ({
       Icon,
       StubCards,
     }),
-    [katacodaPanelData, meta],
+    [katacodaPanelData, meta.path, meta.isIndexPage],
   );
 
   return (
