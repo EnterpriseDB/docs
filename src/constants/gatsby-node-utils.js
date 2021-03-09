@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 const sortVersionArray = (versions) => {
   return versions
     .map((version) => version.replace(/\d+/g, (n) => +n + 100000))
@@ -308,6 +310,20 @@ const configureLegacyRedirects = ({
   });
 };
 
+const readFile = (filePath) =>
+  new Promise(function (resolve, reject) {
+    fs.readFile(filePath, 'utf8', function (err, data) {
+      err ? reject(err) : resolve(data);
+    });
+  });
+
+const writeFile = (filePath, data) =>
+  new Promise(function (resolve, reject) {
+    fs.writeFile(filePath, data, function (err) {
+      err ? reject(err) : resolve();
+    });
+  });
+
 module.exports = {
   sortVersionArray,
   replacePathVersion,
@@ -325,4 +341,6 @@ module.exports = {
   findPrevNextNavNodes,
   configureRedirects,
   configureLegacyRedirects,
+  readFile,
+  writeFile,
 };
