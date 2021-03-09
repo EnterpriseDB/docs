@@ -23,6 +23,8 @@ const {
   findPrevNextNavNodes,
   configureRedirects,
   configureLegacyRedirects,
+  readFile,
+  writeFile,
 } = require('./src/constants/gatsby-node-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
@@ -411,4 +413,23 @@ exports.onPreBootstrap = () => {
 |_____||____/ |_____|  |____/ |___||___||___|
                                                                                                                    
   `);
+};
+
+exports.onPostBuild = async ({ reporter, pathPrefix }) => {
+  const originalRedirects = await readFile('public/_redirects');
+
+  // filter out legacyRedirects that are loaded via nginx, not netlify
+  let filteredRedirects = originalRedirects
+    .split('\n')
+    .filter((line) => !line.startsWith(`${pathPrefix}/edb-docs/`))
+    .join('\n');
+
+  if (filteredRedirects.length === originalRedirects.length) {
+    reporter.warn('no redirects were filtered out, did something change?');
+  }
+
+  await writeFile(
+    'public/_redirects',
+    `${filteredRedirects}\n\n# Netlify pathPrefix path rewrite\n${pathPrefix}/*  /:splat  200`,
+  );
 };
