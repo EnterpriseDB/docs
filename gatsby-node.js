@@ -424,6 +424,10 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
     .filter((line) => !line.startsWith(`${pathPrefix}/edb-docs/`))
     .join('\n');
 
+  if (filteredRedirects.length === originalRedirects.length) {
+    reporter.warn('no redirects were filtered out, did something change?');
+  }
+
   await writeFile(
     'public/_redirects',
     `${filteredRedirects}\n\n# Netlify pathPrefix path rewrite\n${pathPrefix}/*  /:splat  200`,
