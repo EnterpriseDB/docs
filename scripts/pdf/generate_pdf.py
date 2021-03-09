@@ -6,6 +6,12 @@ import pathlib
 
 basePath = pathlib.Path(__file__).parent.absolute()
 
+ANSI_STOP = '\033[0m'
+ANSI_BLUE = '\033[34m'
+ANSI_GREEN = '\033[32m'
+ANSI_YELLOW = '\033[33m'
+ANSI_RED = '\033[31m'
+
 # magic snippet for inline repl
 # import code; code.interact(local=dict(globals(), **locals()))
 
@@ -102,6 +108,8 @@ def main():
         guide + '_' if guide else ''
     )
 
+    print(ANSI_BLUE + 'building {}'.format(pdfFilePath) + ANSI_STOP)
+
     if not os.path.exists(dirName):
         raise Exception('directory does not exist')
 
@@ -159,6 +167,7 @@ def main():
 
     title = getTitle(dirName) or product
 
+    print('generating docs html')
     os.system(
     "pandoc {0} " \
     "-f gfm " \
@@ -176,10 +185,11 @@ def main():
     if html:
         os.system("open " + htmlFilePath)
     else:
+        print('generating cover page')
         os.system(
         "sed " \
-        "-e 's/\[PRODUCT\]/{1}/' " \
-        "-e 's/\[VERSION\]/{2}/' " \
+        "-e \"s/\[PRODUCT\]/{1}/\" " \
+        "-e \"s/\[VERSION\]/{2}/\" " \
         "scripts/pdf/cover.html " \
         "> {0}" \
         "".format(coverFilePath, title, version)
@@ -196,10 +206,11 @@ def main():
         "--footer-font-size 8 " \
         "--footer-spacing 7 ".format(datetime.datetime.now().year)
 
+        print('converting html to pdf')
         os.system(
         "wkhtmltopdf " \
         "--log-level error " \
-        "--title '{3}' " \
+        "--title \"{3}\" " \
         "--margin-top 15mm " \
         "--margin-bottom 15mm " \
         "{0} " \
