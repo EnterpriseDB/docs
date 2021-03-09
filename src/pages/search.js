@@ -13,8 +13,8 @@ import {
 import useSiteMetadata from '../hooks/use-sitemetadata';
 
 const searchClient = algoliasearch(
-  'NQVJGNW933',
-  '3089ae4f190ea7c91590336eeba5f0ea',
+  'HXNAF5X3I8',
+  'fb05499144f0399f5985485b624a0290',
 );
 
 const Search = (data) => {
