@@ -1,3 +1,8 @@
+---
+name: Content Change
+about: You've added/edited/removed a piece of content
+---
+
 ## Content Change
 
 ### What Changed?
