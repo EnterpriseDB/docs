@@ -104,6 +104,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               description
               prevNext
               iconName
+              product
+              platform
             }
           }
           fields {
