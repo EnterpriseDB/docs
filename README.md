@@ -40,13 +40,9 @@ We recommend using MacOS to work with the EDB Docs application.
 
 ### Installation of PDF / Doc Conversion Tools (optional)
 
-If you need to build PDFs locally, or run parts of the RST to MDX conversion pipeline, you'll need a couple more tools installed.
+If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install docker`.
 
-1. Install `wkhtmltopdf`, a tool that converts html documents to pdf documents. You can install this with `brew install wkhtmltopdf`. Currently we are using version `0.12.6` - you can check the installed version with `wkhtmltopdf -V`. Newer versions are likely to work fine as well.
-
-1. Install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
-
-1. To confirm that both tools are working, you can trying building a PDF. `yarn build-pdf product_docs/docs/epas/13/` will build `epas_v13_documentation.pdf` in the `epas/13/` folder. You may see a few warnings, but the process should finish with `✨  Done in 43.25s.` or similar.
+If you need to run parts of the RST to MDX conversion pipeline, you'll need to install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
 
 ## Windows Installation
 
