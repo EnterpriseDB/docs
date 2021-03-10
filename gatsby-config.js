@@ -11,7 +11,7 @@ const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
-const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-staging';
+const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-test';
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
@@ -111,6 +111,10 @@ const indexQuery = `
         product
         platform
         tags
+        directoryDefaults {
+          product
+          platform
+        }
       }
       id
       fields {
