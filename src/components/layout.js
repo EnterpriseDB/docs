@@ -122,7 +122,7 @@ const Layout = ({
             j.src =
                 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
             f.parentNode.insertBefore(j, f);
-          })(window, document, 'script', 'dataLayer', 'GTM-5W8M67');
+          })(window, document, 'script', 'dataLayer', 'GTM-M2WQMGG');
         `}
         </script>
         {/* <!-- End Google Tag Manager --> */}
@@ -133,7 +133,7 @@ const Layout = ({
       <TextBalancer />
       <noscript>
         <iframe
-          src="https://www.googletagmanager.com/ns.html?id=GTM-5W8M67"
+          src="https://www.googletagmanager.com/ns.html?id=GTM-M2WQMGG"
           height="0"
           width="0"
           style="display:none;visibility:hidden"
