@@ -1,10 +1,19 @@
 const utf8Truncate = require('truncate-utf8-bytes');
+const {
+  mdxNodesToTree,
+  computeFrontmatterForTreeNode,
+} = require('./gatsby-node-utils.js');
 
-const transformNodeForAlgolia = (node) => {
+// this function is weird - note that it's modifying the node in place
+// NOT returning a copy of the node
+const mdxNodeToAlgoliaNode = (node) => {
   let newNode = node;
+
+  // base
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
-  newNode['type'] = 'guide';
+
+  // optional
   if (node.frontmatter.product) {
     newNode['product'] = node.frontmatter.product;
   }
@@ -12,49 +21,20 @@ const transformNodeForAlgolia = (node) => {
     newNode['platform'] = node.frontmatter.platform;
   }
 
+  // docType specific
   if (node.fields.docType == 'doc') {
     newNode['product'] = node.fields.product;
     newNode['version'] = node.fields.version;
-    newNode['productVersion'] =
-      node.fields.product + ' > ' + node.fields.version;
     newNode['type'] = 'doc';
+  } else {
+    newNode['type'] = 'guide';
   }
 
+  // clean up some keys we don't need anymore
   delete newNode['frontmatter'];
   delete newNode['fields'];
+
   return newNode;
-};
-
-const makePathDictionary = (nodes) => {
-  let dictionary = {};
-  for (let node of nodes) {
-    dictionary[node.fields.path] = node.frontmatter.title;
-  }
-  return dictionary;
-};
-
-const makeBreadcrumbs = (node, dictionary, advocacy = false) => {
-  let depth = advocacy ? 3 : 4;
-  let trail = '';
-  const path = node.fields.path;
-  const pathPieces = path.split('/');
-  for (let i = depth; i < pathPieces.length; i++) {
-    let parentPath = pathPieces.slice(0, i).join('/');
-    trail += dictionary[parentPath] + ' / ';
-  }
-  return trail;
-};
-
-const addBreadcrumbsToNodes = (nodes) => {
-  const pathDictionary = makePathDictionary(nodes);
-  let newNodes = [];
-  for (let node of nodes) {
-    let newNode = node;
-    const advocacy = !node.fields.product;
-    newNode['breadcrumb'] = makeBreadcrumbs(node, pathDictionary, advocacy);
-    newNodes.push(newNode);
-  }
-  return newNodes;
 };
 
 const mdxTreeToSearchNodes = (rootNode) => {
@@ -128,9 +108,11 @@ const trimSpaces = (str) => {
   return str.replace(/\s+/g, ' ').trim();
 };
 
-const splitNodeContent = (nodes) => {
+const buildFinalAlgoliaNodes = (nodes) => {
   const result = [];
   for (const node of nodes) {
+    const algoliaNode = mdxNodeToAlgoliaNode(node);
+
     // skip indexing this content for now
     if (
       node.path.includes('/postgresql_journey/') ||
@@ -167,11 +149,24 @@ const splitNodeContent = (nodes) => {
   return result;
 };
 
-const algoliaTransformer = ({ data }) =>
-  splitNodeContent(
-    addBreadcrumbsToNodes(data.allMdx.nodes).map((node) =>
-      transformNodeForAlgolia(node),
-    ),
-  );
+const algoliaTransformer = ({ data }) => {
+  const mdxNodes = [];
+
+  // build tree to compute inherited frontmatter
+  const treeRoot = mdxNodesToTree(data.allMdx.nodes);
+  const navStack = [treeRoot];
+  let curr = null;
+
+  while (navStack.length > 0) {
+    curr = navStack.pop();
+    curr.children.forEach((child) => navStack.push(child));
+    if (!curr.mdxNode) continue;
+
+    curr.mdxNode.frontmatter = computeFrontmatterForTreeNode(curr);
+    mdxNodes.push(curr.mdxNode);
+  }
+
+  return buildFinalAlgoliaNodes(mdxNodes);
+};
 
 module.exports = algoliaTransformer;
