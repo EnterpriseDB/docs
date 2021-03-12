@@ -66,6 +66,7 @@ import EdbArkSvg from '../../../static/edb-icons/edb-ark.svg';
 import EdbBadgeSvg from '../../../static/edb-icons/edb-badge.svg';
 import EdbBartSvg from '../../../static/edb-icons/edb-bart.svg';
 import EdbDashboardSvg from '../../../static/edb-icons/edb-dashboard.svg';
+import EdbDocsLogoDiscDarkBetaSvg from '../../../static/edb-icons/edb-docs-logo-disc-dark-beta.svg';
 import EdbDocsLogoDiscDarkSvg from '../../../static/edb-icons/edb-docs-logo-disc-dark.svg';
 import EdbEfmSvg from '../../../static/edb-icons/edb-efm.svg';
 import EdbEpasSvg from '../../../static/edb-icons/edb-epas.svg';
@@ -321,6 +322,8 @@ export default function IconType({ iconName, ...rest }) {
       return <EdbBartSvg {...rest} />;
     case iconNames.EDB_DASHBOARD:
       return <EdbDashboardSvg {...rest} />;
+    case iconNames.EDB_DOCS_LOGO_DISC_DARK_BETA:
+      return <EdbDocsLogoDiscDarkBetaSvg {...rest} />;
     case iconNames.EDB_DOCS_LOGO_DISC_DARK:
       return <EdbDocsLogoDiscDarkSvg {...rest} />;
     case iconNames.EDB_EFM:

@@ -64,6 +64,7 @@ const iconNames = {
   EDB_BADGE: 'edbbadge',
   EDB_BART: 'edbbart',
   EDB_DASHBOARD: 'edbdashboard',
+  EDB_DOCS_LOGO_DISC_DARK_BETA: 'edbdocslogodiscdarkbeta',
   EDB_DOCS_LOGO_DISC_DARK: 'edbdocslogodiscdark',
   EDB_EFM: 'edbefm',
   EDB_EPAS: 'edbepas',
