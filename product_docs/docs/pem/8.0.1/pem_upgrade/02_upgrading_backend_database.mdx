@@ -12,57 +12,56 @@ The update process described in this section uses the `pg_upgrade` utility to mi
 !!! Note
     If the source PEM Server is lower than the 7.16 version, then you need to replace the following functions before you run `pg_upgrade`:
 
-````
-- The `abstime`, `reltime`, and `tinterval` datatypes are depreacated from Postgres version 12 or later, hence to replace those dataypes  with `timestamptz` data type use below command:
+    - The `abstime`, `reltime`, and `tinterval` datatypes are deprecated from Postgres version 12 or later, hence to replace those dataypes  with `timestamptz` data type use below command:
 
-```text
-DO
-$$
-DECLARE
-    rec record;
-    cnt integer;
-BEGIN
-    -- Check for the deprecated type in our user info probe
-    SELECT count(*) INTO cnt
-    FROM pem.probe_column
-    WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
-        IF cnt = 0 THEN
-            RETURN;
-        END IF;
-    ALTER TABLE pemdata.user_info
-        ALTER COLUMN valuntil SET DATA TYPE timestamptz;
-    ALTER TABLE pemhistory.user_info
-        ALTER COLUMN valuntil SET DATA TYPE timestamptz;
-    -- Now update the pem.probe_column itself
-    UPDATE pem.probe_column
-    SET sql_data_type = ‘timestamptz’
-    WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
-END;
-$$ LANGUAGE ‘plpgsql’;
-```
+    ```text
+    DO
+    $$
+    DECLARE
+        rec record;
+        cnt integer;
+    BEGIN
+        -- Check for the deprecated type in our user info probe
+        SELECT count(*) INTO cnt
+        FROM pem.probe_column
+        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
+            IF cnt = 0 THEN
+                RETURN;
+            END IF;
+        ALTER TABLE pemdata.user_info
+            ALTER COLUMN valuntil SET DATA TYPE timestamptz;
+        ALTER TABLE pemhistory.user_info
+            ALTER COLUMN valuntil SET DATA TYPE timestamptz;
+        -- Now update the pem.probe_column itself
+        UPDATE pem.probe_column
+        SET sql_data_type = ‘timestamptz’
+        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
+    END;
+    $$ LANGUAGE ‘plpgsql’;
+    ```
 
-- Replace the below function to avoid any alert errors:
+    - Replace the below function to avoid any alert errors:
 
-```text
-CREATE OR REPLACE FUNCTION pem.check_alert_params_array_size(
-template_id pem.alert_template.id%type, params text[]
-)
-RETURNS bool AS $FUNC$
-DECLARE
-    res bool := TRUE;
-BEGIN
-    /*
-     * During restoring the pem database, it does not maintain the order while
-     * inserting data in the table, and uses the sort table based on the
-     * names.
-     * Hence - we need to check the foreign key constraint is present before
-     * validating these values.
-     */
-    IF EXISTS(
-      SELECT 1 FROM information_schema.table_constraints
-      WHERE constraint_name='alert_template_id_fkey' AND
-      table_name='alert' AND table_schema='pem'
-    ) THEN
+    ```text
+    CREATE OR REPLACE FUNCTION pem.check_alert_params_array_size(
+    template_id pem.alert_template.id%type, params text[]
+    )
+    RETURNS bool AS $FUNC$
+    DECLARE
+        res bool := TRUE;
+    BEGIN
+        /*
+        * During restoring the pem database, it does not maintain the order while
+        * inserting data in the table, and uses the sort table based on the
+        * names.
+        * Hence - we need to check the foreign key constraint is present before
+        * validating these values.
+        */
+        IF EXISTS(
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE constraint_name='alert_template_id_fkey' AND
+            table_name='alert' AND table_schema='pem'
+        ) THEN
       /*
        * Need to use the IS TRUE construct outside the main query, because
        * otherwise if there's no template by that ID then the query would return
@@ -83,10 +82,9 @@ BEGIN
       $SQL$ INTO res USING template_id, params;
     END IF;
      RETURN res;
-END
-$FUNC$ LANGUAGE 'plpgsql';
-```
-````
+    END
+    $FUNC$ LANGUAGE 'plpgsql';
+    ```
 
 `pg_upgrade` supports a transfer of data between servers of the same type. For example, you can use `pg_upgrade` to move data from a PostgreSQL 9.6 backend database to a PostgreSQL 11 backend database, but not to an Advanced Server 11 backend database. If you wish to migrate to a different type of backend database (i.e from a PostgreSQL server to Advanced Server), see [Moving the Postgres Enterprise Manager Server](03_moving_pem_server).
 
