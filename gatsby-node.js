@@ -251,6 +251,14 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
 
   const template = doc.frontmatter.productStub ? 'doc-stub.js' : 'doc.js';
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
+
+  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
+  actions.createPage({
+    path: path,
+    component: require.resolve(`./src/templates/${template}`),
+    context: {},
+  });
+
   actions.createPage({
     path: path,
     component: require.resolve(`./src/templates/${template}`),
@@ -300,6 +308,13 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
     fileUrlSegment,
   )}`;
+
+  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
+  actions.createPage({
+    path: doc.fields.path,
+    component: require.resolve('./src/templates/learn-doc.js'),
+    context: {},
+  });
 
   actions.createPage({
     path: doc.fields.path,
