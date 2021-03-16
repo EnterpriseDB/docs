@@ -1,6 +1,7 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
+import cliImg from '../images/cli@2x.png';
 import {
   Footer,
   IndexSubNav,
@@ -82,7 +83,7 @@ const Page = () => (
               </div>
               <div className="card-editorial-cnpo align-self-end">
                 <img
-                  src="images/cli@2x.png"
+                  src={cliImg}
                   alt="Illustration of a Kubernetes Terminal Command"
                   className="img-fluid shadow"
                 />
