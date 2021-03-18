@@ -4,7 +4,6 @@ title: "Correction Using Shadow Table Transactions"
 
 <div id="correction_using_shadow_table_txn" class="registered_link"></div>
 
-
 The final method for bringing all publication tables to a consistent state is by removing changes caused by the conflicting transactions and then modifying the publication table’s metadata in such a way that the next synchronization results in the replication of transactions already stored in the shadow tables.
 
 > Such transactions may not have been successfully replicated to all the other primary nodes in a prior synchronization for various reasons.
@@ -23,13 +22,13 @@ The example used to illustrate this method is based upon the following transacti
 
 In `MMRnode_b`, the following row is inserted:
 
-``` text
+```text
 INSERT INTO emp (empno,ename,job,deptno) VALUES (9001,'SMITH','ANALYST',20);
 ```
 
 In `MMRnode_c`, the following row is inserted with the same primary key value 9001 in the `empno` column:
 
-``` text
+```text
 INSERT INTO emp (empno,ename,job,deptno) VALUES (9001,'JONES','SALESMAN',30);
 In MMRnode_c, this is followed by a series of updates to the newly inserted row:
 UPDATE emp SET mgr = 7698 WHERE empno = 9001;
@@ -41,7 +40,7 @@ Synchronization replication is performed. The resulting content of the `emp` tab
 
 On `MMRnode_a` the conflicting row has not been replicated:
 
-``` text
+```text
 MMRnode_a=# SELECT * FROM emp;
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
@@ -64,7 +63,7 @@ MMRnode_a=# SELECT * FROM emp;
 
 On `MMRnode_b` the conflicting row inserted on this node remains, but is updated with the transactions replicated from `MMRnode_c`:
 
-``` text
+```text
 MMRnode_b=# SELECT * FROM emp;
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
@@ -88,7 +87,7 @@ MMRnode_b=# SELECT * FROM emp;
 
 On `MMRnode_c` the conflicting row inserted on this node remains along with the updates performed on this node:
 
-``` text
+```text
 MMRnode_c=# SELECT * FROM emp;
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
@@ -118,7 +117,7 @@ The following are the steps to reproduce the correct row, currently on `MMRnode_
 
 On `MMRnode_a`, this row does not exist:
 
-``` text
+```text
 MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
  empno | ename | job | mgr | hiredate | sal | comm | deptno
 -------+-------+-----+-----+----------+-----+------+--------
@@ -127,7 +126,7 @@ MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
 
 On `MMRnode_b`, delete the erroneous row:
 
-``` text
+```text
 MMRnode_a=# SHOW session_replication_role;
  session_replication_role
 --------------------------
@@ -140,7 +139,7 @@ DELETE 1
 
 On `MMRnode_c`, the correct, accepted row is left intact:
 
-``` text
+```text
 MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
@@ -174,11 +173,11 @@ The resulting change for the `rrep_tx_conflict_status` column in the shadow tabl
 
 ![Shadow table transactions set to replicate](/../../../images/image157.png)
 
-**Step 4:** In order to replicate these four shadow table entries during the next synchronization, one or more entries must be added to the control schema table `_edb_replicator_pub.rrep_MMR_txset` on `MMRnode_c` to indicate pending status for synchronization to the target primary nodes (`MMRnode_a` and `MMRnode_b`) of the four shadow table entries identified by the rrep\_sync\_id values of 1, 2, 3, and 4 noted in Step 3.
+**Step 4:** In order to replicate these four shadow table entries during the next synchronization, one or more entries must be added to the control schema table `_edb_replicator_pub.rrep_MMR_txset` on `MMRnode_c` to indicate pending status for synchronization to the target primary nodes (`MMRnode_a` and `MMRnode_b`) of the four shadow table entries identified by the rrep_sync_id values of 1, 2, 3, and 4 noted in Step 3.
 
 First, you must identify the `pub_id` and target `db_id` values that are to be associated with the pending transactions. To do so, invoke the following query substituting the `rrep_sync_id` values for `sync_id` in the query:
 
-``` text
+```text
 SELECT pub_id, db_id AS target_db_id
   FROM _edb_replicator_pub.rrep_MMR_txset
   WHERE start_rrep_sync_id <= sync_id
@@ -189,7 +188,7 @@ In this example, there are four values to be substituted for `sync_id`, which ar
 
 The results are the following:
 
-``` text
+```text
 MMRnode_c=# SELECT pub_id, db_id AS target_db_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset
 MMRnode_c-#   WHERE start_rrep_sync_id <= 1 AND end_rrep_sync_id >= 1;
@@ -227,31 +226,22 @@ MMRnode_c-#   WHERE start_rrep_sync_id <= 4 AND end_rrep_sync_id >= 4;
 (2 rows)
 ```
 
-The results indicate that the previously executed synchronization that attempted to apply the shadow table transactions identified by the `rrep_sync_id` values of 1, 2, 3, and 4 were all for the publication identified by `pub_id` of 3. The target primary nodes were identified by `db_id` of 1 (for `MMRnode_a`) and db\_id of 4 (for `MMRnode_b`).
+The results indicate that the previously executed synchronization that attempted to apply the shadow table transactions identified by the `rrep_sync_id` values of 1, 2, 3, and 4 were all for the publication identified by `pub_id` of 3. The target primary nodes were identified by `db_id` of 1 (for `MMRnode_a`) and db_id of 4 (for `MMRnode_b`).
 
-Thus, at least two entries must be inserted into the control schema table `_edb_replicator_pub.rrep_MMR_txset` on `MMRnode_c`. At least one entry is required for the target `db_id` of 1 and at least one entry for the target db\_id of 4.
+Thus, at least two entries must be inserted into the control schema table `_edb_replicator_pub.rrep_MMR_txset` on `MMRnode_c`. At least one entry is required for the target `db_id` of 1 and at least one entry for the target db_id of 4.
 
 Since each entry in `_edb_replicator_pub.rrep_MMR_txset` consists of a range of `rrep_sync_id` values (identified by columns `start_rrep_sync_id` and `end_rrep_sync_id`) and the desired shadow table `rrep_sync_id` values happen to be contiguous (1 thru 4), a single entry can encompass the four `rrep_sync_id` values for a single target database.
 
 Thus, in this example, a total of two entries can be added to `_edb_replicator_pub.rrep_MMR_txset` – one for each target database.
 
-<div class="note">
-
-<div class="title">
-
-Note
-
-</div>
-
-If there were multiple, non-contiguous `rrep_sync_id` values required for synchronization (for example, 1, 2, 5, and 6), then multiple entries would be required for each target database. The entries would specify `rrep_sync_id` ranges to collectively cover all of the non-contiguous values, but omitting `rrep_sync_id` values that are not to be included in the synchronization (for example, one entry for 1 through 2 and a second entry for 5 through 6).
-
-</div>
+!!! Note
+    If there were multiple, non-contiguous `rrep_sync_id` values required for synchronization (for example, 1, 2, 5, and 6), then multiple entries would be required for each target database. The entries would specify `rrep_sync_id` ranges to collectively cover all of the non-contiguous values, but omitting `rrep_sync_id` values that are not to be included in the synchronization (for example, one entry for 1 through 2 and a second entry for 5 through 6).
 
 **Step 5:** Insert the entries into the `_edb_replicator_pub.rrep_MMR_txset` control schema table as identified in the preceding step.
 
 The two `INSERT` statements invoked on `MMRnode_c` are the following:
 
-``` text
+```text
 INSERT INTO _edb_replicator_pub.rrep_MMR_txset (set_id, pub_id, db_id, status, start_rrep_sync_id, end_rrep_sync_id)
   values (nextval('_edb_replicator_pub.rrep_txset_seq'),3,1,'P',1,4);
 
@@ -259,9 +249,9 @@ INSERT INTO _edb_replicator_pub.rrep_MMR_txset (set_id, pub_id, db_id, status, s
   values (nextval('_edb_replicator_pub.rrep_txset_seq'),3,4,'P',1,4);
 ```
 
-A query of the \_edb\_replicator\_pub.rrep\_MMR\_txset metadata table displays the following:
+A query of the \_edb_replicator_pub.rrep_MMR_txset metadata table displays the following:
 
-``` text
+```text
 MMRnode_c=# SELECT set_id, pub_id, db_id AS target_db_id, status,
 MMRnode_c-#     start_rrep_sync_id, end_rrep_sync_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset;
@@ -274,7 +264,7 @@ MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset;
 (4 rows)
 ```
 
-There are now two new entries with pending status (P), one for target db\_id 1, the other for target `db_id` 4. Both entries cover the `rrep_sync_id` range of 1 through 4.
+There are now two new entries with pending status (P), one for target db_id 1, the other for target `db_id` 4. Both entries cover the `rrep_sync_id` range of 1 through 4.
 
 The two entries with completed status (C) are from the synchronization attempt that initially produced the conflict.
 
@@ -282,7 +272,7 @@ The two entries with completed status (C) are from the synchronization attempt t
 
 The insert and three update transactions recorded in the `rrst_edb_emp` shadow table on `MMRnode_c` are replicated to the other primary nodes.
 
-``` text
+```text
 On MMRnode_a:
 MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
@@ -297,9 +287,9 @@ MMRnode_b=# SELECT * FROM emp WHERE empno = 9001;
 (1 row)
 ```
 
-These rows now match the row created by the original transactions on MMRnode\_c:
+These rows now match the row created by the original transactions on MMRnode_c:
 
-``` text
+```text
 MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
@@ -307,11 +297,11 @@ MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
 (1 row)
 ```
 
-**Step 7:** In the control schema of the publication database currently designated as the controller database, modify the entries in the xdb\_conflicts table to indicate the conflict has been resolved as in Step 3 of Section [Manual Publication Table Correction](../../../06_mmr_operation/06_conflict_resolution/09_manual_conflict_resolution_trigger_based_method/#manual_publication_table_correction).
+**Step 7:** In the control schema of the publication database currently designated as the controller database, modify the entries in the xdb_conflicts table to indicate the conflict has been resolved as in Step 3 of Section [Manual Publication Table Correction](04_manual_publication_table_correction/#manual_publication_table_correction).
 
 For a uniqueness (insert/insert) conflict only, the following query on the `xdb_conflicts` table in the controller database can display the conflicts:
 
-``` text
+```text
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
 MMRnode_a-#   WHERE pk_value = 'empno=9001'
 MMRnode_a-#     AND conflict_type = 'II'
@@ -352,9 +342,9 @@ notes               | ERROR: duplicate key value violates unique constraint "emp
 pk_value            | empno=9001
 ```
 
-The following SQL statement changes the value in column resolution\_status from `P (pending)` to `C (completed)` to indicate this conflict has been resolved. The value in winning\_db\_id is changed to 56 to indicate primary node `MMRnode_c` contains the winning transaction. The value in `winning_rrep_sync_id` is changed to the value of `rrep_sync_id` for the shadow table entry of the INSERT transaction in `MMRnode_c` since this is the one deemed to be correct.
+The following SQL statement changes the value in column resolution_status from `P (pending)` to `C (completed)` to indicate this conflict has been resolved. The value in winning_db_id is changed to 56 to indicate primary node `MMRnode_c` contains the winning transaction. The value in `winning_rrep_sync_id` is changed to the value of `rrep_sync_id` for the shadow table entry of the INSERT transaction in `MMRnode_c` since this is the one deemed to be correct.
 
-``` text
+```text
 UPDATE _edb_replicator_pub.xdb_conflicts SET
   resolution_status = 'C',
   win_db_id = 56,
