@@ -71,7 +71,7 @@ const LeftNav = ({
 }) => {
   return (
     <ul className="list-unstyled mt-0">
-      <BackButton currentPath={pagePath} />
+      <BackButton />
       {versionArray ? (
         <SectionHeadingWithVersions
           navTree={navTree}
