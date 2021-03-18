@@ -133,10 +133,7 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
   return (
     <>
       <Helmet>
-        <script
-          src="https://katacoda.com/embed.js"
-          data-katacoda-ondemand="true"
-        />
+        <script src="https://katacoda.com/embed.js" />
       </Helmet>
 
       {isShown ? (
