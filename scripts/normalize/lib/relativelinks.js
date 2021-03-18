@@ -130,7 +130,7 @@ const index = {
 
   keyId: (id) => 
   {
-    return '#' + slugger.slug(id.replace(/^[^#]*#+/, '')
+    return '#' + slugger.slug(decodeURIComponent(id.replace(/^[^#]*#+/, ''))
         .replace(/[_-]/g, "")
         .replace(/\s+/g, ""))
       .toLowerCase();
