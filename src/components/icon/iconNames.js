@@ -1,4 +1,4 @@
-export default {
+const iconNames = {
   ALERT: 'alert',
   ANGULARJS_COLOR: 'angularjscolor',
   ANNOUNCE: 'announce',
@@ -183,3 +183,4 @@ export default {
   WEBINAR: 'webinar',
   WINDOWS_COLOR: 'windowscolor',
 };
+export default iconNames;
