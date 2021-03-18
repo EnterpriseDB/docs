@@ -293,18 +293,14 @@ const configureLegacyRedirects = ({
     actions.createRedirect({
       fromPath,
       toPath: toPath,
-      redirectInBrowser: false,
-      isPermanent: false,
-      force: true,
+      isPermanent: true,
     });
 
     if (toLatestPath) {
       actions.createRedirect({
         fromPath: convertLegacyDocsPathToLatest(fromPath),
         toPath: toLatestPath,
-        redirectInBrowser: false,
-        isPermanent: false,
-        force: true,
+        isPermanent: true,
       });
     }
   });
