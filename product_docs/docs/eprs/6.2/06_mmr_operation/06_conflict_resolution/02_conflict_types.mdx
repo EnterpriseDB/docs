@@ -1,0 +1,48 @@
+---
+title: "Conflict Types"
+---
+
+<div id="conflict_types" class="registered_link"></div>
+
+
+The types of conflicts can be summarized as follows:
+
+-   `Uniqueness Conflict.` A uniqueness conflict occurs when the same value is used for a primary key or unique column in an insert transaction on two or more primary nodes. This is also referred to as an insert/insert conflict.
+-   `Update Conflict.` An update transaction modifies a column value in the same row on two or more primary nodes. For example, an employee address column is updated on primary node A, and another user updates the address column for the same employee on primary node B. The timestamps of when the transactions occur on each node could be different, but both transactions occur in a time interval during which synchronization has not yet occurred. Thus when synchronization does take place, both conflicting transactions are to be applied. This is also referred to as an update/update conflict.
+-   `Delete Conflict.` The row corresponding to an update transaction on the source node is not found on the target node as the row has already been deleted on the target node. This is referred to as an update/delete conflict. Conversely, if there is a delete transaction on the source node and an update transaction for the same row on the target node, this case is referred to as a `delete/update` conflict. Finally, in the case where the row corresponding to a delete transaction on the source node is not found on the target node as the row has already been deleted on the target node is referred to as a `delete/delete conflict`.
+
+The following table definition is used to illustrate conflict resolution examples:
+
+``` text
+CREATE TABLE addrbook (
+    id              SERIAL PRIMARY KEY,
+    name            VARCHAR(20),
+    address         VARCHAR(50)
+);
+```
+
+The following table illustrates an example of a uniqueness conflict.
+
+<table style="width:16%;"><caption><strong>Uniqueness Conflict</strong></caption><colgroup><col style="width: 2%" /><col style="width: 4%" /><col style="width: 4%" /><col style="width: 4%" /></colgroup><tbody><tr class="odd"><td><p>Timestamp <code>t1</code></p></td><td><p>Action <strong>Node A:</strong> INSERT INTO addrbook (name, address) VALUES ('A', 'ADDR A');</p><p><strong>Node A:</strong> INSERT INTO addrbook (name, address) VALUES ('B', 'ADDR B');</p></td><td><p>Primary node A id = 1, name = 'A', address = 'ADDR A'</p><p>id = 2, name = 'B', address = 'ADDR B'</p></td><td><p>Primary node B</p></td></tr><tr class="even"><td><p><code>t2</code></p><p><code>t3</code></p></td><td><p><strong>Node B:</strong> INSERT INTO addrbook (name, address) VALUES ('C', 'ADDR C');</p><p>Synchronization pushes Node A changes to Node B</p></td><td><p>id = 1, name = 'A', address = 'ADDR A'</p><p>id = 2, name = 'B', address = 'ADDR B'</p></td><td><p>id = 1, name = 'C', address = 'ADDR C'</p><p><strong>Row change for INSERT tx id = 1 on Node A results in unique key conflict on Node B</strong></p><p>id = 1, name = 'C', address = 'ADDR C'</p><p><strong>id = 1, name = 'A', address = 'ADDR A'</strong></p></td></tr></tbody></table>
+
+**Uniqueness Conflict**
+
+The following table illustrates an example of an update conflict.
+
+|                |                                                                                                                   |                                           |                                                                                                                                    |
+|----------------|-------------------------------------------------------------------------------------------------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| Timestamp `t0` | Action                                                                                                            | Primary node A id = 2, address = 'ADDR B' | Primary node B id = 2, address = 'ADDR B'                                                                                          |
+| `t1`           | **Node A:** UPDATE addrbook SET address = 'ADDR B1' WHERE id = 2;                                                 | id = 2, address = **'ADDR B1'**           | id = 2, address = 'ADDR B'                                                                                                         |
+| `t2` `t3`      | **Node B:** UPDATE addrbook SET address = 'ADDR B2' WHERE id = 2; Synchronization pushes Node A changes to Node B | id = 2, address = 'ADDR B1'               | id = 2, address = **'ADDR B2'** **Current value of address on Node B not equal old value on Node A ('ADDR B2' &lt;&gt; 'ADDR B')** |
+
+**Update Conflict**
+
+The following table illustrates an example of a delete conflict.
+
+|                |                                                                                                |                                           |                                                                                                                          |
+|----------------|------------------------------------------------------------------------------------------------|-------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Timestamp `t0` | Action                                                                                         | Primary node A id = 2, address = 'ADDR B' | Primary node B id = 2, address = 'ADDR B'                                                                                |
+| `t1`           | **Node A:** UPDATE addrbook SET address = 'ADDR B1' WHERE id = 2;                              | id = 2, address = **'ADDR B1'**           | id = 2, address = 'ADDR B'                                                                                               |
+| `t2` `t3`      | **Node B:** DELETE FROM addrbook WHERE id = 2; Synchronization pushes Node A changes to Node B | id = 2, address = 'ADDR B1'               | **Row with id = 2 deleted** **The row with id = 2 is already deleted on target Node B, hence update from Node A fails.** |
+
+**Delete Conflict**
