@@ -1,0 +1,25 @@
+---
+title: "DDL Change Replication Process"
+---
+
+<div id="ddl_change_replication" class="registered_link"></div>
+
+The DDL statement is executed in a controlled manner such that the target table is exclusively locked (by the default setting of configuration option `ddlChangeTableLock)` during the course of the operation. This is done to avoid loss of any transactions while the replication triggers and shadow table are modified by the DDL change replication process. Only one target table is locked at a time while DDL change replication takes place on that table, its triggers, and shadow table.
+
+If there is a backlog of pending transactions, it is recommended to perform an explicit synchronization replication before performing DDL change replication to avoid prolonging the DDL change replication process for a longer period of time.
+
+DDL change replication should be performed when the OLTP rate is very low (near zero).
+
+!!! Note
+    Exclusive acquisition of each target table during the DDL change replication process can be turned off by setting `ddlChangeTableLock` to false. However, this should be done only when there are no write transactions taking place against the target table, otherwise transactions may not be recorded by the replication system. See [DDL Change Replication Table Locking](../../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/11_ddl_change_replication_table_locking/#ddl_change_replication_table_locking) for additional information on the `ddlChangeTableLock` configuration option.
+
+The following is the series of steps that occur during the DDL change replication process.
+
+-   The publication server performs a health check across all databases in the replication system to ensure they can be accessed. If any database is not available the DDL change replication process is aborted with a notification to the user.
+-   If the publication server configuration option `ddlChangeTableLock` is set to its default value of true, an exclusive table lock is requested on the table to which the DDL change is to be applied. If another application already has a lock on the table, there is a wait time of 2 minutes after which the DDL change replication process is aborted if the lock is not released before then. If `ddlChangeTableLock` is set to false, an exclusive table lock is not requested.
+-   The DDL statement is executed against the target table. The replication triggers and shadow table are modified accordingly. If an error occurs, the user is informed and the operation is aborted. If `ddlChangeTableLock` is set to true, the exclusive lock is released.
+-   The preceding two bullet points are repeated on the target table for each database in the replication system.
+-   The in-memory table metadata definition is refreshed to reflect the DDL change. The user is informed of successful completion of the operation.
+-   If an error occurs during the prior steps, any changes up to that point are rolled back so that the publication table, replication triggers, and shadow table are reverted back to their original state prior to the start of this operation. If one or more databases goes down before completion of the operation, the publication is marked as dirty to avoid further replication events.
+
+The following section describes how to initiate DDL change replication using the xDB Replication Console.
