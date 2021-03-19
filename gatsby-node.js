@@ -340,7 +340,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       );
     }
 
-    const path = `${doc.fields.path}/${katacodaPage.scenario}`;
+    const path = `${doc.fields.path}${katacodaPage.scenario}`;
     actions.createPage({
       path: path,
       component: require.resolve('./src/templates/katacoda-page.js'),
