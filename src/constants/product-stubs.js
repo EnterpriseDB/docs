@@ -2214,23 +2214,4 @@ export const productStubs = {
       ],
     },
   },
-  eprs: {
-    6.2: {
-      sections: [
-        {
-          title: 'User Guides',
-          column: 1,
-          links: [
-            {
-              text: 'User Guide',
-              href:
-                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-replication-server/user-guides/user-guide/6.2/toc.html',
-              pdf:
-                'https://www.enterprisedb.com/edb-docs/static/docs/eprs/6.2/EDB_Postgres_Replication_Server_Users_Guide_v6.2.pdf',
-            },
-          ],
-        },
-      ],
-    },
-  },
 };
