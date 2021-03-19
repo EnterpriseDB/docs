@@ -131,10 +131,6 @@ const indexQuery = `
 
 /********** Gatsby config *********/
 module.exports = {
-  flags: {
-    PRESERVE_WEBPACK_CACHE: true,
-    FAST_REFRESH: true,
-  },
   pathPrefix: '/docs',
   siteMetadata: {
     title: 'EDB Docs',
