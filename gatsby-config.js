@@ -139,7 +139,7 @@ module.exports = {
     siteUrl: 'https://enterprisedb.com/docs',
     algoliaIndex: algoliaIndex,
     isDevelopment: !isBuild,
-    cacheBuster: 1, // for busting gh actions cache if needed
+    cacheBuster: 2, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
