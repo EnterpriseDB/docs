@@ -2,16 +2,19 @@ const utf8Truncate = require('truncate-utf8-bytes');
 const {
   mdxNodesToTree,
   computeFrontmatterForTreeNode,
+  buildProductVersions,
+  replacePathVersion,
 } = require('./gatsby-node-utils.js');
 
 // this function is weird - note that it's modifying the node in place
 // NOT returning a copy of the node
-const mdxNodeToAlgoliaNode = (node) => {
+const mdxNodeToAlgoliaNode = (node, productVersions) => {
   let newNode = node;
 
   // base
   newNode['title'] = node.frontmatter.title;
   newNode['path'] = node.fields.path;
+  newNode['pagePath'] = node.fields.path;
 
   // optional
   if (node.frontmatter.product) {
@@ -26,6 +29,15 @@ const mdxNodeToAlgoliaNode = (node) => {
     newNode['product'] = node.fields.product;
     newNode['version'] = node.fields.version;
     newNode['type'] = 'doc';
+
+    // switch path to latest (if applicable) to avoid redirects
+    const isLatest =
+      productVersions[node.fields.product][0] === node.fields.version;
+    if (isLatest) {
+      const latestPath = replacePathVersion(node.fields.path);
+      newNode['path'] = latestPath;
+      newNode['pagePath'] = latestPath;
+    }
   } else {
     newNode['type'] = 'guide';
   }
@@ -108,10 +120,10 @@ const trimSpaces = (str) => {
   return str.replace(/\s+/g, ' ').trim();
 };
 
-const buildFinalAlgoliaNodes = (nodes) => {
+const buildFinalAlgoliaNodes = (nodes, productVersions) => {
   const result = [];
   for (const node of nodes) {
-    const algoliaNode = mdxNodeToAlgoliaNode(node);
+    const algoliaNode = mdxNodeToAlgoliaNode(node, productVersions);
 
     // skip indexing this content for now
     if (
@@ -166,7 +178,9 @@ const algoliaTransformer = ({ data }) => {
     mdxNodes.push(curr.mdxNode);
   }
 
-  return buildFinalAlgoliaNodes(mdxNodes);
+  const productVersions = buildProductVersions(data.allMdx.nodes);
+
+  return buildFinalAlgoliaNodes(mdxNodes, productVersions);
 };
 
 module.exports = algoliaTransformer;
