@@ -76,7 +76,7 @@ const Page = () => (
                   environments.
                 </p>
                 <p className="pb-3">
-                  <Link to="/kubernetes/cloud_native_operator">
+                  <Link to="/kubernetes/cloud_native_postgresql/">
                     Read More &rarr;
                   </Link>
                 </p>
@@ -173,7 +173,7 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/kubernetes/cloud_native_operator">
+            <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
               Cloud Native PostgreSQL Operator
             </IndexCardLink>
           </IndexCard>
