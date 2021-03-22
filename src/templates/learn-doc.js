@@ -148,6 +148,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
+            {katacodaPanel && <span className="new-thing">Katacoda</span>}
             {editOrFeedbackButton}
           </div>
 
