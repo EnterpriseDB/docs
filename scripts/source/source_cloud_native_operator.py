@@ -62,14 +62,14 @@ def process_md(file_path):
 
         os.remove(file_path)
 
-def source_cloud_native_operator_docs():
+def source_cloud_native_postgresql_docs():
     os.system('rm -r temp_kubernetes/build')
     os.system('cp -r temp_kubernetes/original/src temp_kubernetes/build')
 
-    print('Processing cloud_native_operator...')
+    print('Processing cloud_native_postgresql...')
     files = glob.glob('temp_kubernetes/build/**/*.md', recursive=True)
     for file_path in files:
         process_md(file_path)
 
 if __name__ == '__main__':
-    source_cloud_native_operator_docs()
+    source_cloud_native_postgresql_docs()
