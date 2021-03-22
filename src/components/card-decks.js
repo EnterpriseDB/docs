@@ -3,6 +3,8 @@ import { Link } from '../components/';
 import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 
+const KatacodaBadge = () => <span className="new-thing">Katacoda</span>;
+
 const FullCard = ({ card }) => {
   const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
 
@@ -34,6 +36,7 @@ const FullCard = ({ card }) => {
             className="btn btn-link btn-block text-left p-0"
           >
             {child.frontmatter.navTitle || child.frontmatter.title}
+            {child.frontmatter.katacodaPanel && <KatacodaBadge />}
           </Link>
         ))}
       </div>
@@ -47,6 +50,7 @@ const SimpleCard = ({ card }) => (
       <h3 className="card-title balance-text">
         <Link className="stretched-link" to={card.fields.path}>
           {card.frontmatter.navTitle || card.frontmatter.title}
+          {card.frontmatter.katacodaPanel && <KatacodaBadge />}
         </Link>
       </h3>
 

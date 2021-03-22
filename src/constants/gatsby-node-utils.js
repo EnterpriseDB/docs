@@ -150,6 +150,7 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
     depth: treeNode.mdxNode?.fields?.depth,
     iconName: treeNode.mdxNode?.frontmatter?.iconName,
     description: treeNode.mdxNode?.frontmatter?.description,
+    katacoda: !!treeNode.mdxNode?.frontmatter?.katacodaPanel,
   };
   if (withItems) navNode.items = [];
   return navNode;
