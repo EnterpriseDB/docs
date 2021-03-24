@@ -2124,23 +2124,6 @@ export const productStubs = {
         },
       ],
     },
-    3.5: {
-      sections: [
-        {
-          title: 'User Guides',
-          column: 1,
-          links: [
-            {
-              text: 'User Guide',
-              href:
-                'https://www.enterprisedb.com/edb-docs/d/edb-postgres-failover-manager/user-guides/user-guide/3.5/toc.html',
-              pdf:
-                'https://www.enterprisedb.com/edb-docs/static/docs/efm/3.5/EDB_Failover_Manager_Guide_v3.5.pdf',
-            },
-          ],
-        },
-      ],
-    },
   },
   hadoop_data_adapter: {
     '2.0.5': {
