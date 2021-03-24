@@ -11,7 +11,7 @@ const Results = connectStateResults(
 );
 
 const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
-  <div className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
+  <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
     {res && res.nbHits > 0 ? 'Not finding what you need?' : 'No results found.'}
     <Link to={`/search?query=${res.query}`} className="ml-2">
       Try Advanced Search
