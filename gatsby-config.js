@@ -156,7 +156,6 @@ module.exports = {
         },
       },
     },
-    // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
