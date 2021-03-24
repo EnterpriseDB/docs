@@ -157,7 +157,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
       </form>
 
       <div
-        className={`dropdown-menu w-100 p-0 ${
+        className={`dropdown-menu w-100 p-0 quick-search-container ${
           queryLength > 0 && focus && 'show'
         }`}
       >
