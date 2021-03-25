@@ -130,8 +130,10 @@ const Page = () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
+             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
           </IndexCard>
 
@@ -186,18 +188,19 @@ const Page = () => (
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
-            {/* <span className="">Foreign Data Wrappers</span> */}
+            <span className="font-weight-bold text-muted text-uppercase small">Foreign Data Wrappers</span>
             <IndexCardLink to="/hadoop_data_adapter/latest">
-              Hadoop Data Adapter
+            Hadoop Foreign Data Wrapper
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">
-              Mongo Data Adapter
-            </IndexCardLink>
-            <IndexCardLink to="/jdbc_connector/latest">
-              JDBC Connector
+              Mongo Foreign Data Wrapper
             </IndexCardLink>
             <IndexCardLink to="/mysql_data_adapter/latest">
               MySQL Foreign Data Wrapper
+            </IndexCardLink>
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">Connectors</span>
+            <IndexCardLink to="/jdbc_connector/latest">
+              JDBC Connector
             </IndexCardLink>
             <IndexCardLink to="/net_connector/latest">
               .NET Connector
@@ -208,8 +211,6 @@ const Page = () => (
             <IndexCardLink to="/odbc_connector/latest">
               ODBC Connector
             </IndexCardLink>
-            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
-            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
         </div>
 
