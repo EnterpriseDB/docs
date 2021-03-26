@@ -1,10 +1,9 @@
 const fs = require('fs');
 
 const sortVersionArray = (versions) => {
-  return versions
-    .map((version) => version.replace(/\d+/g, (n) => +n + 100000))
-    .sort()
-    .map((version) => version.replace(/\d+/g, (n) => +n - 100000));
+  return versions.sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true }),
+  );
 };
 
 const replacePathVersion = (path, version = 'latest') => {
