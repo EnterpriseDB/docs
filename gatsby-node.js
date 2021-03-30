@@ -7,12 +7,10 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require('child_process');
 
 const {
-  sortVersionArray,
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
   isPathAnIndexPage,
-  removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
   computeFrontmatterForTreeNode,
