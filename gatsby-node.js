@@ -90,6 +90,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirects
             legacyRedirectsGenerated
             navigation
+            showInteractiveBadge
             katacodaPages {
               scenario
               account
@@ -411,6 +412,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       indexCards: TileModes
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
+      showInteractiveBadge: Boolean
     }
 
     enum TileModes {
