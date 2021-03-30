@@ -27,7 +27,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
           key={node.path}
         >
           <Title node={node} />
-          {node.katacoda && <KatacodaBadge />}
+          {node.interactive && <KatacodaBadge />}
         </li>
       );
     }
@@ -43,7 +43,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
           }`}
         >
           <Title node={node} />
-          {node.katacoda && <KatacodaBadge />}
+          {node.interactive && <KatacodaBadge />}
         </Link>
       </div>
       {node.items.length > 0 && (
