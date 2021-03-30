@@ -121,7 +121,7 @@ const buildProductVersions = (nodes) => {
   });
 
   for (const product in versionIndex) {
-    versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
+    versionIndex[product] = sortVersionArray(versionIndex[product]);
   }
 
   return versionIndex;
@@ -313,7 +313,6 @@ const writeFile = (filePath, data) =>
   });
 
 module.exports = {
-  sortVersionArray,
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
