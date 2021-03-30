@@ -143,14 +143,20 @@ const reportMissingIndex = (reporter, treeNode) => {
 };
 
 const treeNodeToNavNode = (treeNode, withItems = false) => {
+  const frontmatter = treeNode.mdxNode?.frontmatter;
+  const interactive =
+    frontmatter?.showInteractiveBadge != null
+      ? frontmatter?.showInteractiveBadge
+      : !!frontmatter?.katacodaPanel;
+
   const navNode = {
     path: treeNode.path,
-    navTitle: treeNode.mdxNode?.frontmatter?.navTitle,
-    title: treeNode.mdxNode?.frontmatter?.title,
+    navTitle: frontmatter?.navTitle,
+    title: frontmatter?.title,
     depth: treeNode.mdxNode?.fields?.depth,
-    iconName: treeNode.mdxNode?.frontmatter?.iconName,
-    description: treeNode.mdxNode?.frontmatter?.description,
-    katacoda: !!treeNode.mdxNode?.frontmatter?.katacodaPanel,
+    iconName: frontmatter?.iconName,
+    description: frontmatter?.description,
+    interactive: interactive,
   };
   if (withItems) navNode.items = [];
   return navNode;
