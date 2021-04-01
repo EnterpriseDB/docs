@@ -25,7 +25,7 @@ const {
   configureLegacyRedirects,
   readFile,
   writeFile,
-} = require('./src/constants/gatsby-node-utils.js');
+} = require('./src/constants/gatsby-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
