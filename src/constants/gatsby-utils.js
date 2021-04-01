@@ -1,10 +1,9 @@
 const fs = require('fs');
 
 const sortVersionArray = (versions) => {
-  return versions
-    .map((version) => version.replace(/\d+/g, (n) => +n + 100000))
-    .sort()
-    .map((version) => version.replace(/\d+/g, (n) => +n - 100000));
+  return versions.sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true }),
+  );
 };
 
 const replacePathVersion = (path, version = 'latest') => {
@@ -20,8 +19,6 @@ const filePathToDocType = (filePath) => {
     return 'doc';
   } else if (filePath.includes('/advocacy_docs/')) {
     return 'advocacy';
-  } else {
-    return 'gh_doc';
   }
 };
 
@@ -124,7 +121,7 @@ const buildProductVersions = (nodes) => {
   });
 
   for (const product in versionIndex) {
-    versionIndex[product] = sortVersionArray(versionIndex[product]).reverse();
+    versionIndex[product] = sortVersionArray(versionIndex[product]);
   }
 
   return versionIndex;
@@ -136,8 +133,7 @@ const reportMissingIndex = (reporter, treeNode) => {
   while (curr && !curr.mdxNode) curr = curr.children[0];
   if (!curr) return;
 
-  const reportDepth = curr.mdxNode.fields.docType === 'gh_doc' ? 1 : 2;
-  if (treeNode.depth >= reportDepth) {
+  if (treeNode.depth >= 2) {
     reporter.warn(`${treeNode.path} is missing index.mdx`);
   }
 };
@@ -317,7 +313,6 @@ const writeFile = (filePath, data) =>
   });
 
 module.exports = {
-  sortVersionArray,
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
