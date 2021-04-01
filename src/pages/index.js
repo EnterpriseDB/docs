@@ -48,7 +48,6 @@ const Page = () => (
   >
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
-      {/* TODO connect an updated IndexNavagation file to this index page */}
       <MainContent searchNavLogo={true}>
         {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
 
@@ -189,9 +188,11 @@ const Page = () => (
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
-            <span className="font-weight-bold text-muted text-uppercase small">Foreign Data Wrappers</span>
+            <span className="font-weight-bold text-muted text-uppercase small">
+              Foreign Data Wrappers
+            </span>
             <IndexCardLink to="/hadoop_data_adapter/latest">
-            Hadoop Foreign Data Wrapper
+              Hadoop Foreign Data Wrapper
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">
               Mongo Foreign Data Wrapper
@@ -199,7 +200,9 @@ const Page = () => (
             <IndexCardLink to="/mysql_data_adapter/latest">
               MySQL Foreign Data Wrapper
             </IndexCardLink>
-            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">Connectors</span>
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Connectors
+            </span>
             <IndexCardLink to="/jdbc_connector/latest">
               JDBC Connector
             </IndexCardLink>
