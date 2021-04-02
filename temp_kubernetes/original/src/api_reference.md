@@ -32,6 +32,7 @@ Below you will find a description of the defined resources:
 * [ClusterSpec](#clusterspec)
 * [ClusterStatus](#clusterstatus)
 * [DataBackupConfiguration](#databackupconfiguration)
+* [MonitoringConfiguration](#monitoringconfiguration)
 * [NodeMaintenanceWindow](#nodemaintenancewindow)
 * [PostgresConfiguration](#postgresconfiguration)
 * [RecoveryTarget](#recoverytarget)
@@ -62,7 +63,7 @@ BackupList contains a list of Backup
 | Field | Description | Scheme | Required |
 | -------------------- | ------------------------------ | -------------------- | -------- |
 | metadata | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#listmeta-v1-meta) | false |
-| items | List of backups | [][Backup](#backup) | true |
+| items | List of backups | \[][Backup](#backup) | true |
 
 
 ## BackupSpec
@@ -179,7 +180,7 @@ ClusterList contains a list of Cluster
 | Field | Description | Scheme | Required |
 | -------------------- | ------------------------------ | -------------------- | -------- |
 | metadata | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#listmeta-v1-meta) | false |
-| items | List of clusters | [][Cluster](#cluster) | true |
+| items | List of clusters | \[][Cluster](#cluster) | true |
 
 
 ## ClusterSpec
@@ -208,6 +209,7 @@ ClusterSpec defines the desired state of Cluster
 | backup | The configuration to be used for backups | *[BackupConfiguration](#backupconfiguration) | false |
 | nodeMaintenanceWindow | Define a maintenance window for the Kubernetes nodes | *[NodeMaintenanceWindow](#nodemaintenancewindow) | false |
 | licenseKey | The license key of the cluster. When empty, the cluster operates in trial mode and after the expiry date (default 30 days) the operator will cease any reconciliation attempt. For details, please refer to the license agreement that comes with the operator. | string | false |
+| monitoring | The configuration of the monitoring infrastructure of this cluster | *[MonitoringConfiguration](#monitoringconfiguration) | false |
 
 
 ## ClusterStatus
@@ -225,6 +227,7 @@ ClusterStatus defines the observed state of Cluster
 | pvcCount | How many PVCs have been created by this cluster | int32 | false |
 | jobCount | How many Jobs have been created by this cluster | int32 | false |
 | danglingPVC | List of all the PVCs created by this cluster and still available which are not attached to a Pod | []string | false |
+| initializingPVC | List of all the PVCs that are being initialized by this cluster | []string | false |
 | licenseStatus | Status of the license | licensekey.Status | false |
 | writeService | Current write pod | string | false |
 | readService | Current list of read pods | string | false |
@@ -242,6 +245,16 @@ DataBackupConfiguration is the configuration of the backup of the data directory
 | encryption | Whenever to force the encryption of files (if the bucket is not already configured for that). Allowed options are empty string (use the bucket policy, default), `AES256` and `aws:kms` | EncryptionType | false |
 | immediateCheckpoint | Control whether the I/O workload for the backup initial checkpoint will be limited, according to the `checkpoint_completion_target` setting on the PostgreSQL server. If set to true, an immediate checkpoint will be used, meaning PostgreSQL will complete the checkpoint as soon as possible. `false` by default. | bool | false |
 | jobs | The number of parallel jobs to be used to upload the backup, defaults to 2 | *int32 | false |
+
+
+## MonitoringConfiguration
+
+MonitoringConfiguration is the type containing all the monitoring configuration for a certain cluster
+
+| Field | Description | Scheme | Required |
+| -------------------- | ------------------------------ | -------------------- | -------- |
+| customQueriesConfigMap | The list of config maps containing the custom queries | []corev1.ConfigMapKeySelector | false |
+| customQueriesSecret | The list of secrets containing the custom queries | []corev1.SecretKeySelector | false |
 
 
 ## NodeMaintenanceWindow
@@ -341,7 +354,7 @@ ScheduledBackupList contains a list of ScheduledBackup
 | Field | Description | Scheme | Required |
 | -------------------- | ------------------------------ | -------------------- | -------- |
 | metadata | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#listmeta-v1-meta) | false |
-| items | List of clusters | [][ScheduledBackup](#scheduledbackup) | true |
+| items | List of clusters | \[][ScheduledBackup](#scheduledbackup) | true |
 
 
 ## ScheduledBackupSpec
