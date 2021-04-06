@@ -129,6 +129,9 @@ const Page = () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
+            <IndexCardLink to="/bdr/latest">
+              BDR (Bi-Directional Replication)
+            </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>

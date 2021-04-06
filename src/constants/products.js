@@ -2,6 +2,10 @@ import IconNames from '../components/icon/iconNames';
 
 export const products = {
   epas: { name: 'EDB Postgres Advanced Server', iconName: IconNames.EDB_EPAS },
+  bdr: {
+    name: 'BDR (Bi-Directional Replication)',
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
   ark: { name: 'Postgres Ark', iconName: IconNames.EDB_ARK },
   bart: { name: 'Backup and Recovery Tool', iconName: IconNames.EDB_BART },
   efm: { name: 'Failover Manager', iconName: IconNames.EDB_EFM },
