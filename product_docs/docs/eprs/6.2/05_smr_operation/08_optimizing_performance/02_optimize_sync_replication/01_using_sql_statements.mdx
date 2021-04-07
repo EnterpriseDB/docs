@@ -1,0 +1,145 @@
+---
+title: "Using Prepared SQL Statements"
+---
+
+When synchronization replication occurs, the changes recorded in the shadow tables are applied to the subscription tables in JDBC batch updates. Within each batch, changes may be applied using either an individual SQL statement for each change; or a set of changes may be applied using a single, prepared SQL statement. A prepared SQL statement is parsed and compiled only once, but it can be executed multiple times using different values for certain components of the SQL statement in each execution. A SQL statement that is not prepared is parsed, compiled, and executed only once.
+
+Prepared statements are useful only if the same type of SQL statement (`INSERT, UPDATE` or `DELETE`) is executed repeatedly and consecutively with the same target table, but with different values. If there is a sequence of consecutive changes that occur to the same table using the same operation such as inserting a set of rows into the same table populating the same columns, the publication server may apply these changes using a prepared statement. Otherwise, each change is applied with its own individual SQL statement.
+
+There are a number of server configuration options that control the characteristics of the JDBC batch along with if, when, and how often prepared statements are used. These are discussed in the following sections.
+
+`defaultBatchUpdateMode`
+
+The `defaultBatchUpdateMode` option controls whether the default mode is to use individual SQL statements in the JDBC batch update (this mode of operation is referred to as BUS) or to use prepared SQL statements in the JDBC batch update (this mode of operation is referred to as BUP).
+
+`defaultBatchUpdateMode={BUS | BUP}`
+
+> The default value is BUS.
+
+`switchBatchUpdateMode`
+
+The `switchBatchUpdateMode` option controls whether or not the publication server dynamically switches between BUS mode and BUP mode during the replication process depending upon the type and sequence of updates it encounters in the shadow tables for the trigger-based method or the changeset stream for the log-based method.
+
+`switchBatchUpdateMode={true | false}`
+
+> The default value is true.
+
+This means using the default settings of `defaultBatchUpdateMode=BUS` and `switchBatchUpdateMode=true`, the publication server starts out by applying updates with individual SQL statements. When it encounters a stream of consecutive changes that can all be processed in a single prepared statement, it will switch to using prepared SQL statements.
+
+!!! Note
+    If you want a certain batch update mode used throughout all synchronization replications applied by a given publication server without switching update modes, set the defaultBatchUpdateMode option to the desired mode in combination with switchBatchUpdateMode=false. For example, if you only want prepared statements used, set the following options:
+
+`defaultBatchUpdateMode=BUP`
+
+`switchBatchUpdateMode=false`
+
+!!! Note
+    When Oracle is the subscription database, synchronization replication always occurs in BUP mode as if the preceding two options were always set. The reason for this is so large columns of TEXT data type from Postgres publications can successfully replicate to Oracle CLOB columns. In BUS mode an individual Oracle SQL statement has a string literal maximum length of 4000 characters. This limitation does not occur for prepared SQL statements that are used in BUP mode.
+
+`busBatchThresholdCount`
+
+The `busBatchThresholdCount` option sets the number of consecutive updates of the same type that must be encountered in the shadow tables for the trigger-based method or the changeset stream for the log-based method before the publication server switches from BUS mode to BUP mode if dynamic switching is permitted (that is switchBatchUpdateMode=true).
+
+`busBatchThresholdCount=n`
+
+> The default value for n is 5.
+
+The number of consecutive changes using the same table and SQL statement type must exceed the specified value n before a prepared statement is used.
+
+Setting this threshold to a low value will encourage higher use of prepared statements while setting it to a high value will limit the use of prepared statements.
+
+If changes to the publication were made using many SQL statements where each statement affected more than one row, then it may be beneficial to lower busBatchThresholdCount to encourage the use of prepared statements on the multiple shadow table rows resulting from each individual change on the publication.
+
+`bupBatchThresholdCount and bupBatchThresholdRepeatLimit`
+
+If `BUP` mode is employed, but the number of updates using the same prepared statement is low causing frequent switches to a new prepared statement, it may be more beneficial to use individual SQL statements (BUS mode).
+
+For example, the following sequence of updates would be better processed in `BUS` mode:
+
+```text
+INSERT INTO emp
+INSERT INTO dept
+INSERT INTO emp
+INSERT INTO dept
+DELETE FROM emp
+UPDATE emp
+UPDATE dept
+INSERT INTO emp
+INSERT INTO dept
+DELETE FROM dept
+INSERT INTO emp
+DELETE FROM emp
+INSERT INTO dept
+```
+
+However, in the following sequence, it is better to use BUP mode. Updates 1 thru 3 are batched in one prepared statement, 4 thru 7 in another prepared statement, 8 in its own prepared statement, and then 9 thru 15 in one prepared statement.
+
+```text
+1. INSERT INTO emp
+2. INSERT INTO emp
+3. INSERT INTO emp
+4. UPDATE dept
+5. UPDATE dept
+6. UPDATE dept
+7. UPDATE dept
+8. INSERT INTO emp
+9. INSERT INTO dept
+10. INSERT INTO dept
+11. INSERT INTO dept
+12. INSERT INTO dept
+13. INSERT INTO dept
+14. INSERT INTO dept
+15. INSERT INTO dept
+```
+
+The `bupBatchThresholdCount` option is used in combination with the `bupBatchThresholdRepeatLimit` option to control the frequency of mode switches based on the volatility of expected update types to the publication.
+
+`bupBatchThresholdCount=m`
+
+> The default value for m is 5.
+
+`bupBatchThresholdRepeatLimit=n`
+
+> The default value for n is 10.
+
+Each time the same prepared SQL statement is consecutively executed, an internal `batch` counter is incremented. If this batch count falls below bupBatchThresholdCount for the number of executions of a given prepared statement, then a second internal `repeat` counter is incremented by one. If the repeat counter eventually reaches bupBatchThresholdRepeatLimit, the update mode is switched from `BUP` to `BUS`.
+
+Thus, if there are frequent, consecutive changes of prepared SQL statements (as measured against `bupBatchThresholdRepeatLimit`), each of which is executed a small number of times (as measured against `bupBatchThresholdCount`), then the mode of execution changes back to individual SQL statements instead of prepared statements.
+
+!!! Note
+    The publication server changes back to prepared statements when the threshold set by `busBatchThresholdCount` is met.
+
+The following example illustrates the processing of up dates when bupBatchThresholdCount is set to 3 and bupBatchThresholdRepeatLimit is set to 4. A change to the “query domain” referred to in this example means a different statement type (INSERT, UPDATE, or DELETE) or a different target table are encountered in the next update, thus requiring the use of a different prepared SQL statement.
+
+```
+1.    INSERT INTO emp
+2.    INSERT INTO emp
+3.    INSERT INTO dept
+```
+
+At this point the query domain is changed after the first two updates (change from table `emp` to `dept`) and the number of executions of the prior prepared statement (2) is less than `bupBatchThresholdCount`, so the repeat counter is set to 1.
+
+```
+4.    INSERT INTO dept
+5.    INSERT INTO dept
+6.    INSERT INTO dept
+7.    INSERT INTO emp
+```
+
+The query domain is changed again (change from table dept to emp), but this time the number of executions (4) for the same query domain (updates 3 thru 6) exceeds bupBatchThresholdCount so the repeat counter is reset to 0.
+
+```text
+8.    INSERT INTO emp
+9.    UPDATE emp
+```
+
+The query domain is changed again (INSERT statement to UPDATE statement) and the number of executions (2) is less than `bupBatchThresholdCount`, so the repeat counter is incremented to 1.
+
+```text
+10.   UPDATE emp
+11.   INSERT INTO dept
+12.   DELETE FROM dept
+13.   INSERT INTO emp
+```
+
+The query domain is changed between updates 10 and 11, between updates 11 and 12, and between updates 12 and 13. At this point, the repeat counter has been incremented 3 more times to a value of 4. This now equals `bupBatchThresholdRepeatLimit`, so processing is changed from `BUP` mode to `BUS` mode.

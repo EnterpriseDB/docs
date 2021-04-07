@@ -50,7 +50,7 @@ const TileModes = {
   Simple: 'simple',
   Full: 'full',
 };
-const Tiles = ({ mode, mdx, navLinks, cardNavNodes }) => {
+const Tiles = ({ mode, mdx, navLinks }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -126,7 +126,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
-  const editOrFeedbackButton = path.includes('/cloud_native_operator/') ? (
+  const editOrFeedbackButton = path.includes('/cloud_native_postgresql/') ? (
     <FeedbackButton githubIssuesLink={githubIssuesLink} />
   ) : (
     <EditButton githubEditLink={githubEditLink} />

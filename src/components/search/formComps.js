@@ -11,7 +11,7 @@ const Results = connectStateResults(
 );
 
 const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
-  <div className="flex-grow-1 d-flex align-items-center justify-content-center p-4">
+  <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
     {res && res.nbHits > 0 ? 'Not finding what you need?' : 'No results found.'}
     <Link to={`/search?query=${res.query}`} className="ml-2">
       Try Advanced Search
@@ -49,16 +49,16 @@ export const AdvancedSearchTabLink = ({ query }) => (
 
 export const SlashIndicator = ({ query }) => (
   <span
-    className={`slash-indicator text-orange text-center opacity-5 bg-white mr-3 ${(
-      query || ''
-    ).length > 0 && 'd-none'}`}
+    className={`slash-indicator text-orange text-center opacity-5 bg-white mr-3 ${
+      (query || '').length > 0 && 'd-none'
+    }`}
   >
     /
   </span>
 );
 
 export const ClearButton = ({ onClick, className }) => {
-  const click = e => {
+  const click = (e) => {
     e.preventDefault();
     onClick();
   };
