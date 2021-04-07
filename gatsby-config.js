@@ -11,13 +11,14 @@ const ANSI_STOP = '\033[0m';
 
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
-const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-test';
+const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-staging';
 
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
   ark: { name: 'ark', path: 'product_docs/docs/ark' },
   bart: { name: 'bart', path: 'product_docs/docs/bart' },
+  bdr: { name: 'bdr', path: 'product_docs/docs/bdr' },
   efm: { name: 'efm', path: 'product_docs/docs/efm' },
   epas: { name: 'epas', path: 'product_docs/docs/epas' },
   eprs: { name: 'eprs', path: 'product_docs/docs/eprs' },
@@ -139,7 +140,7 @@ module.exports = {
     siteUrl: 'https://enterprisedb.com/docs',
     algoliaIndex: algoliaIndex,
     isDevelopment: !isBuild,
-    cacheBuster: 1, // for busting gh actions cache if needed
+    cacheBuster: 2, // for busting gh actions cache if needed
   },
   plugins: [
     'gatsby-plugin-sass',
@@ -156,7 +157,6 @@ module.exports = {
         },
       },
     },
-    // 'gatsby-plugin-remove-fingerprints', // speeds up Netlify, see https://github.com/narative/gatsby-plugin-remove-fingerprints
     'gatsby-plugin-sitemap',
     {
       resolve: `gatsby-plugin-manifest`,
