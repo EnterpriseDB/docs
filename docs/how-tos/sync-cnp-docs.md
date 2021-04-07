@@ -8,6 +8,9 @@ GitHub action dispatch and automated event handling.
 1. Check out the appropriate version from the [CNP][] repo.
 1. Replace `docs:temp_kubernetes/original/` with
    `cloud-native-postgresql:docs/`.
+
+   `temp_kubernetes/original/` is not tracked via Git, so if it's not present
+   already, you'll need to create the directory yourself.
 1. Transpile original source documentation into MDX format:
 
    ```sh
