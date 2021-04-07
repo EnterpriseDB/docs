@@ -82,7 +82,7 @@ def process_md(file_path):
 def source_cloud_native_postgresql_docs():
     os.system('rm -r temp_kubernetes/build')
     os.system('cp -r temp_kubernetes/original/src temp_kubernetes/build')
-    os.system('cp -r merge_sources/kubernetes/cloud_native_operator/* temp_kubernetes/build')
+    os.system('cp -r merge_sources/kubernetes/cloud_native_postgresql/* temp_kubernetes/build')
 
     print('Processing cloud_native_postgresql...')
     files = Path('temp_kubernetes/build/').glob('**/*.md')
