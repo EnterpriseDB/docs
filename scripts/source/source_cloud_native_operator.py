@@ -1,8 +1,6 @@
 import os
-import shutil
 import glob
 import re
-from urllib.parse import urlparse
 
 STANDARD_FRONTMATTER = """---
 title: '{0}'
@@ -49,7 +47,6 @@ def process_md(file_path):
     with open(new_file_path, "w") as new_file:
         with open(file_path, "r") as md_file:
             copying = False
-            previous_line_was_blank = False
             gh_relative_path = file_path.replace("temp_kubernetes/build/", "src/")
 
             for line in md_file:
