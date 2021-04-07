@@ -23,7 +23,7 @@ After copying the template file, change the owner of the file to `efm`:
 
 After creating the cluster properties file, add (or modify) configuration parameter values as required. For detailed information about each property, see [Specifying Cluster Properties](#specifying-cluster-properties).
 
-The property files are owned by `root`. The Failover Manager service script expects to find the files in the `/etc/edb/efm-4.2 directory`. If you move the property file to another location, you must create a symbolic link that specifies the new location.
+The property files are owned by `root`. The Failover Manager service script expects to find the files in the `/etc/edb/efm-4.2` directory. If you move the property file to another location, you must create a symbolic link that specifies the new location.
 
 !!! Note
     All user scripts referenced in the properties file will be invoked as the Failover Manager user.
@@ -36,11 +36,11 @@ You can use the properties listed in the cluster properties file to specify conn
 
 Property values are case-sensitive. Note that while Postgres uses quoted strings in parameter values, Failover Manager does not allow quoted strings in property values. For example, while you might specify an IP address in a Postgres configuration parameter as:
 
-> `listen_addresses='192.168.2.47'`
+`listen_addresses='192.168.2.47'`
 
 Failover Manager requires that the value *not* be enclosed in quotes:
 
-> `bind.address=192.168.2.54:7800`
+`bind.address=192.168.2.54:7800`
 
 Use the properties in the `efm.properties` file to specify connection, administrative, and operational details for Failover Manager.
 
@@ -77,7 +77,8 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [remote.timeout](#remote_timeout)                             | Y     | Y     | 10                                    |                                                                                                                                                                |
 | [node.timeout](#node_timeout)                                 | Y     | Y     | 50                                    | This value must be same for all the agents                                                                                                                     |
 | [encrypt.agent.messages](#encrypt_agent_messages)             | Y     | Y     | false                                 | This value must be same for all the agents                                                                                                                     |
-| [stop.isolated.primary](#stop_isolated_primary)               | Y     |       | true                                  |                                                                                                                                                                |
+| [enable.stop.cluster](#enable_stop_cluster)                   |       |       | false                                 | This value must be same for all the agents                                                                                                                     |
+| [stop.isolated.primary](#stop_isolated_primary)               | Y     |       | true                                  | This value must be same for all the agents                                                                                                                                                               |
 | [stop.failed.primary](#stop_failed_primary)                   | Y     |       | true                                  |                                                                                                                                                                |
 | [primary.shutdown.as.failure](#primary_shutdown_as_failure)   | Y     | Y     | false                                 |                                                                                                                                                                |
 | [update.physical.slots.period](#update_physical_slots_period) | Y     |       | 0                                     |                                                                                                                                                                |
@@ -97,6 +98,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [reconfigure.num.sync.max](#reconfigure_num_sync_max)         |       |       |                                       |                                                                                                                                                                |
 | [reconfigure.sync.primary](#reconfigure_sync_primary)         | Y     |       | false                                 |                                                                                                                                                                |
 | [minimum.standbys](#minimum_standbys)                         | Y     | Y     | 0                                     | This value must be same for all the nodes                                                                                                                      |
+| [priority.standbys](#priority_standbys)                       |       |       |                                      | This value must be same for all the nodes                                                                                                                      |
 | [recovery.check.period](#recovery_check_period)               | Y     |       | 1                                     |                                                                                                                                                                |
 | [restart.connection.timeout](#restart_connection_timeout)     |       |       | 60                                    |                                                                                                                                                                |
 | [auto.resume.period](#auto_resume_period)                     | Y     |       | 0                                     |                                                                                                                                                                |
@@ -113,6 +115,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [pgpool.bin](#pgpool_enable)                                  |       |       |                                       | Required if pgpool.enable is set to true                                                                                                                       |
 | [script.load.balancer.attach](#script_load_balancer)          |       |       |                                       | Example: script.load.balancer.attach= /&lt;path>/&lt;attach_script> %h %t                                                                                      |
 | [script.load.balancer.detach](#script_load_balancer)          |       |       |                                       | Example: script.load.balancer.detach= /&lt;path>/&lt;detach_script> %h %t                                                                                      |
+| [detach.on.agent.failure](#detach_on_agent_failurer)          |       |       | true                                  | Set to false if you want to keep a running primary database attached.                                                                                     |
 | [script.fence](#script_fence)                                 |       |       |                                       | Example: script.fence= /&lt;path>/&lt;script_name> %p %f                                                                                                       |
 | [script.post.promotion](#script_post_promotion)               |       |       |                                       | Example: script.post.promotion= /&lt;path>/&lt;script_name> %f %p                                                                                              |
 | [script.resumed](#script_resumed)                             |       |       |                                       | Example: script.resumed= /&lt;path>/&lt;script_name>                                                                                                           |
@@ -207,11 +210,32 @@ You should use the same service control mechanism (pg_ctl, service, or systemctl
 ```text
 # Specify the directory containing the pg_controldata/pg_ctl commands,
 # for example:
-# /usr/edb/as11/bin. Unless the db.service.name property is used, the
+# /usr/edb/as12/bin. Unless the db.service.name property is used, the
 # pg_ctl command is used to start/stop/restart databases as needed
 # after a failover or switchover. This property is required.
 db.bin=
 ```
+
+<div id="db_data_dir" class="registered_link"></div>
+
+Use the `db.data.dir` property to specify the location to which a recovery file will be written on the Primary node of the cluster during promotion. This property is required on primary and standby nodes; it is not required on a dedicated witness node.
+
+```text
+# For database version 12 and up, this is the directory where a
+# standby.signal file will exist for a standby node. For previous
+# versions, this is the location of the db recovery.conf file on
+# the node.
+# After a failover, the recovery.conf files on remaining standbys are
+# changed to point to the new primary db (a copy of the original is made
+# first). On a primary node, a recovery.conf file will be written during
+# failover and promotion to ensure that the primary node can not be
+# restarted as the primary database.
+# This corresponds to database environment variable PGDATA and should
+# be same as the output of query 'show data_directory;' on respective
+# database.
+db.data.dir=
+```
+
 
 <div id="db_data_dir" class="registered_link"></div>
 
@@ -486,6 +510,20 @@ Use the `encrypt.agent.messages` property to specify if the messages sent betwee
 encrypt.agent.messages=false
 ```
 
+<div id="enable_stop_cluster" class="registered_link"></div>
+
+Use the `enable.stop.cluster` to enable or disable the stop-cluster command. The command could be a convenience in some environments, but could cause issues when unintentionally invoked. In Eager Failover mode, the impact would even be stopping Postgres on all nodes,  which is why it should be disabled.
+
+```text
+# Whether or not the 'efm stop-cluster <cluster name>' command is enabled.
+# Set to false to disable the command, in which case all Failover
+# Manager agents must be stopped individually. Note that stopping each
+# agent separately will change the .nodes files on remaining agents
+# unless stable.nodes.file is also true. This property value must
+# be the same on all agents if set. The default is true if not set.
+enable.stop.cluster=true
+```
+
 <div id="stop_isolated_primary" class="registered_link"></div>
 
 Use the `stop.isolated.primary` property to instruct Failover Manager to shut down the database if a primary agent detects that it is isolated. When true (the default), Failover Manager will stop the database before invoking the script specified in the `script.primary.isolated` property.
@@ -521,7 +559,6 @@ Use the `primary.shutdown.as.failure` parameter to indicate that any shutdown of
 ```text
 # Treat a primary agent shutdown as an agent failure. This can be set
 # to true to treat a primary agent shutdown as a failure situation,
-# e.g. during the shutdown of a node, accidental or otherwise.
 # Caution should be used when using this feature, as it could
 # cause an unwanted promotion in the case of performing primary
 # database maintenance.
@@ -531,7 +568,7 @@ primary.shutdown.as.failure=false
 
 The `primary.shutdown.as.failure` property is meant to catch user error, rather than failures, such as the accidental shutdown of a primary node. The proper shutdown of a node can appear to the rest of the cluster like a user has stopped the primary Failover Manager agent (for example to perform maintenance on the primary database). If you set the `primary.shutdown.as.failure` property to `true`, care must be taken when performing maintenance.
 
-To perform maintenance on the primary database when `primary.shutdown.as.failure` is `true`, you should stop the primary agent and wait to receive a notification that the primary agent has failed but the database is still running. Then it is safe to stop the primary database. Alternatively, you can use the `efm stop-cluster` command to stop all of the agents without failure checks being performed.
+To perform maintenance on the primary database when `primary.shutdown.as.failure` is `true`, you should stop the primary agent and wait to receive a notification that the primary agent has failed but the database is still running. Then it is safe to stop the primary database. Alternatively, you can use the `stop-cluster` command to stop all of the agents without failure checks being performed.
 
 <div id="update_physical_slots_period" class="registered_link"></div>
 
@@ -807,6 +844,19 @@ Use the `minimum.standbys` property to specify the minimum number of standby nod
 minimum.standbys=0
 ```
 
+<div id="minimum_standbys" class="registered_link"></div>
+
+Use the `priority.standbys` property to specify the priority of standbys after this node is promoted.
+
+```text
+# Space-separated list of standby addresses that are high priority for
+# promotion when this node is the primary. If set, when this node is
+# promoted, addresses in this list will be added to the front of the
+# standby priority list. If this list contains addresses that are not
+# standbys at the time of promotion, they will not be added.
+priority.standbys=
+```
+
 <div id="recovery_check_period" class="registered_link"></div>
 
 Use the `recovery.check.period` property to specify the number of seconds that Failover Manager will wait before checks to see if a database is out of recovery.
@@ -903,7 +953,8 @@ check.vip.before.promotion=true
 
 <div id="pgpool_enable" class="registered_link"></div>
 
-Use the `pgpool.enable` property to specify if you want to enable the Failover Manager and Pgpool integration for high availability. You must have sudo access to enable the Pgpool integration.
+Use the `pgpool.enable` property to specify if you want to enable the Failover Manager and Pgpool integration for high availability. If you want to enable Pgpool integration in a non-sudo mode (running as the DB owner), the PCPPASS file must be owned by the DB owner operating system user and file permissions should be set to 600.  
+
 
 ```text
 # A boolean property to enable Failover Manager managed Pgpool HA.
@@ -959,6 +1010,22 @@ Provide a script name after the `script.load.balancer.attach` property to identi
 # script.load.balancer.attach=/somepath/attachscript %h %t
 script.load.balancer.attach=
 script.load.balancer.detach=
+```
+
+<div id="detach_on_agent_failure" class="registered_link"></div>
+
+Use the `detach.on.agent.failure` property to indicate if you do not want to detach a node from the load balancer in a scenario where the primary agent fails but the database is still reachable. The default value is true.
+
+```text
+# If set to true, Failover Manager will detach the node from load 
+# balancer if the primary agent fails but the database is still 
+# reachable. In most scenarios this is NOT the desired situation. In 
+# scenarios where the detach script should run with a failed primary 
+# agent, even when the primary database is still healthy this parameter 
+# should be set to true. If no value specified it defaults to true (for 
+# backwards compatibility). 
+# This is not applicable for standbys.
+detach.on.agent.failure=
 ```
 
 <div id="script_fence" class="registered_link"></div>
