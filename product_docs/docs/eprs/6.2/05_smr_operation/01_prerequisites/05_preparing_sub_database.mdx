@@ -1,0 +1,141 @@
+---
+title: "Preparing the Subscription Database"
+---
+
+<div id="preparing_sub_database" class="registered_link"></div>
+
+This section discusses the preparation of a database that will be used as a subscription database.
+
+The tables and views in a given publication must all be replicated to the same database. This database is called the subscription database. A subscription database user name must be created with the following characteristics:
+
+-   The subscription database user can connect to the subscription database.
+-   The subscription database user has the privileges to create database objects for the replicated tables and views from publications.
+-   The subscription database user has the privileges necessary to execute the TRUNCATE command on the replicated tables.
+
+See [Postgres Subscription Database](#postgres_sub_database) for preparation of a Postgres subscription database. See [Oracle Subscription Database](#oracle_sub_database) for preparation of an Oracle subscription database. See [SQL Server Subscription Database](#sql_sub_database) for preparation of a SQL Server subscription database.
+
+<div id="postgres_sub_database" class="registered_link"></div>
+
+## Postgres Subscription Database
+
+A database user name must be chosen or created to serve as the subscription database user. The user name must have a password. The subscription database user becomes the owner of the replicated database objects.
+
+When creating the subscription database definition, the subscription database user name is entered in the Subscription Service – Add Database dialog box (see [Adding a Subscription Database](../03_creating_subscription/02_adding_subscription_database/#adding_subscription_database)).
+
+The subscription database user must also have the ability to run the `TRUNCATE` command on the subscription tables. This requires the following:
+
+-   The subscription database user must have superuser privileges.
+-   The subscription database user must have the ability to modify the system catalog tables in order to disable foreign key constraints on subscription tables. (See appendix [Disabling Foreign Key Constraints for Snapshot Replications](../../10_appendix/04_miscellaneous_xdb_processing_topics/04_disable_foreign_key_constraints_for_snapshot_replication/#disable_foreign_key_constraints_for_snapshot_replication) for more information on this requirement.)
+
+You have the following two choices for choosing the subscription database user name:
+
+-   Use the Postgres user name postgres created upon installation of PostgreSQL (enterprisedb for Advanced Server installed in Oracle compatible configuration mode) for the subscription database user name. If you choose this option, skip Step 1 and proceed to Step 2.
+-   Create a new subscription database user name. For this option, proceed to Step 1.
+
+**Step 1:** Create a superuser as the subscription database user.
+
+```text
+CREATE ROLE subuser WITH LOGIN SUPERUSER PASSWORD 'password';
+```
+
+**Step 2:** Create or choose the subscription database.
+
+The names of the schemas containing the publication tables and views become the names of the Postgres schemas for the subscription tables. The subscription server creates these schemas in the subscription database when the subscription is created. If schemas with these names already exist in the subscription database, the existing schemas will be used to store the subscription tables.
+
+**For a SQL Server publication database:** If the schema containing the publication tables and views in SQL Server is named `dbo`, then the subscription server creates a schema named `dbo_sql` in the Postgres subscription database for the subscription tables. (Schema `dbo` is a special reserved schema in Postgres.)
+
+The existing schemas must not contain any tables or views with the same names as the publication tables and views. The subscription server returns an error if there are already identically named tables or views. You must delete or rename these tables and views before the subscription can be created.
+
+A new subscription database owned by the subscription database user `subuser` can be created with the following:
+
+```text
+CREATE DATABASE subdb OWNER subuser;
+```
+
+<div id="oracle_sub_database" class="registered_link"></div>
+
+## Oracle Subscription Database
+
+**Step 1 (Optional):** If you do not have an existing database that you want to use as your subscription database, create a new database. This step can be fairly complicated. Refer to the appropriate Oracle documentation for performing this task.
+
+**Step 2:** Create a database user name for the subscription database user. The subscription database user name must have a password, and it must have the ability to create a database session. The subscription database user becomes the owner of the replicated database objects.
+
+!!! Note
+    (For Oracle 12c Pluggable Database): The subscription database user can be an Oracle local user or a common user. The local user exists within and has access to only a single, user-created pluggable database (PDB), which is to be used as the subscription database. Common user names typically begin with C## or c## and can access multiple pluggable databases.
+
+!!! Note
+    (For Oracle 12c Pluggable Database): Creation and granting of privileges for a local user must be done while connected to the pluggable database to be used as the subscription database. Creation of a common user must be done within the Oracle 12c root container `CDB$ROOT`. Granting of privileges to the common user must be done while connected to the pluggable database to be used as the subscription database.
+
+!!! Note
+    (For Oracle 12c Non-Container Database): Creation and granting of privileges to the subscription database user are performed in the same manner as for Oracle versions prior to 12c.
+
+When creating the subscription database definition, the subscription database user name is entered in the Subscription Service – Add Database dialog box (see [Adding a Subscription Database](../03_creating_subscription/02_adding_subscription_database/#adding_subscription_database)).
+
+```text
+CREATE USER subuser IDENTIFIED BY password;
+GRANT CONNECT TO subuser;
+```
+
+**Step 3:** Grant the privileges needed to create the replicated database objects.
+
+The replicated database objects are created in the schema owned by, and with the same name as the subscription database user.
+
+```text
+GRANT RESOURCE TO subuser;
+```
+
+**Step 4 (For Oracle 12c only):** Grant the privileges required to access tablespaces. The `GRANT UNLIMITED TABLESPACE` privilege must be granted to the subscription database user. This requirement applies to both a pluggable database and a non-container database.
+
+```text
+GRANT UNLIMITED TABLESPACE TO subuser;
+```
+
+<div id="sql_sub_database" class="registered_link"></div>
+
+## SQL Server Subscription Database
+
+**Step 1:** Create or choose the subscription database. 
+
+The names of the schemas containing the publication tables and views become the names of the SQL Server schemas for the subscription tables. The subscription server creates these schemas in the subscription database when the subscription is created. If schemas with these names already exist in the subscription database, the existing schemas will be used to store the subscription tables.
+
+!!! Note
+    If the schema containing the publication tables and views is named public, then the subscription server creates a schema named `public_sql` in the SQL Server subscription database for the subscription tables.
+
+The existing schemas must not contain any tables or views with the same names as the publication tables and views. The subscription server returns an error if there are already identically named tables or views. You must delete or rename these tables and views before the subscription can be created.
+
+A new subscription database can be created as shown by the following:
+
+```text
+USE primary;
+GO
+CREATE DATABASE subdb;
+GO
+```
+
+**Step 2:** Create a SQL Server login for the subscription database user. The login must have a password.
+
+When creating the subscription database definition, the SQL Server login is entered in the Subscription Service – Add Database dialog box (see [Adding a Subscription Database](../03_creating_subscription/02_adding_subscription_database/#adding_subscription_database)).
+
+```text
+CREATE LOGIN subuser WITH PASSWORD = 'password';
+GO
+```
+
+**Step 3:** In the subscription database, a database user must exist that is to be the creator and owner of the subscription tables. This database user must be mapped to the SQL Server login created in Step 2.
+
+In this example, the database user is given the same name as the SQL Server login `subuser`.
+
+```text
+USE subdb;
+GO
+CREATE USER subuser FOR LOGIN subuser;
+GO
+```
+
+**Step 4:** Grant the database level privileges needed by the subscription database user to create the schema and tables for the subscription.
+
+```text
+GRANT CREATE SCHEMA TO subuser;
+GRANT CREATE TABLE TO subuser;
+GO
+```
