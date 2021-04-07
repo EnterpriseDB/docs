@@ -28,7 +28,7 @@ def rewrite_yaml_links(line):
 
 def index_frontmatter():
     nav = []
-    with open("temp_kubernetes/original/mkdocs.yml") as mkdocs:
+    with open("temp_kubernetes/docs/mkdocs.yml") as mkdocs:
         readingNav = False
         for line in mkdocs:
             if "-" not in line:
@@ -69,7 +69,7 @@ def process_md(file_path):
 
 def source_cloud_native_postgresql_docs():
     os.system("rm -r temp_kubernetes/build")
-    os.system("cp -r temp_kubernetes/original/src temp_kubernetes/build")
+    os.system("cp -r temp_kubernetes/docs/src temp_kubernetes/build")
 
     print("Processing cloud_native_postgresql...")
     files = glob.glob("temp_kubernetes/build/**/*.md", recursive=True)
