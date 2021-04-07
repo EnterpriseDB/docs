@@ -2,6 +2,7 @@ import os
 import shutil
 import glob
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 STANDARD_FRONTMATTER = """---
@@ -37,37 +38,54 @@ def index_frontmatter():
                 readingNav = True
             elif readingNav:
                 nav.append(line.replace('.md', ''))
+                if ("quickstart.md" in line):
+                    nav.append("  - interactive\n")
 
     return INDEX_FRONTMATTER.format(''.join(nav))
 
 def process_md(file_path):
-    new_file_path = file_path.replace('.md', '.mdx')
+    new_file_path = file_path.with_suffix('.mdx')
 
     with open(new_file_path, 'w') as new_file:
         with open(file_path, 'r') as md_file:
             copying = False
-            previous_line_was_blank = False
-            gh_relative_path = file_path.replace('temp_kubernetes/build/', 'src/')
+            quickstart = file_path.name == "quickstart.md"
+            paragraph = 0
+            gh_relative_path = 'src/' + str(file_path.relative_to('temp_kubernetes/build/'))
 
             for line in md_file:
-                if copying:
-                    new_file.write(rewrite_yaml_links(line))
-                if line.startswith('#') and not copying:
+                if not line.strip(): 
+                    paragraph = paragraph+1
+
+                    if quickstart and paragraph == 2:
+                        line = """
+!!! Tip "Live demonstration"
+    Don't want to install anything locally just yet? Try a demonstration directly in your browser:
+
+    [Cloud Native PostgreSQL Operator Interactive Quickstart](interactive/quickstart.mdx)
+
+"""
+                elif copying:
+                    line = rewrite_yaml_links(line)
+                elif line.startswith('#') and not copying:
                     copying = True
-                    new_file.write(STANDARD_FRONTMATTER.format(
+                    line = STANDARD_FRONTMATTER.format(
                         re.sub(r'#+ ', '', line).strip(),
                         gh_relative_path,
-                        index_frontmatter() if new_file_path.split('/')[-1] == 'index.mdx' else ''
-                    ))
+                        index_frontmatter() if new_file_path.name == 'index.mdx' else ''
+                    )
+
+                new_file.write(line)
 
         os.remove(file_path)
 
 def source_cloud_native_operator_docs():
     os.system('rm -r temp_kubernetes/build')
     os.system('cp -r temp_kubernetes/original/src temp_kubernetes/build')
+    os.system('cp -r merge_sources/kubernetes/cloud_native_operator/* temp_kubernetes/build')
 
     print('Processing cloud_native_operator...')
-    files = glob.glob('temp_kubernetes/build/**/*.md', recursive=True)
+    files = Path('temp_kubernetes/build/').glob('**/*.md')
     for file_path in files:
         process_md(file_path)
 
