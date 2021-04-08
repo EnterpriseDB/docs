@@ -51,15 +51,13 @@ def process_md(file_path):
             copying = False
             quickstart = file_path.name == "quickstart.md"
             paragraph = 0
-            gh_relative_path = "src/" + str(
-                file_path.relative_to("temp_kubernetes/build/")
-            )
+            gh_relative_path = Path("src/") / file_path.relative_to("temp_kubernetes/build/")
 
             for line in md_file:
-                if not line.strip():
+                if quickstart and not line.strip():
                     paragraph = paragraph + 1
 
-                    if quickstart and paragraph == 2:
+                    if paragraph == 2:
                         line = """
 !!! Tip "Live demonstration"
     Don't want to install anything locally just yet? Try a demonstration directly in your browser:
@@ -69,7 +67,7 @@ def process_md(file_path):
 """
                 elif copying:
                     line = rewrite_yaml_links(line)
-                elif line.startswith("#") and not copying:
+                elif line.startswith("#"):
                     copying = True
                     line = STANDARD_FRONTMATTER.format(
                         re.sub(r"#+ ", "", line).strip(),
