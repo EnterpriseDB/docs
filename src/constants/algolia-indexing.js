@@ -4,7 +4,7 @@ const {
   computeFrontmatterForTreeNode,
   buildProductVersions,
   replacePathVersion,
-} = require('./gatsby-node-utils.js');
+} = require('./gatsby-utils.js');
 
 // this function is weird - note that it's modifying the node in place
 // NOT returning a copy of the node

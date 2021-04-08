@@ -19,6 +19,10 @@ const labelForItem = (item, translation) => {
     : capitalize(item.label);
 };
 
+const versionSort = (a, b) => {
+  return b.label.localeCompare(a.label, undefined, { numeric: true });
+};
+
 const RadioInput = ({
   labelText,
   badgeNumber,
@@ -57,6 +61,7 @@ const RadioRefinement = ({
   queryActive,
   refine,
   show,
+  sortFunction,
   translation = {},
 }) => {
   if (items == null) {
@@ -65,11 +70,14 @@ const RadioRefinement = ({
 
   const radioName = `radio-refinement-${attribute}`;
   const refinedItem = items.find((item) => item.isRefined);
-  const sortedItems = items.sort((a, b) => {
-    const aLabel = labelForItem(a, translation);
-    const bLabel = labelForItem(b, translation);
-    return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
-  });
+  const sortedItems = items.sort(
+    sortFunction ||
+      ((a, b) => {
+        const aLabel = labelForItem(a, translation);
+        const bLabel = labelForItem(b, translation);
+        return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
+      }),
+  );
 
   return (
     <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
@@ -117,7 +125,15 @@ const ContentTypeRefinement = connectMenu(
 );
 
 const SingleFacetRefinement = connectRefinementList(
-  ({ items, refine, queryActive, show, attribute, hideIfEmpty = false }) => {
+  ({
+    items,
+    refine,
+    queryActive,
+    show,
+    attribute,
+    sortFunction,
+    hideIfEmpty = false,
+  }) => {
     const empty = !items || items.length === 0;
 
     return (
@@ -128,6 +144,7 @@ const SingleFacetRefinement = connectRefinementList(
         refine={refine}
         show={show && !(hideIfEmpty && empty)}
         translation={products}
+        sortFunction={sortFunction}
       />
     );
   },
@@ -188,6 +205,7 @@ export const AdvancedSearchFiltering = connectCurrentRefinements(
           show={showProductVersionFilters && productFilterApplied}
           queryActive={queryActive}
           hideIfEmpty={!versionFilterApplied}
+          sortFunction={versionSort}
         />
         <ClearRefinements />
       </>

@@ -20,7 +20,7 @@ const FullCard = ({ card }) => {
           iconName={iconName}
           className={`${
             iconName === iconNames.DOTTED_BOX && 'opacity-1'
-          } mt-3 ml-3`}
+          } mt-3 ml-3 fill-orange`}
           width="100"
           height="100"
         />
