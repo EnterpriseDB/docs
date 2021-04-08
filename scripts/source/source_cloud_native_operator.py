@@ -25,7 +25,7 @@ def rewrite_yaml_links(line):
     match = re.search(r'\[.+\]\((.+)\)', line)
     if match and match[1] and match[1].endswith('.yaml'):
         return line.replace(match[1], match[1].replace('samples/', '../samples/'))
-    return line   
+    return line
 
 def index_frontmatter():
     nav = []
@@ -54,7 +54,7 @@ def process_md(file_path):
             gh_relative_path = 'src/' + str(file_path.relative_to('temp_kubernetes/build/'))
 
             for line in md_file:
-                if not line.strip(): 
+                if not line.strip():
                     paragraph = paragraph+1
 
                     if quickstart and paragraph == 2:
