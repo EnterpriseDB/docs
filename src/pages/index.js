@@ -165,7 +165,7 @@ const Page = () => (
                 className="new-thing"
                 title="Walk through an interactive demo in Katacoda"
               >
-                10min Demo
+                Demo
               </span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
@@ -179,6 +179,18 @@ const Page = () => (
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
             <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
               Cloud Native PostgreSQL Operator
+            </IndexCardLink>
+            <IndexCardLink
+              to="/kubernetes/cloud_native_postgresql/interactive/installation_and_deployment/"
+              className="nested-link"
+            >
+              Installation and Deployment
+              <span
+                className="new-thing"
+                title="Walk through an interactive demo in Katacoda"
+              >
+                Demo
+              </span>
             </IndexCardLink>
           </IndexCard>
 

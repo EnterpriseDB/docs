@@ -3,7 +3,7 @@ import { Link } from '../components/';
 import { Col } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
 
-const KatacodaBadge = () => <span className="new-thing">Katacoda</span>;
+const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
 const showInteractiveBadge = (frontmatter) =>
   frontmatter.showInteractiveBadge != null
