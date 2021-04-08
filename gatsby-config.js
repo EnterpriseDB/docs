@@ -230,6 +230,7 @@ module.exports = {
               infima: true,
               customTypes: {
                 seealso: 'note',
+                hint: 'tip',
               },
             },
           ],
