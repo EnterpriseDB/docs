@@ -7,7 +7,7 @@ const KatacodaPageLink = ({ scenario }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
     <Link to={scenario} className="mr-5" target="_blank">
       <Button variant="info" className="katacoda-start-button">
-        <div>Interactive Tutorial</div>
+        <div>Interactive Demo</div>
         <div className="font-weight-bold cta">Launch Now</div>
       </Button>
     </Link>
