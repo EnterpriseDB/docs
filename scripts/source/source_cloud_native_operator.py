@@ -28,7 +28,7 @@ def rewrite_yaml_links(line):
 
 def index_frontmatter():
     nav = []
-    with open("temp_kubernetes/original/mkdocs.yml") as mkdocs:
+    with open("temp_kubernetes/docs/mkdocs.yml") as mkdocs:
         readingNav = False
         for line in mkdocs:
             if "-" not in line:
