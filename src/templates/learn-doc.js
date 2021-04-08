@@ -151,10 +151,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">{title}</h1>
-            {showInteractiveBadge && (
-              <span className="new-thing">Katacoda</span>
-            )}
+            <h1 className="balance-text">{showInteractiveBadge && (
+              <span className="new-thing-header">Interactive Demo</span>
+            )}{title}</h1>
+
             {editOrFeedbackButton}
           </div>
 

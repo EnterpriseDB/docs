@@ -14,7 +14,7 @@ const SubList = ({ children, collapsed }) => {
   }
 };
 
-const KatacodaBadge = () => <span className="new-thing">Katacoda</span>;
+const KatacodaBadge = () => <span className="new-thing">Demos</span>;
 
 const TreeNode = ({ node, path, hideIfEmpty }) => {
   if (!node.path) {

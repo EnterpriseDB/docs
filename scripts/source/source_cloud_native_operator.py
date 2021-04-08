@@ -3,7 +3,6 @@ import shutil
 import glob
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 STANDARD_FRONTMATTER = """---
 title: '{0}'
@@ -37,21 +36,21 @@ def index_frontmatter():
             if line.startswith('nav'):
                 readingNav = True
             elif readingNav:
-                nav.append(line.replace('.md', ''))
+                nav.append(line.replace(".md", ""))
                 if ("quickstart.md" in line):
                     nav.append("  - interactive\n")
 
-    return INDEX_FRONTMATTER.format(''.join(nav))
+    return INDEX_FRONTMATTER.format("".join(nav))
 
 def process_md(file_path):
-    new_file_path = file_path.with_suffix('.mdx')
+    new_file_path = file_path.with_suffix(".mdx")
 
     with open(new_file_path, 'w') as new_file:
         with open(file_path, 'r') as md_file:
             copying = False
             quickstart = file_path.name == "quickstart.md"
             paragraph = 0
-            gh_relative_path = 'src/' + str(file_path.relative_to('temp_kubernetes/build/'))
+            gh_relative_path = "src/" + str(file_path.relative_to("temp_kubernetes/build/"))
 
             for line in md_file:
                 if not line.strip():
@@ -67,12 +66,12 @@ def process_md(file_path):
 """
                 elif copying:
                     line = rewrite_yaml_links(line)
-                elif line.startswith('#') and not copying:
+                elif line.startswith("#") and not copying:
                     copying = True
                     line = STANDARD_FRONTMATTER.format(
-                        re.sub(r'#+ ', '', line).strip(),
+                        re.sub(r"#+ ", "", line).strip(),
                         gh_relative_path,
-                        index_frontmatter() if new_file_path.name == 'index.mdx' else ''
+                        index_frontmatter() if new_file_path.name == "index.mdx" else ""
                     )
 
                 new_file.write(line)
@@ -80,12 +79,12 @@ def process_md(file_path):
         os.remove(file_path)
 
 def source_cloud_native_postgresql_docs():
-    os.system('rm -r temp_kubernetes/build')
-    os.system('cp -r temp_kubernetes/original/src temp_kubernetes/build')
-    os.system('cp -r merge_sources/kubernetes/cloud_native_postgresql/* temp_kubernetes/build')
+    os.system("rm -r temp_kubernetes/build")
+    os.system("cp -r temp_kubernetes/docs/src temp_kubernetes/build")
+    os.system("cp -r merge_sources/kubernetes/cloud_native_postgresql/* temp_kubernetes/build")
 
-    print('Processing cloud_native_postgresql...')
-    files = Path('temp_kubernetes/build/').glob('**/*.md')
+    print("Processing cloud_native_postgresql...")
+    files = Path("temp_kubernetes/build/").glob("**/*.md")
     for file_path in files:
         process_md(file_path)
 
