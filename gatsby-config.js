@@ -16,7 +16,7 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-staging';
 /******** Sourcing *********/
 const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
 const sourceToPluginConfig = {
-  ark: { name: 'ark', path: 'product_docs/docs/ark' },
+  // ark: { name: 'ark', path: 'product_docs/docs/ark' },
   bart: { name: 'bart', path: 'product_docs/docs/bart' },
   bdr: { name: 'bdr', path: 'product_docs/docs/bdr' },
   efm: { name: 'efm', path: 'product_docs/docs/efm' },
