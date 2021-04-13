@@ -231,6 +231,7 @@ module.exports = {
               customTypes: {
                 seealso: 'note',
                 hint: 'tip',
+                interactive: 'interactive',
               },
             },
           ],
