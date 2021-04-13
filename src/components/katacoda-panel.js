@@ -11,7 +11,7 @@ const KatacodaPanelToggleClosed = ({ onClick }) => (
         variant="info"
         className="katacoda-start-button"
       >
-        <div>Interactive Tutorial</div>
+        <div>Interactive Demo</div>
         <div className="font-weight-bold cta">Start Now</div>
       </Button>
     </div>
@@ -54,7 +54,7 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
         variant="outline-info"
         className="katacoda-start-button"
       >
-        <div>Interactive Tutorial</div>
+        <div>Interactive Demo</div>
         <div className="font-weight-bold cta">Enabled</div>
       </Button>
     </div>
