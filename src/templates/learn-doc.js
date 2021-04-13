@@ -153,7 +153,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           {showInteractiveBadge && (
             <div className='new-thing-header' aria-roledescription='badge'>
               <span className='badge-text'>
-                Interactive
+                Interactive Demo
               </span>
             </div>
           )}
