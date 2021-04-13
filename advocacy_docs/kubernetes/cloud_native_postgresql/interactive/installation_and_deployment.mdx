@@ -1,0 +1,278 @@
+---
+title: "Installation, Configuration and Demployment Demo"
+description: "Walk through the process of installing, configuring and deploying the Cloud Native PostgreSQL Operator via a browser-hosted Minikube console"
+navTitle: Install, Configure, Deploy
+product: 'Cloud Native PostgreSQL Operator'
+platform: ubuntu
+tags:
+    - postgresql
+    - cloud-native-postgresql-operator
+    - kubernetes
+    - minikube
+    - live-demo
+katacodaPanel:
+  scenario: minikube
+  codelanguages: shell, yaml
+showInteractiveBadge: true
+---
+
+Want to see what it takes to get the Cloud Native PostgreSQL Operator up and running? This section will demonstrate the following:
+
+1. Installing the Cloud Native PostgreSQL Operator
+2. Deploying a three-node PostgreSQL cluster
+3. Installing and using the kubectl-cnp plugin
+
+It will take roughly 5-10 minutes to work through.
+
+!!!interactive This demo is interactive
+    You can follow along right in your browser by clicking the button below. Once the environment initializes, you'll see a terminal open at the bottom of the screen.
+
+<KatacodaPanel />
+
+[Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/) is already installed in this environment; we just need to start the cluster:
+
+```shell
+minikube start
+__OUTPUT__
+* minikube v1.8.1 on Ubuntu 18.04
+* Using the none driver based on user configuration
+* Running on localhost (CPUs=2, Memory=2460MB, Disk=145651MB) ...
+* OS release is Ubuntu 18.04.4 LTS
+* Preparing Kubernetes v1.17.3 on Docker 19.03.6 ...
+  - kubelet.resolv-conf=/run/systemd/resolve/resolv.conf
+* Launching Kubernetes ...
+* Enabling addons: default-storageclass, storage-provisioner
+* Configuring local host environment ...
+* Waiting for cluster to come online ...
+* Done! kubectl is now configured to use "minikube"
+```
+
+This will create the Kubernetes cluster, and you will be ready to use it.
+Verify that it works with the following command:
+
+```shell
+kubectl get nodes
+__OUTPUT__
+NAME       STATUS   ROLES    AGE   VERSION
+minikube   Ready    master   66s   v1.17.3
+```
+
+You will see one node called `minikube`. If the status isn't yet "Ready", wait for a few seconds and run the command above again.
+
+## Install Cloud Native PostgreSQL
+
+Now that the Minikube cluster is running, you can proceed with Cloud Native PostgreSQL installation as described in the ["Installation"](installation.md) section:
+
+```shell
+kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.2.0.yaml
+__OUTPUT__
+namespace/postgresql-operator-system created
+customresourcedefinition.apiextensions.k8s.io/backups.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/clusters.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/scheduledbackups.postgresql.k8s.enterprisedb.io created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-mutating-webhook-configuration created
+serviceaccount/postgresql-operator-manager created
+clusterrole.rbac.authorization.k8s.io/postgresql-operator-manager created
+clusterrolebinding.rbac.authorization.k8s.io/postgresql-operator-manager-rolebinding created
+service/postgresql-operator-webhook-service created
+deployment.apps/postgresql-operator-controller-manager created
+validatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-validating-webhook-configuration created
+```
+
+And then verify that it was successfully installed:
+
+```shell
+kubectl get deploy -n postgresql-operator-system postgresql-operator-controller-manager
+__OUTPUT__
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE
+postgresql-operator-controller-manager   1/1     1            1           52s
+```
+
+## Deploy a PostgreSQL cluster
+
+As with any other deployment in Kubernetes, to deploy a PostgreSQL cluster
+you need to apply a configuration file that defines your desired `Cluster`.
+
+The [`cluster-example.yaml`](../samples/cluster-example.yaml) sample file
+defines a simple `Cluster` using the default storage class to allocate
+disk space:
+
+```yaml
+cat <<EOF > cluster-example.yaml
+# Example of PostgreSQL cluster
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+
+  # Example of rolling update strategy:
+  # - unsupervised: automated update of the primary once all
+  #                 replicas have been upgraded (default)
+  # - supervised: requires manual supervision to perform
+  #               the switchover of the primary
+  primaryUpdateStrategy: unsupervised
+
+  # Require 1Gi of space
+  storage:
+    size: 1Gi
+EOF
+```
+
+!!! Note "There's more"
+    For more detailed information about the available options, please refer
+    to the ["API Reference" section](api_reference.md).
+
+In order to create the 3-node PostgreSQL cluster, you need to run the following command:
+
+```shell
+kubectl apply -f cluster-example.yaml
+__OUTPUT__
+cluster.postgresql.k8s.enterprisedb.io/cluster-example created
+```
+
+You can check that the pods are being created with the `get pods` command. It'll take a bit to initialize, so if you run that
+immediately after applying the cluster configuration you'll see the status as `Init:` or `PodInitializing`:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                             READY   STATUS            RESTARTS   AGE
+cluster-example-1-initdb-kq2vw   0/1     PodInitializing   0          18s
+```
+
+...give it a minute, and then check on it again:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                READY   STATUS    RESTARTS   AGE
+cluster-example-1   1/1     Running   0          56s
+cluster-example-2   1/1     Running   0          35s
+cluster-example-3   1/1     Running   0          19s
+```
+
+Now we can check the status of the cluster:
+
+```shell
+kubectl get cluster cluster-example -o yaml
+__OUTPUT__
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"postgresql.k8s.enterprisedb.io/v1","kind":"Cluster","metadata":{"annotations":{},"name":"cluster-example","namespace":"default"},"spec":{"instances":3,"primaryUpdateStrategy":"unsupervised","storage":{"size":"1Gi"}}}
+  creationTimestamp: "2021-04-07T00:33:43Z"
+  generation: 1
+  name: cluster-example
+  namespace: default
+  resourceVersion: "1806"
+  selfLink: /apis/postgresql.k8s.enterprisedb.io/v1/namespaces/default/clusters/cluster-example
+  uid: 38ddc347-3f2e-412a-aa14-a26904e1a49e
+spec:
+  affinity:
+    topologyKey: ""
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+  imageName: quay.io/enterprisedb/postgresql:13.2
+  instances: 3
+  postgresql:
+    parameters:
+      logging_collector: "off"
+      max_parallel_workers: "32"
+      max_replication_slots: "32"
+      max_worker_processes: "32"
+      wal_keep_size: 512MB
+  primaryUpdateStrategy: unsupervised
+  resources: {}
+  storage:
+    size: 1Gi
+status:
+  currentPrimary: cluster-example-1
+  instances: 3
+  instancesStatus:
+    healthy:
+    - cluster-example-3
+    - cluster-example-1
+    - cluster-example-2
+  latestGeneratedNode: 3
+  licenseStatus:
+    isImplicit: true
+    isTrial: true
+    licenseExpiration: "2021-05-07T00:33:43Z"
+    licenseStatus: Implicit trial license
+    repositoryAccess: false
+    valid: true
+  phase: Cluster in healthy state
+  pvcCount: 3
+  readService: cluster-example-r
+  readyInstances: 3
+  targetPrimary: cluster-example-1
+  writeService: cluster-example-rw
+```
+
+!!! Note
+    By default, the operator will install the latest available minor version
+    of the latest major version of PostgreSQL when the operator was released.
+    You can override this by setting [the `imageName` key in the `spec` section of
+    the `Cluster` definition](../api_reference/#clusterspec).
+
+!!! Important
+    The immutable infrastructure paradigm requires that you always
+    point to a specific version of the container image.
+    Never use tags like `latest` or `13` in a production environment
+    as it might lead to unpredictable scenarios in terms of update
+    policies and version consistency in the cluster.
+
+## Install the kubectl-cnp plugin
+
+Cloud Native PostgreSQL provides a plugin for kubectl to manage a cluster in Kubernetes, along with a script to install it:
+
+```shell
+curl -sSfL \
+  https://github.com/EnterpriseDB/kubectl-cnp/raw/main/install.sh | \
+  sudo sh -s -- -b /usr/local/bin
+__OUTPUT__
+EnterpriseDB/kubectl-cnp info checking GitHub for latest tag
+EnterpriseDB/kubectl-cnp info found version: 1.2.1 for v1.2.1/linux/x86_64
+EnterpriseDB/kubectl-cnp info installed /usr/local/bin/kubectl-cnp
+```
+
+The `cnp` command is now available in kubectl:
+
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Cluster in healthy state
+Name:              cluster-example
+Namespace:         default
+PostgreSQL Image:  quay.io/enterprisedb/postgresql:13.2
+Primary instance:  cluster-example-1
+Instances:         3
+Ready instances:   3
+
+Instances status
+Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart
+--------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------
+cluster-example-1  0/6000060                              6941211174657425425  ✓        ✗            ✗              ✗
+cluster-example-2               0/6000060     0/6000060   6941211174657425425  ✗        ✓            ✗              ✗
+cluster-example-3               0/6000060     0/6000060   6941211174657425425  ✗        ✓            ✗              ✗
+```
+
+!!! Note "There's more"
+    See [the Cloud Native PostgreSQL Plugin page](../cnp-plugin/) for more commands and options.
+
+
+### Further reading
+
+This is all it takes to get a PostgreSQL cluster up and running, but of course there's a lot more possible - and certainly much more that is prudent before you should ever deploy in a production environment!
+
+- For information on using the Cloud Native PostgreSQL Operator to deploy on public cloud platforms, see the [Cloud Setup](.../cloud_setup/) section.
+
+- For the design goals and possibilities offered by the Cloud Native PostgreSQL Operator, check out the [Architecture](../architecture/) and [Use cases](../use_cases/) sections.
+
+- And for details on what it takes to configure a secure and reliable system, read through the [Security](../security/), [Failure Modes](../failure_modes/) and [Backup and Recovery](../backup_recovery/) sections.
