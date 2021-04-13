@@ -1,7 +1,7 @@
-import React from 'react';
-import { Container, Row, Col } from 'react-bootstrap';
-import { graphql } from 'gatsby';
-import { MDXRenderer } from 'gatsby-plugin-mdx';
+import React from 'react'
+import { Container, Row, Col } from 'react-bootstrap'
+import { graphql } from 'gatsby'
+import { MDXRenderer } from 'gatsby-plugin-mdx'
 import {
   CardDecks,
   DevFrontmatter,
@@ -13,7 +13,7 @@ import {
   SideNavigation,
   TableOfContents,
   TopBar,
-} from '../components';
+} from '../components'
 
 export const query = graphql`
   query($nodeId: String!) {
@@ -27,75 +27,75 @@ export const query = graphql`
       tableOfContents
     }
   }
-`;
+`
 
 const ContentRow = ({ children }) => (
-  <div className="container p-0 mt-4">
+  <div className='container p-0 mt-4'>
     <Row>{children}</Row>
   </div>
-);
+)
 
 const getChildren = (parentNode, navLinks) => {
   return navLinks
     .filter(
-      (node) =>
+      node =>
         node.fields.path.includes(parentNode.fields.path) &&
         node.fields.depth === parentNode.fields.depth + 1,
     )
-    .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
-};
+    .sort((a, b) => a.fields.path.localeCompare(b.fields.path))
+}
 
 const TileModes = {
   None: 'none',
   Simple: 'simple',
   Full: 'full',
-};
+}
 const Tiles = ({ mode, mdx, navLinks }) => {
-  if (mode === TileModes.None) return null;
+  if (mode === TileModes.None) return null
 
   if (!mode) {
-    if (mdx.fields.depth === 2) mode = TileModes.Full;
-    else if (mdx.fields.depth >= 3) mode = TileModes.Simple;
+    if (mdx.fields.depth === 2) mode = TileModes.Full
+    else if (mdx.fields.depth >= 3) mode = TileModes.Simple
   }
 
   if (Object.values(TileModes).includes(mode)) {
-    const tiles = getChildren(mdx, navLinks).map((child) => {
-      if (mode === 'simple') return child;
+    const tiles = getChildren(mdx, navLinks).map(child => {
+      if (mode === 'simple') return child
 
       return {
         ...child,
         children: getChildren(child, navLinks),
-      };
-    });
+      }
+    })
 
-    return <CardDecks cards={tiles} cardType={mode} />;
+    return <CardDecks cards={tiles} cardType={mode} />
   }
-  return null;
-};
+  return null
+}
 
 const EditButton = ({ githubEditLink }) => (
   <a
     href={githubEditLink || '#'}
-    className="btn btn-sm btn-primary px-4 text-nowrap"
+    className='btn btn-sm btn-primary px-4 text-nowrap'
   >
     Edit this page
   </a>
-);
+)
 
 const FeedbackButton = ({ githubIssuesLink }) => (
   <a
     href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
-    target="_blank"
-    rel="noreferrer"
-    className="btn btn-sm btn-primary px-4 text-nowrap"
+    target='_blank'
+    rel='noreferrer'
+    className='btn btn-sm btn-primary px-4 text-nowrap'
   >
     Feedback
   </a>
-);
+)
 
 const LearnDocTemplate = ({ data, pageContext }) => {
-  const { mdx } = data;
-  const { mtime, path, depth } = mdx.fields;
+  const { mdx } = data
+  const { mtime, path, depth } = mdx.fields
   const {
     frontmatter,
     pagePath,
@@ -106,7 +106,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage,
     navTree,
     prevNext,
-  } = pageContext;
+  } = pageContext
   const {
     iconName,
     title,
@@ -114,15 +114,19 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     katacodaPanel,
     indexCards,
     prevNext: showPrevNext,
-  } = frontmatter;
+  } = frontmatter
   const pageMeta = {
     title: title,
     description: description,
     path: pagePath,
     isIndexPage: isIndexPage,
-  };
+  }
 
-  const showToc = !!mdx.tableOfContents.items;
+  const showToc = !!mdx.tableOfContents.items
+  const showInteractiveBadge =
+    frontmatter.showInteractiveBadge != null
+      ? frontmatter.showInteractiveBadge
+      : !!katacodaPanel
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
@@ -130,12 +134,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     <FeedbackButton githubIssuesLink={githubIssuesLink} />
   ) : (
     <EditButton githubEditLink={githubEditLink} />
-  );
+  )
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <TopBar />
-      <Container fluid className="p-0 d-flex bg-white">
+      <Container fluid className='p-0 d-flex bg-white'>
         <SideNavigation>
           <LeftNav
             navTree={navTree}
@@ -146,8 +150,15 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
-          <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">{title}</h1>
+          {showInteractiveBadge && (
+            <div className='new-thing-header' aria-roledescription='badge'>
+              <span className='badge-text'>
+                Interactive Demo
+              </span>
+            </div>
+          )}
+          <div className='d-flex justify-content-between align-items-center'>
+            <h1 className='balance-text'>{title}</h1>
             {editOrFeedbackButton}
           </div>
 
@@ -200,7 +211,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         </MainContent>
       </Container>
     </Layout>
-  );
-};
+  )
+}
 
-export default LearnDocTemplate;
+export default LearnDocTemplate
