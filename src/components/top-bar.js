@@ -11,7 +11,7 @@ const TopBar = () => {
       This is the redesigned EDB Docs site. For older product docs, go to the
       <Link
         to="https://www.enterprisedb.com/edb-docs"
-        className="font-weight-bold"
+        className="pl-1 font-weight-bold"
       >
         EDB Docs Archive
       </Link>
