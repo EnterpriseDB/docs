@@ -1,0 +1,36 @@
+---
+title: "Converting a Standard Sequence to an MMR-Ready Sequence"
+---
+
+<div id="convert_to_mmr_ready" class="registered_link"></div>
+
+If you have an existing application with tables that use a standard sequence such as with the `SERIAL` data type, these tables can be modified to use the MMR-ready sequence for incorporation into a multi-master replication system. The basic conversion process is the following:
+
+-   Update the sequence values in the existing rows with MMR-ready sequence compatible values.
+-   Alter the column definition to be compatible with the MMR-ready sequence including modification or addition of the `DEFAULT` clause to use the MMR-ready sequence function to supply the default values for subsequent inserts.
+
+To perform the conversion of existing sequence values, first, create the unique database identifier as described in Step 1 of section [Creating an MMR-Ready Sequence](01_create_mmr_ready_sequence/#create_mmr_ready_sequence).
+
+Use the following function to update the existing primary key and foreign key values that are required to be converted.
+
+```text
+CREATE OR REPLACE FUNCTION MMR_sequence_convert (
+    old_seq_value   bigint
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint + $1;
+$function$;
+```
+
+The function input argument is the old sequence value and the function returns the new MMR-ready sequence value.
+
+The function input and return arguments are data type `BIGINT` so the existing sequence columns must be altered accordingly before using the function.
+
+Finally, the sequence columns must include the clauses `BIGINT NOT NULL DEFAULT MMR_sequence_nextval('seq_name')` to supply MMR-ready sequence values for future inserts.
+
+See [Creating an MMR-Ready Sequence](01_create_mmr_ready_sequence/#create_mmr_ready_sequence) for information on creating the objects required for an MMR-ready sequence.

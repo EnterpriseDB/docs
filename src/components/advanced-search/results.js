@@ -108,9 +108,7 @@ export const AdvancedSearchResults = connectStateResults(
 
     if (queryLength === 0) {
       return (
-        <p className="search-text-summary">
-          Please enter a search query to begin.
-        </p>
+        <p className="search-text-summary">Enter a search query to begin.</p>
       );
     }
 

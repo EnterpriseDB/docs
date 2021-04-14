@@ -17,7 +17,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
         <main className="mt-0 p-5 w-100">
           <div className="py-4">
             <ul className="list-unstyled" style={{ width: '149px' }}>
-              <BackButton currentPath={path} />
+              <BackButton />
             </ul>
             <Logo width="149" height="40" />
           </div>
