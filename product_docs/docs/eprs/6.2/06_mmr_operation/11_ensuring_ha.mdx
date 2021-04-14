@@ -1,0 +1,74 @@
+---
+title: "Ensuring High Availability"
+---
+
+<div id="ensuring_ha" class="registered_link"></div>
+
+In a multi-master replication system, the primary nodes participating in replication can reside on separate physical hosts. If any primary node goes offline, the primary nodes on the other hosts continue to synchronize transactions amongst themselves thereby ensuring consistency of the publication tables on the remaining active primary nodes. When an offline primary node is brought back online, pending transactions involving that primary node are synchronized with the other primary nodes of the replication system. No transaction data is lost between the primary nodes.
+
+Thus, an inherent characteristic of multi-master replication systems is that each primary node serves as a backup for the other nodes, and any such node can provide consistent publication data to applications.
+
+Similarly, the complete, multi-master replication system configuration information (that is, the control schema and its control schema objects) is stored in each publication database (that is, every primary node) of the multi-master replication system.
+
+Thus, should any primary node go offline, the configuration information stored in the control schema is always available to the publication server in order to continue operation of the replication system.
+
+Though every publication database contains a copy of the control schema, the publication database designated as the controller database has special significance to the operation of the replication system.
+
+The significance of the controller database and its proper usage to ensure high availability of the replication system are discussed in the following sections.
+
+## Significance of the Controller Database
+
+At any given point in time during operation of the replication system, one of the publication databases of the primary nodes is designated as the controller database.
+
+The controller database can be identified in either of the following ways:
+
+-   In the xDB Replication Console, when a primary node is selected, the Controller database field in the Property window is set to `Yes` if this primary node is the current controller database.
+-   In the xDB Replication Configuration file, the authentication and connection parameters are set to the controller database. See Section [xDB Replication Configuration File](../02_overview/03_replication_server_components_and_architecture/01_physical_components/#xdb_replication_conf_file) for information on the xDB Replication Configuration file.
+
+When a replication system is in use, the xDB Replication Server, and particularly, the publication server component, accesses the currently designated controller database for any configuration information.
+
+Any changes that you make to the replication system configuration using the xDB Replication Console or the xDB Replication Server CLI are first updated in the control schema of the controller database, and then replicated by the xDB Replication Server to the other publication databases to keep such information consistent.
+
+!!! Note
+    Replication history may take a longer period of time to replicate from the controller database to the other publication databases, therefore it is possible that some replication history may be lost if access to the controller database fails, and a switchover is made to another publication database to act as the controller database. See Section [Viewing Replication History](../07_common_operations/04_view_replication_history/#view_replication_history) for information on replication history.
+
+Therefore it is important that the controller database be accessible whenever the replication system is use.
+
+There may be circumstances where access to the controller database cannot be maintained such as scheduled maintenance that must be performed on the database server hosting the controller database or an unexpected network or system problem.
+
+Such circumstances are addressed in the following sections.
+
+## Automatic Switchover of the Controller Database
+
+If the publication server is currently running with its connection to the controller database, and that database suddenly becomes inaccessible such as with a network or system problem, the xDB Replication Server automatically performs a connection to another online publication database to act as the controller database.
+
+Thus, there is no apparent disruption in the operation of the xDB Replication Server.
+
+The controller database authentication and connection information is modified accordingly in the xDB Replication Configuration file (see Section [xDB Replication Configuration File](../02_overview/03_replication_server_components_and_architecture/01_physical_components/#xdb_replication_conf_file)). Thus, any subsequent startups of the publication and subscription servers use this newly designated controller database.
+
+The controller database can be subsequently changed to use another publication database as described in sections [Switching an Active Controller Database](#switching_active_controller_db) and [Restarting with an Alternate Controller Database](#restart_with_alternate_controller_db).
+
+<div id="switching_active_controller_db" class="registered_link"></div>
+
+## Switching an Active Controller Database
+
+If at some point, the database server hosting the controller database must be taken offline for maintenance or some other reasons you can switch the role of the controller database to another publication database.
+
+If the publication server is currently running, this switch can be made using the xDB Replication Console (see Section [Switching the Controller Database](../07_common_operations/07_switching_controller_db/#switching_controller_db)) or the xDB Replication Server CLI (see Section [Setting the Controller (setascontroller)](../08_xdb_cli/03_xdb_cli_commands/26_set_controller/#set_controller)).
+
+After the switch has occurred, you can take the former controller database offline. Any pending transactions involving the former controller database will be applied after it is brought back online.
+
+If the publication server is not running, you can still change the controller database so that the publication server connects to a newly designated controller database when the publication server is started. See Section [Restarting with an Alternate Controller Database](#restart_with_alternate_controller_db) for information on this method.
+
+<div id="restart_with_alternate_controller_db" class="registered_link"></div>
+
+## Restarting with an Alternate Controller Database
+
+If for some reason the currently designated controller database cannot be accessed by the publication server, certain symptoms may occur such as the following:
+
+-   The xDB Replication Console is unresponsive or the xDB Replication Server CLI commands fail unpredictably.
+-   The publication server is not running and it cannot be successfully started.
+
+If it is determined that the controller database is inaccessible, then you can switch the controller database role to another publication database by editing the xDB Replication Configuration file so it contains the connection information of another primary node in the replication system. See Section [xDB Replication Configuration File](../02_overview/03_replication_server_components_and_architecture/01_physical_components/#xdb_replication_conf_file) for information on the xDB Replication Configuration file.
+
+After the xDB Replication Configuration file has been modified, restart the publication server along with the subscription server if you are using that as well. See Section [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for instructions on starting the publication server. See Section [Registering a Subscription Server](../05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server) for instructions on starting the subscription server.

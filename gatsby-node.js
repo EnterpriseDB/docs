@@ -7,12 +7,10 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require('child_process');
 
 const {
-  sortVersionArray,
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
   isPathAnIndexPage,
-  removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
   computeFrontmatterForTreeNode,
@@ -25,7 +23,7 @@ const {
   configureLegacyRedirects,
   readFile,
   writeFile,
-} = require('./src/constants/gatsby-node-utils.js');
+} = require('./src/constants/gatsby-utils.js');
 
 const isBuild = process.env.NODE_ENV === 'production';
 const isProduction = process.env.APP_ENV === 'production';
@@ -90,6 +88,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirects
             legacyRedirectsGenerated
             navigation
+            showInteractiveBadge
             katacodaPages {
               scenario
               account
@@ -340,7 +339,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       );
     }
 
-    const path = `${doc.fields.path}/${katacodaPage.scenario}`;
+    const path = `${doc.fields.path}${katacodaPage.scenario}`;
     actions.createPage({
       path: path,
       component: require.resolve('./src/templates/katacoda-page.js'),
@@ -411,6 +410,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       indexCards: TileModes
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
+      showInteractiveBadge: Boolean
     }
 
     enum TileModes {

@@ -1,4 +1,4 @@
-// Rewrite the not-very-well-converted RST alerts to markdown quotes with titles in bold
+// Rewrite the not-very-well-converted RST alerts to admonitions
 
 const visit = require('unist-util-visit')
 const mdast2string = require('mdast-util-to-string')
@@ -21,10 +21,19 @@ function transformer(tree, file) {
       });
 
       replacement = {
-        type: "blockquote",
+        type: "admonition",
+        keyword: "Note",
+        quoted: false,
+        "indentSize": 4,
         children: [
-          { type: "strong", children: [{type: 'text', value: mdast2string({children: title}) + ':'}], },
-          ...node.children.filter(node => !node.type.startsWith("jsx")),
+          { 
+            type: "admonition-heading",
+            children: [{ type: "text", value: mdast2string({children: title})}]
+          },
+          { 
+            type: "admonition-content",
+            children: node.children.filter(node => !node.type.startsWith("jsx")),
+          },
         ],
       };
     });
