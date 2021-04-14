@@ -13,10 +13,12 @@ const remarkMdxEmbeddedHast = require('./lib/mast-embedded-hast')
 const {linkTargetIndexer, relativeLinkRewriter, index} = require('./lib/relativelinks')
 const remarkStringify = require('remark-stringify')
 const noEscapeImageAlt = require('./lib/no-escape-image-alt')
+//const stripImageAlt = require('./lib/strip-image-alt')
 const tableFormatter = require('./lib/table-formatter')
 const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
-const noteRewriter = require('./lib/note-rerewriter.js')
+const noteRewriter = require('./lib/note-rewriter.js')
 const codeInTables = require('../../src/plugins/code-in-tables.js')
+const admonitions = require('remark-admonitions')
 
 ;(async () => {
 
@@ -33,6 +35,7 @@ example:
 
   const parser = unified()
     .use(remarkParse)
+    .use(admonitions, { tag: '!!!', icons: 'none', infima: true })
     .use(mdx)
     .use(remarkFrontmatter)
   const indexing = unified()
@@ -45,13 +48,15 @@ example:
     .use(relativeLinkRewriter)
     .use(tableFormatter)
     .use(codeInTables)
-    .use(docs1LinkRewriter);
+    .use(docs1LinkRewriter)
+//    .use(stripImageAlt)
   const compiler = unified()
     .use(remarkParse)
     .use(remarkStringify, {emphasis: '*', bullet: '-', fences: true})
     .use(mdx)
     .use(remarkFrontmatter)
     .use(remarkMdxEmbeddedHast)
+    .use(admonitions, { tag: '!!!', icons: 'none', infima: true })
     .use(noteRewriter)
     .use(codeInTables)
     .use(noEscapeImageAlt)
