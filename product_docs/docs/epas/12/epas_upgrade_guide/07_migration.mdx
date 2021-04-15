@@ -67,16 +67,97 @@ Version 12 contains a number of changes that may affect compatibility with previ
 -   In `pg_restore`, require specification of `-f -` to send the dump contents to
 standard output.
 
-    Previously, this happened by default if no destination was specified, but that was
-    deemed to be unfriendly.
+  Previously, this happened by default if no destination was specified, but that was
+  deemed to be unfriendly.
 
 -  Disallow non-unique abbreviations in psql's `\pset format` command.
 
-    Previously, for example, `\pset format` a chose `aligned`; it will now fail since
-    that could equally well mean `asciidoc`.
+  Previously, for example, `\pset format` a chose `aligned`; it will now fail since
+  that could equally well mean `asciidoc`.
 
 -   In new `btree` indexes, the maximum index entry length is reduced by eight bytes,
 to improve handling of duplicate entries.
 
-This means that a `REINDEX` operation on an index `pg_upgrade'd from a
-previous release could potentially fail.
+  This means that a `REINDEX` operation on an index `pg_upgrade'd from a
+  previous release could potentially fail.
+
+-  Cause `DROP IF EXISTS FUNCTION/PROCEDURE/AGGREGATE/ROUTINE` to
+generate an error if no argument list is supplied and there are multiple matching
+objects.
+
+  Also improve the error message in such cases.
+
+-  Split the `pg_statistic_ext` catalog into two catalogs, and add the
+ `pg_stats_ext` view of it.
+
+  This change supports hiding potentially-sensitive statistics data from unprivileged
+users.
+
+-  Remove `obsolete pg_constraint.consrc` column.
+
+  This column has been deprecated for a long time, because it did not update in
+response to other catalog changes (such as column renamings). The recommended
+way to get a text version of a check constraint's expression from
+`pg_constraint` is `pg_get_expr(conbin, conrelid)`.
+`pg_get_constraintdef()` is also a useful alternative.
+
+
+-  Remove `obsolete pg_attrdef.adsrc` column.
+
+ This column has been deprecated for a long time, because it did not update in
+response to other catalog changes (such as column renamings). The recommended
+way to get a text version of a default-value expression from `pg_attrdef`
+is `pg_get_expr(adbin, adrelid)`.
+
+-  Mark table columns of type `name` as having `“C”` collation by default.
+
+  The comparison operators for data type name can now use any collation, rather
+than always using `“C”` collation. To preserve the previous semantics of queries,
+columns of type `name` are now explicitly marked as having `“C”` collation. A side
+effect of this is that regular-expression operators on `name` columns will now use
+the `“C”` collation by default, not the database collation, to determine the behavior
+of locale-dependent regular expression patterns (such as `\w`). If you want non-C
+behavior for a regular expression on a `name` column, attach an explicit
+`COLLATE` clause. (For user-defined `name` columns, another possibility is to
+specify a different collation at table creation time; but that just moves the nonbackwards-compatibility to the comparison operators.)
+
+- Treat `object-name` columns in the `information_schema` views as being of
+type `name`, not `varchar`.
+
+  Per the SQL standard, object-name columns in the `information_schema` views
+are declared as being of domain type `sql_identifier`. In PostgreSQL, the
+underlying catalog columns are really of type name. This change makes
+`sql_identifier` be a domain over name, rather than `varchar` as before. This
+eliminates a semantic mismatch in comparison and sorting behavior, which can
+greatly improve the performance of queries on `information_schema` views
+that restrict an `object-name` column. Note however that inequality restrictions, for
+example:
+
+  `SELECT ... FROM information_schema.tables WHERE table_name
+< 'foo';`
+
+  will now use `“C”-locale` comparison semantics by default, rather than the
+database's default collation as before. Sorting on these columns will also
+follow `“C”` ordering rules. The previous behavior (and inefficiency) can be
+enforced by adding a `COLLATE "default"` clause.
+
+- Remove the ability to disable dynamic shared memory.
+
+ Specifically, `dynamic_shared_memory_type` can no longer be set to `none`.
+
+
+-  Parse `libpq` integer connection parameters more strictly.
+
+  In previous releases, using an incorrect integer value for connection
+parameters `connect_timeout, keepalives, keepalives_count, keep
+alives_idle, keepalives_interval` and `port` resulted in `libpq` either
+ignoring those values or failing with incorrect error messages.
+
+
+-  The `SELECT DISTINCT...ORDER BY` clause of the `SELECT DISTINCT` query
+behavior differs after upgrade.
+
+  If `SELECT DISTINCT` is specified or if a `SELECT` statement includes the `SELECT
+DISTINCT ...ORDER BY` clause then all the expressions in `ORDER BY` must be
+present in the select list of the `SELECT DISTINCT` query (applicable when
+upgrading from version 9.6 to any higher version of Advanced Server).
