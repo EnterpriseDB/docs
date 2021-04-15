@@ -181,10 +181,10 @@ const Page = () => (
               Cloud Native PostgreSQL Operator
             </IndexCardLink>
             <IndexCardLink
-              to="/kubernetes/cloud_native_postgresql/interactive/installation_and_deployment/"
+              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
               className="nested-link"
             >
-              Installation and Deployment
+              Install, Configure, Deploy
               <span
                 className="new-thing"
                 title="Walk through an interactive demo in Katacoda"
