@@ -47,13 +47,22 @@ backend_flag2 = 'DISALLOW_TO_FAILOVER'
 
 **Enable Load-balancing and streaming replication mode**
 
-Set the following configuration parameter in the `pgpool.conf` file to enable load balancing and streaming replication mode
+Set the following configuration parameter in the `pgpool.conf` file to enable load balancing and streaming replication mode:
 
-```text
-master_slave_mode = on
-master_slave_sub_mode = 'stream'
-load_balance_mode = on
-```
+- For Pgpool version 4.2:
+
+    ```text
+    backend_clustering_mode = 'streaming_replication' 
+    load_balance_mode = on
+    ```
+
+- For Pgpool versions prior to 4.2:
+
+    ```text
+    master_slave_mode = on
+    master_slave_sub_mode = 'stream'
+    load_balance_mode = on
+    ```
 
 **Disable health-checking and failover**
 
@@ -97,6 +106,54 @@ Note that in a failure situation of the active instance of Pgpool (The Primary P
 ## Configuring Pgpool-II Watchdog
 
 Watchdog provides the high availability of Pgpool-II nodes. This section lists the configuration required for watchdog on each Pgpool-II node.
+
+
+### Configuring Pgpool-II Watchdog for Pgpool version 4.2
+
+Unlike 4.1 or prior versions, you need to keep all the watchdog parameters identical on all the hosts while configuring Pgpool version 4.2. 
+
+The following configuration parameters enable and configure the watchdog. The interval and retry values can be adjusted depending upon the requirements and testing results.
+
+```text
+use_watchdog = on # enable watchdog
+delegate_IP = ‘Virtual IP address’
+wd_lifecheck_method = 'heartbeat'
+wd_interval = 10 # we can lower this value for quick detection
+wd_life_point = 3
+# virtual IP control
+ifconfig_path = '/sbin' # ifconfig command path
+if_up_cmd = 'ifconfig eth0:0 inet $_IP_$ netmask 255.255.255.0'
+                                     # startup delegate IP command
+if_down_cmd = 'ifconfig eth0:0 down' # shutdown delegate IP command
+arping_path = '/usr/sbin'            # arping command path
+hostname0 = 'node-1'
+pgpool_port0 = 9999
+wd_port0 = 9000
+
+hostname1 = 'node-2'
+pgpool_port1 = 9999
+wd_port1 = 9000
+
+heartbeat_hostname0 = 'node-1'
+heartbeat_port0 = 9694
+heartbeat_device0 = ''
+
+heartbeat_hostname1 = 'node-2'
+heartbeat_port1 = 9694
+heartbeat_device1 = ''
+```
+
+Since some of the parameters would be same on all the nodes, you need to specify a mechanism to distinguish between local and remote watchdog nodes. For this purpose, you can create `pgpool_node_id` file in `pgpool.conf` directory with value 0,1, and 2 on node-1, node-2,node-3 respectively. The ownership and permissions for this file would be the same as `pgpool.conf` file. 
+
+The following is an example of the file on the first node:
+
+```text
+[root@ONE efm-4.2]}> cat /etc/sysconfig/edb/pgpool4.2/pgpool_node_id
+0
+[root@ONE efm-4.2]}>  
+```
+
+### Configuring Pgpool-II Watchdog for Pgpool versions prior to 4.2
 
 **Common watchdog configurations on all Pgpool nodes**
 
@@ -155,3 +212,7 @@ other_pgpool_port1 = 9999
 other_wd_port1 = 9000
 wd_priority = 5 # use high watchdog priority on server 4
 ```
+
+!!! Note
+    Replace the value of eth0 with the network interface on your system. See [Chapter 5](05_appendix_b/#configuration-for-number-of-connections-and-pooling) for tuning the number of connections, and pooling configuration.
+
