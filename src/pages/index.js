@@ -129,14 +129,27 @@ const Page = () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
+            <span className="font-weight-bold text-muted text-uppercase small">
+              Replication
+            </span>
             <IndexCardLink to="/bdr/latest">
               BDR (Bi-Directional Replication)
             </IndexCardLink>
-            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
-            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
+            <span className="font-weight-bold text-muted text-uppercase small">
+              Cluster Management
+            </span>
+            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+            <IndexCardLink to="/repmgr/latest">
+              repmgr (Replication Manager)
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small">
+              Connection Poolers
+            </span>
+            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
