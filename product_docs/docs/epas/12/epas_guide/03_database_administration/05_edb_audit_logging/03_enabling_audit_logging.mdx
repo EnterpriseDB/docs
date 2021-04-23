@@ -33,13 +33,13 @@ logging_collector = 'on'
 edb_audit_statement = 'all'     # Statement type to be audited:
                                 # none, dml, insert, update, delete, truncate,
                                 # select, error, rollback, ddl, create, drop,
-                                # alter, grant, revoke, set, all
+                                # alter, grant, revoke, all
 ```
 
 A database and role are established with the following settings for the `edb_audit_statement` parameter:
 
 -   Database `auditdb` with `ddl`, `insert`, `update`, and `delete`
--   Role `admin` with `select`, `truncate`, and `set`
+-   Role `admin` with `select` and `truncate`
 -   Role `admin` in database `auditdb` with `create table`, `insert`, and `update`
 
 Creation and alteration of the database and role are shown by the following:
@@ -47,7 +47,7 @@ Creation and alteration of the database and role are shown by the following:
 ```text
 $ psql edb enterprisedb
 Password for user enterprisedb:
-psql.bin (13.0.0)
+psql.bin (12.0.0)
 Type "help" for help.
 
 edb=# SHOW edb_audit_statement;
@@ -58,15 +58,13 @@ edb=# SHOW edb_audit_statement;
 
 edb=# CREATE DATABASE auditdb;
 CREATE DATABASE
-edb=# ALTER DATABASE auditdb SET edb_audit_statement TO 'ddl, insert,
-update, delete';
+edb=# ALTER DATABASE auditdb SET edb_audit_statement TO 'ddl, insert, update, delete';
 ALTER DATABASE
 edb=# CREATE ROLE admin WITH LOGIN SUPERUSER PASSWORD 'password';
 CREATE ROLE
 edb=# ALTER ROLE admin SET edb_audit_statement TO 'select, truncate';
 ALTER ROLE
-edb=# ALTER ROLE admin IN DATABASE auditdb SET edb_audit_statement TO
-'create table, insert, update';
+edb=# ALTER ROLE admin IN DATABASE auditdb SET edb_audit_statement TO 'create table, insert, update';
 ALTER ROLE
 ```
 
@@ -77,7 +75,7 @@ The following demonstrates the changes made and the resulting audit log file for
 ```text
 $ psql auditdb enterprisedb
 Password for user enterprisedb:
-psql.bin (13.0.0)
+psql.bin (12.0.0)
 Type "help" for help.
 
 auditdb=# SHOW edb_audit_statement;
@@ -107,41 +105,37 @@ The following audit log file shows entries only for the `CREATE TABLE`, `INSERT 
 Each audit log entry has been split and displayed across multiple lines, and a blank line has been inserted between the audit log entries for more clarity in the appearance of the results.
 
 ```text
-2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
-"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
-audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,1,"idle",2017-07-13 15:25:59 EDT,7/4,0,AUDIT,00000,
+"statement: CREATE TABLE audit_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,
+"psql.bin","CREATE TABLE",""
 
-2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
-"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement:INSERT INTO 
-audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,2,"idle",2017-07-13 15:25:59 EDT,7/5,0,AUDIT,00000,
+"statement: INSERT INTO audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql.bin","INSERT",""
 
-2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
-"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
-audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,3,"idle",2017-07-13 15:25:59 EDT,7/6,0,AUDIT,00000,
+"statement: UPDATE audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql.bin","UPDATE",""
 ```
 
-**Case 2:** Changes made in database `edb` by role `admin`. Only `select`, `truncate`, and `set` statements are audited:
+**Case 2:** Changes made in database `edb` by role `admin`. Only `select` and `truncate` statements are audited:
 
 ```text
 $ psql edb admin
 Password for user admin:
-psql.bin (13.0.0)
+psql.bin (12.0.0)
 Type "help" for help.
 
 edb=# SHOW edb_audit_statement;
  edb_audit_statement
 -----------------------
- select, truncate, set
+ select, truncate
 (1 row)
 
-edb=# SET default_with_rowids TO TRUE;
-SET
-
-edb=# CREATE TABLE edb_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT); <== Should not
-be audited
+edb=# CREATE TABLE edb_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT); <== Should not be audited
 CREATE TABLE
-edb=# INSERT INTO edb_tbl VALUES (1, 'Row 1');                <== Should not
-be audited
+edb=# INSERT INTO edb_tbl VALUES (1, 'Row 1');                <== Should not be audited
 INSERT 0 1
 edb=# SELECT * FROM edb_tbl;
  f1 |  f2
@@ -153,32 +147,29 @@ edb=# TRUNCATE edb_tbl;
 TRUNCATE TABLE
 ```
 
-Continuation of the audit log file now appears as follows. The last two entries representing the second case show only the `SET default_with_rowids TO TRUE`, `SELECT * FROM edb_tbl` and `TRUNCATE edb_tbl` statements. The `CREATE TABLE edb_tbl` and `INSERT INTO edb_tbl statements` were not audited.
+Continuation of the audit log file now appears as follows. The last two entries representing the second case show only the ``SELECT * FROM edb_tbl` and `TRUNCATE edb_tbl` statements. The `CREATE TABLE edb_tbl` and `INSERT INTO edb_tbl statements` were not audited.
 
 ```text
-2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
-"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
-audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,1,"idle",2017-07-13 15:25:59 EDT,7/4,0,AUDIT,00000,
+"statement: CREATE TABLE audit_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,
+"psql.bin","CREATE TABLE",""
 
-2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
-"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement: INSERT INTO 
-audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,2,"idle",2017-07-13 15:25:59 EDT,7/5,0,AUDIT,00000,
+"statement: INSERT INTO audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql.bin","INSERT",""
 
-2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
-"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
-audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,3,"idle",2017-07-13 15:25:59 EDT,7/6,0,AUDIT,00000,
+"statement: UPDATE audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql.bin","UPDATE",""
 
-2021-02-18 08:04:57.434 IST,"admin","edb",3182,"[local]",602e65dc.c6e,1,
-"idle",2021-02-18 08:04:28 IST,4/22,0,AUDIT,00000,"statement: SET default_with_rowids TO TRUE;
-",,,,,,,,,"psql","client backend","SET","","set"
+2017-07-13 15:29:45.616 EDT,"admin","edb",4047,"[local]",
+5967ca05.fcf,1,"idle",2017-07-13 15:29:09 EDT,4/33,0,AUDIT,00000,
+"statement: SELECT * FROM edb_tbl;",,,,,,,,,"psql.bin","SELECT",""
 
-2021-02-18 08:06:01.662 IST,"admin","edb",3182,"[local]",602e65dc.c6e,2,
-"idle",2021-02-18 08:04:28 IST,4/27,0,AUDIT,00000,"statement: SELECT * FROM edb_tbl;
-",,,,,,,,,"psql","client backend","SELECT","","select"
-
-2021-02-18 08:06:11.125 IST,"admin","edb",3182,"[local]",602e65dc.c6e,3,
-"idle",2021-02-18 08:04:28 IST,4/28,0,AUDIT,00000,"statement: TRUNCATE edb_tbl;
-",,,,,,,,,"psql","client backend","TRUNCATE TABLE","","truncate"
+2017-07-13 15:29:45.616 EDT,"admin","edb",4047,"[local]",
+5967ca05.fcf,2,"idle",2017-07-13 15:29:09 EDT,4/34,0,AUDIT,00000,
+"statement: TRUNCATE edb_tbl;",,,,,,,,,"psql.bin","TRUNCATE TABLE",""
 ```
 
 **Case 3:** Changes made in database `auditdb` by role `admin`. Only `create table, insert`, and `update` statements are audited:
@@ -186,7 +177,7 @@ audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDAT
 ```text
 $ psql auditdb admin
 Password for user admin:
-psql.bin (13.0.0)
+psql.bin (12.0.0)
 Type "help" for help.
 
 auditdb=# SHOW edb_audit_statement;
@@ -212,35 +203,36 @@ TRUNCATE TABLE
 Continuation of the audit log file now appears as follows. The next to last two entries representing the third case show only `CREATE TABLE audit_tbl_2` and `INSERT INTO audit_tbl_2` statements. The `SELECT * FROM audit_tbl_2` and `TRUNCATE audit_tbl_2` statements were not audited.
 
 ```text
-2020-05-25 15:59:12.332 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,2,
-"idle",2020-05-25 15:59:02 IST,5/7,0,AUDIT,00000,"statement: CREATE TABLE 
-audit_tbl(f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,1,"idle",2017-07-13 15:25:59 EDT,7/4,0,AUDIT,00000,
+"statement: CREATE TABLE audit_tbl (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,
+"psql.bin","CREATE TABLE",""
 
-2020-05-25 15:59:22.419 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,3,
-"idle",2020-05-25 15:59:02 IST,5/8,0,AUDIT,00000,"statement: INSERT INTO 
-audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,2,"idle",2017-07-13 15:25:59 EDT,7/5,0,AUDIT,00000,
+"statement: INSERT INTO audit_tbl VALUES (1, 'Row 1');",,,,,,,,,"psql.bin","INSERT",""
 
-2020-05-25 15:59:32.180 IST,"enterprisedb","auditdb",41837,"[local]",5ecb9dee.a36d,4,
-"idle",2020-05-25 15:59:02 IST,5/9,0,AUDIT,00000,"statement: UPDATE
-audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql","client backend","UPDATE","","update"
+2017-07-13 15:26:17.426 EDT,"enterprisedb","auditdb",4024,"[local]",
+5967c947.fb8,3,"idle",2017-07-13 15:25:59 EDT,7/6,0,AUDIT,00000,
+"statement: UPDATE audit_tbl SET f2 = 'Row A' WHERE f1 = 1;",,,,,,,,,"psql.bin","UPDATE",""
 
-2021-02-18 08:04:57.434 IST,"admin","edb",3182,"[local]",602e65dc.c6e,1,
-"idle",2021-02-18 08:04:28 IST,4/22,0,AUDIT,00000,"statement: SET default_with_rowids TO TRUE;
-",,,,,,,,,"psql","client backend","SET","","set"
+2017-07-13 15:29:45.616 EDT,"admin","edb",4047,"[local]",
+5967ca05.fcf,1,"idle",2017-07-13 15:29:09 EDT,4/33,0,AUDIT,00000,
+"statement: SELECT * FROM edb_tbl;",,,,,,,,,"psql.bin","SELECT",""
 
-2021-02-18 08:06:01.662 IST,"admin","edb",3182,"[local]",602e65dc.c6e,2,
-"idle",2021-02-18 08:04:28 IST,4/27,0,AUDIT,00000,"statement: SELECT * FROM edb_tbl;
-",,,,,,,,,"psql","client backend","SELECT","","select"
+2017-07-13 15:29:45.616 EDT,"admin","edb",4047,"[local]",
+5967ca05.fcf,2,"idle",2017-07-13 15:29:09 EDT,4/34,0,AUDIT,00000,
+"statement: TRUNCATE edb_tbl;",,,,,,,,,"psql.bin","TRUNCATE TABLE",""
 
-2021-02-18 08:06:11.125 IST,"admin","edb",3182,"[local]",602e65dc.c6e,3,
-"idle",2021-02-18 08:04:28 IST,4/28,0,AUDIT,00000,"statement: TRUNCATE edb_tbl;
-",,,,,,,,,"psql","client backend","TRUNCATE TABLE","","truncate"
+2017-07-13 15:35:45.309 EDT,"admin","auditdb",4085,"[local]",
+5967cb81.ff5,1,"idle",2017-07-13 15:35:29 EDT,4/72,0,AUDIT,00000,
+"statement: CREATE TABLE audit_tbl_2 (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,
+"psql.bin","CREATE TABLE",""
 
-2020-05-25 17:30:59.057 IST,"admin","auditdb",122093,"[local]",5ecbb370.1dced,2,
-"idle",2020-05-25 17:30:48 IST,5/11,0,AUDIT,00000,"statement: CREATE TABLE
-audit_tbl_2 (f1 INTEGER PRIMARY KEY, f2 TEXT);",,,,,,,,,"psql","client backend","CREATE TABLE","","create"
+2017-07-13 15:35:45.309 EDT,"admin","auditdb",4085,"[local]",
+5967cb81.ff5,2,"idle",2017-07-13 15:35:29 EDT,4/73,0,AUDIT,00000,
+"statement: INSERT INTO audit_tbl_2 VALUES (1, 'Row 1');",,,,,,,,,"psql.bin","INSERT",""
 
-2020-05-25 17:31:08.866 IST,"admin","auditdb",122093,"[local]",5ecbb370.1dced,3,
-"idle",2020-05-25 17:30:48 IST,5/12,0,AUDIT,00000,"statement: INSERT INTO
-audit_tbl_2 VALUES (1, 'Row 1');",,,,,,,,,"psql","client backend","INSERT","","insert"
+2017-07-13 15:38:42.028 EDT,,,3942,,5967c934.f66,1,,2017-07-13 15:25:40
+EDT,,0,LOG,00000,"database system is shut down",,,,,,,,,"","",""
 ```
