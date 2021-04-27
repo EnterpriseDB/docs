@@ -130,10 +130,15 @@ const index = {
 
   keyId: (id) => 
   {
-    return '#' + slugger.slug(decodeURIComponent(id.replace(/^[^#]*#+/, ''))
-        .replace(/[_-]/g, "")
-        .replace(/\s+/g, ""))
-      .toLowerCase();
+    let key = id.replace(/^[^#]*#+/, '');
+    try
+    {
+      // may or may not be encoded properly; try to decode, but continue if not possible 
+      key = decodeURIComponent(key);
+    } catch {}
+    key = key.replace(/[_-]/g, "")
+    .replace(/\s+/g, "")
+    return '#' + slugger.slug(key).toLowerCase();
   },
   valuePathId: (filepath, id, product, version) => 
   {
