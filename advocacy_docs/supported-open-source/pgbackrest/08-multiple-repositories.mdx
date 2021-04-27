@@ -1,18 +1,19 @@
 ---
 title: 'Multiple Repositories'
-description: "Deeper look at the multiple repositories support feature"
+description: "Multiple Repositories Support Feature"
 ---
 
-The multiple repositories support was added in the [v2.33](https://github.com/pgbackrest/pgbackrest/releases/tag/release%2F2.33) release. One example where multiple repositories could be used, would be for situations where a local repository would have minimal retention (for fast restores), and a remote repository would have a longer retention (for redundancy and access across the enterprise).
+The multiple repositories support feature was added in the [v2.33](https://github.com/pgbackrest/pgbackrest/releases/tag/release%2F2.33) release. You can use, e.g., this feature in a scenario where a local repository would have minimal retention (for fast restore) and a remote repository would have longer retention (for redundancy and access across the enterprise).
 
-A new [`--repo`](https://pgbackrest.org/configuration.html#section-repository/option-repo) option has been added to set the repository for a command to operate on. All `repo*-` options are indexed to allow for configuring multiple repositories.
+A new [`--repo`](https://pgbackrest.org/configuration.html#section-repository/option-repo) option is added to set the repository. All `repo*-` options are indexed to enable configuring multiple repositories.
 
-In this section, we'll setup a **demo** cluster (using **EDB Postgres Advanced Server** 13 on CentOS 7) to demonstrate how each pgBackRest command reacts to this new feature.
+In this section, we will set up a **demo** cluster (using **EDB Postgres Advanced Server** version 13 on CentOS 7) to demonstrate how this new feature impacts each pgBackRest command.
 
 
 ### Configuration
 
-For the purpose of this demonstration, we'll setup two local repositories on our database host. This is **not recommended** for production purpose.
+It must be noted that only for the demonstration purpose, we will set up two local repositories on our database host. This is **not recommended** for production purposes.
+
 
 ```ini
 [global]
@@ -37,7 +38,7 @@ pg1-port=5444
 
 For safety reasons, the `--repo` option can't be defined in the configuration file or a warning will be triggered: `WARN: configuration file contains command-line only option 'repo'`. If there is more than one repository configured and the `--repo` option is not specified for a command, the repositories will be acted upon in highest priority order (e.g. `repo1` then `repo2`).
 
-> **_NOTE:_** this new `--repo` option is not required when only `repo1` is configured in order to maintain backward compatibility. However, when a single repository is configured, it is recommended to use `repo1` in the configuration.
+> **_NOTE:_** the `--repo` option is not required when only `repo1` is configured to maintain backward compatibility. However, when a single repository is configured, it is recommended to use `repo1` in the configuration.
 
 
 ### Initialization
@@ -71,7 +72,7 @@ P00   INFO: WAL segment ... successfully archived to '...' on repo2
 
 #### Archive Push Command
 
-The `archive-push` command will always archive WALs in all configured repositories but backups will need to be scheduled individually for each repository. In many cases this is desirable since backup types and retention will vary by repository.
+The `archive-push` command will always archive WALs in all configured repositories but backups will need to be scheduled individually for each repository. In many cases, this is desirable since backup types and retention will vary by repository.
 
 The `archive_command` can still be defined as usual:
 
@@ -83,7 +84,7 @@ $ psql -d postgres -c "show archive_command;"
 (1 row)
 ```
 
-Here's a `DEBUG` extract of the PostgreSQL logs showing the `archive-push` activity:
+Here is a `DEBUG` extract of the PostgreSQL logs showing the `archive-push` activity:
 
 ```
 ...
@@ -120,7 +121,7 @@ $ ps -o pid,cmd fx |grep archiver
  4440  \_ postgres: archiver failed on 000000010000000000000007
 ```
 
-The next WAL segments shouldn't then be archived:
+The next WAL segments should not then be archived:
 
 ```bash
 $ psql -d postgres -c "SELECT pg_create_restore_point('generate some activity'); SELECT pg_switch_wal();"
@@ -149,7 +150,7 @@ $ ls /var/lib/edb/as13/backups/repo2/archive/demo/13-1/0000000100000000/
 000000010000000000000006-7108296955e1208c93447dcfc5712ce59af97907.gz
 ```
 
-Let's unblock the `archiver` process (and remove asynchronous archiving) before going further:
+Let us unblock the `archiver` process (and remove asynchronous archiving) before going further:
 
 ```bash
 $ $ ps -o pid,cmd fx |grep archiver
@@ -158,7 +159,7 @@ $ $ ps -o pid,cmd fx |grep archiver
 
 #### Backup Command
 
-Let's take some backups:
+Let us take a few backups:
 
 ```bash
 $ pgbackrest backup --stanza=demo --type=full
@@ -301,7 +302,7 @@ stanza: demo
 
 The **'wal archive min/max'** shows the minimum and maximum WAL currently stored in the archive and, in the case of multiple repositories, will be reported across all repositories unless the `--repo` option is set. Note that there may be gaps due to archive retention policies or other reasons.
 
-Let's break our first repository by removing its content:
+Let us break our first repository by removing its content:
 
 ```bash
 $ pgbackrest --stanza=demo stanza-delete --repo=1 --force
@@ -314,7 +315,7 @@ P00   INFO: stanza 'demo' already exists on repo2 and is valid
 P00   INFO: stanza-create command end: completed successfully
 ```
 
-If there are multiple repositories, then a status of **'mixed'** indicates that the stanza is not in a healthy state on one or more of the repositories. In this case the state of the stanza will be detailed on additional lines per repository. 
+If there are multiple repositories, then a status of **mixed** indicates that the stanza is not in a healthy state in one or more of the repositories. In this case, the state of the stanza will be detailed in additional lines per repository. 
 
 ```bash
 $ pgbackrest info --stanza=demo
@@ -359,7 +360,7 @@ P00   INFO: backup command end: completed successfully
 
 ### Restore
 
-Let's initiate a nice situation with some data, backups and restore point:
+Let us initiate a nice situation with some data, backups and restore point:
 
 ```bash
 $ createdb test
@@ -437,15 +438,15 @@ stanza: demo
             repo2: backup set size: 10MB, backup size: 10MB
 ```
 
-As you can see in the example above, the `backup` command automatically triggers the `expire` command on the repository where we took our backup. That means it won't expire anything in the other repositories unless you request a new backup there or execute the `expire` command manually.
+As you can see in the example above, the `backup` command automatically triggers the `expire` command on the repository where we took our backup. That means it would not expire anything in the other repositories unless you request a new backup there or execute the `expire` command manually.
 
 Since the default retention policy is based on a number of backups, it is safe and healthy that only new backups are affecting the backups and archives to expire.
 
 #### Restore Command
 
-The restore command automatically defaults to selecting the latest backup from the first repository where backups exist. The order in which the repositories are checked is dictated by the `pgbackrest.conf` (e.g. repo1 will be checked before repo2). To select from a specific repository, the `--repo` option can be passed.
+The restore command automatically defaults to selecting the latest backup from the first repository where backups exist. The order in which the repositories are checked is dictated by the `pgbackrest.conf` (e.g. repo1 will be checked before repo2). To select from a specific repository, the `--repo` option can be used.
 
-For PITR, `--type=time` must be provided and the target time specified with the `--target` option. If a backup is not specified via the `--set` option, then the configured repositories will be checked for a backup that contains the requested time. If no backup can be found, the latest backup from the first repository containing backups will be used.
+For PITR, `--type=time` must be provided and the target time must be specified with the `--target` option. If a backup is not specified via the `--set` option, then the configured repositories will be checked for a backup that contains the requested time. If no backup can be found, the latest backup from the first repository containing backups will be used.
 
 ```bash
 $ mkdir /tmp/restored_data
@@ -569,7 +570,7 @@ P00   INFO: pushed WAL file '00000003.history' to the archive
 
 As shown above, since the history file is stored within the same repository as the restored backup set, PostgreSQL is able to pick a new and accurate timeline.
 
-Let's now retry after moving the history file to **repo1**.
+Let us now retry after moving the history file to **repo1**.
 
 ```bash
 root# systemctl stop edb-as-13.service
@@ -587,4 +588,4 @@ P00   INFO: pushed WAL file '00000004.history' to the archive
 
 As we can see, both `00000002.history` and `00000003.history` have been found in **repo1** so PostgreSQL could pick the next timeline correctly, even if the restored backup set came from **repo2**.
 
-The `archive-get` enhancement will then tolerate gaps in one repository (due to lack of disk space e.g.) mainly because it will still be able to find the missing files in the other repository.
+When using multiple repositories, the `archive-get` command will tolerate gaps in one repository (due to lack of disk space e.g.) mainly because it will still be able to find the missing files in the other repository.
