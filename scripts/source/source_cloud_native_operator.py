@@ -38,7 +38,7 @@ def index_frontmatter():
             elif readingNav:
                 nav.append(line.replace(".md", ""))
                 if "quickstart.md" in line:
-                    nav.append("  - interactive\n")
+                    nav.append("  - interactive_demo\n")
 
     return INDEX_FRONTMATTER.format("".join(nav))
 
@@ -59,11 +59,14 @@ def process_md(file_path):
 
                     if paragraph == 2:
                         line = """
+<!-- section below inserted by source_cloud_native_opreator.py - changes made here will be lost -->
+
 !!! Tip "Live demonstration"
     Don't want to install anything locally just yet? Try a demonstration directly in your browser:
 
-    [Cloud Native PostgreSQL Operator Interactive Quickstart](interactive/installation_and_deployment/)
+    [Cloud Native PostgreSQL Operator Interactive Quickstart](interactive_demo)
 
+<!-- end inserted section -->
 """
                 elif copying:
                     line = rewrite_yaml_links(line)
