@@ -1,5 +1,5 @@
 ---
-title: "Installation, Configuration and Demployment Demo"
+title: "Installation, Configuration and Deployment Demo"
 description: "Walk through the process of installing, configuring and deploying the Cloud Native PostgreSQL Operator via a browser-hosted Minikube console"
 navTitle: Install, Configure, Deploy
 product: 'Cloud Native PostgreSQL Operator'
@@ -21,6 +21,7 @@ Want to see what it takes to get the Cloud Native PostgreSQL Operator up and run
 1. Installing the Cloud Native PostgreSQL Operator
 2. Deploying a three-node PostgreSQL cluster
 3. Installing and using the kubectl-cnp plugin
+4. Testing failover to verify the resilience of the cluster
 
 It will take roughly 5-10 minutes to work through.
 
@@ -64,7 +65,7 @@ You will see one node called `minikube`. If the status isn't yet "Ready", wait f
 Now that the Minikube cluster is running, you can proceed with Cloud Native PostgreSQL installation as described in the ["Installation"](installation.md) section:
 
 ```shell
-kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.2.0.yaml
+kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.3.0.yaml
 __OUTPUT__
 namespace/postgresql-operator-system created
 customresourcedefinition.apiextensions.k8s.io/backups.postgresql.k8s.enterprisedb.io created
@@ -164,13 +165,13 @@ metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"postgresql.k8s.enterprisedb.io/v1","kind":"Cluster","metadata":{"annotations":{},"name":"cluster-example","namespace":"default"},"spec":{"instances":3,"primaryUpdateStrategy":"unsupervised","storage":{"size":"1Gi"}}}
-  creationTimestamp: "2021-04-07T00:33:43Z"
+  creationTimestamp: "2021-04-27T15:11:21Z"
   generation: 1
   name: cluster-example
   namespace: default
-  resourceVersion: "1806"
+  resourceVersion: "2572"
   selfLink: /apis/postgresql.k8s.enterprisedb.io/v1/namespaces/default/clusters/cluster-example
-  uid: 38ddc347-3f2e-412a-aa14-a26904e1a49e
+  uid: 6a693046-a9d0-41b0-ac68-7a96d7e2ff07
 spec:
   affinity:
     topologyKey: ""
@@ -196,14 +197,14 @@ status:
   instances: 3
   instancesStatus:
     healthy:
-    - cluster-example-3
     - cluster-example-1
     - cluster-example-2
+    - cluster-example-3
   latestGeneratedNode: 3
   licenseStatus:
     isImplicit: true
     isTrial: true
-    licenseExpiration: "2021-05-07T00:33:43Z"
+    licenseExpiration: "2021-05-27T15:11:21Z"
     licenseStatus: Implicit trial license
     repositoryAccess: false
     valid: true
@@ -211,6 +212,12 @@ status:
   pvcCount: 3
   readService: cluster-example-r
   readyInstances: 3
+  secretsResourceVersion:
+    applicationSecretVersion: "1479"
+    caSecretVersion: "1475"
+    replicationSecretVersion: "1477"
+    serverSecretVersion: "1476"
+    superuserSecretVersion: "1478"
   targetPrimary: cluster-example-1
   writeService: cluster-example-rw
 ```
@@ -238,7 +245,7 @@ curl -sSfL \
   sudo sh -s -- -b /usr/local/bin
 __OUTPUT__
 EnterpriseDB/kubectl-cnp info checking GitHub for latest tag
-EnterpriseDB/kubectl-cnp info found version: 1.2.1 for v1.2.1/linux/x86_64
+EnterpriseDB/kubectl-cnp info found version: 1.3.0 for v1.3.0/linux/x86_64
 EnterpriseDB/kubectl-cnp info installed /usr/local/bin/kubectl-cnp
 ```
 
@@ -247,7 +254,7 @@ The `cnp` command is now available in kubectl:
 ```shell
 kubectl cnp status cluster-example
 __OUTPUT__
-Cluster in healthy state
+Cluster in healthy state   
 Name:              cluster-example
 Namespace:         default
 PostgreSQL Image:  quay.io/enterprisedb/postgresql:13.2
@@ -256,23 +263,81 @@ Instances:         3
 Ready instances:   3
 
 Instances status
-Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart
---------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------
-cluster-example-1  0/6000060                              6941211174657425425  ✓        ✗            ✗              ✗
-cluster-example-2               0/6000060     0/6000060   6941211174657425425  ✗        ✓            ✗              ✗
-cluster-example-3               0/6000060     0/6000060   6941211174657425425  ✗        ✓            ✗              ✗
+Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
+--------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
+cluster-example-1  0/5000060                              6955855494195015697  ✓        ✗            ✗              ✗                OK
+cluster-example-2               0/5000060     0/5000060   6955855494195015697  ✗        ✓            ✗              ✗                OK
+cluster-example-3               0/5000060     0/5000060   6955855494195015697  ✗        ✓            ✗              ✗                OK
 ```
 
 !!! Note "There's more"
     See [the Cloud Native PostgreSQL Plugin page](cnp-plugin/) for more commands and options.
+
+## Testing failover
+
+As our status checks show, we're running two replicas - if something happens to the primary instance of PostgreSQL, the cluster will fail over to one of them. Let's demonstrate this by killing the primary pod:
+
+```shell
+kubectl delete pod --wait=false cluster-example-1
+__OUTPUT__
+pod "cluster-example-1" deleted
+```
+
+This simulates a hard shutdown of the server - a scenario where something has gone wrong. 
+
+Now if we check the status...
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Failing over   Failing over to cluster-example-2
+Name:              cluster-example
+Namespace:         default
+PostgreSQL Image:  quay.io/enterprisedb/postgresql:13.2
+Primary instance:  cluster-example-2
+Instances:         3
+Ready instances:   2
+
+Instances status
+Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
+--------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
+cluster-example-1  -            -             -           -                    -        -            -              -                unable to upgrade connection: container not found ("postgres") - 
+cluster-example-2  0/7000230                              6955855494195015697  ✓        ✗            ✗              ✗                OK
+cluster-example-3               0/70000A0     0/70000A0   6955855494195015697  ✗        ✓            ✗              ✗                OK
+```
+
+...the failover process has begun, with the second pod promoted to primary. Once the failed pod has restarted, it will become a replica of the new primary:
+
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Cluster in healthy state   
+Name:              cluster-example
+Namespace:         default
+PostgreSQL Image:  quay.io/enterprisedb/postgresql:13.2
+Primary instance:  cluster-example-2
+Instances:         3
+Ready instances:   3
+
+Instances status
+Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
+--------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
+cluster-example-1               0/7004268     0/7004268   6955855494195015697  ✗        ✓            ✗              ✗                OK
+cluster-example-2  0/7004268                              6955855494195015697  ✓        ✗            ✗              ✗                OK
+cluster-example-3               0/7004268     0/7004268   6955855494195015697  ✗        ✓            ✗              ✗                OK
+```
 
 
 ### Further reading
 
 This is all it takes to get a PostgreSQL cluster up and running, but of course there's a lot more possible - and certainly much more that is prudent before you should ever deploy in a production environment!
 
-- For information on using the Cloud Native PostgreSQL Operator to deploy on public cloud platforms, see the [Cloud Setup](cloud_setup/) section.
+- Deploying on public cloud platforms: see the [Cloud Setup](cloud_setup/) section.
 
-- For the design goals and possibilities offered by the Cloud Native PostgreSQL Operator, check out the [Architecture](architecture/) and [Use cases](use_cases/) sections.
+- Design goals and possibilities offered by the Cloud Native PostgreSQL Operator: check out the [Architecture](architecture/) and [Use cases](use_cases/) sections.
 
-- And for details on what it takes to configure a secure and reliable system, read through the [Security](security/), [Failure Modes](failure_modes/) and [Backup and Recovery](backup_recovery/) sections.
+- Configuring a secure and reliable system: read through the [Security](security/), [Failure Modes](failure_modes/) and [Backup and Recovery](backup_recovery/) sections.
+
+- Webinar: [Watch Gabriele Bartolini discuss and demonstrate Cloud Native PostgreSQL lifecycle management](https://www.youtube.com/watch?v=S-I9y-HnAnI) 
+
+- Development: [Leonardo Cecchi writes about setting up a local environment using Cloud Native PostgreSQL for application development](https://www.enterprisedb.com/blog/cloud-native-postgresql-application-developers)
+
