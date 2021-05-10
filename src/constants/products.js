@@ -38,5 +38,6 @@ export const products = {
   pgbouncer: { name: 'PgBouncer', iconName: IconNames.POSTGRESQL },
   pgpool: { name: 'PgPool-II', iconName: IconNames.POSTGRESQL },
   postgis: { name: 'PostGIS', iconName: IconNames.GLOBE },
+  repmgr: { name: 'repmgr', iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: 'Slony Replication', iconName: IconNames.NETWORK2 },
 };

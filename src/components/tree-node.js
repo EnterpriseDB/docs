@@ -14,6 +14,8 @@ const SubList = ({ children, collapsed }) => {
   }
 };
 
+const KatacodaBadge = () => <span className="new-thing">Demo</span>;
+
 const TreeNode = ({ node, path, hideIfEmpty }) => {
   if (!node.path) {
     if (hideIfEmpty) {
@@ -25,6 +27,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
           key={node.path}
         >
           <Title node={node} />
+          {/* {node.interactive && <KatacodaBadge />} */}
         </li>
       );
     }
@@ -40,11 +43,12 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
           }`}
         >
           <Title node={node} />
+          {node.interactive && <KatacodaBadge />}
         </Link>
       </div>
       {node.items.length > 0 && (
         <SubList collapsed={!path.includes(node.path)}>
-          {node.items.map(subNode => (
+          {node.items.map((subNode) => (
             <TreeNode node={subNode} path={path} key={subNode.path} />
           ))}
         </SubList>

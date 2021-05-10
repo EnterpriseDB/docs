@@ -123,6 +123,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   };
 
   const showToc = !!mdx.tableOfContents.items;
+  const showInteractiveBadge =
+    frontmatter.showInteractiveBadge != null
+      ? frontmatter.showInteractiveBadge
+      : !!katacodaPanel;
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
@@ -146,6 +150,11 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
+          {showInteractiveBadge && (
+            <div className="new-thing-header" aria-roledescription="badge">
+              <span className="badge-text">Interactive Demo</span>
+            </div>
+          )}
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
             {editOrFeedbackButton}
