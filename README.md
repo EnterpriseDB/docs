@@ -28,13 +28,13 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.6 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
-1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM.
+1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
 1. Install all required packages by running `yarn`.
 
-1. Pull the shared icon files down with `git submodule update --init`.
+1. Pull the shared icon files down with `git submodule update --init`. This needs to be run inside of the project folder, if you have cloned the repo using GitHub Desktop, ensure that you have `cd` into the project.
 
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
@@ -47,6 +47,7 @@ If you need to run parts of the RST to MDX conversion pipeline, you'll need to i
 ## Windows Installation
 
 If you are a Windows user, you can work with Docs without installing it locally by using a Docker container and VSCode. See [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
+
 
 ## Sources
 
