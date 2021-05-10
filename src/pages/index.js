@@ -129,14 +129,27 @@ const Page = () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability Tools"
           >
+            <span className="font-weight-bold text-muted text-uppercase small">
+              Replication
+            </span>
             <IndexCardLink to="/bdr/latest">
               BDR (Bi-Directional Replication)
             </IndexCardLink>
-            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
-            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Cluster Management
+            </span>
+            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+            <IndexCardLink to="/repmgr/latest">
+              repmgr (Replication Manager)
+            </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Connection Poolers
+            </span>
+            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
@@ -165,7 +178,7 @@ const Page = () => (
                 className="new-thing"
                 title="Walk through an interactive demo in Katacoda"
               >
-                10min Demo
+                Demo
               </span>
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgbackrest/">
@@ -180,10 +193,18 @@ const Page = () => (
             <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
               Cloud Native PostgreSQL Operator
             </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
-            <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
+            <IndexCardLink
+              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+              className="nested-link"
+            >
+              Install, Configure, Deploy
+              <span
+                className="new-thing"
+                title="Walk through an interactive demo in Katacoda"
+              >
+                Demo
+              </span>
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -217,6 +238,10 @@ const Page = () => (
             <IndexCardLink to="/odbc_connector/latest">
               ODBC Connector
             </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
+            <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
           </IndexCard>
         </div>
 
