@@ -7,6 +7,7 @@ If you cannot or do not wish to install the prerequisite versions of Python, Nod
 1. [Docker](https://docs.docker.com/get-docker/) (for MacOS or Windows, that'll be Docker Desktop)
 2. [Visual Studio Code](https://code.visualstudio.com/docs/setup/setup-overview)
 3. The [Remote Development Extension Pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) for VSCode
+4. [Git](https://git-scm.com/download)
 
 If you intend to edit using VSCode, I also recommend installing the [MDX extension](https://marketplace.visualstudio.com/items?itemName=silvenon.mdx) - this is not required, but it is handy!
 
@@ -14,7 +15,7 @@ If you intend to edit using VSCode, I also recommend installing the [MDX extensi
 
 1. In VSCode, from the command pallet select the `Remote-Containers: Clone Repository in Container Volume...` command
 2. Paste in the URL of this repository, or a GitHub branch URL, or a GitHub PR URL 
-3. Choose "isolated volume" (in most cases this will be what you want) 
+3. Choose "unique volume" (in most cases this will be what you want) 
 4. Wait for VSCode to build the container, then open a terminal
 8. Run the site locally with `yarn develop`. VSCode will remap port 8000 used within the container to a free port on your machine, which you can view from the Remote Explorer panel in the left sidebar - or ctrl+click the URL that Gatsby prints in the terminal to open directly.
 
