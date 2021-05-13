@@ -118,9 +118,9 @@ LOAD DATA
   [ WHEN <field_condition> [ AND <field_condition> ] ...]
   [ FIELDS TERMINATED BY '<termstring>'
     [ OPTIONALLY ENCLOSED BY '<enclstring>' ] ]
-[ RECORDS DELIMITED BY '<delimstring>' ]
-[ TRAILING NULLCOLS ]
-  (<field_def> [, <field_def> ] ...)
+  [ RECORDS DELIMITED BY '<delimstring>' ]
+  [ TRAILING NULLCOLS ]
+   (<field_def> [, <field_def> ] ...)
 } ...
 ```
 
@@ -140,9 +140,9 @@ where `field_def` defines a field in the specified `data_file` that describes th
 where `fieldtype` is one of:
 
 ```text
-CHAR [(<length>)] | DATE [(<length>)] [ "<datemask>" ] |
+CHAR [(<length>)] | DATE [(<length>)] | TIMESTAMP [(<length>)] [ "<datemask>" ] |
 INTEGER EXTERNAL [(<length>)] |
-FLOAT EXTERNAL [(<length>)] | DECIMAL EXTERNAL [(length)] |
+FLOAT EXTERNAL [(<length>)] | DECIMAL EXTERNAL [(<length>)] |
 ZONED EXTERNAL [(<length>)] | ZONED [(<precision> [,<scale>])]
 ```
 
@@ -323,7 +323,11 @@ If the `FIELDS TERMINATED BY` clause is specified, then the `POSITION (start:end
 
 `PRESERVE BLANKS`
 
- For all target tables, retains leading white space when the optional enclosure delimiters are not present and leaves trailing white space intact when fields are specified with a predetermined size. When omitted, the default behavior is to trim leading and trailing white space.
+ The `PRESERVE BLANKS` option works only with the `OPTIONALLY ENCLOSED BY` clause and retains leading and trailing whitespaces for both delimited and predetermined size fields.
+
+ In case of `NO PRESERVE BLANKS`, if the fields are delimited, then only leading whitespaces are omitted, and if any trailing whitespaces are present, they are left untouched. In the case of predetermined-sized fields with `NO PRESERVE BLANKS`, the trailing whitespaces are omitted, and the leading whitespaces if any, are left untouched.
+
+ **Note:** If neither `PRESERVE BLANKS` nor `NO PRESERVE BLANKS` is explicitly provided, then the behavior defaults to `NO PRESERVE BLANKS`. This option does not work for ideographic whitespaces.
 
 `target_table`
 
@@ -334,7 +338,7 @@ If the `FIELDS TERMINATED BY` clause is specified, then the `POSITION (start:end
  Conditional clause taking the following form:
 
 ```
-[ ( ] { (start:end) | column_name } { = | != | <> }` `'val' [ ) ]
+[ ( ] { (start:end) | column_name } { = | != | <> } 'val' [ ) ]
 ```
 
  This conditional clause is used for the `WHEN` clause, which is part of the `INTO TABLE target_table` clause, and the `NULLIF` clause, which is part of the field definition denoted as `field_def` in the syntax diagram.
@@ -375,7 +379,7 @@ If the `FIELDS TERMINATED BY` clause is specified, then the `POSITION (start:end
 
 `column_name`
 
- Name of a column in `target_table` into which a field value defined by `field_def` is to be inserted. If the field definition includes the `FILLER` or `BOUNDFILLER` clause, then `column_name` is not required t be the name of a column in the table. It can be any identifier name since the `FILLER` and `BOUNDFILLER` clauses prevent the loading of the field data into a table column.
+ Name of a column in `target_table` into which a field value defined by `field_def` is to be inserted. If the field definition includes the `FILLER` or `BOUNDFILLER` clause, then `column_name` is not required to be the name of a column in the table. It can be any identifier name since the `FILLER` and `BOUNDFILLER` clauses prevent the loading of the field data into a table column.
 
 `CONSTANT val`
 
@@ -402,7 +406,7 @@ If the `FIELDS TERMINATED BY` clause is specified, then the `POSITION (start:end
  Defines the location of the field in a record in a fixed-width field data file. `start` and `end` are positive integers. The first character in the record has a start value of `1`.
 
 ```
-CHAR [(<length>)] | DATE [(<length>)] [ "<datemask>" ] |
+CHAR [(<length>)] | DATE [(<length>)] | TIMESTAMP [(<length>)] [ "<datemask>" ] |
 
 INTEGER EXTERNAL [(<length>)] |
 
@@ -441,7 +445,19 @@ ZONED EXTERNAL [(<length>)] | ZONED [(<precision>[,<scale>])]
 
  Specifies the ordering and abbreviation of the day, month, and year components of a date field.
 
- **Note**: If the `DATE` field type is specified along with a SQL expression for the column, then `datemask` must be specified after `DATE` and before the SQL expression. See the following discussion of the `expr` parameter.
+ **Note**: If the `DATE` or `TIMESTAMP` field type is specified along with a SQL expression for the column, then `datemask` must be specified after `DATE` or `TIMESTAMP` and before the SQL expression. See the following discussion of the `expr` parameter.
+
+ When using the `TIMESTAMP` field datatype, if you specify `time_stamp timestamp "yyyymmddhh24miss"` the `datemask` is converted to the SQL expression. However, in case of `time_stamp timestamp "select to_timestamp(:time_stamp, 'yyyymmddhh24miss')"`, the EDB*Loader cannot differentiate between datemask and the SQL expression. It treats the third field (SQL expression in the example) as datemask and prepares the SQL expression, which will not be valid. Where:
+
+-  `first field` specifies the column name
+-  `second field` specifies the datatype
+-  `third field` specifies the datemask
+
+If you want to provide an SQL expression, then the simple workaround is to specify the datemask and SQL expression using the `TO_CHAR` function as:
+
+```text
+time_stamp timestamp "yyyymmddhh24miss" "to_char(to_timestamp(:time_stamp, 'yyyymmddhh24miss'), 'yyyymmddhh24miss')"
+```
 
 `NULLIF field_condition [ AND field_condition ] ...`
 
@@ -451,7 +467,11 @@ ZONED EXTERNAL [(<length>)] | ZONED [(<precision>[,<scale>])]
 
 `PRESERVE BLANKS`
 
- For the column on which this option appears, retains leading white space when the optional enclosure delimiters are not present and leaves trailing white space intact when fields are specified with a predetermined size. When omitted, the default behavior is to trim leading and trailing white space.
+ The `PRESERVE BLANKS` option works only with the `OPTIONALLY ENCLOSED BY` clause and retains leading and trailing whitespaces for both delimited and predetermined size fields.
+
+ In case of `NO PRESERVE BLANKS`, if the fields are delimited, then only leading whitespaces are omitted, and if any trailing whitespaces are present, they are left untouched. In the case of predetermined-sized fields with `NO PRESERVE BLANKS`, the trailing whitespaces are omitted, and the leading whitespaces if any, are left untouched.
+
+ **Note:** If neither `PRESERVE BLANKS` nor `NO PRESERVE BLANKS` is explicitly provided, then the behavior defaults to `NO PRESERVE BLANKS`. This option does not work for ideographic whitespaces.
 
 `expr`
 
@@ -466,7 +486,7 @@ ZONED EXTERNAL [(<length>)] | ZONED [(<precision>[,<scale>])]
     The following is the syntax for use of the `SELECT` statement:
 
     ```
-    "(SELECT expr [ FROM table_list [ WHERE condition ] ])"
+    "(SELECT <expr> [ FROM <table_list> [ WHERE <condition> ] ])"
     ```
 
     !!! Note
@@ -591,9 +611,9 @@ LOAD DATA
 The following is the corresponding data file. The content is a single, physical record in the data file. The record delimiter character is included following the last record (that is, at the end of the file).
 
 ```text
-9101,ROGERS,CLERK,7902,17-DEC-10,1980.00,20,;9102,PETERSON,SALESMAN,7698,20-
-DEC-10,2600.00,30,2300.00;9103,WARREN,SALESMAN,7698,22-DEC-
-10,5250.00,30,2500.00;9104,"JONES, JR.",MANAGER,7839,02-APR-09,7975.00,20,;
+9101,ROGERS,CLERK,7902,17-DEC-10,1980.00,20,;9102,PETERSON,SALESMAN,7698,20-DEC-10,
+2600.00,30,2300.00;9103,WARREN,SALESMAN,7698,22-DEC-10,5250.00,30,2500.00;9104,"JONES, 
+JR.",MANAGER,7839,02-APR-09,7975.00,20,;
 ```
 
 **FILLER Clause**
@@ -818,8 +838,7 @@ LOAD DATA
   (
     empno       POSITION (1:4),
     ename       POSITION (5:14),
-    job         POSITION (15:23) "(SELECT dname FROM dept WHERE deptno =
-    :deptno)",
+    job         POSITION (15:23) "(SELECT dname FROM dept WHERE deptno = :deptno)",
     mgr         POSITION (24:27),
     hiredate    POSITION (28:38),
     sal         POSITION (39:46),
@@ -941,27 +960,18 @@ The following are the rows loaded into the `emp_research` and `emp_sales` tables
 ```text
 SELECT * FROM emp_research;
 
-empno  |   ename    |   job   |  mgr |      hiredate      |   sal   | comm |
-deptno
--------+------------+---------+------+--------------------+---------+------+-
-------
- 9101  | ROGERS     | CLERK   | 7902 | 17-DEC-10 00:00:00 | 1980.00 |      |
- 20.00
- 9104  | JONES, JR. | MANAGER | 7839 | 02-APR-09 00:00:00 | 7975.00 |      |
- 20.00
+empno  |   ename    |   job   |  mgr |      hiredate      |   sal   | comm | deptno
+-------+------------+---------+------+--------------------+---------+------+-------
+ 9101  | ROGERS     | CLERK   | 7902 | 17-DEC-10 00:00:00 | 1980.00 |      | 20.00
+ 9104  | JONES, JR. | MANAGER | 7839 | 02-APR-09 00:00:00 | 7975.00 |      | 20.00
 (2 rows)
-
 
 SELECT * FROM emp_sales;
 
-empno  |   ename  |    job   |  mgr |       hiredate     |    sal  |   comm
-| deptno
--------+----------+----------+------+--------------------+---------+---------
-+--------
- 9102  | PETERSON | SALESMAN | 7698 | 20-DEC-10 00:00:00 | 2600.00 | 2950.00
- | 30.00
- 9103  | WARREN   | SALESMAN | 7698 | 22-DEC-10 00:00:00 | 5250.00 | 3813.00
- | 30.00
+empno  |   ename  |    job   |  mgr |       hiredate     |    sal  |   comm  | deptno
+-------+----------+----------+------+--------------------+---------+---------+--------
+ 9102  | PETERSON | SALESMAN | 7698 | 20-DEC-10 00:00:00 | 2600.00 | 2950.00 | 30.00
+ 9103  | WARREN   | SALESMAN | 7698 | 22-DEC-10 00:00:00 | 5250.00 | 3813.00 | 30.00
 (2 rows)
 ```
 
@@ -1150,7 +1160,7 @@ In the following example EDB\*Loader is invoked using a control file named `emp.
 ```text
 $ /usr/edb/as13/bin/edbldr -d edb USERID=enterprisedb/password
 CONTROL=emp.ctl
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 
 Successfully loaded (4) records
 ```
@@ -1162,7 +1172,7 @@ $ /usr/edb/as13/bin/edbldr -d edb CONTROL=emp.ctl BAD=/tmp/emp.bad
 LOG=/tmp/emp.log
 Enter the user name : enterprisedb
 Enter the password :
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 
 Successfully loaded (4) records
 ```
@@ -1183,7 +1193,7 @@ EDB\*Loader is invoked with the parameter file as shown by the following:
 $ /usr/edb/as13/bin/edbldr -d edb PARFILE=emp.par
 Enter the user name : enterprisedb
 Enter the password :
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 
 Successfully loaded (3) records
 ```
@@ -1193,7 +1203,7 @@ In the following example EDB\*Loader is invoked using a `connstr=` option using 
 ```text
 $ /usr/edb/as13/bin/edbldr connstr=\"sslmode=verify-ca sslcompression=0
 host=127.0.0.1 dbname=edb port=5444 user=enterprisedb\" CONTROL=emp.ctl
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 
 Successfully loaded (4) records
 ```
@@ -1244,7 +1254,7 @@ To run a direct path load, add the `DIRECT=TRUE` option as shown by the followin
 ```text
 $ /usr/edb/as13/bin/edbldr -d edb USERID=enterprisedb/password
 CONTROL=emp.ctl DIRECT=TRUE
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 
 Successfully loaded (4) records
 ```
@@ -1323,7 +1333,7 @@ The following shows the invocation of EDB\*Loader in the first session. The `DIR
 $ /usr/edb/as13/bin/edbldr -d edb USERID=enterprisedb/password
 CONTROL=emp_parallel_1.ctl DIRECT=TRUE PARALLEL=TRUE
 WARNING: index maintenance will be skipped with PARALLEL load
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 ```
 
 The control file used for the second session appears as follows. Note that it is the same as the one used in the first session, but uses a different data file.
@@ -1353,7 +1363,7 @@ The preceding control file is used in a second session as shown by the following
 $ /usr/edb/as13/bin/edbldr -d edb USERID=enterprisedb/password
 CONTROL=emp_parallel_2.ctl DIRECT=TRUE PARALLEL=TRUE
 WARNING: index maintenance will be skipped with PARALLEL load
-EDB*Loader: Copyright (c) 2007-2020, EnterpriseDB Corporation.
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
 ```
 
 EDB\*Loader displays the following message in each session when its respective load operation completes:
