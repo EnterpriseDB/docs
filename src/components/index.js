@@ -1,3 +1,4 @@
+import Archive from './archive';
 import BackButton from './back-button';
 import CardDecks from './card-decks';
 import CodeBlock from './code-block';
@@ -29,6 +30,7 @@ import TreeNode from './tree-node';
 import VersionDropdown from './version-dropdown';
 
 export {
+  Archive,
   BackButton,
   CardDecks,
   CodeBlock,
