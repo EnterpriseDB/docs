@@ -14,7 +14,7 @@ const SubList = ({ children, collapsed }) => {
   }
 };
 
-// const KatacodaBadge = () => <span className="new-thing">Demos</span>;
+const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
 const TreeNode = ({ node, path, hideIfEmpty }) => {
   if (!node.path) {
@@ -43,7 +43,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
           }`}
         >
           <Title node={node} />
-          {/* {node.interactive && <KatacodaBadge />} */}
+          {node.interactive && <KatacodaBadge />}
         </Link>
       </div>
       {node.items.length > 0 && (
