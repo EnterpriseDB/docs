@@ -62,6 +62,7 @@ const sourceToPluginConfig = {
   pgbouncer: { name: 'pgbouncer', path: 'product_docs/docs/pgbouncer' },
   pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
   postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
+  repmgr: { name: 'repmgr', path: 'product_docs/docs/repmgr' },
   slony: { name: 'slony', path: 'product_docs/docs/slony' },
 };
 
