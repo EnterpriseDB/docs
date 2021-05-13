@@ -10,10 +10,10 @@ export default function Archive({ title, href, ...props }) {
   );
 }
 
-const PdfIcon = ({ className }) => (
+const PdfIcon = () => (
   <Icon
     iconName="PDF"
-    className={`fill-orange position-relative top-minus-2 ${className}`}
+    className="fill-orange position-relative top-minus-2"
     width="16"
     height="auto"
   />
