@@ -1,10 +1,10 @@
 ---
-title: "Accessing Partitioned Table"
+title: "Accessing a PARTITION or SUBPARTITION"
 ---
 
 <div id="accessing_partition_table" class="registered_link"></div>
 
-The following example creates a partitioned table `sales` that is range-partitioned by `date` and subpartitioned using list partitioning by the `country` column.  
+For a partitioned table, you can access the partition or subpartition using `PARTITION part_name` or `SUBPARTITION subpart_name`. The following example creates a partitioned table `sales` that is range-partitioned by `date` and subpartitioned using list partitioning by the `country` column.  
 
 ```text
 CREATE TABLE sales
@@ -19,37 +19,23 @@ PARTITION BY RANGE(date)
   SUBPARTITION BY LIST(country)
 (
   PARTITION q1_2020 
-    VALUES LESS THAN('2020-Mar-01')
+    VALUES LESS THAN('2020-Apr-01')
     (
       SUBPARTITION q1_europe VALUES ('FRANCE', 'ITALY'),
       SUBPARTITION q1_asia VALUES ('INDIA', 'PAKISTAN'),
       SUBPARTITION q1_americas VALUES ('US', 'CANADA')
     ), 
   PARTITION q2_2020 
-    VALUES LESS THAN('2020-Jun-01')
+    VALUES LESS THAN('2020-Jul-01')
     (
       SUBPARTITION q2_europe VALUES ('FRANCE', 'ITALY'),
       SUBPARTITION q2_asia VALUES ('INDIA', 'PAKISTAN'),
       SUBPARTITION q2_americas VALUES ('US', 'CANADA')
-    ),
-  PARTITION q3_2020 
-    VALUES LESS THAN('2020-Sep-01')
-    (
-      SUBPARTITION q3_europe VALUES ('FRANCE', 'ITALY'),
-      SUBPARTITION q3_asia VALUES ('INDIA', 'PAKISTAN'),
-      SUBPARTITION q3_americas VALUES ('US', 'CANADA')
-    ),
-   PARTITION q4_2020
-    VALUES LESS THAN('2020-Dec-01')
-      (
-        SUBPARTITION q4_europe VALUES ('FRANCE', 'ITALY'),
-        SUBPARTITION q4_asia VALUES ('INDIA', 'PAKISTAN'),
-        SUBPARTITION q4_americas VALUES ('US', 'CANADA')
-      )
+    )
 );
 ``` 
 
-The `SELECT` statement shows four partitions; each partition has three subpartitions.
+The `SELECT` statement shows two partitions; each partition has three subpartitions.
 
 ```text
 edb=# SELECT subpartition_name, high_value, partition_name FROM ALL_TAB_SUBPARTITIONS;
@@ -61,16 +47,10 @@ edb=# SELECT subpartition_name, high_value, partition_name FROM ALL_TAB_SUBPARTI
  Q2_EUROPE         | 'FRANCE', 'ITALY'   | Q2_2020
  Q2_ASIA           | 'INDIA', 'PAKISTAN' | Q2_2020
  Q2_AMERICAS       | 'US', 'CANADA'      | Q2_2020
- Q3_EUROPE         | 'FRANCE', 'ITALY'   | Q3_2020
- Q3_ASIA           | 'INDIA', 'PAKISTAN' | Q3_2020
- Q3_AMERICAS       | 'US', 'CANADA'      | Q3_2020
- Q4_EUROPE         | 'FRANCE', 'ITALY'   | Q4_2020
- Q4_ASIA           | 'INDIA', 'PAKISTAN' | Q4_2020
- Q4_AMERICAS       | 'US', 'CANADA'      | Q4_2020
-(12 rows)
+(6 rows)
 ```
 
-The following `INSERT` statement inserts rows into the `sales` table.
+The following `INSERT` statement inserts rows into the `sales` table using specific `PARTITION part_name` or `SUBPARTITION subpart_name`.
 
 ```text
 INSERT INTO sales PARTITION (q1_2020) VALUES (10, 'q1_2020', 'FRANCE', '2020-Feb-01', '500000');
@@ -106,7 +86,7 @@ edb=# SELECT tableoid::regclass, country FROM sales SUBPARTITION (q1_europe) ORD
 (2 rows)
 ```
 
-The following `SELECT` statement selects rows from a partitioned or subpartitioned table by specifying the keyword `PARTITION` or `SUBPARTITION` in the `ORDER BY` clause.
+The following `SELECT` statement selects rows from a specific partition or subpartition of a partitioned table by specifying the keyword `PARTITION` or `SUBPARTITION`.  
 
 ```text
 edb=# SELECT tableoid::regclass, * FROM sales PARTITION (q2_2020) ORDER BY country;
@@ -134,15 +114,6 @@ edb=# UPDATE sales PARTITION (q1_2020) SET amount = 10000 WHERE amount = 500000 
 
 UPDATE 1
 
-edb=# SELECT tableoid::regclass, * FROM sales ORDER BY amount;
-    tableoid     | dept_no |  part_no  | country |        date        | amount 
------------------+---------+-----------+---------+--------------------+--------
- sales_q1_europe |      10 | q1_2020   | FRANCE  | 01-FEB-20 00:00:00 |  10000
- sales_q2_europe |      10 | q2_2020   | ITALY   | 01-APR-20 00:00:00 | 550000
- sales_q1_europe |      10 | q1_europe | FRANCE  | 01-FEB-20 00:00:00 | 600000
- sales_q2_asia   |      10 | q2_asia   | INDIA   | 01-APR-20 00:00:00 | 650000
-(4 rows)
-
 edb=# UPDATE sales SUBPARTITION (q1_europe) SET amount = 5000 WHERE amount = 600000 RETURNING tableoid::regclass, *;
     tableoid     | dept_no |  part_no  | country |        date        | amount 
 -----------------+---------+-----------+---------+--------------------+--------
@@ -150,35 +121,18 @@ edb=# UPDATE sales SUBPARTITION (q1_europe) SET amount = 5000 WHERE amount = 600
 (1 row)
 
 UPDATE 1
-
-edb=# SELECT tableoid::regclass, * FROM sales ORDER BY amount;
-    tableoid     | dept_no |  part_no  | country |        date        | amount 
------------------+---------+-----------+---------+--------------------+--------
- sales_q1_europe |      10 | q1_europe | FRANCE  | 01-FEB-20 00:00:00 |   5000
- sales_q1_europe |      10 | q1_2020   | FRANCE  | 01-FEB-20 00:00:00 |  10000
- sales_q2_europe |      10 | q2_2020   | ITALY   | 01-APR-20 00:00:00 | 550000
- sales_q2_asia   |      10 | q2_asia   | INDIA   | 01-APR-20 00:00:00 | 650000
-(4 rows)
 ```
 
-The following `DELETE` statement removes rows from partition `q1_2020` or subpartition `q2_asia` of the `sales` table.
+The following `DELETE` statement removes rows from the partition `q2_2020` or subpartition `q2_asia` of the `sales` table.
 
 ```text
-edb=# DELETE FROM sales PARTITION (q1_2020) WHERE amount = 500000 RETURNING tableoid::regclass, *;
- tableoid | dept_no | part_no | country | date | amount 
-----------+---------+---------+---------+------+--------
-(0 rows)
+edb=# DELETE FROM sales PARTITION (q2_2020) WHERE amount = 550000 RETURNING tableoid::regclass, *;
+    tableoid     | dept_no | part_no | country |        date        | amount 
+-----------------+---------+---------+---------+--------------------+--------
+ sales_q2_europe |      10 | q2_2020 | ITALY   | 01-APR-20 00:00:00 | 550000
+(1 row)
 
-DELETE 0
-
-edb=# SELECT tableoid::regclass, * FROM sales ORDER BY amount;
-    tableoid     | dept_no |  part_no  | country |        date        | amount 
------------------+---------+-----------+---------+--------------------+--------
- sales_q1_europe |      10 | q1_europe | FRANCE  | 01-FEB-20 00:00:00 |   5000
- sales_q1_europe |      10 | q1_2020   | FRANCE  | 01-FEB-20 00:00:00 |  10000
- sales_q2_europe |      10 | q2_2020   | ITALY   | 01-APR-20 00:00:00 | 550000
- sales_q2_asia   |      10 | q2_asia   | INDIA   | 01-APR-20 00:00:00 | 650000
-(4 rows)
+DELETE 1
 
 edb=# DELETE FROM sales SUBPARTITION (q2_asia) RETURNING tableoid::regclass, *;
    tableoid    | dept_no | part_no | country |        date        | amount 
@@ -187,14 +141,6 @@ edb=# DELETE FROM sales SUBPARTITION (q2_asia) RETURNING tableoid::regclass, *;
 (1 row)
 
 DELETE 1
-
-edb=# SELECT tableoid::regclass, * FROM sales ORDER BY country;
-    tableoid     | dept_no |  part_no  | country |        date        | amount 
------------------+---------+-----------+---------+--------------------+--------
- sales_q1_europe |      10 | q1_2020   | FRANCE  | 01-FEB-20 00:00:00 |  10000
- sales_q1_europe |      10 | q1_europe | FRANCE  | 01-FEB-20 00:00:00 |   5000
- sales_q2_europe |      10 | q2_2020   | ITALY   | 01-APR-20 00:00:00 | 550000
-(3 rows)
 ```
 
 
