@@ -157,7 +157,7 @@ title: Title of page
 
 If the title contains [special characters](https://stackoverflow.com/questions/19109912/yaml-do-i-need-quotes-for-strings-in-yaml), it will need to be quoted. There also needs to be a space after `title:`
 
-In addition to `title`, frontmatter may optionally include `navTitle` and `description:
+In addition to `title`, frontmatter may optionally include `navTitle` and `description`:
 
 ```
 ---
