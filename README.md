@@ -4,7 +4,7 @@
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
 ![Update PDFs on Develop](https://github.com/EnterpriseDB/docs/workflows/Update%20PDFs%20on%20Develop/badge.svg)
 
-This repo contains the React/Gatsby application that powers the EDB Docs website. The site pulls [Markdown](https://www.markdownguide.org/) content from several repos in a process called "sourcing", and then renders it all into high-performance markup. You can install the application on your local computer for easy editing, viewing, and eventually publishing to the GitHub repo.
+This repo contains the React/Gatsby application that powers [the EDB Docs website](https://www.enterprisedb.com/docs/). The site pulls [Markdown](https://www.markdownguide.org/) content from several repos in a process called "sourcing", and then renders it all into high-performance markup. You can install the application on your local computer for easy editing, viewing, and eventually publishing to the GitHub repo.
 
 ## MacOS Installation
 
@@ -140,15 +140,14 @@ This frontmatter is an automatically generated list of redirects for Docs 1.0 to
 
 If you need to setup a redirect from Docs 1.0 to Docs 2.0 manually, this is the place to do it. If the `legacyRedirectsGenerated` frontmatter does not include the redirect you need, you should add it here.
 
-# Advocacy Docs (left over from previous README, needs attention)
 
-Advocacy doc files are in [advocacy_docs/getting-started](https://github.com/EnterpriseDB/docs/tree/master/advocacy_docs/getting-started)
+# MDX Format
 
-New docs need a `.mdx` suffix to be used by Gatsby.
+Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
 
-## frontmatter
+## Frontmatter
 
-Each document requires a `frontmatter` section at the top with a title. This looks like this:
+Each document requires a [YAML](https://yaml.org) frontmatter section at the top with a title:
 
 ```
 ---
@@ -156,9 +155,9 @@ title: Title of page
 ---
 ```
 
-The title can be in quotes, but they are not needed unless you want an apostrophe in there. There also needs to be a space after `title:`
+If the title contains [special characters](https://stackoverflow.com/questions/19109912/yaml-do-i-need-quotes-for-strings-in-yaml), it will need to be quoted. There also needs to be a space after `title:`
 
-In addition to `title`, there is also the option of adding `navTitle` and `description` to look like this:
+In addition to `title`, frontmatter may optionally include `navTitle` and `description:
 
 ```
 ---
@@ -176,26 +175,66 @@ The `description` is used in cards as well.
 
 All of these files use Markdown for styling. The options for what can be done can be seen [here](https://github.com/EnterpriseDB/docs/blob/master/advocacy_docs/playground/1/01_examples/index.mdx)
 
+## Admonitions (Notes, Warnings, etc.)
+
+If you need to draw attention to information, consider using an admonition:
+
+```
+!!! Note Optional title
+    This is text you'd like the reader to notice.
+```
+
+Admonitions begin with the `!!!` signifier. Next comes a (case-insensitive) type which is one of:
+
+* important
+* tip
+* note
+* caution
+* warning
+
+There are several [aliases](https://github.com/elviswolcott/remark-admonitions#usage):
+
+* info => important
+* success => tip
+* secondary => note
+* danger => warning
+* seealso => note
+* hint => tip
+
+Titles are optional. If you don't include one, the admonition will default to the type name ("Important", "Tip", etc.).
+
+The body of the admonition is indented 4 spaces. It should line up with the first letter of the admonition type. Alternatively, fenced admonitions that begin and end with `!!!` lines are supported:
+
+```
+!!! Tip
+Use fenced admonitions to avoid space counting.
+!!!
+```
+
+For examples of what you can do with admonitions, see [this demo](https://github.com/EnterpriseDB/docs/blob/main/advocacy_docs/playground/1/01_examples/admonitions.mdx).
+
 ## Ordering of files
 
 The items in the left nav are sorted alphabetically by file name. This can be done with a numerical prefix. The titles of each page are used for the names in the left nav.
 
-## Content submission
-
-To add content to this site, changes must be submitted as a PR. There are two options for this:
-
-Option 1: locally
-
-1. Clone repo
-2. Make a new branch
-3. Add commits to branch and push to github
-4. Create a new PR on github
-
-Option 2: on github
-
-1. Edit a file on github
-2. Submit changes as a PR on a new branch
-
 ## Search
 
 Content is indexed for search when the production site builds.
+
+## Contributions
+
+[We love feedback!](https://www.enterprisedb.com/docs/community/contributing/)
+
+To contribute content to this site submit as a pull request (PR). There are two options for this:
+
+Option 1: locally
+
+1. [Clone](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/cloning-a-repository) this repository.
+2. [Make a new branch.](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging)
+3. Add commits to branch and [push to GitHub](https://git-scm.com/book/en/v2/Git-Branching-Remote-Branches).
+4. Create a new PR on GitHub.
+
+Option 2: on GitHub
+
+1. Edit a file on GitHub.
+2. Submit changes as a PR on a new branch.
