@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
-import cliImg from '../images/cli@2x.png';
+import cliImg from '../images/screen-demo.gif';
 import {
   Footer,
   IndexSubNav,
@@ -49,7 +49,59 @@ const Page = () => (
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
       <MainContent searchNavLogo={true}>
-        {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
+        {/* Sign Post */}
+
+        <div className="new-thing-header" aria-roledescription="badge">
+          <span className="badge-text font-weight-bold">Interactive Demo</span>
+        </div>
+
+        <div className="full-width mt-3 mb-3">
+          <div className="pt-0">
+            <div className="d-flex pb-0">
+              <div className="card mr-3 shadow-sm p-2">
+                <Icon
+                  iconName="KUBERNETES"
+                  className="fill-blue"
+                  width="240"
+                  height="240"
+                />
+              </div>
+              <div className="flex-fill">
+                <h2 className="card-title mb-2 font-weight-bold">
+                  Install, Configure and Deploy PostgreSQL with Kubernetes
+                </h2>
+
+                <p className="">
+                  Test drive Cloud Native Postgres in the browser. No download
+                  or install required.
+                </p>
+
+                <div className="d-flex align-items-center">
+                  <p className="pb-3">
+                    <Link className="btn btn-info">
+                      Try the Interactive Demo &rarr;
+                    </Link>
+                  </p>
+                  <p className="pb-3 ml-3">
+                    <Link
+                      to="/kubernetes/cloud_native_postgresql/"
+                      className="border-bottom"
+                    >
+                      Learn More
+                    </Link>
+                  </p>
+                </div>
+              </div>
+              {/* <div className='card-editorial-cnpo align-self-end'>
+                <img
+                  src={cliImg}
+                  alt='Illustration of a Kubernetes Terminal Command'
+                  className='img-fluid shadow'
+                />
+              </div> */}
+            </div>
+          </div>
+        </div>
 
         {/* Sign Post */}
         <div className="card-columns full-width mb-3">
