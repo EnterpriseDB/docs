@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container } from 'react-bootstrap';
 import Icon, { iconNames } from '../components/icon/';
-import cliImg from '../images/cli@2x.png';
+import cliImg from '../images/screen-demo.gif';
 import {
   Footer,
   IndexSubNav,
@@ -49,61 +49,63 @@ const Page = () => (
     <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
       <MainContent searchNavLogo={true}>
-        {/* <h1 className="mb-5">enterprisedb.com/docs</h1> */}
-
         {/* Sign Post */}
-        <div className="card-columns full-width mb-3">
-          <div className="card rounded pt-0">
-            <div className="card-body d-flex shadow-sm pb-0 pt-4 pr-3 bg-light">
-              <div className="mr-3 align-top pt-1">
-                <Icon
-                  iconName="KUBERNETES"
-                  className="fill-blue"
-                  width="48"
-                  height="48"
-                />
+
+        <div className="new-thing-header" aria-roledescription="badge">
+          <span className="badge-text font-weight-bold">Interactive Demo</span>
+        </div>
+
+        <div className="full-width mt-3 mb-5">
+          <div className="pt-0">
+            <div className="d-flex pb-0 align-items-center">
+              <div className="mr-3">
+                <Link to="/kubernetes/cloud_native_postgresql/interactive_demo/">
+                  <img
+                    src={cliImg}
+                    alt="Illustration of a Kubernetes Terminal Command"
+                    className="img-fluid shadow rounded card"
+                  />
+                </Link>
               </div>
-              <div className="flex-fill">
+              <div className="flex-fill pl-3">
                 <h2 className="card-title mb-2 font-weight-bold">
-                  Cloud Native PostgreSQL
+                  <span className="text-muted font-weight-normal">
+                    Cloud Native Postgres
+                  </span>
+                  <br />
+                  Install, Configure and Deploy PostgreSQL with Kubernetes
                 </h2>
 
-                <p className="">
-                  Cloud Native PostgreSQL is an operator designed by
-                  EnterpriseDB to manage PostgreSQL workloads on any supported
-                  Kubernetes cluster running in private, public, or hybrid cloud
-                  environments.
+                <p className="pt-2 pb-1 balance-text">
+                  Test drive Cloud Native Postgres in the browser.
                 </p>
-                <p className="pb-3">
-                  <Link to="/kubernetes/cloud_native_postgresql/">
-                    Read More &rarr;
-                  </Link>
-                </p>
-              </div>
-              <div className="card-editorial-cnpo align-self-end">
-                <img
-                  src={cliImg}
-                  alt="Illustration of a Kubernetes Terminal Command"
-                  className="img-fluid shadow"
-                />
+
+                <div className="d-flex align-items-center">
+                  <p>
+                    <Link
+                      className="btn btn-info"
+                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                    >
+                      Try the Interactive Demo &rarr;
+                    </Link>
+                  </p>
+                  <p className="ml-3">
+                    <Link
+                      to="/kubernetes/cloud_native_postgresql/"
+                      className="border-bottom"
+                    >
+                      Learn More
+                    </Link>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card-columns mb-4">
-          {/*          <IndexCard
-            iconName={iconNames.POSTGRESQL}
-            headingText="PostgreSQL Journey"
-          >
-            <IndexCardLink to="/postgresql_journey/02_installing">
-              Installing PostgreSQL
-            </IndexCardLink>
-            <IndexCardLink to="/postgresql_journey/04_developing/connecting_to_postgres">
-              Developing with PostgreSQL
-            </IndexCardLink>
-          </IndexCard>*/}
+        {/* Sign Post */}
 
+        <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
