@@ -79,6 +79,10 @@ def process_md(file_path):
                         if new_file_path.name == "index.mdx"
                         else "",
                     )
+                elif not line.strip():
+                    line = ""
+                else:
+                    print("File does not begin with title - frontmatter will not be valid: " + file_path)
 
                 new_file.write(line)
 
