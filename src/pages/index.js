@@ -137,6 +137,9 @@ const Page = () => (
             <IndexCardLink to="/bdr/latest">
               BDR (Bi-Directional Replication)
             </IndexCardLink>
+            <IndexCardLink to="/harp/latest">
+              High Availability Routing for Postgres (HARP)
+            </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
