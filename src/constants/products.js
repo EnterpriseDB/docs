@@ -6,6 +6,10 @@ export const products = {
     name: 'BDR (Bi-Directional Replication)',
     iconName: IconNames.HIGH_AVAILABILITY,
   },
+  harp: {
+    name: 'High Availability Routing for Postgres (HARP)',
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
   ark: { name: 'Postgres Ark', iconName: IconNames.EDB_ARK },
   bart: { name: 'Backup and Recovery Tool', iconName: IconNames.EDB_BART },
   efm: { name: 'Failover Manager', iconName: IconNames.EDB_EFM },
