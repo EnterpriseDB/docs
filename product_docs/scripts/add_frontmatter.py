@@ -43,13 +43,13 @@ for path in Path('content').rglob('*.mdx'):
       print(top_url_line)
       copying = True
     elif not copying:
-      if "registered\_link" in line:
+      if "registered\_link" in line or "registered_link" in line:
         top_url_line = fix_registered_link(line)
       else:
         continue
     elif line.startswith('##'):
       print(line.replace("`", ""), end="")
-    elif "registered\_link" in line:
+    elif "registered\_link" in line or "registered_link" in line:
       print(fix_registered_link(line), end="")
     elif "<code>" in line:
       print(line.replace('{', '&#123;').replace('}', '&#125;'), end="")
