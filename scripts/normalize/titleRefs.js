@@ -18,12 +18,12 @@ example:
   }
 
   const files = await glob(process.argv[2]);
-  const titleRef = /<span class="title-ref">([^<]*?)(?:(?:<|&lt;)+(.*?)(?:>|&gt;)+)*?<\/span>|`` `([^`]*?)`` &lt;([^>]*?)><span class="title-ref">([^<]*?)<\/span>|`` `([^`]+)`` &lt;([^>]*)>\\/g;
+  const titleRef = /(?:<span class="title-ref">([^<]*?)(?:(?:<|&lt;)+(.*?)(?:>|&gt;)+)*?<\/span>)|(?:`` `([^`]*?)`` \\?(?:&lt;|<)([^>]*?)><span class="title-ref">([^<]*?)<\/span>)|(?:`` `([^`]+)`` \\?(?:&lt;|<)([^>]*)>\\`)/g;
   const cleanup1 = /\\`\\` *([^\\]+) *\\`\\`/g;
   const cleanup2 = /`?`([^\n`]{3,}?)`\\?`/g;
   const replaceRefs = (_, text1, href1, text2, href2, prologue, text3, href3) =>
   {
-    let textContent = (text1 || text2 || text3 || "").replace(/\\\\/g, '\\').trim();
+    let textContent = (text1 || text2 || text3 || "").replace(/\\\\/g, '\\').trim().replace(/\\$/g, '').trim();
     let href = (href1 || href2 || href3 || "").replace(/[\s\\]/g, '').replace(/^<|>$/g, '');
     prologue = prologue || "";
     if (!textContent && href)
