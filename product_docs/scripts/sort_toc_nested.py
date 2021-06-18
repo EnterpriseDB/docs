@@ -3,6 +3,8 @@ import os
 import shutil
 import re
 
+importedFiles = []
+
 class Node:
     def __init__(self, filename):
         self.filename = filename
@@ -74,6 +76,7 @@ def process_node(node, root_path, result_path, index):
     for sub_node in node.items:
       process_node(sub_node, root_path, folder_path + "/", idx)
       idx += 1
+  importedFiles.append(source)
 
 for path in Path('content').rglob('index.rst'):
     root_path = str(path.parents[0]) + '/'
@@ -127,6 +130,7 @@ for path in Path('content').rglob('index.rst'):
 
     # copy index over
     shutil.copyfile(root_path + "index.mdx", dest_path + "/index.mdx") 
+    importedFiles.append(root_path + "index.mdx")
     
     # process nodes in ToC to move mdx files to correct folder in destination folder
     idx = 1
@@ -140,3 +144,9 @@ for path in Path('content').rglob('index.rst'):
     if os.path.exists(conclusion_path):
       print("removed conclusion.mdx")
       os.remove(conclusion_path)
+
+for path in Path('content').rglob('*.mdx'):
+  destination = str(path.parents[2]) + "/content_build/" + path.parts[-2] + '/' + path.parts[-1]
+  if (not str(path) in importedFiles):
+    print("copying file not included in index: " + str(path) + " to " + destination)
+    shutil.copyfile(path, destination)
