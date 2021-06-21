@@ -17,6 +17,7 @@ const noEscapeImageAlt = require('./lib/no-escape-image-alt')
 const tableFormatter = require('./lib/table-formatter')
 const {docs1LinkRewriter, linkStats} = require('./lib/docs1-link-rewriter')
 const noteRewriter = require('./lib/note-rewriter.js')
+const partialTocRewriter = require('./lib/partial-toc-rewriter.js')
 const codeInTables = require('../../src/plugins/code-in-tables.js')
 const admonitions = require('remark-admonitions')
 
@@ -45,6 +46,7 @@ example:
   const transformer = unified()
     .use(remarkMdxEmbeddedHast)
     .use(noteRewriter)
+    .use(partialTocRewriter)
     .use(relativeLinkRewriter)
     .use(tableFormatter)
     .use(codeInTables)
@@ -58,6 +60,7 @@ example:
     .use(remarkMdxEmbeddedHast)
     .use(admonitions, { tag: '!!!', icons: 'none', infima: true })
     .use(noteRewriter)
+    .use(partialTocRewriter)
     .use(codeInTables)
     .use(noEscapeImageAlt)
 
