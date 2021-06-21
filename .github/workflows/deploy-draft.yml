@@ -1,0 +1,83 @@
+name: Deploy branch draft on Netlify
+on:
+  pull_request:
+    types: [labeled, opened, synchronize]
+    
+jobs:
+  build-deploy:
+    if: |
+      (github.event.action == 'labeled' && github.event.label.name == 'deploy') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: create a github deployment
+      uses: bobheadxi/deployments@v0.5.2
+      id: deployment
+      with:
+        step: start
+        token: ${{ secrets.GITHUB_TOKEN }}
+        env: pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}
+        ref: ${{ github.head_ref }}
+        
+    - uses: actions/checkout@v2
+      with:
+        ref: content/mongo_data_adapter/5.2.9/upcoming_release
+        fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
+    - name: Update submodules
+      run: git submodule update --init --remote
+    - name: Adjust file watchers limit
+      run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '14.x'
+    - name: Install yarn
+      run: sudo npm -g install yarn
+    - name: Yarn install
+      run: yarn install --immutable
+      env:
+        NODE_ENV: ${{ secrets.NODE_ENV }}
+
+    - name: Checking Gatsby cache
+      id: gatsby-cache-build
+      uses: actions/cache@v2
+      with:
+        path: |
+          public
+          .cache
+        key: ${{ runner.os }}-gatsby-build-develop-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-gatsby-build-develop-
+
+    - name: Fix mtimes
+      run: yarn fix-mtimes --force
+    - name: Gatsby build
+      run: yarn build
+      env:
+        APP_ENV: staging
+        NODE_ENV: ${{ secrets.NODE_ENV }}
+        NODE_OPTIONS: --max-old-space-size=4096
+        ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+        ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+        ALGOLIA_INDEX_NAME: edb-docs-staging
+        INDEX_ON_BUILD: false
+
+    - name: Netlify deploy
+      run: |
+        sudo yarn global add netlify-cli
+        netlify deploy --dir=public --json | tee deploy_results.json
+        echo "NETLIFY_DRAFT_URL=`jq '.deploy_url' deploy_results.json`" >> $GITHUB_ENV
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_WIP2_SITE_ID }}
+
+    - name: update the github deployment status
+      uses: bobheadxi/deployments@v0.5.2
+      if: always()
+      with:
+        step: finish
+        token: ${{ secrets.GITHUB_TOKEN }}
+        status: ${{ job.status }}
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+        env_url: ${{ env.NETLIFY_DRAFT_URL }}
