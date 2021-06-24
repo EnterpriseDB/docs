@@ -351,7 +351,7 @@ export const productStubs = {
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/reference/reference-guide/2.5.2/index.html',
               pdf:
-                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/edb_bart_ref.pdf',
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/EDB_Postgres_Backup_and_Recovery_Reference_Guide.pdf',
             },
           ],
         },
@@ -364,7 +364,7 @@ export const productStubs = {
               href:
                 'https://www.enterprisedb.com/edb-docs/d/edb-backup-and-recovery-tool/user-guides/backup-recovery-guide/2.5.2/index.html',
               pdf:
-                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/edb_bart_user.pdf',
+                'https://www.enterprisedb.com/edb-docs/static/docs/bart/2.5.2/EDB_Postgres_Backup_and_Recovery_User_Guide.pdf',
             },
           ],
         },
