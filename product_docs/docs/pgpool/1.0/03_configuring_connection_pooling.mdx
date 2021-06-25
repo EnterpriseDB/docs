@@ -6,6 +6,8 @@ legacyRedirectsGenerated:
   - "/edb-docs/d/pgpool-ii/user-guides/pgpool-ii-guide/1.0/configuring_connection_pooling.html"
 ---
 
+The configuration files are created in the `/etc/sysconfig/edb/pgpool<x.y>` directory, where *&lt;x.y>* is the Pgpool release version. By default, `.sample` is appended to the configuration file name; remove the `.sample` from the configuration file after copying the file to create your custom configuration.
+
 !!! Note
     The configuration options for Pgpool-II are extensive; consider the options listed below as a starting point only. For more information about configuring and using Pgpool-II, please consult the [project website](https://www.pgpool.net/docs/latest/en/html/index.html).
 
@@ -54,27 +56,31 @@ To configure connection pooling with one database server:
 
     The following example shows how to connect with the EDB Postgres Advanced Server:
 
-    `connection_cache = on`
+    ```text
+    connection_cache = on
 
-    `backend_hostname0 = 'localhost'`
+    backend_hostname0 = 'localhost'
 
-    `backend_port0 = 5444`
+    backend_port0 = 5444
 
-    `backend_weight0 = 1`
+    backend_weight0 = 1
 
-    `backend_data_directory0 = '/var/lib/edb/as13/data'`
+    backend_data_directory0 = '/var/lib/edb/as13/data'
+    ```
 
     The following example shows how to connect with the PostgreSQL Server:
 
-    `connection_cache = on`
+    ```text
+    connection_cache = on
 
-    `backend_hostname0 = 'localhost'`
+    backend_hostname0 = 'localhost'
 
-    `backend_port0 = 5432`
+    backend_port0 = 5432
 
-    `backend_weight0 = 1`
+    backend_weight0 = 1
 
-    `backend_data_directory0 = '/var/lib/pgsql/13/data'`
+    backend_data_directory0 = '/var/lib/pgsql/13/data'
+    ```
 
     !!! Note
         In the `pgpool.conf` file, connection parameters have an appended digit that specifies a cluster node identifier. Database node `0` specifies values for the primary node.
@@ -83,7 +89,7 @@ To configure connection pooling with one database server:
 
 4.  Optionally, configure the [PCP administrative interface](#pcp_configuration).
 
-5.  Start Pgpool-II and begin using your application using the following command:
+5.  Start Pgpool-II:
 
     ```text
     systemctl start edb-pgpool-<x.y>.service
@@ -95,25 +101,33 @@ To configure connection pooling with one database server:
 
     On  EDB Postgres Advanced Server for CentOS 7:
 
-    ```./psql -d edb -p 9999 -U enterprisedb -h /tmp```
+    ```text
+    ./psql -d edb -p 9999 -U enterprisedb -h /tmp
+    ```
 
     On  EDB Postgres Advanced Server for Debian:
 
-    ```./psql -d edb -p 9999 -U enterprisedb```
+    ```text
+    ./psql -d edb -p 9999 -U enterprisedb
+    ```
 
     On  PostgreSQL Server for CentOS 7:
 
-    ```./psql -d postgres -p 9999 -U postgres -h /tmp```
+    ```text
+    ./psql -d postgres -p 9999 -U postgres -h /tmp
+    ```
 
     On  PostgreSQL Server for Debian:
 
-    ```./psql -d postgres -p 9999 -U postgres```
+    ```text
+    ./psql -d postgres -p 9999 -U postgres
+    ```
 
 <div id="configuring_pgpool-II_load_balancing" class="registered_link"></div>
 
 ## Configuring Load Balancing
 
-EDB supports replication scenarios that use Pgpool-II load balancing with PostgreSQL streaming replication or Slony replication. The supported replication methods ensure that database updates made by client applications apply to multiple backend servers. For detailed information about the benefits of each replication method and detailed configuration instructions, please review project documentation for each utility.
+EDB supports replication scenarios that use Pgpool-II load balancing with PostgreSQL streaming replication or Slony replication. The supported replication methods ensure that database updates made by client applications apply to multiple backend servers. For detailed information about the benefits of each replication method and configuration instructions, please review [project documentation](https://www.pgpool.net/docs/latest/en/html/runtime-config-running-mode.html) for each utility.
 
 When load balancing is enabled, Pgpool-II distributes some types of `SELECT` statements to backend servers, allowing multiple database servers and hosts to share the processing load of `SELECT` statements issued by client applications.
 
@@ -121,77 +135,106 @@ When configuring Pgpool-II load balancing, the initial database environments in 
 
 -   Tables must have the same name, definition, and row content.
 -   Schemas must exist in each backend application database.
--   Configure roles and privileges on each backend server to ensure the result set of SQL statements are identical on all servers.
+-   Roles and privileges on each backend server must be configured to ensure the result set of SQL statements are identical on all servers.
 
 If you use `password` authentication, assign the same password to an associated user name on each database server. Use the same user name/password pair to connect Pgpool-II to each backend connection.
 
 Within a replication scenario, each backend is uniquely identified by the hostname (or IP address) and the port number on which the database server instance is listening for connections. You must ensure that the `pool_hba.conf` and `pg_hba.conf` files allow a connection between that server and the host on which Pgpool-II will be running.
 
-The following example demonstrates how to implement Pgpool-II load balancing with two servers (the primary and replica nodes) in a Streaming Replication scenario. Configuring Pgpool-II load balancing for a Slony replication scenario is similar; please see the Slony documentation for information about configuring Slony replication.
+The following example demonstrates how to implement Pgpool-II load balancing with two servers (the primary and replica nodes) in a Streaming Replication scenario. Configuring Pgpool-II load balancing for a Slony replication scenario is similar; please see the [Slony documentation](https://www.slony.info/adminguide/2.2/doc/adminguide/slony.pdf) for information about configuring Slony replication.
 
 **Configuring the Primary Node of the Replication Scenario**
 
 Open an SSH session with the primary node of the replication scenario, and modify the `pg_hba.conf` file (located in the `/var/lib/edb/as13/data` directory), adding connection information for the replication user (in the example that follows, `edbrepuser` resides on a standby node with an IP address of `107.178.217.178`):
 
- `host replication edbrepuser 107.178.217.178/32 md5`
+```text
+   host replication edbrepuser 107.178.217.178/32 md5
+```
 
 The connection information should specify the address of the replication scenario's standby node and your preferred authentication method.
 
 Modify the `postgresql.conf` file (located in `/var/lib/edb/as13/data`), adding the following replication parameter and values to the end of the file:
 
- `wal_level = replica`
- `max_wal_senders = 10`
- `checkpoint_segments = 8`
- `wal_keep_segments = 0`
+```text
+ wal_level = replica
+ max_wal_senders = 10
+ checkpoint_segments = 8
+ wal_keep_segments = 0
+```
 
 Save the configuration file, and restart the server:
 
- `systemctl restart edb-as-13`
+ To restart on RHEL/CentOS 7 and 8 platforms:
 
-!!! Note
-    The above command is applicable for RHEL/CentOS 7 and 8 platforms.
+ ```text
+ systemctl restart edb-as-13
+ ```
+
+ To restart on Debian 9.x | 10.x or Ubuntu 18.04 | 20.04 platforms:
+
+ ```text
+ /usr/edb/as13/bin/epas_ctlcluster 13 main restart
+ ```
 
 Use the `sudo su -` command to assume the identity of the `enterprisedb` database superuser:
 
- `sudo su - enterprisedb`
+```text
+ sudo su - enterprisedb
+ ```
 
 Then, start a `psql` session, connecting to the `edb` database:
 
- `psql -d edb`
+ ```text
+ psql -d edb
+ ```
 
 At the `psql` command line, create a user with the `replication` attribute:
 
- `CREATE ROLE edbrepuser WITH REPLICATION LOGIN PASSWORD 'password';`
+```text
+ CREATE ROLE edbrepuser WITH REPLICATION LOGIN PASSWORD 'password';
+ ```
 
 **Configuring the Standby Node of the Replication Scenario**
 
 Open an SSH session with the standby server, and assume the identity of the database superuser (`enterprisedb`):
 
- `sudo su - enterprisedb`
+```text
+sudo su - enterprisedb
+```
 
 With your choice of editor, create a `.pgpass` file in the home directory of the `enterprisedb` user. The `.pgpass` file holds the password of the replication user in plain-text form; if you are using a `.pgpass` file, you should ensure that only trusted users have access to the `.pgpass` file:
 
 Add an entry that specifies connection information for the replication user:
 
- `*:5444:*:edbrepuser:password`
+```text
+*:5444:*:edbrepuser:password
+```
 
 The server will enforce restrictive permissions on the `.pgpass` file; use the following command to set the file permissions:
 
- `chmod 600 .pgpass`
+```text
+chmod 600 .pgpass
+```
 
 Relinquish the identity of the database superuser:
 
- `exit`
+```text
+exit
+```
 
 Then, assume superuser privileges:
 
- `sudo su -`
+```text
+sudo su -
+```
 
 Use your platform-specific command to stop the database server before replacing the data directory on the standby node with the `data` directory of the primary node.
 
 Then, delete the `data` directory on the standby node:
 
- `rm -rf /var/lib/edb/as13/data`
+```text
+rm -rf /var/lib/edb/as13/data
+```
 
 After deleting the existing `data` directory, use the `pg_basebackup` utility to copy the `data` directory of the primary node to the standby:
 
@@ -203,20 +246,22 @@ The call to `pg_basebackup` specifies the IP address of the primary node and the
 
 Including the `-R` option creates the `standby.signal` file and appends connection settings to `postgresql.auto.conf` in the output directory (or into the base archive file when using tar format) to ease setting up a standby server.
 
-For more information about the options available with the `pg_basebackup` utility, see the PostgreSQL core documentation at:
-
- <https://www.postgresql.org/docs/current/static/app-pgbasebackup.html>
+For more information about the options available with the `pg_basebackup` utility, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/app-pgbasebackup.html).
 
 When prompted by `pg_basebackup`, provide the password associated with the replication user.
 
 After copying the `data` directory, change ownership of the directory to the database superuser (`enterprisedb`):
 
- `chown -R enterprisedb /var/lib/edb/as13/data`
+```text
+chown -R enterprisedb /var/lib/edb/as13/data
+```
 
 Modify the `postgresql.conf` file (located in `/var/lib/edb/as13/data`), specifying the following values at the end of the file:
 
- `wal_level = replica`
- `hot_standby = on`
+```text
+wal_level = replica
+hot_standby = on
+```
 
 The `data` file has been copied from the primary node, and contains the replication parameters specified previously.
 
@@ -226,21 +271,27 @@ Then, restart the server. At this point, the primary node will be replicating da
 
 Use your choice of editor to modify the `pgpool.conf` file. Within the `pgpool.conf` file, modify the parameter settings to specify that load balancing is enabled:
 
- `load_balance_mode = on`
+```text
+load_balance_mode = on
+```
 
 Then, specify the connections settings for the primary database node in the parameter set that ends with a `0`. For example:
 
- `backend_hostname0 = '146.148.46.44'`
- `backend_port0 = 5444`
- `backend_weight0 = 1`
- `backend_data_directory0 = '/var/lib/edb/as13/data'`
+```text
+backend_hostname0 = '146.148.46.44'
+backend_port0 = 5444
+backend_weight0 = 1
+backend_data_directory0 = '/var/lib/edb/as13/data'
+```
 
 Then, specify the connections settings for each node to which queries will be distributed. Increment the number that follows the parameter name for each node, and provide connection details:
 
- `backend_hostname1 = '107.178.217.178'`
- `backend_port1 = 5444`
- `backend_weight1 = 1`
- `backend_data_directory1 = '/var/lib/edb/as13/data'`
+```text
+backend_hostname1 = '107.178.217.178'
+backend_port1 = 5444
+backend_weight1 = 1
+backend_data_directory1 = '/var/lib/edb/as13/data'
+```
 
 Use the `backend_weight` parameter to specify how queries will be distributed amongst the nodes. Specify a value of `1` to indicate that you wish (qualified) queries to be equally distributed across the nodes of the replication scenario.
 
@@ -256,9 +307,9 @@ where &lt;x.y> is the Pgpool release version.
 
 ## Configuring Client Authentication
 
-When Pgpool-II is enabled, client applications connect to Pgpool-II, which acts as a middleman for a Postgres server. A connecting client application is first authenticated with the Pgpool-II server and then authenticated with the Postgres server.
+When Pgpool-II is enabled, client applications connect to Pgpool-II, which acts as a middleman for a Postgres server. A connecting client application is first authenticated with the Pgpool-II server and then with the Postgres server.
 
-Parameter settings in the `pool_hba.conf` configuration file determine the Pgpool-II authentication properties. The `pool_hba.conf` file is similar in format and function to the Postgres `pg_hba.conf` configuration file. Please refer to the Pgpool-II documentation for detailed information about `pool_hba.conf` entries.
+Parameter settings in the `pool_hba.conf` configuration file determine the Pgpool-II authentication properties. The `pool_hba.conf` file is similar in format and function to the Postgres `pg_hba.conf` configuration file. Please refer to the [Pgpool-II documentation](https://www.pgpool.net/docs/latest/en/html/auth-pool-hba-conf.html) for detailed information about `pool_hba.conf` entries.
 
 To enable Pgpool-II authentication:
 
@@ -268,7 +319,7 @@ To enable Pgpool-II authentication:
 4.  Restart Pgpool-II to reload the Pgpool-II configuration files.
 
 !!! Note
-    When authenticating with the database server, use the user names and passwords specified in the `pool_hba.conf` file; you must also specify those user names and passwords in the database server's `pg_hba.conf` file.
+    When authenticating with the database server, use the user names and passwords specified in the `pool_hba.conf` file; you must also specify these user names and passwords in the database server's `pg_hba.conf` file.
 
 <div id="pcp_configuration" class="registered_link"></div>
 
@@ -278,13 +329,15 @@ PCP is an administrative interface for Pgpool-II that allows you to retrieve inf
 
 `pcp.conf` is the password configuration file for the PCP client. Before using PCP commands, you must modify the `pcp.conf` file, providing the user names and passwords you provide when invoking a PCP command. The user names in the `pcp.conf` file are entirely independent of the database server user names and passwords.
 
-Use the following steps to enable PCP:
+Use the following steps to configure PCP:
 
 1.  Copy the `pcp.conf.sample` file to `pcp.conf`.
 
 2.  Add an entry to the `pcp.conf` file in the following form:
 
-    `username:md5_password`
+    ```text
+    username:md5_password
+    ```
 
     where:
 
@@ -294,23 +347,27 @@ Use the following steps to enable PCP:
 
     You can use the `pg_md5` program to generate the encrypted password from the clear-text form as shown below:
 
-    `$ pg_md5 mypassword`
-
-    `34819d7beeabb9260a5c854bc85b3e44`
+    ```text
+    $ pg_md5 mypassword
+    
+    34819d7beeabb9260a5c854bc85b3e44
+    ```
 
     For example, the entry in the `pcp.conf` file for a PCP user named `pcpuser` with the password of `mypassword` is:
 
-    `# USERID:MD5PASSWD`
-    `pcpuser:34819d7beeabb9260a5c854bc85b3e44`
+    ```text
+    # USERID:MD5PASSWD
+    pcpuser:34819d7beeabb9260a5c854bc85b3e44
+    ```
 
 3.  Restart the Pgpool service.
 
 4.  When issuing a PCP command, specify the PCP user name and the unencrypted form of the password:
 
-```text
-$ pcp_node_info 5 localhost 9898 pcpuser mypassword 0
-localhost 5444 1 1.000000
-```
+    ```text
+    $ pcp_node_info 5 localhost 9898 pcpuser mypassword 0
+    localhost 5444 1 1.000000
+    ```
 
 After configuring PCP, you can use the following PCP commands to control Pgpool-II and retrieve information.
 
@@ -332,7 +389,6 @@ After configuring PCP, you can use the following PCP commands to control Pgpool-
 | `pcp_recovery_node`      | Attaches the given backend node with recovery                                                            |
 
 !!! Note
-
     `pcp_health_check_stats` and `pcp_reload_config` commands are available from Pgpool version 4.2 onwards.
 
 To view more information about PCP command options, visit the [Pgpool project site](https://www.pgpool.net/docs/latest/en/html/pcp-commands.html).
@@ -350,7 +406,7 @@ the cloud architecture.
 **max_pool**: Generally, advised to set `max_pool` to 1. Alternatively, for applications with many reconnects, `max_pool` can be set to the number of distinct combinations of users, databases,
 and connection options for the application connections. All but one connection in the pool would
 be stale connections, which consume a connection slot from Postgres without adding to the performance.
-It is, therefore, advised not to configure `max_pool` beyond four to preserve a healthy ratio
+It is, therefore, advised not to configure `max_pool` beyond 4 to preserve a healthy ratio
 between active and stale connections. As an example, for an application that constantly reconnects
 and uses two distinct users, both connecting to their own database, set it to 2. If both users
 would be able to connect to both databases, set it to 4. Note that increasing `max_pool` requires
@@ -395,7 +451,9 @@ After modifying the parameter settings that implement Pgpool-II functionality fo
 
 When Pgpool-II starts, it records its process ID in a `pgpool.conf` file whose name is determined by the `pid_file_name` configuration parameter. The initial value of the `pid_file_name` parameter in the sample file is:
 
- `pid_file_name = /var/run/edb/pgpool<x.y>/edb-pgpool-<x.y>.pid`
+```text
+pid_file_name = /var/run/edb/pgpool<x.y>/edb-pgpool-<x.y>.pid
+```
 
 Where &lt;x.y> is the Pgpool release version.
 
