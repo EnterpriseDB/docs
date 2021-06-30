@@ -12,13 +12,13 @@ const toPascalCase = (string) =>
 // THIS_IS_SCREAMING_SNAKE_CASE
 const toScreamingSnakeCase = (string) => string.replace(/-/g, '_').toUpperCase();
 
-const icons = readdirSync('static/edb-icons').filter(isSVG).map(removeExtension);
+const icons = readdirSync('static/icons').filter(isSVG).map(removeExtension);
 
 const IconTypeContent = [
   "import React from 'react';",
   "import iconNames from './iconNames';",
   '',
-  icons.map((icon) => `import ${toPascalCase(icon)}Svg from '../../../static/edb-icons/${icon}.svg';`).join('\n'),
+  icons.map((icon) => `import ${toPascalCase(icon)}Svg from '../../../static/icons/${icon}.svg';`).join('\n'),
   '',
   'function formatIconName(name) {',
   "  return name && name.replace(/ /g, '').toLowerCase();",
