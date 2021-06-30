@@ -34,8 +34,6 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install all required packages by running `yarn`.
 
-1. Pull the shared icon files down with `git submodule update --init`. This needs to be run inside of the project folder, if you have cloned the repo using GitHub Desktop, ensure that you have `cd` into the project.
-
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
 ### Installation of PDF / Doc Conversion Tools (optional)
