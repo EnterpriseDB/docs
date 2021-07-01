@@ -7,7 +7,7 @@ const toSingleLowerCase = (string) => string.replace(/-/g, '').toLowerCase();
 const toScreamingSnakeCase = (string) => string.replace(/-/g, '_').toUpperCase();
 
 // getting all the icons
-const icons = readdirSync('static/edb-icons').filter(isSVG).map(removeExtension);
+const icons = readdirSync('static/icons').filter(isSVG).map(removeExtension);
 
 const IconNamesContent = [
   'const iconNames = {',
