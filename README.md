@@ -38,7 +38,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 ### Installation of PDF / Doc Conversion Tools (optional)
 
-If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install docker`.
+If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install --cask docker`.
 
 If you need to run parts of the RST to MDX conversion pipeline, you'll need to install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
 
