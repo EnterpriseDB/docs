@@ -2,13 +2,18 @@ import React from "react";
 import IconType from "./iconType";
 import iconNames from "./iconNames";
 
+import * as icons from '@enterprisedb/icons';
+
 function Icon({
   circle,
   circleClassName,
   circleDiameter,
   circleAutoMargin,
-  ...rest
+  iconName,
+  ...props
 }) {
+  const SelectedIcon = icons[iconName] || 'span';
+
   if (circle && circleDiameter) {
     return (
       <div
@@ -17,11 +22,11 @@ function Icon({
           circleAutoMargin && "mx-auto"
         } d-flex justify-content-center align-items-center ${circleClassName}`}
       >
-        {IconType(rest)}
+        <SelectedIcon {...props} />
       </div>
     );
   } else {
-    return IconType(rest);
+    return <SelectedIcon {...props} />;
   }
 }
 
