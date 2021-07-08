@@ -7,7 +7,7 @@ import Archive from "./archive";
 
 const PdfIcon = ({ className }) => (
   <Icon
-    iconName="PDF"
+    iconName={iconNames.PDF}
     className={`fill-orange position-relative top-minus-2 ${className}`}
     width="16"
     height="auto"
