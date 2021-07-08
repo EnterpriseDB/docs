@@ -98,7 +98,7 @@ const Page = () => (
         {/* Sign Post */}
 
         <div className="card-columns mb-4">
-          <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
+          <IndexCard iconName="BigData" headingText="Databases">
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
             </IndexCardLink>
@@ -148,7 +148,7 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard
-            iconName={iconNames.HIGH_AVAILABILITY}
+            iconName="HighAvailability"
             headingText="High Availability Tools"
           >
             <span className="font-weight-bold text-muted text-uppercase small">
