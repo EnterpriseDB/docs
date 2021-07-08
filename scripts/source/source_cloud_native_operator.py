@@ -13,7 +13,7 @@ INDEX_FRONTMATTER = """
 indexCards: none
 directoryDefaults:
   prevNext: true
-  iconName: kubernetes
+  iconName: logos/KubernetesMono
 
 navigation:
 {0}"""
