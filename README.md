@@ -46,7 +46,6 @@ If you need to run parts of the RST to MDX conversion pipeline, you'll need to i
 
 If you are a Windows user, you can work with Docs without installing it locally by using a Docker container and VSCode. See [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
 
-
 ## Sources
 
 - Advocacy (`/advocacy_docs`, always loaded)
@@ -138,7 +137,6 @@ This frontmatter is an automatically generated list of redirects for Docs 1.0 to
 
 If you need to setup a redirect from Docs 1.0 to Docs 2.0 manually, this is the place to do it. If the `legacyRedirectsGenerated` frontmatter does not include the redirect you need, you should add it here.
 
-
 # MDX Format
 
 Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
@@ -184,20 +182,20 @@ If you need to draw attention to information, consider using an admonition:
 
 Admonitions begin with the `!!!` signifier. Next comes a (case-insensitive) type which is one of:
 
-* important
-* tip
-* note
-* caution
-* warning
+- important
+- tip
+- note
+- caution
+- warning
 
 There are several [aliases](https://github.com/elviswolcott/remark-admonitions#usage):
 
-* info => important
-* success => tip
-* secondary => note
-* danger => warning
-* seealso => note
-* hint => tip
+- info => important
+- success => tip
+- secondary => note
+- danger => warning
+- seealso => note
+- hint => tip
 
 Titles are optional. If you don't include one, the admonition will default to the type name ("Important", "Tip", etc.).
 
