@@ -36,10 +36,31 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
-### Installation of PDF / Doc Conversion Tools (optional)
 
-If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install --cask docker`.
+### Building Local PDFs (optional)
+To build PDFs locally, you'll need to use a Docker container. 
 
+1. Install Docker using Homebrew:  `brew install --cask docker`  
+If you get a message saying that you already have Docker installed, check which version is installed using these commands:  
+`brew ls --formula docker`  
+`brew ls --cask docker`  
+If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:  
+`brew uninstall -f docker && brew install --cask docker`
+
+
+1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back: https://icon-icons.com/icon/docker/138669.
+
+
+1. Create the Docker image:  
+`docker-compose -f docker/docker-compose.build-pdf.yaml build --pull`
+
+
+1. Run the following command inside the docs project to create a PDF:  
+`yarn build-pdf product_docs/docs/<product_folder><version>`  
+For example, to build a PDF for the EPAS 13 documentation:  
+`yarn build-pdf product_docs/docs/epas/13`
+
+### Converting RST to MDX (optional)
 If you need to run parts of the RST to MDX conversion pipeline, you'll need to install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
 
 ## Windows Installation
