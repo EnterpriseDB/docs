@@ -90,7 +90,12 @@ const DocTemplate = ({ data, pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
           <div className="d-flex justify-content-between align-items-center">
-            <h1 className="balance-text">{frontmatter.title} </h1>
+            <h1 className="balance-text">
+              {frontmatter.title}
+              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                v{version}
+              </span>
+            </h1>
           </div>
           <VersionDropdown versionArray={versionArray} path={path} />
 
