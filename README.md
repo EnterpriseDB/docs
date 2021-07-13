@@ -20,6 +20,8 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
+1. Create a `.env` file: `cp env .env.development`.
+
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
@@ -36,9 +38,52 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
-### Installation of PDF / Doc Conversion Tools (optional)
+### Building Local PDFs (optional)
 
-If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install --cask docker`.
+To build PDFs locally, you'll need to use a Docker container.
+
+1. Install Docker using Homebrew:
+
+   ```sh
+   brew install --cask docker
+   ```
+
+   If you get a message saying that you already have Docker installed, check which version is installed using these commands:
+
+   ```sh
+   brew ls --formula docker
+   brew ls --cask docker
+   ```
+
+   If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
+
+   ```sh
+   brew uninstall -f docker && brew install --cask docker
+   ```
+
+1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back:
+
+   ![Docker Whale](https://cdn.icon-icons.com/icons2/2248/PNG/32/docker_icon_138669.png)
+
+1. Create the Docker image (optional):
+
+   ```sh
+   docker-compose -f docker/docker-compose.build-pdf.yaml build --pull
+   ```
+
+1. Run the following command inside the docs project to create a PDF:
+
+   ```sh
+   yarn build-pdf product_docs/docs/<product_folder>/<version>
+   ```
+
+   For example, to build a PDF for the EPAS 13 documentation:
+
+   ```sh
+   yarn build-pdf product_docs/docs/epas/13
+   ```
+
+### Converting RST to MDX (optional)
 
 If you need to run parts of the RST to MDX conversion pipeline, you'll need to install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
 
