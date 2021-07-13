@@ -20,13 +20,15 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
+1. Create a `.env` file: `cp env .env.development`.
+
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
 
    - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 14 LTS).
 
-1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.6 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
+1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
 1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
@@ -36,16 +38,58 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
-### Installation of PDF / Doc Conversion Tools (optional)
+### Building Local PDFs (optional)
 
-If you need to build PDFs locally, you'll need to install Docker via Homebrew: `brew install docker`.
+To build PDFs locally, you'll need to use a Docker container.
+
+1. Install Docker using Homebrew:
+
+   ```sh
+   brew install --cask docker
+   ```
+
+   If you get a message saying that you already have Docker installed, check which version is installed using these commands:
+
+   ```sh
+   brew ls --formula docker
+   brew ls --cask docker
+   ```
+
+   If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
+
+   ```sh
+   brew uninstall -f docker && brew install --cask docker
+   ```
+
+1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back:
+
+   ![Docker Whale](https://cdn.icon-icons.com/icons2/2248/PNG/32/docker_icon_138669.png)
+
+1. Create the Docker image (optional):
+
+   ```sh
+   docker-compose -f docker/docker-compose.build-pdf.yaml build --pull
+   ```
+
+1. Run the following command inside the docs project to create a PDF:
+
+   ```sh
+   yarn build-pdf product_docs/docs/<product_folder>/<version>
+   ```
+
+   For example, to build a PDF for the EPAS 13 documentation:
+
+   ```sh
+   yarn build-pdf product_docs/docs/epas/13
+   ```
+
+### Converting RST to MDX (optional)
 
 If you need to run parts of the RST to MDX conversion pipeline, you'll need to install `pandoc`, a general purpose document conversion tool. This can also be installed with homebrew - `brew install pandoc`.
 
 ## Windows Installation
 
 If you are a Windows user, you can work with Docs without installing it locally by using a Docker container and VSCode. See [Working on Docs in a Docker container using VSCode](README_DOCKER_VSCODE.md)
-
 
 ## Sources
 
@@ -138,7 +182,6 @@ This frontmatter is an automatically generated list of redirects for Docs 1.0 to
 
 If you need to setup a redirect from Docs 1.0 to Docs 2.0 manually, this is the place to do it. If the `legacyRedirectsGenerated` frontmatter does not include the redirect you need, you should add it here.
 
-
 # MDX Format
 
 Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
@@ -184,20 +227,20 @@ If you need to draw attention to information, consider using an admonition:
 
 Admonitions begin with the `!!!` signifier. Next comes a (case-insensitive) type which is one of:
 
-* important
-* tip
-* note
-* caution
-* warning
+- important
+- tip
+- note
+- caution
+- warning
 
 There are several [aliases](https://github.com/elviswolcott/remark-admonitions#usage):
 
-* info => important
-* success => tip
-* secondary => note
-* danger => warning
-* seealso => note
-* hint => tip
+- info => important
+- success => tip
+- secondary => note
+- danger => warning
+- seealso => note
+- hint => tip
 
 Titles are optional. If you don't include one, the admonition will default to the type name ("Important", "Tip", etc.).
 
