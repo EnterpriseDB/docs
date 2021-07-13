@@ -20,6 +20,8 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
+1. Create a `.env` file: `cp env .env.development`.
+
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
