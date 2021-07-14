@@ -1,9 +1,9 @@
-import React from 'react';
-import { connectHits, connectStateResults } from 'react-instantsearch-dom';
-import { Link } from '../';
-import { Button } from 'react-bootstrap';
-import Icon, { iconNames } from '../icon/';
-import { PageHit } from './hitComps';
+import React from "react";
+import { connectHits, connectStateResults } from "react-instantsearch-dom";
+import { Link } from "../";
+import { Button } from "react-bootstrap";
+import Icon, { iconNames } from "../icon/";
+import { PageHit } from "./hitComps";
 
 const Results = connectStateResults(
   ({ searchState: state, searchResults: res, children }) =>
@@ -12,7 +12,7 @@ const Results = connectStateResults(
 
 const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
   <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
-    {res && res.nbHits > 0 ? 'Not finding what you need?' : 'No results found.'}
+    {res && res.nbHits > 0 ? "Not finding what you need?" : "No results found."}
     <Link to={`/search?query=${res.query}`} className="ml-2">
       Try Advanced Search
     </Link>
@@ -23,7 +23,7 @@ const Hits = ({ hits, arrowIndex }) => (
   <>
     {hits.map((hit, i) => (
       <div className="mb-3" key={i}>
-        <PageHit hit={hit} className={arrowIndex === i && 'arrow-focus'} />
+        <PageHit hit={hit} className={arrowIndex === i && "arrow-focus"} />
       </div>
     ))}
   </>
@@ -50,7 +50,7 @@ export const AdvancedSearchTabLink = ({ query }) => (
 export const SlashIndicator = ({ query }) => (
   <span
     className={`slash-indicator text-orange text-center opacity-5 bg-white mr-3 ${
-      (query || '').length > 0 && 'd-none'
+      (query || "").length > 0 && "d-none"
     }`}
   >
     /

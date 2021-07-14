@@ -1,8 +1,8 @@
-import React from 'react';
-import { graphql } from 'gatsby';
+import React from "react";
+import { graphql } from "gatsby";
 
 export const query = graphql`
-  query($nodeId: String!) {
+  query ($nodeId: String!) {
     file(id: { eq: $nodeId }) {
       internal {
         content
