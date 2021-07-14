@@ -1,9 +1,9 @@
-const React = require('react');
+const React = require("react");
 
 exports.onRenderBody = ({ setPreBodyComponents }) => {
   setPreBodyComponents(
-    React.createElement('script', {
-      key: 'injectedDarkModeScript',
+    React.createElement("script", {
+      key: "injectedDarkModeScript",
       dangerouslySetInnerHTML: {
         __html: `
           const storedDark = window.localStorage.getItem('dark');

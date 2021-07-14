@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
-import { Button } from 'react-bootstrap';
+import React, { useState } from "react";
+import { Button } from "react-bootstrap";
 
 const childToString = (child) => {
-  if (typeof child === 'string') {
+  if (typeof child === "string") {
     return child; // hit string, unroll
   } else if (child && child.props) {
     return childToString(child.props.children);
   }
 
-  return '';
+  return "";
 };
 
 const popExtraNewLines = (code) => {
   while (
     code.length - 1 > 0 &&
-    childToString(code[code.length - 1]).trim() === ''
+    childToString(code[code.length - 1]).trim() === ""
   ) {
     code.pop();
   }
@@ -45,8 +45,8 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     const splitChild = sChild.split(splitRegex);
     if (splitChild.length > 1) {
       // found split location
-      code.push(splitChild[0].replace(/(\n|\r\n)*$/g, '')); // will convert token to pure text, seems to be okay in practice
-      output.push(splitChild[1].replace(/^(\n|\r\n)*/g, ''));
+      code.push(splitChild[0].replace(/(\n|\r\n)*$/g, "")); // will convert token to pure text, seems to be okay in practice
+      output.push(splitChild[1].replace(/^(\n|\r\n)*/g, ""));
       popExtraNewLines(code);
       splitFound = true;
     } else {
@@ -59,13 +59,13 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
 
 const CodePre = ({ className, content, runnable }) => {
   const codeRef = React.createRef();
-  const [copyButtonText, setCopyButtonText] = useState('Copy');
+  const [copyButtonText, setCopyButtonText] = useState("Copy");
   const copyClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
     navigator.clipboard.writeText(text).then(() => {
-      setCopyButtonText('Copied!');
+      setCopyButtonText("Copied!");
       setTimeout(() => {
-        setCopyButtonText('Copy');
+        setCopyButtonText("Copy");
       }, 3000);
     });
     e.target.blur();
@@ -114,7 +114,7 @@ const CodePre = ({ className, content, runnable }) => {
       </div>
 
       <pre
-        className={`${className} ${wrap && 'ws-prewrap'} m-0 br-tl-0 br-tr-0`}
+        className={`${className} ${wrap && "ws-prewrap"} m-0 br-tl-0 br-tr-0`}
         ref={codeRef}
       >
         {content}
@@ -135,13 +135,13 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
 
   const [codeContent, outputContent] = childIsComponent
     ? splitChildrenIntoCodeAndOutput(children.props.children)
-    : [children, ''];
+    : [children, ""];
   const language = childIsComponent
-    ? (children.props.className || '').replace('language-', '')
-    : 'text';
+    ? (children.props.className || "").replace("language-", "")
+    : "text";
 
   const execLanguages = codeLanguages
-    ? ['shell'].concat(codeLanguages?.split(',')?.map((l) => l.trim()))
+    ? ["shell"].concat(codeLanguages?.split(",")?.map((l) => l.trim()))
     : [];
 
   if (codeContent.length > 0) {

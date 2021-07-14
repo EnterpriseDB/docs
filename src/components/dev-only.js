@@ -1,5 +1,5 @@
 const DevOnly = ({ children }) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === "development") {
     return children;
   }
   return null;

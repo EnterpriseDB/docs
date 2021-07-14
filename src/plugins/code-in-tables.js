@@ -8,7 +8,7 @@
 // For Gatsby, only the former matters - but for the normalization scripts, the latter is also critical.
 //
 
-const visit = require('unist-util-visit-parents');
+const visit = require("unist-util-visit-parents");
 
 function remarkMonkeypatchCodeInTables() {
   const escapedPipeRegex = /\\\|/g;
@@ -19,22 +19,22 @@ function remarkMonkeypatchCodeInTables() {
   if (compiler?.prototype?.visitors) attachCompiler(compiler);
 
   return (tree, file) => {
-    visit(tree, 'inlineCode', visitor);
+    visit(tree, "inlineCode", visitor);
 
     function visitor(node, ancestors) {
       if (
-        ancestors.some(n => n.type === 'table') &&
+        ancestors.some((n) => n.type === "table") &&
         escapedPipeRegex.test(node.value)
       ) {
-        node.value = node.value.replace(escapedPipeRegex, '|');
+        node.value = node.value.replace(escapedPipeRegex, "|");
       }
     }
   };
 
   function attachCompiler(compiler) {
     const proto = compiler.prototype;
-    const origCode = proto.visitors['inlineCode'];
-    const origCell = proto.visitors['tableCell'];
+    const origCode = proto.visitors["inlineCode"];
+    const origCell = proto.visitors["tableCell"];
 
     proto.visitors = Object.assign({}, proto.visitors, {
       inlineCode: tableCode,
@@ -42,14 +42,14 @@ function remarkMonkeypatchCodeInTables() {
     });
 
     function tableCell(node) {
-      visit(node, 'inlineCode', n => {
+      visit(node, "inlineCode", (n) => {
         n.inTable = true;
       });
       return origCell.apply(this, arguments);
     }
     function tableCode(node) {
       if (node.inTable && unescapedPipeRegex.test(node.value))
-        node.value = node.value.replace(unescapedPipeRegex, '$1\\|');
+        node.value = node.value.replace(unescapedPipeRegex, "$1\\|");
       return origCode.apply(this, arguments);
     }
   }

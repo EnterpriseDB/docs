@@ -1,12 +1,11 @@
 // Rewrite the not-very-well-converted RST alerts to admonitions
 
-const visit = require('unist-util-visit')
-const mdast2string = require('mdast-util-to-string')
+const visit = require("unist-util-visit");
+const mdast2string = require("mdast-util-to-string");
 
 module.exports = () => transformer;
 
 function transformer(tree, file) {
-
   visit(tree, (node, index, parent) => {
     if (!node.type.startsWith("jsx")) return;
 
@@ -24,22 +23,25 @@ function transformer(tree, file) {
         type: "admonition",
         keyword: "Note",
         quoted: false,
-        "indentSize": 4,
+        indentSize: 4,
         children: [
-          { 
+          {
             type: "admonition-heading",
-            children: [{ type: "text", value: mdast2string({children: title})}]
+            children: [
+              { type: "text", value: mdast2string({ children: title }) },
+            ],
           },
-          { 
+          {
             type: "admonition-content",
-            children: node.children.filter(node => !node.type.startsWith("jsx")),
+            children: node.children.filter(
+              (node) => !node.type.startsWith("jsx"),
+            ),
           },
         ],
       };
     });
 
-    if (replacement)
-    {
+    if (replacement) {
       parent.children.splice(index, 1, replacement);
     }
   });
