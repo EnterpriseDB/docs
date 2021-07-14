@@ -225,10 +225,13 @@ const Page = () => (
             <IndexCardLink to="/mysql_data_adapter/latest">
               MySQL Foreign Data Wrapper
             </IndexCardLink>
-            <IndexCardLink to="/Partner_Docs/ThalesGuide/">
+            <IndexCardLink to="/partner_docs/ThalesGuide/">
               Thales Implementation Guide
             </IndexCardLink>
-            <IndexCardLink to="/Partner_Docs/GuideTemplate/">
+            <IndexCardLink to="/partner_docs/LiquibaseGuide/">
+              Liquibase Implementation Guide
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/GuideTemplate/">
               Guide Template
             </IndexCardLink>
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
