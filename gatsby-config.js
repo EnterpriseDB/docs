@@ -1,70 +1,70 @@
-require('dotenv').config({
+require("dotenv").config({
   path: `.env.${process.env.NODE_ENV}`,
 });
-const gracefulFs = require('graceful-fs');
+const gracefulFs = require("graceful-fs");
 
-const algoliaTransformer = require('./src/constants/algolia-indexing.js');
+const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
-const ANSI_BLUE = '\033[34m';
-const ANSI_GREEN = '\033[32m';
-const ANSI_STOP = '\033[0m';
+const ANSI_BLUE = "\033[34m";
+const ANSI_GREEN = "\033[32m";
+const ANSI_STOP = "\033[0m";
 
-const isBuild = process.env.NODE_ENV === 'production';
-const isProduction = process.env.APP_ENV === 'production';
-const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || 'edb-docs-staging';
+const isBuild = process.env.NODE_ENV === "production";
+const isProduction = process.env.APP_ENV === "production";
+const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 
 /******** Sourcing *********/
-const sourceFilename = isBuild ? 'build-sources.json' : 'dev-sources.json';
+const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
-  ark: { name: 'ark', path: 'product_docs/docs/ark' },
-  bart: { name: 'bart', path: 'product_docs/docs/bart' },
-  bdr: { name: 'bdr', path: 'product_docs/docs/bdr' },
-  harp: { name: 'harp', path: 'product_docs/docs/harp' },
-  efm: { name: 'efm', path: 'product_docs/docs/efm' },
-  epas: { name: 'epas', path: 'product_docs/docs/epas' },
-  eprs: { name: 'eprs', path: 'product_docs/docs/eprs' },
+  ark: { name: "ark", path: "product_docs/docs/ark" },
+  bart: { name: "bart", path: "product_docs/docs/bart" },
+  bdr: { name: "bdr", path: "product_docs/docs/bdr" },
+  harp: { name: "harp", path: "product_docs/docs/harp" },
+  efm: { name: "efm", path: "product_docs/docs/efm" },
+  epas: { name: "epas", path: "product_docs/docs/epas" },
+  eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
-    name: 'hadoop_data_adapter',
-    path: 'product_docs/docs/hadoop_data_adapter',
+    name: "hadoop_data_adapter",
+    path: "product_docs/docs/hadoop_data_adapter",
   },
   jdbc_connector: {
-    name: 'jdbc_connector',
-    path: 'product_docs/docs/jdbc_connector',
+    name: "jdbc_connector",
+    path: "product_docs/docs/jdbc_connector",
   },
   migration_portal: {
-    name: 'migration_portal',
-    path: 'product_docs/docs/migration_portal',
+    name: "migration_portal",
+    path: "product_docs/docs/migration_portal",
   },
   migration_toolkit: {
-    name: 'migration_toolkit',
-    path: 'product_docs/docs/migration_toolkit',
+    name: "migration_toolkit",
+    path: "product_docs/docs/migration_toolkit",
   },
   mysql_data_adapter: {
-    name: 'mysql_data_adapter',
-    path: 'product_docs/docs/mysql_data_adapter',
+    name: "mysql_data_adapter",
+    path: "product_docs/docs/mysql_data_adapter",
   },
   mongo_data_adapter: {
-    name: 'mongo_data_adapter',
-    path: 'product_docs/docs/mongo_data_adapter',
+    name: "mongo_data_adapter",
+    path: "product_docs/docs/mongo_data_adapter",
   },
   net_connector: {
-    name: 'net_connector',
-    path: 'product_docs/docs/net_connector',
+    name: "net_connector",
+    path: "product_docs/docs/net_connector",
   },
   ocl_connector: {
-    name: 'ocl_connector',
-    path: 'product_docs/docs/ocl_connector',
+    name: "ocl_connector",
+    path: "product_docs/docs/ocl_connector",
   },
   odbc_connector: {
-    name: 'odbc_connector',
-    path: 'product_docs/docs/odbc_connector',
+    name: "odbc_connector",
+    path: "product_docs/docs/odbc_connector",
   },
-  pem: { name: 'pem', path: 'product_docs/docs/pem' },
-  pgbouncer: { name: 'pgbouncer', path: 'product_docs/docs/pgbouncer' },
-  pgpool: { name: 'pgpool', path: 'product_docs/docs/pgpool' },
-  postgis: { name: 'postgis', path: 'product_docs/docs/postgis' },
-  repmgr: { name: 'repmgr', path: 'product_docs/docs/repmgr' },
-  slony: { name: 'slony', path: 'product_docs/docs/slony' },
+  pem: { name: "pem", path: "product_docs/docs/pem" },
+  pgbouncer: { name: "pgbouncer", path: "product_docs/docs/pgbouncer" },
+  pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
+  postgis: { name: "postgis", path: "product_docs/docs/postgis" },
+  repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
+  slony: { name: "slony", path: "product_docs/docs/slony" },
 };
 
 const externalSourcePlugins = () => {
@@ -91,7 +91,7 @@ const externalSourcePlugins = () => {
       const config = sourceToPluginConfig[source];
       if (enabled && config) {
         sourcePlugins.push({
-          resolve: 'gatsby-source-filesystem',
+          resolve: "gatsby-source-filesystem",
           options: {
             name: config.name,
             path: config.path,
@@ -134,44 +134,44 @@ const indexQuery = `
 
 /********** Gatsby config *********/
 module.exports = {
-  pathPrefix: '/docs',
+  pathPrefix: "/docs",
   siteMetadata: {
-    title: 'EDB Docs',
-    baseUrl: 'https://enterprisedb.com/docs',
-    imageUrl: 'https://enterprisedb.com/docs/images/social.jpg',
-    siteUrl: 'https://enterprisedb.com/docs',
+    title: "EDB Docs",
+    baseUrl: "https://enterprisedb.com/docs",
+    imageUrl: "https://enterprisedb.com/docs/images/social.jpg",
+    siteUrl: "https://enterprisedb.com/docs",
     algoliaIndex: algoliaIndex,
     isDevelopment: !isBuild,
     cacheBuster: 2, // for busting gh actions cache if needed
   },
   plugins: [
-    'gatsby-plugin-sass',
-    'gatsby-plugin-react-helmet',
-    'gatsby-transformer-sharp',
-    'gatsby-transformer-json',
-    'gatsby-plugin-catch-links',
-    'gatsby-plugin-sharp',
+    "gatsby-plugin-sass",
+    "gatsby-plugin-react-helmet",
+    "gatsby-transformer-sharp",
+    "gatsby-transformer-json",
+    "gatsby-plugin-catch-links",
+    "gatsby-plugin-sharp",
     {
-      resolve: 'gatsby-plugin-netlify',
+      resolve: "gatsby-plugin-netlify",
       options: {
         headers: {
-          '/*': isProduction ? [] : ['X-Robots-Tag: noindex'],
+          "/*": isProduction ? [] : ["X-Robots-Tag: noindex"],
         },
       },
     },
-    'gatsby-plugin-sitemap',
+    "gatsby-plugin-sitemap",
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
-        name: 'EDB Documentation',
-        short_name: 'EDB Docs',
-        start_url: '/',
-        background_color: '#EBEFF2',
-        theme_color: '#EBEFF2',
+        name: "EDB Documentation",
+        short_name: "EDB Docs",
+        start_url: "/",
+        background_color: "#EBEFF2",
+        theme_color: "#EBEFF2",
         // Enables "Add to Homescreen" prompt and disables browser UI (including back button)
         // see https://developers.google.com/web/fundamentals/web-app-manifest/#display
-        display: 'standalone',
-        icon: 'static/images/favicon.png', // This path is relative to the root of the site.
+        display: "standalone",
+        icon: "static/images/favicon.png", // This path is relative to the root of the site.
         // An optional attribute which provides support for CORS check.
         // If you do not provide a crossOrigin option, it will skip CORS for manifest.
         // Any invalid keyword or empty string defaults to `anonymous`
@@ -179,30 +179,30 @@ module.exports = {
       },
     },
     {
-      resolve: 'gatsby-source-filesystem',
+      resolve: "gatsby-source-filesystem",
       options: {
-        name: 'advocacy_docs',
-        path: 'advocacy_docs',
+        name: "advocacy_docs",
+        path: "advocacy_docs",
       },
     },
     {
-      resolve: 'gatsby-source-filesystem',
+      resolve: "gatsby-source-filesystem",
       options: {
-        name: 'images',
-        path: 'static/images',
+        name: "images",
+        path: "static/images",
       },
     },
     ...externalSourcePlugins(),
     {
-      resolve: 'gatsby-plugin-mdx',
+      resolve: "gatsby-plugin-mdx",
       options: {
         defaultLayouts: {
-          default: require.resolve('./src/components/layout.js'),
+          default: require.resolve("./src/components/layout.js"),
         },
         lessBabel: true,
         gatsbyRemarkPlugins: [
           {
-            resolve: 'gatsby-remark-images',
+            resolve: "gatsby-remark-images",
             options: {
               linkImagesToOriginal: false,
               showCaptions: false,
@@ -212,28 +212,28 @@ module.exports = {
             resolve: `gatsby-remark-autolink-headers`,
             options: {
               isIconAfterHeader: true,
-              className: 'ml-1',
+              className: "ml-1",
             },
           },
           {
-            resolve: 'gatsby-remark-prismjs',
+            resolve: "gatsby-remark-prismjs",
             options: {
               noInlineHighlight: true,
             },
           },
         ],
         remarkPlugins: [
-          [require('./src/plugins/code-in-tables')],
+          [require("./src/plugins/code-in-tables")],
           [
-            require('remark-admonitions'),
+            require("remark-admonitions"),
             {
-              tag: '!!!',
-              icons: 'none',
+              tag: "!!!",
+              icons: "none",
               infima: true,
               customTypes: {
-                seealso: 'note',
-                hint: 'tip',
-                interactive: 'interactive',
+                seealso: "note",
+                hint: "tip",
+                interactive: "interactive",
               },
             },
           ],
@@ -241,7 +241,7 @@ module.exports = {
       },
     },
     {
-      resolve: 'gatsby-plugin-react-svg',
+      resolve: "gatsby-plugin-react-svg",
       options: {
         rule: {
           include: /static/,
@@ -257,17 +257,17 @@ module.exports = {
       },
     },
     {
-      resolve: 'gatsby-plugin-google-tagmanager',
+      resolve: "gatsby-plugin-google-tagmanager",
       options: {
         id: process.env.GTM_ID,
       },
     },
     {
-      resolve: 'gatsby-plugin-nginx-redirect',
+      resolve: "gatsby-plugin-nginx-redirect",
       options: {
         inputConfigFile: `${__dirname}/static/nginx_redirects.template`,
         outputConfigFile: `${__dirname}/static/nginx_redirects.generated`,
-        whereToIncludeRedirects: '', // defaults to: "server"
+        whereToIncludeRedirects: "", // defaults to: "server"
       },
     },
     {
@@ -286,7 +286,7 @@ module.exports = {
         ],
         chunkSize: 1000,
         enablePartialUpdates: false,
-        skipIndexing: process.env.INDEX_ON_BUILD !== 'true',
+        skipIndexing: process.env.INDEX_ON_BUILD !== "true",
       },
     },
   ],

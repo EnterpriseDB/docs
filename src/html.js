@@ -1,8 +1,8 @@
 // DO NOT CHANGE THIS FILE UNLESS YOU'RE SURE IT'S NECESSARY
 // MOST CHANGES BELONG IN LAYOUT.JS
 
-import React from 'react';
-import PropTypes from 'prop-types';
+import React from "react";
+import PropTypes from "prop-types";
 
 export default function HTML(props) {
   return (

@@ -1,8 +1,8 @@
-import React from 'react';
-import { Link } from './';
-import { Row, Col } from 'react-bootstrap';
-import { productStubs } from '../constants/product-stubs';
-import Icon from './icon';
+import React from "react";
+import { Link } from "./";
+import { Row, Col } from "react-bootstrap";
+import { productStubs } from "../constants/product-stubs";
+import Icon from "./icon";
 
 const PdfIcon = ({ className }) => (
   <Icon
@@ -26,7 +26,7 @@ const StubLink = ({ link }) => {
       <Link to={primaryLink} className="border-bottom">
         {link.text}
         {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
-      </Link>{' '}
+      </Link>{" "}
       <br></br>
       {link.pdf && link.href && (
         <Link to={link.pdf} className="small">
@@ -61,11 +61,11 @@ const StubCards = ({ product, version }) => {
     <Row className="mt-3">
       {Array.from(Array(columnCount), (e, i) => {
         const sections = stubData.sections.filter(
-          section => section.column === i + 1,
+          (section) => section.column === i + 1,
         );
         return (
           <Col md={6} key={`column_${i}`}>
-            {sections.map(section => (
+            {sections.map((section) => (
               <StubSection section={section} key={section.title} />
             ))}
           </Col>

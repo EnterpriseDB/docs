@@ -1,16 +1,16 @@
-import React, { useEffect } from 'react';
-import { Badge } from 'react-bootstrap';
+import React, { useEffect } from "react";
+import { Badge } from "react-bootstrap";
 import {
   connectMenu,
   connectCurrentRefinements,
   connectRefinementList,
-} from 'react-instantsearch-dom';
-import { products } from '../../constants/products';
-import { capitalize } from '../../constants/utils';
+} from "react-instantsearch-dom";
+import { products } from "../../constants/products";
+import { capitalize } from "../../constants/utils";
 
 const typeToContentType = {
-  doc: { name: 'Documentation' },
-  guide: { name: 'Guides' },
+  doc: { name: "Documentation" },
+  guide: { name: "Guides" },
 };
 
 const labelForItem = (item, translation) => {
@@ -80,7 +80,7 @@ const RadioRefinement = ({
   );
 
   return (
-    <div className={`mb-4 pl-1 ${!show && 'd-none'}`}>
+    <div className={`mb-4 pl-1 ${!show && "d-none"}`}>
       <div className="mb-2 font-weight-bold text-muted text-uppercase small">
         {heading || capitalize(attribute)}
       </div>
@@ -90,7 +90,7 @@ const RadioRefinement = ({
         labelText="All"
         badgeNumber={items.reduce((total, item) => total + item.count, 0)}
         showBadge={queryActive}
-        onChange={() => refine('')}
+        onChange={() => refine("")}
         checked={!refinedItem}
       />
       {sortedItems.map((item) => (
@@ -169,21 +169,21 @@ const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
 export const AdvancedSearchFiltering = connectCurrentRefinements(
   ({ items, queryActive, refine }) => {
     const showProductVersionFilters = !items.find((item) => {
-      return item.attribute === 'type' && item.currentRefinement === 'guide';
+      return item.attribute === "type" && item.currentRefinement === "guide";
     });
 
     const productFilterApplied = items.some(
-      (item) => item.attribute === 'product',
+      (item) => item.attribute === "product",
     );
     const versionFilterApplied = items.some(
-      (item) => item.attribute === 'version',
+      (item) => item.attribute === "version",
     );
 
     // if we don't have a product filter applied, wipe any version filters
     useEffect(() => {
       if (versionFilterApplied && !productFilterApplied) {
         const versionFilter = items.find(
-          (item) => item.attribute === 'version',
+          (item) => item.attribute === "version",
         );
         if (versionFilter.items[0]) {
           refine(versionFilter.items[0].value);

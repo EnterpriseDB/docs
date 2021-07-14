@@ -1,11 +1,11 @@
-import React from 'react';
-import Icon, { iconNames } from './icon/';
-import VersionDropdown from './version-dropdown';
-import { products } from '../constants/products';
-import { Link, PdfDownload, BackButton, TreeNode } from './';
+import React from "react";
+import Icon, { iconNames } from "./icon/";
+import VersionDropdown from "./version-dropdown";
+import { products } from "../constants/products";
+import { Link, PdfDownload, BackButton, TreeNode } from "./";
 
 const productIcon = (path) => {
-  const product = path.split('/')[1];
+  const product = path.split("/")[1];
   return products[product] ? products[product].iconName : null;
 };
 
