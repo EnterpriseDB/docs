@@ -1,12 +1,12 @@
 export const filterAndSortLinks = (nodes, url) => {
   return nodes
-    .map(node => ({
+    .map((node) => ({
       ...node.frontmatter,
       ...node.fields,
       items: [],
       itemObj: {},
     }))
-    .filter(node => node.path.includes(url))
+    .filter((node) => node.path.includes(url))
     .sort((a, b) => {
       if (a.path < b.path) {
         return -1;
@@ -18,16 +18,13 @@ export const filterAndSortLinks = (nodes, url) => {
     });
 };
 
-export const capitalize = s => {
+export const capitalize = (s) => {
   if (!s) {
-    return '';
+    return "";
   }
   return `${s[0].toUpperCase()}${s.slice(1)}`;
 };
 
 export const getBaseUrl = (path, depth) => {
-  return path
-    .split('/')
-    .slice(0, depth)
-    .join('/');
+  return path.split("/").slice(0, depth).join("/");
 };

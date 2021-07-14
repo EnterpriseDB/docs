@@ -1,6 +1,6 @@
-import React from 'react';
-import { useStaticQuery, graphql } from 'gatsby';
-import Icon from './icon';
+import React from "react";
+import { useStaticQuery, graphql } from "gatsby";
+import Icon from "./icon";
 
 const PdfDownload = ({ path }) => {
   const data = useStaticQuery(graphql`
@@ -14,16 +14,13 @@ const PdfDownload = ({ path }) => {
     }
   `);
 
-  const productPath = path
-    .split('/')
-    .slice(0, 3)
-    .join('/');
+  const productPath = path.split("/").slice(0, 3).join("/");
 
-  const file = data.allFile.nodes.find(pdf => {
+  const file = data.allFile.nodes.find((pdf) => {
     const productVersionPath = pdf.absolutePath
-      .split('/')
+      .split("/")
       .slice(-3, -1)
-      .join('/');
+      .join("/");
     return `/${productVersionPath}` === productPath;
   });
 

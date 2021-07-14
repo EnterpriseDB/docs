@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link } from './';
+import React from "react";
+import { Link } from "./";
 
 const TimestampLink = ({ timestamp, githubFileLink }) => {
   if (timestamp) {
@@ -8,9 +8,9 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
         ·
         <div className="d-inline-block mx-2">
           {githubFileLink ? (
-            <a href={githubFileLink}> Modified {timestamp.split('T')[0]} </a>
+            <a href={githubFileLink}> Modified {timestamp.split("T")[0]} </a>
           ) : (
-            <span>Modified {timestamp.split('T')[0]}</span>
+            <span>Modified {timestamp.split("T")[0]}</span>
           )}
         </div>
       </>

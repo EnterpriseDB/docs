@@ -1,13 +1,21 @@
-import React from 'react';
-import IconType from './iconType';
-import iconNames from './iconNames';
+import React from "react";
+import IconType from "./iconType";
+import iconNames from "./iconNames";
 
-function Icon({ circle, circleClassName, circleDiameter, circleAutoMargin, ...rest }) {
+function Icon({
+  circle,
+  circleClassName,
+  circleDiameter,
+  circleAutoMargin,
+  ...rest
+}) {
   if (circle && circleDiameter) {
     return (
       <div
         className={`hpx-${circleDiameter} wpx-${circleDiameter} rounded-circle
-        ${circleAutoMargin && 'mx-auto'} d-flex justify-content-center align-items-center ${circleClassName}`}
+        ${
+          circleAutoMargin && "mx-auto"
+        } d-flex justify-content-center align-items-center ${circleClassName}`}
       >
         {IconType(rest)}
       </div>
@@ -18,8 +26,8 @@ function Icon({ circle, circleClassName, circleDiameter, circleAutoMargin, ...re
 }
 
 Icon.defaultProps = {
-  className: 'dottedbox',
-  circleClassName: '',
+  className: "dottedbox",
+  circleClassName: "",
   circleDiameter: 100,
   circleAutoMargin: true,
   circle: false,
@@ -27,8 +35,6 @@ Icon.defaultProps = {
   height: 100,
 };
 
-export {
-  iconNames,
-};
+export { iconNames };
 
 export default Icon;

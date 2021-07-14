@@ -6,7 +6,7 @@ import Link from "./link";
 const environment = process.env.GATSBY_ENVIRONMENT_BRANCH;
 
 export default function Archive({ title, path = "", ...props }) {
-  const updatedPath = !path.startsWith('/') ? `/${path}` : path
+  const updatedPath = !path.startsWith("/") ? `/${path}` : path;
   const url = `https://github.com/EnterpriseDB/docs-archive/raw/${environment}${updatedPath}`;
 
   return (

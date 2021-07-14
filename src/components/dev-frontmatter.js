@@ -1,5 +1,5 @@
-import React from 'react';
-import DevOnly from './dev-only';
+import React from "react";
+import DevOnly from "./dev-only";
 
 const DevFrontmatter = ({ frontmatter }) => {
   let keys = Object.keys(frontmatter);
@@ -10,7 +10,7 @@ const DevFrontmatter = ({ frontmatter }) => {
         <br />
         {keys.map((key) => {
           let val = frontmatter[key];
-          if (typeof val !== 'string') {
+          if (typeof val !== "string") {
             val = JSON.stringify(val);
           }
 
