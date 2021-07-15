@@ -1,7 +1,7 @@
-import React from 'react';
-import { Container, Row, Col, Dropdown, DropdownButton } from 'react-bootstrap';
-import { graphql, Link } from 'gatsby';
-import { MDXRenderer } from 'gatsby-plugin-mdx';
+import React from "react";
+import { Container, Row, Col, Dropdown, DropdownButton } from "react-bootstrap";
+import { graphql, Link } from "gatsby";
+import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   DevOnly,
   DevFrontmatter,
@@ -13,9 +13,9 @@ import {
   SideNavigation,
   TableOfContents,
   TopBar,
-} from '../components';
-import { products } from '../constants/products';
-import Icon from '../components/icon';
+} from "../components";
+import { products } from "../constants/products";
+import Icon from "../components/icon";
 
 export const query = graphql`
   query($nodeId: String!, $potentialLatestNodePath: String) {
@@ -35,20 +35,20 @@ export const query = graphql`
 `;
 
 const getProductUrlBase = (path) => {
-  return path.split('/').slice(0, 2).join('/');
+  return path.split("/").slice(0, 2).join("/");
 };
 
 const getProductAndVersion = (path) => {
   return {
-    product: path.split('/')[1],
-    version: path.split('/')[2],
+    product: path.split("/")[1],
+    version: path.split("/")[2],
   };
 };
 
 const makeVersionArray = (versions, path) => {
   return versions.map((version, i) => ({
     version: version,
-    url: `${getProductUrlBase(path)}/${i === 0 ? 'latest' : version}`,
+    url: `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
   }));
 };
 
@@ -142,14 +142,14 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     }
   >
     <Dropdown.Item
-      href={githubIssuesLink + '&template=documentation-feedback.md'}
+      href={githubIssuesLink + "&template=documentation-feedback.md"}
       target="_blank"
       rel="noreferrer"
     >
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+      href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
       target="_blank"
       rel="noreferrer"
     >
@@ -216,14 +216,14 @@ const DocTemplate = ({ data, pageContext }) => {
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
-              {frontmatter.title}{' '}
+              {frontmatter.title}{" "}
               <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
                 v{version}
               </span>
             </h1>
             <div className="d-flex">
               <a
-                href={githubEditLink || '#'}
+                href={githubEditLink || "#"}
                 className="btn btn-sm btn-primary px-4 text-nowrap"
               >
                 Edit this page

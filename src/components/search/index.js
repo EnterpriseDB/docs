@@ -4,20 +4,20 @@ import React, {
   useCallback,
   createRef,
   useRef,
-} from 'react';
-import algoliasearch from 'algoliasearch/lite';
+} from "react";
+import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearch,
   Configure,
   connectSearchBox,
-} from 'react-instantsearch-dom';
-import Icon, { iconNames } from '../icon/';
-import { SlashIndicator, ClearButton, SearchPane } from './formComps';
-import useSiteMetadata from '../../hooks/use-sitemetadata';
+} from "react-instantsearch-dom";
+import Icon, { iconNames } from "../icon/";
+import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
+import useSiteMetadata from "../../hooks/use-sitemetadata";
 
 const searchClient = algoliasearch(
-  'HXNAF5X3I8',
-  'fb05499144f0399f5985485b624a0290',
+  "HXNAF5X3I8",
+  "fb05499144f0399f5985485b624a0290",
 );
 
 const useClickOutside = (ref, handler, events) => {
@@ -49,13 +49,13 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
   const moveArrowIndex = useCallback(
     (key) => {
       const dropdownItems = searchContentRef.current
-        .querySelector('.search-pane')
-        .querySelectorAll('.dropdown-item');
+        .querySelector(".search-pane")
+        .querySelectorAll(".dropdown-item");
       let nextIndex = arrowIndex;
-      if (key === 'ArrowDown') {
+      if (key === "ArrowDown") {
         nextIndex = Math.min(arrowIndex + 1, dropdownItems.length - 1);
       }
-      if (key === 'ArrowUp') {
+      if (key === "ArrowUp") {
         nextIndex = Math.max(arrowIndex - 1, 0);
       }
       setArrowIndex(nextIndex);
@@ -63,7 +63,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
         searchContentRef.current.scrollTop =
           searchContentRef.current.scrollHeight;
       } else if (dropdownItems[nextIndex]) {
-        dropdownItems[nextIndex].scrollIntoView({ block: 'nearest' });
+        dropdownItems[nextIndex].scrollIntoView({ block: "nearest" });
       }
     },
     [searchContentRef, arrowIndex, setArrowIndex],
@@ -73,27 +73,27 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
     (e) => {
       const inputFocused = inputRef.current.id === document.activeElement.id;
 
-      if (e.key === '/' && !inputFocused) {
+      if (e.key === "/" && !inputFocused) {
         inputRef.current.focus();
         e.preventDefault();
       }
 
       if (inputFocused) {
         switch (e.key) {
-          case 'Escape':
+          case "Escape":
             inputRef.current.blur();
             close();
             e.preventDefault();
             break;
-          case 'ArrowDown':
-          case 'ArrowUp':
+          case "ArrowDown":
+          case "ArrowUp":
             moveArrowIndex(e.key);
             e.preventDefault();
             break;
-          case 'Enter':
+          case "Enter":
             const dropdownItems = searchContentRef.current
-              .querySelector('.search-pane')
-              .querySelectorAll('.dropdown-item');
+              .querySelector(".search-pane")
+              .querySelectorAll(".dropdown-item");
             dropdownItems[arrowIndex].click();
             e.preventDefault();
             break;
@@ -106,19 +106,19 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
   );
 
   useEffect(() => {
-    document.addEventListener('keydown', searchKeyboardShortcuts);
+    document.addEventListener("keydown", searchKeyboardShortcuts);
     return () => {
-      document.removeEventListener('keydown', searchKeyboardShortcuts);
+      document.removeEventListener("keydown", searchKeyboardShortcuts);
     };
   }, [searchKeyboardShortcuts]);
 
   useClickOutside(searchBarRef, close);
 
-  const queryLength = (query || '').length;
+  const queryLength = (query || "").length;
 
   return (
     <div
-      className={`${queryLength > 0 && focus && 'shadow'}`}
+      className={`${queryLength > 0 && focus && "shadow"}`}
       ref={searchBarRef}
     >
       <form
@@ -127,7 +127,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
         autoComplete="off"
         role="search"
         className={`search-form d-flex align-items-center ${
-          queryLength > 0 && focus && 'open'
+          queryLength > 0 && focus && "open"
         }`}
       >
         <Icon
@@ -149,16 +149,16 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
         />
         <ClearButton
           onClick={() => {
-            refine('');
+            refine("");
           }}
-          className={`${queryLength === 0 && 'd-none'}`}
+          className={`${queryLength === 0 && "d-none"}`}
         />
         <SlashIndicator query={query} />
       </form>
 
       <div
         className={`dropdown-menu w-100 p-0 quick-search-container ${
-          queryLength > 0 && focus && 'show'
+          queryLength > 0 && focus && "show"
         }`}
       >
         <div

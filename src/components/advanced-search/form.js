@@ -1,22 +1,22 @@
-import React, { useEffect, useCallback, createRef } from 'react';
-import { connectSearchBox } from 'react-instantsearch-dom';
-import Icon, { iconNames } from '../icon';
-import { SlashIndicator, ClearButton } from '../search/formComps';
+import React, { useEffect, useCallback, createRef } from "react";
+import { connectSearchBox } from "react-instantsearch-dom";
+import Icon, { iconNames } from "../icon";
+import { SlashIndicator, ClearButton } from "../search/formComps";
 
 export const AdvancedSearchForm = connectSearchBox(
   ({ currentRefinement, refine, query }) => {
-    const queryLength = (query || '').length;
+    const queryLength = (query || "").length;
 
     const inputRef = createRef();
     const searchKeyboardShortcuts = useCallback(
-      e => {
+      (e) => {
         const inputFocused = inputRef.current.id === document.activeElement.id;
 
-        if (e.key === '/' && !inputFocused) {
+        if (e.key === "/" && !inputFocused) {
           inputRef.current.focus();
           e.preventDefault();
         }
-        if (e.key === 'Escape' && inputFocused) {
+        if (e.key === "Escape" && inputFocused) {
           inputRef.current.blur();
           e.preventDefault();
         }
@@ -25,9 +25,9 @@ export const AdvancedSearchForm = connectSearchBox(
     );
 
     useEffect(() => {
-      document.addEventListener('keydown', searchKeyboardShortcuts);
+      document.addEventListener("keydown", searchKeyboardShortcuts);
       return () => {
-        document.removeEventListener('keydown', searchKeyboardShortcuts);
+        document.removeEventListener("keydown", searchKeyboardShortcuts);
       };
     }, [searchKeyboardShortcuts]);
 
@@ -42,7 +42,7 @@ export const AdvancedSearchForm = connectSearchBox(
         autoComplete="off"
         role="search"
         className={`w-100 search-form d-flex align-items-center`}
-        onSubmit={e => e.preventDefault()}
+        onSubmit={(e) => e.preventDefault()}
       >
         <Icon
           iconName={iconNames.SEARCH}
@@ -57,14 +57,14 @@ export const AdvancedSearchForm = connectSearchBox(
           aria-label="search"
           placeholder="Search"
           value={currentRefinement}
-          onChange={e => refine(e.currentTarget.value)}
+          onChange={(e) => refine(e.currentTarget.value)}
           ref={inputRef}
         />
         <ClearButton
           onClick={() => {
-            refine('');
+            refine("");
           }}
-          className={`${queryLength === 0 && 'd-none'}`}
+          className={`${queryLength === 0 && "d-none"}`}
         />
         <SlashIndicator query={query} />
       </form>

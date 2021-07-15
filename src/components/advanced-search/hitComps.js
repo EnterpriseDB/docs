@@ -1,6 +1,6 @@
-import React from 'react';
-import { Highlight, Snippet } from 'react-instantsearch-dom';
-import { Link } from '../';
+import React from "react";
+import { Highlight, Snippet } from "react-instantsearch-dom";
+import { Link } from "../";
 
 export const AdvancedPageHit = ({ hit }) => (
   <>
