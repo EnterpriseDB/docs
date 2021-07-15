@@ -331,11 +331,11 @@ You can include multiple custom type mappings in a `property_file`; specify each
 
 ## Migration Options for Parallel Data Loading
 
-When dealing with a relatively large number of tables and/or large size tables, normal data migration takes a long time. As a solution to this problem, MTK has come up with a parallel data loading algorithm that allows migrating data in parallel at the schema level and the table level. 
+When dealing with a relatively large number of tables and/or large size tables, normal data migration takes a long time. As a solution to this problem, MTK has come up with a parallel data loading algorithm that allows migrating data in parallel at the schema level and at the table level. 
 
 Parallel data migration at the schema level uses multiple threads to migrate several tables at the same time. Parallel data loading at the table level uses multiple threads to migrate a single table from the source database to the target database more efficiently and in a shorter time.
 
-However, parallel loading (at the table level) is useful for larger tables only. For tables with fewer rows, parallel threads may take more time. Thus it is recommended to use parallel data loading for relatively larger tables.
+However, parallel loading (at the table level) is useful for large size tables only. For small size tables, parallel threads may take more time. Thus it is recommended to use parallel data at the table level loading for relatively large size tables.
 
 !!! Note
     Parallel loading functionality applies only to the source Oracle, EDB Postgres Advanced Server, and PostgreSQL databases.
@@ -344,7 +344,7 @@ Following options control the way MTK migrates data in parallel.
 
 `-loaderCount [<value>]`
 
-Use the `-loaderCount` option to specify the number of parallel threads available in the pool to perform data load in parallel. This option is particularly useful if the host system (running Migration Toolkit) has high-end CPU and RAM resources. While `value` may be any non-zero, positive number, we recommend that value should not exceed the number of CPU cores. For example, a dual-core CPU should have an optimal value of `2`. Default is `1`.
+Use the `-loaderCount` option to specify the number of parallel threads available in the pool to perform data load in parallel. This option is particularly useful if the host system (that is running Migration Toolkit) has high-end CPU and RAM resources. While `value` may be any non-zero, positive number, we recommend that value should not exceed the number of CPU cores. For example, a dual-core CPU should have an optimal value of `2`. Default is `1`.
 
 !!! Note
     When multiple threads are used, depending on the actual number of threads and table data size, you might need to adjust the memory heap size for the Migration Toolkit.
@@ -352,23 +352,26 @@ Use the `-loaderCount` option to specify the number of parallel threads availabl
 
 `-parallelLoadRowLimit [<value>]`
 
-Use the `-parallelLoadRowLimit` option to specify the minimum number of rows required in a table to perform data load in parallel at the table level. The value parameter should be greater than 0, default is 100,000. 
+Use the `-parallelLoadRowLimit` option to specify the minimum number of rows required in a table to perform data load in parallel at the table level. The `value` parameter should be greater than 0. Default is 100,000. 
 
-For example, if the value of `-parallelLoadRowLimit` is 10,000, only tables with the number of rows 10,000 and above are loaded in parallel (at the table level). The other tables are migrated in sequential mode or at the schema level.
+For example, if the value of `-parallelLoadRowLimit` is 10,000, only tables with the number of rows 10,000 and above will be loaded in parallel (at the table level). The other tables will be migrated in sequential mode or at the schema level.
 
 `-tableLoaderLimit [<value>]`
 
-Use the `-tableLoaderLimit` option to specify the maximum number of threads assigned from the thread pool to load a single table data in parallel chunks (at the table level). The value parameter should not be greater than the value of the `-loaderCount`. The default value is equal to the value of the `-loaderCount` option. This option is implicitly changed based on the non-default custom value of `-loaderCount`. For example, if the `-loaderCount` is set to 4 and `-tableLoaderLimit` is not specified, the `-tableLoaderLimit` will also be set to 4. Hence, if all threads are not meant to be used for a single table load, reduce the `-tableLoaderLimit` to a lower value.
+Use the `-tableLoaderLimit` option to specify the maximum number of threads that may be assigned from the thread pool to load a single table data in parallel chunks (at the table level). The `value` parameter should not be greater than the value of the `-loaderCount`. Default value is equal to the value of the `-loaderCount` option. This option is implicitly changed based on the non-default custom value of `-loaderCount`. 
+
+For example, if the `-loaderCount` is set to 4 and `-tableLoaderLimit` is not specified, the `-tableLoaderLimit` will also be set to 4. Hence, if all threads are not meant to be used for a single table load, reduce the `-tableLoaderLimit` to a lower value.
 
 **High-level Overview of the Parallel Data Loading Algorithm**
 
 The algorithm works in three steps:
 
-**Step 1:** A list of tables and table chunks is created from the ordered (by the table name) list of tables that have to be migrated. The list is created based on the `-parallelLoadRowLimit` and `-tableLoaderLimit` option values.
+**Step 1:** A list of tables and table chunks is created from the ordered (sorted by the table name) list of tables that have to be migrated. The list is created based on the `-parallelLoadRowLimit` and `-tableLoaderLimit` option values.
 
 **Step 2:** A thread pool is created based on the `-loaderCount` option value.
 
-**Step 3:** The parallel data loading algorithm creates tasks for each table/chunk from the list of tables and table chunks and executes them in the thread pool (as many tasks as the number of threads are executed in parallel). As soon as a task execution completes, its thread starts executing the next task from the list. Parallel data loading completes as soon as the last task from the list is finished.
+**Step 3:** The parallel data loading algorithm creates tasks for each table/chunk from the list of tables and table chunks and executes them in the thread pool (as many tasks as the number of threads are executed in parallel). As soon as a task execution completes, its thread starts executing the next task from the list. Parallel data loading completes as soon as the last task from the list is completed.
+
 
 **Example:**
 
@@ -378,13 +381,13 @@ In this scenario, there are four tables `tab1, tab2, tab3, tab4` to be migrated 
 # ./runMTK.sh -sourcedbtype enterprisedb -targetdbtype enterprisedb -loaderCount 4 -parallelLoadRowLimit 10000 -tableLoaderLimit 2 -tables tab1,tab2,tab3,tab4 public
 ```
 
-Table `tab1` has 50,000 rows, table `tab2` has 9500 rows, table `tab3` has 50,001 rows and table `tab4` has 9999 rows. The list of tables for Step1 is `tab1, tab2, tab3`, and `tab4`.
+Table `tab1` has 50,000 rows, table `tab2` has 9,500 rows, table `tab3` has 50,001 rows and table `tab4` has 9,999 rows. The list of tables for Step1 is `tab1, tab2, tab3`, and `tab4`.
 
 Only tables `tab1` and `tab3` qualify for parallel loading on table level (`-parallelLoadRowLimit 10000`)
 
-As the value of the `-tableLoaderLimit`  option is 2, table `tab1` are loaded in two chunks, `tab1_chunk1` and `tab1_chunk2`. The number of rows in each chunk is determined based on the `totalRowCount/tableLoaderLimit`. In this case, both chunks have 25,000 rows (50,000/2). 
+As the value of the `-tableLoaderLimit`  option is 2, table `tab1` is loaded in two chunks, `tab1_chunk1` and `tab1_chunk2`. The number of rows in each chunk is determined based on the `totalRowCount/tableLoaderLimit`. In this case, both chunks have 25,000 rows (50,000/2). 
 
-Table `tab3` is also loaded in two chunks, `tab3_chunk1` and `tab3_chunk2`. As the total number of rows in table `tab3` is odd `50,001`, the first chunk accommodates an extra row, so `tab3_chunk1` has 25,001 rows, and `tab3_chunk2` has 25,000 rows.
+Table `tab3` is also loaded in two chunks, `tab3_chunk1` and `tab3_chunk2`. As the total number of rows in table `tab3` is odd `50,001`, the first chunk accommodates an additional row, so `tab3_chunk1` has 25,001 rows, and `tab3_chunk2` has 25,000 rows.
 
 **Step 1:** Here is the the list of tables and table chunks created:
 
@@ -408,7 +411,7 @@ T3 → tab2			    (9500 rows)
 T4 → tab3_chunk1		(25,001 rows)
 ```
 
-Thread `T3` finishes first and it starts executing `tab3_chunk2` (next chunk in the list):	:
+Thread `T3` finishes first and it starts executing `tab3_chunk2` (next chunk in the list):
 
 ```text
 T1 → tab1_chunk1		(25,000 rows)
@@ -445,7 +448,7 @@ T4 → tab4	(9999 rows)
 
 **System Resource Recommendations and Constraints**
 
-You should choose the number of threads depending on the host CPU and RAM running MTK. As there is a certain overhead on the source database in terms of CPU, IO, and disk utilization, exceeding parallel thread count beyond a certain threshold degrades the performance of MTK.
+You should choose the number of threads depending on the CPU and RAM resources available on the host system running MTK. As there is a certain overhead on the source database in terms of CPU, IO, and disk utilization, exceeding parallel thread count beyond a certain threshold degrades the performance of MTK.
 
 
 
