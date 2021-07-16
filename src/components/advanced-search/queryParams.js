@@ -2,26 +2,26 @@ export const queryParamsToState = (query) => {
   const params = new URLSearchParams(query);
 
   const searchState = {};
-  if (params.get('query')) {
-    searchState.query = params.get('query');
+  if (params.get("query")) {
+    searchState.query = params.get("query");
   }
-  if (params.get('product')) {
+  if (params.get("product")) {
     searchState.refinementList = {
       ...searchState.refinementList,
-      product: params.get('product'),
+      product: params.get("product"),
     };
   }
-  if (params.get('version')) {
+  if (params.get("version")) {
     searchState.refinementList = {
       ...searchState.refinementList,
-      version: params.get('version'),
+      version: params.get("version"),
     };
   }
-  if (params.get('page')) {
-    searchState.page = params.get('page');
+  if (params.get("page")) {
+    searchState.page = params.get("page");
   }
-  if (params.get('content')) {
-    searchState.menu = { type: params.get('content') };
+  if (params.get("content")) {
+    searchState.menu = { type: params.get("content") };
   }
 
   return searchState;
@@ -31,21 +31,21 @@ export const writeStateToQueryParams = (searchState) => {
   const params = new URLSearchParams();
 
   if (searchState.query && searchState.query.length > 0) {
-    setOrRemove(params, 'query', searchState.query);
+    setOrRemove(params, "query", searchState.query);
   }
   if (searchState.refinementList) {
-    setOrRemove(params, 'product', searchState.refinementList.product);
-    setOrRemove(params, 'version', searchState.refinementList.version);
+    setOrRemove(params, "product", searchState.refinementList.product);
+    setOrRemove(params, "version", searchState.refinementList.version);
   }
   if (searchState.page > 1) {
-    setOrRemove(params, 'page', searchState.page);
+    setOrRemove(params, "page", searchState.page);
   }
   if (searchState.menu) {
-    setOrRemove(params, 'content', searchState.menu.type);
+    setOrRemove(params, "content", searchState.menu.type);
   }
 
   if (window && window.history) {
-    window.history.replaceState('', searchState.query, `?${params.toString()}`);
+    window.history.replaceState("", searchState.query, `?${params.toString()}`);
   }
 };
 

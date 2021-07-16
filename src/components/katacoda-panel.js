@@ -1,7 +1,7 @@
-import React, { useState, useLayoutEffect } from 'react';
-import { Helmet } from 'react-helmet';
-import { Button } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon';
+import React, { useState, useLayoutEffect } from "react";
+import { Helmet } from "react-helmet";
+import { Button } from "react-bootstrap";
+import Icon, { iconNames } from "../components/icon";
 
 const KatacodaPanelToggleClosed = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
@@ -32,7 +32,7 @@ const KatacodaPanelToggleClosed = ({ onClick }) => (
   </div>
 );
 
-const KatacodaPanelToggleOpenInstruction = ({ children, className = '' }) => (
+const KatacodaPanelToggleOpenInstruction = ({ children, className = "" }) => (
   <div className={`d-flex align-items-center ${className}`}>
     <Icon
       iconName={iconNames.CHEVRON_RIGHT}
@@ -110,14 +110,14 @@ const KatacodaPanelToggleOpen = ({ onClick }) => (
 
 const KatacodaPanel = ({ katacodaPanelData }) => {
   if (!katacodaPanelData) {
-    throw new Error('katacodaPanel frontmatter missing!');
+    throw new Error("katacodaPanel frontmatter missing!");
   }
   const account = katacodaPanelData.account;
   const scenario = katacodaPanelData.scenario;
   const command = katacodaPanelData.initializeCommand;
 
   const [isShown, setShown] = useState(false);
-  const scenarioId = account ? [account, scenario].join('/') : scenario;
+  const scenarioId = account ? [account, scenario].join("/") : scenario;
   const panelElementId = `katacoda-scenario-${account}-${scenario}`;
 
   const toggleKata = () => {
@@ -147,7 +147,7 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
 
       <div
         id={panelElementId}
-        className={`katacoda-panel${isShown ? '' : ' d-none'}`}
+        className={`katacoda-panel${isShown ? "" : " d-none"}`}
         data-katacoda-id={scenarioId}
         data-katacoda-ui="panel"
         data-katacoda-command={command}
@@ -162,22 +162,22 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
   useLayoutEffect(() => {
     if (isShown) {
       // make room for the panel!
-      document.documentElement.classList.add('katacoda-panel-active');
+      document.documentElement.classList.add("katacoda-panel-active");
 
       // detect when katacoda is closed via the internal button
       const handler = (e) => {
         if (
-          e.data.type === 'close-panel' &&
+          e.data.type === "close-panel" &&
           (e.data.data || { target: null }).target === panelElementId
         ) {
           setShown(false);
         }
       };
-      window.addEventListener('message', handler);
+      window.addEventListener("message", handler);
 
       return () => {
-        document.documentElement.classList.remove('katacoda-panel-active');
-        window.removeEventListener('message', handler);
+        document.documentElement.classList.remove("katacoda-panel-active");
+        window.removeEventListener("message", handler);
       };
     }
   }, [isShown, panelElementId, setShown]);
@@ -186,20 +186,20 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
 // adapted from Katacoda src to patch over http to https redirect issues
 // when testing locally - remove once Katacoda has this fixed
 const katacodaHttpsWriter = (cmd) => {
-  let target = document.querySelectorAll('[data-katacoda-env]');
+  let target = document.querySelectorAll("[data-katacoda-env]");
   if (target.length === 0)
-    target = document.querySelectorAll('[data-katacoda-id]');
+    target = document.querySelectorAll("[data-katacoda-id]");
   if (target.length === 0) {
-    if (console && console.error) console.error('No katacoda elements found');
+    if (console && console.error) console.error("No katacoda elements found");
     return;
   }
 
-  const p = document.getElementById(target[0].getAttribute('id'));
-  const iframe = p.getElementsByTagName('iframe')[0];
+  const p = document.getElementById(target[0].getAttribute("id"));
+  const iframe = p.getElementsByTagName("iframe")[0];
   if (!iframe) return;
 
   iframe.contentWindow.postMessage(
-    { cmd: 'writeTerm', data: cmd },
+    { cmd: "writeTerm", data: cmd },
     `https://${new URL(iframe.src).host}`,
   );
 };

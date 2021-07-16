@@ -1,7 +1,7 @@
-import React from 'react';
-import { Link } from '../components/';
-import { Col } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon/';
+import React from "react";
+import { Link } from "../components/";
+import { Col } from "react-bootstrap";
+import Icon, { iconNames } from "../components/icon/";
 
 const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
@@ -19,7 +19,7 @@ const FullCard = ({ card }) => {
         <Icon
           iconName={iconName}
           className={`${
-            iconName === iconNames.DOTTED_BOX && 'opacity-1'
+            iconName === iconNames.DOTTED_BOX && "opacity-1"
           } mt-3 ml-3 fill-orange`}
           width="100"
           height="100"
@@ -64,7 +64,7 @@ const SimpleCard = ({ card }) => (
   </div>
 );
 
-const CardDecks = ({ cards, cardType = 'simple' }) => {
+const CardDecks = ({ cards, cardType = "simple" }) => {
   return (
     <div className="card-deck row no-gutters">
       {cards.map((card) => {
@@ -73,10 +73,10 @@ const CardDecks = ({ cards, cardType = 'simple' }) => {
             key={card.fields.path}
             md={12}
             lg={6}
-            xl={cardType === 'simple' && 4}
+            xl={cardType === "simple" && 4}
             className="d-flex"
           >
-            {cardType === 'full' ? (
+            {cardType === "full" ? (
               <FullCard card={card} />
             ) : (
               <SimpleCard card={card} />
