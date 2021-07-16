@@ -164,8 +164,8 @@ The `redirects` frontmatter is to be used for redirects internal to Docs. For ex
 
 ```yaml
 redirects:
-  - '/old_path'
-  - '/another_old_path'
+  - "/old_path"
+  - "/another_old_path"
 ```
 
 both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).

@@ -1,7 +1,7 @@
-import React from 'react';
-import { Container } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon/';
-import cliImg from '../images/screen-demo.gif';
+import React from "react";
+import { Container } from "react-bootstrap";
+import Icon, { iconNames } from "../components/icon/";
+import cliImg from "../images/screen-demo.gif";
 import {
   Footer,
   IndexSubNav,
@@ -9,7 +9,7 @@ import {
   Link,
   MainContent,
   TopBar,
-} from '../components';
+} from "../components";
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="card rounded shadow-sm mb-4">
@@ -42,7 +42,7 @@ const Page = () => (
   <Layout
     pageMeta={{
       description:
-        'EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.',
+        "EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.",
     }}
     background="white"
   >

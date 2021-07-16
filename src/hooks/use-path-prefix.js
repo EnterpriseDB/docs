@@ -1,4 +1,4 @@
-import { useStaticQuery, graphql } from 'gatsby';
+import { useStaticQuery, graphql } from "gatsby";
 
 const usePathPrefix = () => {
   const data = useStaticQuery(graphql`
@@ -13,10 +13,10 @@ const usePathPrefix = () => {
   `);
 
   if (data.site.siteMetadata.isDevelopment) {
-    return '';
+    return "";
   }
 
-  return data.site.pathPrefix || '';
+  return data.site.pathPrefix || "";
 };
 
 export default usePathPrefix;
