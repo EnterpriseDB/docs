@@ -14,8 +14,8 @@ export default function Archive({
   const updatedPath = !path.startsWith("/") ? `/${path}` : path;
   const url = `https://github.com/EnterpriseDB/docs-archive/raw/${environment}${updatedPath}`;
 
-  return variant === "inverse" ? (
-    <InverseVariant {...{ title, url }} {...props} />
+  return variant === "title-first" ? (
+    <TitleFirstVariant {...{ title, url }} {...props} />
   ) : (
     <DefaultVariant {...{ title, url }} {...props} />
   );
@@ -29,7 +29,7 @@ const DefaultVariant = ({ title, url, ...props }) => {
   );
 };
 
-const InverseVariant = ({ title, url, ...props }) => {
+const TitleFirstVariant = ({ title, url, ...props }) => {
   return (
     <Link to={url} title={title} className="w-100 d-block" {...props}>
       {title} <PdfIcon />

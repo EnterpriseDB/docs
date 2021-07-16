@@ -761,8 +761,7 @@ export const productStubs = {
           links: [
             {
               text: "Installation Guide for Linux",
-              href:
-                "https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/installation-getting-started/installation-guide-for-linux/11/toc.html",
+              href: "",
               pdf:
                 "/docs/epas/11/EDB_Postgres_Advanced_Server_Installation_Guide_Linux_v11.pdf",
             },

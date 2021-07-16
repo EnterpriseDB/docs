@@ -26,7 +26,7 @@ const StubLink = ({ link }) => {
     <li className="pb-3">
       {primaryLinkIsPdf ? (
         <>
-          <Archive title={link.text} path={link.pdf} variant="inverse" />
+          <Archive title={link.text} path={link.pdf} variant="title-first" />
         </>
       ) : (
         <>
