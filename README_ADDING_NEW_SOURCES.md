@@ -5,17 +5,19 @@
 The first step to get a new doc source integrated into the app is to determine which source type fits your data best.
 
 ### Advocacy Docs
+
 Advocacy Docs are tutorial content, getting-started material, and anything that is about a subject matter area, but not explicitly tied to a product version.
 
 ### Product Docs
+
 Product Docs are versioned documentation for products. They follow a slightly stricter file structure to allow for version switching and other features.
 
 ### Summary Table
 
-| Source Type   | Sourcing        | Versioned | Location
-|---------------|-----------------|-----------|-------------
-| Advocacy Docs | always loaded * | no        | `advocacy_docs`
-| Product Docs  | configurable    | yes       | `product_docs/docs`
+| Source Type   | Sourcing         | Versioned | Location            |
+| ------------- | ---------------- | --------- | ------------------- |
+| Advocacy Docs | always loaded \* | no        | `advocacy_docs`     |
+| Product Docs  | configurable     | yes       | `product_docs/docs` |
 
 \* While Advocacy Docs are currently always loaded, this could be changed in the future as needed
 
@@ -41,7 +43,7 @@ If there are multiple folders in the same directory, they should be prefixed wit
 
 Product Docs must confirm to a specific folder structing to enable version switching and other product doc specific features.
 
-```/product_docs/docs/[PRODUCT_SOURCE_NAME]/[VERSION_NUMBER]/...```
+`/product_docs/docs/[PRODUCT_SOURCE_NAME]/[VERSION_NUMBER]/...`
 
 Once you're within the versioned directory, things should be structured like other source types.
 
@@ -78,4 +80,3 @@ If the source requires something different than previous sources have, or if the
 ### 4. You're Hopefully Done!
 
 At this point, you should have your new source integrated in the site!
-

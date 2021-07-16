@@ -1,6 +1,6 @@
-import React from 'react';
-import { Alert } from 'react-bootstrap';
-import { Link } from './';
+import React from "react";
+import { Alert } from "react-bootstrap";
+import { Link } from "./";
 
 const TopBar = () => {
   return (
