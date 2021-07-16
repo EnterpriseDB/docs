@@ -3,7 +3,8 @@ import React from "react";
 import Icon from "./icon";
 import Link from "./link";
 
-const environment = process.env.GATSBY_ENVIRONMENT_BRANCH;
+const isProduction = process.env.APP_ENV === "production";
+const environment = isProduction ? "main" : "develop";
 
 export default function Archive({
   variant = "default",
