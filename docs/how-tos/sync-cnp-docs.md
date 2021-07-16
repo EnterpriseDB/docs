@@ -10,6 +10,7 @@ GitHub action dispatch and automated event handling.
 
    `temp_kubernetes/docs/` is not tracked via Git, so if it's not present
    already, you'll need to create the directory yourself.
+
 1. Transpile original source documentation into MDX format:
 
    ```sh
