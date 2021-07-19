@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 from argparse import ArgumentParser, ArgumentTypeError
 from dataclasses import dataclass
 from datetime import datetime
@@ -189,13 +190,17 @@ def write_front_matter(front_matter, chapter, output):
     output.write(os.linesep)
 
 
+RE_MD_HEADER = re.compile(r"^#+\s")
+
+
 def write_content(content, output):
     lines = []
     for line in content.split(os.linesep):
         if "toctree" in line:
             break
-        line = f"#{line}" if (line.startswith("# ") or line.startswith("## ")) else line
-        lines.append(line + os.linesep)
+        # TODO: Use a more robust mechanism such as remark to handle increasing
+        # heading depth
+        lines.append(RE_MD_HEADER.sub(r"#\g<0>", line) + os.linesep)
     output.writelines(lines)
     output.write(os.linesep)
 
