@@ -2,7 +2,11 @@ name: Deploy branch draft on Netlify
 on:
   pull_request:
     types: [labeled, opened, synchronize]
-    
+
+concurrency: 
+  group: ${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   build-deploy:
     if: |
@@ -16,6 +20,18 @@ jobs:
     - name: compose a name for the build environment
       run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
 
+    # creates a deployment so that a status is immediately visible on the PR
+    # this deployment will be completed by the netlify deploy step below
+    - name: create a github deployment
+      uses: bobheadxi/deployments@v0.6.0
+      id: deployment
+      with:
+        step: start
+        token: ${{ secrets.GITHUB_TOKEN }}
+        env: ${{ env.BUILD_ENV_NAME }}
+        ref: ${{ github.head_ref }}
+        logs: https://github.com/${{ github.repository }}/pull/${{ github.event.number }}
+        
     - uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
@@ -77,7 +93,6 @@ jobs:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         deploy-message: ${{ github.event.pull_request.title }}
         enable-commit-comment: false
-        alias: ${{ github.head_ref }}
         github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
