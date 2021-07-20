@@ -1,24 +1,24 @@
 # Docs Repository Branch and Release Strategies
 
--  [Evergreen Branches](#evergreen-branches)
-   -  [main](#main)
-   -  [develop](#develop)
--  [Release Process](#release-process)
-   -  [Preparation](#preparation)
-   -  [Release](#release)
--  [Branching Strategies](#branching-strategies)
-   -  [Short-lived](#short-lived)
-   -  [Long-lived](#long-lived)
--  [Pull Request Strategies](#pull-request-strategies)
-   -  [Normal PR](#normal-pr)
-   -  [Draft PR](#draft-pr)
--  [Use Cases](#use-cases)
-   -  [Hot Fix](#hot-fix)
-   -  [Bug Fix](#bug-fix)
-   -  [Feature](#feature)
-   -  [Add Documentation for Currently Released Product (Or Product
-      Version)](#add-documentation-for-currently-released-product-or-product-version)
-   -  [Future Release Documentation](#future-release-documentation)
+- [Evergreen Branches](#evergreen-branches)
+  - [main](#main)
+  - [develop](#develop)
+- [Release Process](#release-process)
+  - [Preparation](#preparation)
+  - [Release](#release)
+- [Branching Strategies](#branching-strategies)
+  - [Short-lived](#short-lived)
+  - [Long-lived](#long-lived)
+- [Pull Request Strategies](#pull-request-strategies)
+  - [Normal PR](#normal-pr)
+  - [Draft PR](#draft-pr)
+- [Use Cases](#use-cases)
+  - [Hot Fix](#hot-fix)
+  - [Bug Fix](#bug-fix)
+  - [Feature](#feature)
+  - [Add Documentation for Currently Released Product (Or Product
+    Version)](#add-documentation-for-currently-released-product-or-product-version)
+  - [Future Release Documentation](#future-release-documentation)
 
 ## Evergreen Branches
 
@@ -77,8 +77,8 @@ up to the person responsible for the branch to keep it up to date with its base
 branch. There are couple ways to periodically keep your branch up-to-date (once
 a day, or less frequently if the base branch is stable):
 
--  Rebase your branch onto the base branch (preferred).
--  Merge the base branch into your branch.
+- Rebase your branch onto the base branch (preferred).
+- Merge the base branch into your branch.
 
 This will ensure that conflicts and surprises are resolved as early in the
 branch lifecycle as possible.
@@ -114,10 +114,10 @@ it may still be a good idea to solicit work-in-progress reviews.
 Stop the presses, something is seriously wrong with
 <https://www.enterprisedb.com/docs/>.
 
--  **Base branch**: `main`
--  **Branching strategy**: [short-lived][]
--  **Branch name**: `hotfix/${my-name}/${issue#}-${short-description}`.
--  **PR strategy**: [normal pr][]
+- **Base branch**: `main`
+- **Branching strategy**: [short-lived][]
+- **Branch name**: `hotfix/${my-name}/${issue#}-${short-description}`.
+- **PR strategy**: [normal pr][]
 
 #### Steps
 
@@ -129,33 +129,33 @@ Stop the presses, something is seriously wrong with
 
 ### Bug Fix
 
--  **Base branch**: `develop`
--  **Branching strategy**: [short-lived][]
--  **Branch name**: `bugfix/${my-name}/${issue#}-${short-description}`.
--  **PR strategy**: [normal pr][]
+- **Base branch**: `develop`
+- **Branching strategy**: [short-lived][]
+- **Branch name**: `bugfix/${my-name}/${issue#}-${short-description}`.
+- **PR strategy**: [normal pr][]
 
 ### Feature
 
--  **Base branch**: `develop`
--  **Branching strategy**: [short-lived][] or [long-lived][]
--  **Branch name**: `feature/${my-name}/${issue#}-${short-description}`.
--  **PR strategy**: [normal pr][] or [draft pr][]
+- **Base branch**: `develop`
+- **Branching strategy**: [short-lived][] or [long-lived][]
+- **Branch name**: `feature/${my-name}/${issue#}-${short-description}`.
+- **PR strategy**: [normal pr][] or [draft pr][]
 
 ### Add Documentation for Currently Released Product (Or Product Version)
 
--  **Base branch**: `develop`
--  **Branching strategy**: [short-lived][] or [long-lived][]
--  **Branch name**:
-   `docs/${product-name}/${issue#}-${version-number-or-short-description}`.
--  **PR strategy**: [normal pr][] or [draft pr][]
+- **Base branch**: `develop`
+- **Branching strategy**: [short-lived][] or [long-lived][]
+- **Branch name**:
+  `docs/${product-name}/${issue#}-${version-number-or-short-description}`.
+- **PR strategy**: [normal pr][] or [draft pr][]
 
 ### Future Release Documentation
 
--  **Base branch**: `develop`
--  **Branching strategy**: [long-lived][]
--  **Branch name**:
-   `future/${product-name}/${issue#}-${version-number-or-short-description}`.
--  **PR strategy**: [draft pr][]
+- **Base branch**: `develop`
+- **Branching strategy**: [long-lived][]
+- **Branch name**:
+  `future/${product-name}/${issue#}-${version-number-or-short-description}`.
+- **PR strategy**: [draft pr][]
 
 ℹ️ At the top of your PR description, please note when the expected release date
 is and keep it up-to-date as the release date changes.

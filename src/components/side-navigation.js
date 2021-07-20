@@ -1,5 +1,5 @@
-import React from 'react';
-import { DarkModeToggle, Link, Logo } from './';
+import React from "react";
+import { DarkModeToggle, Link, Logo } from "./";
 
 const LogoLink = () => {
   return (
@@ -31,7 +31,7 @@ const SideNavigationFooter = () => (
   </ul>
 );
 
-const SideNavigation = ({ children, background = 'light', footer = true }) => {
+const SideNavigation = ({ children, background = "light", footer = true }) => {
   return (
     <nav className={`sidebar d-block bg-${background} border-right`}>
       <div className="sidebar-sticky pl-4 pr-4 pb-4">
