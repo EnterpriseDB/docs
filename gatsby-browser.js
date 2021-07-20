@@ -1,4 +1,4 @@
-require('prismjs/themes/prism-okaidia.css');
+require("prismjs/themes/prism-okaidia.css");
 
 exports.onRouteUpdate = ({ location }) => scrollToAnchor(location);
 
@@ -17,7 +17,7 @@ function scrollToAnchor(location, mainNavHeight = 0) {
       if (item) {
         window.scrollTo({
           top: item.offsetTop - mainNavHeight,
-          behavior: 'smooth',
+          behavior: "smooth",
         });
       }
     } catch (error) {

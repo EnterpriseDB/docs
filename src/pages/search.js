@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Container, Navbar } from 'react-bootstrap';
-import algoliasearch from 'algoliasearch/lite';
-import { InstantSearch, Configure } from 'react-instantsearch-dom';
-import { Footer, Layout, SideNavigation, TopBar } from '../components';
+import React, { useState, useEffect } from "react";
+import { Container, Navbar } from "react-bootstrap";
+import algoliasearch from "algoliasearch/lite";
+import { InstantSearch, Configure } from "react-instantsearch-dom";
+import { Footer, Layout, SideNavigation, TopBar } from "../components";
 import {
   AdvancedSearchFiltering,
   AdvancedSearchResults,
   AdvancedSearchForm,
   queryParamsToState,
   writeStateToQueryParams,
-} from '../components/advanced-search';
-import useSiteMetadata from '../hooks/use-sitemetadata';
+} from "../components/advanced-search";
+import useSiteMetadata from "../hooks/use-sitemetadata";
 
 const searchClient = algoliasearch(
-  'HXNAF5X3I8',
-  'fb05499144f0399f5985485b624a0290',
+  "HXNAF5X3I8",
+  "fb05499144f0399f5985485b624a0290",
 );
 
 const Search = (data) => {
@@ -22,7 +22,7 @@ const Search = (data) => {
 
   const { algoliaIndex } = useSiteMetadata();
 
-  const [query, setQuery] = useState(paramSearchState.query || '');
+  const [query, setQuery] = useState(paramSearchState.query || "");
   const [searchState, setSearchState] = useState(paramSearchState || {});
 
   useEffect(() => {
@@ -30,7 +30,7 @@ const Search = (data) => {
   });
 
   return (
-    <Layout background="white" pageMeta={{ title: 'Advanced Search' }}>
+    <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch

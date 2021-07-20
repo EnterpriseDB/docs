@@ -1,7 +1,7 @@
-import React from 'react';
-import { Container, Row, Col } from 'react-bootstrap';
-import { graphql } from 'gatsby';
-import { MDXRenderer } from 'gatsby-plugin-mdx';
+import React from "react";
+import { Container, Row, Col } from "react-bootstrap";
+import { graphql } from "gatsby";
+import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   CardDecks,
   DevFrontmatter,
@@ -13,7 +13,7 @@ import {
   SideNavigation,
   TableOfContents,
   TopBar,
-} from '../components';
+} from "../components";
 
 export const query = graphql`
   query($nodeId: String!) {
@@ -46,9 +46,9 @@ const getChildren = (parentNode, navLinks) => {
 };
 
 const TileModes = {
-  None: 'none',
-  Simple: 'simple',
-  Full: 'full',
+  None: "none",
+  Simple: "simple",
+  Full: "full",
 };
 const Tiles = ({ mode, mdx, navLinks }) => {
   if (mode === TileModes.None) return null;
@@ -60,7 +60,7 @@ const Tiles = ({ mode, mdx, navLinks }) => {
 
   if (Object.values(TileModes).includes(mode)) {
     const tiles = getChildren(mdx, navLinks).map((child) => {
-      if (mode === 'simple') return child;
+      if (mode === "simple") return child;
 
       return {
         ...child,
@@ -75,7 +75,7 @@ const Tiles = ({ mode, mdx, navLinks }) => {
 
 const EditButton = ({ githubEditLink }) => (
   <a
-    href={githubEditLink || '#'}
+    href={githubEditLink || "#"}
     className="btn btn-sm btn-primary px-4 text-nowrap"
   >
     Edit this page
@@ -84,7 +84,7 @@ const EditButton = ({ githubEditLink }) => (
 
 const FeedbackButton = ({ githubIssuesLink }) => (
   <a
-    href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+    href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
     target="_blank"
     rel="noreferrer"
     className="btn btn-sm btn-primary px-4 text-nowrap"
@@ -130,7 +130,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
-  const editOrFeedbackButton = path.includes('/cloud_native_postgresql/') ? (
+  const editOrFeedbackButton = path.includes("/cloud_native_postgresql/") ? (
     <FeedbackButton githubIssuesLink={githubIssuesLink} />
   ) : (
     <EditButton githubEditLink={githubEditLink} />
@@ -185,19 +185,19 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
           <hr />
           <p>
-            Could this page could be better?{' '}
+            Could this page could be better?{" "}
             <a
               href={
-                githubIssuesLink + '&template=problem-with-topic.md&labels=bug'
+                githubIssuesLink + "&template=problem-with-topic.md&labels=bug"
               }
             >
               Report a problem
-            </a>{' '}
-            or{' '}
+            </a>{" "}
+            or{" "}
             <a
               href={
                 githubIssuesLink +
-                '&template=suggest-addition-to-topic.md&labels=enhancement'
+                "&template=suggest-addition-to-topic.md&labels=enhancement"
               }
             >
               suggest an addition

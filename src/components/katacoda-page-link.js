@@ -1,7 +1,7 @@
-import React from 'react';
-import { Link } from '../components/';
-import { Button } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon';
+import React from "react";
+import { Link } from "../components/";
+import { Button } from "react-bootstrap";
+import Icon, { iconNames } from "../components/icon";
 
 const KatacodaPageLink = ({ scenario }) => (
   <div className="d-flex align-items-center mt-5 mb-5">

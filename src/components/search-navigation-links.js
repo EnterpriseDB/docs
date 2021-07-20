@@ -1,5 +1,5 @@
-import React from 'react';
-import { Link } from './';
+import React from "react";
+import { Link } from "./";
 
 const SearchNavigationLinks = () => (
   <>

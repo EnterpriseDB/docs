@@ -1,28 +1,28 @@
-import React from 'react';
-import { Container } from 'react-bootstrap';
-import algoliasearch from 'algoliasearch/lite';
+import React from "react";
+import { Container } from "react-bootstrap";
+import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearch,
   Configure,
   Hits,
   connectSearchBox,
   connectStateResults,
-} from 'react-instantsearch-dom';
-import { Footer, Layout, Link, MainContent, TopBar } from '../components';
-import Icon, { iconNames } from '../components/icon';
-import useSiteMetadata from '../hooks/use-sitemetadata';
-import usePathPrefix from '../hooks/use-path-prefix';
+} from "react-instantsearch-dom";
+import { Footer, Layout, Link, MainContent, TopBar } from "../components";
+import Icon, { iconNames } from "../components/icon";
+import useSiteMetadata from "../hooks/use-sitemetadata";
+import usePathPrefix from "../hooks/use-path-prefix";
 
 const searchClient = algoliasearch(
-  'HXNAF5X3I8',
-  'fb05499144f0399f5985485b624a0290',
+  "HXNAF5X3I8",
+  "fb05499144f0399f5985485b624a0290",
 );
 
 const buildQuery = (pathname, pathPrefix) => {
   const tokens = pathname
-    .replace('/edb-docs', '')
-    .replace(/-/g, ' ')
-    .split('/');
+    .replace("/edb-docs", "")
+    .replace(/-/g, " ")
+    .split("/");
 
   const productIndex = tokens.findIndex((token) => token.match(/edb\s/g));
 
@@ -41,12 +41,12 @@ const buildQuery = (pathname, pathPrefix) => {
   }
 
   if (product) {
-    return `${product} ${title ? title : ''} ${version ? version : ''}`;
+    return `${product} ${title ? title : ""} ${version ? version : ""}`;
   }
 
   // eslint-disable-next-line no-useless-escape
-  const regex = new RegExp(`\/${pathPrefix}\/|-|\/`, 'g');
-  return pathname.replace(regex, ' ').trim();
+  const regex = new RegExp(`\/${pathPrefix}\/|-|\/`, "g");
+  return pathname.replace(regex, " ").trim();
 };
 
 const PageNotFound = ({ path }) => (
@@ -119,7 +119,7 @@ const NotFound = (data) => {
   const query = buildQuery(data.location.pathname, pathPrefix);
 
   return (
-    <Layout pageMeta={{ title: 'Page Not Found' }}>
+    <Layout pageMeta={{ title: "Page Not Found" }}>
       <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
