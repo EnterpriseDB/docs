@@ -23,15 +23,23 @@ jobs:
     # creates a deployment so that a status is immediately visible on the PR
     # this deployment will be completed by the netlify deploy step below
     - name: create a github deployment
-      uses: bobheadxi/deployments@v0.6.0
       id: deployment
+      uses: avakar/create-deployment@v1
       with:
-        step: start
-        token: ${{ secrets.GITHUB_TOKEN }}
-        env: ${{ env.BUILD_ENV_NAME }}
         ref: ${{ github.head_ref }}
-        logs: https://github.com/${{ github.repository }}/pull/${{ github.event.number }}/checks?check_run_id=${{ github.run_id }}
-        
+        environment: ${{ env.BUILD_ENV_NAME }}
+        transient_environment: true
+        auto_merge: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.DEPLOY_TOKEN }}    
+
+    - uses: avakar/set-deployment-status@v1
+      with:
+        state: in_progress
+        deployment_id: ${{ steps.deployment.output.deployment_id }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
@@ -85,16 +93,21 @@ jobs:
         ALGOLIA_INDEX_NAME: edb-docs-staging
         INDEX_ON_BUILD: false
 
-    - name: Deploy to Netlify
-      id: netlify-deploy
-      uses: nwtgck/actions-netlify@v1.2.2
-      with:
-        publish-dir: './public'
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        deploy-message: ${{ github.event.pull_request.title }}
-        enable-commit-comment: false
-        github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
+    - name: Netlify deploy
+      run: |
+        sudo yarn global add netlify-cli
+        netlify deploy --dir=public --json | tee deploy_results.json
+        echo "NETLIFY_DRAFT_URL=`jq -r '.deploy_url' deploy_results.json`" >> $GITHUB_ENV
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}        
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
 
+    - name: update the github deployment status
+      uses: bobheadxi/deployments@v0.5.2
+      if: always()
+      with:
+        step: finish
+        token: ${{ secrets.GITHUB_TOKEN }}
+        status: ${{ job.status }}
+        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+        env_url: ${{ steps.netlify-deploy.outputs.deploy-url }}
