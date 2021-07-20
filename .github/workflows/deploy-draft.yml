@@ -16,15 +16,6 @@ jobs:
     - name: compose a name for the build environment
       run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
 
-    - name: create a github deployment
-      uses: bobheadxi/deployments@v0.5.2
-      id: deployment
-      with:
-        step: start
-        token: ${{ secrets.GITHUB_TOKEN }}
-        env: ${{ env.BUILD_ENV_NAME }}
-        ref: ${{ github.event.pull_request.head.ref }}
-        
     - uses: actions/checkout@v2
       with:
         ref: ${{ github.event.pull_request.head.sha }}
@@ -36,6 +27,19 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: '14.x'
+
+    # ref: https://github.com/actions/cache/blob/main/examples.md#node---yarn
+    - name: Get yarn cache directory
+      id: yarn-cache-dir-path
+      run: echo "::set-output name=dir::$(yarn cache dir)"    
+
+    - name: Checking Yarn cache
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-yarn-
   
     - name: Yarn install
       run: npx yarn install --immutable
@@ -49,12 +53,11 @@ jobs:
         path: |
           public
           .cache
-        key: ${{ runner.os }}-gatsby-build-develop-${{ github.run_id }}
-        restore-keys: |
-          ${{ runner.os }}-gatsby-build-develop-
+        key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
 
     - name: Fix mtimes
       run: yarn fix-mtimes --force
+      
     - name: Gatsby build
       run: yarn build
       env:
@@ -72,19 +75,11 @@ jobs:
       with:
         publish-dir: './public'
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        deploy-message: "Deploy from GitHub Actions"
+        deploy-message: ${{ github.event.pull_request.title }}
+        enable-commit-comment: false
         alias: ${{ github.head_ref }}
         github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}        
 
-    - name: update the github deployment status
-      uses: bobheadxi/deployments@v0.5.2
-      if: always()
-      with:
-        step: finish
-        token: ${{ secrets.GITHUB_TOKEN }}
-        status: ${{ job.status }}
-        deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-        env_url: ${{ steps.netlify-deploy.outputs.deploy-url }}
