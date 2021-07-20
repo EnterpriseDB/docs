@@ -21,6 +21,7 @@ This script looks at `legacy_docs_scrape.json` and the files in the `product_doc
 When you run this script, the `legacyRedirectsGenerated` frontmatter for every file will be recalculated. Any manual legacy redirects you want to add should be added under `legacyRedirects`, which are untouched by this script.
 
 ### Url Style ("new" vs "old")
+
 Currently, the script only handles "new" style urls. I have done some initial work on mapping "old" style urls (which are used for older product version), but they are trickier.
 
 Example of a "new" style url (EPAS 13) - `/edb-docs/d/edb-postgres-advanced-server/user-guides/ecpgplus-guide/13/using_embedded_sql.html`

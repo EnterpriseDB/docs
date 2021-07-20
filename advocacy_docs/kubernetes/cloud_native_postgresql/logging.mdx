@@ -58,11 +58,100 @@ Each entry in the PostgreSQL log is a JSON object having the `logger` key set to
 
 Internally, the operator relies on the PostgreSQL CSV log format.
 Please refer to the PostgreSQL documentation for more information
-on the [CSV log format](https://www.postgresql.org/docs/current/runtime-config-logging.html).
+about the [CSV log format](https://www.postgresql.org/docs/current/runtime-config-logging.html).
+
+## EDB Audit logs
+
+Clusters that are running on EnterpriseDB Postgres Advanced Server (EPAS)
+can enable [EDB Audit](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/12/EDB_Postgres_Advanced_Server_Guide.1.43.html) as follows:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+  imageName: quay.io/enterprisedb/edb-postgres-advanced:13
+  licenseKey: <LICENSE>
+
+  postgresql:
+    epas:
+      audit: true
+
+  storage:
+    size: 1Gi
+```
+
+Setting `.spec.postgresql.epas.audit: true` enforces the following parameters:
+
+```text
+edb_audit = 'csv'
+edb_audit_destination = 'file'
+edb_audit_directory = '/controller/log'
+edb_audit_filename = 'edb_audit'
+edb_audit_rotation_day = 'none'
+edb_audit_rotation_seconds = '0'
+edb_audit_rotation_size = '0'
+edb_audit_tag = ''
+edb_log_every_bulk_value = 'false'
+```
+
+Other parameters can be passed via `.spec.postgresql.parameters` as usual.
+
+The audit CSV logs are parsed and routed to stdout in JSON format, similarly to all the remaining logs:
+
+- `.logger` set to `edb_audit`
+- `.msg` set to `record`
+- `.record` containing the whole parsed record as a JSON object
+
+See the example below:
+```json
+{
+  "level": "info",
+  "ts": 1624629110.7641866,
+  "logger": "edb_audit",
+  "msg": "record",
+  "record": {
+    "log_time": "2021-06-25 13:51:50.763 UTC",
+    "user_name": "postgres",
+    "database_name": "postgres",
+    "process_id": "68",
+    "connection_from": "[local]",
+    "session_id": "60d5df76.44",
+    "session_line_num": "5",
+    "process_status": "idle in transaction",
+    "session_start_time": "2021-06-25 13:51:50 UTC",
+    "virtual_transaction_id": "3/93",
+    "transaction_id": "1183",
+    "error_severity": "AUDIT",
+    "sql_state_code": "00000",
+    "message": "statement: GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text) TO \"streaming_replica\"",
+    "detail": "",
+    "hint": "",
+    "internal_query": "",
+    "internal_query_pos": "",
+    "context": "",
+    "query": "",
+    "query_pos": "",
+    "location": "",
+    "application_name": "",
+    "backend_type": "client backend",
+    "command_tag": "GRANT",
+    "audit_tag": "",
+    "type": "grant"
+  }
+}
+```
+
+See EDB Audit [documentation](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/12/EDB_Postgres_Advanced_Server_Guide.1.43.html)
+(section 3.5.4) for more details about the records' fields.
 
 ## Other logs
-All logs produced by the operator and its instances are in JSON format, with `logger` set accordingly to the process 
-that produced them. So, all the possible `logger` values are the following ones:
+
+All logs that are produced by the operator and its instances are in JSON format, with `logger` set accordingly to the process
+that produced them. Therefore, all the possible `logger` values are the following ones:
+
 - `barman-cloud-wal-archive`
 - `barman-cloud-wal-restore`
 - `initdb`
@@ -71,6 +160,7 @@ that produced them. So, all the possible `logger` values are the following ones:
 - `pg_ctl`
 - `pg_rewind`
 - `postgres`
+- `edb_audit`
 
-Except for `postgres` that has the aforementioned structure, all other possible values just have `msg` set to the 
-escaped message that is logged.
+Except for `postgres` and `edb_audit` that have the aforementioned structures, all other possible values
+just have `msg` set to the escaped message that is logged.

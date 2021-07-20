@@ -1,10 +1,10 @@
-const utf8Truncate = require('truncate-utf8-bytes');
+const utf8Truncate = require("truncate-utf8-bytes");
 const {
   mdxNodesToTree,
   computeFrontmatterForTreeNode,
   buildProductVersions,
   replacePathVersion,
-} = require('./gatsby-utils.js');
+} = require("./gatsby-utils.js");
 
 // this function is weird - note that it's modifying the node in place
 // NOT returning a copy of the node
@@ -12,39 +12,39 @@ const mdxNodeToAlgoliaNode = (node, productVersions) => {
   let newNode = node;
 
   // base
-  newNode['title'] = node.frontmatter.title;
-  newNode['path'] = node.fields.path;
-  newNode['pagePath'] = node.fields.path;
+  newNode["title"] = node.frontmatter.title;
+  newNode["path"] = node.fields.path;
+  newNode["pagePath"] = node.fields.path;
 
   // optional
   if (node.frontmatter.product) {
-    newNode['product'] = node.frontmatter.product;
+    newNode["product"] = node.frontmatter.product;
   }
   if (node.frontmatter.platform) {
-    newNode['platform'] = node.frontmatter.platform;
+    newNode["platform"] = node.frontmatter.platform;
   }
 
   // docType specific
-  if (node.fields.docType == 'doc') {
-    newNode['product'] = node.fields.product;
-    newNode['version'] = node.fields.version;
-    newNode['type'] = 'doc';
+  if (node.fields.docType == "doc") {
+    newNode["product"] = node.fields.product;
+    newNode["version"] = node.fields.version;
+    newNode["type"] = "doc";
 
     // switch path to latest (if applicable) to avoid redirects
     const isLatest =
       productVersions[node.fields.product][0] === node.fields.version;
     if (isLatest) {
       const latestPath = replacePathVersion(node.fields.path);
-      newNode['path'] = latestPath;
-      newNode['pagePath'] = latestPath;
+      newNode["path"] = latestPath;
+      newNode["pagePath"] = latestPath;
     }
   } else {
-    newNode['type'] = 'guide';
+    newNode["type"] = "guide";
   }
 
   // clean up some keys we don't need anymore
-  delete newNode['frontmatter'];
-  delete newNode['fields'];
+  delete newNode["frontmatter"];
+  delete newNode["fields"];
 
   return newNode;
 };
@@ -53,10 +53,10 @@ const mdxTreeToSearchNodes = (rootNode) => {
   rootNode.depth = 0;
   const stack = [rootNode];
   const searchNodes = [];
-  const initialSearchNode = { text: '', heading: '' };
+  const initialSearchNode = { text: "", heading: "" };
 
   let parseState = {
-    attribute: 'text',
+    attribute: "text",
     nextAttribute: null,
     transitionDepth: null,
   };
@@ -71,8 +71,8 @@ const mdxTreeToSearchNodes = (rootNode) => {
   };
   const setHeadingParseState = (depth) => {
     parseState = {
-      attribute: 'heading',
-      nextAttribute: 'text',
+      attribute: "heading",
+      nextAttribute: "text",
       transitionDepth: depth,
     };
   };
@@ -83,12 +83,12 @@ const mdxTreeToSearchNodes = (rootNode) => {
     node = stack.pop();
     nextParseStateIfDepth(node.depth);
 
-    if (['import', 'export'].includes(node.type)) {
+    if (["import", "export"].includes(node.type)) {
       // skip these nodes
       continue;
     }
 
-    if (node.type === 'heading') {
+    if (node.type === "heading") {
       // break on headings
       if (searchNode.text.length > 0) {
         searchNodes.push(searchNode);
@@ -97,7 +97,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
       setHeadingParseState(node.depth);
     }
 
-    if (node.value && !['html', 'jsx'].includes(node.type)) {
+    if (node.value && !["html", "jsx"].includes(node.type)) {
       searchNode[parseState.attribute] += ` ${node.value}`;
     } else {
       (node.children || [])
@@ -109,7 +109,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
         });
     }
   }
-  if (searchNode.text.length > '') {
+  if (searchNode.text.length > "") {
     searchNodes.push(searchNode);
   }
 
@@ -117,7 +117,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
 };
 
 const trimSpaces = (str) => {
-  return str.replace(/\s+/g, ' ').trim();
+  return str.replace(/\s+/g, " ").trim();
 };
 
 const buildFinalAlgoliaNodes = (nodes, productVersions) => {
@@ -127,8 +127,8 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
 
     // skip indexing this content for now
     if (
-      node.path.includes('/postgresql_journey/') ||
-      node.path.includes('/playground/')
+      node.path.includes("/postgresql_journey/") ||
+      node.path.includes("/playground/")
     ) {
       console.log(`skipped indexing ${node.path}`);
       continue;
@@ -138,7 +138,7 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
 
     searchNodes.forEach((searchNode, i) => {
       let newNode = { ...node };
-      delete newNode['mdxAST'];
+      delete newNode["mdxAST"];
 
       newNode.id = `${newNode.path}-${i + 1}`;
       newNode.heading = trimSpaces(searchNode.heading);
@@ -148,10 +148,10 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
       );
       if (searchNode.heading.length > 0) {
         const anchor = newNode.heading
-          .split(' ')
-          .join('-')
+          .split(" ")
+          .join("-")
           .toLowerCase()
-          .replace('/', '');
+          .replace("/", "");
         newNode.path = `${newNode.path}#${anchor}`;
       }
 

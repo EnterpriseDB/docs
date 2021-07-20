@@ -1,8 +1,8 @@
-import React from 'react';
-import { Navbar } from 'react-bootstrap';
-import { SearchNavigationLinks } from '.';
-import SearchBar from './search/';
-import { Link, Logo } from './';
+import React from "react";
+import { Navbar } from "react-bootstrap";
+import { SearchNavigationLinks } from ".";
+import SearchBar from "./search/";
+import { Link, Logo } from "./";
 
 const LogoLink = () => (
   <Link to="/">

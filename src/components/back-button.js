@@ -1,6 +1,6 @@
-import React from 'react';
-import { Link } from './';
-import Icon, { iconNames } from './icon/';
+import React from "react";
+import { Link } from "./";
+import Icon, { iconNames } from "./icon/";
 
 const BackButton = () => (
   <li className="ml-0 mb-3">
