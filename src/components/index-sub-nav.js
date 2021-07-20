@@ -1,5 +1,5 @@
-import React from 'react';
-import { DarkModeToggle, Link } from '../components';
+import React from "react";
+import { DarkModeToggle, Link } from "../components";
 
 const IndexSubLink = ({ url, children }) => (
   <li className="list-inline-item">

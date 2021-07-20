@@ -1,18 +1,18 @@
-import React from 'react';
-import { Dropdown } from 'react-bootstrap';
-import { Link } from './';
+import React from "react";
+import { Dropdown } from "react-bootstrap";
+import { Link } from "./";
 
 const DropdownItem = ({ to, active, children }) => (
   <Link
     to={to}
-    className={`dropdown-item ${active && 'active font-weight-bold'}`}
+    className={`dropdown-item ${active && "active font-weight-bold"}`}
   >
     {children}
   </Link>
 );
 
 const VersionDropdown = ({ versionArray, path }) => {
-  const activeVersion = path.split('/')[2];
+  const activeVersion = path.split("/")[2];
 
   return (
     <Dropdown>

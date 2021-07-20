@@ -1,8 +1,8 @@
-import React from 'react';
-import { Link } from './';
+import React from "react";
+import { Link } from "./";
 
 const Title = ({ node }) =>
-  node.navTitle ? node.navTitle : node.title ? node.title : 'TITLE NEEDED';
+  node.navTitle ? node.navTitle : node.title ? node.title : "TITLE NEEDED";
 
 const SubList = ({ children, collapsed }) => {
   if (collapsed) {
@@ -39,7 +39,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
         <Link
           to={node.path}
           className={`d-inline-block py-1 align-middle lh-12 ${
-            path === node.path ? 'active font-weight-bold text-dark' : ''
+            path === node.path ? "active font-weight-bold text-dark" : ""
           }`}
         >
           <Title node={node} />

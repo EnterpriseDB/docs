@@ -1,9 +1,9 @@
-import React from 'react';
-import { Form } from 'react-bootstrap';
-import Icon, { iconNames } from '../components/icon/';
-import { LayoutContext } from '../components';
+import React from "react";
+import { Form } from "react-bootstrap";
+import Icon, { iconNames } from "../components/icon/";
+import { LayoutContext } from "../components";
 
-const DarkModeToggle = ({ className = '' }) => (
+const DarkModeToggle = ({ className = "" }) => (
   <LayoutContext.Consumer>
     {({ dark, toggleDark }) => (
       <li
