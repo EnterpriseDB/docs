@@ -1,8 +1,8 @@
-import React from 'react';
-import { Helmet } from 'react-helmet';
+import React from "react";
+import { Helmet } from "react-helmet";
 
 const KatacodaPageEmbed = ({ account, scenario }) => {
-  const scenarioId = account ? [account, scenario].join('/') : scenario;
+  const scenarioId = account ? [account, scenario].join("/") : scenario;
 
   return (
     <>

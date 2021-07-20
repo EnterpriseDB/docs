@@ -1,5 +1,5 @@
-import React from 'react';
-import SearchNavigation from './search-navigation';
+import React from "react";
+import SearchNavigation from "./search-navigation";
 
 const MainContent = ({ children, searchNavLogo = false }) => {
   return (
