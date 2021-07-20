@@ -1,13 +1,13 @@
-import React from 'react';
+import React from "react";
 import {
   Hits,
   connectStateResults,
   connectPagination,
   connectCurrentRefinements,
-} from 'react-instantsearch-dom';
-import { AdvancedPageHit } from './index';
-import { products } from '../../constants/products';
-import { capitalize } from '../../constants/utils';
+} from "react-instantsearch-dom";
+import { AdvancedPageHit } from "./index";
+import { products } from "../../constants/products";
+import { capitalize } from "../../constants/utils";
 
 const prettyProductName = (product) => {
   return products[product] ? products[product].name : capitalize(product);
@@ -19,10 +19,10 @@ const ResultsSummary = connectCurrentRefinements(
     const query = res && res.query;
 
     const productRefinement = items.find(
-      (item) => item.attribute === 'product',
+      (item) => item.attribute === "product",
     );
     const versionRefinement = items.find(
-      (item) => item.attribute === 'version',
+      (item) => item.attribute === "version",
     );
 
     const productName = productRefinement
@@ -34,10 +34,10 @@ const ResultsSummary = connectCurrentRefinements(
 
     return (
       <p className="search-text-summary">
-        {resultCount} result{resultCount !== 1 && 's'} for "{query}"
-        {productName && ' in '}
+        {resultCount} result{resultCount !== 1 && "s"} for "{query}"
+        {productName && " in "}
         {productName && <span className="font-weight-400">{productName}</span>}
-        {version && ' and '}
+        {version && " and "}
         {version && <span className="font-weight-400">Version {version}</span>}
       </p>
     );
@@ -66,7 +66,7 @@ const Pagination = connectPagination(
               <a
                 href="/"
                 className={`p-3 d-inline-block btn btn-outline-primary text-left ${
-                  !previousEnabled && 'disabled-grey'
+                  !previousEnabled && "disabled-grey"
                 }`}
                 onClick={goPrevious}
                 disabled={!previousEnabled}
@@ -81,7 +81,7 @@ const Pagination = connectPagination(
               <a
                 href="/"
                 className={`p-3 d-inline-block btn btn-outline-primary text-right ${
-                  !nextEnabled && 'disabled-grey'
+                  !nextEnabled && "disabled-grey"
                 }`}
                 onClick={goNext}
                 disabled={!nextEnabled}
@@ -103,7 +103,7 @@ const ResultsContent = ({ children }) => (
 
 export const AdvancedSearchResults = connectStateResults(
   ({ searchResults, query }) => {
-    const queryLength = (query || '').length;
+    const queryLength = (query || "").length;
     const showPagination = searchResults && searchResults.nbPages > 1;
 
     if (queryLength === 0) {

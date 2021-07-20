@@ -1,6 +1,6 @@
-import React from 'react';
-import { Container } from 'react-bootstrap';
-import { BackButton, KatacodaPageEmbed, Layout, Logo } from '../components';
+import React from "react";
+import { Container } from "react-bootstrap";
+import { BackButton, KatacodaPageEmbed, Layout, Logo } from "../components";
 
 const KatacodaPageTemplate = ({ pageContext }) => {
   const path = pageContext.pagePath;
@@ -16,7 +16,7 @@ const KatacodaPageTemplate = ({ pageContext }) => {
       <Container fluid className="p-0 d-flex bg-white">
         <main className="mt-0 p-5 w-100">
           <div className="py-4">
-            <ul className="list-unstyled" style={{ width: '149px' }}>
+            <ul className="list-unstyled" style={{ width: "149px" }}>
               <BackButton />
             </ul>
             <Logo width="149" height="40" />

@@ -1,8 +1,9 @@
-import React from 'react';
-import { Link } from './';
-import { Row, Col } from 'react-bootstrap';
-import { productStubs } from '../constants/product-stubs';
-import Icon from './icon';
+import React from "react";
+import { Link } from "./";
+import { Row, Col } from "react-bootstrap";
+import { productStubs } from "../constants/product-stubs";
+import Icon from "./icon";
+import Archive from "./archive";
 
 const PdfIcon = ({ className }) => (
   <Icon
@@ -23,15 +24,21 @@ const StubLink = ({ link }) => {
 
   return (
     <li className="pb-3">
-      <Link to={primaryLink} className="border-bottom">
-        {link.text}
-        {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
-      </Link>{' '}
-      <br></br>
-      {link.pdf && link.href && (
-        <Link to={link.pdf} className="small">
-          <PdfIcon /> Download PDF
-        </Link>
+      {primaryLinkIsPdf ? (
+        <>
+          <Archive title={link.text} path={link.pdf} variant="title-first" />
+        </>
+      ) : (
+        <>
+          <Link to={link.href} className="border-bottom">
+            {link.text}
+            {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
+          </Link>
+          <br></br>
+          {link.pdf && (
+            <Archive title="Download PDF" path={link.pdf} className="small" />
+          )}
+        </>
       )}
     </li>
   );
@@ -61,11 +68,11 @@ const StubCards = ({ product, version }) => {
     <Row className="mt-3">
       {Array.from(Array(columnCount), (e, i) => {
         const sections = stubData.sections.filter(
-          section => section.column === i + 1,
+          (section) => section.column === i + 1,
         );
         return (
           <Col md={6} key={`column_${i}`}>
-            {sections.map(section => (
+            {sections.map((section) => (
               <StubSection section={section} key={section.title} />
             ))}
           </Col>
