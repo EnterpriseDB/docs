@@ -234,6 +234,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales Guide
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/LiquibaseGuide">
+              Liquibase Guide
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixGuide">
               Nutanix Guide
             </IndexCardLink>
