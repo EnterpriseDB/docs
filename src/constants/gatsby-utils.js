@@ -1,4 +1,4 @@
-const fs = require('fs');
+const fs = require("fs");
 
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
@@ -6,31 +6,31 @@ const sortVersionArray = (versions) => {
   );
 };
 
-const replacePathVersion = (path, version = 'latest') => {
-  const splitPath = path.split('/');
-  const postVersionPath = splitPath.slice(3).join('/');
+const replacePathVersion = (path, version = "latest") => {
+  const splitPath = path.split("/");
+  const postVersionPath = splitPath.slice(3).join("/");
   return `/${splitPath[1]}/${version}${
-    postVersionPath.length > 0 ? `/${postVersionPath}` : '/'
+    postVersionPath.length > 0 ? `/${postVersionPath}` : "/"
   }`;
 };
 
 const filePathToDocType = (filePath) => {
-  if (filePath.includes('/product_docs/')) {
-    return 'doc';
-  } else if (filePath.includes('/advocacy_docs/')) {
-    return 'advocacy';
+  if (filePath.includes("/product_docs/")) {
+    return "doc";
+  } else if (filePath.includes("/advocacy_docs/")) {
+    return "advocacy";
   }
 };
 
 const removeTrailingSlash = (url) => {
-  if (url.endsWith('/')) {
+  if (url.endsWith("/")) {
     return url.slice(0, -1);
   }
   return url;
 };
 
 const isPathAnIndexPage = (filePath) =>
-  filePath.endsWith('/index.mdx') || filePath === 'index.mdx';
+  filePath.endsWith("/index.mdx") || filePath === "index.mdx";
 
 const removeNullEntries = (obj) => {
   if (!obj) return obj;
@@ -41,7 +41,7 @@ const removeNullEntries = (obj) => {
 };
 
 const pathToDepth = (path) => {
-  return path.split('/').filter((s) => s.length > 0).length;
+  return path.split("/").filter((s) => s.length > 0).length;
 };
 
 const mdxNodesToTree = (nodes) => {
@@ -55,7 +55,7 @@ const mdxNodesToTree = (nodes) => {
     };
   };
 
-  const rootNode = buildNode('/', null);
+  const rootNode = buildNode("/", null);
 
   const findOrInsertNode = (currentNode, path) => {
     const node = currentNode.children.find((child) => child.path === path);
@@ -67,10 +67,10 @@ const mdxNodesToTree = (nodes) => {
   };
 
   const addNode = (node) => {
-    const splitPath = node.fields.path.split('/');
+    const splitPath = node.fields.path.split("/");
     let currentNode = rootNode;
     for (let i = 2; i < splitPath.length; i++) {
-      const path = `/${splitPath.slice(1, i).join('/')}/`;
+      const path = `/${splitPath.slice(1, i).join("/")}/`;
       currentNode = findOrInsertNode(currentNode, path);
       if (path === node.fields.path) {
         currentNode.mdxNode = node;
@@ -109,7 +109,7 @@ const buildProductVersions = (nodes) => {
 
   nodes.forEach((node) => {
     const { docType, product, version } = node.fields;
-    if (docType !== 'doc') return;
+    if (docType !== "doc") return;
 
     if (!versionIndex[product]) {
       versionIndex[product] = [version];
@@ -268,8 +268,8 @@ const configureRedirects = (toPath, redirects, actions, config = {}) => {
 
 const convertLegacyDocsPathToLatest = (fromPath) => {
   return fromPath
-    .replace(/\/\d+(\.?\d+)*\//, '/latest/') // version in middle of path
-    .replace(/\/\d+(\.?\d+)*$/, '/latest'); // version at end of path (product index)
+    .replace(/\/\d+(\.?\d+)*\//, "/latest/") // version in middle of path
+    .replace(/\/\d+(\.?\d+)*$/, "/latest"); // version at end of path (product index)
 };
 
 const configureLegacyRedirects = ({
@@ -307,7 +307,7 @@ const configureLegacyRedirects = ({
 
 const readFile = (filePath) =>
   new Promise(function (resolve, reject) {
-    fs.readFile(filePath, 'utf8', function (err, data) {
+    fs.readFile(filePath, "utf8", function (err, data) {
       err ? reject(err) : resolve(data);
     });
   });

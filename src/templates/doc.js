@@ -1,7 +1,7 @@
-import React from 'react';
-import { Container, Row, Col, Dropdown, DropdownButton } from 'react-bootstrap';
-import { graphql, Link } from 'gatsby';
-import { MDXRenderer } from 'gatsby-plugin-mdx';
+import React from "react";
+import { Container, Row, Col, Dropdown, DropdownButton } from "react-bootstrap";
+import { graphql, Link } from "gatsby";
+import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   CardDecks,
   DevOnly,
@@ -14,9 +14,9 @@ import {
   SideNavigation,
   TableOfContents,
   TopBar,
-} from '../components';
-import { products } from '../constants/products';
-import Icon from '../components/icon';
+} from "../components";
+import { products } from "../constants/products";
+import Icon from "../components/icon";
 
 export const query = graphql`
   query($nodeId: String!, $potentialLatestNodePath: String) {
@@ -36,20 +36,20 @@ export const query = graphql`
 `;
 
 const getProductUrlBase = (path) => {
-  return path.split('/').slice(0, 2).join('/');
+  return path.split("/").slice(0, 2).join("/");
 };
 
 const getProductAndVersion = (path) => {
   return {
-    product: path.split('/')[1],
-    version: path.split('/')[2],
+    product: path.split("/")[1],
+    version: path.split("/")[2],
   };
 };
 
 const makeVersionArray = (versions, path) => {
   return versions.map((version, i) => ({
     version: version,
-    url: `${getProductUrlBase(path)}/${i === 0 ? 'latest' : version}`,
+    url: `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
   }));
 };
 
@@ -91,10 +91,9 @@ const ContentRow = ({ children }) => (
 const findDescendent = (root, predicate) => {
   if (predicate(root)) return root;
 
-  for (let node of root.items)
-  {
+  for (let node of root.items) {
     const result = findDescendent(node, predicate);
-    if (result) return result;    
+    if (result) return result;
   }
   return null;
 };
@@ -104,7 +103,6 @@ const getCards = (node, searchDepth) => {
     fields: {
       path: node.path,
       depth: node.depth,
-
     },
     frontmatter: {
       navTitle: node.navTitle,
@@ -113,15 +111,18 @@ const getCards = (node, searchDepth) => {
       iconName: node.iconName,
       interactive: node.interactive,
     },
-    children: searchDepth && node.items ? node.items.map(n => getCards(n, searchDepth-1)) : [],
+    children:
+      searchDepth && node.items
+        ? node.items.map((n) => getCards(n, searchDepth - 1))
+        : [],
   };
   return card;
 };
 
 const TileModes = {
-  None: 'none',
-  Simple: 'simple',
-  Full: 'full',
+  None: "none",
+  Simple: "simple",
+  Full: "full",
 };
 const Tiles = ({ mode, node }) => {
   if (!node || !node.items) return null;
@@ -133,7 +134,7 @@ const Tiles = ({ mode, node }) => {
   }
 
   if (Object.values(TileModes).includes(mode)) {
-    const tiles = node.items.map(n => getCards(n, mode === 'simple' ? 0 : 1));
+    const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
 
     return <CardDecks cards={tiles} cardType={mode} />;
   }
@@ -195,14 +196,14 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     }
   >
     <Dropdown.Item
-      href={githubIssuesLink + '&template=documentation-feedback.md'}
+      href={githubIssuesLink + "&template=documentation-feedback.md"}
       target="_blank"
       rel="noreferrer"
     >
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={githubIssuesLink + '&template=product-feedback.md&labels=feedback'}
+      href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
       target="_blank"
       rel="noreferrer"
     >
@@ -225,16 +226,12 @@ const DocTemplate = ({ data, pageContext }) => {
     navTree,
     prevNext,
   } = pageContext;
-  const navRoot = findDescendent(navTree, n => n.path === path);
+  const navRoot = findDescendent(navTree, (n) => n.path === path);
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
 
-  const {
-    iconName,
-    description,
-    indexCards
-  } = frontmatter;
-  
+  const { iconName, description, indexCards } = frontmatter;
+
   const sections = depth === 2 ? buildSections(navTree) : null;
 
   let title = frontmatter.title;
@@ -277,14 +274,14 @@ const DocTemplate = ({ data, pageContext }) => {
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
-              {frontmatter.title}{' '}
+              {frontmatter.title}{" "}
               <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
                 v{version}
               </span>
             </h1>
             <div className="d-flex">
               <a
-                href={githubEditLink || '#'}
+                href={githubEditLink || "#"}
                 className="btn btn-sm btn-primary px-4 text-nowrap"
               >
                 Edit this page
