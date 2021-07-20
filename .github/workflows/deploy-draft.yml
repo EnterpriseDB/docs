@@ -13,8 +13,8 @@ jobs:
     - name: inject slug/short variables
       uses: rlespinasse/github-slug-action@v3.x
 
-    - name: set STAGE variable in environment for next steps
-      run: echo "STAGE=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
+    - name: compose a name for the build environment
+      run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
 
     - name: create a github deployment
       uses: bobheadxi/deployments@v0.5.2
@@ -22,7 +22,7 @@ jobs:
       with:
         step: start
         token: ${{ secrets.GITHUB_TOKEN }}
-        env: ${{ env.STAGE }}
+        env: ${{ env.BUILD_ENV_NAME }}
         ref: ${{ github.head_ref }}
         
     - uses: actions/checkout@v2
@@ -35,10 +35,8 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: '14.x'
-    - name: Install yarn
-      run: sudo npm -g install yarn
     - name: Yarn install
-      run: yarn install --immutable
+      run: npx yarn install --immutable
       env:
         NODE_ENV: ${{ secrets.NODE_ENV }}
 
@@ -66,14 +64,18 @@ jobs:
         ALGOLIA_INDEX_NAME: edb-docs-staging
         INDEX_ON_BUILD: false
 
-    - name: Netlify deploy
-      run: |
-        sudo yarn global add netlify-cli
-        netlify deploy --dir=public --json | tee deploy_results.json
-        echo "NETLIFY_DRAFT_URL=`jq -r '.deploy_url' deploy_results.json`" >> $GITHUB_ENV
+    - name: Deploy to Netlify
+      id: netlify-deploy
+      uses: nwtgck/actions-netlify@v1.2.2
+      with:
+        publish-dir: './public'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        deploy-message: "Deploy from GitHub Actions"
+        alias: ${{ github.head_ref }}
+        github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}        
 
     - name: update the github deployment status
       uses: bobheadxi/deployments@v0.5.2
@@ -83,4 +85,4 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         status: ${{ job.status }}
         deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-        env_url: ${{ env.NETLIFY_DRAFT_URL }}
+        env_url: ${{ steps.netlify-deploy.outputs.deploy-url }}
