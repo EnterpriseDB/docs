@@ -24,27 +24,11 @@ availability by using a connection string with multiple hosts.
 Failover Manager with PgBouncer in Cloud
 ----------------------------------------
 
-For a cloud setup, you can use NLB (Network Load Balancer) in place of
-VIP to provide high availability.
+For a cloud setup, use a NLB (Network Load Balancer) to balance the traffic on both instances of PgBouncer.
 
 ![Failover Manager with PgBouncer cloud architecture diagram](images/efm_with_pgbouncer_on_cloud.png)
 
 <div style="text-align: center">Figure 4: Failover Manager's traffic routing using PgBouncer in cloud</div>
-
-
-Using Failover Manager with PgBouncer
--------------------------------------
-
-### Installing
-
-Install and configure Advanced Server database, Failover Manager, and PgBouncer on AWS Virtual Machines as following:
-
- 
-   Systems            | Components
-  --------------------| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  PgDB srv 1, 2, 3    | Primary / standby node running Advanced Server 13 and Failover Manager 4.2
-  PgBouncer srv 1, 2  | PgBouncer node running PgBouncer 1.15. These 2 nodes should be registered as targets in the Target Group. Note that there could be more, but 2 is the minimum, and is sufficient for most cases.
-  
 
 Note that for multiple reasons EDB does not support this architecture
 with PgBouncer and Failover Manager/PostgreSQL running on the same
@@ -61,6 +45,21 @@ machines:
 
 -   A master failure would impact both routing (PgBouncer) and Database
     when these two components are combined on the same machines.
+
+
+Using Failover Manager with PgBouncer
+-------------------------------------
+
+### Installing
+
+Install and configure Advanced Server database, Failover Manager, and PgBouncer on AWS Virtual Machines as following:
+
+ 
+   Systems            | Components
+  --------------------| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  PgDB srv 1, 2, 3    | Primary / standby node running Advanced Server 13 and Failover Manager 4.2
+  PgBouncer srv 1, 2  | PgBouncer node running PgBouncer 1.15. These 2 nodes should be registered as targets in the Target Group. Note that there could be more, but 2 is the minimum, and is sufficient for most cases.
+  
 
 ### Configuring Failover Manager
 
@@ -98,9 +97,11 @@ executable by the `efm` user, and should have the following contents:
 ``` text
     script.load.balancer.attach=/usr/edb/efm-4.2/bin/efm_pgbouncer_functions attach %h <pgbs1>,<pgbs2>
 ```
-Where *pgbs1* is the hostname or IP address for PgBouncer server 1, and *pgbs2* is the hostname or IP address for PgBouncer server 2.
+Where `<pgbs1>` is the hostname or IP address for PgBouncer server 1, and `<pgbs2>` is the hostname or IP address for PgBouncer server 2.
 
+### Configuring PostgreSQL
 
+During normal operation, traffic is balanced across both PgBouncer instances, and both will open connections to PostgreSQL. Therefore make sure that in PostgreSQL the max_connections parameter is compensated to accept enough connections from both instances.
 
 ### Configuring PgBouncer
 
@@ -156,10 +157,8 @@ user/group/other (0755). The script should have the following content:
 
 ### Configuring passwordless ssh
 
-For the PgBouncer integration, passwordless `ssh` access is required.
-There are multiple ways to configure this setting. Follow your
-organization's recommended process to configure the passwordless `ssh`.
-The following is an example of the process to configure passwordless `ssh`.
+For the PgBouncer integration, passwordless `ssh` access is required. There are multiple ways to configure `ssh`. We recommend that you follow your organization's recommended process to configure the passwordless `ssh`. For a quick start, you can also follow this example for configuring passwordless `ssh`.
+
 
 #### Configuring on PgBouncer hosts
 
@@ -167,9 +166,10 @@ The following is an example of the process to configure passwordless `ssh`.
     the temporary password twice.
 
 2.  Make sure that Passwordless `ssh` is enabled. You can check with the following command:
-``` text 
-    grep ^PasswordAuthentication /etc/ssh/sshd_config
-```
+    ``` text 
+        grep ^PasswordAuthentication /etc/ssh/sshd_config
+    ```
+    
     Make sure it is set to `yes`. If needed, change and restart `ssh`.
 
 #### Configuring on Failover Manager/PostgreSQL hosts
@@ -177,24 +177,24 @@ The following is an example of the process to configure passwordless `ssh`.
 On every Failover Manager/postgres host, as the efm user:
 
 1.  Run the following command:
-``` text 
-    ssh-keygen -P "" -f ~/.ssh/id_rsa
-```
+    ``` text 
+        ssh-keygen -P "" -f ~/.ssh/id_rsa
+    ```
 2.  For every PgBouncer host, copy the `ssh` key with the following command:
-``` text 
-    ssh-copy-id enterprisedb@pgbouncerhost
-```
- Note:- The default home directory for the `enterprisedb` user is  `/var/lib/edb`. If this directory is not already present, create the
+    ``` text 
+        ssh-copy-id enterprisedb@<pgbouncerhost>
+    ```
+ Note that the default home directory for the `enterprisedb` user is  `/var/lib/edb`. If this directory is not already present, create the
  directory manually. As a `sudo` user, run the following commands on each PgBouncer host:
-``` text 
-    mkdir -p /var/lib/edb
-    chown -R enterprisedb:enterprisedb /var/lib/edb
-```
+    ``` text 
+        mkdir -p /var/lib/edb
+        chown -R enterprisedb:enterprisedb /var/lib/edb
+    ```
 
 #### Resetting temporary passwords on PgBouncer hosts
 
 You can reset the temporary password for the enterprisedb user on every
-PgBouncer host by running the following command as root:
+PgBouncer host by running the following command as `root`:
 ``` text
     passwd -d enterprisedb
 ```
