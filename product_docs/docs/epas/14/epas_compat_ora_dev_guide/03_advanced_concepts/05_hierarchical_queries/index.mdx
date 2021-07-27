@@ -16,8 +16,8 @@ The hierarchical relationship in a query is described by the `CONNECT BY` clause
 ```text
 SELECT <select_list> FROM <table_expression> [ WHERE ...]
   [ START WITH <start_expression> ]
-    CONNECT BY { PRIOR <parent_expr> = <child_expr> |
-      <child_expr> = PRIOR <parent_expr> }
+    { CONNECT BY [ NOCYCLE ] <condition> [ START WITH <condition> ] |
+      START WITH <condition> CONNECT BY [ NOCYCLE ] <condition> }
   [ ORDER SIBLINGS BY <column1> [ ASC | DESC ]
       [, <column2> [ ASC | DESC ] ] ...
   [ GROUP BY ...]
@@ -27,29 +27,25 @@ SELECT <select_list> FROM <table_expression> [ WHERE ...]
 
 `select_list` is one or more expressions that comprise the fields of the result set. `table_expression` is one or more tables or views from which the rows of the result set originate. `other` is any additional legal `SELECT` command clauses. 
 
-If a table contains the result set in a hierarchical order, then you can select rows using the hierarchical query clause:
-
-```text
-{ CONNECT BY <condition> }
-```
-
 `CONNECT BY` specifies the relationship between a parent record and its child records of the hierarchy. 
 
--  At least one expression in the `CONNECT BY` clause must be qualified with the `PRIOR` operator in a hierarchical query. For example:
+-  The `PRIOR` keyword can be specified with only one expression within a condition in the `CONNECT BY` clause. It must be specified with either right or left expression to refer to a parent row in a hierarchical query. For example:
 
-```text
-PRIOR expr = expr
-or
-expr = PRIOR expr
-```
+   ```text
+   PRIOR expr = expr
+   or
+   expr = PRIOR expr
+   ```
 
 -  If the `CONNECT BY condition` is compound, only one condition requires the `PRIOR` operator, although there can be multiple `PRIOR` conditions.
 
--  The `PRIOR` keyword can be on either side of the operator.
+-  `PRIOR` keyword can be used to evaluate the parent row in a parent-child relationship in a hierarchical query. `PRIOR` takes the same precedence as `+` and `-` operators.
 
--  `PRIOR` is a unary operator that can be used to evaluate the parent row in a parent-child relationship in a hierarchical query. `PRIOR` takes the same precedence as `+` and `-` operators.
+-  `PRIOR` keyword cannot be used with unary expressions.
 
--  `CURRVAL` and `NEXTVAL` are not valid `PRIOR` expressions; therefore `PRIOR` expression cannot refer to a sequence.
+-  `PRIOR` keyword can be used to add a pseudo-column for each record corresponding to an expression in a target list. The pseudo-column represents a parent record's actual value when referenced in a child query using `PRIOR` expression.
+
+-  The `NOCYCLE` keyword can be used with or without the `CONNECT_BY_ISCYCLE` pseudo-column which, shows if the current row contains a cycle. The possible values for `CONNECT_BY_ISCYCLE` pseudo-column is either 0 or 1; returns 1 when a loop is detected in the `CONNECT BY` query, otherwise returns 0.
 
 You can further enhance the functionality of the `CONNECT BY [PRIOR]` condition by using the `CONNECT_BY_ROOT` operator. This operator returns not only immediate parent rows but also all ancestors rows in the hierarchy. For more information, see [Retrieving the Root Node with CONNECT_BY_ROOT](../05_hierarchical_queries/06_retrieving_the_root_node_with_connect_by_root/#retrieving_the_root_node_with_connect_by_root).
 
@@ -58,7 +54,7 @@ You can further enhance the functionality of the `CONNECT BY [PRIOR]` condition 
 The following example uses the `CONNECT BY` clause with `PRIOR` to define a relationship between employees and managers. Using the `LEVEL` value, the employee names are indented to further emphasize the depth in the hierarchy of each row.
 
 ```text
-SELECT LPAD(ename,length(ename)+2 *(LEVEL - 1),' ') as employee, empno, mgr, LEVEL 
+SELECT LPAD(ename,length(ename)+2 *(LEVEL - 1),' ') AS employee, empno, mgr, LEVEL 
 FROM emp 
 CONNECT BY PRIOR empno = mgr AND PRIOR emp.deptno = emp.deptno;
 ```
@@ -99,10 +95,10 @@ employee    | empno | mgr  | level
 (28 rows)
 ```
 
-The following example adds `ORDER BY` clause and `AND` operator with `CONNECT BY` clause to show employee and manager hierarchy.
+The following example adds the `ORDER BY` clause and a compound condition with `AND` operator in `CONNECT BY` clause to show employee and manager hierarchy.
 
 ```text
-SELECT LPAD(ename,length(ename)+2 *(LEVEL - 1),' ') as employee, empno, mgr, LEVEL
+SELECT LPAD(ename,length(ename)+2 *(LEVEL - 1),' ') AS employee, empno, mgr, LEVEL
 FROM emp
 CONNECT BY PRIOR empno = mgr AND LEVEL <= 3
 ORDER BY LEVEL, ename;
@@ -151,6 +147,91 @@ employee    | empno | mgr  | level
      TURNER |  7844 | 7698 |     3
      WARD   |  7521 | 7698 |     3
 (37 rows)
+```
+
+The following example uses the `PRIOR` keyword to return the employee name and manager name for each employee.
+
+```text
+SELECT ename, PRIOR ename AS mgr FROM emp START WITH mgr 
+IS NULL CONNECT BY PRIOR empno = mgr ORDER BY ename;
+```
+
+The output from this query follows.
+
+```text
+ename   |  mgr  
+--------+-------
+ ADAMS  | SCOTT
+ ALLEN  | BLAKE
+ BLAKE  | KING
+ CLARK  | KING
+ FORD   | JONES
+ JAMES  | BLAKE
+ JONES  | KING
+ KING   | 
+ MARTIN | BLAKE
+ MILLER | CLARK
+ SCOTT  | JONES
+ SMITH  | FORD
+ TURNER | BLAKE
+ WARD   | BLAKE
+(14 rows)
+```
+
+The following example uses the `NOCYCLE` keyword with `CONNECT BY` clause to return rows that contain the cycle. The `CONNECT_BY_ISCYCLE` shows which rows have the cycle.
+
+```text
+SELECT LPAD(ename,length(ename)+2 *(LEVEL - 1),' ') AS employee, empno, mgr, LEVEL, CONNECT_BY_ISCYCLE
+FROM emp
+CONNECT BY NOCYCLE PRIOR empno = mgr
+ORDER BY LEVEL, empno;
+```
+
+The output from this query follows.
+
+```text
+employee     | empno | mgr  | level | connect_by_iscycle 
+-------------+-------+------+-------+--------------------
+ SMITH       |  7369 | 7902 |     1 |                  0
+ ALLEN       |  7499 | 7698 |     1 |                  0
+ WARD        |  7521 | 7698 |     1 |                  0
+ JONES       |  7566 | 7839 |     1 |                  0
+ MARTIN      |  7654 | 7698 |     1 |                  0
+ BLAKE       |  7698 | 7839 |     1 |                  0
+ CLARK       |  7782 | 7839 |     1 |                  0
+ SCOTT       |  7788 | 7566 |     1 |                  0
+ KING        |  7839 |      |     1 |                  0
+ TURNER      |  7844 | 7698 |     1 |                  0
+ ADAMS       |  7876 | 7788 |     1 |                  0
+ JAMES       |  7900 | 7698 |     1 |                  0
+ FORD        |  7902 | 7566 |     1 |                  0
+ MILLER      |  7934 | 7782 |     1 |                  0
+   SMITH     |  7369 | 7902 |     2 |                  0
+   ALLEN     |  7499 | 7698 |     2 |                  0
+   WARD      |  7521 | 7698 |     2 |                  0
+   JONES     |  7566 | 7839 |     2 |                  0
+   MARTIN    |  7654 | 7698 |     2 |                  0
+   BLAKE     |  7698 | 7839 |     2 |                  0
+   CLARK     |  7782 | 7839 |     2 |                  0
+   SCOTT     |  7788 | 7566 |     2 |                  0
+   TURNER    |  7844 | 7698 |     2 |                  0
+   ADAMS     |  7876 | 7788 |     2 |                  0
+   JAMES     |  7900 | 7698 |     2 |                  0
+   FORD      |  7902 | 7566 |     2 |                  0
+   MILLER    |  7934 | 7782 |     2 |                  0
+     SMITH   |  7369 | 7902 |     3 |                  0
+     ALLEN   |  7499 | 7698 |     3 |                  0
+     WARD    |  7521 | 7698 |     3 |                  0
+     MARTIN  |  7654 | 7698 |     3 |                  0
+     SCOTT   |  7788 | 7566 |     3 |                  0
+     TURNER  |  7844 | 7698 |     3 |                  0
+     ADAMS   |  7876 | 7788 |     3 |                  0
+     JAMES   |  7900 | 7698 |     3 |                  0
+     FORD    |  7902 | 7566 |     3 |                  0
+     MILLER  |  7934 | 7782 |     3 |                  0
+       SMITH |  7369 | 7902 |     4 |                  0
+       ADAMS |  7876 | 7788 |     4 |                  0
+(39 rows)
 ```
 
 The following example uses `CONNECT BY` clause with an optional `PRIOR` statement to show the level value.
