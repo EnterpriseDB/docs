@@ -43,6 +43,7 @@ const gitData = (() => {
   }
   if (!branch)
     branch = process.env.APP_ENV === "production" ? "main" : "develop";
+  if (!sha) sha = "";
 
   branch = branch
     .trim()
