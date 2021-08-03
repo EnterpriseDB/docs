@@ -26,8 +26,33 @@ const {
   writeFile,
 } = require("./src/constants/gatsby-utils.js");
 
-const isBuild = process.env.NODE_ENV === "production";
-const isProduction = process.env.APP_ENV === "production";
+const gitData = (() => {
+  // if this build was triggered by a GH action in response to a PR,
+  // use the head ref (the branch that someone is requesting be merged)
+  let branch = process.env.GITHUB_HEAD_REF;
+  // if this process was otherwise triggered by a GH action, use the current branch name
+  if (!branch) branch = process.env.GITHUB_REF;
+  // assuming this is triggered by a GH action, this will be the commit that triggered the workflow
+  let sha = process.env.GITHUB_SHA;
+  // non-GH Action build? Try actually running Git for the name & sha...
+  if (!branch) {
+    try {
+      branch = execSync("git rev-parse --abbrev-ref HEAD").toString();
+      sha = execSync("git rev-parse HEAD").toString();
+    } catch {}
+  }
+  if (!branch)
+    branch = process.env.APP_ENV === "production" ? "main" : "develop";
+  if (!sha) sha = "";
+
+  branch = branch
+    .trim()
+    .replace(/^refs\/heads\//, "")
+    .replace(/^refs\/tags\//, "");
+  sha = sha.trim();
+
+  return { branch, sha };
+})();
 
 exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
@@ -239,7 +264,8 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
 
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const docsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  const branch = isProduction ? "main" : "develop";
+  // don't encourage folks to edit on main - set the edit links to develop in production builds
+  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
@@ -298,7 +324,8 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   );
 
   const advocacyDocsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  const branch = isProduction ? "main" : "develop";
+  // don't encourage folks to edit on main - set the edit links to develop in production builds
+  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
@@ -374,21 +401,6 @@ exports.sourceNodes = async ({
   createContentDigest,
 }) => {
   // create edb-git node
-  const sha = (
-    await new Promise((resolve, reject) => {
-      exec("git rev-parse HEAD", (error, stdout, stderr) => resolve(stdout));
-    })
-  ).trim();
-
-  const branch = (
-    await new Promise((resolve, reject) => {
-      exec("git branch --show-current", (error, stdout, stderr) =>
-        resolve(stdout),
-      );
-    })
-  ).trim();
-
-  const gitData = { sha, branch };
   createNode({
     ...gitData,
     id: createNodeId("edb-git"),
