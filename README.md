@@ -10,7 +10,7 @@ This repo contains the React/Gatsby application that powers [the EDB Docs websit
 
 We've been checking PDF files into Git. That's not a good plan, so [we've stopped doing that](https://github.com/EnterpriseDB/docs/issues/1632). The next step is to remove these files from Git history and [move other large files to LFS](https://docs.github.com/en/github/managing-large-files/versioning-large-files/moving-a-file-in-your-repository-to-git-large-file-storage). Among many other good things, that ought to reduce the time to clone this repository substantially.
 
-But it comes at a cost. If there are any local repositories that were cloned before the change, we risk introducing dirty history back into the repository. So we're asking that everyone who has a local repository they **cloned before (or on) August 6, 2021** to delete those repositories. Unfortunately, we'll need to reject any pull requests that introduce PDF files back into Git history. (If you need any help with this, please contact jon.ericson@enterprisedb.com .)
+But it comes at a cost. If there are any local repositories that were cloned before the change, we risk introducing dirty history back into the repository. So we're asking that everyone who has a local repository they **cloned before (or on) August 6, 2021** to delete those repositories. Unfortunately, we'll need to reject any pull requests that introduce PDF files back into Git history. (If you need any help with this, please contact jon.ericson@enterprisedb.com.)
 
 ## MacOS Installation
 
