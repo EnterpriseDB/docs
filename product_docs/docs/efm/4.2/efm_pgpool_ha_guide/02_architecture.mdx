@@ -1,28 +1,56 @@
 ---
-title: "Architecture"
+title: "Supported architectures for HA with Failover Manager"
 ---
 
-![A typical EFM and Pgpool configuration](images/edb_ha_architecture.png)
+For ensuring the high availability of your database, core features of Failover Manager can be combined with the Postgres connection libraries (client connect failover) and/or connection poolers.
 
-The sample architecture diagram shows four nodes as described in the table below:
+With the capabilities of Failover Manager, EDB has designed four basic
+architectures to run a High availability environment:
 
-| **Systems**                     | **Components**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Primary Pgpool/EFM witness node | The Primary Pgpool node will only run Pgpool, and EFM witness, as such leaving as much resources available to Pgpool as possible. During normal runmode (no Pgpool Failovers), the Primary Pgpool node has attached the Virtual IP address, and all applications connect through the Virtual IP address to Pgpool. Pgpool will forward all write traffic to the Primary Database node, and will balance all read across all Standby nodes.On the Primary Pgpool node, the EFM witness process ensures that a minimum quota of three EFM agents remains available even if one of the database nodes fails. Some examples are when a node is already unavailable due to maintenance, or failure, and another failure occurs. |
-| Primary Database node           | The Primary Database node will only run Postgres (Primary)and EFM, leaving all resources to Postgres. Read/Write traffic (i.e., INSERT, UPDATE, DELETE) is forwarded to this node by the Primary Pgpool node.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Standby nodes                   | The Standby nodes are running Postgres (Standby), EFM and an inactive Pgpool process. In case of a Primary database failure, EFM will promote Postgres on one of these Standby nodes to handle read-write traffic. In case of a Primary Pgpool failure, the Pgpool watchdog will activate Pgpool on one of the Standby nodes which will attach the VIP, and handle the forwarding of the application connections to the Database nodes. Note that in a double failure situation (both the Primary Pgpool node and the Primary Database node are in failure), both of these Primary processes might end up on the same node.                                                                                                |
+1. [Failover Manager using VIP (virtual IP)](03_efm_vip): Failover Manager has a key
+capability to manage VIP addresses out of the box. VIP addresses
+allow applications to connect to a single IP address, which is being
+routed to the Primary database server. This architecture is the most
+basic solution to run when VIP addresses are available in your
+environment.
 
-This architecture:
+2. [Failover Manager using client connect failover](04_efm_client_connect_failover):
+PostgreSQL client libraries like libpq and jdbc allow for Client
+Connection Failover. With Client Connection failover, the connection
+string will contain multiple servers (host=srv1,srv2), and the
+client library will loop over the available hosts to find a
+connection that is available and capable of Read/Write operations.
+This capability allows clients to follow the master during a
+switchover. This solution does not rely on Virtual IP addresses and
+can be used in every environment where such client configurations
+can be set.
 
--   Achieves high availability by providing two Standbys that can be promoted in case of a Primary Postgres node failure.
--   Achieves high availability by providing at least three Pgpool processes in a watchdog configuration.
--   Increases performance with mixed and read-intensive workloads by introducing increased read scalability with more than one Standby for load balancing.
--   Reduces load on the Primary database node by redirecting read-only traffic with the Primary pgpool node.
--   Prevents resource contention between Pgpool and Postgres on the Primary Database node. By not running Pgpool on the Primary database node, the Primary Postgres process can utilize as much resources as possible.
--   Prevents resource contention between pgpool and Postgres on the Primary Pgpool node. By not running Standby databases on the Primary Pgpool node, Pgpool can utilize as many resources as possible.
--   Optionally, synchronous replication can be set up to achieve near-zero data loss in a failure event.
+3. [Failover Manager with PgBouncer](05_efm_pgbouncer): PgBouncer adds a lot of capabilities such as connection pooling and the option to halt traffic. It can additionally be used as a proxy between the Client and the Postgres Database Server. By leveraging the integration options in Failover Manager to run reconfiguration of PgBouncer during a
+Failover, PgBouncer can be used to route the traffic to the correct
+primary database server.
 
-!!! Note
-    The architecture also allows us to completely separate 3 virtual machines running Postgres from 3 virtual machines running Pgpool. This kind of setup requires 2 extra virtual machines, but it is a better choice if you want to prevent resource contention between Pgpool and Postgres in Failover scenarios. In this setup, the architecture can run without an extra 7th node running the EFM Witness Process. To increase failure resolution efm witness agents could be deployed on the Pgpool servers.
+4. [Failover Manager with Pgpool](06_efm_pgpool): Pgpool-II is
+another tool that is used as a proxy between the Client and the
+Postgres Database Server. Pgpool-II adds a lot of capabilities such
+as running in cluster mode with a Watchdog, managing VIP's, and
+Read-Only scalability. Failover Manager has native capabilities to
+integrate with Pgpool-II to redirect traffic to another primary
+during Database failover overations.
 
-![Deployment of EFM and Pgpool on separate virtual machines](images/edb_ha_architecture_separate_VM.png)
+The following is a list of features that are supported in each of the
+architectures:
+
+**Client Connect Failover**
+
+|Features | EFM with VIP | EFM with client connect failover | EFM with with PgBouncer | EFM with with Pgpool |
+|---------------------------------------- | ----------------------- | ----------------------------------------- | ----------------------- | ---------------------|
+|Connection pooling | | | Yes | Yes |
+|Runs on cloud (no VIP) | | Yes | Yes | Yes |
+|Halt traffic option | | | Yes | |
+|Read-only scalability | | Yes (using multiple connection factories) | | Yes |
+|Clustered proxy | | | | Yes |
+|Proxy integration | | | ssh | PCP |
+|Minimum servers required | 3 | 3 | 5 | 6 |
+|Complexity | Low | Low | Medium | High |
+|Network hops | 1 | 1 | | |
+|Failover duration | Low | Medium | Low | Low |
