@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Container, Navbar } from "react-bootstrap";
 import algoliasearch from "algoliasearch/lite";
 import { InstantSearch, Configure } from "react-instantsearch-dom";
-import { Footer, Layout, SideNavigation, TopBar } from "../components";
+import { Footer, Layout, SideNavigation } from "../components";
 import {
   AdvancedSearchFiltering,
   AdvancedSearchResults,
@@ -31,7 +31,6 @@ const Search = (data) => {
 
   return (
     <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}
