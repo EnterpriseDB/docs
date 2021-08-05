@@ -231,21 +231,6 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/GuideTemplate">
               Guide Template
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesGuide">
-              Thales Guide
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/LiquibaseGuide">
-              Liquibase Guide
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
-              Nutanix Guide
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/Swarm64Guide">
-              Swarm64 Guide
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/RepostorGuide">
-              Repostor Guide
-            </IndexCardLink>
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Connectors
             </span>
@@ -265,6 +250,31 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
             <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard
+            iconName={iconNames.HANDSHAKE}
+            headingText="Third Party Integrations"
+          >
+            <IndexCardLink to="/partner_docs/ThalesGuide">
+              Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
+
+            <IndexCardLink to="/partner_docs/LiquibaseGuide">
+              Liquibase Pro
+            </IndexCardLink>
+
+            <IndexCardLink to="/partner_docs/NutanixGuide">
+              Nutanix AHV
+            </IndexCardLink>
+
+            <IndexCardLink to="/partner_docs/Swarm64Guide">
+              Swarm64 DA
+            </IndexCardLink>
+
+            <IndexCardLink to="/partner_docs/Swarm64Guide">
+              Repostor Data Protector for PostgreSQL
+            </IndexCardLink>
           </IndexCard>
         </div>
 
