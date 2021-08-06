@@ -16,20 +16,20 @@ A service is a program that runs in the background and requires no user interact
 
 The following table lists the names of the services that control Advanced Server and services that control Advanced Server supporting components:
 
-| Advanced Server Component Name | Linux Service Name       | Debian Service Name        |
-| ------------------------------ | ------------------------ | -------------------------- |
-| Advanced Server                | edb-as-10                | edb-as@10-main             |
-| pgAgent                        | edb-pgagent-10           | edb-as10-pgagent           |
-| PgBouncer                      | edb-pgbouncer-1.14       | edb-pgbouncer114           |
-| pgPool-II                      | edb-pgpool-4.1           | edb-pgpool41               |
-| Slony                          | edb-slony-replication-10 | edb-as10-slony-replication |
-| EFM                            | edb-efm-4.0              | edb-efm-4.0                |
+| Advanced Server Component Name | Linux Service Name       | 
+| ------------------------------ | ------------------------ | 
+| Advanced Server                | edb-as-10                | 
+| Infinite Cache                 | edb-icache               |
+| pgAgent                        | edb-pgagent-10           | 
+| PgBouncer                      | edb-pgbouncer-1.7        | 
+| pgPool-II                      | edb-pgpool-3.5           | 
+| Slony                          | edb-slony-replication-10 | 
 
-You can use the Linux command line to control Advanced Server's database server and the services of Advanced Server's supporting components. The commands that control the Advanced Server service on a Linux platform are host specific.
+Advanced Server's database server, and the services of Advanced Server's supporting components can be controlled at the command line or through operating system-specific graphical interfaces.
 
-### Controlling a Service on CentOS or RHEL 7.x | 8.x
+### Controlling a Service on CentOS or RHEL 7.x 
 
-If your installation of Advanced Server resides on version 7.x | 8.x of RHEL and CentOS, you must use the `systemctl` command to control the Advanced Server service and supporting components.
+If your installation of Advanced Server resides on version 7.x of RHEL and CentOS, you must use the `systemctl` command to control the Advanced Server service and supporting components.
 
 The `systemctl` command must be in your search path and must be invoked with superuser privileges. To use the command, open a command line, and enter:
 
@@ -47,46 +47,6 @@ Where:
 -   `stop` to stop the service.
 -   `restart` to stop and then start the service.
 -   `status` to discover the current status of the service.
-
-### Controlling a Service on Debian 9.x or Ubuntu 18.04 
-
-By default, a server is running with the peer or md5 permission on a Debian or Ubuntu host. You can change the `auth_type` from `pg_hba.conf` file available under:
-
-  `vi /etc/edb-as/10/main/pg_hba.conf`
-
-Please note, all the server configuration files are available under `/etc/edb-as/10/main`. 
-
-If your installation of Advanced Server resides on version 9.x of Debian or 18.04 of Ubuntu, assume superuser privileges and invoke the following commands (using bundled scripts) to manage the service. Use the following commands to:
-
--   Discover the current status of a service:
-
-    ```text
-    /usr/bin/epas_ctlcluster 10 main status
-    ```
-
--   Stop a service:
-
-    ```text
-    /usr/bin/epas_ctlcluster 10 main stop
-    ```
-
--   Restart a service:
-
-    ```text
-    /usr/bin/epas_ctlcluster 10 main restart
-    ```
-
--   Reload a service:
-
-    ```text
-    /usr/bin/epas_ctlcluster 10 main reload
-    ```
-
--   Control the component services:
-
-    ```text
-    systemctl restart edb-as@10-main
-    ```
 
 ### Using pg_ctl to Control Advanced Server
 
@@ -114,6 +74,87 @@ For more information about using the `pg_ctl` utility, or the command line optio
 
 You can use the `pg_ctl` utility to manage the status of an Advanced Server cluster, but it is important to note that `pg_ctl` does not alert the operating system service controller to changes in the status of a server, so it is beneficial to use the `service` command whenever possible.
 
+Note that when you invoke the installer with the `--extract-only` option, the installer does not create a service, it merely unpacks the server. If you have installed Advanced Server by invoking the installer with the `--extract-only` option, you must use the `pg_ctl` command to control the server.
+
+### Using the edbstart and edbstop Utilities
+
+edbstart and edbstop functionality is supported only on Linux hosts that are running Advanced Server installations performed with the Interactive installer. RPM installations do not support edbstart and edbstop.
+
+While the autostart scripts created during an Advanced Server installation control a single database cluster, the edbstart and edbstop utilities can control multiple database clusters on the same host, with a single configuration file.
+
+The edbstart and edbstop utilities use a file named `edbtab` (described below) to determine which instances of Advanced Server should start when the operating system boots, and stop when the host is shut down.
+
+Before using the edbstart or edbstop utilities, you should disable the Advanced Server autostart scripts. The commands that disable the scripts are platform specific;
+
+-  On Fedora/Redhat:
+
+   ```text
+   chkconfig --level 2345 edb-as-10 off
+   ```
+
+-  On Debian/Ubuntu:
+
+   ```text
+   update-rc.d edb-as-10 disable
+   ```
+
+After stopping the Advanced Server service, use an editor to create a file named `edbtab` in the `/etc` directory; you can copy the sample file located in `/opt/edb/as10/scripts/server/autostart`.
+
+Edit the `edbtab` file, specifying which Advanced Server clusters that the edbstart and edbstop programs will control, and indicating if the cluster should be automatically started and stopped.
+
+Each `edbtab` file entry should take the form:
+
+```text
+edb_home directory:edb_data_directory:N|Y
+```
+
+`edb_home_directory`
+
+ `edb_home_directory` specifies the home directory of the Advanced Server installation that the edbstart/edbstop utilities will control.
+
+`edb_data_directory`
+
+ `edb_data_directory` specifies the data directory of the database cluster that the edbstart/edbstop utilities will control. `edb_data_directory` is the same as the value of `$PGDATA` for a specified cluster.
+
+`N|Y`
+
+ `Y` specifies that edbstart and edbstop should control the service; `N` specifies that the user will control the service manually.
+
+Include a separate entry in the `edbtab` file for each Advanced Server cluster that you wish to control with the edbstart and edbstop utilities.
+
+After editing the `edbtab` file, copy the `edb_autostart` script to `/etc/init.d`. By default, the `edb_autostart` script is located in `/opt/edb/as10/scripts/server/autostart`.
+
+Copy the edbstart and edbstop scripts to `$EDBHOME`. Make the scripts executable with the following command:
+
+```text
+chmod +x edbstart
+chmod +x edbstop
+chmod +x edbstart edbstop /etc/init.d/edb_autostart
+```
+
+Enable the `edb_autostart` service with the commands:
+
+```text
+chkconfig --level 2345 edb_autostart on
+chkconfig --add edb_autostart
+```
+
+For the service to take effect, you must restart your system.
+
+**Manually Controlling the Server with edbstart and edbstop**
+
+You can use edbstart and edbstop at the command line to manually control all of the clusters specified in the `edbtab` file, or to control an individual cluster. Call edbstart without an argument to start all of the clusters listed within the `edbtab` file; invoke edbstop without an argument to stop all of the clusters listed in the `edbtab` file. You can control an individual cluster by specifying the cluster's `data` directory as an argument. The following command starts a cluster:
+
+```text
+edbstart /opt/edb/as10/data
+```
+
+While the following command stops a cluster:
+
+```text
+edbstop /opt/edb/as10/data
+```
+
 ### Configuring Component Services to AutoStart at System Reboot
 
 After installing, configuring, and starting the services of Advanced Server supporting components on a Linux system, you must manually configure your system to autostart the service when your system reboots. To configure a service to autostart on a Linux system, open a command line, assume superuser privileges, and enter the following command.
@@ -124,13 +165,63 @@ On a Redhat-compatible Linux system, enter:
 /sbin/chkconfig <service_name> on
 ```
 
+On a Debian-compatible Linux system, use the command:
+
+```text
+/usr/sbin/update-rc.d service_name enable
+```
+
 Where `service_name` specifies the name of the service.
+
+## Setting Advanced Server Environment Variables
+
+The script sets the environment variables for your current shell session; when your shell session ends, the environment variables are destroyed. You may wish to invoke `pgplus_env` or `pg_env` from your system-wide shell startup script, so that environment variables are automatically defined for each shell session.
+
+The `pgplus_env` script is created during the Advanced Server installation process and reflects the choices made during installation. To invoke the script, open a command line and enter:
+
+```text
+source /opt/edb/as10/pgplus_env.sh
+```
+
+As the `pgplus_env.sh` script executes, it sets the following environment variables:
+
+```text
+export PATH=/opt/edb/as10/bin:$PATH
+export EDBHOME=/opt/edb/as10
+export PGDATA=/opt/edb/as10/data
+export PGDATABASE=edb
+# export PGUSER=enterprisedb
+export PGPORT=5444
+export PGLOCALEDIR=/opt/edb/as10/share/locale
+```
+
+If you have used an installer created by EnterpriseDB to install PostgreSQL, the `pg_env` script performs the same function. To invoke the `pg_env` script, open a command line, and enter:
+
+```text
+source /opt/PostgreSQL/10/pg_env.sh
+```
+
+As the `pg_env.sh` script executes, it sets the following environment variables:
+
+```text
+PATH=/home/opt/PostgreSQL/10/bin:$PATH
+PGDATA=/home/opt/PostgreSQL/10/data
+PGDATABASE=postgres
+PGUSER=postgres
+PGPORT=5432
+PGLOCALEDIR=/home/opt/PostgreSQL/10/share/locale
+MANPATH=$MANPATH:/home/opt/PostgreSQL/10/share/man
+```
 
 ## Connecting to Advanced Server with psql
 
-`psql` is a command line client application that allows you to execute SQL commands and view the results. To open the psql client, the client must be in your search path. The executable resides in the `bin` directory, under your Advanced Server installation.
+`psql` is a command line client application that allows you to execute SQL commands and view the results. To open the edb-psql client, the client must be in your search path. The executable resides in the `bin` directory, under your Advanced Server installation.
 
-Use the following command and options to start the psql client:
+```text
+/opt/edb/as10/bin/psql
+```
+
+Use the following command and command options to start the psql client:
 
 ```text
 psql -d edb -U enterprisedb
