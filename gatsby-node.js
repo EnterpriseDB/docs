@@ -54,23 +54,6 @@ const gitData = (() => {
   return { branch, sha };
 })();
 
-const currentBranchName = (() => {
-  // if this build was triggered by a GH action in response to a PR,
-  // use the head ref (the branch that someone is requesting be merged)
-  let branch = process.env.GITHUB_HEAD_REF;
-  // if this process was otherwise triggered by a GH action, use the current branch name
-  if (!branch) branch = process.env.GITHUB_REF;
-  // non-GH Action build? Try actually running Git for the name...
-  if (!branch) {
-    try {
-      branch = execSync("git rev-parse --abbrev-ref HEAD").toString();
-    } catch {}
-  }
-  if (!branch) branch = isProduction ? "main" : "develop";
-
-  return branch.replace(/^refs\/heads\//, "").replace(/^refs\/tags\//, "");
-})();
-
 exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
 
