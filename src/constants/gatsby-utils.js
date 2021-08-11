@@ -149,6 +149,8 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
     path: treeNode.path,
     navTitle: frontmatter?.navTitle,
     title: frontmatter?.title,
+    hideVersion: frontmatter?.hideVersion,
+    displayBanner: frontmatter?.displayBanner,
     depth: treeNode.mdxNode?.fields?.depth,
     iconName: frontmatter?.iconName,
     description: frontmatter?.description,
