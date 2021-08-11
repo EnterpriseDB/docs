@@ -17,6 +17,7 @@ import {
 } from "../components";
 import { products } from "../constants/products";
 import Icon from "../components/icon";
+import { createImportSpecifier } from "typescript";
 
 export const query = graphql`
   query($nodeId: String!, $potentialLatestNodePath: String) {
@@ -235,10 +236,10 @@ const DocTemplate = ({ data, pageContext }) => {
   const sections = depth === 2 ? buildSections(navTree) : null;
 
   let title = frontmatter.title;
-  if (depth === 2) {
+  if (depth === 2 && !navTree.hideVersion) {
     // product version root
     title += ` v${version}`;
-  } else if (depth > 2) {
+  } else if (depth > 2 && !navTree.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
@@ -269,15 +270,18 @@ const DocTemplate = ({ data, pageContext }) => {
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
           />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
-              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                v{version}
-              </span>
+              {!navTree.hideVersion && (
+                <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                  v{version}
+                </span>
+              )}
             </h1>
             <div className="d-flex">
               <a
@@ -289,6 +293,19 @@ const DocTemplate = ({ data, pageContext }) => {
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
             </div>
           </div>
+
+          {navTree.displayBanner === "edbcloud" ? (
+            <div class="alert alert-warning mt-3" role="alert">
+              EDB Cloud is currently in Preview mode. If you would like to sign
+              up, see{" "}
+              <a
+                className="pl-1 font-weight-bold"
+                href="https://resources.enterprisedb.com/postgres-database-as-a-service-dbaas-cloud-postgresql"
+              >
+                EDB Cloud Preview Signup.
+              </a>
+            </div>
+          ) : null}
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
