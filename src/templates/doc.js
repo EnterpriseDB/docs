@@ -292,7 +292,7 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
-          {frontmatter.displayBanner === "edbcloud" ? (
+          {navTree.displayBanner === "edbcloud" ? (
             <div class="alert alert-warning mt-3" role="alert">
               EDB Cloud is currently in Preview mode. If you would like to sign
               up, see{" "}

@@ -50,11 +50,11 @@ const SectionHeadingWithVersions = ({
         >
           {navTree.title}
         </Link>
-        {!hideVersion && versionArray.length > 1 ? (
+        {!navTree.hideVersion && versionArray.length > 1 ? (
           <div>
             <VersionDropdown versionArray={versionArray} path={path} />
           </div>
-        ) : !hideVersion ? (
+        ) : !navTree.hideVersion ? (
           <div className="text-muted">Version {versionArray[0].version}</div>
         ) : null}
       </div>
