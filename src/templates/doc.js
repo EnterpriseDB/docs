@@ -17,6 +17,7 @@ import {
 } from "../components";
 import { products } from "../constants/products";
 import Icon from "../components/icon";
+import { createImportSpecifier } from "typescript";
 
 export const query = graphql`
   query($nodeId: String!, $potentialLatestNodePath: String) {
@@ -290,6 +291,19 @@ const DocTemplate = ({ data, pageContext }) => {
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
             </div>
           </div>
+
+          {frontmatter.displayBanner === "edbcloud" ? (
+            <div class="alert alert-warning mt-3" role="alert">
+              EDB Cloud is currently in Preview mode. If you would like to sign
+              up, see{" "}
+              <a
+                className="pl-1 font-weight-bold"
+                href="https://resources.enterprisedb.com/postgres-database-as-a-service-dbaas-cloud-postgresql"
+              >
+                EDB Cloud Preview Signup.
+              </a>
+            </div>
+          ) : null}
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>

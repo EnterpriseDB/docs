@@ -126,6 +126,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               codelanguages
             }
             hideVersion
+            displayBanner
             directoryDefaults {
               description
               prevNext
