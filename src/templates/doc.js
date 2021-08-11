@@ -269,6 +269,7 @@ const DocTemplate = ({ data, pageContext }) => {
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
           />
         </SideNavigation>
         <MainContent>
