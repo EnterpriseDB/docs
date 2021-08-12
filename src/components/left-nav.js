@@ -33,6 +33,7 @@ const SectionHeadingWithVersions = ({
   path,
   versionArray,
   iconName,
+  hideVersion,
 }) => {
   return (
     <li className="ml-0 mb-4 d-flex align-items-center">
@@ -49,13 +50,13 @@ const SectionHeadingWithVersions = ({
         >
           {navTree.title}
         </Link>
-        {versionArray.length > 1 ? (
+        {!navTree.hideVersion && versionArray.length > 1 ? (
           <div>
             <VersionDropdown versionArray={versionArray} path={path} />
           </div>
-        ) : (
+        ) : !navTree.hideVersion ? (
           <div className="text-muted">Version {versionArray[0].version}</div>
-        )}
+        ) : null}
       </div>
     </li>
   );
@@ -68,6 +69,7 @@ const LeftNav = ({
   versionArray,
   iconName,
   hideEmptySections = false,
+  hideVersion = false,
 }) => {
   return (
     <ul className="list-unstyled mt-0">
@@ -78,6 +80,7 @@ const LeftNav = ({
           path={path}
           versionArray={versionArray}
           iconName={iconName}
+          hideVersion={hideVersion}
         />
       ) : (
         <SectionHeading navTree={navTree} path={path} iconName={iconName} />
