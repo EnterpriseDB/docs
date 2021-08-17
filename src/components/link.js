@@ -21,7 +21,7 @@ const stripPathPrefix = (path, pathPrefix) => {
 };
 
 const stripMarkdownExtension = (path) => {
-  return path.replace(/\.mdx?$/, "");
+  return path.replace(/\.mdx?(?=$|\?|#)/, "");
 };
 
 const isAbsoluteOrProtocolRelativeUrl = (url) => {
@@ -29,7 +29,7 @@ const isAbsoluteOrProtocolRelativeUrl = (url) => {
 };
 
 const hasNonMarkdownExtension = (url) => {
-  return url.match(/\.[a-zA-Z]+$/) && !url.match(/\.mdx?$/);
+  return url.match(/\.[a-zA-Z]+$/) && !url.match(/\.mdx?(?=$|\?|#)/);
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
