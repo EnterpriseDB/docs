@@ -127,14 +127,8 @@ const TileModes = {
 };
 const Tiles = ({ mode, node }) => {
   if (!node || !node.items) return null;
-  if (mode === TileModes.None) return null;
 
-  if (!mode) {
-    if (node.depth === 2) mode = TileModes.Full;
-    else if (node.depth >= 3) mode = TileModes.Simple;
-  }
-
-  if (Object.values(TileModes).includes(mode)) {
+  if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
     const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
 
     return <CardDecks cards={tiles} cardType={mode} />;
