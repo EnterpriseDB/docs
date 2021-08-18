@@ -228,9 +228,6 @@ const Page = () => (
             <IndexCardLink to="/mysql_data_adapter/latest">
               MySQL Foreign Data Wrapper
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/GuideTemplate">
-              Guide Template
-            </IndexCardLink>
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Connectors
             </span>
