@@ -1,0 +1,110 @@
+---
+title: "Configuring the New Tool"
+
+---
+
+This section draws a comparison between the three tools and shows how
+they differ in configuration (config file), and in scheduling. During a
+migration it is important to be aware of all of these differences, and
+apply changes as necessary.
+
+### How Features are Configured
+
+The following sections describes how to enable features in the different tools so you can easily compare the implementation details .
+
+-   [Postgres connection details](#postgres_conn_details)
+-   [Use of direct file copy mode (ssh or rsync) instead of pg_basebackup](#direct_file_copy_mode)
+-   [Incremental backups](#incremental_backup)
+-   [WAL archive compression](#wal_archive_compression)
+-   [Backup compression](#backup_compression)
+-   [Parallel backup and restore](#parallel_backup_restore)
+-   [Retention Policy](#retention_policy)
+-   [Configure repository location](#config_repo_location)
+
+<div id='postgres_conn_details' class='registered_link'></div>
+
+#### Postgres connection details
+
+
+|   Tool        |   Configuration                                         |
+|---------------|---------------------------------------------------------|
+| BART          | In the [SERVER] section of  the config file: <br/>[example]<br/>...<br/>`host = localhost`<br/>`user = postgres` <br/>`port = 5432`|
+| Barman        | In the config file: <br/> [example]<br/>...<br/>`conninfo = host=localhost user=postgres dbname=postgres`|
+| pgBackRest[^*]| In the config file: <br/> [example]<br/>...<br/>`pg1-host = localhost`<br/>`pg1-path = /var/lib/postgres/data`<br/>`pg1-user = postgres`<br/>`port = 5432`|
+
+ [^*] Specify pg1-path when pgBackRest is running locally, and specify pg1-host when pgBackRest is running remote
+<div id='direct_file_copy_mode' class='registered_link'></div>
+
+#### Use of direct file copy mode (ssh or rsync) instead of pg_basebackup
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | Increase threads >1 in the [SERVER] or [BART] section of the config file:<br/>[example]<br/>...<br/>`thread_count = 2`<br/>Or, as a commandline option<br/> `--no-pg_basebackup`|
+| Barman     | In the config file: <br/>[example]<br/>...<br/>`backup_method = rsync`|
+| pgBackRest | pgBackRest does not support pg_basebackup option|
+
+<div id='incremental_backup' class='registered_link'></div>
+
+#### Incremental backups
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | Retrieve the `backup_id` or `backup_name` for the parent:<br/>`bart SHOW-BACKUPS example`<br/>Now supply he `backup_id` or `backup_name` as parent:<br/>`bart BACKUP –s example --parent { backup_id \| backup_name }`|
+| Barman     | In the config file:<br/>[example]<br/>...<br/>`reuse_backup = link`<br/>Or, as a command line option:<br/>`--reuse-backup=link`|
+| pgBackRest | `pgbackrest --stanza=example --type=incr backup`|
+
+<div id='wal_archive_compression' class='registered_link'></div>
+
+#### WAL archive compression**
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | In the [SERVER] or [BART] section of  the config file: <br/> [example]<br/>...<br/>`wal_compression = enabled`|
+| Barman     | In the config file:<br/>[example]<br/>...<br/>`compression = gzip`|
+| pgBackRest | Global compress settings. Can be overloaded for [global:archive-push]|
+
+<div id='backup_compression' class='registered_link'></div>
+
+#### Backup compression
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | Command line option: <br/>`Enable: --gzip`<br/>`Level: --compress-level`|
+| Barman     | N/A|
+| pgBackRest | `compress=y`<br/>`compress-level=9`<br/>`compress-type=gz`<br/>`compress-level-network=3`|
+
+
+<div id='parallel_backup_restore' class='registered_link'></div>
+
+#### Parallel backup and restore
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | Set `thread_cound` in the [SERVER] or [BART] section of  the config file:<br/> [example]<br/>...<br/>`thread_count = 4`<br/>Or, as a Command line option<br/> `--thread-count=4`|
+| Barman     | Set `parallel_jobs` in the configfile:<br/>[example]<br/>...<br/>`parallel_jobs = 4`<br/>Or, as a command line option<br/> `--jobs 4`|
+| pgBackRest | Set `process-max` in the configfile:<br/>[example]<br/>...<br/>`process-max = 4`<br/>Or, as a command line option<br/> `--process-max=4`|
+
+
+<div id='retention_policy' class='registered_link'></div>
+
+#### Retention Policy
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | Set `retention_policy` in the [SERVER] or [BART] section of the config file:<br/>[example]<br/>…<br/>`retention_policy = 2 BACKUPS` # Or DAYS, WEEKS, or MONTHS|
+| Barman     | Set `retention_policy`, and/or `wal_retention_policy` options in the config file:<br/>[example]<br/>…<br/>`retention_policy =REDUNDANCY 2`<br/>or<br/>`retention_policy = RECOVERY WINDOW OF 2 DAYS` # WEEKS/MONTHS.|
+| pgBackRest | Can be set in the config file:<br/>[example]…<br/>`repo-retention-full-type = count #can also be time`<br/>`repo-retention-full = 2`<br/>`repo-retention-diff = 6`<br/>`# Retain WAL archives for only 1 full backup:`<br/>`repo-retention-archive-type = full #can also be diff or incr`<br/>`repo-retention-archive = 1`<br/>See Retention Policy in [edb documentation](https://www.enterprisedb.com/docs/supported-open-source/pgbackrest/05-retention_policy/) for more information.|
+
+<div id='config_repo_location' class='registered_link'></div>
+
+#### Configure repository location
+
+|   Tool     |   Configuration                                         |
+|------------|---------------------------------------------------------|
+| BART       | In the config file in the [BART] section:<br/>[BART]<br/>…<br/>`backup_path = /tmp/bart`|
+| Barman     | In the config file in the main chapter:<br/>`backup_directory = /tmp/barman`|
+| pgBackRest | [global]<br/>`repo1-path=/var/lib/pgbackrest`|
+
+
+
+
