@@ -8,7 +8,6 @@ import {
   Layout,
   MainContent,
   TableOfContents,
-  TopBar,
   VersionDropdown,
 } from "../components";
 
@@ -86,7 +85,6 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} background="white">
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
           <div className="d-flex justify-content-between align-items-center">
