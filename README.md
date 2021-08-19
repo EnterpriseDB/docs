@@ -138,7 +138,9 @@ If you experience errors or other issues with the site, try the following in the
 
 ## Development
 
-All changes should have a pull request opened against the default branch, `develop`. When a pull request is opened, Heroku should automatically create a review build, which should be linked in the pull request under "deployments". Review builds only include advocacy content. When a pull request is merged, `develop` will automatically deploy the changes to the staging environment.
+All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
+
+When a PR is merged into the `develop` branch, the result will be deployed to the [staging](#staging) environment.
 
 To deploy to production, create a pull request merging `develop` into `main`. When that PR is merged, `main` will automatically build and deploy to the production site.
 
@@ -150,13 +152,17 @@ Deployments of the site use the `build-sources.json` file to determine which sou
 
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
+Staging environment URL: https://edb-docs-staging.netlify.app/docs/
+
 #### Production
 
 Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
-#### Review Builds
+Production environment URL: https://www.enterprisedb.com/docs
 
-Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+#### Draft deployments
+
+Review builds are automatically created for pull requests when the `deploy` tag is added. The build and deployment process is handled by the `deploy-draft.yml` GitHub workflow. Draft builds are [a Netlify feature](https://docs.netlify.com/cli/get-started/#draft-and-production-deploys) - each new draft has a unique URL (based on the Staging URL) that will persist even when later revisions are deployed.
 
 ## Redirects
 
