@@ -13,7 +13,6 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
-  TopBar,
 } from "../components";
 import { products } from "../constants/products";
 import Icon from "../components/icon";
@@ -255,7 +254,6 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav

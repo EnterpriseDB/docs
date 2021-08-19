@@ -8,7 +8,7 @@ import {
   connectSearchBox,
   connectStateResults,
 } from "react-instantsearch-dom";
-import { Footer, Layout, Link, MainContent, TopBar } from "../components";
+import { Footer, Layout, Link, MainContent } from "../components";
 import Icon, { iconNames } from "../components/icon";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import usePathPrefix from "../hooks/use-path-prefix";
@@ -120,7 +120,6 @@ const NotFound = (data) => {
 
   return (
     <Layout pageMeta={{ title: "Page Not Found" }}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
           <div className="d-flex align-items-center flex-column">

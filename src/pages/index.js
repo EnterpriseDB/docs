@@ -2,14 +2,7 @@ import React from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import cliImg from "../images/screen-demo.gif";
-import {
-  Footer,
-  IndexSubNav,
-  Layout,
-  Link,
-  MainContent,
-  TopBar,
-} from "../components";
+import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="card rounded shadow-sm mb-4">
@@ -46,7 +39,6 @@ const Page = () => (
     }}
     background="white"
   >
-    <TopBar />
     <Container fluid className="p-0 d-flex bg-white">
       <MainContent searchNavLogo={true}>
         {/* Sign Post */}
