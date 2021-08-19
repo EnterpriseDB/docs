@@ -426,6 +426,8 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
+      hideVersion: Boolean
+      displayBanner: String
     }
 
     enum TileModes {
