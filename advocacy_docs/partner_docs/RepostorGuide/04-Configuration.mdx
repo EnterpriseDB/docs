@@ -1,0 +1,223 @@
+---
+title: 'Configuration'
+description: 'How to configure the Repostor Integration'
+---
+
+## 3.1 Prerequisites
+
+**1. The database host with the EDB Postgres Advanced environment needs the following components:**
+    
+• An IBM supported operating system for Spectrum Protect clients.
+
+• The Spectrum Protect BA client (used for regular file backup).
+
+• The Spectrum Protect API client.
+
+• EDB Postgres Advanced version 9.6 or above.
+
+• Repostor Data Protector client.
+
+
+**2. A PostgreSQL user needs to be defined for use with the RDP.**
+    
+
+• This user needs to be able to connect to EDB Postgres Advanced and have sufficient permissions for
+database backup & restore.
+
+• This user needs access to local Spectrum Protect files. To read configuration files and to write to log files.
+
+
+!!! Note
+    If the user is not the same user that owns the PostgreSQL server process, one also needs to make sure that the server
+    process owner has the correct SP client file access. This is due to the ‘archive_command’ being executed as that user.
+
+
+**3. A Spectrum Protect ‘node’ needs to be defined in the Spectrum Protect server environment, in a
+management class that suits the needs of the DBA team.**
+
+**4. The Spectrum Protect client details for setting up connection to Spectrum Protect server needs to be
+available, including the client Spectrum Protect password.**
+
+
+## 3.2 Installation and configuration of Repostor Data Protector for PostgreSQL
+
+**1. Configure local Spectrum Protect configuration files with Spectrum Protect details needed to connect to
+Spectrum Protect server.**
+
+a. Create Spectrum Protect options file with logical Servername.
+
+b. Edit dsm.sys file. Add section for new logical Servername for this Spectrum Protect node, using
+connection details.
+
+c. Create soft links from API directory to ba clients bin directory, for dsm.sys and dsm.opt.
+
+Sample using Spectrum Protect options filename dsm.postgres.opt:
+
+ 
+    ln -s /opt/tivoli/tsm/client/ba/bin/dsm.sys
+        /opt/tivoli/tsm/client/api/bin64/dsm.sys
+    ln -s /opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+        /opt/tivoli/tsm/client/api/bin64/dsm.opt
+    
+
+Sample listing (ls -l command) from API directory, showing the links:
+
+    
+    dsm.opt -> /opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+    dsm.sys -> /opt/tivoli/tsm/client/ba/bin/dsm.sys
+    
+
+d. Set variable DSMI_CONFIG for the OS user that will run the RDP tools. This is preferably the same user
+that owns the PostgreSQL server process.
+
+e. Verify that the OS user can connect to Spectrum Protect server. This will also verify correct file access to local SP files.
+
+    
+    dsmc q session -se=XXX (where ‘XXX’ is your logical SErvername)
+    
+
+**2. Install Repostor Data Protector client**
+
+a. Verify that IBM Spectrum Protect clients for API and BA are already installed.
+Sample listing of IBM Spectrum Protect clients:
+
+    
+    rpm -aq | grep TIV
+    TIVsm-API64-8.1.8-0.x86_64
+    TIVsm-BA-8.1.8-0.x86_64
+    
+
+b. Install RDP (verify that you have latest version on www.repostor.com)
+
+    
+    rpm -ivh rdp4Postgres-4.4.4.0-31.x86_64
+    
+Note: On Ubuntu, you need to prepare package with ‘alien’ tool:
+
+    sudo apt-get install alien
+    sudo alien rdp4Postgres-4.4.4.0-31.x86_64.rpm
+    sudo dpkg -I rdp4Postgres-4.4.4.0-31.deb
+
+
+c. Install license file.
+
+The license.dat file should be placed in the Repostor ‘/opt/repostor/rdp4Postgres/etc’ directory. If no
+license is available yet a trial license will be automatically generated the first time a backup is run. This
+trial license needs to be cleared with a special “UNLOCK” key before changing to a contract license.
+
+d. Add Repostor ‘bin’ directory to the PATH
+
+All users that will run RDP commands will need to have the PATH set to include the Repostor ‘bin’ directory
+(/opt/repostor/rdp4Postgres/bin).
+
+**3. Verify connection to PostgreSQL ‘psql’**
+
+**The user used with the “-u” option to the RDP commands needs to be able to connect to PostgreSQL and be
+allowed to backup/restore databases.**
+
+Sample verifying connection for user ‘enterprisedb’:
+
+    psql -U enterprisedb -l
+
+**4. Configure PostgreSQL ‘archive_command’ to use logwriter**
+
+**If your PostgreSQL environment has WAL activated and you plan to backup PostgreSQL on the “instance”
+level (“-f” option with RDP), then you need to configure the PostgreSQL ‘archive_command’ to run the
+RDP logwriter.script.**
+
+Sample of a specification of the ‘archive_command’ in the postgresql.conf file:
+
+    archive_command =
+    ‘/opt/repostor/rdp4Postgres/bin/logwriter.script -v -S instName
+    -s “%p” -d %f’
+
+!!! Note
+    The instance name you specify with the ”-S” option, needs to be the same you use with the RDP ’postgresbackup’
+    command. The logwriter.script is a script that calls the logwriter binary. It is a script to allow for local configuration if you want
+    to set a specific environment before running the logwriter.
+
+**5. Setup a backup script**
+
+**If you run postgresbackup from a script that initiated from Spectrum Protect scheduler, the LOGNAME
+should be set.**
+
+Simple backup script sample. Please note that the PATHs and filenames are unique to each installation:
+
+    #!/bin/bash
+    #
+
+    ### Set PATH & DSMI_CONFIG
+    export PATH=$PATH:/opt/repostor/rdp4Postgres/bin
+    export DSMI_CONFIG=/opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+
+    ### Set LOGNAME
+    export LOGNAME=enterprisedb
+
+    ### Run postgresbackup command, send output to logfile under /tmp
+    postgresbackup -u enterprisedb -f -z -v >/tmp/postgresbackup.log 2>&1
+
+## 3.3 Integration Views
+
+The current RDP version is a command-line client. There are three commands that the user runs
+(postgresbackup, postgresquery & postgresrestore) and then there are the logwriter & logreader tools that are
+automatically called by PostgreSQL during execution of ‘archive_command ‘and ‘restore_command’.
+
+(For details and more samples of daily operation tasks, please see RDP user guide chapter 5.)
+
+**Below are sample screenshots from**
+
+- Instance level backup
+
+- Query of available instance backups on the Spectrum Protect server
+
+- Instance restore
+
+- Database level backup
+
+- Query of available backups on the Spectrum Protect server
+
+- Restore of database level backup. Dropping database for visibility only
+
+- Redirected restore of database level backup
+
+**Instance level backup**
+
+<p align="center">
+  <img  src="Images/InstanceLevelBackup.png">
+</p>
+
+**Query of available instance backups on the Spectrum Protect server**
+
+<p align="center">
+  <img  src="Images/QueryofAvailableInstanceBackups.png">
+</p>
+
+**Instance restore**
+
+<p align="center">
+  <img  src="Images/InstanceRestore.png">
+</p>
+
+**Database level backup**
+
+<p align="center">
+  <img  src="Images/DatabaseLevelBackup.png">
+</p>
+
+**Query of available backups on the Spectrum Protect server**
+
+<p align="center">
+  <img  src="Images/AvailableBackups.png">
+</p>
+
+**Restore of database level backup. Dropping database for visibility only**
+
+<p align="center">
+  <img  src="Images/RestoreofDatabaseLevelBackup.png">
+</p>
+
+**Redirected restore of database level backup**
+
+<p align="center">
+  <img  src="Images/RedirectedRestore.png">
+</p>
