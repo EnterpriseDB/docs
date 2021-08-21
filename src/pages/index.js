@@ -240,6 +240,15 @@ const Page = () => (
           <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
             <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
           </IndexCard>
+
+          <IndexCard
+            iconName={iconNames.HANDSHAKE}
+            headingText="Third Party Integrations"
+          >
+            <IndexCardLink to="/partner_docs/ThalesGuide">
+              Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
+          </IndexCard>
         </div>
 
         <hr />
