@@ -1,6 +1,6 @@
 import React from "react";
 import { useStaticQuery, graphql } from "gatsby";
-import Icon from "./icon";
+import Icon, { iconNames } from "./icon";
 
 const PdfDownload = ({ path }) => {
   const data = useStaticQuery(graphql`

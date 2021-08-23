@@ -1,20 +1,20 @@
-import React from 'react';
-import iconNames from './iconNames';
+import React from "react";
+import iconNames from "./iconNames";
 
-import * as defaultIcons from '@enterprisedb/icons';
-import * as colorIcons from '@enterprisedb/icons/color';
-import * as logosIcons from '@enterprisedb/icons/logos';
+import * as defaultIcons from "@enterprisedb/icons";
+import * as colorIcons from "@enterprisedb/icons/color";
+import * as logosIcons from "@enterprisedb/icons/logos";
 
 function IconContainer({
   circle,
   circleClassName,
   circleDiameter,
   circleAutoMargin,
-  iconName: name = '',
+  iconName: name = "dottedbox",
   ...props
 }) {
-  const iconNameParts = name.split('/');
-  const iconCategory = iconNameParts.length === 1 ? '' : iconNameParts[0];
+  const iconNameParts = name.split("/");
+  const iconCategory = iconNameParts.length === 1 ? "" : iconNameParts[0];
   const iconName = iconNameParts.length === 1 ? name : iconNameParts[1];
 
   if (circle && circleDiameter) {
@@ -34,24 +34,24 @@ function IconContainer({
 }
 
 const Icon = ({ category, name, ...props }) => {
-  let SelectedIcon = '';
+  let SelectedIcon = "";
 
   if (!category) {
     SelectedIcon = defaultIcons[name];
-  } else if (category === 'logos') {
+  } else if (category === "logos") {
     SelectedIcon = logosIcons[name];
-  } else if (category === 'color') {
+  } else if (category === "color") {
     SelectedIcon = colorIcons[name];
   }
 
-  if (!SelectedIcon) SelectedIcon = 'span';
+  if (!SelectedIcon) SelectedIcon = "span";
 
   return <SelectedIcon {...props} />;
 };
 
 IconContainer.defaultProps = {
-  className: 'dottedbox',
-  circleClassName: '',
+  className: "dottedbox",
+  circleClassName: "",
   circleDiameter: 100,
   circleAutoMargin: true,
   circle: false,
