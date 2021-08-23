@@ -16,8 +16,8 @@ var SvgAlert = function SvgAlert(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -36,8 +36,8 @@ var SvgAnnounce = function SvgAnnounce(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -56,8 +56,8 @@ var SvgArrowLeft = function SvgArrowLeft(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -76,8 +76,8 @@ var SvgArrowRight = function SvgArrowRight(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -96,8 +96,8 @@ var SvgBarman = function SvgBarman(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -116,8 +116,8 @@ var SvgBigData = function SvgBigData(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -136,8 +136,8 @@ var SvgBrainCircuit = function SvgBrainCircuit(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -156,8 +156,8 @@ var SvgBriefcase = function SvgBriefcase(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -176,8 +176,8 @@ var SvgBusinessman = function SvgBusinessman(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -196,8 +196,8 @@ var SvgBusinesswoman = function SvgBusinesswoman(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -216,8 +216,8 @@ var SvgCaseStudy = function SvgCaseStudy(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -236,8 +236,8 @@ var SvgCertificate = function SvgCertificate(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -256,8 +256,8 @@ var SvgChange = function SvgChange(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -276,8 +276,8 @@ var SvgChecklist = function SvgChecklist(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -296,8 +296,8 @@ var SvgCheckmark = function SvgCheckmark(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -316,8 +316,8 @@ var SvgChevronDown = function SvgChevronDown(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -336,8 +336,8 @@ var SvgChevronRight = function SvgChevronRight(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -356,8 +356,8 @@ var SvgClose = function SvgClose(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -376,8 +376,8 @@ var SvgCloudChecked = function SvgCloudChecked(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -396,8 +396,8 @@ var SvgCloudDb = function SvgCloudDb(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -416,8 +416,8 @@ var SvgCloudDba = function SvgCloudDba(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -436,8 +436,8 @@ var SvgCloudPrivate = function SvgCloudPrivate(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -456,8 +456,8 @@ var SvgCloudPublic = function SvgCloudPublic(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -476,8 +476,8 @@ var SvgCodeWriting = function SvgCodeWriting(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -496,8 +496,8 @@ var SvgCoffee = function SvgCoffee(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -516,8 +516,8 @@ var SvgConfigManagement = function SvgConfigManagement(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -536,8 +536,8 @@ var SvgConflict = function SvgConflict(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -556,8 +556,8 @@ var SvgConnect = function SvgConnect(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -576,8 +576,8 @@ var SvgConsole = function SvgConsole(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -596,8 +596,8 @@ var SvgContact = function SvgContact(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -616,8 +616,8 @@ var SvgContainer = function SvgContainer(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -636,8 +636,8 @@ var SvgControl = function SvgControl(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -656,8 +656,8 @@ var SvgConvert = function SvgConvert(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -676,8 +676,8 @@ var SvgCrown = function SvgCrown(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -696,8 +696,8 @@ var SvgCubes = function SvgCubes(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -716,8 +716,8 @@ var SvgCycle = function SvgCycle(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -736,8 +736,8 @@ var SvgDataTransfer = function SvgDataTransfer(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -756,8 +756,8 @@ var SvgDatabaseAdmin = function SvgDatabaseAdmin(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -776,8 +776,8 @@ var SvgDatabaseBackup = function SvgDatabaseBackup(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -796,8 +796,8 @@ var SvgDatabase = function SvgDatabase(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -816,8 +816,8 @@ var SvgDeliverLove = function SvgDeliverLove(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -836,8 +836,8 @@ var SvgDesign = function SvgDesign(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -856,8 +856,8 @@ var SvgDeveloper = function SvgDeveloper(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -876,8 +876,8 @@ var SvgDiploma = function SvgDiploma(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -896,8 +896,8 @@ var SvgDockerContainer = function SvgDockerContainer(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -916,8 +916,8 @@ var SvgDocs = function SvgDocs(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -936,8 +936,8 @@ var SvgDottedBox = function SvgDottedBox(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -956,8 +956,8 @@ var SvgDownload = function SvgDownload(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -976,8 +976,8 @@ var SvgDrives = function SvgDrives(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -996,8 +996,8 @@ var SvgDuplicate = function SvgDuplicate(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1016,8 +1016,8 @@ var SvgEarth = function SvgEarth(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1036,8 +1036,8 @@ var SvgEasy = function SvgEasy(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1056,8 +1056,8 @@ var SvgEdbArk = function SvgEdbArk(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1076,8 +1076,8 @@ var SvgEdbBart = function SvgEdbBart(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1096,8 +1096,8 @@ var SvgEdbDashboard = function SvgEdbDashboard(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1116,8 +1116,8 @@ var SvgEdbEfm = function SvgEdbEfm(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1136,8 +1136,8 @@ var SvgEdbEpas = function SvgEdbEpas(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1156,8 +1156,8 @@ var SvgEdbKubernetes = function SvgEdbKubernetes(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1176,8 +1176,8 @@ var SvgEdbMigrationPortal = function SvgEdbMigrationPortal(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1196,8 +1196,8 @@ var SvgEdbMigrationToolkit = function SvgEdbMigrationToolkit(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1216,8 +1216,8 @@ var SvgEdbPem = function SvgEdbPem(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1236,8 +1236,8 @@ var SvgEdbReplicate = function SvgEdbReplicate(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1256,8 +1256,8 @@ var SvgEdbReplication = function SvgEdbReplication(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1276,8 +1276,8 @@ var SvgEdbSymbol = function SvgEdbSymbol(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1296,8 +1296,8 @@ var SvgEllipsis = function SvgEllipsis(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1316,8 +1316,8 @@ var SvgEnergy = function SvgEnergy(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1336,8 +1336,8 @@ var SvgEnterprise = function SvgEnterprise(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1356,8 +1356,8 @@ var SvgExport = function SvgExport(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1376,8 +1376,8 @@ var SvgExternalLink = function SvgExternalLink(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1396,8 +1396,8 @@ var SvgFile = function SvgFile(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1416,8 +1416,8 @@ var SvgGlobe = function SvgGlobe(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1436,8 +1436,8 @@ var SvgGui = function SvgGui(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1456,8 +1456,8 @@ var SvgHamburger = function SvgHamburger(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1476,8 +1476,8 @@ var SvgHandshake = function SvgHandshake(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1496,8 +1496,8 @@ var SvgHardToFind = function SvgHardToFind(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1516,8 +1516,8 @@ var SvgHighAvailability = function SvgHighAvailability(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1536,8 +1536,8 @@ var SvgHorizontalNameTag = function SvgHorizontalNameTag(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1556,8 +1556,8 @@ var SvgHorizontal = function SvgHorizontal(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1576,8 +1576,8 @@ var SvgIdeaSharing = function SvgIdeaSharing(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1596,8 +1596,8 @@ var SvgImprove = function SvgImprove(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1616,8 +1616,8 @@ var SvgInfo = function SvgInfo(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1636,8 +1636,8 @@ var SvgInstall = function SvgInstall(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1656,8 +1656,8 @@ var SvgInstances = function SvgInstances(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1676,8 +1676,8 @@ var SvgKnight = function SvgKnight(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1696,8 +1696,8 @@ var SvgLaptopConfig = function SvgLaptopConfig(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1716,8 +1716,8 @@ var SvgLeader = function SvgLeader(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1736,8 +1736,8 @@ var SvgLearning = function SvgLearning(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1756,8 +1756,8 @@ var SvgManagedOperations = function SvgManagedOperations(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1776,8 +1776,8 @@ var SvgMigrate = function SvgMigrate(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1796,8 +1796,8 @@ var SvgMission = function SvgMission(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1816,8 +1816,8 @@ var SvgModule = function SvgModule(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1836,8 +1836,8 @@ var SvgMoreTeam = function SvgMoreTeam(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1856,8 +1856,8 @@ var SvgNameTag = function SvgNameTag(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1876,8 +1876,8 @@ var SvgNetwork = function SvgNetwork(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1896,8 +1896,8 @@ var SvgNetwork2 = function SvgNetwork2(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1916,8 +1916,8 @@ var SvgNewWindow = function SvgNewWindow(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1936,8 +1936,8 @@ var SvgNews = function SvgNews(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1956,8 +1956,8 @@ var SvgOptions = function SvgOptions(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1976,8 +1976,8 @@ var SvgPandas = function SvgPandas(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -1996,8 +1996,8 @@ var SvgPartner = function SvgPartner(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2016,8 +2016,8 @@ var SvgPdf = function SvgPdf(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2036,8 +2036,8 @@ var SvgPeople = function SvgPeople(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2056,8 +2056,8 @@ var SvgPiggyBank = function SvgPiggyBank(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2076,8 +2076,8 @@ var SvgPlaceholder = function SvgPlaceholder(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2096,8 +2096,8 @@ var SvgPlanner = function SvgPlanner(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2116,8 +2116,8 @@ var SvgPlayCircle = function SvgPlayCircle(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2136,8 +2136,8 @@ var SvgPreferences = function SvgPreferences(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2156,8 +2156,8 @@ var SvgPresentation = function SvgPresentation(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2176,8 +2176,8 @@ var SvgProcessImprovement = function SvgProcessImprovement(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2196,8 +2196,8 @@ var SvgPulse = function SvgPulse(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2216,8 +2216,8 @@ var SvgQuoteLeft = function SvgQuoteLeft(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2236,8 +2236,8 @@ var SvgQuoteRight = function SvgQuoteRight(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2256,8 +2256,8 @@ var SvgRemoteDba = function SvgRemoteDba(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2276,8 +2276,8 @@ var SvgReplication = function SvgReplication(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2296,8 +2296,8 @@ var SvgRocket = function SvgRocket(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2316,8 +2316,8 @@ var SvgRss = function SvgRss(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2336,8 +2336,8 @@ var SvgSearch = function SvgSearch(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2356,8 +2356,8 @@ var SvgSecurityConfig = function SvgSecurityConfig(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2376,8 +2376,8 @@ var SvgSecurity = function SvgSecurity(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2396,8 +2396,8 @@ var SvgSpeed = function SvgSpeed(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2416,8 +2416,8 @@ var SvgSpinner = function SvgSpinner(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2436,8 +2436,8 @@ var SvgSql = function SvgSql(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2456,8 +2456,8 @@ var SvgStack = function SvgStack(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2476,8 +2476,8 @@ var SvgStar = function SvgStar(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2496,8 +2496,8 @@ var SvgStopwatch = function SvgStopwatch(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2516,8 +2516,8 @@ var SvgStore = function SvgStore(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2536,8 +2536,8 @@ var SvgSubset = function SvgSubset(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2556,8 +2556,8 @@ var SvgSupportPortal = function SvgSupportPortal(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2576,8 +2576,8 @@ var SvgSupport = function SvgSupport(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2596,8 +2596,8 @@ var SvgSynchronize = function SvgSynchronize(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2616,8 +2616,8 @@ var SvgTenYears = function SvgTenYears(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2636,8 +2636,8 @@ var SvgTicketStar = function SvgTicketStar(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2656,8 +2656,8 @@ var SvgTicket = function SvgTicket(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2676,8 +2676,8 @@ var SvgTools = function SvgTools(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2696,8 +2696,8 @@ var SvgTraining = function SvgTraining(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2716,8 +2716,8 @@ var SvgTreehouse = function SvgTreehouse(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2736,8 +2736,8 @@ var SvgTutorial = function SvgTutorial(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2756,8 +2756,8 @@ var SvgUnlock = function SvgUnlock(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2776,8 +2776,8 @@ var SvgVenn = function SvgVenn(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2796,8 +2796,8 @@ var SvgWebSecurity = function SvgWebSecurity(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -2816,8 +2816,8 @@ var SvgWebinar = function SvgWebinar(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
