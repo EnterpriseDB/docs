@@ -1,0 +1,71 @@
+name: sync-source-repo
+on: [repository_dispatch]
+jobs:
+  sync-repo:
+    env:
+      # The body text of the PR requests that will be created
+      PR_BODY: Automated changes to pull in docs changes from ${{ github.event.client_payload.repo }} repo
+
+      # The name of the branch that will be created
+      PR_BRANCH_NAME: ${{ github.workflow }}_${{ github.run_id }}
+
+      # The title of the PR request that will be created
+      PR_TITLE: Automated changes from ${{ github.event.client_payload.repo }}
+
+      # Where incoming files will be moved to in the destination repo
+      DESTINATION_DIR: /destination-folder
+
+      # Where files that should be processed and moved are located in the source repo
+      SOURCE_DIR: /source-folder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v2
+        with:
+          path: destination
+
+      - name: Checkout source repo
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ github.event.client_payload.repo }}
+          token: ${{ secrets.GH_TOKEN }}
+          path: source
+
+      - name: Copy from source dir to staging dir
+        run: |
+          mkdir staging
+          cp source/${{ env.SOURCE_DIR }}/* staging/
+
+      # Begin file processing steps
+
+      - name: setup node for file processor
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: install file processor dependencies
+        run: npm install production
+        working-directory: destination/.github/fileProcessor
+
+      - name: Run file processor
+        run: |
+          node ../destination/.github/fileProcessor/main.mjs \
+            -f "**/*.md" \
+            -p "example/update-first" \
+            -p "example/prepend-data"
+        working-directory: staging
+
+      # End file processing steps
+
+      - name: Move processed files into place
+        run: |
+          rm -rf ./$DESTINATION_DIR/*
+          mv staging/* destination/$DESTINATION_DIR/
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v3.10.0
+        with:
+          body: ${{ env.PR_BODY }}
+          branch: ${{ env.PR_BRANCH_NAME }}
+          path: destination/
+          title: ${{ env.PR_TITLE }}
