@@ -16,8 +16,8 @@ var SvgMoon = function SvgMoon(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -36,8 +36,8 @@ var SvgNotFound = function SvgNotFound(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -56,8 +56,8 @@ var SvgServerError = function SvgServerError(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
@@ -76,8 +76,8 @@ var SvgSun = function SvgSun(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React__default['default'].createElement("title", null, "dotted-box"), /*#__PURE__*/React__default['default'].createElement("path", {
