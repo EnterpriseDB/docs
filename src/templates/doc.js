@@ -15,8 +15,7 @@ import {
   TableOfContents,
 } from "../components";
 import { products } from "../constants/products";
-import Icon from "../components/icon";
-import { createImportSpecifier } from "typescript";
+import Icon, { iconNames } from "../components/icon";
 
 export const query = graphql`
   query ($nodeId: String!, $potentialLatestNodePath: String) {
@@ -182,7 +181,7 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     title={
       //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
       <Icon
-        iconName="ellipsis"
+        iconName={iconNames.ELLIPSIS}
         className="fill-orange mr-2"
         width="15"
         height="15"
