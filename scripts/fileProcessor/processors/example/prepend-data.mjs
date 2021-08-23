@@ -1,7 +1,6 @@
-export const process = (filename, fileContent) => {
+export const process = (filename, content) => {
   return {
     newFilename: "example_" + filename,
-    newFileContent:
-      "this is some example content that was added later\n" + fileContent,
+    newContent: "this is some example content that was added later\n" + content,
   };
 };

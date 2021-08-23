@@ -1,6 +1,6 @@
-export const process = (filename, fileContent) => {
+export const process = (filename, content) => {
   return {
     newFilename: filename,
-    newFileContent: fileContent,
+    newContent: content,
   };
 };

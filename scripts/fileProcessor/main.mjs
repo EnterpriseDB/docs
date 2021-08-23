@@ -32,12 +32,12 @@ const processFiles = async () => {
 const processSingleFile = async (filename) => {
   console.log(`Processing ${filename}`);
 
-  const fileContent = readFileSync(filename, "utf8");
+  const content = readFileSync(filename, "utf8");
 
   // run the processor scripts
-  const { newFilename, newFileContent } = await runProcessorsForFile(
+  const { newFilename, newContent } = await runProcessorsForFile(
     filename,
-    fileContent,
+    content,
   );
 
   if (newFilename != filename) {
@@ -46,7 +46,7 @@ const processSingleFile = async (filename) => {
     console.log(`Writing ${newFilename}`);
   }
 
-  writeFile(newFilename, newFileContent)
+  writeFile(newFilename, newContent)
     .catch((err) => {
       console.error(err);
       process.exit(1);
@@ -64,22 +64,22 @@ const processSingleFile = async (filename) => {
     });
 };
 
-const runProcessorsForFile = async (filename, fileContent) => {
+const runProcessorsForFile = async (filename, content) => {
   let newFilename = filename;
-  let newFileContent = fileContent;
+  let newContent = content;
 
   for (const index in args["--processor"]) {
     await import(
       `${__dirname}/processors/${args["--processor"][index]}.mjs`
     ).then((module) => {
-      const output = module.process(newFilename, newFileContent);
+      const output = module.process(newFilename, newContent);
 
       newFilename = output.newFilename;
-      newFileContent = output.newFileContent;
+      newContent = output.newContent;
     });
   }
 
-  return { newFilename, newFileContent };
+  return { newFilename, newContent };
 };
 
 processFiles();

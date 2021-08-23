@@ -15,6 +15,6 @@ export const process = (filename, content) => {
 
   return {
     newFilename: filename,
-    newFileContent: paragraphs.join(paragraphDelimiter),
+    newContent: paragraphs.join(paragraphDelimiter),
   };
 };

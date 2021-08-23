@@ -1,13 +1,13 @@
-export const process = (filename, fileContent) => {
+export const process = (filename, content) => {
   if (filename !== "first.md") {
     return {
       newFilename: filename,
-      newFileContent: fileContent,
+      newContent: content,
     };
   }
 
   return {
     newFilename: filename,
-    newFileContent: fileContent.toUpperCase(),
+    newContent: content.toUpperCase(),
   };
 };
