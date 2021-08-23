@@ -7,8 +7,8 @@ var SvgFlagAustralia = function SvgFlagAustralia(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -27,8 +27,8 @@ var SvgFlagFrance = function SvgFlagFrance(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -47,8 +47,8 @@ var SvgFlagGermany = function SvgFlagGermany(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -67,8 +67,8 @@ var SvgFlagIndia = function SvgFlagIndia(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -87,8 +87,8 @@ var SvgFlagItaly = function SvgFlagItaly(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -107,8 +107,8 @@ var SvgFlagJapan = function SvgFlagJapan(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -127,8 +127,8 @@ var SvgFlagKorea = function SvgFlagKorea(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -147,8 +147,8 @@ var SvgFlagNetherlands = function SvgFlagNetherlands(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -167,8 +167,8 @@ var SvgFlagPakistan = function SvgFlagPakistan(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -187,8 +187,8 @@ var SvgFlagSingapore = function SvgFlagSingapore(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -207,8 +207,8 @@ var SvgFlagUk = function SvgFlagUk(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
@@ -227,8 +227,8 @@ var SvgFlagUsa = function SvgFlagUsa(_ref) {
     xmlns: "http://www.w3.org/2000/svg",
     x: "0px",
     y: "0px",
-    width: "100",
-    height: "100",
+    width: "1em",
+    height: "1em",
     viewBox: "0 0 24 24",
     title: title
   }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
