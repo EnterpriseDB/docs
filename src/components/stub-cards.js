@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "./";
 import { Row, Col } from "react-bootstrap";
 import { productStubs } from "../constants/product-stubs";
-import Icon from "./icon";
+import Icon, { iconNames } from "./icon";
 import Archive from "./archive";
 
 const PdfIcon = ({ className }) => (
