@@ -8,10 +8,15 @@ export const process = async (filename, content) => {
     );
   }
 
-  const header = content.slice(1, content.indexOf("\n"));
+  const endOfFirstLine = content.indexOf("\n");
 
+  // Get the first line of content, which should be the header.
+  // This will exclude the very first character, which should be '#'
+  const header = content.slice(1, endOfFirstLine).trim();
+
+  // add the frontmatter to the file. This will replace the first line of the file.
   let newContent = await getFrontmatter(header, filename);
-  newContent = newContent + content.slice(content.indexOf("\n"));
+  newContent = newContent + content.slice(endOfFirstLine);
 
   return {
     newFilename: filename,
@@ -44,13 +49,16 @@ directoryDefaults:
 navigation:
 `;
 
+  // read the mkdocs.yml file to figure out the nav entries for the frontmatter
   await readFile("mkdocs.yml", { encoding: "utf8" }).then((content) => {
+    // We only care about the content after the line which says "nav:"
     const navItems = content.split("nav:\n");
     navItems[1].split("\n").forEach((line) => {
       if (line.slice(0, 3) !== "  -") {
         return;
       }
 
+      // make sure file extensions are stripped off.
       modifiedFrontmatter =
         modifiedFrontmatter + line.slice(0, line.indexOf(".md")) + "\n";
     });
