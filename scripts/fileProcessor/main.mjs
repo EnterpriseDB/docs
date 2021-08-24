@@ -1,13 +1,10 @@
 import arg from "arg";
-import {
-  readFileSync,
-  rm as callbackRm,
-  writeFile as callbackWriteFile,
-} from "fs";
+import { readFileSync } from "fs";
 import { globby } from "globby";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-import { promisify } from "util";
+
+import { rm, writeFile } from "./fileHelper.mjs";
 
 const args = arg({
   "--files": [String],
@@ -17,8 +14,6 @@ const args = arg({
   "-p": "--processor",
 });
 
-const rm = promisify(callbackRm);
-const writeFile = promisify(callbackWriteFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const processFiles = async () => {
@@ -71,8 +66,8 @@ const runProcessorsForFile = async (filename, content) => {
   for (const index in args["--processor"]) {
     await import(
       `${__dirname}/processors/${args["--processor"][index]}.mjs`
-    ).then((module) => {
-      const output = module.process(newFilename, newContent);
+    ).then(async (module) => {
+      const output = await module.process(newFilename, newContent);
 
       newFilename = output.newFilename;
       newContent = output.newContent;
