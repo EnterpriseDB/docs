@@ -1,19 +1,78 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
+function _extends() {
+  _extends = Object.assign || function (target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+
+      for (var key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = source[key];
+        }
+      }
+    }
+
+    return target;
+  };
+
+  return _extends.apply(this, arguments);
+}
+
+function _objectWithoutPropertiesLoose(source, excluded) {
+  if (source == null) return {};
+  var target = {};
+  var sourceKeys = Object.keys(source);
+  var key, i;
+
+  for (i = 0; i < sourceKeys.length; i++) {
+    key = sourceKeys[i];
+    if (excluded.indexOf(key) >= 0) continue;
+    target[key] = source[key];
+  }
+
+  return target;
+}
+
+function _objectWithoutProperties(source, excluded) {
+  if (source == null) return {};
+
+  var target = _objectWithoutPropertiesLoose(source, excluded);
+
+  var key, i;
+
+  if (Object.getOwnPropertySymbols) {
+    var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
+
+    for (i = 0; i < sourceSymbolKeys.length; i++) {
+      key = sourceSymbolKeys[i];
+      if (excluded.indexOf(key) >= 0) continue;
+      if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
+      target[key] = source[key];
+    }
+  }
+
+  return target;
+}
+
+var _excluded$3 = ["title", "titleId"];
+
 var SvgMoon = function SvgMoon(_ref) {
-  var title = _ref.title;
-  return /*#__PURE__*/React.createElement("svg", {
-    xmlns: "http://www.w3.org/2000/svg",
-    x: "0px",
-    y: "0px",
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$3);
+
+  return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
     viewBox: "0 0 24 24",
-    title: title
-  }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
-    d: "M 6.59375 2 C 4.113281 2 2.097656 3.929688 2 6.40625 L 2 7 L 4 7 L 4 6.5 C 4.054688 5.101563 5.191406 4 6.59375 4 L 7 4 L 7 2 Z M 9 2 L 9 4 L 11 4 L 11 2 Z M 13 2 L 13 4 L 15 4 L 15 2 Z M 17 2 L 17 4 L 17.5 4 C 18.898438 4.054688 20 5.191406 20 6.59375 L 20 7 L 22 7 L 22 6.59375 C 22 4.113281 20.070313 2.097656 17.59375 2 Z M 2 9 L 2 11 L 4 11 L 4 9 Z M 20 9 L 20 11 L 22 11 L 22 9 Z M 2 13 L 2 15 L 4 15 L 4 13 Z M 20 13 L 20 15 L 22 15 L 22 13 Z M 2 17 L 2 17.59375 C 2.097656 20.070313 4.113281 22 6.59375 22 L 7 22 L 7 20 L 6.59375 20 C 5.191406 20 4.054688 18.898438 4 17.5 L 4 17 Z M 20 17 L 20 17.40625 C 20 18.808594 18.898438 19.945313 17.5 20 L 17 20 L 17 22 L 17.59375 22 C 20.070313 21.902344 22 19.886719 22 17.40625 L 22 17 Z M 9 20 L 9 22 L 11 22 L 11 20 Z M 13 20 L 13 22 L 15 22 L 15 20 Z"
-  }), " ");
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
 };
 
 SvgMoon.propTypes = {
@@ -21,19 +80,24 @@ SvgMoon.propTypes = {
   titleId: PropTypes.string
 };
 
+var _excluded$2 = ["title", "titleId"];
+
 var SvgNotFound = function SvgNotFound(_ref) {
-  var title = _ref.title;
-  return /*#__PURE__*/React.createElement("svg", {
-    xmlns: "http://www.w3.org/2000/svg",
-    x: "0px",
-    y: "0px",
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$2);
+
+  return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
     viewBox: "0 0 24 24",
-    title: title
-  }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
-    d: "M 6.59375 2 C 4.113281 2 2.097656 3.929688 2 6.40625 L 2 7 L 4 7 L 4 6.5 C 4.054688 5.101563 5.191406 4 6.59375 4 L 7 4 L 7 2 Z M 9 2 L 9 4 L 11 4 L 11 2 Z M 13 2 L 13 4 L 15 4 L 15 2 Z M 17 2 L 17 4 L 17.5 4 C 18.898438 4.054688 20 5.191406 20 6.59375 L 20 7 L 22 7 L 22 6.59375 C 22 4.113281 20.070313 2.097656 17.59375 2 Z M 2 9 L 2 11 L 4 11 L 4 9 Z M 20 9 L 20 11 L 22 11 L 22 9 Z M 2 13 L 2 15 L 4 15 L 4 13 Z M 20 13 L 20 15 L 22 15 L 22 13 Z M 2 17 L 2 17.59375 C 2.097656 20.070313 4.113281 22 6.59375 22 L 7 22 L 7 20 L 6.59375 20 C 5.191406 20 4.054688 18.898438 4 17.5 L 4 17 Z M 20 17 L 20 17.40625 C 20 18.808594 18.898438 19.945313 17.5 20 L 17 20 L 17 22 L 17.59375 22 C 20.070313 21.902344 22 19.886719 22 17.40625 L 22 17 Z M 9 20 L 9 22 L 11 22 L 11 20 Z M 13 20 L 13 22 L 15 22 L 15 20 Z"
-  }), " ");
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
 };
 
 SvgNotFound.propTypes = {
@@ -41,19 +105,24 @@ SvgNotFound.propTypes = {
   titleId: PropTypes.string
 };
 
+var _excluded$1 = ["title", "titleId"];
+
 var SvgServerError = function SvgServerError(_ref) {
-  var title = _ref.title;
-  return /*#__PURE__*/React.createElement("svg", {
-    xmlns: "http://www.w3.org/2000/svg",
-    x: "0px",
-    y: "0px",
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$1);
+
+  return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
     viewBox: "0 0 24 24",
-    title: title
-  }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
-    d: "M 6.59375 2 C 4.113281 2 2.097656 3.929688 2 6.40625 L 2 7 L 4 7 L 4 6.5 C 4.054688 5.101563 5.191406 4 6.59375 4 L 7 4 L 7 2 Z M 9 2 L 9 4 L 11 4 L 11 2 Z M 13 2 L 13 4 L 15 4 L 15 2 Z M 17 2 L 17 4 L 17.5 4 C 18.898438 4.054688 20 5.191406 20 6.59375 L 20 7 L 22 7 L 22 6.59375 C 22 4.113281 20.070313 2.097656 17.59375 2 Z M 2 9 L 2 11 L 4 11 L 4 9 Z M 20 9 L 20 11 L 22 11 L 22 9 Z M 2 13 L 2 15 L 4 15 L 4 13 Z M 20 13 L 20 15 L 22 15 L 22 13 Z M 2 17 L 2 17.59375 C 2.097656 20.070313 4.113281 22 6.59375 22 L 7 22 L 7 20 L 6.59375 20 C 5.191406 20 4.054688 18.898438 4 17.5 L 4 17 Z M 20 17 L 20 17.40625 C 20 18.808594 18.898438 19.945313 17.5 20 L 17 20 L 17 22 L 17.59375 22 C 20.070313 21.902344 22 19.886719 22 17.40625 L 22 17 Z M 9 20 L 9 22 L 11 22 L 11 20 Z M 13 20 L 13 22 L 15 22 L 15 20 Z"
-  }), " ");
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
 };
 
 SvgServerError.propTypes = {
@@ -61,19 +130,24 @@ SvgServerError.propTypes = {
   titleId: PropTypes.string
 };
 
+var _excluded = ["title", "titleId"];
+
 var SvgSun = function SvgSun(_ref) {
-  var title = _ref.title;
-  return /*#__PURE__*/React.createElement("svg", {
-    xmlns: "http://www.w3.org/2000/svg",
-    x: "0px",
-    y: "0px",
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded);
+
+  return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
     viewBox: "0 0 24 24",
-    title: title
-  }, /*#__PURE__*/React.createElement("title", null, "dotted-box"), /*#__PURE__*/React.createElement("path", {
-    d: "M 6.59375 2 C 4.113281 2 2.097656 3.929688 2 6.40625 L 2 7 L 4 7 L 4 6.5 C 4.054688 5.101563 5.191406 4 6.59375 4 L 7 4 L 7 2 Z M 9 2 L 9 4 L 11 4 L 11 2 Z M 13 2 L 13 4 L 15 4 L 15 2 Z M 17 2 L 17 4 L 17.5 4 C 18.898438 4.054688 20 5.191406 20 6.59375 L 20 7 L 22 7 L 22 6.59375 C 22 4.113281 20.070313 2.097656 17.59375 2 Z M 2 9 L 2 11 L 4 11 L 4 9 Z M 20 9 L 20 11 L 22 11 L 22 9 Z M 2 13 L 2 15 L 4 15 L 4 13 Z M 20 13 L 20 15 L 22 15 L 22 13 Z M 2 17 L 2 17.59375 C 2.097656 20.070313 4.113281 22 6.59375 22 L 7 22 L 7 20 L 6.59375 20 C 5.191406 20 4.054688 18.898438 4 17.5 L 4 17 Z M 20 17 L 20 17.40625 C 20 18.808594 18.898438 19.945313 17.5 20 L 17 20 L 17 22 L 17.59375 22 C 20.070313 21.902344 22 19.886719 22 17.40625 L 22 17 Z M 9 20 L 9 22 L 11 22 L 11 20 Z M 13 20 L 13 22 L 15 22 L 15 20 Z"
-  }), " ");
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
 };
 
 SvgSun.propTypes = {
