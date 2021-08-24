@@ -1,4 +1,4 @@
-name: sync-source-repo
+name: sync CNP repo
 on: [repository_dispatch]
 jobs:
   sync-repo:
@@ -13,10 +13,10 @@ jobs:
       PR_TITLE: Automated changes from ${{ github.event.client_payload.repo }}
 
       # Where incoming files will be moved to in the destination repo
-      DESTINATION_DIR: /destination-folder
+      DESTINATION_DIR: /advocacy_docs/kubernetes/
 
       # Where files that should be processed and moved are located in the source repo
-      SOURCE_DIR: /source-folder
+      SOURCE_DIR: /docs/src
     runs-on: ubuntu-latest
     steps:
       - name: Checkout destination
@@ -31,13 +31,7 @@ jobs:
           token: ${{ secrets.GH_TOKEN }}
           path: source
 
-      - name: Copy from source dir to staging dir
-        run: |
-          mkdir staging
-          cp source/${{ env.SOURCE_DIR }}/* staging/
-
       # Begin file processing steps
-
       - name: setup node for file processor
         uses: actions/setup-node@v2
         with:
@@ -49,18 +43,22 @@ jobs:
 
       - name: Run file processor
         run: |
-          node ../destination/.github/fileProcessor/main.mjs \
-            -f "**/*.md" \
-            -p "example/update-first" \
-            -p "example/prepend-data"
-        working-directory: staging
+          node ../destination/scripts/fileProcessor/main.mjs \
+            -f "src/**/quickstart.md" \
+            -p cnp/add-quickstart-content
+
+          node ../destination/scripts/fileProcessor/main.mjs \
+            -f "src/**/*.md" \
+            -p "cnp/update-yaml-links" \
+            -p "cnp/add-frontmatters" \
+            -p "cnp/rename-to-mdx"
+        working-directory: source/${{env.SOURCE_DIR}}/..
 
       # End file processing steps
 
       - name: Move processed files into place
         run: |
-          rm -rf ./$DESTINATION_DIR/*
-          mv staging/* destination/$DESTINATION_DIR/
+          cp -f ${{env.SOURCE_DIR}} ${{env.DESTINATION_DIR}}
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v3.10.0
