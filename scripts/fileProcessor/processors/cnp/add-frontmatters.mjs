@@ -61,6 +61,10 @@ navigation:
       // make sure file extensions are stripped off.
       modifiedFrontmatter =
         modifiedFrontmatter + line.slice(0, line.indexOf(".md")) + "\n";
+
+      if (line.indexOf("quickstart.md") > 0) {
+        modifiedFrontmatter = modifiedFrontmatter + "  - interactive_demo\n";
+      }
     });
   });
 
