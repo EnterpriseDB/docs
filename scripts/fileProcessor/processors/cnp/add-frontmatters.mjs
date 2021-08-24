@@ -1,22 +1,23 @@
 import { readFile } from "../../fileHelper.mjs";
 
 export const process = async (filename, content) => {
-  if (content.charAt(0) !== "#") {
+  const trimmedContent = content.trim();
+  if (trimmedContent.charAt(0) !== "#") {
     console.warn(
       "File does not begin with title - frontmatter will not be valid: " +
         filename,
     );
   }
 
-  const endOfFirstLine = content.indexOf("\n");
+  const endOfFirstLine = trimmedContent.indexOf("\n");
 
   // Get the first line of content, which should be the header.
   // This will exclude the very first character, which should be '#'
-  const header = content.slice(1, endOfFirstLine).trim();
+  const header = trimmedContent.slice(1, endOfFirstLine).trim();
 
   // add the frontmatter to the file. This will replace the first line of the file.
   let newContent = await getFrontmatter(header, filename);
-  newContent = newContent + content.slice(endOfFirstLine);
+  newContent = newContent + trimmedContent.slice(endOfFirstLine);
 
   return {
     newFilename: filename,
