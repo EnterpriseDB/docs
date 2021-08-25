@@ -18,7 +18,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git using Homebrew with `brew install git`, if it's not already installed. (Use `git --version` to check.)
+1. Install Git as well as Git-LFS using Homebrew with `brew install git git-lfs`, if they're not already installed. (Use `git --version` and `git-lfs --version` to check.)
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
@@ -39,6 +39,14 @@ We recommend using MacOS to work with the EDB Docs application.
 1. NPM is the package manager we're using for this project. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
+
+1. If you should have access to private packages, you'll want to follow these steps so that they're pulled in the next steps.
+
+   1. Run `brew install direnv` if you don't have it already.  Then [follow these steps to add it to your shell.](https://direnv.net/docs/hook.html).
+
+   1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
+
+   1. Once you have that token, create a file in the root of the project called `.envrc.local` and add this code to it `export NPM_TOKEN="your-token-here"`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
 1. Install all required packages by running `npm install`.
 
