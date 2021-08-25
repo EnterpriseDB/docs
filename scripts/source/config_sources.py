@@ -57,7 +57,7 @@ OPTIONS = [
     { 'index': '1t', 'name': 'EDB Cloud', 'key': 'edbcloud', 'indent': True },
 ]
 
-print('Which sources would you like loaded when you run `yarn develop`?')
+print('Which sources would you like loaded when you run `npm run develop`?')
 for i, option in enumerate(OPTIONS):
     print("{2}{0}: {1}".format(
         option['index'],
