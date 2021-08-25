@@ -1,5 +1,7 @@
 name: sync CNP repo
-on: [repository_dispatch]
+on:
+  repository_dispatch:
+    types: [sync_files]
 jobs:
   sync-repo:
     env:
@@ -11,12 +13,6 @@ jobs:
 
       # The title of the PR request that will be created
       PR_TITLE: Automated changes from ${{ github.event.client_payload.repo }}
-
-      # Where incoming files will be moved to in the destination repo
-      DESTINATION_DIR: /advocacy_docs/kubernetes/
-
-      # Where files that should be processed and moved are located in the source repo
-      SOURCE_DIR: /docs/src
     runs-on: ubuntu-latest
     steps:
       - name: Checkout destination
@@ -43,22 +39,32 @@ jobs:
 
       - name: Run file processor
         run: |
-          node ../destination/scripts/fileProcessor/main.mjs \
-            -f "src/**/quickstart.md" \
-            -p cnp/add-quickstart-content
+          case ${{ github.event.client_payload.repo }} in
 
-          node ../destination/scripts/fileProcessor/main.mjs \
-            -f "src/**/*.md" \
-            -p "cnp/update-yaml-links" \
-            -p "cnp/add-frontmatters" \
-            -p "cnp/rename-to-mdx"
-        working-directory: source/${{env.SOURCE_DIR}}/..
+            jaek-s/cloud-native-postgresql)
+              cd docs
+
+              node ../destination/scripts/fileProcessor/main.mjs \
+                      -f "src/**/quickstart.md" \
+                      -p cnp/add-quickstart-content
+
+              node ../destination/scripts/fileProcessor/main.mjs \
+                -f "src/**/*.md" \
+                -p "cnp/update-yaml-links" \
+                -p "cnp/add-frontmatters" \
+                -p "cnp/rename-to-mdx"
+
+              cp -f src/* ../../destination/advocacy_docs/kubernetes/
+              ;;
+
+
+            *)
+              echo "The workflow has not been configured for the  ${{ github.event.client_payload.repo }} repo"
+              ;;
+          esac
+        working-directory: source
 
       # End file processing steps
-
-      - name: Move processed files into place
-        run: |
-          cp -f ${{env.SOURCE_DIR}} ${{env.DESTINATION_DIR}}
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v3.10.0
