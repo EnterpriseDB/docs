@@ -9,6 +9,7 @@ import {
   LayoutContext,
   Link,
   StubCards,
+  IconList,
   TextBalancer,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
@@ -80,6 +81,7 @@ const Layout = ({
       KatacodaPageLink,
       Icon,
       StubCards,
+      IconList,
       Archive,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage],
