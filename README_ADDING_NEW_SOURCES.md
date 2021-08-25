@@ -53,11 +53,11 @@ If your new doc is a Product Doc, you will need to update the sourcing process, 
 
 ### `config_sources.py`
 
-This is the script that is run when a user runs `yarn config-sources`. It will need to be edited to present your new option to the user, and to write the source name to `dev-sources.json`. **This source name should match the top level folder name for your doc!**
+This is the script that is run when a user runs `npm run config-sources`. It will need to be edited to present your new option to the user, and to write the source name to `dev-sources.json`. **This source name should match the top level folder name for your doc!**
 
 If you're adding a Product Doc, you'll want to add your source name to `PRODUCT_DOCS`. Next, you'll need to add your source to `OPTIONS`. New Product Docs should be inserted at the end of the current product doc listings.
 
-Once you've made your changes, run `yarn config-sources` and confirm that the output in `dev-sources.json` is as expected.
+Once you've made your changes, run `npm run config-sources` and confirm that the output in `dev-sources.json` is as expected.
 
 ### `gatsby-config.js`
 
