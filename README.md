@@ -40,7 +40,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. If you should have access to private packages, you'll want to follow these steps so that they're pulled in the next steps.
+1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that they're pulled in the next steps.
 
    1. Run `brew install direnv` if you don't have it already.  Then [follow these steps to add it to your shell.](https://direnv.net/docs/hook.html).
 
