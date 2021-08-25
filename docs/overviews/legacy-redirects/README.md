@@ -30,8 +30,8 @@ Example of an "old" style url (EPAS 12) - `/edb-docs/d/edb-postgres-advanced-ser
 
 The biggest difference is most urls in the "old" style do not contain the name of the file in the url, making them much more challenging to map. My initial work uses headers to attempt to make matches.
 
-## `yarn build-legacy-redirects-nginx`
+## `npm run build-legacy-redirects-nginx`
 
-The final piece is actually generating the nginx configuration to handle these redirects. This is done with the `yarn build-legacy-redirects-nginx` script. All this is doing is a clean build of the site, then running `scripts/legacy_redirects/clean_up_output.py` to remove non-legacy redirects from the output file. The file generation is handled by the `gatsby-plugin-nginx-redirect` plugin, which you can see in `gatsby-config.js`.
+The final piece is actually generating the nginx configuration to handle these redirects. This is done with the `npm run build-legacy-redirects-nginx` script. All this is doing is a clean build of the site, then running `scripts/legacy_redirects/clean_up_output.py` to remove non-legacy redirects from the output file. The file generation is handled by the `gatsby-plugin-nginx-redirect` plugin, which you can see in `gatsby-config.js`.
 
 Once this process completes, the new nginx configuration file should be at `static/nginx_redirects.generated`. This file should be inspected, and then handed to Mark Yeatman on the IT team to add to the server configuration.

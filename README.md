@@ -36,13 +36,13 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
-1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
+1. NPM is the package manager we're using for this project. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. Install all required packages by running `yarn`.
+1. Install all required packages by running `npm install`.
 
-1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
+1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
 ### Building Local PDFs (optional)
 
@@ -80,13 +80,13 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   yarn build-pdf product_docs/docs/<product_folder>/<version>
+   npm run build-pdf product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   yarn build-pdf product_docs/docs/epas/13
+   npm run build-pdf product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
@@ -109,9 +109,9 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
 By default, all document sources will be loaded into the app during development. It's possible to set up a configuration file, `dev-sources.json`, to only load specific sources, but this is not required.
 
-#### `yarn config-sources`
+#### `npm run config-sources`
 
-Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
+Run `npm run config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
 
@@ -132,9 +132,9 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 If you experience errors or other issues with the site, try the following in the project folder:
 
 1. `rm -rf node_modules` to clean out installed JavaScript packages
-1. `yarn` to reinstall JavaScript packages
-1. `yarn clean` to clean up Gatsby cache
-1. `yarn develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
+1. `npm install` to reinstall JavaScript packages
+1. `npm run clean` to clean up Gatsby cache
+1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ## Development
 
