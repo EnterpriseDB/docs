@@ -14,7 +14,7 @@ function AuthenticatedContentPlaceholder({ target, topic, description = "" }) {
         </p>
         <p>
           If you need access, please{" "}
-          <a href="https://www.enterprisedb.com/contact">contact us</a>
+          <a href="https://www.enterprisedb.com/contact">contact us</a>.
         </p>
       </div>
     </div>
