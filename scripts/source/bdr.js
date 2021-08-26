@@ -13,6 +13,7 @@ const remarkStringify = require("remark-stringify");
 const admonitions = require("remark-admonitions");
 const yaml = require("js-yaml");
 const visit = require("unist-util-visit");
+const visitAncestors = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
 const { exec, execSync } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
@@ -139,6 +140,27 @@ function bdrTransformer() {
     visit(tree, "link", (node) => {
       if (isAbsoluteUrl(node.url) || node.url[0] === '/') return;
       node.url = node.url.replace(/\//g, '_').replace(/\.md(?=$|\?|#)/, '');
+    });
+
+    // MDExtra anchors:
+    // - identify
+    // - remove
+    // - create explicit anchor preceding removal in container block
+    const anchorRE = /{#([^}]+)}/;
+    visitAncestors(tree, "text", (node, ancestors) => {
+      let anchor = node.value.match(anchorRE);
+      if (!anchor) return;
+      anchor = anchor[1];
+      node.value = node.value.replace(anchorRE, '');
+
+      const blockTypes = ['root', 'paragraph', 'listItem', 'blockquote'];
+      for (let i=ancestors.length-1, parent=ancestors[ancestors.length-1], child=node; i>=0; --i, child=parent, parent=ancestors[i])
+      {
+        if (!blockTypes.includes(parent.type)) continue;
+        anchor = {type: "jsx", value: `<div id='${anchor}'></div>`};
+        parent.children.splice(parent.children.indexOf(child), 0, anchor);
+        break;
+      }
     });
 
     if (!metadata.title)
