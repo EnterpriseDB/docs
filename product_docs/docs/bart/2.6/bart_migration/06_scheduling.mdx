@@ -1,0 +1,58 @@
+---
+title: Scheduling
+
+---
+
+Since BART, Barman, and pgBackRest all schedule the backups using cron,
+changing the scheduling simply requires changing the scheduled commands.
+Example commands for BART, Barman, and pgBackRest:
+
+1.  Run a full backup for cluster \'example\':
+
+    |   Tool     |   Command                                               |
+    |------------|---------------------------------------------------------|
+    | BART       | `bart BACKUP –s example`|
+    | Barman     | `barman backup example`|
+    | pgBackRest | `pgbackrest backup --type=full --stanza=example`|
+
+
+ 
+2.  Run a full backup for all configured servers:
+
+    |   Tool     |   Command                                               |
+    |------------|---------------------------------------------------------|
+    | BART       | `bart BACKUP –s all`|
+    | Barman     | `barman backup all`|
+    | pgBackRest | pgbackrest does not have an option to run for all stanzas with one command|
+
+ 
+
+3.  Run an incremental backup:
+
+    |   Tool     |   Command                                               |
+    |------------|---------------------------------------------------------|
+    | BART       | Retrieve the `backup_id`/`backup_name` for the parent (select a full for an incremental, select another inc/diff for a differential backup plan):<br/>`bart SHOW-BACKUPS example`<br/>Now supply the `backup_id`/`backup_name` as parent:<br/>`bart BACKUP –s example --parent { backup_id \| backup_name }`<br/>|
+    | Barman     | `barman backup example --reuse-backup=link`<br/>This can also be set in the configuration file at the global/server level with `reuse_backup = link`|
+    | pgBackRest | Incremental:`pgbackrest backup --type=incr --stanza=example`<br/>Differential: `pgbackrest backup --type=diff --stanza=example`|
+
+
+### Retention management
+
+-  With BART usually a cron job is set up to run maintenance on the
+   BART repository (bart MANAGE). By supplying the -d option, the
+   obsoleted backups are automatically cleaned (together with their
+   WAL archives).
+
+-  Similarly, Barman uses a cron command to run maintenance on the
+   Barman repository \`barman cron\`. The \`barman cron\` command
+   takes care of more things (like copying streamed WAL files to the
+   WAL archive directory), and needs to be scheduled to run every
+   minute. The Barman rpm or debian package automatically creates a
+   cron entry running every minute as the barman user.
+
+-  pgBackRest runs maintenance with the expire command (pgbackrest
+   expire), but the expire command is run automatically after each
+   successful backup, and is not required to be separately scheduled.
+
+While migrating to a new tool, make sure that cron is reconfigured to
+run the proper retention management commands.

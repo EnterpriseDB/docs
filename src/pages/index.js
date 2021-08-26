@@ -107,6 +107,25 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+            <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
+              Cloud Native PostgreSQL Operator
+            </IndexCardLink>
+
+            <IndexCardLink
+              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+              className="nested-link"
+            >
+              Install, Configure, Deploy
+              <span
+                className="new-thing"
+                title="Walk through an interactive demo in Katacoda"
+              >
+                Demo
+              </span>
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CONTROL}
             headingText="Monitoring & Admin Tools"
@@ -116,6 +135,15 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
+            </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
             </IndexCardLink>
           </IndexCard>
 
@@ -149,15 +177,6 @@ const Page = () => (
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery Tools"
@@ -186,24 +205,6 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
-              Cloud Native PostgreSQL Operator
-            </IndexCardLink>
-            <IndexCardLink
-              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
-              className="nested-link"
-            >
-              Install, Configure, Deploy
-              <span
-                className="new-thing"
-                title="Walk through an interactive demo in Katacoda"
-              >
-                Demo
-              </span>
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -212,29 +213,17 @@ const Page = () => (
               Foreign Data Wrappers
             </span>
             <IndexCardLink to="/hadoop_data_adapter/latest">
-              Hadoop Foreign Data Wrapper
+              Hadoop
             </IndexCardLink>
-            <IndexCardLink to="/mongo_data_adapter/latest">
-              Mongo Foreign Data Wrapper
-            </IndexCardLink>
-            <IndexCardLink to="/mysql_data_adapter/latest">
-              MySQL Foreign Data Wrapper
-            </IndexCardLink>
+            <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
+            <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Connectors
             </span>
-            <IndexCardLink to="/jdbc_connector/latest">
-              JDBC Connector
-            </IndexCardLink>
-            <IndexCardLink to="/net_connector/latest">
-              .NET Connector
-            </IndexCardLink>
-            <IndexCardLink to="/ocl_connector/latest">
-              OCL Connector
-            </IndexCardLink>
-            <IndexCardLink to="/odbc_connector/latest">
-              ODBC Connector
-            </IndexCardLink>
+            <IndexCardLink to="/jdbc_connector/latest">JDBC</IndexCardLink>
+            <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
+            <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
+            <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
