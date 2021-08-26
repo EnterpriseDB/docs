@@ -12,7 +12,7 @@ import {
 } from "../components";
 
 export const query = graphql`
-  query($nodeId: String!, $potentialLatestNodePath: String) {
+  query ($nodeId: String!, $potentialLatestNodePath: String) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
@@ -61,13 +61,8 @@ const determineCanonicalPath = (hasLatest, latestPath) => {
 const DocTemplate = ({ data, pageContext }) => {
   const { fields, body, tableOfContents } = data.mdx;
   const { path, mtime } = fields;
-  const {
-    pagePath,
-    frontmatter,
-    versions,
-    githubFileLink,
-    isIndexPage,
-  } = pageContext;
+  const { pagePath, frontmatter, versions, githubFileLink, isIndexPage } =
+    pageContext;
   const versionArray = makeVersionArray(versions, path);
   const { version } = getProductAndVersion(path);
   const pageMeta = {
@@ -97,10 +92,10 @@ const DocTemplate = ({ data, pageContext }) => {
           </div>
           <VersionDropdown versionArray={versionArray} path={path} />
 
-          <h4 className="text-muted mt-5 mb-3 font-weight-normal">
+          {/* <h4 className="text-muted mt-5 mb-3 font-weight-normal">
             The documentation for this product version is being migrated to EDB
             Docs 2.0. The links below will take you to EDB Docs 1.0.
-          </h4>
+          </h4> */}
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>

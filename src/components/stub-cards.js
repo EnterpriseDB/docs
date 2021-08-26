@@ -1,22 +1,10 @@
 import React from "react";
-import { Link } from "./";
 import { Row, Col } from "react-bootstrap";
 import { productStubs } from "../constants/product-stubs";
-import Icon from "./icon";
 import Archive from "./archive";
-
-const PdfIcon = ({ className }) => (
-  <Icon
-    iconName="PDF"
-    className={`fill-orange position-relative top-minus-2 ${className}`}
-    width="16"
-    height="auto"
-  />
-);
 
 const StubLink = ({ link }) => {
   const primaryLink = link.href ? link.href : link.pdf;
-  const primaryLinkIsPdf = !link.href;
 
   if (!primaryLink) {
     return <>{link.text}</>;
@@ -24,22 +12,7 @@ const StubLink = ({ link }) => {
 
   return (
     <li className="pb-3">
-      {primaryLinkIsPdf ? (
-        <>
-          <Archive title={link.text} path={link.pdf} variant="title-first" />
-        </>
-      ) : (
-        <>
-          <Link to={link.href} className="border-bottom">
-            {link.text}
-            {primaryLinkIsPdf && <PdfIcon className="ml-2" />}
-          </Link>
-          <br></br>
-          {link.pdf && (
-            <Archive title="Download PDF" path={link.pdf} className="small" />
-          )}
-        </>
-      )}
+      <Archive title={link.text} path={link.pdf} variant="title-first" />
     </li>
   );
 };
