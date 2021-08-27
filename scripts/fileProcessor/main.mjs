@@ -19,7 +19,7 @@ const processFiles = async () => {
 
   console.log(`Processing ${paths.length} files`);
 
-  paths.forEach((filename) => processSingleFile(filename));
+  paths.forEach(processSingleFile);
 };
 
 const processSingleFile = async (filename) => {
