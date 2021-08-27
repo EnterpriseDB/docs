@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import yaml from "js-yaml";
 
 export const process = async (filename, content) => {
   const trimmedContent = content.trim();
@@ -51,22 +52,17 @@ navigation:
 `;
 
   // read the mkdocs.yml file to figure out the nav entries for the frontmatter
-  await fs.readFile("mkdocs.yml", { encoding: "utf8" }).then((content) => {
-    // We only care about the content after the line which says "nav:"
-    const navItems = content.split("nav:\n");
-    navItems[1].split("\n").forEach((line) => {
-      if (line.slice(0, 3) !== "  -") {
-        return;
-      }
+  const mkdocsYaml = yaml.load(
+    await fs.readFile("mkdocs.yml", { encoding: "utf8" }),
+  );
+  mkdocsYaml.nav.forEach((line) => {
+    // make sure file extensions are stripped off.
+    modifiedFrontmatter = `${modifiedFrontmatter}  - ${line.slice(0, -3)}\n`;
 
-      // make sure file extensions are stripped off.
-      modifiedFrontmatter =
-        modifiedFrontmatter + line.slice(0, line.indexOf(".md")) + "\n";
-
-      if (line.indexOf("quickstart.md") > 0) {
-        modifiedFrontmatter = modifiedFrontmatter + "  - interactive_demo\n";
-      }
-    });
+    // Make sure the interactive demo page is included in the right spot.
+    if (line === "quickstart.md") {
+      modifiedFrontmatter = modifiedFrontmatter + "  - interactive_demo\n";
+    }
   });
 
   return modifiedFrontmatter;
