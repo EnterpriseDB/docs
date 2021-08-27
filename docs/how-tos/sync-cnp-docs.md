@@ -1,23 +1,15 @@
 # Sync Cloud-Native-PostgreSQL Docs
 
-Currently we need to manually sync over [cloud-native-postgresql][cnp]("CNP")
-docs whenever there's a new release. The long term goal is to automate this via
-GitHub action dispatch and automated event handling.
+Documentation from [cloud-native-postgresql][cnp]("CNP") should be synced over automatically when there is a new release, however in the event that needs to be done manually, the following process can be used:
 
-1. The CNP team informs us that there's a new version.
 1. Check out the appropriate version from the [CNP][] repo.
-1. Replace `docs:temp_kubernetes/docs/` with `cloud-native-postgresql:docs/`.
+1. Run the processor script
 
-   `temp_kubernetes/docs/` is not tracked via Git, so if it's not present
-   already, you'll need to create the directory yourself.
-
-1. Transpile original source documentation into MDX format:
-
+   **note:** replace `path/to/cnp/checkout` below to the actual path of your CNP checkout. If you are not running the script from this project's root, you will need to update `.` below to be the path to this project's checkout.
    ```sh
-   python scripts/source/source_cloud_native_operator.py
+   scripts/source/process-cnp-docs.sh path/to/cnp/checkout .
    ```
+1. The script will handle updating and moving the files from the [CNP][] repo into place.
 
-1. Replace `advocacy_docs/kubernetes/cloud-native-postgresql/` with
-   `temp_kubernetes/build/`.
 
 [cnp]: https://github.com/EnterpriseDB/cloud-native-postgresql
