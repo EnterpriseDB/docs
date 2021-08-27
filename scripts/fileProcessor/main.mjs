@@ -1,10 +1,8 @@
 import arg from "arg";
-import { readFileSync } from "fs";
+import fs from "fs/promises";
 import { globby } from "globby";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-
-import { rm, writeFile } from "./fileHelper.mjs";
 
 const args = arg({
   "--files": [String],
@@ -27,12 +25,10 @@ const processFiles = async () => {
 const processSingleFile = async (filename) => {
   console.log(`Processing ${filename}`);
 
-  const content = readFileSync(filename, "utf8");
-
   // run the processor scripts
   const { newFilename, newContent } = await runProcessorsForFile(
     filename,
-    content,
+    await fs.readFile(filename, "utf8"),
   );
 
   if (newFilename != filename) {
@@ -41,7 +37,7 @@ const processSingleFile = async (filename) => {
     console.log(`Writing ${newFilename}`);
   }
 
-  writeFile(newFilename, newContent)
+  fs.writeFile(newFilename, newContent)
     .catch((err) => {
       console.error(err);
       process.exit(1);
@@ -51,7 +47,7 @@ const processSingleFile = async (filename) => {
       if (newFilename != filename) {
         console.log(`Removing ${filename}`);
 
-        rm(filename).catch((err) => {
+        fs.rm(filename).catch((err) => {
           console.error(err);
           process.exit(1);
         });

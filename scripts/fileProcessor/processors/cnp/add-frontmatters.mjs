@@ -1,4 +1,4 @@
-import { readFile } from "../../fileHelper.mjs";
+import fs from "fs/promises";
 
 export const process = async (filename, content) => {
   const trimmedContent = content.trim();
@@ -51,7 +51,7 @@ navigation:
 `;
 
   // read the mkdocs.yml file to figure out the nav entries for the frontmatter
-  await readFile("mkdocs.yml", { encoding: "utf8" }).then((content) => {
+  await fs.readFile("mkdocs.yml", { encoding: "utf8" }).then((content) => {
     // We only care about the content after the line which says "nav:"
     const navItems = content.split("nav:\n");
     navItems[1].split("\n").forEach((line) => {
