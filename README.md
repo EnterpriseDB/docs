@@ -48,7 +48,19 @@ We recommend using MacOS to work with the EDB Docs application.
 
    1. Once you have that token, create a file in the root of the project called `.envrc.local` and add this code to it `export NPM_TOKEN="your-token-here"`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
-1. Install all required packages by running `npm install`.
+1. If you're **not** a member of the EnterpriseDB Github Org, you'll have to follow these steps:
+
+  1. In the terminal, navigate to `icons-pkg/`, located folder in the root of the repository: `cd icons-pkg/`.
+
+  1. Link the icons package to you global npm packages: `npm link`.
+
+  1. Navigate back to the root of the repository: `cd ..`.
+
+1. Install all required packages.
+
+  - If you're a member of the EnterpriseDB Gihub Org you can run `npm install`.
+
+  - If you're **not** a member, you have to run `npm link @enterprisedb/icons`.
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
