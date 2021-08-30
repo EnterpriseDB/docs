@@ -36,6 +36,11 @@ which vary according to the size and scale of the cluster.
 -   `max_wal_senders` - Two needed per every peer node.
 -   `max_replication_slots` - Same as `max_wal_senders`.
 
+-   `wal_sender_timeout` and `wal_receiver_timeout` - Determine how
+      quickly an origin considers its CAMO partner as disconnected or
+      reconnected; see [CAMO Failure Scenarios](camo#failure-scenarios) for
+      details.
+
 
 Note that in normal running for a group with N peer nodes, BDR will require
 N slots/walsenders. During synchronization, BDR will temporarily use another
@@ -64,6 +69,24 @@ Applications may also wish to set these parameters. Please see chapter on
     in a similar way to [physical replication](https://www.postgresql.org/docs/11/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT).
 -   `synchronous_standby_names` - same as above
 
+
+
+## 2ndQPostgres Settings for BDR
+
+The following Postgres settings need to be considered for commit at
+most once (CAMO), a feature that is only available for BDR in
+combination with 2ndQPostgres.  Some of these are only available in
+2ndQPostgres; others already exist in the community version, but only
+become relevant with BDR in combination with CAMO.
+
+-   `synchronous_replication_availability` - Can optionally be `async`
+    for increased availability by allowing an origin to continue and
+    commit after its CAMO partner got disconnected.  Under the default
+    value of `wait`, the origin will wait indefinitely, and proceed to
+    commit only after the CAMO partner reconnects and sends
+    confirmation.
+-   `snapshot_timestamp` - Turns on the usage of
+      [timestamp-based snapshots](tssnapshots) and sets the timestamp to use.
 
 
 ## pglogical Settings for BDR
@@ -267,6 +290,71 @@ Unless noted otherwise, values may be set by any user at any time.
 
 
 
+### CRDTs
+
+-   `bdr.crdt_raw_value` - Sets the output format of [CRDT Data Types](crdt).
+    The default output (when this setting is `off`) is to return only the current
+    value of the base CRDT type (for example, a bigint for `crdt_pncounter`).
+    When set to `on`, the returned value represents the full representation of
+    the CRDT value, which can for example include the state from multiple nodes.
+
+### Max Prepared Transactions
+
+-   `max_prepared_transactions` - Needs to be set high enough to cope
+    with the maximum number of concurrent prepared transactions across
+    the cluster due to explicit two-phase commits, CAMO or Eager
+    transactions.  Exceeding the limit prevents a node from running a
+    local two-phase commit or CAMO transaction, and will prevent all
+    Eager transactions on the cluster.
+    May only be set at Postgres server start.
+
+### Eager Replication
+
+-   `bdr.commit_scope` - Setting the commit scope to `global` enables
+    [eager all node replication](eager) (default `local`).
+
+-   `bdr.global_commit_timeout` - Timeout for both stages of a global
+    two-phase commit (default 60s) as well as for CAMO-protected transactions
+    in their commit phase, as a limit for how long to wait for the CAMO
+    partner.
+
+### Commit at Most Once
+
+-   `bdr.enable_camo` - Used to enable and control the CAMO feature.
+    Defaults to `off`.  CAMO can be switched on per transaction by
+    setting this to `remote_write`, `remote_commit_async`, or
+    `remote_commit_flush`.  For backwards-compatibility, the values
+    `on`, `true`, and `1` set the safest `remote_commit_flush` mode.
+    While `false` or `0` also disable CAMO.
+-   `bdr.camo_partner_of` - Allows specifying a CAMO partner per database.
+    Expects pairs of database name and node name joined by a colon.  Multiple
+    pairs may be specified, but only the first occurrence per database
+    is taken into account.  For example: `'db1:node_4 test_db:test_node_3'`.
+    May only be set at Postgres server start.
+-   `bdr.camo_origin_for` - Per-database node name of the origin of
+    transactions in a CAMO pairing; for each database, this needs to match
+    with the `bdr.camo_partner_of` setting on the corresponding origin node.
+    May only be set at Postgres server start.
+-   `bdr.standby_dsn` - Allows manual override of the connection
+    string (DSN) to reach the CAMO partner, in case it has changed since
+    the crash of the local node.  Should usually be unset.
+    May only be set at Postgres server start.
+-   `bdr.camo_local_mode_delay` - The commit delay that applies in
+    CAMO's Local mode to emulate the overhead that normally occurs with
+    the CAMO partner having to confirm transactions.  Defaults to 5 ms.
+    Setting to 0 disables this feature.
+-   `bdr.camo_enable_client_warnings` - Emit warnings if an activity is
+    carried out in the database for which CAMO properties cannot be
+    guaranteed. This is enabled by default. Well-informed users can choose
+    to disable this to reduce the amount of warnings going into their logs.
+
+### Timestamp-based Snapshots
+
+-   `bdr.timestamp_snapshot_keep` - For how long to keep valid snapshots for the
+      timestamp-based snapshot usage (default 0, meaning do not keep past snapshots).
+      Also see `snapshot_timestamp` above.
+
+
 ### Monitoring and Logging
 
 -   `bdr.debug_level` - Defines the log level that BDR uses to write
@@ -310,3 +398,13 @@ Unless noted otherwise, values may be set by any user at any time.
       Defaults to the current BDR version. Since this changes from release
       to release, we advise against explicit use within the configuration
       file unless the value is different to the current version.
+
+-   `bdr.track_replication_estimates` - Track replication estimates in terms
+    of apply rates and catchup intervals for peer nodes.  This information can
+    be used by protocols like CAMO to estimate the readiness of a
+    peer node. This parameter is enabled by default.
+-   `bdr.lag_tracker_apply_rate_weight` - We monitor how far behind peer nodes
+      are in terms of applying WAL from the local node, and calculate a moving
+      average of the apply rates for the lag tracking. This parameter specifies
+      how much contribution newer calculated values have in this moving average
+      calculation. Default value is 0.1.

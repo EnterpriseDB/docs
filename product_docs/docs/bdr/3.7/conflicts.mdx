@@ -26,13 +26,15 @@ Conflicts can be detected and handled differently for each table using
 
 
 
-conflict triggers, available with BDR-EE.
+conflict triggers, available with BDR-EE,
+described in the [Stream Triggers](striggers) chapter.
 
 
 
 
 
-Column-level conflict detection and resolution is available with BDR-EE.
+Column-level conflict detection and resolution is available with BDR-EE,
+described in the [CLCD](column-level-conflicts) chapter.
 
 
 
@@ -40,8 +42,8 @@ If you wish to avoid conflicts, you can use these features in BDR-EE
 
 
 
--   Conflict-free data types (CRDTs).
--   Eager replication.
+-   Conflict-free data types (CRDTs) - described in the [CRDT](crdt) chapter.
+-   Eager replication - described in the [Eager Replication](eager) chapter.
 
 
 By default, all conflicts are logged to `bdr.conflict_history`. If conflicts
@@ -57,6 +59,15 @@ very low latency is critical for acceptable performance.
 Distributed locking is essentially a pessimistic approach, whereas BDR
 advocates an optimistic approach: avoid conflicts where possible, but allow
 some types of conflict to occur and resolve them when they arise.
+
+
+
+!!! Warning "Upgrade Notes"
+    All the SQL visible interfaces are in the `bdr` schema. 
+    All the previously deprecated interfaces in the `bdr_conflicts` or
+    `bdr_crdt` schema were removed and will **not** work on 3.7+ nodes or in
+    groups that contain at least one 3.7+ node.
+    Please use the ones in `bdr` schema that are already present in all BDR versions.
 
 .
 
@@ -149,10 +160,6 @@ preserve the row with the correct `PRIMARY KEY` and delete the others.
 
 
 
-It's also possible to define a different behaviour using a conflict trigger.
-
-
-
 #### UPDATE/UPDATE Conflicts
 
 Where two concurrent `UPDATE`s on different nodes change the same tuple
@@ -185,26 +192,26 @@ issues in both PostgreSQL and BDR.
 
 Let's create a very simple example schema to explain:
 
-```.postgresql
+```sql
 CREATE TABLE pktest (pk integer primary key, val integer);
 INSERT INTO pktest VALUES (1,1);
 ```
 
 Updating the Primary Key column is possible, so this SQL succeeds:
 
-```.postgresql
+```sql
 UPDATE pktest SET pk=2 WHERE pk=1;
 ```
 
 ...but if we have multiple rows in the table, e.g.:
 
-```.postgresql
+```sql
 INSERT INTO pktest VALUES (3,3);
 ```
 
 ...then some UPDATEs would succeed:
 
-```.postgresql
+```sql
 UPDATE pktest SET pk=4 WHERE pk=3;
 
 SELECT * FROM pktest;
@@ -217,7 +224,7 @@ SELECT * FROM pktest;
 
 ...but other UPDATEs would fail with constraint errors:
 
-```.postgresql
+```sql
 UPDATE pktest SET pk=4 WHERE pk=2;
 ERROR:  duplicate key value violates unique constraint "pktest_pkey"
 DETAIL:  Key (pk)=(4) already exists
@@ -231,7 +238,7 @@ allowed from multiple locations at same time.
 
 Executing these two changes concurrently works:
 
-```.postgresql
+```sql
 node1: UPDATE pktest SET pk=pk+1 WHERE pk = 2;
 node2: UPDATE pktest SET pk=pk+1 WHERE pk = 4;
 
@@ -248,14 +255,14 @@ a divergent error, since both changes are accepted. But when
 the changes are applied on the other node, this will result in
 update_missing conflicts.
 
-```.postgresql
+```sql
 node1: UPDATE pktest SET pk=1 WHERE pk = 3;
 node2: UPDATE pktest SET pk=2 WHERE pk = 3;
 ```
 
 ...leaving the data different on each node:
 
-```.postgresql
+```sql
 node1:
 SELECT * FROM pktest;
  pk | val 
@@ -278,7 +285,7 @@ This situation can be identified and resolved using LiveCompare.
 Concurrent conflicts give problems. Executing these two changes
 concurrently is not easily resolvable:
 
-```.postgresql
+```sql
 node1: UPDATE pktest SET pk=6, val=8 WHERE pk = 5;
 node2: UPDATE pktest SET pk=6, val=9 WHERE pk = 5;
 ```
@@ -531,7 +538,7 @@ table. One trigger needs to be added to each table.
 Add a trigger that will set columns to NULL in Fact if the referenced row
 in RefData has already been deleted.
 
-```.postgresql
+```sql
 CREATE TRIGGER bdr_replica_fk_iu_trg
     BEFORE INSERT OR UPDATE ON fact
     FOR EACH ROW
@@ -544,7 +551,7 @@ ALTER TABLE fact
 Add a trigger that will set columns to NULL in Fact at the time a DELETE occurs
 on the RefData table.
 
-```.postgresql
+```sql
 CREATE TRIGGER bdr_replica_fk_d_trg
     BEFORE DELETE ON refdata
     FOR EACH ROW
@@ -719,16 +726,6 @@ as is normally the case with BDR AlwaysOn architecture.
 
 
 
-!!! Warning
-    In BDR Standard Edition, the additional WAL logging of TOAST is done
-    using the `BEFORE UPDATE` trigger. This trigger must be sorted alphabetically
-    last (based on trigger name) among all `BEFORE UPDATE` triggers on the
-    table. It's prefixed with `zzzz_bdr_` to make this easier, but make sure
-    you don't create any trigger with name that would sort after it, otherwise
-    the protection against the concurrency issues will not be present.
-
-
-
 For the `insert_or_error` conflict resolution, the use of
 `REPLICA IDENTITY FULL` is however still required.
 
@@ -791,6 +788,8 @@ BDR provides these mechanisms for conflict detection:
 
 -   [Origin Conflict Detection] \(default)
 -   [Row Version Conflict Detection]
+
+-   [Column-Level Conflict Detection](column-level-conflicts)
     .
 
 as well as other mechanisms when using BDR-EE.
@@ -833,47 +832,9 @@ back the freezing of rows while a node is down.
 
 
 
-BDR-SE users need to manage this situation with some care:
+No changes to parameter settings are required.
 
-Freezing normally occurs when a row being vacuumed is older than
-`vacuum_freeze_min_age` xids from the current xid, which means that you
-need to configure suitably high values for these parameters:
-
--   vacuum_freeze_min_age
--   vacuum_freeze_table_age
--   autovacuum_freeze_max_age
-
-Values should be chosen based upon the transaction rate, giving
-a grace period of downtime before any conflict data is removed
-from the database server. For example, a node performing
-1000 TPS could be down for just over 5.5 days before conflict
-data is removed, when vacuum_freeze_min_age is set to 500 million.
-The CommitTS datastructure will take on-disk space of 5 GB with
-that setting, so lower transaction rate systems may benefit from
-lower settings.
-
-Initially recommended settings would be:
-
-```.postgresql
-# 1 billion = 10GB
-autovacuum_freeze_max_age = 1000000000
-
-vacuum_freeze_min_age = 500000000
-
-# 90% of autovacuum_freeze_max_age
-vacuum_freeze_table_age = 900000000
-```
-
-Note that:
-
--   autovacuum_freeze_max_age can only be set at server start.
--   vacuum_freeze_min_age is user-settable, so using a
-    low value will freeze rows early and could result in conflicts being
-    ignored. autovacuum_freeze_min_age and toast.autovacuum_freeze_min_age
-    can also be set for individual tables.
--   running the CLUSTER or VACUUM FREEZE commands will also
-    freeze rows early and could result in conflicts being ignored.
-    .
+.
 
 ### Row Version Conflict Detection
 
@@ -915,7 +876,7 @@ Allows the table owner to change how conflict detection works for a given table.
 
 #### Synopsis
 
-```postgresql
+```sql
 bdr.alter_table_conflict_detection(relation regclass,
                                    method text,
                                    column_name name DEFAULT NULL)
@@ -938,8 +899,20 @@ The recognized methods for conflict detection are:
 -   `row_version` - row version column (see [Row Version Conflict Detection]
       above).
 
+-   `column_commit_timestamp` - per-column commit timestamps (described in the
+    [CLCD](column-level-conflicts) chapter).
+-   `column_modify_timestamp` - per-column modification timestamp (described in
+      the [CLCD](column-level-conflicts) chapter).
+
 
 #### Notes
+
+
+
+For more information about the difference between `column_commit_timestamp`
+and `column_modify_timestamp` conflict detection methods, see
+[Current vs Commit Timestamp](column-level-conflicts#current-vs-commit-timestamp])
+section in the CLCD chapter.
 
 
 
@@ -961,6 +934,12 @@ set to 30618 or below.
 !!! Warning
     Please note that when changing the conflict detection method from one that
     uses an extra column to store metadata, that column will be dropped.
+
+
+
+!!! Warning
+    This function automatically disables CAMO (together with a warning, as
+    long as these are not disabled with `bdr.camo_enable_client_warnings`).
 
 
 
@@ -1015,7 +994,7 @@ This function sets the behaviour of conflict resolution on a given node.
 
 #### Synopsis
 
-```postgresql
+```sql
 bdr.alter_node_set_conflict_resolver(node_name text,
                                      conflict_type text,
                                      conflict_resolver text)
@@ -1098,6 +1077,14 @@ of the conflict types they can handle:
 
 
 
+The `insert_exists`, `update_differing`, `update_origin_change`,
+`update_missing`, `multiple_unique_conflicts`, `update_recently_deleted`,
+`update_pkey_exists`, `delete_recently_updated` and `delete_missing` conflict
+types can also be resolved by user-defined logic using
+[Conflict Triggers](striggers).
+
+
+
 Here is a matrix that will help you individuate what conflict types the conflict
 resolvers can handle.
 
@@ -1161,7 +1148,7 @@ Set the conflict logging configuration for a node.
 
 #### Synopsis
 
-```postgresql
+```sql
 bdr.alter_node_set_log_config(node_name text,
                               log_to_file bool DEFAULT true,
                               log_to_table bool DEFAULT true,
@@ -1228,7 +1215,7 @@ Conflicts logged to tables can be summarized in reports. This allows
 application owners to identify, understand and resolve conflicts,
 and/or introduce application changes to prevent them.
 
-```postgresql
+```sql
 SELECT nspname, relname
 , date_trunc('day', local_time) :: date AS date
 , count(*)

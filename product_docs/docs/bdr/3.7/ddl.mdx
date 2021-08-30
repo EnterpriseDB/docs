@@ -240,7 +240,7 @@ Note that global locking rules still apply, so be careful not to lock
 yourself out with this type of usage, which should be seen as more of a
 workaround than normal usage.
 
-```postgresql
+```sql
 SELECT bdr.run_on_all_nodes($ddl$
         CREATE INDEX CONCURRENTLY index_a ON table_a(i);
 $ddl$);
@@ -265,7 +265,7 @@ invalid index will fail on a BDR node when DDL replication is enabled.
 
 DDL replication can be disabled when using command line utilities like this:
 
-```postgresql
+```sql
 $ export PGOPTIONS="-c bdr.ddl_replication=off"
 $ pg_restore --section=post-data
 ```
@@ -623,7 +623,7 @@ The following example fails because it tries to add a constant value of type `ti
 onto a column of type `timestamptz`. The cast between `timestamp` and `timestamptz`
 relies upon the time zone of the session and so is not immutable.
 
-```postgresql
+```sql
 ALTER TABLE foo
   ADD expiry_date timestamptz DEFAULT timestamp '2100-01-01 00:00:00' NOT NULL;
 ```
@@ -645,6 +645,8 @@ DML lock:
 -   `ALTER TABLE ... ALTER COLUMN ... SET DEFAULT expression`
 -   `ALTER TABLE ... ALTER COLUMN ... DROP DEFAULT`
 
+-   `ALTER TABLE ... ALTER COLUMN ... TYPE` if it does not require rewrite
+
 -   `ALTER TABLE ... ALTER COLUMN ... SET STATISTICS`
 -   `ALTER TABLE ... VALIDATE CONSTRAINT`
 -   `ALTER TABLE ... ATTACH PARTITION`
@@ -658,6 +660,165 @@ DML lock:
 
 All other variants of `ALTER TABLE` take a DML lock on the table being modified.
 Some variants of `ALTER TABLE` have restrictions, noted below.
+
+
+
+#### ALTER TABLE Examples
+
+This next example works because the type change is binary coercible and so does not
+cause a table rewrite, so it will execute as a catalog-only change.
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(20));
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(128);
+```
+
+However, making this change to reverse the above command is not possible because
+the change from VARCHAR(128) to VARCHAR(20) is not binary coercible.
+
+```sql
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
+```
+
+See later for suggested workarounds.
+
+It is useful to provide context for different types of ALTER TABLE ...
+ALTER COLUMN TYPE (ATCT) operations that are possible in general and in
+non-replicated environments.
+
+Some ATCT operations only update the metadata of the underlying column
+type and do not require a rewrite of the underlying table data. This is
+typically the case when the existing column type and the target type are
+binary coercible. For example:
+
+```sql
+CREATE TABLE sample (col1 BIGINT PRIMARY KEY, col2 VARCHAR(128), col3 INT);
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(256);
+```
+
+It will also be OK to change the column type to `VARCHAR` or `TEXT`
+datatypes because of binary coercibility. Again, this is just a metadata
+update of the underlying column type.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR;
+ALTER TABLE sample ALTER COLUMN col2 TYPE TEXT;
+```
+
+However, if you want to reduce the size of col2, then that will lead to
+a rewrite of the underlying table data. Rewrite of a table is normally
+restricted.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+```
+
+To give an example with non-text types, consider col3 above with type
+INTEGER. An ATCT operation which tries to convert to SMALLINT or BIGINT
+will fail in a similar manner as above.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col3 TYPE bigint;
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+```
+
+In both the above failing cases, there exists an automatic assignment
+cast from the current types to the target types. However there is no
+binary coercibility, which ends up causing a rewrite of the underlying
+table data.
+
+In such cases, in controlled DBA environments, it is possible to change
+the type of a column to an automatically castable one, by adopting
+a rolling upgrade for the type of this column in a non-replicated
+environment on all the nodes, one by one. If the DDL is not replicated
+and the change of the column type is to an automatically castable one
+as above, then it is possible to allow the rewrite locally on the node
+performing the alter, along with concurrent activity on other nodes on
+this same table. This non-replicated ATCT operation can then be repeated
+on all the nodes one by one to bring about the desired change of the
+column type across the entire BDR cluster. Note that because this
+involves a rewrite, the activity will still take the DML lock for a
+brief period, and thus requires that the whole cluster is available. With
+the above specifics in place, the rolling upgrade of the non-replicated
+alter activity can be carried out as below:
+
+```sql
+-- foreach node in BDR cluster do:
+SET bdr.ddl_replication TO FALSE;
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
+ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
+RESET bdr.ddl_replication;
+-- done
+```
+
+Due to automatic assignment casts being available for many data types,
+this local non-replicated ATCT operation supports a wide variety of
+conversions. Also note that ATCT operations that use a `USING` clause
+are likely to fail because of the lack of automatic assignment casts.
+A few common conversions with automatic assignment casts are mentioned
+below.
+
+```sql
+-- foreach node in BDR cluster do:
+SET bdr.ddl_replication TO FALSE;
+ATCT operations to-from {INTEGER, SMALLINT, BIGINT}
+ATCT operations to-from {CHAR(n), VARCHAR(n), VARCHAR, TEXT}
+ATCT operations from numeric types to text types
+RESET bdr.ddl_replication;
+-- done
+```
+
+The above is not an exhaustive list of possibly allowable ATCT
+operations in a non-replicated environment. Obviously, not all ATCT
+operations will work. The cases where no automatic assignment is
+possible will fail even if we disable DDL replication. So, while
+conversion from numeric types to text types works in non-replicated
+environment, conversion back from text type to numeric types will fail.
+
+```sql
+SET bdr.ddl_replication TO FALSE;
+-- conversion from BIGINT to TEXT works
+ALTER TABLE sample ALTER COLUMN col3 TYPE TEXT;
+-- conversion from TEXT back to BIGINT fails
+ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE which cannot be automatically cast to new type may not affect replicated tables on a BDR node
+RESET bdr.ddl_replication;
+```
+
+While the ATCT operations in non-replicated environments support a
+variety of type conversions, it is important to note that the rewrite
+can still fail if the underlying table data contains values that cannot
+be assigned to the new data type. For example, the current type for
+a column might be `VARCHAR(256)` and we tried a non-replicated ATCT
+operation to convert it into `VARCHAR(128)`. If there is any existing data
+in the table which is wider than 128 bytes, then the rewrite operation
+will fail locally.
+
+```sql
+INSERT INTO sample VALUES (1, repeat('a', 200), 10);
+SET bdr.ddl_replication TO FALSE;
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(128);
+INFO:  in rewrite
+ERROR:  value too long for type character varying(128)
+```
+
+If underlying table data meets the characteristics of the new type,
+then the rewrite will succeed. However, there is a possibility that
+replication will fail if other nodes (which have not yet performed the
+non-replicated rolling data type upgrade) introduce new data that
+is wider than 128 bytes concurrently to this local ATCT operation. This
+will bring replication to a halt in the cluster. So it is important
+to be aware of the data type restrictions and characteristics at the
+database and application levels while performing these
+non-replicated rolling data type upgrade operations. It is **strongly**
+recommended and advisable to perform and test such ATCT operations in
+controlled and fully-aware DBA environments. We need to be aware that these
+ATCT operations are asymmetric, and backing out certain changes that fail
+could lead to table rewrites lasting long durations.
+
+Also note that the above implicit castable ALTER activity cannot be
+performed in transaction blocks.
 
 
 
@@ -810,12 +971,38 @@ locking.
 
 
 
+#### Adding a CONSTRAINT
+
+Starting BDR 3.7.4, a CHECK and FOREIGN KEY constraint can be added
+without requiring a DML lock. This requires a 2-step process.
+
+-   `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID`
+-   `ALTER TABLE ... VALIDATE CONSTRAINT`
+
+These steps must be executed in two different transactions. Both these
+steps only take DDL lock on the table and hence can be run even when one
+or more nodes are down. But in order to validate a constraint, BDR must
+ensure that all nodes in the cluster has seen the `ADD CONSTRAINT`
+command and the node validating the constraint has applied replication
+changes from all other nodes prior to creating the NOT VALID constraint
+on those nodes. So even though the new mechanism does not need all nodes
+to be up while validating the constraint, it still requires that all
+nodes should have applied the `ALTER TABLE .. ADD CONSTRAINT ... NOT VALID`
+command and made enough progress. BDR will wait for a consistent
+state to be reached before validating the constraint.
+
+Note that the new facility requires the cluster to run with RAFT protocol
+version 24 and beyond. If the RAFT protocol is not yet upgraded, the old
+mechanism will be used, resulting in a DML lock request.
+
+
+
 #### Adding a Column
 
 To add a column with a volatile default, run these commands in
 separate transactions:
 
-```postgresql
+```sql
     ALTER TABLE mytable ADD COLUMN newcolumn coltype; -- Note the lack of DEFAULT or NOT NULL
 
     ALTER TABLE mytable ALTER COLUMN newcolumn DEFAULT volatile-expression;
@@ -846,7 +1033,7 @@ run after the `UPDATE` has finished.
 PostgreSQL causes a table rewrite in some cases where it could be avoided,
 for example:
 
-```postgresql
+```sql
 CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
 ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
 ```
@@ -855,7 +1042,7 @@ This statement can be rewritten to avoid a table rewrite by making the
 restriction a table constraint rather than a datatype change, which can
 then be validated in a subsequent command to avoid long locks, if desired.
 
-```postgresql
+```sql
 CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
 ALTER TABLE foo
   ALTER COLUMN description TYPE varchar,
@@ -896,18 +1083,6 @@ on each node, to reduce lock durations.
 **Because you are dropping a column, you may have to re-create views, procedures,
 etc. that depend on the table. Be careful if you `CASCADE` drop the column,
 as you will need to ensure you re-create everything that referred to it.**
-
-
-
-#### CREATE TABLE AS
-
-In Standard Edition, `CREATE TABLE AS` is not allowed, instead you can achieve
-the same effect using:
-
-```
-CREATE TABLE mytable;
-INSERT INTO mytable SELECT ... ;
-```
 
 
 

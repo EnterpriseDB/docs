@@ -328,9 +328,14 @@ between them to read stale data.
 
 
 
-The synchronous replication features of PGLogical are available to BDR
-as well.  More advanced variants of synchronous replication features
-are available with the Enterprise Edition.
+A [queue wait function](functions#bdrwait_for_apply_queue) is
+provided for clients or proxies to prevent such stale reads.
+
+In addition, BDR provides multiple variants for more synchronous
+replication.  Please refer to the
+[Durability & Performance Options](durability)
+chapter for an overview and comparison of all variants available and
+its different modes.
 
 
 
@@ -453,7 +458,7 @@ Specification consists of five parts, tested in this order:
 `server "<name>"`
 
   This defines the name of the servers that the sessions will run on.
-  There can be zero or more server `<name>` specifications.
+  There can be zero or more server "`<name>`" specifications.
   The conninfo corresponding to the names is provided via the command to
   run isolationtester. This is described in `quickstart_isolationtest.md`.
   This part is optional.
@@ -608,4 +613,88 @@ So if "BDR is running slow", then we suggest the following:
 
 Use all of the normal Postgres tuning features to improve the speed
 of critical parts of your application.
+
+
+
+## Assessing Suitability
+
+BDR is compatible with PostgreSQL, but not all PostgreSQL applications are
+suitable for use on distributed databases. Most applications are already, or
+can be easily modified to become BDR compliant. Users can undertake an
+assessment activity in which they can point their application to a BDR-enabled
+setup. BDR provides a few knobs which can be set during the assessment period.
+These will aid in the process of deciding suitability of their application in
+a BDR-enabled environment.
+
+### Assessing updates of Primary Key/Replica Identity
+
+BDR cannot currently perform conflict resolution where the PRIMARY KEY is changed
+by an UPDATE operation. It is permissible to update the primary key, but you must
+ensure that no conflict with existing values is possible.
+
+BDR-EE provides the following configuration
+parameter to assess how frequently the primary key/replica identity of any table
+is being subjected to update operations.
+
+Note that these configuration parameters must only be used for assessment only.
+They can be used on a single node BDR instance, but must not be used on a production
+BDR cluster with two or more nodes replicating to each other. In fact, a node
+may fail to start or a new node will fail to join the cluster if any of the
+assessment parameters are set to anything other than `IGNORE`.
+
+```sql
+bdr.assess_update_replica_identity = IGNORE (default) | LOG | WARNING | ERROR
+```
+
+By enabling this parameter during the assessment period, one can log updates to
+the key/replica identity values of a row. One can also potentially block such
+updates, if desired. E.g.
+
+```sql
+CREATE TABLE public.test(g int primary key, h int);
+INSERT INTO test VALUES (1, 1);
+
+SET bdr.assess_update_replica_identity TO 'error';
+UPDATE test SET g = 4 WHERE g = 1;
+ERROR:  bdr_assess: update of key/replica identity of table public.test
+```
+
+Apply worker processes will always ignore any settings for this parameter.
+
+### Assessing use of LOCK on tables or in SELECT queries
+
+Because BDR writer processes operate much like normal user sessions, they are subject to
+the usual rules around row and table locking. This can sometimes lead to BDR writer
+processes waiting on locks held by user transactions, or even by each other.
+
+BDR-EE provides the following configuration parameter
+to assess if the application is taking explicit locks.
+
+```sql
+bdr.assess_lock_statement = IGNORE (default) | LOG | WARNING | ERROR
+```
+
+Two types of locks that can be tracked are:
+
+-   explicit table-level locking (LOCK TABLE ...) by user sessions
+-   explicit row-level locking (SELECT ... FOR UPDATE/FOR SHARE) by user sessions
+
+By enabling this parameter during the assessment period, one can track (or block) such explicit
+locking activity.  E.g.
+
+```sql
+CREATE TABLE public.test(g int primary key, h int);
+INSERT INTO test VALUES (1, 1);
+
+SET bdr.assess_lock_statement TO 'error';
+SELECT * FROM test FOR UPDATE;
+ERROR:  bdr_assess: "SELECT FOR UPDATE" invoked on a BDR node
+
+SELECT * FROM test FOR SHARE;
+ERROR:  bdr_assess: "SELECT FOR SHARE" invoked on a BDR node
+
+SET bdr.assess_lock_statement TO 'warning';
+LOCK TABLE test IN ACCESS SHARE MODE;
+WARNING:  bdr_assess: "LOCK STATEMENT" invoked on a BDR node
+```
 
