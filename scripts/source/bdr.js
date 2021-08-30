@@ -163,6 +163,13 @@ function bdrTransformer() {
       }
     });
 
+    // images: strip Markdown Extra attribute block
+    visit(tree, "image", (node, index, parent) => {
+      const attrRE = /{[^}]+}/;
+      if (/{[^}]+?}/.test(parent.children[index+1]?.value))
+        parent.children[index+1].value = parent.children[index+1].value.replace(attrRE, '');
+    });
+
     if (!metadata.title)
       metadata.title = title;
     if (metadata.description && stub && description)
