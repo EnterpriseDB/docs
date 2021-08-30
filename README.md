@@ -28,6 +28,22 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Create a `.env` file: `cp env .env.development`.
 
+At this point you have a couple options. You can either use docker to quickly get the documentation running in your browser, or you can fully set up a development environment on your local machine.
+
+### Get started quickly with Docker
+Choose this option if you just want to update documentation, and don't want to worry about installing and managing the correct version of Node.
+
+1. Install Docker on your mac. [Follow the direction here.](https://docs.docker.com/get-docker/)
+
+1. Navigate to the cloned repo directory in your terminal
+
+1. Run `docker-compose up`
+
+1. And that's it! The application will take a few minutes to build, but once it's finished the it can be accessed at `http://localhost:8000/`.
+
+### Set up a full development environment
+Choose this option if you need to make more in depth changes to the docs application, or you are comfortable managing your Node installation
+
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
@@ -311,4 +327,3 @@ Option 2: on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
-
