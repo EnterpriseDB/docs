@@ -43,13 +43,13 @@ At this point you have a couple options.
 
 1. Navigate to the cloned repo directory in your terminal
 
-1. Run `yarn start`
+1. Run `npm run start`
 
 1. The application will take a few minutes to build, but once it's finished the it can be accessed at `http://localhost:8000/`.
 
-1. To stop the server run `yarn stop`
+1. To stop the server run `npm run stop`
 
-1. To view logs from the server, run `yarn logs`, to exit the logs press `ctrl`+`c`
+1. To view logs from the server, run `npm run logs`, to exit the logs press `ctrl`+`c`
 
 ### Install Docker using Homebrew
 
