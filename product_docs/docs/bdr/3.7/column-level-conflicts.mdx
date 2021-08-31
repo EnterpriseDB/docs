@@ -1,0 +1,350 @@
+---
+navTitle: Column-Level Conflict Resolution
+title: Column-Level Conflict Detection
+originalFilePath: column-level-conflicts.md
+
+---
+
+By default, conflicts are resolved at row level. That is, when changes
+from two nodes conflict, we pick either the local or remote tuple and
+discard the other one. For example, we may compare commit timestamps for
+the two conflicting changes and keep the newer one. This ensures that all
+nodes converge to the same result, and establishes commit-order-like
+semantics on the whole cluster.
+
+However, in some cases it may be appropriate to resolve conflicts at
+the column-level rather than the row-level.
+
+Consider a simple example, where we have a table "t" with two integer
+columns "a" and "b", and a single row `(1,1)`. Assume that on one node
+we execute:
+
+```sql
+UPDATE t SET a = 100
+```
+
+...while on another node we concurrently (before receiving the preceding
+`UPDATE`) execute:
+
+```sql
+UPDATE t SET b = 100
+```
+
+This results in an `UPDATE-UPDATE` conflict. With the `update_if_newer`
+conflict resolution, we compare the commit timestamps and keep the new
+row version. Assuming the second node committed last, we end up with
+`(1,100)`, effectively discarding the change to column "a".
+
+For many use cases this is the desired and expected behaviour, but for
+some this may be an issue - consider for example a multi-node cluster
+where each part of the application is connected to a different node,
+updating a dedicated subset of columns in a shared table. In that case,
+the different components may step on each other's toes, overwriting
+their changes.
+
+For such use cases, it may be more appropriate to resolve conflicts on
+a given table at the column-level. To achieve that, BDR will track
+the timestamp of the last change for each column separately, and use that
+to pick the most recent value (essentially `update_if_newer`).
+
+Applied to the previous example, we'll end up with `(100,100)` on both
+nodes, despite neither of the nodes ever seeing such a row.
+
+When thinking about column-level conflict resolution, it may be useful
+to see tables as vertically partitioned, so that each update affects
+data in only one slice. This eliminates conflicts between changes to
+different subsets of columns. In fact, vertical partitioning may even
+be a practical alternative to column-level conflict resolution.
+
+Column-level conflict resolution requires the table to have `REPLICA
+IDENTITY FULL`. The `bdr.alter_table_conflict_detection` function does check
+that, and will fail with an error otherwise.
+
+## Enabling and Disabling Column-Level Conflict Resolution
+
+The Column-Level Conflict Resolution is managed by the
+[bdr.alter_table_conflict_detection()](conflicts#bdralter_table_conflict_detection)
+function.
+
+### Example
+
+To illustrate how the `bdr.alter_table_conflict_detection()` is used, consider
+this example that creates a trivial table `test_table` and then enable
+column-level conflict resolution on it:
+
+```sql
+db=# CREATE TABLE my_app.test_table (id SERIAL PRIMARY KEY, val INT);
+CREATE TABLE
+
+db=# ALTER TABLE my_app.test_table REPLICA IDENTITY FULL;
+ALTER TABLE
+
+db=# SELECT bdr.alter_table_conflict_detection(
+db(# 'my_app.test_table'::regclass, 'column_modify_timestamp', 'cts');
+ alter_table_conflict_detection 
+--------------------------------
+ t
+
+db=# \d my_app.test_table
+```
+
+You will see that the function adds a new `cts` column (as specified in
+the function call), but it also created two triggers ( `BEFORE INSERT`
+and `BEFORE UPDATE` ) that are responsible for maintaining timestamps
+in the new column before each change.
+
+Also worth mentioning is that the new column specifies `NOT NULL`
+with a default value, which means that `ALTER TABLE ... ADD COLUMN`
+does not perform a table rewrite.
+
+*Note*: We discourage using columns with the `bdr.column_timestamps` data type
+for other purposes as it may have various negative effects
+(it switches the table to column-level conflict resolution, which will
+not work correctly without the triggers etc.).
+
+### Listing Table with Column-Level Conflict Resolution
+
+Tables having column-level conflict resolution enabled can be listed
+with the following query, which detects the presence of a column of
+type `bdr.column_timestamp`:
+
+```sql
+SELECT nc.nspname, c.relname
+FROM pg_attribute a
+JOIN (pg_class c JOIN pg_namespace nc ON c.relnamespace = nc.oid)
+  ON a.attrelid = c.oid
+JOIN (pg_type t  JOIN pg_namespace nt ON t.typnamespace = nt.oid)
+  ON a.atttypid = t.oid
+WHERE NOT pg_is_other_temp_schema(nc.oid)
+  AND nt.nspname = 'bdr'
+  AND t.typname = 'column_timestamps'
+  AND NOT a.attisdropped
+  AND c.relkind IN ('r', 'v', 'f', 'p');
+```
+
+### bdr.column_timestamps_create
+
+This function creates column-level conflict resolution. This is called within
+`column_timestamp_enable`.
+
+#### Synopsis
+
+```sql
+bdr.column_timestamps_create(p_source cstring, p_timestamp timestampstz)
+```
+
+#### Parameters
+
+-   `p_source` - The two options are 'current' or 'commit'.
+-   `p_timestamp` - Timestamp is dependent on the source chosen: if 'commit',
+    then TIMESTAMP_SOURCE_COMMIT; if 'current', then TIMESTAMP_SOURCE_CURRENT.
+
+## DDL Locking
+
+When enabling or disabling column timestamps on a table, the code uses
+DDL locking to ensure that there are no pending changes from before the
+switch, to ensure we only see conflicts with either timestamps in both
+tuples or neither of them. Otherwise, the code might unexpectedly see
+timestamps in the local tuple and NULL in the remote one. It also
+ensures that the changes are resolved the same way (column-level or
+row-level) on all nodes.
+
+## Current vs Commit Timestamp
+
+An important question is what timestamp to assign to modified columns.
+
+By default, the timestamp assigned to modified columns is the current
+timestamp, as if obtained from `clock_timestamp`. This is simple, and
+for many cases it is perfectly correct (e.g. when the conflicting rows
+modify non-overlapping subsets of columns).
+
+It may however have various unexpected effects:
+
+-   The timestamp changes during statement execution, so if an `UPDATE`
+    affects multiple rows, each will get a slightly different timestamp.
+    This means that the effects of concurrent changes may get "mixed" in various
+    ways (depending on how exactly the changes performed on different
+    nodes interleave).
+
+-   The timestamp is unrelated to the commit timestamp, and using it to
+    resolve conflicts means that the result is not equivalent to the commit order,
+    which means it likely is not serializable.
+
+Note: We may add statement and transaction timestamps in the future,
+which would address issues with mixing effects of concurrent statements or
+transactions. Still, neither of these options can ever produce results
+equivalent to commit order.
+
+It is possible to also use the actual commit timestamp, although this
+feature is currently considered experimental. To use the commit timestamp,
+set the last parameter to `true` when enabling column-level conflict
+resolution:
+
+```sql
+SELECT bdr.column_timestamps_enable('test_table'::regclass, 'cts', true);
+```
+
+This can also be disabled using `bdr.column_timestamps_disable`.
+
+Commit timestamps currently have a couple of restrictions that are
+explained in the "Limitations" section.
+
+## Inspecting Column Timestamps
+
+The column storing timestamps for modified columns is maintained
+automatically by triggers, and must not be modified directly. It may
+be useful to inspect the current timestamps value, for example while
+investigating how a particular conflict was resolved.
+
+There are three functions for this purpose:
+
+-   `bdr.column_timestamps_to_text(bdr.column_timestamps)`
+
+    This function returns a human-readable representation of the timestamp mapping, and
+    is used when casting the value to `text`:
+
+```sql
+db=# select cts::text from test_table;
+                                                 cts
+-----------------------------------------------------------------------------------------------------
+ {source: current, default: 2018-09-23 19:24:52.118583+02, map: [2 : 2018-09-23 19:25:02.590677+02]}
+(1 row)
+
+```
+
+-   `bdr.column_timestamps_to_jsonb(bdr.column_timestamps)`
+
+    This function turns a JSONB representation of the timestamps mapping, and is used
+    when casting the value to `jsonb`:
+
+```sql
+db=# select jsonb_pretty(cts::jsonb) from test_table;
+                   jsonb_pretty                    
+---------------------------------------------------
+ {                                                +
+     "map": {                                     +
+         "2": "2018-09-23T19:24:52.118583+02:00"  +
+     },                                           +
+     "source": "current",                         +
+     "default": "2018-09-23T19:24:52.118583+02:00"+
+ }
+(1 row)
+```
+
+-   `bdr.column_timestamps_resolve(bdr.column_timestamps, xid)`
+
+    This function updates the mapping with the commit timestamp for the attributes modified
+    by the most recent transaction (if it already committed). This only
+    matters when using the commit timestamp. For example in this case, the last
+    transaction updated the second attribute (with `attnum = 2`):
+
+```sql
+test=# select cts::jsonb from test_table;
+                                                                  cts
+----------------------------------------------------------------------------------------------------------------------------------------
+ {"map": {"2": "2018-09-23T19:29:55.581823+02:00"}, "source": "commit", "default": "2018-09-23T19:29:55.581823+02:00", "modified": [2]}
+(1 row)
+
+db=# select bdr.column_timestamps_resolve(cts, xmin)::jsonb from test_table;
+                                               column_timestamps_resolve
+-----------------------------------------------------------------------------------------------------------------------
+ {"map": {"2": "2018-09-23T19:29:55.581823+02:00"}, "source": "commit", "default": "2018-09-23T19:29:55.581823+02:00"}
+(1 row)
+```
+
+## Handling column conflicts using CRDT Data Types
+
+By default, column-level conflict resolution simply picks the value with
+a higher timestamp and discards the other one. It is however possible to
+reconcile the conflict in different (more elaborate) ways, for example
+using CRDT types that allow "merging" the conflicting values without
+discarding any information.
+
+While pglogical does not include any such data types, it allows adding
+them separately and registering them in a catalog `crdt_handlers`. Aside
+from the usual data type functions (input/output, ...) each CRDT type
+has to implement a merge function, which takes exactly three arguments
+(local value, old remote value, new remote value) and produces a value
+merging information from those three values.
+
+## Limitations
+
+-   The attributes modified by an `UPDATE` are determined by comparing the
+    old and new row in a trigger. This means that if the attribute does
+    not change a value, it will not be detected as modified even if it is
+    explicitly set. For example, `UPDATE t SET a = a` will not mark `a` as
+    modified for any row. Similarly, `UPDATE t SET a = 1` will not mark
+    `a` as modified for rows that are already set to `1`.
+
+-   For `INSERT` statements, we do not have any old row to compare the new
+    one to, so we consider all attributes to be modified and assign them
+    a new timestamp. This applies even for columns that were not included
+    in the `INSERT` statement and received default values. We could detect
+    which attributes have a default value, but it is not possible to decide if
+    it was included automatically or specified explicitly by the user.
+
+    This effectively means column-level conflict resolution does not work
+    for `INSERT-INSERT` conflicts (even if the `INSERT` statements specify
+    different subsets of columns, because the newer row will have all
+    timestamps newer than the older one).
+
+-   By treating the columns independently, it is easy to violate constraints
+    in a way that would not be possible when all changes happen on the same
+    node. Consider for example a table like this:
+
+```sql
+CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, CHECK (a > b));
+INSERT INTO t VALUES (1, 1000, 1);
+```
+
+...and assume one node does:
+
+```sql
+UPDATE t SET a = 100;
+```
+
+...while another node does concurrently:
+
+```sql
+UPDATE t SET b = 500;
+```
+
+  Each of those updates is valid when executed on the initial row, and
+  so will pass on each node. But when replicating to the other node,
+  the resulting row violates the `CHECK (A > b)` constraint, and the
+  replication will stop until the issue is resolved manually.
+
+-   The column storing timestamp mapping is managed automatically. Do not
+    specify or override the value in your queries, as it may result in
+    unpredictable effects (we do ignore the value where possible anyway).
+
+-   The timestamp mapping is maintained by triggers, but the order in which
+    triggers execute does matter. So if you have custom triggers that modify
+    tuples and are executed after the `pgl_clcd_` triggers, the modified
+    columns will not be detected correctly.
+
+-   When using regular timestamps to order changes/commits, it is possible
+    that the conflicting changes have exactly the same timestamp (because
+    two or more nodes happened to generate the same timestamp). This risk
+    is not unique to column-level conflict resolution, as it may happen
+    even for regular row-level conflict resolution, and we use node id as a
+    tie-breaker in this situation (the higher node id wins), which ensures that
+    same changes are applied on all nodes.
+
+-   It is possible that there is a clock skew between different nodes. While it
+    may induce somewhat unexpected behavior (discarding seemingly newer
+    changes because the timestamps are inverted), clock skew between nodes can 
+    be managed using the parameters `bdr.maximum_clock_skew` and 
+    `bdr.maximum_clock_skew_action`.
+
+-   The underlying pglogical subscription must not discard any changes,
+    which could easily cause divergent errors (particularly for
+    CRDT types). The subscriptions must have `ignore_redundant_updates`
+    set to false (which is the default).
+
+    Existing groups created with non-default value for `ignore_redundant_updates`
+    can be altered like this:
+
+```sql
+SELECT bdr.alter_node_group_config('group', ignore_redundant_updates := false);
+```
