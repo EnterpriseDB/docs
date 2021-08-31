@@ -5,4 +5,6 @@ FROM node:14
 
 WORKDIR /home/app
 
+EXPOSE 8000
+
 ENTRYPOINT yarn && yarn develop -H 0.0.0.0 2>&1
