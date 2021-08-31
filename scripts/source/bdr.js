@@ -34,6 +34,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const process = async function(fileAbsolutePath, filename, destFilepath)
   {
     let file = await read(fileAbsolutePath);
+    stripEmptyComments(file);
     file = await processor.process(file);
     file.path = destFilepath;
     try 
@@ -50,13 +51,15 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const destPath = path.resolve("product_docs", "docs", "bdr", version);
   const indexFilename = "index.md";
 
+  fileToMetadata[indexFilename] = {};
+
   for (const dirEntry of markdownToProcess) {
     if (!dirEntry) continue;
     for (const navTitle in dirEntry) {
       const fileAbsolutePath = path.resolve(basePath, dirEntry[navTitle]);
       const filename = path.relative(basePath, fileAbsolutePath);
       const destFilepath = path.resolve(destPath, filename.replace(/\//g, '_')+"x");
-
+  
       fileToMetadata[filename] = Object.assign({}, fileToMetadata[filename], {navTitle});
       fileToMetadata[indexFilename].navigation = fileToMetadata[indexFilename].navigation||[];
       fileToMetadata[indexFilename].navigation.push(path.basename(destFilepath, ".mdx"));
@@ -78,6 +81,13 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   // copy images
   exec(`rsync -a --delete ${imgPath} ${destPath}`);    
 })();
+
+// GPP leaves the files littered with these; they alter parsing by flipping sections to HTML context
+// remove them BEFORE parsing to avoid issues
+function stripEmptyComments(file)
+{
+  file.contents = file.contents.toString().replace(/<!--\s*-->/g, '');
+}
 
 // Transforms: 
 //  - identify title
@@ -117,12 +127,13 @@ function bdrTransformer() {
     visit(tree, "jsx", (node, index, parent) => {
       // todo: use HAST parser here - this is not reliable
 
-      // strip comments
+      // strip (potentially NON-EMPTY) HTML comments - these are not valid in JSX
       const newValue = node.value.replace(/(?=<!--)([\s\S]*?)-->/g, '');
-      if (newValue != node.value)
+      if (newValue !== node.value)
       {
         node.value = newValue;
-        return;
+        if (newValue.trim())
+          return;
       }
 
       // ignore placeholder
@@ -132,8 +143,9 @@ function bdrTransformer() {
         console.warn(`${file.path}:${node.position.start.line}:${node.position.start.column} Stripping HTML content:\n\t ` + node.value);
 
       parent.children.splice(index, 1);
+      return index;
     });
-
+    
     // link rewriter:
     // - strip .md
     // - collapse subdirectories
