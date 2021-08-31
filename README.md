@@ -28,21 +28,51 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Create a `.env` file: `cp env .env.development`.
 
-At this point you have a couple options. You can either use docker to quickly get the documentation running in your browser, or you can fully set up a development environment on your local machine.
+At this point you have a couple options.
+- [**Quick set up with Docker**](#get-started-quickly-with-docker)
 
-### Get started quickly with Docker
-Choose this option if you just want to update documentation, and don't want to worry about installing and managing the correct version of Node.
+   This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
 
-1. Install Docker on your mac. [Follow the direction here.](https://docs.docker.com/get-docker/)
+- [**Set up a full development environment**](#set-up-a-full-development-environment)
+
+   Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
+
+### Get Started Quickly With Docker
+
+1. Install Docker on your mac. [Follow the direction below.](#install-docker-using-homebrew)
 
 1. Navigate to the cloned repo directory in your terminal
 
-1. Run `docker-compose up`
+1. Run `yarn start`
 
-1. And that's it! The application will take a few minutes to build, but once it's finished the it can be accessed at `http://localhost:8000/`.
+1. The application will take a few minutes to build, but once it's finished the it can be accessed at `http://localhost:8000/`.
+
+1. To stop the server run `yarn stop`
+
+1. To view logs from the server, run `yarn logs`, to exit the logs press `ctrl`+`c`
+
+### Install Docker using Homebrew
+
+You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
+
+```sh
+brew install --cask docker
+```
+
+If you get a message saying that you already have Docker installed, check which version is installed using these commands:
+
+```sh
+brew ls --formula docker
+brew ls --cask docker
+```
+
+If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
+
+```sh
+brew uninstall -f docker && brew install --cask docker
+```
 
 ### Set up a full development environment
-Choose this option if you need to make more in depth changes to the docs application, or you are comfortable managing your Node installation
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
@@ -84,24 +114,7 @@ Choose this option if you need to make more in depth changes to the docs applica
 
 To build PDFs locally, you'll need to use a Docker container.
 
-1. Install Docker using Homebrew:
-
-   ```sh
-   brew install --cask docker
-   ```
-
-   If you get a message saying that you already have Docker installed, check which version is installed using these commands:
-
-   ```sh
-   brew ls --formula docker
-   brew ls --cask docker
-   ```
-
-   If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
-
-   ```sh
-   brew uninstall -f docker && brew install --cask docker
-   ```
+1. Install Docker on your mac. [Follow the direction above.](#install-docker-using-homebrew)
 
 1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back:
 
