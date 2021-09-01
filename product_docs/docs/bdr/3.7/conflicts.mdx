@@ -1,0 +1,1228 @@
+---
+title: Conflicts
+originalFilePath: conflicts.md
+
+---
+
+BDR is an active/active or multi-master DBMS. If used asynchronously,
+writes to the same or related row(s) from multiple different nodes can
+result in data conflicts when using standard data types.
+
+Conflicts aren't ERRORs - they are events that can be detected and resolved
+automatically as they occur by BDR, in most cases. Resolution depends upon the
+nature of the application and the meaning of the data, so it is important that
+BDR provides the application a range of choices as to how to resolve conflicts.
+
+By default, conflicts are resolved at row level. That is, when changes from two
+nodes conflict, we pick either the local or remote tuple and discard the other
+one. For example, we may compare commit timestamps for the two conflicting
+changes, and keep the newer one. This ensures that all nodes converge to the
+same result, and establishes commit-order-like semantics on the whole cluster.
+
+This chapter covers row-level conflicts with standard data types in detail.
+
+Conflict handling is configurable, as described later in this chapter.
+Conflicts can be detected and handled differently for each table using
+
+conflict triggers, available with BDR-EE,
+described in the [Stream Triggers](striggers) chapter.
+
+Column-level conflict detection and resolution is available with BDR-EE,
+described in the [CLCD](column-level-conflicts) chapter.
+
+If you wish to avoid conflicts, you can use these features in BDR-EE
+
+-   Conflict-free data types (CRDTs) - described in the [CRDT](crdt) chapter.
+-   Eager replication - described in the [Eager Replication](eager) chapter.
+
+By default, all conflicts are logged to `bdr.conflict_history`. If conflicts
+are possible then table owners should monitor for them, analyze to see how they
+can be avoided or plans made to handle them regularly as an application task.
+The LiveCompare tool is also available to scan regularly for divergence.
+
+Some clustering systems use distributed lock mechanisms to prevent
+concurrent access to data. These can perform reasonably when servers are
+very close, but cannot support geographically distributed applications where
+very low latency is critical for acceptable performance.
+
+Distributed locking is essentially a pessimistic approach, whereas BDR
+advocates an optimistic approach: avoid conflicts where possible, but allow
+some types of conflict to occur and resolve them when they arise.
+
+!!! Warning "Upgrade Notes"
+    All the SQL visible interfaces are in the `bdr` schema. 
+    All the previously deprecated interfaces in the `bdr_conflicts` or
+    `bdr_crdt` schema were removed and will **not** work on 3.7+ nodes or in
+    groups that contain at least one 3.7+ node.
+    Please use the ones in `bdr` schema that are already present in all BDR versions.
+
+.
+
+## How conflicts happen
+
+Inter-node conflicts arise as a result of sequences of events that could not
+happen if all the involved transactions happened concurrently on the same
+node. Because the nodes only exchange changes after the transactions commit,
+each transaction is individually valid on the node it committed on, but would
+not be valid if applied on another node that did other conflicting work
+at the same time.
+
+Since BDR replication essentially replays the transaction on the other nodes,
+the replay operation can fail if there is a conflict between a transaction
+being applied and a transaction that was committed on the receiving node.
+
+The reason most conflicts can't happen when all transactions run on a single
+node is that PostgreSQL has inter-transaction communication mechanisms
+to prevent it - `UNIQUE` indexes, `SEQUENCE`s, row and relation locking,
+`SERIALIZABLE` dependency tracking, etc. All of these mechanisms are ways
+to communicate between ongoing transactions to prevent undesirable concurrency
+issues.
+
+BDR does not have a distributed transaction manager or lock manager.
+That's part of why it performs well with latency and network partitions. As
+a result, *transactions on different nodes execute entirely independently
+from each other*, when using the default, lazy replication. Less independence
+between nodes can avoid conflicts altogether, which is why BDR also offers
+eager replication for when this is important.
+
+## Types of conflict
+
+### PRIMARY KEY or UNIQUE Conflicts
+
+The most common conflicts are row conflicts, where two operations affect a
+row with the same key in ways they could not do on a single node. BDR can
+detect most of those and will apply the update_if_newer conflict resolver.
+
+Row conflicts include:
+
+-   `INSERT` vs `INSERT`
+-   `UPDATE` vs `UPDATE`
+-   `UPDATE` vs `DELETE`
+-   `INSERT` vs `UPDATE`
+-   `INSERT` vs `DELETE`
+-   `DELETE` vs `DELETE`
+
+The view `bdr.node_conflict_resolvers` provides information on how
+conflict resolution is currently configured for all known conflict types.
+
+#### INSERT/INSERT Conflicts
+
+The most common conflict, `INSERT`/`INSERT`, arises where `INSERT`s on two
+different nodes create a tuple with the same `PRIMARY KEY` values (or if no
+`PRIMARY KEY` exists, the same values for a single `UNIQUE` constraint ).
+
+BDR handles this by retaining the most recently inserted tuple of the two,
+according to the originating host's timestamps, unless overridden by a
+user-defined conflict handler.
+
+This conflict will generate the `insert_exists` conflict type, which is by
+default resolved by choosing the newer (based on commit time) row and keeping
+only that one (`update_if_newer` resolver). Other resolvers can be configured -
+see [Conflict Resolution] for details.
+
+To resolve this conflict, type in the Enterprise Edition; you can also use
+column-level conflict resolution and user-defined conflict triggers.
+
+This type of conflict can be effectively eliminated by use of
+[Global Sequences](sequences).
+
+#### INSERTs that Violate Multiple UNIQUE Constraints
+
+An `INSERT`/`INSERT` conflict can violate more than one `UNIQUE` constraint
+(of which one might be the `PRIMARY KEY`). If a new row violates more than
+one `UNIQUE` constraint and that results in a conflict against more than one
+other row, then the apply of the replication change will produce a
+`multiple_unique_conflicts` conflict.
+
+In case of such a conflict, some rows must be removed in order for replication
+to continue. Depending on the resolver setting for `multiple_unique_conflicts`,
+ the apply process will either exit with error, skip the incoming row, or delete
+some of the rows automatically. The automatic deletion will always try to
+preserve the row with the correct `PRIMARY KEY` and delete the others.
+
+!!! Warning
+    In case of multiple rows conflicting this way, if the result of conflict
+    resolution is to proceed with the insert operation, some of the data will
+    always be deleted!
+
+#### UPDATE/UPDATE Conflicts
+
+Where two concurrent `UPDATE`s on different nodes change the same tuple
+(but not its `PRIMARY KEY`), an `UPDATE`/`UPDATE` conflict can occur on replay.
+
+These can generate different conflict kinds based on the configuration and
+situation. If the table is configured with [Row Version Conflict Detection],
+then the original (key) row is compared with the local row;
+if they are different, the `update_differing` conflict is generated.
+When using [Origin Conflict Detection],
+the origin of the row is checked (the origin is the node that the current
+local row came from); if that has changed, the `update_origin_change` conflict
+is generated. In all other cases, the `UPDATE` is normally applied without
+a conflict being generated.
+
+Both of these conflicts are resolved same way as `insert_exists`, as described
+above.
+
+#### UPDATE Conflicts on the PRIMARY KEY
+
+BDR cannot currently perform conflict resolution where the `PRIMARY KEY`
+is changed by an `UPDATE` operation. It is permissible to update the primary
+key, but you must ensure that no conflict with existing values is possible.
+
+Conflicts on the update of the primary key are [Divergent Conflicts] and
+require manual operator intervention.
+
+Updating a PK is possible in PostgreSQL, but there are
+issues in both PostgreSQL and BDR.
+
+Let's create a very simple example schema to explain:
+
+```sql
+CREATE TABLE pktest (pk integer primary key, val integer);
+INSERT INTO pktest VALUES (1,1);
+```
+
+Updating the Primary Key column is possible, so this SQL succeeds:
+
+```sql
+UPDATE pktest SET pk=2 WHERE pk=1;
+```
+
+...but if we have multiple rows in the table, e.g.:
+
+```sql
+INSERT INTO pktest VALUES (3,3);
+```
+
+...then some UPDATEs would succeed:
+
+```sql
+UPDATE pktest SET pk=4 WHERE pk=3;
+
+SELECT * FROM pktest;
+ pk | val 
+----+-----
+  2 |   1
+  4 |   3
+(2 rows)
+```
+
+...but other UPDATEs would fail with constraint errors:
+
+```sql
+UPDATE pktest SET pk=4 WHERE pk=2;
+ERROR:  duplicate key value violates unique constraint "pktest_pkey"
+DETAIL:  Key (pk)=(4) already exists
+```
+
+So for PostgreSQL applications that UPDATE PKs, be very
+careful to avoid runtime errors, even without BDR.
+
+With BDR, the situation becomes more complex if UPDATEs are
+allowed from multiple locations at same time.
+
+Executing these two changes concurrently works:
+
+```sql
+node1: UPDATE pktest SET pk=pk+1 WHERE pk = 2;
+node2: UPDATE pktest SET pk=pk+1 WHERE pk = 4;
+
+SELECT * FROM pktest;
+ pk | val 
+----+-----
+  3 |   1
+  5 |   3
+(2 rows)
+```
+
+...but executing these next two changes concurrently will cause
+a divergent error, since both changes are accepted. But when
+the changes are applied on the other node, this will result in
+update_missing conflicts.
+
+```sql
+node1: UPDATE pktest SET pk=1 WHERE pk = 3;
+node2: UPDATE pktest SET pk=2 WHERE pk = 3;
+```
+
+...leaving the data different on each node:
+
+```sql
+node1:
+SELECT * FROM pktest;
+ pk | val 
+----+-----
+  1 |   1
+  5 |   3
+(2 rows)
+
+node2:
+SELECT * FROM pktest;
+ pk | val 
+----+-----
+  2 |   1
+  5 |   3
+(2 rows)
+```
+
+This situation can be identified and resolved using LiveCompare.
+
+Concurrent conflicts give problems. Executing these two changes
+concurrently is not easily resolvable:
+
+```sql
+node1: UPDATE pktest SET pk=6, val=8 WHERE pk = 5;
+node2: UPDATE pktest SET pk=6, val=9 WHERE pk = 5;
+```
+
+Both changes are applied locally, causing a divergence between
+the nodes. But then apply on the target fails on both nodes with
+a duplicate key value violation ERROR, which causes the replication
+to halt and currently requires manual resolution.
+
+This duplicate key violation error can now be avoided,
+and replication will not break, if you set the conflict_type
+`update_pkey_exists` to `skip`, `update` or `update_if_newer`. This
+may still lead to divergence depending on the nature of the update.
+
+You can avoid divergence in cases like the one described above where the same
+old key is being updated by the same new key concurrently by setting
+`update_pkey_exists` to `update_if_newer`. However in certain situations,
+divergence will happen even with `update_if_newer`, namely when 2 different
+rows both get updated concurrently to the same new primary key.
+
+As a result, we recommend strongly against allowing PK UPDATEs
+in your applications, especially with BDR. If there are parts
+of your application that change Primary Keys, then to avoid concurrent
+changes, make those changes using Eager replication.
+
+!!! Warning
+    In case the conflict resolution of `update_pkey_exists` conflict results
+    in update, one of the rows will always be deleted!
+
+#### UPDATEs that Violate Multiple UNIQUE Constraints
+
+Like [INSERTs that Violate Multiple UNIQUE Constraints], where an incoming
+`UPDATE` violates more than one `UNIQUE` index (and/or the `PRIMARY KEY`), BDR
+will raise a `multiple_unique_conflicts` conflict.
+
+BDR supports deferred unique constraints. If a transaction can commit on the
+source then it will apply cleanly on target, unless it sees conflicts.
+However, a deferred Primary Key cannot be used as a REPLICA IDENTITY, so
+the use cases are already limited by that and the warning above about using
+multiple unique constraints.
+
+#### UPDATE/DELETE Conflicts
+
+It is possible for one node to `UPDATE` a row that another node simultaneously
+`DELETE`s. In this case an `UPDATE`/`DELETE` conflict can occur on replay.
+
+If the `DELETE`d row is still detectable (the deleted row wasn't removed by `VACUUM`),
+the `update_recently_deleted` conflict will be generated. By default the
+`UPDATE` will just be skipped, but the resolution for this can be configured;
+see [Conflict Resolution] for details.
+
+The deleted row can be cleaned up from the database by the time the `UPDATE`
+is received in case the local node is lagging behind in replication. In this
+case BDR cannot differentiate between `UPDATE`/`DELETE`
+conflicts and [INSERT/UPDATE Conflicts] and will simply generate the
+`update_missing` conflict.
+
+Another type of conflicting `DELETE` and `UPDATE` is a `DELETE` operation
+that comes after the row was `UPDATEd` locally. In this situation, the
+outcome depends upon the type of conflict detection used. When using the
+default, [Origin Conflict Detection], no conflict is detected at all,
+leading to the `DELETE` being applied and the row removed. If you enable
+[Row Version Conflict Detection], a `delete_recently_updated` conflict is
+generated. The default resolution for this conflict type is to to apply the
+`DELETE` and remove the row, but this can be configured or handled via
+a conflict trigger.
+
+#### INSERT/UPDATE Conflicts
+
+When using the default asynchronous mode of operation, a node may receive an
+`UPDATE` of a row before the original `INSERT` was received. This can only
+happen with 3 or more nodes being active (see [Conflicts with 3 or more nodes] below).
+
+When this happens, the `update_missing` conflict is generated. The default
+conflict resolver is `insert_or_skip`, though `insert_or_error` or `skip`
+may be used instead.  Resolvers that do insert-or-action will first
+try to `INSERT` a new row based on data
+from the `UPDATE` when possible (when the whole row was received). For the
+reconstruction of the row to be possible, the table either needs to have
+`REPLICA IDENTITY FULL` or the row must not contain any TOASTed data.
+
+See [TOAST Support Details] for more info about TOASTed data.
+
+#### INSERT/DELETE Conflicts
+
+Similarly to the `INSERT`/`UPDATE` conflict, the node may also receive a
+`DELETE` operation on a row for which it didn't receive an `INSERT` yet. This
+is again only possible with 3 or more nodes set up (see [Conflicts with 3 or
+more nodes] below).
+
+BDR cannot currently detect this conflict type: the `INSERT` operation
+will not generate any conflict type and the `INSERT` will be applied.
+
+The `DELETE` operation will always generate a `delete_missing` conflict, which
+is by default resolved by skipping the operation.
+
+#### DELETE/DELETE Conflicts
+
+A `DELETE`/`DELETE` conflict arises where two different nodes concurrently
+delete the same tuple.
+
+This will always generate a `delete_missing` conflict, which is by default
+resolved by skipping the operation.
+
+This conflict is harmless since both `DELETE`s have the same effect, so one
+of them can be safely ignored.
+
+#### Conflicts with 3 or more nodes
+
+If one node `INSERT`s a row which is then replayed to a 2nd node and `UPDATE`d
+there, a 3rd node can receive the `UPDATE` from the 2nd node before it
+receives the `INSERT` from the 1st node. This is an `INSERT`/`UPDATE` conflict.
+
+These conflicts are handled by discarding the `UPDATE`. This can lead to
+*different data on different nodes*, i.e. these are [Divergent Conflicts].
+
+Note that this conflict type can only happen with 3 or more masters, of which at
+least 2 must be actively writing.
+
+Also, the replication lag from node 1 to node 3 must be high enough to
+allow the following sequence of actions:
+
+1.  node 2 receives INSERT from node 1
+2.  node 2 performs UPDATE
+3.  node 3 receives UPDATE from node 2
+4.  node 3 receives INSERT from node 1
+
+Using `insert_or_error` (or in some cases the `insert_or_skip` conflict resolver
+for the `update_missing` conflict type) is a viable mitigation strategy for
+these conflicts. Note however that enabling this option opens the door for
+`INSERT`/`DELETE` conflicts; see below.
+
+1.  node 1 performs UPDATE
+2.  node 2 performs DELETE
+3.  node 3 receives DELETE from node 2
+4.  node 3 receives UPDATE from node 1, turning it into an INSERT
+
+If these are problems, it's recommended to tune freezing settings for a table
+or database so that they are correctly detected as `update_recently_deleted`.
+This is done automatically in BDR Enterprise Edition.
+
+Another alternative is to use [Eager Replication] to prevent these conflicts.
+
+INSERT/DELETE conflicts can also occur with 3 or more nodes.
+Such a conflict is identical to `INSERT`/`UPDATE`, except with the
+`UPDATE` replaced by a `DELETE`. This can result in a delete_missing
+conflict.
+
+BDR could choose to make each INSERT into a check-for-recently
+deleted, as occurs with an update_missing conflict. However, the
+cost of doing this penalizes the majority of users, so at this time
+we simply log delete_missing.
+
+Later releases will automatically resolve INSERT/DELETE anomalies
+via re-checks using LiveCompare when delete_missing conflicts occur.
+These can be performed manually by applications by checking
+conflict logs or conflict log tables; see later.
+
+These conflicts can occur in two main problem use cases:
+
+-   INSERT, followed rapidly by a DELETE - as can be used in queuing applications
+-   Any case where the PK identifier of a table is re-used
+
+Neither of these cases is common and we recommend not replicating
+the affected tables if these problem use cases occur.
+
+BDR has problems with the latter case because BDR relies upon the
+uniqueness of identifiers to make replication work correctly.
+
+Applications that insert, delete and
+then later re-use the same unique identifiers can cause difficulties.
+This is known as the ABA Problem. BDR has no way of knowing whether
+the rows are the current row, the last row or much older rows.
+<https://en.wikipedia.org/wiki/ABA_problem>
+
+Unique identifier reuse is also a business problem, since it is
+prevents unique identification over time, which prevents auditing,
+traceability and sensible data quality. Applications should not need
+to reuse unique identifiers.
+
+Any identifier reuse that occurs within the time interval it takes for
+changes to pass across the system will cause difficulties. Although that
+time may be short in normal operation, down nodes may extend that
+interval to hours or days.
+
+We recommend that applications do not reuse unique identifiers, but if they
+do, take steps to avoid reuse within a period of less than a year.
+
+Any application that uses Sequences or UUIDs will not suffer from this
+problem.
+
+### Foreign Key Constraint Conflicts
+
+Conflicts between a remote transaction being applied and existing local data
+can also occur for `FOREIGN KEY` constraints (FKs).
+
+BDR applies changes with `session_replication_role = 'replica'`, so foreign
+keys are **not** re-checked when applying changes.
+In an active/active environment this can result in FK violations if deletes
+occur to the referenced table at the same time as inserts into the referencing
+table. This is similar to an INSERT/DELETE conflict.
+
+First we will explain the problem, and then provide solutions.
+
+In single-master PostgreSQL, any INSERT/UPDATE that refers to a value in the
+referenced table will have to wait for DELETEs to finish before they can gain
+a row-level lock. If a DELETE removes a referenced value, then the INSERT/UPDATE
+will fail the FK check.
+
+In multi-master BDR there are no inter-node row-level locks. So an INSERT on
+the referencing table does not wait behind a DELETE on the referenced table,
+so both actions can occur concurrently. Thus an INSERT/UPDATE on one node
+on the referencing table can utilize a value at the same time as a DELETE
+on the referenced table on another node. This then results in a value
+in the referencing table that is no longer present in the referenced
+table.
+
+In practice, this only occurs if DELETEs occur on referenced tables
+in separate transactions from DELETEs on referencing tables. This is not
+a common operation.
+
+In a parent-child relationship, e.g. Orders -> OrderItems, it isn't typical to
+do this; it is more likely to mark an OrderItem as cancelled than to remove it
+completely. For reference/lookup data, it would be strange to completely
+remove entries at the same time as using those same values for new fact data.
+
+While there is a possibility of dangling FKs, the risk of this in general
+is very low and so BDR does not impose a generic solution to cover this case.
+Once users understand the situation in which this occurs, two solutions are
+possible:
+
+The first solution is to restrict the use of FKs to closely
+related entities that are generally modified from only one node at a time, are
+infrequently modified, or where the modification's concurrency is
+application-mediated. This simply avoids any FK violations at the application
+level.
+
+The second solution is to add triggers to protect against this case using
+the BDR-provided functions `bdr.ri_fkey_trigger()` and
+`bdr.ri_fkey_on_del_trigger()`. When called as `BEFORE` triggers, these
+functions will use `FOREIGN KEY` information to avoid FK anomalies by
+setting referencing columns to NULL, much as if we had a SET NULL constraint.
+Note that this re-checks ALL FKs in one trigger, so you only need to add one
+trigger per table to prevent FK violation.
+
+As an example, we have two tables: Fact and RefData. Fact has an FK that
+references RefData. Fact is the referencing table and RefData is the referenced
+table. One trigger needs to be added to each table.
+
+Add a trigger that will set columns to NULL in Fact if the referenced row
+in RefData has already been deleted.
+
+```sql
+CREATE TRIGGER bdr_replica_fk_iu_trg
+    BEFORE INSERT OR UPDATE ON fact
+    FOR EACH ROW
+    EXECUTE PROCEDURE bdr.ri_fkey_trigger();
+
+ALTER TABLE fact
+    ENABLE REPLICA TRIGGER bdr_replica_fk_iu_trg;
+```
+
+Add a trigger that will set columns to NULL in Fact at the time a DELETE occurs
+on the RefData table.
+
+```sql
+CREATE TRIGGER bdr_replica_fk_d_trg
+    BEFORE DELETE ON refdata
+    FOR EACH ROW
+    EXECUTE PROCEDURE bdr.ri_fkey_on_del_trigger();
+
+ALTER TABLE refdata
+    ENABLE REPLICA TRIGGER bdr_replica_fk_d_trg;
+```
+
+Adding both triggers will avoid dangling foreign keys.
+
+### TRUNCATE Conflicts
+
+TRUNCATE behaves similarly to a DELETE of all rows, but performs this
+action by physical removal of the table data, rather than row-by-row
+deletion. As a result, row-level conflict handling is not available, so
+TRUNCATE commands do not generate conflicts with other DML actions,
+even when there is a clear conflict.
+
+As a result, the ordering of replay could cause divergent changes if
+another DML is executed concurrently on other nodes to the TRUNCATE.
+
+Users may wish to take one of the following actions:
+
+-   Ensure TRUNCATE is not executed alongside other concurrent DML
+    and rely on LiveCompare to highlight any such inconsistency.
+
+-   Replace TRUNCATE with a DELETE statement with no WHERE clause,
+    noting that this is likely to have very poor performance on
+    larger tables.
+
+-   Set bdr.truncate_locking = 'on' to set the TRUNCATE command’s
+    locking behavior. Determines whether TRUNCATE obeys the bdr.ddl_locking
+    setting. This
+    is not the default behaviour for TRUNCATE since it requires all nodes
+    to be up, so may not be possible or desirable in all cases.
+
+### Exclusion Constraint Conflicts
+
+BDR does not support exclusion constraints, and prevents their creation.
+
+If an existing stand-alone database is converted to a BDR database then
+all exclusion constraints should be manually dropped.
+
+In a distributed asynchronous system it is not possible to ensure that no
+set of rows that violate the constraint exists, because all transactions
+on different nodes are fully isolated. Exclusion constraints would lead to
+replay deadlocks where replay could not progress from any node to any
+other node because of exclusion constraint violations.
+
+If you force BDR to create an exclusion constraint, or you do not drop
+existing ones when converting a standalone database to BDR, you should
+expect replication to break. To get it to progress again, remove or alter the
+local tuple(s) that an incoming remote tuple conflicts with, so that the remote
+transaction can be applied.
+
+### Data Conflicts for Roles and Tablespace differences
+
+Conflicts can also arise where nodes have global (PostgreSQL-system-wide)
+data, like roles, that differ. This can result in operations - mainly
+`DDL` - that can be run successfully and committed on one node, but then
+fail to apply to other nodes.
+
+For example, `node1` might have a user named `fred`, but that user was not
+created on `node2`. If `fred` on `node1` creates a table, it will be
+replicated with its owner set to `fred`. When the DDL command is applied to
+`node2`, the DDL will fail because there is no user named `fred`. This failure
+will emit an `ERROR` in the PostgreSQL logs.
+
+Administrator intervention is required to resolve this conflict
+by creating the user `fred` in the database where BDR is running.
+You may wish to set bdr.role_replication = on to resolve this in future.
+
+### Lock Conflicts and Deadlock Aborts
+
+Because BDR writer processes operate much like normal user sessions, they are
+subject to the usual rules around row and table locking. This can sometimes
+lead to BDR writer processes waiting on locks held by user transactions, or
+even by each other.
+
+Relevant locking includes:
+
+-   explicit table-level locking (`LOCK TABLE ...`) by user sessions
+-   explicit row-level locking (`SELECT ... FOR UPDATE/FOR SHARE`) by user sessions
+-   implicit locking because of row `UPDATE`s, `INSERT`s or `DELETE`s, either
+    from local activity or from replication from other nodes
+
+It is even possible for a BDR writer process to deadlock with a user
+transaction, where the user transaction is waiting on a lock held
+by the writer process, and vice versa. Two writer processes may also
+deadlock with each other. PostgreSQL's deadlock detector will step in and
+terminate one of the problem transactions. If the BDR writer process is
+terminated, it will simply retry, and generally succeed.
+
+All these issues are transient and generally require no administrator
+action. If a writer process is stuck for a long time behind a lock
+on an idle user session, the administrator may choose to terminate
+the user session to get replication flowing again, but this is
+no different to a user holding a long lock that impacts another
+user session.
+
+Use of the [log_lock_waits](https://www.postgresql.org/docs/current/runtime-config-logging.html#GUC-LOG-LOCK-WAITS)
+facility in PostgreSQL can help identify locking related replay stalls.
+
+### Divergent Conflicts
+
+Divergent conflicts arise when data that should be the same on different
+nodes differs unexpectedly. Divergent conflicts should not occur, but not
+all such conflicts can be reliably prevented at the time of writing.
+
+Changing the `PRIMARY KEY` of a row can lead to a divergent conflict if
+another node changes the key of the same row before all nodes have replayed
+the change. Avoid changing primary keys, or change them only on one designated
+node.
+
+Divergent conflicts involving row data generally require administrator
+action to manually adjust the data on one of the nodes to be consistent
+with the other one. Such conflicts should not arise so long as BDR is used
+as documented, and settings or functions marked as unsafe are avoided.
+
+The administrator must manually resolve such conflicts. Use of the
+advanced options such as `bdr.ddl_replication` and `bdr.ddl_locking` may
+be required depending on the nature of the conflict. However, careless use of
+these options can make things much worse and it is not possible to give
+general instructions for resolving all possible kinds of conflict.
+
+### TOAST Support Details
+
+PostgreSQL uses out of line storage for larger columns called
+[TOAST](https://www.postgresql.org/docs/current/storage-toast.html).
+
+The TOAST values handling in logical decoding (which BDR is built on top of)
+and logical replication is different from in-line data stored as part of the
+main row in the table.
+
+The TOAST value will be logged into the transaction log (WAL) only if the value
+has changed. This can cause problems, especially when handling UPDATE conflicts
+because an UPDATE statement that did not change a value of a toasted column
+will produce a row without that column. As mentioned in
+[INSERT/UPDATE Conflicts], BDR will produce an error if an `update_missing`
+conflict is resolved using `insert_or_error` and there are missing TOAST columns.
+
+However, there are more subtle issues than the above one in case of concurrent
+workloads with asynchronous replication (eager transactions are not affected).
+Imagine for example the following workload on a BDR cluster with 3 nodes called
+A, B and C:
+
+1.  on node A: txn A1 does an UPDATE SET col1 = 'toast data...' and commits first
+2.  on node B: txn B1 does UPDATE SET other_column = 'anything else'; and commits after A1
+3.  on node C: the connection to node A lags behind
+4.  on node C: txn B1 is applied first, it misses the TOASTed column in col1,
+    but gets applied without conflict
+5.  on node C: txn A1 will conflict (on update_origin_change) and get skipped
+6.  node C will miss the toasted data from A1 forever
+
+The above is not usually a problem when using BDR (it would be when using
+either built-in logical replication or plain pglogical for multi-master)
+because BDR adds its own logging of TOAST columns when it detects a local UPDATE
+to a row which recently replicated a TOAST column modification, and the local
+UPDATE is not modifying the TOAST. Thus BDR will prevent any inconsistency for
+TOASTed data across different nodes, at the price of increased WAL logging
+when updates occur on multiple nodes (i.e. when origin changes for a tuple).
+Additional WAL overhead will be zero if all updates are made from a single node,
+as is normally the case with BDR AlwaysOn architecture.
+
+!!! Note
+    Running `VACUUM FULL` or `CLUSTER` on just the TOAST table without
+    also doing same on the main table will remove metadata needed for the
+    extra logging to work, which means that, for a short period of time after
+    such a statement, the protection against these concurrency issues will not
+    be present.
+
+For the `insert_or_error` conflict resolution, the use of
+`REPLICA IDENTITY FULL` is however still required.
+
+None of these problems associated with TOASTed columns affect tables with
+`REPLICA IDENTITY FULL` as this setting will always log a TOASTed value as
+part of the key since the whole row is considered to be part of the key. Both
+BDR and pglogical are smart enough to reconstruct the new row, filling the
+missing data from the key row. Be aware that as a result, the use of
+`REPLICA IDENTITY FULL` can increase WAL size significantly.
+
+## Avoiding or Tolerating Conflicts
+
+In most cases the application can be designed to avoid conflicts, or
+to tolerate them.
+
+Conflicts can only happen if there are things happening at the same time on
+multiple nodes, so the simplest way to avoid conflicts is to only ever write
+to one node, or to only ever write to a specific row in a specific way from
+one specific node at a time.
+
+This happens naturally in many applications. For example, many
+consumer applications only allow data to be changed by the owning user, e.g.
+changing the default billing address on your account, so data changes seldom
+experience update conflicts.
+
+It might happen that you make a change just before a node goes down, so the
+change appears to have been lost. You might then make the same change again,
+leading to two updates via different nodes. When the down node comes back up,
+it will try to send the older change to other nodes, but it will be rejected
+because the last update of the data is kept.
+
+For `INSERT`/`INSERT` conflicts, use of [Global Sequences](sequences)
+can completely prevent this type of conflict.
+
+For applications that assign relationships between objects, e.g. a room
+booking application, applying update_if_newer may not give an acceptable
+business outcome, i.e. it isn't useful to confirm to two people separately
+that they have booked the same room. The simplest resolution is to use Eager
+replication to ensure that only one booking succeeds. More complex ways
+might be possible depending upon the application, e.g. assign 100 seats
+to each node and allow those to be booked by a writer on that node, but if
+none are available locally, use a distributed locking scheme or Eager
+replication once most seats have been reserved.
+
+Another technique for ensuring certain types of update only occur from one
+specific node would be to route different types of transaction through
+different nodes. For example:
+
+-   receiving parcels on one node, but delivering parcels via another node.
+-   a service application where orders are input on one node, work is
+    prepared on a second node and then served back to customers on another.
+
+The best course of action is frequently to allow conflicts to occur and
+design the application to work with BDR's conflict resolution
+mechanisms to cope with the conflict.
+
+## Conflict Detection
+
+BDR provides these mechanisms for conflict detection:
+
+-   [Origin Conflict Detection] \(default)
+
+-   [Row Version Conflict Detection]
+
+-   [Column-Level Conflict Detection](column-level-conflicts)
+    .
+
+as well as other mechanisms when using BDR-EE.
+
+### Origin Conflict Detection
+
+(Previously known as Timestamp Conflict Detection, but this was confusing.)
+
+Origin conflict detection uses and relies on commit timestamps as
+recorded on the host where the transaction originates from. This
+requires clocks to be in sync to work correctly, or to be within a
+tolerance of the fastest message between two nodes. If this
+is not the case, conflict resolution will tend to favour the node that
+is further ahead. Clock skew between nodes can be managed using the
+parameters `bdr.maximum_clock_skew` and `bdr.maximum_clock_skew_action`.
+
+Row origins are only available if track_commit_timestamps = on.
+
+Conflicts are initially detected based upon whether the replication
+origin has changed or not, so conflict triggers will be called in
+situations that may turn out not to be actual conflicts. Hence, this
+mechanism is not precise since it can generate false positive conflicts.
+
+Origin info is available only up to the point where a row is frozen.
+Updates arriving for a row after it has been frozen will not raise
+a conflict, so will be applied in all cases. This is the normal case
+when we add a new node by bdr_init_physical, so raising conflicts
+would cause many false positive cases in that case.
+
+When a node that has been offline for some time reconnects and
+begins sending data changes, this could potentially cause divergent
+errors if the newly arrived updates are actually older than the
+frozen rows that they update. Inserts and Deletes are not affected by this situation.
+
+Users are advised to not leave down nodes for extended outages,
+as discussed in [Node Restart and Down Node Recovery](nodes).
+
+To handle this situation gracefully, BDR-EE will automatically hold
+back the freezing of rows while a node is down.
+
+No changes to parameter settings are required.
+.
+
+### Row Version Conflict Detection
+
+Alternatively, BDR provides the option to use row versioning and make
+conflict detection independent of the nodes' system clock.
+
+Row version conflict detection requires 3 things to be enabled. If any of these
+steps are not performed correctly then [Origin Conflict Detection] will be used.
+
+1.  `check_full_tuple` must be enabled for the BDR node group.
+
+2.  `REPLICA IDENTITY FULL` must be enabled on all tables that are to use
+    row version conflict detection.
+
+3.  Row Version Tracking must be enabled on the table by using
+    `bdr.alter_table_conflict_detection`. This function will add a new column
+    (with a user defined name) and an `UPDATE` trigger which manages the new
+    column value. The column will be created as `INTEGER` type.
+
+Although the counter is incremented only on UPDATE, this technique allows
+ conflict detection for both UPDATE and DELETE.
+
+This approach resembles Lamport timestamps and fully prevents
+the ABA problem for conflict detection.
+
+!!! Note
+    The row-level conflict resolution is still handled based on the
+    [Conflict Resolution] configuration even with row versioning. The way
+    the row version is generated is only useful for detection of conflicts
+    and should not be relied to as authoritative information about which
+    version of row is newer.
+
+To determine the current conflict resolution strategy used for a specific
+table, refer to the column `conflict_detection` of the view `bdr.tables`.
+
+### bdr.alter_table_conflict_detection
+
+Allows the table owner to change how conflict detection works for a given table.
+
+#### Synopsis
+
+```sql
+bdr.alter_table_conflict_detection(relation regclass,
+                                   method text,
+                                   column_name name DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `relation` - name of the relation for which to set the new conflict detection method.
+-   `method` - which conflict detection method to use.
+-   `column_name` - which column to use for storing of the column detection data;
+    this can be skipped, in which case column name will be automatically chosen based
+    on the conflict detection method. The `row_origin` method does not require
+    extra column for metadata storage.
+
+The recognized methods for conflict detection are:
+
+-   `row_origin` - origin of the previous change made on the tuple (see
+    [Origin Conflict Detection] above). This is the only method supported which
+    does not require an extra column in the table.
+
+-   `row_version` - row version column (see [Row Version Conflict Detection]
+    above).
+
+-   `column_commit_timestamp` - per-column commit timestamps (described in the
+    [CLCD](column-level-conflicts) chapter).
+
+-   `column_modify_timestamp` - per-column modification timestamp (described in
+    the [CLCD](column-level-conflicts) chapter).
+
+#### Notes
+
+For more information about the difference between `column_commit_timestamp`
+and `column_modify_timestamp` conflict detection methods, see
+[Current vs Commit Timestamp](column-level-conflicts#current-vs-commit-timestamp])
+section in the CLCD chapter.
+
+This function uses the same replication mechanism as `DDL` statements. This
+means the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DML` global lock on the relation for which
+column-level conflict resolution is being enabled.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+The `bdr.alter_table_conflict_detection` function can be only executed by
+the owner of the `relation`, unless `bdr.backwards_compatibility` is
+set to 30618 or below.
+
+!!! Warning
+    Please note that when changing the conflict detection method from one that
+    uses an extra column to store metadata, that column will be dropped.
+
+!!! Warning
+    This function automatically disables CAMO (together with a warning, as
+    long as these are not disabled with `bdr.camo_enable_client_warnings`).
+
+### List of Conflict Types
+
+BDR recognizes the following conflict types, which can be used as the
+`conflict_type` parameter:
+
+-   `insert_exists` - an incoming insert conflicts with an existing row via a
+    primary key or an unique key/index.
+-   `update_differing` - an incoming update's key row differs from a local
+    row. This can only happen when using [Row Version Conflict Detection].
+-   `update_origin_change` - an incoming update is modifying a row that was
+    last changed by a different node.
+-   `update_missing` - an incoming update is trying to modify a row that does not
+    exist.
+-   `update_recently_deleted` - an incoming update is trying to modify a row
+    that was recently deleted.
+-   `update_pkey_exists` - an incoming update has modified the `PRIMARY KEY` to
+    a value that already exists on the node that is applying the change.
+-   `multiple_unique_conflicts` - the incoming row conflicts with multiple
+    UNIQUE constraints/indexes in the target table.
+-   `delete_recently_updated` - an incoming delete with an older commit timestamp
+    than the most recent update of the row on the current node, or when
+    using [Row Version Conflict Detection].
+-   `delete_missing` - an incoming delete is trying to remove a row that does not
+    exist.
+-   `target_column_missing` - the target table is missing one or more columns
+    present in the incoming row.
+-   `source_column_missing` - the incoming row is missing one or more columns
+    that are present in the target table.
+-   `target_table_missing` - the target table is missing.
+-   `apply_error_ddl` - an error was thrown by PostgreSQL when applying a
+    replicated DDL command.
+
+## Conflict Resolution
+
+Most conflicts can be resolved automatically. BDR defaults to a
+last-update-wins mechanism - or more accurately, the update_if_newer
+conflict resolver. This mechanism will retain the most recently
+inserted or changed row of the two conflicting ones based on the same
+commit timestamps used for conflict detection. The behaviour in certain corner
+case scenarios depends on the settings used for [bdr.create_node_group] and
+alternatively for [bdr.alter_node_group].
+
+BDR lets the user override the default behaviour of conflict resolution via the
+following function:
+
+### bdr.alter_node_set_conflict_resolver
+
+This function sets the behaviour of conflict resolution on a given node.
+
+#### Synopsis
+
+```sql
+bdr.alter_node_set_conflict_resolver(node_name text,
+                                     conflict_type text,
+                                     conflict_resolver text)
+```
+
+#### Parameters
+
+-   `node_name` - name of the node that is being changed
+-   `conflict_type` - conflict type for which the setting should be applied
+    (see [List of Conflict Types])
+-   `conflict_resolver` - which resolver to use for the given conflict type
+    (see [List of Conflict Resolvers])
+
+#### Notes
+
+Currently only the local node can be changed. The function call is not
+replicated. If you want to change settings on multiple nodes, the function
+must be run on each of them.
+
+Note that the configuration change made by this function will override any
+default behaviour of conflict resolutions specified via [bdr.create_node_group]
+or `bdr.alter_node_group`.
+
+This function is transactional - the changes made can be rolled back and
+are visible to the current transaction.
+
+### List of Conflict Resolvers
+
+There are several conflict resolvers available in BDR, with differing coverages
+of the conflict types they can handle:
+
+-   `error` - throws error and stops replication.
+    Can be used for any conflict type.
+-   `skip` - skips processing of the remote change and continues replication
+    with the next change.
+    Can be used for `insert_exists`, `update_differing`, `update_origin_change`,
+    `update_missing`, `update_recently_deleted`, `update_pkey_exists`,
+    `delete_recently_updated`, `delete_missing`, `target_table_missing`,
+    `target_column_missing` and `source_column_missing` conflict types.
+-   `skip_if_recently_dropped` - skip the remote change if it's for a table that
+    does not exist on downstream because it has been recently (currently within
+    1 day) dropped on the downstream; throw an error otherwise. Can be used for
+    the `target_table_missing` conflict type. `skip_if_recently_dropped` conflict
+    resolver may pose challenges if a table with the same name is recreated shortly
+    after it's dropped. In that case, one of the nodes may see the DMLs on the
+    recreated table before it sees the DDL to recreate the table. It will then
+    incorrectly skip the remote data, assuming that the table is recently dropped
+    and cause data loss. It is hence recommended to not reuse the object namesq
+    immediately after they are dropped along with this conflict resolver.
+-   `skip_transaction` - skips the whole transaction that has generated the
+    conflict. Can be used for `apply_error_ddl` conflict.
+-   `update_if_newer` - update if the remote row was committed later (as
+    determined by the wall clock of the originating server) than the conflicting
+    local row. If the timestamps are same, the node id is used as a tie-breaker
+    to ensure that same row is picked on all nodes (higher nodeid wins).
+    Can be used for `insert_exists`, `update_differing`, `update_origin_change`
+    and `update_pkey_exists` conflict types.
+-   `update` - always perform the replicated action.
+    Can be used for `insert_exists` (will turn the INSERT into UPDATE),
+    `update_differing`, `update_origin_change`, `update_pkey_exists`,
+    and `delete_recently_updated` (performs the delete).
+-   `insert_or_skip` - try to build a new row from available information sent by
+    the origin and INSERT it; if there is not enough information available to build
+    a full row, skip the change.
+    Can be used for `update_missing` and `update_recently_deleted` conflict types.
+-   `insert_or_error` - try to build new row from available information sent by
+    origin and INSERT it; if there is not enough information available to build
+    full row, throw error and stop the replication.
+    Can be used for `update_missing` and `update_recently_deleted` conflict types.
+-   `ignore` - ignore any missing target column and continue processing.
+    Can be used for the `target_column_missing` conflict type.
+-   `ignore_if_null` - ignore a missing target column if the extra column in the
+    remote row contains a NULL value, otherwise throw error and stop replication.
+    Can be used for the `target_column_missing` conflict type.
+-   `use_default_value` - fill the missing column value with the default (including
+    NULL if that's the column default) and continue processing. Any error while
+    processing the default or violation of constraints (i.e. NULL default on
+    NOT NULL column) will stop replication.
+    Can be used for the `source_column_missing` conflict type.
+
+The `insert_exists`, `update_differing`, `update_origin_change`,
+`update_missing`, `multiple_unique_conflicts`, `update_recently_deleted`,
+`update_pkey_exists`, `delete_recently_updated` and `delete_missing` conflict
+types can also be resolved by user-defined logic using
+[Conflict Triggers](striggers).
+
+Here is a matrix that will help you individuate what conflict types the conflict
+resolvers can handle.
+
+|                          | insert_exists | update_differing | update_origin_change | update_missing | update_recently_deleted | update_pkey_exists | delete_recently_updated | delete_missing | target_column_missing | source_column_missing | target_table_missing | multiple_unique_conflicts |
+| :----------------------- | ------------- | ---------------- | -------------------- | -------------- | ----------------------- | ------------------ | ----------------------- | -------------- | --------------------- | --------------------- | -------------------- | ------------------------- |
+| error                    | X             | X                | X                    | X              | X                       | X                  | X                       | X              | X                     | X                     | X                    | X                         |
+| skip                     | X             | X                | X                    | X              | X                       | X                  | X                       | X              | X                     | X                     | X                    | X                         |
+| skip_if_recently_dropped |               |                  |                      |                |                         |                    |                         |                |                       |                       | X                    |                           |
+| update_if_newer          | X             | X                | X                    |                |                         | X                  |                         |                |                       |                       |                      |                           |
+| update                   | X             | X                | X                    |                |                         | X                  | X                       |                |                       |                       |                      | X                         |
+| insert_or_skip           |               |                  |                      | X              | X                       |                    |                         |                |                       |                       |                      |                           |
+| insert_or_error          |               |                  |                      | X              | X                       |                    |                         |                |                       |                       |                      |                           |
+| ignore                   |               |                  |                      |                |                         |                    |                         |                | X                     |                       |                      |                           |
+| ignore_if_null           |               |                  |                      |                |                         |                    |                         |                | X                     |                       |                      |                           |
+| use_default_value        |               |                  |                      |                |                         |                    |                         |                |                       | X                     |                      |                           |
+| conflict_trigger         | X             | X                | X                    | X              | X                       | X                  | X                       | X              |                       |                       |                      | X                         |
+
+### Default Conflict Resolvers
+
+| Conflict Type             | Resolver                 |
+| ------------------------- | ------------------------ |
+| insert_exists             | update_if_newer          |
+| update_differing          | update_if_newer          |
+| update_origin_change      | update_if_newer          |
+| update_missing            | insert_or_skip           |
+| update_recently_deleted   | skip                     |
+| update_pkey_exists        | update_if_newer          |
+| multiple_unique_conflicts | error                    |
+| delete_recently_updated   | skip                     |
+| delete_missing            | skip                     |
+| target_column_missing     | ignore_if_null           |
+| source_column_missing     | use_default_value        |
+| target_table_missing      | skip_if_recently_dropped |
+| apply_error_ddl           | error                    |
+
+### List of Conflict Resolutions
+
+The conflict resolution represents the kind of resolution chosen by the
+conflict resolver, and corresponds to the specific action which was
+taken to resolve the conflict.
+
+The following conflict resolutions are currently supported for the
+`conflict_resolution` parameter:
+
+-   `apply_remote` - the remote (incoming) row has been applied
+-   `skip` - the processing of the row was skipped (no change has been made
+    locally)
+-   `merge` - a new row was created, merging information from remote and local row
+-   `user` - user code (a conflict trigger) has produced the row that was written
+    to the target table
+
+## Conflict Logging
+
+To ease the diagnosis and handling of multi-master conflicts, BDR
+will, by default, log every conflict into the PostgreSQL log file. This behaviour
+can be changed with more granularity with the following functions.
+
+### bdr.alter_node_set_log_config
+
+Set the conflict logging configuration for a node.
+
+#### Synopsis
+
+```sql
+bdr.alter_node_set_log_config(node_name text,
+                              log_to_file bool DEFAULT true,
+                              log_to_table bool DEFAULT true,
+                              conflict_type text[] DEFAULT NULL,
+                              conflict_resolution text[] DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `node_name` - name of the node that is being changed
+-   `log_to_file` - whether to log to the server log file
+-   `log_to_table` - whether to log to the `bdr.conflict_history` table
+-   `conflict_type` - which conflict types to log; NULL (the default) means all
+-   `conflict_resolution` - which conflict resolutions to log; NULL
+    (the default) means all
+
+#### Notes
+
+Currently only the local node can be changed. The function call is not
+replicated. If you want to change settings on multiple nodes, the function
+must be run on each of them.
+
+This function is transactional - the changes can be rolled back and
+are visible to the current transaction.
+
+#### Listing Conflict Logging Configurations
+
+The view `bdr.node_log_config` shows all the logging configurations.
+It lists the name of the logging configuration, where it logs and which
+conflict type and resolution it logs.
+
+#### Logging Conflicts to a Table
+
+Conflicts will be logged to a table if `log_to_table` is set to true.
+The target table for conflict logging is the `bdr.conflict_history`.
+
+This table is range partitioned on column `local_time`. The table is
+managed by Autopartition. By default, a new partition is created for every day, and
+conflicts of the last 1 month are maintained. After that, the old partitions
+are dropped automatically. Autopartition pre-creates between 7 to 14
+partitions in advance. bdr_superuser may change these defaults.
+
+Since conflicts generated for all tables managed by BDR are logged to this
+table, it's important to ensure that only legitimate users can read the
+conflicted data. We do this by defining ROW LEVEL SECURITY policies on the
+`bdr.conflict_history` table. Only owners of the tables are allowed to read conflicts
+on the respective tables. If the underlying tables themselves have RLS policies
+defined, enabled and enforced, then even owners can't read the conflicts. RLS
+policies created with the FORCE option also apply to owners of the table. In that
+case, some or all rows in the underlying table may not be readable even to the
+owner. So we also enforce a stricter policy on the conflict log table.
+
+The default role `bdr_read_all_conflicts` can be granted to users who
+need to see all conflict details logged to the `bdr.conflict_history` table,
+without also granting them `bdr_superuser` role.
+
+The default role `bdr_read_all_stats` has access to a catalog view called
+`bdr.conflict_history_summary` which does not contain user data, allowing
+monitoring of any conflicts logged.
+
+### Conflict Reporting
+
+Conflicts logged to tables can be summarized in reports. This allows
+application owners to identify, understand and resolve conflicts,
+and/or introduce application changes to prevent them.
+
+```sql
+SELECT nspname, relname
+, date_trunc('day', local_time) :: date AS date
+, count(*)
+FROM bdr.conflict_history
+WHERE local_time > date_trunc('day', current_timestamp)
+GROUP BY 1,2,3
+ORDER BY 1,2;
+
+ nspname | relname |    date    | count
+---------+---------+------------+-------
+ my_app  | test    | 2019-04-05 |     1
+(1 row)
+```
+
+## Data Verification with LiveCompare
+
+LiveCompare is a utility program designed
+to compare any two databases to verify that they are identical.
+
+LiveCompare is included as part of the BDR Stack and can be
+aimed at any pair of BDR nodes and, by default, it
+will compare all replicated tables and report differences.
+LiveCompare also works with non-BDR data sources such as Postgres
+and Oracle.
+
+LiveCompare can also be used to continuously monitor incoming rows.
+It can be stopped and started without losing context information,
+so it can be run at convenient times.
+
+LiveCompare allows concurrent checking of multiple tables and
+can be configured to allow checking of a few tables or just
+a section of rows within a table.
+Checks are performed by first comparing whole
+row hashes, then if different, LiveCompare will compare whole rows.
+LiveCompare avoids overheads by comparing rows in useful-sized batches.
+
+If differences are found, they can be re-checked over a period,
+allowing for the delays of eventual consistency.
+
+Please refer to the LiveCompare docs for further details.

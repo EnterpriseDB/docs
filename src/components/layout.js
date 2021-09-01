@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import {
   Archive,
+  AuthenticatedContentPlaceholder,
   CodeBlock,
   KatacodaPageLink,
   KatacodaPanel,
@@ -83,6 +84,7 @@ const Layout = ({
       StubCards,
       IconList,
       Archive,
+      AuthenticatedContentPlaceholder,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage],
   );

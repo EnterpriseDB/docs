@@ -1,4 +1,5 @@
 import Archive from "./archive";
+import AuthenticatedContentPlaceholder from "./authenticated-content-placeholder";
 import BackButton from "./back-button";
 import CardDecks from "./card-decks";
 import CodeBlock from "./code-block";
@@ -32,6 +33,7 @@ import { IconList } from "./icon/iconList";
 
 export {
   Archive,
+  AuthenticatedContentPlaceholder,
   BackButton,
   CardDecks,
   CodeBlock,
