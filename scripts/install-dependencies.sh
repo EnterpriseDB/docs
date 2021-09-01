@@ -1,4 +1,7 @@
-if  [ -z $NPM_TOKEN ]; then
+#!/bin/bash
+
+if [ -z $NPM_TOKEN ]
+then
   cd icons-pkg/
   npm link
   cd ..
