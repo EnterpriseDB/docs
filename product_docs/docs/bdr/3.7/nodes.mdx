@@ -1,0 +1,1431 @@
+---
+title: Node Management
+originalFilePath: nodes.md
+
+---
+
+Each database that is member of a BDR group must be represented by its own
+node. A node is an unique identifier of such a database in the BDR group.
+
+At present, each node can be a member of just one node group; this may be
+extended in later releases. Each node may subscribe to one or more
+Replication Sets to give fine-grained control over replication.
+
+A BDR Group may also contain zero or more sub-groups, allowing a variety
+of different architectures to be created.
+
+## Creating and Joining a BDR Group
+
+For BDR, every node has to have a connection to every other node. To make
+configuration easy, when a new node joins, it automatically configures all
+existing nodes to connect to it. For this reason, every node, including
+the first BDR node created, must know the [PostgreSQL connection string](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING)
+(sometimes referred to as a DSN, for "data source name") that other nodes
+can use to connect to it. Both formats of connection string are supported.
+So you can use either key-value format, like `host=myhost port=5432 dbname=mydb`,
+or URI format: `postgresql://myhost:5432/mydb`.
+
+The SQL function `bdr.create_node_group()` is used to create the BDR group
+from the local node. Doing so activates BDR on that node and allows other
+nodes to join the BDR group (which consists of only one node at that point).
+At the time of creation, you must specify the connection string that other 
+nodes will use to connect to this node.
+
+Once the node group is created, every further node can join the BDR
+group using the `bdr.join_node_group()` function.
+
+Alternatively, use the command line utility `bdr_init_physical` to
+create a new node, using `pg_basebackup` (or a physical standby) of an existing
+node. If using `pg_basebackup`, the `bdr_init_physical` utility can optionally
+specify the base backup of the target database only, as opposed to the earlier
+behaviour of backup of the entire database cluster. This should make this activity
+complete faster, and also allow it to use less space due to the exclusion of
+unwanted databases. If only the target database is specified, then the excluded
+databases get cleaned up and removed on the new node.
+
+The `bdr_init_physical` utility replaces the functionality of the
+`bdr_init_copy` utility from BDR1 and BDR2. It is the BDR3 equivalent of the
+pglogical `pglogical_create_subscriber` utility.
+
+!!! Warning
+    Only one node at the time should join the BDR node group, or be
+    parted from it. If a new node is being joined while there is
+    another join or part operation in progress, the new node will
+    sometimes not have consistent data after the join has finished.
+
+When a new BDR node is joined to an existing BDR group or a node is subscribed
+to an upstream peer, before replication can begin, the system must copy the
+existing data from the peer node(s) to the local node. This copy must be
+carefully coordinated so that the local and remote data starts out
+*identical*; it is not sufficient to just use `pg_dump` yourself. The BDR
+extension provides built-in facilities for making this initial copy.
+
+During the join process, the BDR extension will synchronize existing data
+using the provided source node as the basis, and creates all metadata
+information needed for establishing itself in the mesh topology in the BDR
+group. If the connection between the source and the new node disconnects during
+this initial copy, the join process will need to be restarted from the
+beginning.
+
+The node that is joining the cluster must not contain any schema or data
+that already exists on databases in the BDR group. We recommend that the
+newly joining database is empty except for the BDR and pglogical extension.
+Ensure that all required database users and roles are created. However, the
+schema synchronization can be optionally skipped using `synchronize_structure`
+parameter of `bdr.join_node_group()` function in which case the schema must
+exist on the newly joining node already.
+
+We recommend that the source node which has the best connection (i.e. is 
+closest) is selected as the source node for joining, since that lowers the time
+needed for the join to finish.
+
+The join procedure is coordinated using the Raft consensus algorithm, which
+requires most existing nodes to be online and reachable.
+
+The logical join procedure (which uses `bdr.join_node_group()` function)
+performs data sync doing `COPY` operations and will use multiple writers
+(parallel apply) if those are enabled.
+
+Note that the join process uses only one node as the source, so can be
+executed when nodes are down, if a majority of nodes are available.
+This can cause a complexity when running logical join:
+During logical join, the commit timestamp of rows copied from the source
+node will be set to the latest commit timestamp on the source node.
+Committed changes on nodes that have a commit timestamp earlier than this
+(because nodes are down or have significant lag) could conflict with changes
+from other nodes; in this case, the newly joined node could be resolved
+differently to other nodes, causing a divergence. As a result, we recommend
+not to run a node join when significant replication lag exists between nodes;
+but if this is necessary, run LiveCompare on the newly joined node to
+correct any data divergence once all nodes are available and caught up.
+
+`pg_dump` may fail when there is concurrent DDL activity on the source node
+because of cache lookup failures. Since bdr.join_node_group() uses `pg_dump`
+internally, it may fail if there is concurrent DDL activity on the source node.
+Retrying the join should work in such a case.
+
+### Joining a Heterogeneous Cluster
+
+BDR 3.7 node can join a BDR cluster running 3.6.x at a specific
+minimum maintenance release (e.g. 3.6.25) or a mix of 3.6 and 3.7 nodes.
+This procedure is useful when user wants to upgrade not just the BDR
+major version but also the underlying PostgreSQL (or 2ndQPostgres) major
+version. This can be achieved by joining a 3.7 node running on
+PostgreSQL (or 2ndQPostgres) 12 or 13 to a BDR cluster running 3.6.x on
+PostgreSQL (or 2ndQPostgres) 11. Of course, the new node can also be
+running on the same PostgreSQL major release as all of the nodes in the
+existing cluster.
+
+BDR ensures that the replication works correctly in all directions
+even when some nodes are running 3.6 on one PostgreSQL major release and
+other nodes are running 3.7 on another PostgreSQL major release. But
+it's recommended that the user quickly bring the cluster into a
+homogenous state by parting the older nodes once enough new nodes has
+joined the cluster. Care must be taken to not run any DDLs that might
+not be available on the older versions and vice versa.
+
+A node joining with a different major PostgreSQL release cannot use
+physical backup taken via `bdr_init_physical` and the node must join
+using the logical join method. This is necessary because the major
+PostgreSQL releases are not on-disk compatible with each other.
+
+Note that when a 3.7 node joins the cluster using a 3.6 node as a
+source, certain configuration such as conflict resolution configurations
+are not copied over from the source node. The node must be configured
+after it has joined the cluster.
+
+### Connection DSNs and SSL (TLS)
+
+The DSN of a node is simply a `libpq` connection string, since nodes connect
+using `libpq`. As such, it can contain any permitted `libpq` connection
+parameter, including those for SSL. Note that the DSN must work as the
+connection string from the client connecting to the node in which it is
+specified. An example of such a set of parameters using a client certificate is
+shown here:
+
+```
+sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key
+sslrootcert=root.crt
+```
+
+With this setup, the files `bdr_client.crt`, `bdr_client.key` and
+`root.crt` must be present in the data directory on each node, with the
+appropriate permissions.
+For `verify-full` mode, the server's SSL certificate will be checked to
+ensure that it is directly or indirectly signed with the `root.crt` Certificate
+Authority, and that the host name or address used in the connection matches the
+contents of the certificate. In the case of a name, this can match a Subject
+Alternative Name or, if there are no such names in the certificate, the
+Subject's Common Name (CN) field.
+Postgres does not currently support Subject Alternative Names for IP
+addresses, so if the connection is made by address rather than name, it must
+match the CN field.
+
+The CN of the client certificate must be the name of the user making the
+BDR connection.
+This is usually the user `postgres`. Each node will require matching
+lines permitting the connection in the `pg_hba.conf` file; for example:
+
+```
+hostssl all         postgres 10.1.2.3/24 cert
+hostssl replication postgres 10.1.2.3/24 cert
+```
+
+Another setup could be to use `SCRAM-SHA-256` passwords instead of client
+certificates, and not bother about verifying the server identity as long as
+the certificate is properly signed. Here the DSN parameters might be just:
+
+```
+sslmode=verify-ca sslrootcert=root.crt
+```
+
+...and the corresponding `pg_hba.conf` lines would be like this:
+
+```
+hostssl all         postgres 10.1.2.3/24 scram-sha-256
+hostssl replication postgres 10.1.2.3/24 scram-sha-256
+```
+
+In such a scenario, the postgres user would need a `.pgpass` file
+containing the correct password.
+
+## Witness Nodes
+
+If the cluster has an even number of nodes, it may be beneficial to create
+an extra node to help break ties in the event of a network split (or
+network partition, as it is sometimes called).
+
+Rather than create an additional full-size node, you can create a micro node,
+sometimes called a Witness node. This is a normal BDR node that
+is deliberately set up not to replicate any tables or data to it.
+
+## Logical Standby Nodes
+
+BDR allows you to create a "logical standby node", also known as an "offload
+node", a "read-only node", "receive-only node" or "logical read replicas".
+A master node can have zero, one or more logical standby nodes.
+
+With a physical standby node, the node never comes up fully, forcing it to
+stay in continual recovery mode.
+BDR allows something similar. `bdr.join_node_group` has the pause_in_standby
+option to make the node stay in half-way-joined as a logical standby node.
+Logical standby nodes receive changes but do not send changes made locally
+to other nodes.
+
+Later, if desired, use bdr.promote_node() to move the logical standby into a
+full, normal send/receive node.
+
+A logical standby is sent data by one source node, defined by the DSN in
+`bdr.join_node_group`. Changes from all other nodes are received from this one
+source node, minimizing bandwidth between multiple sites.
+
+There are multiple options for high availability:
+
+-   If the source node dies, one physical standby can be promoted to a master.
+    In this case, the new master can continue to feed any/all logical standby nodes.
+
+-   If the source node
+    dies, one logical standby can be promoted to a full node and replace the source
+    in a failover operation similar to single master operation. Note that if there
+    are multiple logical standby nodes, the other nodes cannot follow the new master,
+    so the effectiveness of this technique is effectively limited to just one logical
+    standby.
+
+Note that in case a new standby is created of an existing BDR node,
+the necessary replication slots for operation are not synced to the
+new standby until at least 16 MB of LSN has elapsed since the group
+slot was last advanced. In extreme cases, this may require a full
+16 MB before slots are synced/created on the streaming replica. If
+a failover or switchover occurs during this interval, the
+streaming standby cannot be promoted to replace its BDR node, as the
+group slot and other dependent slots do not exist yet. This is resolved
+automatically by BDR-EE, but not by BDR-SE.
+
+The slot sync-up process on the standby solves this by invoking a
+function on the upstream. This function moves the group slot in the
+entire BDR cluster by performing WAL switches and requesting all BDR
+peer nodes to replay their progress updates. The above causes the
+group slot to move ahead in a short timespan. This reduces the time
+required by the standby for the initial slot's sync-up, allowing for
+faster failover to it, if required.
+
+Logical standby nodes can themselves be protected using physical standby nodes,
+if desired, so Master->LogicalStandby->PhysicalStandby. Note that you cannot
+cascade from LogicalStandby to LogicalStandby.
+
+Note that a logical standby does allow write transactions, so the restrictions
+of a physical standby do not apply. This can be used to great benefit, since
+it allows the logical standby to have additional indexes, longer retention
+periods for data, intermediate work tables, LISTEN/NOTIFY, temp tables,
+materialized views, and other differences.
+
+Any changes made locally to logical standbys that commit before the promotion
+will not be sent to other nodes. All transactions that commit after promotion
+will be sent onwards. If you perform writes to a logical standby, you are
+advised to take care to quiesce the database before promotion.
+
+You may make DDL changes to logical standby nodes but they will not be
+replicated, nor will they attempt to take global DDL locks. BDR functions
+which act similarly to DDL will also not be replicated. See [DDL Replication].
+If you have made incompatible DDL changes to a logical standby,
+then the database is said to be a divergent node. Promotion of a divergent
+node will currently result in replication failing.
+As a result, you should plan to either ensure that a logical standby node
+is kept free of divergent changes if you intend to use it as a standby, or
+ensure that divergent nodes are never promoted.
+
+## Physical Standby Nodes
+
+BDR also enables the creation of traditional physical standby failover 
+nodes. These are commonly intended to directly replace a BDR 
+node within the cluster after a short promotion procedure. As with
+any standard Postgres cluster, a node may have any number of these
+physical replicas.
+
+There are, however, some minimal prerequisites for this to work properly 
+due to the use of replication slots and other functional requirements in 
+BDR:
+
+-   The connection between BDR Primary and Standby uses streaming
+    replication through a physical replication slot.
+-   The Standby has:
+    -   `recovery.conf` (for PostgreSQL &lt;12, for PostgreSQL 12+ these settings should be in `postgres.conf`):
+        -   `primary_conninfo` pointing to the Primary
+        -   `primary_slot_name` naming a physical replication slot on the Primary to be used only by this Standby
+    -   `postgresql.conf`:
+        -   `shared_preload_libraries = 'pglogical, bdr'` at minimum
+        -   `hot_standby = on`
+        -   `hot_standby_feedback = on`
+-   The Primary has:
+    -   `postgresql.conf`:
+        -   `pglogical.standby_slot_names` should specify the physical 
+            replication slot used for the Standby's `primary_slot_name`.
+
+While this is enough to produce a working physical standby of a BDR 
+node, there are some additional concerns that should be addressed.
+
+Once established, the Standby requires sufficient time and WAL traffic 
+to trigger an initial copy of the Primary's other BDR-related 
+replication slots, including the BDR group slot. At minimum, slots on a 
+Standby are only "live" and will survive a failover if they report 
+a non-zero `confirmed_flush_lsn` as reported by `pg_replication_slots`.
+
+As a consequence, physical standby nodes in newly initialized BDR 
+clusters with low amounts of write activity should be checked before 
+assuming a failover will work normally. Failing to take this precaution 
+can result in the Standby having an incomplete subset of required 
+replication slots necessary to function as a BDR node, and thus an 
+aborted failover.
+
+The protection mechanism that ensures physical standby nodes are up to date
+and can be promoted (as configured `pglogical.standby_slot_names`) affects the
+overal replication latency of the BDR Group as the group replication only
+happens once the physical standby nodes are up to date.
+
+For these reasons it's generally recommended to use either logical standby nodes
+or subscribe-only group instead of physical stanby nodes because they both
+have better operational characteristics in comparison.
+
+BDR3 Enterprise installations can manually trigger creation of 
+BDR-related replication slots on a physical standby using the following 
+SQL syntax:
+
+```sql
+SELECT bdr.move_group_slot_all_nodes();
+```
+
+This will also advance the BDR group slot used to ensure that all nodes have
+reached a minimum LSN across the cluster.
+
+Upon failover, the Standby must perform one of two actions to replace
+the Primary:
+
+1.  Assume control of the same IP address or hostname as the Primary.
+2.  Inform the BDR cluster of the change in address by executing the
+    [bdr.alter_node_interface] function on all other BDR nodes.
+
+Once this is done, the other BDR nodes will re-establish communication 
+with the newly promoted Standby -> Primary node. Since replication 
+slots are only synchronized periodically, this new Primary may reflect 
+a lower LSN than expected by the existing BDR nodes. If this is the 
+case, BDR will fast-forward each lagging slot to the last location
+used by each BDR node.
+
+Take special note of the `pglogical.standby_slot_names` parameter as 
+well. While this is a pglogical configuration parameter, it is 
+important to set in a BDR cluster where there is a Primary -> Physical 
+Standby relationship. While pglogical uses this to ensure physical 
+standby servers always receive WAL traffic before logical replicas,
+the BDR use case is different.
+
+BDR maintains a group slot that always reflects the state of the 
+cluster node showing the most lag for any outbound replication.
+With the addition of a physical
+replica, BDR must be informed that there is a non-participating node 
+member that will, regardless, affect the state of the group slot.
+
+Since the Standby does not directly communicate with the other BDR 
+nodes, the `standby_slot_names` parameter informs BDR to consider named 
+slots as necessary constraints on the group slot as well. When set, the 
+group slot will be held if the Standby shows lag, even if the group 
+slot would have normally been advanced.
+
+As with any physical replica, this type of standby may also be 
+configured as a synchronous replica. As a reminder, this requires:
+
+-   On the Standby:
+    -   Specifying a unique `application_name` in `primary_conninfo`
+-   On the Primary:
+    -   Enabling `synchronous_commit`
+    -   Including the Standby `application_name` in `synchronous_standby_names`
+
+It is possible to mix physical Standby and other BDR nodes in
+`synchronous_standby_names`.  CAMO and Eager All Node Replication use
+different synchronization mechanisms and do not work with synchronous
+replication.  Please make sure `synchronous_standby_names` does not
+include the CAMO partner (if CAMO is used) or no BDR node at all (if
+Eager All Node Replication is used), but only non-BDR nodes, e.g. a
+the Physical Standby.
+
+## Sub-Groups
+
+A Group may also contain zero or more sub-groups. Each sub-group can be
+allocated to a specific purpose within the top-level parent group. The
+node_group_type specifies the type when the sub-group is created.
+
+### Subscriber-Only Groups
+
+BDR 3.7.5 and above supports a new kind of node, called
+`subscriber-only` node. As the name suggests, this type of node only
+subscribes to replication changes from other nodes in the cluster, but
+no other nodes receive replication changes from `subscriber-only`
+nodes. This is somewhat similar to Logical Standby nodes, but in contrast
+to Logical Standby, the `subscriber-only` nodes are fully joined node to
+the cluster. They can receive replication changes from all other nodes
+in the cluster and hence they are not impacted by unavailability or
+parting of any one node in the cluster.
+
+Also unlike `pglogical` node, a `subscriber-only` node is a fully joined
+BDR node and hence it receives all replicated DDLs and acts on those. It
+also uses Raft to consistently report its status to all nodes in the
+cluster. The `subscriber-only` node does not have Raft voting rights and
+hence neither can become a Raft leader nor participate in the leader
+election. Also, while it receives replicated DDLs, it does not
+participate in DDL or DML lock acquisition. In other words, a currently
+down `subscriber-only` node won't stop a DML lock being acquired.
+
+The `subscriber-only` node forms the building block for BDR Tree
+topology. In this topology, there are a small number of fully active
+nodes, replicating changes in all directions, and there are a large
+number of `subscriber-only` nodes that only receive changes, but never
+send any changes to any other node in the cluster. This topology avoids
+connection explosion caused due to a large number of nodes, yet provide
+extremely large number of `leaf` nodes that can be used to consume the
+data. 
+
+In order to make use of `subscriber-only` nodes, the user must first
+create a BDR group of type 'subscriber-only'. It should be a subgroup of
+the group from which the member nodes will receive the replication
+changes. Once the subgroup is created, all nodes that intend to become
+`subscriber-only` nodes should join the subgroup. More than one
+subgroup of 'subscriber-only' type can be created and they can have
+different parent groups.
+
+Once a node successfully joins the 'subscriber-only' subgroup, it will
+become a `subscriber-only` node and start receiving replication changes
+for the parent group. Any changes made directly on the `subscriber-only`
+node will not be replicated.
+
+See `bdr.create_node_group()` to know how to create a subgroup of a
+specific type and belonging to a specific parent group.
+
+#### Notes
+
+Since a `subscriber-only` node doesn't replicate changes to any node in
+the cluster, it can't act as a source for syncing replication changes
+when a node is parted from the cluster. But if the `subscriber-only`
+node had already received and applied replication changes from the
+parted node that no other node in the cluster currently has, then that
+will cause inconsistency between the nodes.
+
+For now, this can be solved by setting `pglogical.standby_slot_names`
+and `pglogical.standby_slots_min_confirmed` appropriately so that there
+is always a fully active BDR node that is ahead of the `subscriber-only`
+nodes. See pglogical documentation to show how to use these
+configuration parameters effectively.
+
+This will be improved in a future release. We may either allow
+`subscriber-only` nodes to be ahead in the replication and then use them
+as replication source for sync or simply provide ways to optionally
+remove the inconsistent `subscriber-only` nodes from the cluster when
+another fully joined node is parted. RM20306 tracks the development task.
+
+## Decoding Worker
+
+BDR3.7 provides an option to enable decoding worker process that performs
+decoding once, no matter how many nodes are being sent data. This introduces a
+new process, the wal decoder, on each BDR node. One WAL Sender process still
+exists for each connection, but these processes now just perform the task of
+sending and receiving data. Taken together these changes reduce the CPU
+overhead of larger BDR groups and also allow higher replication throughput
+since the WAL Sender process now spends more time on communication.
+
+`enable_wal_decoder` is an option for each BDR group, which is currently
+disabled by default. `bdr.alter_node_group_config()` can be used to enable or
+disable WAL decoder for a BDR group.
+
+When WAL decoder is enabled, BDR stores `Logical Change Request` (LCR, in
+short) files to allow buffering of changes between decoding and when all
+subscribing nodes have received data. LCR files are stored under the
+`pg_logical` directory within each local node's data directory. The number and
+size of the LCR files will vary as replication lag increases, so this will also
+need monitoring. The LCRs not required by any of the BDR nodes are cleaned
+periodically. The interval between two consecutive cleanups is controlled by
+`bdr.lcr_cleanup_interval`, which defaults to 3 minutes. The cleanup is
+disabled when `bdr.lcr_cleanup_interval` is zero.
+
+When disabled, logical decoding is performed by the WAL Sender process for each
+node subscribing to each node. In this case, no LCR files are written.
+
+Even though WAL decoder is enabled for a BDR group, following GUCs control the
+production and usage of LCR per node. By default these are `false`.  For
+production and usage of LCRs we need WAL decoder to be enabled for the BDR
+group and these GUCs to be set to `true` on each of the nodes in BDR group.
+
+-   `pglogical.enable_wal_decoder` - when turned `false` it stops WAL decoder, if
+    running, and any WAL Senders using LCRs are restarted to use WAL. When `true`
+    along with the BDR group config, a WAL decoder is run to produce LCR and WAL
+    Senders use LCR.
+-   `bdr.receive_lcr` - when `true` on the subscribing node, it requests WAL
+    Sender on the publisher node to use LCRs if available.
+
+### Notes
+
+As of now, a WAL decoder decodes changes corresponding to the node where it is
+running. A Logical standby is sent changes from all the nodes in BDR group
+through a single source. Hence a WAL sender serving a Logical standby can not
+use LCRs right now.
+
+A Subscriber-only node receives changes from respective nodes directly and hence
+a WAL sender serving a Subscriber-only node can use LCRs.
+
+Even though LCRs are produced, the corresponding WALs are still retained similar
+to the case when Decoding Worker is not enabled. In future, it may be possible
+to remove WAL corresponding the LCRs, if they are not required otherwise.
+
+For reference, the first 24 characters of an LCR filename are similar to those
+in a WAL filename.  The first 8 characters of the name are all '0' right now.
+In future they are expected to represent the TimeLineId similar to the first 8
+characters of a WAL segment filename. The following sequence of 16 characters
+of the name is similar to the WAL segment number which is used to track LCR
+changes against the WAL stream. However, please note that logical changes are
+reordered according to the commit order of the transactions they below to.
+Hence their placement in the LCR segments does not match the placement of
+corresponding WAL in the WAL segments. The set of last 16 characters represents
+sub-segment number within an LCR segment. Each LCR file corresponds to a
+sub-segment. LCR files are binary and variable sized. The maximum size of an
+LCR file can be controlled by pglogical.max_lcr_segment_file_size, which
+defaults to 1GB.
+
+## Node Restart and Down Node Recovery
+
+BDR is designed to recover from node restart or node disconnection.
+The disconnected node will automatically rejoin the group by reconnecting
+to each peer node and then replicating any missing data from that node.
+
+When a node starts up, each connection will begin showing
+`bdr.node_slots.state` = `catchup` and begin replicating missing data.
+Catching-up will continue for a period of time that depends upon the
+amount of missing data from each peer node, which will likely increase
+over time, depending upon the server workload.
+
+If the amount of write activity on each node is not uniform, the catchup period 
+from nodes with more data could take significantly longer than other nodes.
+Eventually, the slot state will change to `bdr.node_slots.state` = `streaming`.
+
+Nodes that are offline for longer periods of time, such as hours or days,
+can begin to cause resource issues for various reasons. Users should not plan
+on extended outages without understanding the following issues.
+
+Each node retains change information (using one
+[replication slot](https://www.postgresql.org/docs/current/logicaldecoding-explanation.html)
+for each peer node) so it can later replay changes to a temporarily unreachable node.
+If a peer node remains offline indefinitely, this accumulated change information
+will eventually cause the node to run out of storage space for PostgreSQL
+transaction logs (*WAL* in `pg_wal`), and will likely cause the database server
+to shut down with an error similar to this:
+
+```
+PANIC: could not write to file "pg_wal/xlogtemp.559": No space left on device
+```
+
+...or report other out-of-disk related symptoms.
+
+In addition, slots for offline nodes also hold back the catalog xmin, preventing 
+vacuuming of catalog tables.
+
+In BDR-EE, offline nodes also hold back freezing of data to prevent losing
+conflict resolution data (see: [Origin Conflict Detection](conflicts)).
+BDR-SE users may need to alter their configuration settings as specified.
+
+Administrators should monitor for node outages (see: [monitoring](monitoring))
+and make sure nodes have sufficient free disk space. If the workload is
+predictable, it may be possible to calculate how much space is used over time,
+allowing a prediction of the maximum time a node can be down before critical
+issues arise.
+
+Replication slots created by BDR must not be removed manually. Should
+that happen, the cluster is damaged and the node that was using the
+slot must be parted from the cluster, as described below.
+
+Note that while a node is offline, the other nodes may not yet have received
+the same set of data from the offline node, so this may appear as a slight
+divergence across nodes. This imbalance across nodes is corrected automatically
+during the parting process. Later versions may do this at an earlier time.
+
+### Replication Slots created by BDR
+
+On a BDR master node, the following replication slots are
+created automatically:
+
+-   One *group slot*, named `bdr_<database name>_<group name>`;
+-   N-1 *node slots*, named `bdr_<database name>_<group name>_<node
+    name>`, where N is the total number of BDR nodes in the cluster,
+    including direct logical standbys, if any.
+
+The user **must not** drop those slots: they have been created automatically
+by BDR, and will be managed by BDR, which will drop them when/if necessary.
+
+On the other hand, replication slots required by software like Barman
+or pglogical can be created or dropped, using the appropriate commands
+for the software, without any effect on BDR.
+Ensure that slot names used by other software do **not** begin with the
+prefix `bdr_`.
+
+For example, in a cluster composed by 3 nodes `alpha`, `beta` and
+`gamma`, where BDR is used to replicate the `mydb` database, and the
+BDR group is called `mygroup`:
+
+-   Node `alpha` has three slots:
+    -   One group slot named `bdr_mydb_mygroup`
+    -   Two node slots named `bdr_mydb_mygroup_beta` and
+          `bdr_mydb_mygroup_gamma`
+-   Node `beta` has three slots:
+    -   One group slot named `bdr_mydb_mygroup`
+    -   Two node slots named `bdr_mydb_mygroup_alpha` and
+          `bdr_mydb_mygroup_gamma`
+-   Node `gamma` has three slots:
+    -   One group slot named `bdr_mydb_mygroup`
+    -   Two node slots named `bdr_mydb_mygroup_alpha` and
+          `bdr_mydb_mygroup_beta`
+
+#### Group Replication Slot
+
+The group slot is an internal slot used by BDR primarily to track what's the
+oldest safe position that any node in the BDR group (including all logical
+standbys) has caught up to, for any outbound replication from this node.
+
+The group slot name is given by the function `bdr.local_group_slot_name()`.
+
+The group slot can:
+
+-   join new nodes to the BDR group without having all existing nodes 
+    up and running (although the majority of nodes should be up), without
+    incurring data loss in case the node which was down during join starts
+    replicating again.
+-   part nodes from cluster consistently, even if some nodes have not
+    caught up fully with the parted node.
+-   hold back the freeze point to avoid missing some conflicts.
+-   keep the historical snapshot for timestamp based snapshots.
+
+The group slot is usually inactive, and is only fast-forwarded periodically
+in response to Raft progress messages from other nodes.
+
+**WARNING**: Do not drop the group slot. Although usually inactive, it
+is still vital to the proper operation of the BDR cluster. If it is dropped,
+then some or all of the above features will stop working and/or may have
+incorrect outcomes.
+
+### Hashing Long Identifiers
+
+Note that the name of a replication slot - like any other PostgreSQL
+identifier - cannot be longer than 63 bytes; BDR handles this by
+shortening the database name, the BDR group name and the name of the
+node, in case the resulting slot name is too long for that limit. The
+shortening of an identifier is carried out by replacing the final section
+of the string with a hash of the string itself.
+
+As an example of this, consider a cluster that replicates a database
+named `db20xxxxxxxxxxxxxxxx` (20 bytes long) using a BDR group named
+`group20xxxxxxxxxxxxx` (20 bytes long); the logical replication slot
+associated to node `a30xxxxxxxxxxxxxxxxxxxxxxxxxxx` (30 bytes long)
+will be called:
+
+```
+bdr_db20xxxx3597186_group20xbe9cbd0_a30xxxxxxxxxxxxx7f304a2
+```
+
+...since `3597186`, `be9cbd0` and `7f304a2` are respectively the hashes
+of `db20xxxxxxxxxxxxxxxx`, `group20xxxxxxxxxxxxx` and
+`a30xxxxxxxxxxxxxxxxxxxxxxxxxx`.
+
+## Removing a Node From a BDR Group
+
+Since BDR is designed to recover from extended node outages, you 
+must explicitly tell the system if you are removing a node
+permanently. If you permanently shut down a node and do not tell
+the other nodes, then performance will suffer, and eventually
+the whole system will stop working.
+
+Node removal, also called *parting*, is done using the `bdr.part_node()`
+function. You must specify the node name (as passed during node creation)
+to remove a node. The `bdr.part_node()` function can be called from any active
+node in the BDR group, including the node that is being removed.
+
+Just like the join procedure, parting is done using Raft consensus and requires a
+majority of nodes to be online to work.
+
+The parting process affects all nodes. The Raft leader will manage a vote
+between nodes to see which node has the most recent data from the parting node.
+Then all remaining nodes will make a secondary, temporary, connection to the
+most-recent node to allow them to catch up any missing data.
+
+A parted node still is known to BDR, but won't consume resources.  A
+node my well be re-added under the very same name as a parted node.
+In rare cases, it may be advisable to clear all metadata of a parted
+node with the function `bdr.drop_node()`.
+
+### Uninstalling BDR
+
+Dropping the BDR extension will remove all the BDR objects in a node,
+including metadata tables. This can be done with the following
+command:
+
+```sql
+DROP EXTENSION bdr;
+```
+
+If the database depends on some BDR-specific objects, then the BDR
+extension cannot be dropped. Examples include:
+
+-   Tables using BDR-specific sequences such as timeshard or galloc
+-   Column using CRDT data types
+-   Views that depend on some BDR catalog tables
+
+Those dependencies must be removed before dropping the BDR extension,
+for instance by dropping the dependent objects, altering the column
+type to a non-BDR equivalent, or changing the sequence type back to
+`local`.
+
+!!! Warning
+    Dropping the BDR extension **must only** be performed if the node has been
+    successfully parted from its BDR node group, or if it is the last
+    node in the group: dropping BDR and pglogical metadata will break
+    replication to/from the other nodes.
+
+!!! Warning
+    When dropping a local BDR node, or the BDR extension in the local
+    database, any preexisting session might still try to execute a BDR
+    specific workflow, and therefore fail. The problem can be solved
+    by disconnecting the session and then reconnecting the client, or
+    by restarting the instance.  
+    Moreover, the "could not open relation with OID (...)" error could
+    occur when
+    (1) parting a node from a BDR cluster, then
+    (2) dropping the BDR extension
+    (3) recreating it, and finally
+    (4) running `pglogical.replication_set_add_all_tables()`.
+    Restarting the instance will solve the problem.
+
+Similar considerations apply to the pglogical extension, which is
+required by BDR.
+
+If pglogical is only used by BDR, then it is possible to drop both
+extensions with a single statement:
+
+```sql
+DROP EXTENSION pglogical, bdr;
+```
+
+Conversely, if the node is also using pglogical independently of BDR,
+e.g. for one-way replication of some tables to a remote database, then
+only the BDR extension should be dropped.
+
+!!! Warning
+    Dropping BDR from a database that independently uses pglogical can
+    block an existing pglogical subscription from working further with
+    the "BDR global lock manager not initialized yet"
+    error. Restarting the instance will solve the problem.
+
+There is also a `bdr.drop_node()` function, but this is used only in
+emergencies, should there be a problem with parting.
+
+## Listing BDR Topology
+
+### Listing BDR Groups
+
+The following (simple) query lists all the BDR node groups of which
+the current node is a member (will currently return one row only):
+
+```sql
+SELECT node_group_name
+FROM bdr.local_node_summary;
+```
+
+The configuration of each node group can be displayed using a more
+complex query:
+
+```sql
+SELECT g.node_group_name
+, ns.pub_repsets
+, ns.sub_repsets
+, g.node_group_default_repset     AS default_repset
+, node_group_check_constraints    AS check_constraints
+FROM bdr.local_node_summary ns
+JOIN bdr.node_group g USING (node_group_name);
+```
+
+### Listing Nodes in a BDR Group
+
+The list of all nodes in a given node group (e.g. `mygroup`) can be
+extracted from the `bdr.node_summary` view as shown in the following
+example:
+
+```sql
+SELECT node_name         AS name
+, node_seq_id            AS ord
+, peer_state_name        AS current_state
+, peer_target_state_name AS target_state
+, interface_connstr      AS dsn
+FROM bdr.node_summary
+WHERE node_group_name = 'mygroup';
+```
+
+Note that the read-only state of a node, as shown in the
+`current_state` or in the `target_state` query columns, is indicated
+as `STANDBY`.
+
+### List of Node States
+
+-   `NONE`: Node state is unset when the worker starts, expected to be set quickly
+    to the current known state.
+-   `CREATED`: `bdr.create_node()` has been executed, but the node is not a
+    member of any BDR cluster yet.
+-   `JOIN_START`: `bdr.join_node_group()` begins to join the local node to an
+    existing BDR cluster.
+-   `JOINING`: The node join has started and is currently at the initial sync phase,
+    creating the schema and data on the node.
+-   `CATCHUP`: Initial sync phase is completed; now the join is at the last step
+    of retrieving and applying transactions that were performed on the upstream
+    peer node since the join started.
+-   `STANDBY`:  Node join has finished, but not yet started to broadcast changes.
+    All joins spend some time in this state, but if defined as a Logical Standby,
+    the node will continue in this state.
+-   `PROMOTE`: Node was a logical standby and we just called bdr.promote_node to
+    move the node state to `ACTIVE`. These two `PROMOTE`states have to be coherent
+    to the fact, that only one node can be with a state higher than `STANDBY` but
+    lower than `ACTIVE`.
+-   `PROMOTING`: Promotion from logical standby to full BDR node is in progress.
+-   `ACTIVE`: The node is a full BDR node and is currently `ACTIVE`. This is the
+    most common node status.
+-   `PART_START`: Node was `ACTIVE` or `STANDBY` and we just called bdr.part_node
+    to remove the node from the BDR cluster.
+-   `PARTING`: Node disconnects from other nodes and plays no further part in
+    consensus or replication.
+-   `PART_CATCHUP`: Non-parting nodes synchronize any missing data from the
+    recently parted node.
+-   `PARTED`: Node parting operation is now complete on all nodes.
+
+Only one node at a time can be in either of the states PROMOTE or PROMOTING.
+
+## Managing Shard Groups
+
+BDR clusters may contain an array of Shard Groups for the AutoScale feature.
+These are shown as a sub-node group that is composed of an array of
+sub-sub node groups known as Shard Groups.
+
+Operations that can be performed on the Shard Group are:
+
+-   Create Shard Array
+-   Drop Shard Array
+-   Repair - add new nodes to replace failed nodes
+-   Expand - add new Shard Groups
+-   Re-Balance - re-distribute data across Shard Groups
+
+### Create/Drop
+
+### Expand
+
+e.g. expand from 4 Shard Groups to 8 Shard Groups
+
+This operation can occur without interfering with user operations.
+
+### Re-Balance
+
+e.g. move data from where it was in a 4-node array to how it would be ideally
+placed in an 8-node array.
+
+Some portion of the data is moved from one Shard Group to another,
+so this action can take an extended period, depending upon how
+much data is to be moved. The data is moved one partition at a
+time, so is restartable without too much wasted effort.
+
+Note that re-balancing is optional.
+
+This operation can occur without interfering with user operations,
+even when this includes write transactions.
+
+## Node Management Interfaces
+
+Nodes can be added and removed dynamically using the SQL interfaces.
+
+### bdr.create_node
+
+This function creates a node.
+
+#### Synopsis
+
+```sql
+bdr.create_node(node_name text, local_dsn text)
+```
+
+#### Parameters
+
+-   `node_name` - name of the new node; only one node is allowed per
+      database. Valid node names consist of lower case letters, numbers,
+      hyphens and underscores.
+-   `local_dsn` - connection string to the node
+
+#### Notes
+
+This function just creates a record for the local node with the associated
+public connection string. There can be only one local record, so once it's
+created, the function will error if run again.
+
+This function is a transactional function - it can be rolled back and the
+changes made by it are visible to the current transaction.
+
+The function will hold lock on the newly created bdr node until the end of
+the transaction.
+
+### bdr.drop_node
+
+Drops a node.  This function is *not intended for regular use* and
+should only be executed under the instructions of Technical Support.
+
+This function removes the metadata for a given node from the local
+database. The node can be either:
+
+-   The **local** node, in which case all the node metadata is removed,
+    including information about remote nodes;
+-   A **remote** node, in which case only metadata for that specific
+    node is removed.
+
+#### Synopsis
+
+```sql
+bdr.drop_node(node_name text, cascade boolean DEFAULT false, force boolean DEFAULT false)
+```
+
+#### Parameters
+
+-   `node_name` - Name of an existing node.
+-   `cascade` - Whether to cascade to dependent objects, this will also delete
+      the associated pglogical node. This option should be used with caution!
+-   `force` - Circumvents all sanity checks and forces the removal of
+      all metadata for the given BDR node despite a possible danger of
+      causing inconsistencies.  A forced node drop is to be used by
+      Technical Support only in case of emergencies related to
+      parting.
+
+#### Notes
+
+Before you run this, you should already have parted the node using `bdr.part_node()`.
+
+This function removes metadata for a given node from the local database. The node
+can be either the local node, in which case all the node metadata are removed,
+including info about remote nodes are removed; or it can be the remote node, in
+which case only metadata for that specific node is removed.
+
+!!! Note
+    BDR3 can have a maximum of 1024 node records (both ACTIVE and PARTED)
+    at one time.  This is because each node has a unique sequence number
+    assigned to it, for use by timeshard sequences. PARTED nodes are not
+    automatically cleaned up at the moment; should this become a problem,
+    this function can be used to remove those records.
+
+### bdr.create_node_group
+
+This function creates a BDR group with the local node as the only member of the group.
+
+#### Synopsis
+
+```sql
+bdr.create_node_group(node_group_name text,
+                      parent_group_name text,
+                      join_node_group boolean DEFAULT true,
+                      node_group_type text DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `node_group_name` - Name of the new BDR group; as with the node
+      name, valid group names must consist of lower case letters, numbers
+      and underscores, exclusively.
+-   `parent_group_name` - The name of the parent group for the subgroup.
+-   `join_node_group` - This helps a node to decide whether or not to join
+     the group being created by it. The default value is true. This is used
+     when a node is creating a shard group that it does not want to join.
+     This can be false only if parent_group_name is specified.
+-   `node_group_type` - The valid values are NULL, 'subscriber-only', 'datanode',
+     'read coordinator' and 'write coordinator'. 'subscriber-only' type is
+     used to create a group of nodes that only receive changes from the
+     fully joined nodes in the cluster, but they never send replication
+     changes to other nodes. See [Subscriber-Only Nodes] for more details.
+     Datanode implies that the group represents a shard, whereas the other
+     values imply that the group represents respective coordinators.
+     Except 'subscriber-only', the rest three values are reserved for use
+     with a separate extension called autoscale. NULL implies a normal
+     general purpose node group will be created.
+
+#### Notes
+
+This function will pass request to local consensus worker that is running for
+the local node.
+
+The function is not transactional. The creation of the group is a background
+process, so once the function has finished, the changes cannot be rolled back.
+Also, the changes might not be immediately visible to the current transaction;
+the `bdr.wait_for_join_completion` can be called to wait until they are.
+
+The group creation does not hold any locks.
+
+### bdr.alter_node_group_config
+
+This function changes the configuration parameter(s) of an existing BDR group. 
+Options with NULL value (default for all of them) will not be modified.
+
+#### Synopsis
+
+```sql
+bdr.alter_node_group_config(node_group_name text,
+                            insert_to_update boolean DEFAULT NULL,
+                            update_to_insert boolean DEFAULT NULL,
+                            ignore_redundant_updates boolean DEFAULT NULL,
+                            check_full_tuple boolean DEFAULT NULL,
+                            apply_delay interval DEFAULT NULL,
+                            check_constraints boolean DEFAULT NULL,
+                            num_writers int DEFAULT NULL,
+							enable_wal_decoder boolean DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `node_group_name` - Name of an existing BDR group; the local node must be part
+      of the group.
+-   `insert_to_update` - Reserved for backwards compatibility reasons.
+-   `update_to_insert` - Reserved for backwards compatibility reasons.
+      versions of BDR. Use `bdr.alter_node_set_conflict_resolver` instead.\*\*
+-   `ignore_redundant_updates` - Reserved for backwards compatibility reasons.
+-   `check_full_tuple` - Reserved for backwards compatibility reasons.
+-   `apply_delay` - Reserved for backwards compatibility reasons
+-   `check_constraints` - Whether the apply process will check the constraints
+      when writing replicated data.
+      **This option is deprecated and may be disabled or removed in future
+      versions of BDR.**
+-   `num_writers` - number of parallel writers for subscription backing
+     this node group, -1 means the default (as specified by the pglogical
+     GUC pglogical.writers_per_subscription) will be used. Valid values
+     are either -1 or a positive integer.
+-   `enable_wal_decoder` - Enables/disables the WAL decoder process.
+
+Note that all of the options parameters are simply used to control the
+pglogical writer.
+
+#### Notes
+
+This function will pass a request to the group consensus mechanism to change
+the defaults. The changes made are replicated globally via the consensus
+mechanism.
+
+The function is not transactional. The request is processed in the background
+so the function call cannot be rolled back. Also, the changes may not be
+immediately visible to the current transaction.
+
+This function does not hold any locks.
+
+!!! Warning
+    When this function is used to change the `apply_delay` value, the
+    change does not apply to nodes that are already members of the
+    group.  
+    Note that this restriction has little consequence on production
+    usage, because this value is normally not used outside of testing.
+
+### bdr.join_node_group
+
+This function joins the local node to an already existing BDR group.
+
+#### Synopsis
+
+```sql
+bdr.join_node_group (
+    join_target_dsn text,
+    node_group_name text DEFAULT NULL,
+    pause_in_standby boolean DEFAULT false,
+    wait_for_completion boolean DEFAULT true,
+    synchronize_structure text DEFAULT 'all'
+)
+```
+
+#### Parameters
+
+-   `join_target_dsn` - Specifies the connection string to existing (source) node
+     in the BDR group we wish to add the local node to.
+-   `node_group_name` - Optional name of the BDR group; defaults to NULL which
+    tries to autodetect the group name from information present on the source
+    node.
+-   `pause_in_standby` - Optionally tells the join process to only join as a
+    logical standby node, which can be later promoted to a full member.
+-   `wait_for_completion` - Wait for the join process to complete before
+    returning; defaults to true.
+-   `synchronize_structure` - Set what kind of structure (schema) synchronization
+    should be done during the join. Valid options are 'all' which synchronizes
+    the complete database structure, and 'none' which will not synchronize any
+    structure (however, it will still synchronize data).
+
+If `wait_for_completion` is specified as false;
+this is an asynchronous call which returns as soon as the joining procedure
+has started. Progress of the join can be seen in logs and the
+`bdr.state_journal_details` information view, or by calling the
+`bdr.wait_for_join_completion()` function once `bdr.join_node_group()` returns.
+
+#### Notes
+
+This function will pass a request to the group consensus mechanism via the node
+that the `join_target_dsn` connection string points to.
+The changes made are replicated globally via the consensus mechanism.
+
+The function is not transactional. The joining process happens in the
+background and as such cannot be rolled back. The changes are only visible
+to the local transaction if `wait_for_completion` was set to `true` or by calling
+`bdr.wait_for_join_completion` later.
+
+Node can only be part of a single group, so this function can only be called once
+on each node.
+
+Node join does not hold any locks in the BDR group.
+
+### bdr.promote_node
+
+This function promotes a local logical standby node to a full member of the BDR group.
+
+#### Synopsis
+
+```sql
+bdr.promote_node(wait_for_completion boolean DEFAULT true)
+```
+
+#### Notes
+
+This function will pass a request to the group consensus mechanism to change
+the defaults. The changes made are replicated globally via the consensus
+mechanism.
+
+The function is not transactional. The promotion process happens in the
+background, and as such cannot be rolled back. The changes are only visible
+to the local transaction if `wait_for_completion` was set to `true` or by calling
+`bdr.wait_for_join_completion` later.
+
+The promotion process holds lock against other promotions. This lock will not
+block other `bdr.promote_node` calls, but will prevent the background process of
+promotion from moving forward on more than one node at a time.
+
+### bdr.wait_for_join_completion
+
+This function waits for the join procedure of a local node to finish.
+
+#### Synopsis
+
+```sql
+bdr.wait_for_join_completion(verbose_progress boolean DEFAULT false)
+```
+
+#### Parameters
+
+-   `verbose_progress` - Optionally prints information about individual steps
+    taken during the join procedure.
+
+#### Notes
+
+This function waits until the checks state of the local node reaches the target
+state, which was set by `bdr.create_node_group`, `bdr.join_node_group` or
+`bdr.promote_node`.
+
+### bdr.part_node
+
+Removes ("parts") the node from the BDR group, but does not remove data
+from the node.
+
+The function can be called from any active node in the BDR group, including
+the node which is being removed. However, just to make it clear, once the
+node is PARTED it can not *part* other nodes in the cluster.
+
+!!! Note
+    you are *parting* the local node you must set `wait_for_completion`
+    false, otherwise it will error.
+
+!!! Warning
+    s action is permanent. If you wish to temporarily halt replication
+    a node, see `bdr.alter_subscription_disable()`.
+
+#### Synopsis
+
+```sql
+bdr.part_node (
+    node_name text,
+	wait_for_completion boolean DEFAULT true,
+	force boolean DEFAULT false
+)
+```
+
+#### Parameters
+
+-   `node_name` - Name of an existing node to part.
+-   `wait_for_completion` - If true, the function will not return until the
+    node is fully parted from the cluster, otherwise the function will just
+    start the parting procedure and return immediately without waiting.
+    Always set to false when executing on the local node, or when using force.
+-   `force` - Forces removal of the node on the local node. This will set the
+    node state locally if consensus could not be reached or if the node parting
+    process has stuck.
+
+!!! Warning
+    Using `force = true` may leave the BDR group in a inconsistent
+    state and should be only used to recover from byzantine failures where it's
+    impossible to remove the node any other way.\*\*
+
+#### Notes
+
+This function will pass a request to the group consensus mechanism to part
+the given node. The changes made are replicated globally via the consensus
+mechanism. The parting process happens in the background, and as such cannot
+be rolled back. The changes made by the parting process are only visible to
+the local transaction if `wait_for_completion` was set to `true`.
+
+With `force` set to `true`, on consensus failure, this function will set the
+state of the given node only on the local node. In such a case, the function is
+transactional (because the function itself changes the node state) and can be
+rolled back. If the function is called on a node which is already in process of
+parting with `force` set to `true`, it will also just mark the given node as
+parted locally and exit. This is only useful when the consensus cannot be
+reached on the cluster (i.e. the majority of the nodes are down) or if the
+parting process gets stuck for whatever reason. But it is important to take into
+account that when the parting node that was receiving writes, the parting process
+may take a long time without being stuck, as the other nodes need to resynchronize
+any missing data from the given node. The force parting completely skips this
+resynchronization, and as such can leave the other nodes in inconsistent state.
+
+The parting process does not hold any locks.
+
+### bdr.alter_node_interface
+
+This function changes the connection string (`DSN`) of a specified node.
+
+#### Synopsis
+
+```sql
+bdr.alter_node_interface(node_name text, interface_dsn text)
+```
+
+#### Parameters
+
+-   `node_name` - name of an existing node to alter
+-   `interface_dsn` - new connection string for a node
+
+#### Notes
+
+This function is only run on the local node and the changes are only made on the
+local node. This means that it should normally be executed on every node in the
+BDR group, including the node which is being changed.
+
+This function is transactional - it can be rolled back, and the changes are
+visible to the current transaction.
+
+The function holds lock on the local node.
+
+### bdr.alter_subscription_enable
+
+This function enables either the specified subscription or all the subscriptions of the
+local BDR node. Also known as resume subscription.
+No error is thrown if the subscription is already enabled.
+Returns the number of subscriptions affected by this operation.
+
+#### Synopsis
+
+```sql
+bdr.alter_subscription_enable(
+    subscription_name name DEFAULT NULL,
+    immediate boolean DEFAULT false
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - Name of the subscription to enable; if NULL
+     (the default), all subscriptions on the local node will be enabled.
+-   `immediate` - This currently has no effect.
+
+#### Notes
+
+This function is not replicated and only affects local node subscriptions
+(either a specific node or all nodes).
+
+This function is transactional - it can be rolled back and any catalog changes
+can be seen by the current transaction. The subscription workers will be started
+by a background process after the transaction has committed.
+
+### bdr.alter_subscription_disable
+
+This function disables either the specified subscription or all the
+subscriptions of the local BDR node. Optionally, it can also immediately stop
+all the workers associated with the disabled subscriptions. Also known as pause
+subscription. No error is thrown if the subscription is already disabled.
+Returns the number of subscriptions affected by this operation.
+
+#### Synopsis
+
+```sql
+bdr.alter_subscription_disable(
+    subscription_name name DEFAULT NULL,
+    immediate boolean DEFAULT false
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - Name of the subscription to disable; if NULL
+     (the default), all subscriptions on the local node will be disabled.
+-   `immediate` - Immediate is used to force the action immediately, stopping
+     all the workers associated with the disabled subscription. With this option
+     true, this function cannot be run inside of the transaction block.
+
+#### Notes
+
+This function is not replicated and only affects local node subscriptions
+(either a specific subscription or all subscriptions).
+
+This function is transactional - it can be rolled back and any catalog changes
+can be seen by the current transaction. However, the timing of the subscription
+worker stopping depends on the value of `immediate`; if set to `true`, the
+workers will be stopped immediately; if set to `false`, they will be stopped at
+the `COMMIT` time.
+
+## Node Management Commands
+
+BDR also provides a command line utility for adding nodes to the BDR group via
+physical copy (`pg_basebackup`) of an existing node, and for converting a
+physical standby of an existing node to a new node in the BDR group.
+
+### bdr_init_physical
+
+This is a regular command which is added to PostgreSQL's bin directory.
+
+The user must specify a data directory. If this data directory is empty,
+the `pg_basebackup -X stream` command is used to fill the directory
+using a fast block-level copy operation.
+
+When starting from an empty data directory, if the selective backup option
+is chosen, then only that database will be copied from the source node. The
+excluded databases will be dropped and cleaned up on the new node.
+
+If the specified data directory is non-empty, this will be used as the
+base for the new node. If the data directory is already active as a
+physical standby node, it is required to stop the standby before running
+`bdr_init_physical`, which will manage Postgres itself. Initially it will
+wait for catchup and then promote to a master node before joining the BDR
+group. Note that the `--standby` option, if used, will turn the existing
+physical standby into a logical standby node; it refers to the end state
+of the new BDR node, not the starting state of the specified data directory.
+
+This command will drop all pglogical-only subscriptions and configuration from
+the database and will also drop all PostgreSQL native logical replication
+subscriptions from the database (or just disable them when the `-S` option is
+used), as well as any replication origins and slots.
+
+It is the BDR3 version of the `pglogical_create_subscriber` utility.
+
+#### Synopsis
+
+```shell
+bdr_init_physical [OPTION] ...
+```
+
+#### Options
+
+##### General Options
+
+-   `-D, --pgdata=DIRECTORY` - The data directory to be used for the new node; it
+    can be either empty/non-existing directory, or a directory populated using the
+    `pg_basebackup -X stream` command (required).
+
+-   `-l, --log-file=FILE` - Use FILE for logging; default is
+    bdr_init_physical_postgres.log .
+
+-   `-n, --node-name=NAME` - The name of the newly created node (required).
+
+-   `--replication-sets=SETS` - The name of a comma-separated list of replication
+    set names to use; all replication sets will be used if not specified.
+
+-   `--standby` - Create a logical standby (receive only node) rather than full
+    send/receive node.
+
+-   `--node-group-name` - Group to join, defaults to the same group as source node.
+
+-   `-s, --stop` - Stop the server once the initialization is done.
+
+-   `-v` - Increase logging verbosity.
+
+-   `-L` - Perform selective pg_basebackup when used in conjunction with an
+    empty/non-existing data directory (-D option).
+
+-   `-S` - Instead of dropping logical replication subscriptions, just disable
+    them.
+
+##### Connection Options
+
+-   `-d, --remote-dsn=CONNSTR` - connection string for remote node (required)
+-   `--local-dsn=CONNSTR` - connection string for local node (required)
+
+##### Configuration Files Override
+
+-   `--hba-conf -path` to the new pg_hba.conf
+-   `--postgresql-conf` - path to the new postgresql.conf
+
+#### Notes
+
+The replication set names specified in the command do not affect the data that
+exists in the data directory before the node joins the BDR group. This is true
+whether bdr_init_physical makes its own basebackup or an existing base backup
+is being promoted to a new BDR node. Thus the `--replication-sets` option only
+affects the data published and subscribed-to after the node joins the BDR node
+group. This behaviour is different from the way replication sets are used in a
+logical join i.e. when using `bdr.join_node_group()`.
+
+Unwanted tables may be truncated by the operator after the join has completed.
+Refer  to the `bdr.tables` catalog to determine replication set membership and
+identify tables that are not members of any subscribed-to replication set. It's
+strongly recommended that you truncate the tables rather than drop them, because:
+
+1.  DDL replication sets are not necessarily the same as row (DML) replication
+    sets, so you could inadvertently drop the table on other nodes;
+2.  If you later want to add the table to a replication set and you have dropped
+    it on some subset of nodes, you will need to take care to re-create it only
+    on those nodes without creating DDL conflicts before you can add it to
+    any replication sets.
+
+It's much simpler and safer to truncate your non-replicated tables, leaving them
+present but empty.
+
+A future version of BDR may automatically omit or remove tables that are not
+part of the selected replication set(s) for a physical join, so your application
+should not rely on details of the behaviour documented here.
