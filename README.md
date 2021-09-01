@@ -96,17 +96,17 @@ brew uninstall -f docker && brew install --cask docker
 
 1. If you're **not** a member of the EnterpriseDB Github Org, you'll have to follow these steps:
 
-  1. In the terminal, navigate to `icons-pkg/`, located folder in the root of the repository: `cd icons-pkg/`.
+   1. In the terminal, navigate to `icons-pkg/`, located folder in the root of the repository: `cd icons-pkg/`.
 
-  1. Link the icons package to you global npm packages: `npm link`.
+   1. Link the icons package to you global npm packages: `npm link`.
 
-  1. Navigate back to the root of the repository: `cd ..`.
+   1. Navigate back to the root of the repository: `cd ..`.
 
 1. Install all required packages.
 
-  - If you're a member of the EnterpriseDB Gihub Org you can run `npm install`.
+   - If you're a member of the EnterpriseDB Gihub Org you can run `npm install`.
 
-  - If you're **not** a member, you have to run `npm link @enterprisedb/icons`.
+   - If you're **not** a member, you have to run `npm link @enterprisedb/icons`.
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
