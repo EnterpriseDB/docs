@@ -1,10 +1,16 @@
-<img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="200">
+<img src="static/icons/edb-docs-logo-disc-dark.svg" alt='EDB Docs' width="200">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
 ![Update PDFs on Develop](https://github.com/EnterpriseDB/docs/workflows/Update%20PDFs%20on%20Develop/badge.svg)
 
 This repo contains the React/Gatsby application that powers [the EDB Docs website](https://www.enterprisedb.com/docs/). The site pulls [Markdown](https://www.markdownguide.org/) content from several repos in a process called "sourcing", and then renders it all into high-performance markup. You can install the application on your local computer for easy editing, viewing, and eventually publishing to the GitHub repo.
+
+## Please remove and re-clone your local repositories after August 13, 2021
+
+We've been checking PDF files into Git. That's not a good plan, so [we've stopped doing that](https://github.com/EnterpriseDB/docs/issues/1632). The next step is to remove these files from Git history and [move other large files to LFS](https://docs.github.com/en/github/managing-large-files/versioning-large-files/moving-a-file-in-your-repository-to-git-large-file-storage). Among many other good things, that ought to reduce the time to clone this repository substantially.
+
+But it comes at a cost. If there are any local repositories that were cloned before the change, we risk introducing dirty history back into the repository. So we're asking that everyone who has a local repository they **cloned before (or on) August 13, 2021** to delete those repositories. Unfortunately, we'll need to reject any pull requests that introduce PDF files back into Git history. (If you need any help with this, please contact jon.ericson@enterprisedb.com.)
 
 ## MacOS Installation
 
@@ -132,7 +138,9 @@ If you experience errors or other issues with the site, try the following in the
 
 ## Development
 
-All changes should have a pull request opened against the default branch, `develop`. When a pull request is opened, Heroku should automatically create a review build, which should be linked in the pull request under "deployments". Review builds only include advocacy content. When a pull request is merged, `develop` will automatically deploy the changes to the staging environment.
+All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
+
+When a PR is merged into the `develop` branch, the result will be deployed to the [staging](#staging) environment.
 
 To deploy to production, create a pull request merging `develop` into `main`. When that PR is merged, `main` will automatically build and deploy to the production site.
 
@@ -144,13 +152,17 @@ Deployments of the site use the `build-sources.json` file to determine which sou
 
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
+Staging environment URL: https://edb-docs-staging.netlify.app/docs/
+
 #### Production
 
 Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
-#### Review Builds
+Production environment URL: https://www.enterprisedb.com/docs
 
-Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+#### Draft deployments
+
+Review builds are automatically created for pull requests when the `deploy` tag is added. The build and deployment process is handled by the `deploy-draft.yml` GitHub workflow. Draft builds are [a Netlify feature](https://docs.netlify.com/cli/get-started/#draft-and-production-deploys) - each new draft has a unique URL (based on the Staging URL) that will persist even when later revisions are deployed.
 
 ## Redirects
 
@@ -279,3 +291,4 @@ Option 2: on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
+

@@ -20,6 +20,7 @@ const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
   bdr: { name: "bdr", path: "product_docs/docs/bdr" },
   harp: { name: "harp", path: "product_docs/docs/harp" },
+  edbcloud: { name: "edbcloud", path: "product_docs/docs/edbcloud" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
@@ -70,34 +71,32 @@ const sourceToPluginConfig = {
 const externalSourcePlugins = () => {
   const sourcePlugins = [];
 
-  if (!process.env.SKIP_SOURCING) {
-    // default to full set of sources
-    let sources = Object.keys(sourceToPluginConfig).reduce((result, source) => {
-      result[source] = true;
-      return result;
-    }, {});
+  // default to full set of sources
+  let sources = Object.keys(sourceToPluginConfig).reduce((result, source) => {
+    result[source] = true;
+    return result;
+  }, {});
 
-    if (gracefulFs.existsSync(sourceFilename)) {
-      console.log(
-        `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
-      );
-      console.log(
-        `${ANSI_GREEN}Note: ${sourceFilename} is no longer required; delete it to load the full set of docs.${ANSI_STOP}`,
-      );
-      sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
-    }
+  if (gracefulFs.existsSync(sourceFilename)) {
+    console.log(
+      `${ANSI_BLUE}###### Sourcing from ${sourceFilename} #######${ANSI_STOP}`,
+    );
+    console.log(
+      `${ANSI_GREEN}Note: ${sourceFilename} is no longer required; delete it to load the full set of docs.${ANSI_STOP}`,
+    );
+    sources = JSON.parse(gracefulFs.readFileSync(sourceFilename));
+  }
 
-    for (const [source, enabled] of Object.entries(sources)) {
-      const config = sourceToPluginConfig[source];
-      if (enabled && config) {
-        sourcePlugins.push({
-          resolve: "gatsby-source-filesystem",
-          options: {
-            name: config.name,
-            path: config.path,
-          },
-        });
-      }
+  for (const [source, enabled] of Object.entries(sources)) {
+    const config = sourceToPluginConfig[source];
+    if (enabled && config) {
+      sourcePlugins.push({
+        resolve: "gatsby-source-filesystem",
+        options: {
+          name: config.name,
+          path: config.path,
+        },
+      });
     }
   }
 

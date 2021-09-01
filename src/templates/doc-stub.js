@@ -8,7 +8,6 @@ import {
   Layout,
   MainContent,
   TableOfContents,
-  TopBar,
   VersionDropdown,
 } from "../components";
 
@@ -81,7 +80,6 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} background="white">
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
           <div className="d-flex justify-content-between align-items-center">
@@ -94,10 +92,10 @@ const DocTemplate = ({ data, pageContext }) => {
           </div>
           <VersionDropdown versionArray={versionArray} path={path} />
 
-          <h4 className="text-muted mt-5 mb-3 font-weight-normal">
+          {/* <h4 className="text-muted mt-5 mb-3 font-weight-normal">
             The documentation for this product version is being migrated to EDB
             Docs 2.0. The links below will take you to EDB Docs 1.0.
-          </h4>
+          </h4> */}
 
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>

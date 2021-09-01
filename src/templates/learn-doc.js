@@ -12,7 +12,6 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
-  TopBar,
 } from "../components";
 
 export const query = graphql`
@@ -138,7 +137,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
