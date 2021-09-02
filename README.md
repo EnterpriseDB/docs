@@ -41,15 +41,26 @@ At this point you have a couple options.
 
 1. Install Docker on your mac. [Follow the direction below.](#install-docker-using-homebrew)
 
+1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that icons are pulled in the next steps.
+   1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
+
+   1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+
 1. Navigate to the cloned repo directory in your terminal
 
 1. Run `npm run start`
 
-1. The application will take a few minutes to build, but once it's finished the it can be accessed at `http://localhost:8000/`.
+1. The application will take a few minutes to build, but once it's finished it can be accessed at `http://localhost:8000/`.
 
-1. To stop the server run `npm run stop`
+#### Additional Commands and Options for the Docker Environment
 
-1. To view logs from the server, run `npm run logs`, to exit the logs press `ctrl`+`c`
+- `npm run stop` — Stop the dev server
+
+- `npm run logs` — View logs from the server, to exit the logs press `ctrl`+`c`
+
+- `npm run shell` — open up a shell for the dev container
+
+- To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
 
 ### Install Docker using Homebrew
 
@@ -86,27 +97,18 @@ brew uninstall -f docker && brew install --cask docker
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that they're pulled in the next steps.
+1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that icons are pulled in the next steps.
 
    1. Run `brew install direnv` if you don't have it already.  Then [follow these steps to add it to your shell.](https://direnv.net/docs/hook.html).
 
    1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
 
-   1. Once you have that token, create a file in the root of the project called `.envrc.local` and add this code to it `export NPM_TOKEN="your-token-here"`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+   1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
-1. If you're **not** a member of the EnterpriseDB Github Org, you'll have to follow these steps:
+   1. After updating `.env.development`, you may need to run `direnv reload` to make sure your change is loaded.
 
-   1. In the terminal, navigate to `icons-pkg/`, located folder in the root of the repository: `cd icons-pkg/`.
-
-   1. Link the icons package to you global npm packages: `npm link`.
-
-   1. Navigate back to the root of the repository: `cd ..`.
-
-1. Install all required packages.
-
-   - If you're a member of the EnterpriseDB Gihub Org you can run `npm install`.
-
-   - If you're **not** a member, you have to run `npm link @enterprisedb/icons`.
+1. Install all required packages by running `npm run install-dependencies`
+   - **note:** do not use `npm install` if you're not a member of the EnterpriseDB GitHub Org. Additional set up is required to ensure that placeholder icons are loaded, and the `npm run install-dependencies` script will take care of that for you.
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
