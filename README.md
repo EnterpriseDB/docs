@@ -44,6 +44,10 @@ At this point you have a couple options.
 1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that icons are pulled in the next steps.
    1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
 
+      - The minimum scope the token requires is `read:packages`
+
+      - Make sure to enable SSO for your token or it may not work correctly
+
    1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
 1. Navigate to the cloned repo directory in your terminal
@@ -102,6 +106,10 @@ brew uninstall -f docker && brew install --cask docker
    1. Run `brew install direnv` if you don't have it already.  Then [follow these steps to add it to your shell.](https://direnv.net/docs/hook.html).
 
    1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
+
+      - The minimum scope the token requires is `read:packages`
+
+      - Make sure to enable SSO for your token or it may not work correctly
 
    1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
