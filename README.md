@@ -26,7 +26,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
-1. Create a `.env` file: `cp env .env.development`.
+1. Create a `.env.development` file: `cp env.development.example .env.development`.
 
 At this point you have a couple options.
 - [**Quick set up with Docker**](#get-started-quickly-with-docker)
