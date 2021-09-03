@@ -52,6 +52,8 @@ At this point you have a couple options.
 
 1. Navigate to the cloned repo directory in your terminal
 
+1. if you have previously started the app, you may receive an error when the docker container installs dependencies. Remove your node modules folder (`rm -rf node_modules`) to fix the error.
+
 1. Run `npm run start`
 
 1. The application will take a few minutes to build, but once it's finished it can be accessed at `http://localhost:8000/`.
