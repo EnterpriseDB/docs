@@ -1,8 +1,8 @@
 #!/bin/sh
 
-if [ -z $NPM_TOKEN ]
+if [ -z "$NPM_TOKEN" ]
 then
-  cd icons-pkg/
+  cd icons-pkg || exit
   npm link
   cd ..
   npm link @enterprisedb/icons --legacy-peer-deps
