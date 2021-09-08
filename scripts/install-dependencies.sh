@@ -5,7 +5,7 @@ then
   cd icons-pkg/
   npm link
   cd ..
-  npm link @enterprisedb/icons
+  npm link @enterprisedb/icons --legacy-peer-deps
 else
-  npm install
+  npm install --legacy-peer-deps
 fi
