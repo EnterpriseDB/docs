@@ -41,18 +41,9 @@ At this point you have a couple options.
 
 1. Install Docker on your mac. [Follow the direction below.](#install-docker-using-homebrew)
 
-1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that icons are pulled in the next steps.
-   1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
-
-      - The minimum scope the token requires is `read:packages`
-
-      - Make sure to enable SSO for your token or it may not work correctly
-
-   1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions below](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
 
 1. Navigate to the cloned repo directory in your terminal
-
-1. If you have previously started the app outside of the docker container, you may receive an error when the docker container installs dependencies. Remove your node modules folder (`rm -rf node_modules`) to fix this issue.
 
 1. Run `npm run start`. The application will start in the background and take a few minutes to load.
 
@@ -65,6 +56,8 @@ At this point you have a couple options.
 - `npm run logs` — View logs from the server, to exit the logs press `ctrl`+`c`
 
 - `npm run shell` — open up a shell for the dev container
+
+- `npm run docker:rebuild` — rebuild the images used for the dev container
 
 - To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
 
@@ -89,6 +82,21 @@ If the first command yields results, enter the following command to uninstall th
 brew uninstall -f docker && brew install --cask docker
 ```
 
+### Prepare Your Environment to Download Icons
+
+These instructions are for members of the EnterpriseDB Github Org only. The icons we are using are not free, and so cannot be distributed as part of the open source docs repository. You'll want to follow these steps so that icons are pulled to the docs application instead of placeholder icons.
+
+1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/github/authenticating-to-github/keeping-your-account-and-data-secure/creating-a-personal-access-token)
+
+   - The minimum scope the token requires is `read:packages`
+
+   - Make sure to enable SSO for your token or it may not work correctly
+
+1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+
+1. After updating `.env.development`, you may need to run `direnv reload` to make sure your change is loaded.
+
+
 ### Set up a full development environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
@@ -103,19 +111,7 @@ brew uninstall -f docker && brew install --cask docker
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. If you're a member of the EnterpriseDB Github Org, you'll want to follow these steps so that icons are pulled in the next steps.
-
-   1. Run `brew install direnv` if you don't have it already.  Then [follow these steps to add it to your shell.](https://direnv.net/docs/hook.html).
-
-   1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages)
-
-      - The minimum scope the token requires is `read:packages`
-
-      - Make sure to enable SSO for your token or it may not work correctly
-
-   1. Once you have that token, update your `.env.development` file with this line `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
-
-   1. After updating `.env.development`, you may need to run `direnv reload` to make sure your change is loaded.
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions above](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
 
 1. Install all required packages by running `npm run install-dependencies`
    - **note:** do not use `npm install` if you're not a member of the EnterpriseDB GitHub Org. Additional set up is required to ensure that placeholder icons are loaded, and the `npm run install-dependencies` script will take care of that for you.
