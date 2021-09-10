@@ -16,15 +16,14 @@ The examples in the following sections use these IP addresses:
 
 # Initial product installation and configuration
 
-1. Install the following on the primary and one or more standbys
+1.  Install the following on the primary and one or more standbys
 
     -   [EDB Postgres Advanced Server 13](https://www.enterprisedb.com/docs/epas/latest/) (as backend database server for PEM)
     -   [PEM Server](https://www.enterprisedb.com/docs/pem/latest/)
     -   [EDB Failover Manager 4.1](https://www.enterprisedb.com/docs/efm/latest/efm_user/03_installing_efm/)
-    
-    
+
     Refer to the installation instructions in the product documentation using the links above or refer to the instructions given on the [EDBrepos website](https://repos.enterprisedb.com). You need to replace the `USERNAME:PASSWORD` with your username and password in the instructions to access the EDB repositories.
-    
+
     Ensure that the database server is configured to use `scram-sha-256` authentication method as the PEM Server configuration script does not work with `trust` authentication.
 
     You need to install the `java-1.8.0-openjdk` package to install EFM.
@@ -39,7 +38,7 @@ The examples in the following sections use these IP addresses:
     -   `7800` - for EFM
     -   `7908` - for EFM Admin
 
-    ``` text
+    ```text
         $ sudo firewall-cmd --zone=public --add-port=5444/tcp --permanent 
         success
         $ sudo firewall-cmd --zone=public --add-port=8443/tcp --permanent
@@ -52,12 +51,11 @@ The examples in the following sections use these IP addresses:
         success
     ```
 
-
 # Set up the primary node for streaming replication.
 
 1.  Create the replication role using the following command
 
-    ``` text
+    ```text
         $ /usr/edb/as13/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
         CREATE ROLE
     ```
@@ -66,7 +64,7 @@ The examples in the following sections use these IP addresses:
 
 2.  Configure the following in the `postgresql.conf` file:
 
-    ``` text
+    ```text
         wal_level = replica
         max_wal_senders = 10
         wal_keep_size = 500
@@ -80,7 +78,7 @@ The examples in the following sections use these IP addresses:
 
 3.  Add the following entry in the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file to allow replication user to connect from all the standbys:
 
-    ``` text
+    ```text
         hostssl  replication  repl  172.16.161.0/24  scram-sha-256
     ```
 
@@ -89,7 +87,7 @@ The examples in the following sections use these IP addresses:
 
 4.  Modify the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file for the `pem_user` role to connect to all databases using the `scram-sha-256` authentication method.
 
-    ``` text
+    ```text
         # Allow local PEM agents and admins to connect to PEM server
         hostssl all    +pem_user   172.16.161.201/24  scram-sha-256
         hostssl pem    +pem_user   127.0.0.1/32       scram-sha-256
@@ -101,7 +99,7 @@ The examples in the following sections use these IP addresses:
 
 5.  Restart the EPAS 13 Server
 
-    ``` text
+    ```text
         systemctl restart edb-as-13.service
     ```
 
@@ -109,7 +107,7 @@ The examples in the following sections use these IP addresses:
 
 1.  Stop the PEM backend database server (EPAS 13) service and the `pemagent` service on all the standby nodes:
 
-    ``` text
+    ```text
         $ systemctl stop edb-as-13.service
         
         $ systemctl stop pemagent.service
@@ -117,7 +115,7 @@ The examples in the following sections use these IP addresses:
 
 2.  Remove the data directory of the PEM backend database server on all the standby nodes:
 
-    ``` text
+    ```text
         $ sudo su - enterprisedb
         
         $ rm -rf /var/lib/edb/as13/data/*
@@ -125,7 +123,7 @@ The examples in the following sections use these IP addresses:
 
 3.  Create `.pgpass` file in the home directory of the `enterprisedb` user on all the standby nodes:
 
-    ``` text
+    ```text
         $ sudo su - enterprisedb
         
         $ cat > ~/.pgpass << _EOF_
@@ -139,7 +137,7 @@ The examples in the following sections use these IP addresses:
 
 4.  Take the backup of the primary node on each of the standby nodes using `pg_basebackup`:
 
-    ``` text
+    ```text
         $ sudo su - enterprisedb /usr/edb/as13/bin/pg_basebackup -h 172.16.161.200 \
         -D /var/lib/edb/as13/data -U repl -v -P -Fp -R -p 5444
     ```
@@ -148,13 +146,13 @@ The examples in the following sections use these IP addresses:
 
 5.  Edit the following parameter in `postgresql.con` file on all the standby nodes:
 
-    ``` text
+    ```text
         hot_standby = on
     ```
 
 6.  Start the PEM backend database server (EPAS 13) on each of the standby nodes.
 
-    ``` text
+    ```text
         $ systemctl enable edb-as-13
         
         $ systemctl start edb-as-13
@@ -162,7 +160,7 @@ The examples in the following sections use these IP addresses:
 
 7.  Copy the PEM agent certificates and keys from `/root/.pem` from the primary node to the standby nodes at same location. Set the following permissions to the PEM Agent Certificate file:
 
-    ``` text
+    ```text
         $ sudo chmod 600 /root/.pem/agent1.key
         
         $ sudo chmod 640 /root/.pem/agent1.crt
@@ -177,7 +175,7 @@ The examples in the following sections use these IP addresses:
     -   Add entries in pg_hba.conf to allow the `efm` database user to connect to the database server from all nodes on all the hosts.
     -   Reload the configurations on all the database servers.
 
-    ``` text
+    ```text
         $ cat > /tmp/efm-role.sql << _EOF_
         -- Create a role for EFM
         CREATE ROLE efm LOGIN PASSWORD 'password';
@@ -220,7 +218,7 @@ The examples in the following sections use these IP addresses:
 
 2.  Create the scripts on each node to start/stop the PEM Agent:
 
-    ``` text
+    ```text
         $ sudo cat > /usr/local/bin/start-pemagent.sh << _EOF_
         #!/bin/sh
 
@@ -239,7 +237,7 @@ The examples in the following sections use these IP addresses:
 
 3.  Create a `sudoers` file (`/etc/sudoers.d/efm-pem`) on each node to allow the `efm` user to start/stop the `pemagent`:
 
-    ``` text
+    ```text
         $ sudo cat > /etc/sudoers.d/efm-pem << _EOF_
         efm    ALL=(ALL)           NOPASSWD:   /bin/systemctl enable pemagent
         efm    ALL=(ALL)           NOPASSWD:   /bin/systemctl disable pemagent
@@ -250,7 +248,7 @@ The examples in the following sections use these IP addresses:
 
 4.  Create an `efm.nodes` file on all nodes using the sample file (`/etc/edb/efm-4.1/efm.nodes.in`), and give read-write access to the `efm` OS user:
 
-    ``` text
+    ```text
         $ sudo cp /etc/edb/efm-4.1/efm.nodes.in /etc/edb/efm-4.1/efm.nodes
         $ sudo chown efm:efm /etc/edb/efm-4.1/efm.nodes
         $ sudo chmod 600 /etc/edb/efm-4.1/efm.nodes
@@ -258,7 +256,7 @@ The examples in the following sections use these IP addresses:
 
 5.  Add the `ip address` and `EFM PORT` of the primary node in the `/etc/edb/efm-4.1/efm.nodes` file on the standby nodes:
 
-    ``` text
+    ```text
         $ sudo cat > /etc/edb/efm-4.1/efm.nodes <<< _EOF_
         172.16.161.200:7800
         _EOF_
@@ -266,7 +264,7 @@ The examples in the following sections use these IP addresses:
 
 6.  Create the `efm.properties` file on all the nodes using the sample file (`/etc/edb/efm-4.1/efm.properties.in`), and grant read access to all the users:
 
-    ``` text
+    ```text
         $ sudo cp /etc/edb/efm-4.1/efm.properties.in /etc/edb/efm-4.1/efm.properties
         $ sudo chown efm:efm /etc/edb/efm-4.1/efm.properties
         $ sudo chmod a+r /etc/edb/efm-4.1/efm.properties
@@ -274,7 +272,7 @@ The examples in the following sections use these IP addresses:
 
 7.  Encrypt the `efm` user's password using efm utility:
 
-    ``` text
+    ```text
         $ export EFMPASS=password
         $ /usr/edb/efm-4.1/bin/efm encrypt efm --from-env
         096666746b05b081d1a98e43d94c9dad
@@ -282,7 +280,7 @@ The examples in the following sections use these IP addresses:
 
 8.  Edit the following parameters in the properties file:
 
-    ``` text
+    ```text
         1. db.user=efm
         2. db.password.encrypted=096666746b05b081d1a98e43d94c9dad
         3. db.port=5444
@@ -348,20 +346,20 @@ The examples in the following sections use these IP addresses:
 
 9.  Set the value of `is.witness` configuration parameter on the witness node to `true`:
 
-    ``` text
+    ```text
         is.witness=true
     ```
 
 10. Enable and start the EFM service on the primary node:
 
-    ``` text
+    ```text
         $ systemctl enable edb-efm-4.1
         $ systemctl start edb-efm-4.1
     ```
 
 11. Allow the standbys to join the cluster started on the primary node:
 
-    ``` text
+    ```text
         /usr/edb/efm-4.1/bin/efm allow-node  efm  172.16.161.201
         /usr/edb/efm-4.1/bin/efm allow-node  efm  172.16.161.202
         /usr/edb/efm-4.1/bin/efm allow-node  efm  172.16.161.203
@@ -369,14 +367,14 @@ The examples in the following sections use these IP addresses:
 
 12. Enable and start the EFM service on the standby nodes and the EFM witness node:
 
-    ``` text
+    ```text
         $ systemctl enable edb-efm-4.1
         $ systemctl start edb-efm-4.1
     ```
 
 13. Check the EFM cluster status from any node:
 
-    ``` text
+    ```text
         $ sudo /usr/edb/efm-4.1/bin/efm cluster-status efm
         Cluster Status: efm
             Agent Type  Address              DB       VIP
@@ -404,17 +402,9 @@ The examples in the following sections use these IP addresses:
 
             Standby database(s) in sync with primary. It is safe to promote.
     ```
-    
+
 This status confirms that EFM is set up successfully and managing the failover for the PEM Server.
 
 The monitored database servers should register their PEM Agents using the VIP address. Also, access the PEM Web Client using a VIP address.
 
 In case of failover, any of the standbys get promoted as the primary node. PEM Agents automatically connect to the new primary node. All the user sessions are lost, and they will have to log in again. You can replace the failed primary node with a new standby using this procedure.
-
-    
-
-
-
-
-
-
