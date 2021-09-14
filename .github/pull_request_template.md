@@ -1,6 +1,6 @@
 ## What Changed?
 
-Please list, at a high level, what changed in your branch. If you changed content, include the product, section, and version as applicable. PLEASE REMOVE THE USER INSTRUCTIONS INCLUDING THE EXAMPLES BEFORE MERGING THE PR.
+Please list, at a high level, what changed in your branch. If you changed content, include the product, section, and version as applicable. **Please remove the user instructions including the examples before merging the PR.**
 
 **Examples**
 
