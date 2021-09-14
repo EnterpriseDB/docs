@@ -104,7 +104,11 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
-1. NPM is the package manager we're using for this project. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
+1. NPM 7 is the package manager we're using for this project.
+
+   - run `npm -v` to ensure you are using the correct version of npm. If you do not have version 7, you can run `npm install -g npm@7` to install it.
+
+   - NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
