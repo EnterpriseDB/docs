@@ -94,9 +94,6 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
-1. After updating `.env.development`, you may need to run `direnv reload` to make sure your change is loaded.
-
-
 ### Set up a full development environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
@@ -113,8 +110,10 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. If you're a member of the EnterpriseDB Github Org, [follow the instructions above](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
 
+1. In order to ensure environmental variables are properly set, [install direnv](https://direnv.net/#getting-started) and run `direnv allow .`
+
 1. Install all required packages by running `npm run install-dependencies`
-   - **note:** do not use `npm install` if you're not a member of the EnterpriseDB GitHub Org. Additional set up is required to ensure that placeholder icons are loaded, and the `npm run install-dependencies` script will take care of that for you.
+   - **note:** do not use `npm install`. Additional set up is required to ensure that icons are loaded, and the `npm run install-dependencies` script will take care of that for you.
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
