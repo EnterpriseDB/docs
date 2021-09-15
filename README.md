@@ -116,8 +116,7 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. In order to ensure environmental variables are properly set, [install direnv](https://direnv.net/#getting-started) and run `direnv allow .`
 
-1. Install all required packages by running `npm run install-dependencies`
-   - **note:** do not use `npm install`. Additional set up is required to ensure that icons are loaded, and the `npm run install-dependencies` script will take care of that for you.
+1. Install all required packages by running `npm install`
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
