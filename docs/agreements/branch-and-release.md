@@ -56,7 +56,7 @@ The `develop` branch should always be in a deployable state.
    the second release of the day would be `2021-02-09-a`, third release would
    be `2021-02-09-b`, and so on.
 
-   If there is release of a new version of a product with documentation changes, also tag with this format: product-<prod_key>-<version>. See [Format for tags](doc-release-tag-format).
+   If there is release of a new version of a product with documentation changes, also tag with this format: product/*prod_key*/*version*. See [Format for tags](doc-release-tag-format.md).
 
 1. Merge `main` into `develop`.
 
