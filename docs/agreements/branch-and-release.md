@@ -56,6 +56,8 @@ The `develop` branch should always be in a deployable state.
    the second release of the day would be `2021-02-09-a`, third release would
    be `2021-02-09-b`, and so on.
 
+   If there is release of a new version of a product with documentation changes, also tag with this format: product/*prod_key*/*version*. See [Format for tags](doc-release-tag-format.md).
+
 1. Merge `main` into `develop`.
 
 ## Branching Strategies
@@ -126,6 +128,7 @@ Stop the presses, something is seriously wrong with
 1. Review, QA, and approve PR.
 1. [Follow the release portion](#release) of the release process, using the hot
    fix branch as the release branch.
+
 
 ### Bug Fix
 

@@ -77,6 +77,9 @@ Migration Toolkit facilitates migration from the following platforms to PostgreS
 -   SQL Server
 -   Advanced Server
 
+!!! Note
+    PostgreSQL default row size is limited to 8KB, which means each table row should fit into a single 8KB block, else it errors out. For example, you can create a table with 1600 columns of `INT` and insert data for all the columns, but we cannot do the same with `BIGINT` columns because `INT` is stored as 4 bytes, but each `BIGINT` requires 8 bytes.
+
 For a definitive list of the objects migrated from each database type, please refer to the [Functionality Overview](04_functionality_overview/#functionality_overview).
 
 Migration Toolkit reads connection specifications for the source and the target database from the `toolkit.properties` file. Connection information for each must include:
@@ -165,9 +168,7 @@ When migrating from MySQL, `SRC_DB_URL` takes the form of a JDBC URL. For exampl
 jdbc:mysql://<host_name>[:<port>]/<database_id>
 ```
 
-!!! Note
-    For MTK versions `54.0.1` and onwards append the optional parameter `?tinyInt1isBit=false` in the JDBC URL if  datatype `tinyInt` is used to represent boolean value in the MySQL source database. 
-
+  
 
 The URL contains the following information:
 
@@ -185,7 +186,28 @@ The URL contains the following information:
 
 -   `SRC_DB_PASSWORD` must contain the password of the specified user.
 
+!!! Note
+    - Make sure to append the optional parameter `?tinyInt1isBit=false` in the MySQL Connector/J JDBC Driver URL if datatype `tinyInt(1)` is used to store byte values other than 0 and 1 in the MySQL source database.    
+
+    - Due to a bug in the MySQL Connector/J JDBC Driver 8.0.26, the migration of foreign key constraints fails in certain cases. EDB recommends not to use this driver for migrating data using Migration Toolkit. You may use MySQL Connector/J JDBC Driver 8.0.25 driver instead.
+
+        For detailed information about this bug refer to the following:
+
+        https://bugs.mysql.com/bug.php?id=95280
+
+
+`TINYINT(1)` is mapped to `BIT(1)` in PostgreSQL/EDB Postgres Advanced Server (that may not be expected in some cases). But as the MySQL JDBC driver reports it as `BIT(1)`, Migration Toolkit maps it to `BIT(1)` in PostgreSQL/EDB Postgres Advanced Server.
+
+Unlike `TINYINT(1)` that may hold the values -128 to 127, `BIT(1)` can only hold 0 and 1. So if you are storing any value other than 0 and 1 in this field, you may need to change the default behavior of the MySQL JDBC driver so that the driver reports it as `TINYINT`.
+
+To change this behavior, set the following URL option in the connection string:
+
+`jdbc:mysql://localhost:3306/world?tinyInt1isBit=false`
+
+In this case, the JDBC driver will report `TINYINT(1)` as `TINYINT` and will be mapped to `SMALLINT` in the target PostgreSQL/EDB Postgres Advanced Server.
+
 <div id="define_sybase_url" class="registered_link"></div>
+
 
 ## Defining a Sybase URL
 
