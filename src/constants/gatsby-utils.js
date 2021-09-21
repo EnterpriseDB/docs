@@ -252,41 +252,29 @@ const findPrevNextNavNodes = (navTree, currNode) => {
   return prevNext;
 };
 
-const configureRedirects = (
-  toPath,
-  toIsLatest,
-  redirects,
-  actions,
-  config = {},
-) => {
+const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
   if (!redirects) return;
   redirects.forEach((fromPath) => {
     // allow relative paths in redirects
     fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
-    actions.createRedirect(
-      Object.assign(
-        {
-          fromPath,
-          toPath: toPath,
-          redirectInBrowser: true,
-          isPermanent: true,
-        },
-        config,
-      ),
-    );
+    if (fromPath !== toPath)
+      actions.createRedirect({
+        fromPath,
+        toPath,
+        redirectInBrowser: true,
+        isPermanent: true,
+      });
     if (toIsLatest) {
-      actions.createRedirect(
-        Object.assign(
-          {
-            fromPath: replacePathVersion(fromPath),
-            toPath: replacePathVersion(toPath),
-            redirectInBrowser: true,
-            isPermanent: false,
-            force: true,
-          },
-          config,
-        ),
-      );
+      fromPath = replacePathVersion(fromPath);
+      toPath = replacePathVersion(toPath);
+      if (fromPath !== toPath)
+        actions.createRedirect({
+          fromPath,
+          toPath,
+          redirectInBrowser: true,
+          isPermanent: false,
+          force: true,
+        });
     }
   });
 };
