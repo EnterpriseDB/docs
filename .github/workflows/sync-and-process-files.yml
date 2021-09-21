@@ -1,0 +1,67 @@
+name: sync and process files from another repo
+on:
+  repository_dispatch:
+    types: [sync-to-docs]
+jobs:
+  sync-and-process-files:
+    env:
+      # The body text of the PR requests that will be created
+      BODY: "Automated changes to pull in and process updates from repo: ${{ github.event.client_payload.repo }} ref: ${{ github.event.client_payload.ref }}"
+
+      # The name of the branch that will be created
+      BRANCH_NAME: automatic_docs_update/repo_${{ github.event.client_payload.repo }}/ref_${{ github.event.client_payload.ref }}
+
+      # The users that should be assigned to the PR as a comma separated list of github usernames.
+      REVIEWERS:
+
+      # The title of the PR request that will be created
+      TITLE: "Process changes to docs from: repo: ${{ github.event.client_payload.repo }} ref: ${{ github.event.client_payload.ref }}"
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v2
+        with:
+          path: destination
+
+      - name: Checkout source repo
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.client_payload.sha }}
+          repository: ${{ github.event.client_payload.repo }}
+          token: ${{ secrets.SYNC_FILES_TOKEN }}
+          path: source
+
+      - name: setup node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Process changes
+        run: |
+          case ${{ github.event.client_payload.repo }} in
+
+            EnterpriseDB/cloud-native-postgresql)
+              ${{ github.workspace }}/destination/scripts/source/process-cnp-docs.sh ${{ github.workspace }}/source ${{ github.workspace }}/destination
+              ;;
+
+            EnterpriseDB/fe)
+              mkdir -p ${{ github.workspace }}/destination/icons-pkg && \
+              cp -fr utils/icons-placeholder/output/* ${{ github.workspace }}/destination/icons-pkg/
+              ;;
+
+            *)
+              echo "The workflow has not been configured for the  ${{ github.event.client_payload.repo }} repo"
+              exit 1
+              ;;
+          esac
+        working-directory: source
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v3.10.0
+        with:
+          body: ${{ env.BODY }}
+          branch: ${{ env.BRANCH_NAME }}
+          path: destination/
+          reviewers: ${{ env.REVIEWERS }}
+          title: ${{ env.TITLE }}

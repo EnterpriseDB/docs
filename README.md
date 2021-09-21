@@ -1,4 +1,4 @@
-<img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="200">
+<img src="static/icons/edb-docs-logo-disc-dark.svg" alt='EDB Docs' width="200">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
@@ -138,7 +138,9 @@ If you experience errors or other issues with the site, try the following in the
 
 ## Development
 
-All changes should have a pull request opened against the default branch, `develop`. When a pull request is opened, Heroku should automatically create a review build, which should be linked in the pull request under "deployments". Review builds only include advocacy content. When a pull request is merged, `develop` will automatically deploy the changes to the staging environment.
+All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
+
+When a PR is merged into the `develop` branch, the result will be deployed to the [staging](#staging) environment.
 
 To deploy to production, create a pull request merging `develop` into `main`. When that PR is merged, `main` will automatically build and deploy to the production site.
 
@@ -150,19 +152,25 @@ Deployments of the site use the `build-sources.json` file to determine which sou
 
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
+Staging environment URL: https://edb-docs-staging.netlify.app/docs/
+
 #### Production
 
 Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
-#### Review Builds
+Production environment URL: https://www.enterprisedb.com/docs
 
-Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+#### Draft deployments
+
+Review builds are automatically created for pull requests when the `deploy` tag is added. The build and deployment process is handled by the `deploy-draft.yml` GitHub workflow. Draft builds are [a Netlify feature](https://docs.netlify.com/cli/get-started/#draft-and-production-deploys) - each new draft has a unique URL (based on the Staging URL) that will persist even when later revisions are deployed.
 
 ## Redirects
 
 The app is concerned with two different types of redirects that can be defined in frontmatter.
 
 ### Internal Redirects (within Docs 2.0)
+
+*For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md).*
 
 #### `redirects`
 
@@ -174,7 +182,17 @@ redirects:
   - "/another_old_path"
 ```
 
-both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301). 
+
+These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
+
+   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/ 
+   - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
+   - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
+
+#### Netlify-specific redirects
+
+Netlify is the hosting service we use for Docs. Netlify-specific redirects can be found in [`/static/_redirects`](static/_redirects). These are generally used for large-scale redirects, such as when renaming or removing an entire product version.
 
 ### Docs 1.0 to Docs 2.0 redirects
 

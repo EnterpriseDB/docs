@@ -3,6 +3,7 @@ import { Container, Row, Col, Dropdown, DropdownButton } from "react-bootstrap";
 import { graphql, Link } from "gatsby";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
+  CardDecks,
   DevOnly,
   DevFrontmatter,
   Footer,
@@ -12,13 +13,13 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
-  TopBar,
 } from "../components";
 import { products } from "../constants/products";
 import Icon from "../components/icon";
+import { createImportSpecifier } from "typescript";
 
 export const query = graphql`
-  query($nodeId: String!, $potentialLatestNodePath: String) {
+  query ($nodeId: String!, $potentialLatestNodePath: String) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
@@ -86,6 +87,53 @@ const ContentRow = ({ children }) => (
     <Row>{children}</Row>
   </div>
 );
+
+const findDescendent = (root, predicate) => {
+  if (predicate(root)) return root;
+
+  for (let node of root.items) {
+    const result = findDescendent(node, predicate);
+    if (result) return result;
+  }
+  return null;
+};
+
+const getCards = (node, searchDepth) => {
+  const card = {
+    fields: {
+      path: node.path,
+      depth: node.depth,
+    },
+    frontmatter: {
+      navTitle: node.navTitle,
+      title: node.title,
+      description: node.description,
+      iconName: node.iconName,
+      interactive: node.interactive,
+    },
+    children:
+      searchDepth && node.items
+        ? node.items.map((n) => getCards(n, searchDepth - 1))
+        : [],
+  };
+  return card;
+};
+
+const TileModes = {
+  None: "none",
+  Simple: "simple",
+  Full: "full",
+};
+const Tiles = ({ mode, node }) => {
+  if (!node || !node.items) return null;
+
+  if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
+    const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
+
+    return <CardDecks cards={tiles} cardType={mode} />;
+  }
+  return null;
+};
 
 const Sections = ({ sections }) => (
   <>
@@ -172,15 +220,19 @@ const DocTemplate = ({ data, pageContext }) => {
     navTree,
     prevNext,
   } = pageContext;
+  const navRoot = findDescendent(navTree, (n) => n.path === path);
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
+
+  const { iconName, description, indexCards } = frontmatter;
+
   const sections = depth === 2 ? buildSections(navTree) : null;
 
   let title = frontmatter.title;
-  if (depth === 2) {
+  if (depth === 2 && !navTree.hideVersion) {
     // product version root
     title += ` v${version}`;
-  } else if (depth > 2) {
+  } else if (depth > 2 && !navTree.hideVersion) {
     const prettyProductName = (
       products[product] || { name: product.toUpperCase() }
     ).name;
@@ -189,7 +241,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
   const pageMeta = {
     title: title,
-    description: frontmatter.description,
+    description: description,
     path: pagePath,
     isIndexPage: isIndexPage,
     canonicalPath: determineCanonicalPath(
@@ -202,7 +254,6 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
@@ -210,16 +261,19 @@ const DocTemplate = ({ data, pageContext }) => {
             path={path}
             pagePath={pagePath}
             versionArray={versionArray}
-            iconName={frontmatter.iconName}
+            iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
           />
         </SideNavigation>
         <MainContent>
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
-              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                v{version}
-              </span>
+              {!navTree.hideVersion && (
+                <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                  v{version}
+                </span>
+              )}
             </h1>
             <div className="d-flex">
               <a
@@ -232,9 +286,23 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
+          {navTree.displayBanner === "edbcloud" ? (
+            <div class="alert alert-warning mt-3" role="alert">
+              EDB Cloud is currently in Preview. If you would like to sign up,
+              see{" "}
+              <a
+                className="pl-1 font-weight-bold"
+                href="https://resources.enterprisedb.com/postgres-database-as-a-service-dbaas-cloud-postgresql"
+              >
+                EDB Cloud Preview Signup.
+              </a>
+            </div>
+          ) : null}
+
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{body}</MDXRenderer>
+              <Tiles mode={indexCards} node={navRoot} />
             </Col>
 
             {showToc && (

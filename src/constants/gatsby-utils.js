@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
@@ -149,6 +150,8 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
     path: treeNode.path,
     navTitle: frontmatter?.navTitle,
     title: frontmatter?.title,
+    hideVersion: frontmatter?.hideVersion,
+    displayBanner: frontmatter?.displayBanner,
     depth: treeNode.mdxNode?.fields?.depth,
     iconName: frontmatter?.iconName,
     description: frontmatter?.description,
@@ -249,9 +252,17 @@ const findPrevNextNavNodes = (navTree, currNode) => {
   return prevNext;
 };
 
-const configureRedirects = (toPath, redirects, actions, config = {}) => {
+const configureRedirects = (
+  toPath,
+  toIsLatest,
+  redirects,
+  actions,
+  config = {},
+) => {
   if (!redirects) return;
   redirects.forEach((fromPath) => {
+    // allow relative paths in redirects
+    fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
     actions.createRedirect(
       Object.assign(
         {
@@ -263,6 +274,20 @@ const configureRedirects = (toPath, redirects, actions, config = {}) => {
         config,
       ),
     );
+    if (toIsLatest) {
+      actions.createRedirect(
+        Object.assign(
+          {
+            fromPath: replacePathVersion(fromPath),
+            toPath: replacePathVersion(toPath),
+            redirectInBrowser: true,
+            isPermanent: false,
+            force: true,
+          },
+          config,
+        ),
+      );
+    }
   });
 };
 
