@@ -1,39 +1,36 @@
 import fs from "fs/promises";
 import yaml from "js-yaml";
 
-export const process = async (filename, content) => {
-  const trimmedContent = content.trim();
-  if (trimmedContent.charAt(0) !== "#") {
-    console.warn(
-      "File does not begin with title - frontmatter will not be valid: " +
-        filename,
+export const process = async (file) => {
+  const trimmedValue = file.value.trim();
+  if (trimmedValue.charAt(0) !== "#") {
+    file.message(
+      "File does not begin with title - frontmatter will not be valid",
+      "1:1",
     );
   }
 
-  const endOfFirstLine = trimmedContent.indexOf("\n");
+  const endOfFirstLine = trimmedValue.indexOf("\n");
 
   // Get the first line of content, which should be the header.
   // This will exclude the very first character, which should be '#'
-  const header = trimmedContent.slice(1, endOfFirstLine).trim();
+  const header = trimmedValue.slice(1, endOfFirstLine).trim();
 
   // add the frontmatter to the file. This will replace the first line of the file.
-  let newContent = await getFrontmatter(header, filename);
-  newContent = newContent + trimmedContent.slice(endOfFirstLine);
+  let newValue = await getFrontmatter(header, file.path);
+  newValue = newValue + trimmedValue.slice(endOfFirstLine);
 
-  return {
-    newFilename: filename,
-    newContent,
-  };
+  file.value = newValue;
 };
 
-const getFrontmatter = async (header, filename) => {
+const getFrontmatter = async (header, filePath) => {
   let frontmatter = `---
 title: '${header}'
-originalFilePath: '${filename}'
+originalFilePath: '${filePath}'
 product: 'Cloud Native Operator'
 `;
 
-  if (filename.slice(-8) === "index.md") {
+  if (filePath.slice(-8) === "index.md") {
     frontmatter = await addIndexFrontmatterSection(frontmatter);
   }
 

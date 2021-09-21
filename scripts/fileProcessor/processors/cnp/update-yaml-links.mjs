@@ -1,10 +1,5 @@
-export const process = (filename, content) => {
-  const newContent = content.split("\n").map(rewriteLink).join("\n");
-
-  return {
-    newFilename: filename,
-    newContent,
-  };
+export const process = (file) => {
+  file.value = file.value.split("\n").map(rewriteLink).join("\n");
 };
 
 const rewriteLink = (line) => {

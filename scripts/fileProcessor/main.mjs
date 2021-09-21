@@ -3,6 +3,8 @@ import fs from "fs/promises";
 import { globby } from "globby";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { toVFile as vfile } from "to-vfile";
+import { reporter as report } from "vfile-reporter";
 
 const args = arg({
   "--files": [String],
@@ -22,32 +24,36 @@ const processFiles = async () => {
   paths.forEach(processSingleFile);
 };
 
-const processSingleFile = async (filename) => {
-  console.log(`Processing ${filename}`);
+const processSingleFile = async (filePath) => {
+  console.log(`Processing ${filePath}`);
+
+  const file = vfile.readSync(filePath, "utf8");
 
   // run the processor scripts
-  const { newFilename, newContent } = await runProcessorsForFile(
-    filename,
-    await fs.readFile(filename, "utf8"),
-  );
+  await runProcessorsForFile(file);
 
-  if (newFilename != filename) {
-    console.log(`Writing ${newFilename} (previously ${filename})`);
+  const ogFilePath = file.history[0];
+  const filePathUpdated = file.history.length > 1;
+
+  if (filePathUpdated) {
+    console.log(`Writing ${file.path} (previously ${ogFilePath})`);
   } else {
-    console.log(`Writing ${newFilename}`);
+    console.log(`Writing ${file.path}`);
   }
 
-  fs.writeFile(newFilename, newContent)
+  console.error(report(file));
+
+  vfile
+    .write(file)
     .catch((err) => {
       console.error(err);
       process.exit(1);
     })
     .then(() => {
-      // if the filename has changed, then remove the old one
-      if (newFilename != filename) {
-        console.log(`Removing ${filename}`);
+      if (filePathUpdated) {
+        console.log(`Removing ${ogFilePath}`);
 
-        fs.rm(filename).catch((err) => {
+        fs.rm(ogFilePath).catch((err) => {
           console.error(err);
           process.exit(1);
         });
@@ -55,22 +61,14 @@ const processSingleFile = async (filename) => {
     });
 };
 
-const runProcessorsForFile = async (filename, content) => {
-  let newFilename = filename;
-  let newContent = content;
-
+const runProcessorsForFile = async (file) => {
   for (const index in args["--processor"]) {
     await import(
       `${__dirname}/processors/${args["--processor"][index]}.mjs`
     ).then(async (module) => {
-      const output = await module.process(newFilename, newContent);
-
-      newFilename = output.newFilename;
-      newContent = output.newContent;
+      await module.process(file);
     });
   }
-
-  return { newFilename, newContent };
 };
 
 processFiles();

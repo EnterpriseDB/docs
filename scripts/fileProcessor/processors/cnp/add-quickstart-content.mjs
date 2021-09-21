@@ -9,12 +9,9 @@ const additionalContent = `<!-- section below inserted by fileProcessor/processo
 
 const paragraphDelimiter = "\n\n";
 
-export const process = (filename, content) => {
-  const paragraphs = content.split(paragraphDelimiter);
+export const process = (file) => {
+  const paragraphs = file.value.split(paragraphDelimiter);
   paragraphs.splice(2, 0, additionalContent);
 
-  return {
-    newFilename: filename,
-    newContent: paragraphs.join(paragraphDelimiter),
-  };
+  file.value = paragraphs.join(paragraphDelimiter);
 };

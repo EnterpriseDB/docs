@@ -1,6 +1,3 @@
-export const process = (filename, content) => {
-  return {
-    newFilename: filename,
-    newContent: content,
-  };
+export const process = (file) => {
+  console.log(JSON.stringify(file));
 };

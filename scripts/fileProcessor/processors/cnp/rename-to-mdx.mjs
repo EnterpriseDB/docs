@@ -1,6 +1,3 @@
-export const process = (filename, content) => {
-  return {
-    newFilename: filename.replace(/\.md$/, ".mdx"),
-    newContent: content,
-  };
+export const process = (file) => {
+  file.extname = ".mdx";
 };
