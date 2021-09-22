@@ -15,79 +15,79 @@ jobs:
       (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy'))
     runs-on: ubuntu-latest
     steps:
-    - name: inject slug/short variables
-      uses: rlespinasse/github-slug-action@v3.x
+      - name: inject slug/short variables
+        uses: rlespinasse/github-slug-action@v3.x
 
-    - name: compose a name for the build environment
-      run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
+      - name: compose a name for the build environment
+        run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
 
-    - uses: actions/checkout@v2
-      with:
-        ref: ${{ github.event.pull_request.head.sha }}
-        fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
-        lfs: true
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
+          lfs: true
 
-    - name: Adjust file watchers limit
-      run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+      - name: Adjust file watchers limit
+        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
-    - uses: actions/setup-node@v1
-      with:
-        node-version: '14.x'
+      - uses: actions/setup-node@v1
+        with:
+          node-version: "14.x"
 
-    - name: Get npm cache directory
-      id: npm-cache-dir
-      run: |
-        echo "::set-output name=dir::$(npm config get cache)"
-    - uses: actions/cache@v2
-      id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
-      with:
-        path: ${{ steps.npm-cache-dir.outputs.dir }}
-        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node-
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "::set-output name=dir::$(npm config get cache)"
+      - uses: actions/cache@v2
+        id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-    - name: update npm
-      run: npm install -g npm@7
-      env:
-        NODE_ENV: ${{ secrets.NODE_ENV }}
-    - name: Install dependencies
-      run: npm install --immutable
-      env:
-        NODE_ENV: ${{ secrets.NODE_ENV }}
-        NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: update npm
+        run: npm install -g npm@7
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+      - name: Install dependencies
+        run: npm install --immutable
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-    - name: Checking Gatsby cache
-      id: gatsby-cache-build
-      uses: actions/cache@v2
-      with:
-        path: |
-          public
-          .cache
-        key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
+      - name: Checking Gatsby cache
+        id: gatsby-cache-build
+        uses: actions/cache@v2
+        with:
+          path: |
+            public
+            .cache
+          key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
 
-    - name: Fix mtimes
-      run: npm run fix-mtimes --force
+      - name: Fix mtimes
+        run: npm run fix-mtimes --force
 
-    - name: Gatsby build
-      run: npm run build
-      env:
-        APP_ENV: staging
-        NODE_ENV: ${{ secrets.NODE_ENV }}
-        NODE_OPTIONS: --max-old-space-size=4096
-        ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
-        ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
-        ALGOLIA_INDEX_NAME: edb-docs-staging
-        INDEX_ON_BUILD: false
+      - name: Gatsby build
+        run: npm run build
+        env:
+          APP_ENV: staging
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NODE_OPTIONS: --max-old-space-size=4096
+          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_INDEX_NAME: edb-docs-staging
+          INDEX_ON_BUILD: false
 
-    - name: Deploy to Netlify
-      id: netlify-deploy
-      uses: nwtgck/actions-netlify@v1.2.2
-      with:
-        publish-dir: './public'
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        deploy-message: ${{ github.event.pull_request.title }}
-        enable-commit-comment: false
-        github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
-      env:
-        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
+      - name: Deploy to Netlify
+        id: netlify-deploy
+        uses: nwtgck/actions-netlify@v1.2.2
+        with:
+          publish-dir: "./public"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: ${{ github.event.pull_request.title }}
+          enable-commit-comment: false
+          github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
