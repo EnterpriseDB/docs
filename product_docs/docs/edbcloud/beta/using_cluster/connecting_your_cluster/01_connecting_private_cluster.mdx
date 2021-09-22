@@ -6,48 +6,81 @@ The Private Networking option offers a higher level of isolation and security to
 EDB Cloud resource virtual network. Only resources from the same virtual network can access
 the private EDB Cloud cluster. 
 
-To connect to the private EDB cloud cluster either connect from an application in Azure 
-or from an on-premise network.
-
 !!! Note
     EDB strongly discourages users from provisioning additional resources in the EDB Cloud resource virtual network.
+
+You can connect to the private EDB cloud cluster either from an application in Azure 
+or from an on-premise network.
 
 ## Connect from External Azure Resources
 
 There are three different Azure connectivity solutions you can use to
-connect to your cluster from Azure cloud applications. Each solution offers a different level of availability and security. The Azure Private Endpoint is the 
-recommended solution and is applicable in most scenarios, but you can implement other solutions
-depending on your organization's requirements. 
+connect to your cluster from Azure cloud applications. Each solution offers a different level of availability and security. The Azure Private Endpoint is the recommended solution and is applicable in most scenarios, but you can implement other solutions depending on your organization's requirements. 
 
 See the bulleted list below for pros and cons of each method.
 
-- [Azure Private Endpoint](#connect-using-azure-private-endpoint-recommended)
-   - Limited restrictions on service provider's and consumer's locations. They can be in different virtual networks and different subscriptions. 
-   - One-time setup that can be shared to all consumers. 
-   - No IP overlapping risk. 
-   - All traffic is through the Microsoft backbone network, never going through the internet.                                              
-   - There is an associated cost. See [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/#pricing).                                                                                                                                                                                                                                                          
-- [Azure Virtual Network Peering](#connect-using-azure-virtual-network-peering) 
-   - Limited restrictions on service provider's and consumer's locations. They can in different subscriptions, different tenants, and cross regions. 
-   - Simple and easy to set up.
-   - All traffic is through the Microsoft backbone network, never going through the internet. 
-   - All traffic is all through Microsoft backbone network, never going through the internet.  
-   - The IP ranges of two virtual networks can not overlap. 
-   - There is an associated cost, See [pricing for virtual network peering](https://azure.microsoft.com/en-us/pricing/details/virtual-network/#pricing)  for details.                                                                                                                                                                      
-- [Azure VNet-VNet Connection](#connect-using-azure-vnet-vnet-connection)    
-   - Traffic is encrypted. Much higher security. 
-   - Limited restrictions on service provider's and consumer's locations. They can have different subscriptions, different tenants, and cross regions. 
-   - All traffic is all through Microsoft backbone network, never going through the internet. - Don't need NAT. PG service domain name is accessible directly. 
-   - Limited bandwidth, see  [virtual network gateway planning table](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways#planningtable)  for details. 
-   - Set up is tedious. 
-   - There is an associated cost. See  [virtual network gateway planning table](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways#planningtable)  for details. 
+#### Connect Using Azure Private Endpoint (Recommended)
 
-Let us use an example to guide you through the procedures of implementing the different 
-solutions. In this example, assume that your EDB Cloud cluster is on a subscription called `development` 
-and is being accessed from a VM on another subscription `test`.
+ Azure Private Endpoint is a network interface that securely connects a private IP 
+ address from your VNet to an external service. You only grant access to a single PG service instead of the entire EDB Cloud resource virtual network, thus ensuring maximum network isolation. For more information, see [Azure Private Endpoint](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview).
 
-### Prerequisites
+**Pros**
+ - Service provider's and consumer's locations can be in different virtual networks and different subscriptions. 
+ - Single set up can be shared with all consumers. 
+ - No IP overlapping risk. 
+ - Traffic passes securely through the Microsoft backbone network and not the internet.                                              
+ - Most Azure homebrew services (such as CosmosDB) have built-in 
+  [private link resources](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview#private-link-resource) that you can connect to via a private endpoint.
 
+**Cons**
+ - EDB Cloud virtual network can not initiate traffic to your application.
+ - There is an associated cost. See [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/#pricing)
+
+#### Connect Using Azure Virtual Network Peering
+
+Virtual network peering connects two Azure virtual networks. Once
+peered, the virtual networks appear as one for connectivity purposes.
+Traffic between virtual machines in the peered virtual networks is
+routed through the Microsoft backbone infrastructure, through private IP
+addresses and not the internet.
+
+**Pros**
+
+- Service provider's and consumer's virtual networks can be in different regions, subscriptions, or tenants. .
+- Simple and easy to set up.
+- Traffic passes securely through the Microsoft backbone network and not the internet.  
+- The IP ranges of two peered virtual networks can not overlap. 
+
+**Cons**
+
+- There is an associated cost, See [pricing for virtual network peering](https://azure.microsoft.com/en-us/pricing/details/virtual-network/#pricing)  for details.                                                      
+
+#### Connect Using Azure VNet-VNet Connection
+
+A VPN gateway is used to send encrypted traffic between Azure virtual networks. You can
+connect your EDB Cloud virtual network and your client VM virtual network by using the VNet-to-VNet VPN gateway connection.
+
+**Pros**
+
+ - Traffic passes through an encrypted tunnel.
+ - Service provider's and consumer's virtual networks can belong to different regions, subscriptions, or tenants. 
+- All traffic is all through Microsoft backbone network, never going through the internet. 
+- PG service domain name is accessible directly without a NAT. 
+- VNets from different subscriptions do not need to be associated with the same Active Directory tenant.
+
+**Cons**
+
+- Limited bandwidth, see [virtual network gateway planning table](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways#planningtable). 
+- Set up is complicated. 
+- There is an associated cost, see [virtual network gateway planning table](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways#planningtable). 
+
+
+
+## Walkthroughs
+
+This section contains a walkthrough to guide you through each of the connection solutions. For the examples used in the walkthroughs, assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a VM on another subscription `test`.
+
+To walk through the example in your own environment, you need: 
  - Your EDB Cloud cluster URL. You can find the URL in the **Connect** tab of your cluster instance in the EDB Cloud portal.
 
  -  IP address of your EDB Cloud cluster. For example:
@@ -67,31 +100,14 @@ and is being accessed from a VM on another subscription `test`.
 
     -   virtual network subnet: `snet-client`
 
- - Install [psql Postgresql client](https://www.postgresql.org/download/) on your VM.
+ - [psql Postgresql client](https://www.postgresql.org/download/) installed on your VM.
 
- - Azure CLI and Azure portal are required to complete this example.
+ - Access to the Azure CLI and Azure portal.
 
 ### Connect Using Azure Private Endpoint (Recommended)
 
-   Azure Private Endpoint is a network interface that securely connects a private IP 
-   address from your VNet to an external service. You only grant access to a single PG service instead of the entire EDB Cloud resource virtual
-   network, thus ensuring maximum network isolation. 
-
-   Note that the connectivity through 
-   the private endpoint is unidirectional and the EDB Cloud virtual network can not 
-   initiate traffic to your application. 
-  
-   For more information, see [Azure Private Endpoint](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview).
-
-!!! Tip "Tip" 
-    Most Azure homebrew services (such as CosmosDB) have built-in 
-    [private link resources](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview#private-link-resource) 
-    that you can connect to via a private endpoint. 
-
-   
-   IMAGE PLACEHOLDER
-
- #### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service
+**Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service**
+ 
   In the EDB Cloud cluster's virtual network, 
   create an [Azure Private Link Service](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview) 
  in your EDB Cloud cluster resource group. 
@@ -106,7 +122,7 @@ and is being accessed from a VM on another subscription `test`.
 
      ```
 
-  2. ////////Provide steps to log in to the Create private link service in Azure//////. Enter 
+  2. **////////Provide steps to log in to the Create private link service in Azure//////**. Enter 
    `pg-service-private-link` as the name for the Private Link Service and provide additional details as shown in the following screeshot. 
     
     ![](images/image5.png)
@@ -117,7 +133,7 @@ and is being accessed from a VM on another subscription `test`.
 
      ![](images/image17.png)
 
-  3. On the **Access security** page, configure the level of access for the private link service. 
+  4. On the **Access security** page, configure the level of access for the private link service. 
     Depending on the visibility level you set on this page, the client application might need to request access
     permission from the EDB Cloud tenant to access this private link
     service. See [control service exposure](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview#control-service-exposure)
@@ -125,7 +141,7 @@ and is being accessed from a VM on another subscription `test`.
 
      IMAGE PLACEHOLDER
 
-  4. After the Private Link Service is created, note down its `alias`. The `alias`
+  5. After the Private Link Service is created, note down its `alias`. The `alias`
    is the unique ID for your private service that can be shared offline with any of
    the service consumers. Obtain the 'alias' either from the Azure portal
    or by the using the following CLI command:
@@ -137,11 +153,9 @@ and is being accessed from a VM on another subscription `test`.
      
      ```
 
-#### Step 2: Create an Azure Private Endpoint linking to the Private Link Service
+ **Step 2: Create an Azure Private Endpoint linking to the Private Link Service**
 
-  To consume a Private Link Service in your consumer VM, you need to
-create an Azure Private Endpoint in your VM's virtual network. The private endpoint can expose the private 
-PG service with a private IP of VM's virtual network, making it directly accessible to the VM.
+  To connect to the PG service create an Azure Private Endpoint in your VM's virtual network. After you have created the private endpoints, you can use its private IP to access the PG service.
 
 Let's create a Private Endpoint called `pl-private-pg-service` from your
 vm-client's subscription.
@@ -388,7 +402,7 @@ networks are mutually accessible directly.
 IMAGE PLACEHOLDER
 
 
-## Connect from On-Premises Network
+**Connect from On-Premises Network**
 
 Sometimes, customers' applications are deployed on their on-premise
 environments, or on other Cloud providers instead Azure, but they also
