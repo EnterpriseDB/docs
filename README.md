@@ -61,6 +61,16 @@ At this point you have a couple options.
 
 - To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
 
+#### Resolving issues in the Docker Environment
+
+If you experience errors or other issues with the site, try the following in the project folder:
+
+1. `npm run stop` then `npm run start` to restart the docker container
+
+1. `npm run docker:rebuild` then `npm run start` to rebuild and restart the container
+
+1. If you find that the container crashes frequently or see that your container has exited with code 137, [try increasing the memory available to docker](https://docs.docker.com/desktop/mac/#resources).
+
 ### Install Docker using Homebrew
 
 You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
@@ -94,7 +104,7 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
-### Set up a full development environment
+### Set Up a Full Development Environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
@@ -119,6 +129,15 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 1. Install all required packages by running `npm install`
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
+
+#### Resolving issues in the Full Dev Environment
+
+If you experience errors or other issues with the site, try the following in the project folder:
+
+1. `rm -rf node_modules` to clean out installed JavaScript packages
+1. `npm install` to reinstall JavaScript packages
+1. `npm run clean` to clean up Gatsby cache
+1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ### Building Local PDFs (optional)
 
@@ -186,15 +205,6 @@ More details can be found on the [Adding New Sources](README_ADDING_NEW_SOURCES.
 
 See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a source type, adding the files, and other configuration.
 
-## Resolving issues
-
-If you experience errors or other issues with the site, try the following in the project folder:
-
-1. `rm -rf node_modules` to clean out installed JavaScript packages
-1. `npm install` to reinstall JavaScript packages
-1. `npm run clean` to clean up Gatsby cache
-1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
-
 ## Development
 
 All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
@@ -241,11 +251,11 @@ redirects:
   - "/another_old_path"
 ```
 
-both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301). 
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
 
 These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
 
-   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/ 
+   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/
    - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
    - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
 
