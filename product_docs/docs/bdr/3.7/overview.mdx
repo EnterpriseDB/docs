@@ -1,0 +1,289 @@
+---
+navTitle: Overview
+title: Architectural Overview
+originalFilePath: overview.md
+
+---
+
+BDR provides loosely-coupled multi-master logical replication
+using a mesh topology. This means that you can write to any server and the
+changes will be sent directly, row-by-row to all the
+other servers that are part of the same BDR group.
+
+![node diagram](img/nodes.png)
+
+By default BDR uses asynchronous replication, applying changes on
+the peer nodes only after the local commit.  An optional
+[eager all node replication](eager)
+ is available in the
+Enterprise Edition.
+
+## Basic Architecture
+
+### Multiple Groups
+
+A BDR node is a member of at least one **Node Group**, and in the most
+basic architecture there is a single node group for the whole BDR
+cluster.
+
+### Multiple Masters
+
+Each node (database) participating in a BDR group both receives
+changes from other members and can be written to directly by the user.
+
+This is distinct from Hot or Warm Standby, where only one master
+server accepts writes, and all the other nodes are standbys that
+replicate either from the master or from another standby.
+
+You don't have to write to all the masters, all of the time; it's
+a frequent configuration to direct writes mostly to just one master.
+However, if you just want one-way replication, the use of
+[pglogical](https://2ndquadrant.com/pglogical) may be more appropriate.
+
+### Asynchronous, by default
+
+Changes made on one BDR node are not replicated to other nodes until
+they are committed locally. As a result the data is not exactly the
+same on all nodes at any given time; some nodes will have data that
+has not yet arrived at other nodes. PostgreSQL's block-based replication
+solutions default to asynchronous replication as well. In BDR,
+because there are multiple masters and as a result multiple data streams,
+data on different nodes might differ even when
+`synchronous_commit` and `synchronous_standby_names` are used.
+
+### Mesh Topology
+
+BDR is structured around a mesh network where every node connects to every
+other node and all nodes exchange data directly with each other. There is no
+forwarding of data within BDR except in special circumstances such as node
+addition and node removal. Data may arrive from outside the BDR cluster or
+be sent onwards using pglogical or native PostgreSQL logical replication.
+
+### Logical Replication
+
+Logical replication is a method of replicating data rows and their changes,
+based upon their replication identity (usually a primary key).
+We use the term *logical* in contrast to *physical* replication, which uses
+exact block addresses and byte-by-byte replication. Index changes are not
+replicated, thereby avoiding write amplification and reducing bandwidth.
+
+Logical replication starts by copying a snapshot of the data from the
+source node. Once that is done, later commits are sent to other nodes as
+they occur in real time. Changes are replicated without re-executing SQL,
+so the exact data written is replicated quickly and accurately.
+
+Nodes apply data in the order in which commits were made on the source node,
+ensuring transactional consistency is guaranteed for the changes from
+any single node. Changes from different nodes are applied independently of
+other nodes to ensure the rapid replication of changes.
+
+### High Availability
+
+Each master node can be protected by one or more standby nodes, so any node
+that goes down can be quickly replaced and continue. Each standby node can
+be either a logical or a physical standby node.
+
+Replication continues between currently connected nodes even if one or more
+nodes are currently unavailable. When the node recovers, replication
+can restart from where it left off without missing any changes.
+
+Nodes can run different release levels, negotiating the required protocols
+to communicate. As a result, BDR clusters can use rolling upgrades, even
+for major versions of database software.
+
+DDL is automatically replicated across nodes by default. DDL execution can
+be user controlled to allow rolling application upgrades, if desired.
+
+### Limits
+
+BDR has been tested with up to 99 master nodes in one cluster, but it is
+currently designed for use with up to 32 master nodes. Each master node
+can be protected by multiple physical or logical standby nodes; there is no
+specific limit on the number of standby nodes, but typical usage would be to
+have 2-3 standbys per master, with a typical maximum of 32 standbys per master.
+
+BDR assumes there will be no more than 1024 nodes (counting both master nodes
+and logical standbys for the total) when using timeshard sequences, not
+counting nodes that have been previously removed (parted/dropped) from a group.
+
+BDR places a limit that at most 10 databases in any one PostgreSQL instance
+can be BDR nodes across different BDR node groups. Having multiple nodes/databases
+within one instance be part of the same BDR node group is not supported.
+
+## Architectural Options & Performance
+
+### Characterising BDR performance
+
+BDR can be configured in a number of different architectures, each of which has
+different performance and scalability characteristics.
+
+The Group is the basic building block of a BDR Cluster consisting of 2+ nodes
+(servers). Within a Group, each node is in a different AZ, with dedicated router
+and backup, giving Immediate Switchover and High Availability. Each Group has a
+dedicated Replication Set defined on it. If the Group loses a node it is easily
+repaired/replaced by copying an existing node from the Group.
+
+The following architectures are available:
+
+-   Multimaster/Single Group
+-   BDR AlwaysOn
+-   BDR Worldwide
+-   BDR AutoScale
+
+The simplest architecture is just to have one Group, so let's examine that first:
+
+### BDR MultiMaster within one Group
+
+By default, BDR will keep one copy of each table on each node in the Group and any
+changes will be propagated to all nodes in the Group.
+
+Since copies of data are everywhere, SELECTs need only ever access the local node.
+On a read-only cluster, performance on any one node will not be affected by the
+number of nodes. Thus adding nodes will increase linearly the total possible SELECT
+throughput.
+
+INSERTs, UPDATEs and DELETEs (DML) are performed locally, then the changes will
+be propagated to all nodes in the Group. The overhead of DML apply is less than the
+original execution, so if you run a pure write workload on multiple nodes
+concurrently, a multi-node cluster will be able to handle more TPS than a single node.
+
+Conflict handling has a cost that will act to reduce the throughput. The throughput
+is then dependent upon how much contention the application displays in practice.
+Applications with very low contention will perform better than a single node;
+applications with high contention could perform worse than a single node.
+These results are consistent with any multi-master technology, they are not a facet
+or peculiarity of BDR.
+
+Eager replication can avoid conflicts, but is inherently more expensive.
+
+Changes are sent concurrently to all nodes so that the replication lag is minimised.
+Adding more nodes means using more CPU for replication, so peak TPS will reduce
+slightly as each new node is added.
+
+If the workload tries to uses all CPU resources then this will resource constrain
+replication, which could then affect the replication lag.
+
+### BDR AlwaysOn
+
+The AlwaysOn architecture is built from 2 Groups, in 2 separate regions. Each Group
+provides HA and IS, but together they also provide Disaster Recovery (DR), so we refer
+to this architecture as AlwaysOn with Very High Availability.
+
+Tables are created across both Groups, so any change goes to all nodes, not just to
+nodes in the local Group.
+
+One node is the target for the main application. All other nodes are described as
+shadow nodes (or "read-write replica"), waiting to take over when needed. If a node
+loses contact we switch immediately to a shadow node to continue processing. If a
+Group fails, we can switch to the other Group. Scalability is not the goal of this
+architecture.
+
+Since we write mainly to only one node, the possibility of contention between is
+reduced to almost zero and as a result performance impact is much reduced.
+
+CAMO is eager replication within the local Group, lazy with regard to other Groups.
+
+Secondary applications may execute against the shadow nodes, though these should be
+reduced or interrupted if the main application begins using that node.
+
+Future feature: One node is elected as main replicator to other Groups, limiting CPU
+overhead of replication as the cluster grows and minimizing the bandwidth to other Groups.
+
+### BDR Worldwide
+
+In this architecture, multiple BDR Groups exist in multiple worldwide Regions, but all
+nodes in a Group are always within one Region.
+
+If high volume tables are configured to that they only replicate within their own Group,
+then peak write TPS will scale linearly according to the number of Groups. This allows
+for sharding data based upon its input location, also known as geo-sharding.
+
+This makes this architecture very suitable for use in IoT, monitoring or other high
+volume data collection applications, where location is the way that the application is
+naturally partitioned. High volume data doesn't leave its Region, allowing us to avoid
+high bandwidth costs from cross-region replication as well as allowing us to follow
+strong laws on data privacy and data jurisdiction.
+
+BDR allows multi-node read queries in this architecture. Large multi-node queries will
+scale linearly in terms of response time as the number of nodes increases. Throughput is
+limited since each query runs on one node in every sub-cluster.
+
+### BDR AutoScale
+
+In this architecture, we use an array of Groups to create a parallel compute platform.
+
+By default, tables are created on all nodes. For range partitioned tables, the user can
+specify a distribution key that allows partitions to be striped across the Groups to
+allow automatic sharding. E.g. TimeStamp, CustomerId or WarehouseId. Note that individual
+key values may also be used instead of ranges, effectively supporting list-based partitioning.
+
+Tables that are identical on all nodes are referred to as Replicated Tables. Tables
+that are sharded across groups are referred to as Distributed or Sharded Tables.
+Replicated tables can be joined to any other table. Distributed tables can only be
+joined to Replicated tables, or to other Distributed tables that share the exact
+same data distribution.
+
+Distributed tables may not always be perfectly evenly distributed.
+If there are heavily accessed shards, we can add additional nodes to that Group
+to deal with the imbalanced workload.
+
+This form of sharding allows OLTP write performance to scale linearly, if the
+application sends transactions directly to the appropriate group, which is known
+as Direct Routing. In this mode, the architecture can be used somewhat similarly to
+distributed NoSQL systems such as Apache Cassandra. Autoscale doesn't support hash
+partitioning because it causes problems when the cluster needs to expand or contract,
+limiting the ability to scale elastically as needed.
+
+If the workload can't send transactions directly to the correct group, we execute
+them against a Coordinator node which then routes them to any node within the
+appropriate Group. The Coordinator is then acting as a proxy to perform Indirect
+or Proxy Routing. Each Group will have a preferred write node and 1-2 other shadow
+nodes; reads will be directed to the shadow nodes by default, or the preferred
+write node if it is the only one remaining.
+
+The Coordinator node adds latency and can limit scalability as the fraction of time
+spent in the coordinator increases. Workloads with lots of small read only requests
+cause a higher % of coordinator time, whereas large decision support queries show a
+small % of coordinator time, so scale the best.
+
+Shard Routing requires access to the Shard Distribution Metadata, held within BDR
+catalog tables. Coordinator nodes store this information in their catalog tables,
+so have direct local access. The Shard Distribution Metadata can also be cached
+within client-side programs or in routing middleware to allow Direct Routing to take
+place from those components.
+
+AutoScale allows multi-node read queries in this architecture. Large multi-node
+queries will scale linearly in terms of response time as the number of nodes
+increases. Throughput is limited since each query runs on one node in every
+sub-cluster.
+
+AutoScale doesn't yet support multi-node write transactions when using a
+Coordinator, but these will be supported in future releases. For now, these
+operations are accepted but are not atomic. Multi-node write transactions
+would limit scalability in a sharded architecture.
+
+## Deployment
+
+BDR3 is intended to be deployed in one of a small number of known-good configurations,
+using either TPAexec or a configuration management approach
+and deployment architecture approved by Technical Support.
+
+Manual deployment is not recommended and may not be supported.
+
+Please refer to the `TPAexec Architecture User Manual` for your architecture.
+
+Log messages and documentation are currently available only in English.
+
+## Clocks and Timezones
+
+BDR has been designed to operate with nodes in multiple timezones, allowing a
+truly worldwide database cluster. Individual servers do not need to be configured
+with matching timezones, though we do recommend using log_timezone = UTC to
+ensure the human readable server log is more accessible and comparable.
+
+Server clocks should be synchronized using NTP or other solutions.
+
+Clock synchronization is not critical to performance, as is the case with some
+other solutions. Clock skew can impact Origin Conflict Detection, though
+BDR provides controls to report and manage any skew that exists. BDR also
+provides Row Version Conflict Detection, as described in [Conflict Detection](conflicts).

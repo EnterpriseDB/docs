@@ -1,4 +1,5 @@
 import Archive from "./archive";
+import AuthenticatedContentPlaceholder from "./authenticated-content-placeholder";
 import BackButton from "./back-button";
 import CardDecks from "./card-decks";
 import CodeBlock from "./code-block";
@@ -28,9 +29,11 @@ import TextBalancer from "./text-balancer";
 import TopBar from "./top-bar";
 import TreeNode from "./tree-node";
 import VersionDropdown from "./version-dropdown";
+import { IconList } from "./icon/iconList";
 
 export {
   Archive,
+  AuthenticatedContentPlaceholder,
   BackButton,
   CardDecks,
   CodeBlock,
@@ -60,4 +63,5 @@ export {
   TopBar,
   TreeNode,
   VersionDropdown,
+  IconList,
 };
