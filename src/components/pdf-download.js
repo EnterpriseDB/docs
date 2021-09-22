@@ -1,6 +1,6 @@
 import React from "react";
 import { useStaticQuery, graphql } from "gatsby";
-import Icon from "./icon";
+import Icon, { iconNames } from "./icon";
 
 const PdfDownload = ({ path }) => {
   const data = useStaticQuery(graphql`
@@ -29,7 +29,7 @@ const PdfDownload = ({ path }) => {
       <div className="mt-4">
         <a href={file.publicURL}>
           <Icon
-            iconName="PDF"
+            iconName={iconNames.PDF}
             className="fill-orange mr-1 position-relative top-minus-2"
             width="16"
             height="auto"

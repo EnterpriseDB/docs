@@ -15,7 +15,7 @@ import {
 } from "../components";
 
 export const query = graphql`
-  query($nodeId: String!) {
+  query ($nodeId: String!) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
