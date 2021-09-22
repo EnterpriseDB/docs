@@ -1,6 +1,6 @@
 import React from "react";
 
-import Icon from "./icon";
+import Icon, { iconNames } from "./icon";
 import Link from "./link";
 
 const isProduction = process.env.APP_ENV === "production";
@@ -40,7 +40,7 @@ const TitleFirstVariant = ({ title, url, ...props }) => {
 
 const PdfIcon = () => (
   <Icon
-    iconName="PDF"
+    iconName={iconNames.PDF}
     className="fill-orange position-relative top-minus-1"
     width="16"
     height="16"

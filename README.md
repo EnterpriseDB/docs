@@ -18,7 +18,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git using Homebrew with `brew install git`, if it's not already installed. (Use `git --version` to check.)
+1. Install Git as well as Git-LFS using Homebrew with `brew install git git-lfs`, if they're not already installed. (Use `git --version` and `git-lfs --version` to check.)
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
@@ -26,7 +26,75 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
-1. Create a `.env` file: `cp env .env.development`.
+1. Create a `.env.development` file: `cp env.development.example .env.development`.
+
+At this point you have a couple options.
+- [**Quick set up with Docker**](#get-started-quickly-with-docker)
+
+   This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
+
+- [**Set up a full development environment**](#set-up-a-full-development-environment)
+
+   Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
+
+### Get Started Quickly With Docker
+
+1. Install Docker on your mac. [Follow the direction below.](#install-docker-using-homebrew)
+
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions below](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
+
+1. Navigate to the cloned repo directory in your terminal
+
+1. Run `npm run start`. The application will start in the background and take a few minutes to load.
+
+1. You can view logs and monitor the startup process by running `npm run logs`. Once it's finished it can be accessed at `http://localhost:8000/`.
+
+#### Additional Commands and Options for the Docker Environment
+
+- `npm run stop` — Stop the dev server
+
+- `npm run logs` — View logs from the server, to exit the logs press `ctrl`+`c`
+
+- `npm run shell` — open up a shell for the dev container
+
+- `npm run docker:rebuild` — rebuild the images used for the dev container
+
+- To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
+
+### Install Docker using Homebrew
+
+You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
+
+```sh
+brew install --cask docker
+```
+
+If you get a message saying that you already have Docker installed, check which version is installed using these commands:
+
+```sh
+brew ls --formula docker
+brew ls --cask docker
+```
+
+If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
+
+```sh
+brew uninstall -f docker && brew install --cask docker
+```
+
+### Prepare Your Environment to Download Icons
+
+These instructions are for members of the EnterpriseDB Github Org only. The icons we are using are not free, and so cannot be distributed as part of the open source docs repository. You'll want to follow these steps so that icons are pulled to the docs application instead of placeholder icons.
+
+1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/github/authenticating-to-github/keeping-your-account-and-data-secure/creating-a-personal-access-token)
+
+   - The minimum scope the token requires is `read:packages`
+
+   - Make sure to enable SSO for your token or it may not work correctly
+
+1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+
+### Set up a full development environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
@@ -36,36 +104,27 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
-1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
+1. NPM 7 is the package manager we're using for this project.
+
+   - run `npm -v` to ensure you are using the correct version of npm. If you do not have version 7, you can run `npm install -g npm@7` to install it.
+
+   - NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. Install all required packages by running `yarn`.
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions above](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
 
-1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
+1. In order to ensure environmental variables are properly set, [install direnv](https://direnv.net/#getting-started) and run `direnv allow .`
+
+1. Install all required packages by running `npm install`
+
+1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
 ### Building Local PDFs (optional)
 
 To build PDFs locally, you'll need to use a Docker container.
 
-1. Install Docker using Homebrew:
-
-   ```sh
-   brew install --cask docker
-   ```
-
-   If you get a message saying that you already have Docker installed, check which version is installed using these commands:
-
-   ```sh
-   brew ls --formula docker
-   brew ls --cask docker
-   ```
-
-   If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
-
-   ```sh
-   brew uninstall -f docker && brew install --cask docker
-   ```
+1. Install Docker on your mac. [Follow the direction above.](#install-docker-using-homebrew)
 
 1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back:
 
@@ -80,13 +139,13 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   yarn build-pdf product_docs/docs/<product_folder>/<version>
+   npm run build-pdf product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   yarn build-pdf product_docs/docs/epas/13
+   npm run build-pdf product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
@@ -109,9 +168,9 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
 By default, all document sources will be loaded into the app during development. It's possible to set up a configuration file, `dev-sources.json`, to only load specific sources, but this is not required.
 
-#### `yarn config-sources`
+#### `npm run config-sources`
 
-Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
+Run `npm run config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
 
@@ -132,9 +191,9 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 If you experience errors or other issues with the site, try the following in the project folder:
 
 1. `rm -rf node_modules` to clean out installed JavaScript packages
-1. `yarn` to reinstall JavaScript packages
-1. `yarn clean` to clean up Gatsby cache
-1. `yarn develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
+1. `npm install` to reinstall JavaScript packages
+1. `npm run clean` to clean up Gatsby cache
+1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ## Development
 
@@ -303,4 +362,3 @@ Option 2: on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
-
