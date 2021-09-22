@@ -1,0 +1,246 @@
+---
+title: "A demonstration of EDB Advanced Server Oracle Compatibility on EDBCloud"
+navTitle: "Oracle compatability"
+description: "Migrating data into a new cluster and reconfiguring an Oracle-compatible application to use it"
+tags:
+  - epas
+  - live-demo
+katacodaPanel:
+  scenario: ubuntu:2004
+  codelanguages: shell, sql:exec
+  initializeCommand: "docker run -it shog9/dbaasdemo:porting_app_data /bin/bash"
+showInteractiveBadge: true
+---
+
+Once you've [created a cluster](03_create_cluster), you can move data into it and [run applications against it](../using_cluster/02_connect_to_cluster/). If you choose to create an EDB Postgres Advanced Server cluster, this includes compatibility with much of the Oracle syntax and built-in packages. 
+
+This section demonstrates that compatibility, using a sample reporting application (an analytical query originally written against Oracle) and [a sample database](https://github.com/lerocha/chinook-database/blob/master/ChinookDatabase/DataSources/Chinook_Oracle.sql) (converted from Oracle via [the EDB Migration Toolkit](/migration_toolkit/latest/)).  
+
+!!!interactive This demo is interactive
+    You can follow along right in your browser by clicking the button below. Once the environment initializes, you'll see a terminal open at the bottom of the screen.
+
+<KatacodaPanel />
+
+
+## Oracle-compatible syntax: a small demonstration
+
+A critical question for people migrating applications from one platform to another is "How much will need to change?" While tools such as EDB's [Migration Portal](/migration_portal/latest/) and Migration Toolkit ease the burden of transforming the schema, data, and associated server-side logic, this still leaves open the question of whether or not application-side SQL queries will translate cleanly. 
+
+Let's consider an application that searches for album titles in the [Chinook dataset](https://github.com/lerocha/chinook-database) and returns the list of tracks along with their size. The SQL might look like this:
+
+```sql
+SELECT UNIQUE title,
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list
+FROM track t
+JOIN album
+  USING (albumid)
+JOIN mediatype
+  USING (mediatypeid)
+WHERE lower(title) LIKE :search
+ORDER BY title;
+```
+
+This query uses two seperate [window functions](https://en.wikipedia.org/wiki/Window_function_(SQL)) (Oracle calls them [analytic functions](https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/Analytic-Functions.html)) that aggregate based on a group of rows. The first is `AVG(...) OVER (...)`, which has been a standard since [SQL:2003](https://en.wikipedia.org/wiki/SQL:2003). The query also uses `LISTAGG (...)`, which was introduced in Oracle 11g Release 2. Very few database systems support `LISTAGG`, but it is possible to [use a workaround such as `STRING_AGG`](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql). Unfortunately, `STRING_AGG` is an aggregate function requires rewriting the entire query to include a `GROUP BY` clause. Fortunately [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) so this query doesn't need to change when migrating from Oracle.
+
+Window functions greatly simplify application code by moving logic closer to the data. This in turn  helps maintain [consistent data](https://en.wikipedia.org/wiki/ACID) and reduce the number of roundtrips to the database. For the sake of demonstration, here's a script for searching album titles on the command line:
+
+```bash
+#!/usr/bin/env ksh
+
+#set -x
+query="'%`echo $1 | tr '[:upper:]' '[:lower:]'`%'"
+
+
+# https://stackoverflow.com/questions/3477213/is-there-for-the-bash-something-like-perls-data/3477269
+sed '0,/^__SQL__$/d' $0 \
+    | psql -w $PGDATABASE \
+           -v search=$query 
+
+exit
+
+__SQL__
+SELECT UNIQUE title, 
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10)) 
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list 
+FROM track t
+JOIN album 
+  USING (albumid)
+JOIN mediatype
+  USING (mediatypeid)
+WHERE lower(title) LIKE :search
+ORDER BY title;
+```
+
+The first half of the code (everything before `__SQL__` line) prepares to run the SQL command in the second half. It sets up a variable to be bound, which avoids SQL injection attacks. Next it sends the SQL command to the database indicated by a connection string. The bulk of the business logic resides in SQL. Here's what it looks like in action:
+
+```shell
+~/chinook_report.sh baby
+__OUTPUT__
+    title     | media_avg_mb |                    track_list
+--------------+--------------+---------------------------------------------------
+ Achtung Baby |            9 | Zoo Station (9 mb)                               +
+              |              | Even Better Than The Real Thing (7 mb)           +
+              |              | One (9 mb)                                       +
+              |              | Until The End Of The World (9 mb)                +
+              |              | Who's Gonna Ride Your Wild Horses (10 mb)        +
+              |              | So Cruel (11 mb)                                 +
+              |              | The Fly (8 mb)                                   +
+              |              | Mysterious Ways (8 mb)                           +
+              |              | Tryin' To Throw Your Arms Around The World (7 mb)+
+              |              | Ultraviolet (Light My Way) (10 mb)               +
+              |              | Acrobat (8 mb)                                   +
+              |              | Love Is Blindness (8 mb)
+(1 row)
+```
+
+This little "app" is configured to run against a Postgres Advanced Server cluster owned by EDB; the connection string is contained in the `PGDATABASE` environmental variable. Feel free to play around with it if you like:
+
+```shell
+psql $PGDATABASE
+```
+
+Now let's move this data into your own cluster and reconfigure the script to run against it...
+
+## Prerequesites
+
+You'll need a fresh cluster configured for this demo (as described in [the previous section](03_create_cluster)), and the connection URL and admin password handy. We recommend creating a fresh cluster and password before you begin. For the purpose of this demo, please create a small cluster running EDB Postgres Advanced Server with public networking.
+
+!!! Warning
+    These instructions result in a publicly-accessible database and involve the use of the administrative account via
+    a connection over the public Internet; you should be very cautious about any use of these features when handling sensitive
+    or proprietary data. Prefer private links for connections whenever feasible!
+
+## Connecting to the destination databases 
+
+For the destination, you'll use the connection string and credentials you created. For convenience, let's save those in another environmental variable - use the format `postgres://edb_admin:PASSWORD@SERVER:PORT/DATABASE?sslmode=require` - you can copy most of this off of the "Connect" tab for your cluster on the portal, just add the admin username (`edb_admin`) and your password, separated by a colon, before the server name in the URL.  
+
+```shell
+read -p "Enter connection string: " PGDEST
+__OUTPUT__
+Enter connection string: postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
+```
+
+!!! Warning
+    Don't re-use a password here, and be sure to bring the cluster down once you're done experimenting. 
+    EDB Cloud does not store your password and will not ask you for it; never share the admin password for
+    a database.
+
+Before moving on, please verify that you are able to connect to your cluster by using PSQL to list available databases:
+
+```shell
+psql $PGDEST
+__OUTPUT__
+psql (13.4.8, server 13.4.8 (Debian 13.4.8-1+deb10))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+edb_admin=>
+```
+
+Leave this connection open - we'll be using it to set up a new database & role next.
+
+## Identifying the necessary roles and database
+
+Before embarking on a migration, we'll need to audit the role(s) used by our application to ensure that they remain available. We should keep the principle of least-privilege in mind here, and avoid creating (or migrating) roles that are not strictly needed by our application.
+
+As shown in the listings above, our reporting query needs to read data from tables in the "chinook" database. Let's start by creating that & connecting to it:
+
+```sql:exec
+CREATE DATABASE chinook;
+__OUTPUT__
+CREATE DATABASE
+```
+
+```sql:exec
+\c chinook
+__OUTPUT__
+psql (13.4.8, server 13.4.8 (Debian 13.4.8-1+deb10))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "chinook" as user "edb_admin".
+chinook=> 
+```
+
+The script needs to be able to select from tables in this database, but does not need to write to it, modify the schema, etc. So we'll need a read-only user: `chinook`. For convenience in this demo, we'll give it a password of `chinook`.
+
+```sql:exec
+CREATE USER chinook WITH PASSWORD 'chinook';
+__OUTPUT__
+CREATE USER
+```
+
+Since this database will ONLY be used for this purpose, we'll grant this user select privileges on any future tables created in it:
+
+```sql:exec
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO chinook;
+```
+
+The database is now ready for data, so exit psql.
+
+```sql:exec
+\q
+```
+
+## Exporting schema and data
+
+Next we'll use `pg_dump` to export the application's schema and data:
+
+```shell
+pg_dump --format custom $PGDATABASE > chinook.dump
+```
+
+This uses a binary format to efficiently capture the schema and data into the file `chinook.dump`. 
+	 
+## Importing schema and data
+
+Now import this into your own database:
+
+```shell
+pg_restore -d $PGDEST
+```
+
+## Reconfiguring and running the application
+
+Now all that remains is to point our application to the new database. We want a new connection string for this, 
+one that points at the newly-created database and authenticates with the newly-created (read-access-only) user. Look up your cluster's host again (Connect tab for your cluster on the portal), and compose a connection string in the form, `postgres://chinook:chinook@HOST:5432/chinook?sslmode=require` - then overwrite the original connection string (stored in `PGDATABASE`):
+
+```shell
+read -p "Enter connection string: " PGDATABASE
+__OUTPUT__
+Enter connection string: postgres://chinook:chinook@HOST:5432/chinook?sslmode=require
+```
+
+Try it out:
+
+```shell
+~/chinook_report.sh baby
+__OUTPUT__
+    title     | media_avg_mb |                    track_list
+--------------+--------------+---------------------------------------------------
+ Achtung Baby |            9 | Zoo Station (9 mb)                               +
+              |              | Even Better Than The Real Thing (7 mb)           +
+              |              | One (9 mb)                                       +
+              |              | Until The End Of The World (9 mb)                +
+              |              | Who's Gonna Ride Your Wild Horses (10 mb)        +
+              |              | So Cruel (11 mb)                                 +
+              |              | The Fly (8 mb)                                   +
+              |              | Mysterious Ways (8 mb)                           +
+              |              | Tryin' To Throw Your Arms Around The World (7 mb)+
+              |              | Ultraviolet (Light My Way) (10 mb)               +
+              |              | Acrobat (8 mb)                                   +
+              |              | Love Is Blindness (8 mb)
+(1 row)
+```
+
+The same results as at the start, but now running against your own cluster!
+
+## Next steps
+
+ 
+- [Managing Portal Access](../administering_cluster/01_portal_access/)
+- [Backing Up and Restoring](../using_cluster/04_backup_and_restore/)
+- ...
