@@ -1,0 +1,1139 @@
+---
+title: DDL Replication
+originalFilePath: ddl.md
+
+---
+
+DDL stands for "Data Definition Language": the subset of the SQL
+language that creates, alters and drops database objects.
+
+For operational convenience and correctness, BDR replicates most DDL
+actions, with these exceptions:
+
+-   Temporary or Unlogged relations
+-   Certain, mostly long-running DDL statements (see list below)
+-   Locking commands (LOCK)
+-   Table Maintenance commands (VACUUM, ANALYZE, CLUSTER, REINDEX)
+-   Actions of autovacuum
+-   Operational commands (CHECKPOINT, ALTER SYSTEM)
+-   Actions related to Databases or Tablespaces
+
+Automatic DDL replication makes it easier to make
+certain DDL changes without having to manually distribute
+the DDL change to all nodes and ensure that they are consistent.
+
+In the default replication set, DDL is replicated to all nodes by default.
+To replicate DDL, a DDL replication filter has to be added to the
+replication set. See [DDL Replication Filtering].
+
+BDR is significantly different to standalone PostgreSQL when it
+comes to DDL replication, and treating it as the same is the most
+common operational issue with BDR.
+
+The main difference from table replication is that DDL replication does
+not replicate the result of the DDL, but the statement itself. This works
+very well in most cases, though introduces the requirement that the DDL
+must execute similarly on all nodes. A more subtle point is that the DDL
+must be immutable with respect to all datatype-specific parameter settings,
+including any datatypes introduced by extensions (i.e. not built-in).
+For example, the DDL statement must execute correctly in the default
+encoding used on each node.
+
+## DDL Replication Options
+
+The `bdr.ddl_replication` parameter specifies replication behavior.
+
+`bdr.ddl_replication = on` is the default and will replicate DDL to the
+default replication set, which by default means all nodes. Non-default
+replication sets do not replicate DDL, unless they have a
+[DDL filter](repsets)
+defined for them.
+
+You can also replicate DDL to specific replication sets using the
+function `bdr.replicate_ddl_command()`. This can be helpful if you
+want to run DDL commands when a node is down, or if you want to have
+indexes or partitions that exist on a subset of nodes or rep sets,
+e.g. all nodes at site1.
+
+```
+SELECT bdr.replicate_ddl_command(
+				'CREATE INDEX CONCURRENTLY ON foo (col7);',
+				ARRAY['site1'],     -- the replication sets
+                'on');              -- ddl_locking to apply
+```
+
+It is possible, but not recommended, to skip automatic DDL replication and
+execute it manually on each node using `bdr.ddl_replication` configuration
+parameters.
+
+```
+SET bdr.ddl_replication = off;
+```
+
+When set, it will make BDR skip both the global locking and the replication
+of executed DDL commands, so you must then run the DDL manually on all nodes.
+
+!!! Warning
+    Executing DDL manually on each node without global locking can
+    cause the whole BDR group to stop replicating if conflicting DDL or DML is
+    executed concurrently.
+
+The `bdr.ddl_replication` parameter can only be set by the bdr_superuser,
+superuser, or in the config file.
+
+## Executing DDL on BDR Systems
+
+A BDR group is not the same as a standalone PostgreSQL server. It
+is based on asynchronous multi-master replication without central
+locking and without a transaction co-ordinator. This has important implications
+when executing DDL.
+
+DDL that executes in parallel will continue to do so with BDR. DDL execution
+will respect the parameters that affect parallel operation on each node as it
+executes, so differences in the settings between nodes may be noticeable.
+
+Execution of conflicting DDL needs to be prevented, otherwise DDL replication
+will end up causing errors and the replication will stop.
+
+BDR offers 3 levels of protection against those problems:
+
+`ddl_locking = 'dml'` is the best option for operations, usable when you execute
+DDL from only one node at a time. This is not the default, but it is recommended
+that you use this setting if you can control where DDL is executed from, to
+ensure that there are no inter-node conflicts. Intra-node conflicts are already
+handled by PostgreSQL.
+
+`ddl_locking = on` is the strictest option, and is best when DDL might be executed
+from any node concurrently and you would like to ensure correctness.
+
+`ddl_locking = off` is the least strict option, and is dangerous in general use.
+This option skips locks altogether and so avoids any performance overhead, making
+it a useful option when creating a new and empty database schema.
+
+These options can only be set by the bdr_superuser, superuser, or in the config file.
+
+When using the `bdr.replicate_ddl_command`, it is possible to set this
+parameter directly via the third argument, using the specified
+`bdr.ddl_locking` setting only for the DDL commands passed to that
+function.
+
+## DDL Locking Details
+
+There are two kinds of locks used to enforce correctness of replicated DDL with BDR.
+
+The first kind is known as a Global DDL Lock, and is only used when `ddl_locking = on`.
+A Global DDL Lock prevents any other DDL from executing on the cluster while
+each DDL statement runs. This ensures full correctness in the general case, but
+is clearly too strict for many simple cases. BDR acquires a global lock on
+DDL operations the first time in a transaction where schema changes are made.
+This effectively serializes the DDL-executing transactions in the cluster. In
+other words, while DDL is running, no other connection on any node can run
+another DDL command, **even if it affects different table(s)**.
+
+To acquire a lock on DDL operations, the BDR node executing DDL contacts the
+other nodes in a BDR group and asks them to grant it the exclusive right to
+execute DDL. The lock request is sent via regular replication stream and the
+nodes respond via replication stream as well. So it's important that nodes (or
+at least a majority of the nodes) should be running without much replication
+delay. Otherwise it may take a very long time for the node to acquire the DDL
+lock. Once the majority of nodes agrees, the DDL execution is carried out.
+
+The ordering of DDL locking is decided using the Raft protocol. DDL statements
+executed on one node will be executed in the same sequence on all other nodes.
+
+In order to ensure that the node running a DDL has seen effects of all prior
+DDLs run in the cluster, it waits until it has caught up with the node that had
+run the previous DDL. If the node running the current DDL is lagging behind in
+replication with respect to the node that ran the previous DDL, then it make
+take very long to acquire the lock. Hence it's preferable to run DDLs from a
+single node or the nodes which have nearly caught up with replication changes
+originating at other nodes.
+
+The second kind is known as a Relation DML Lock. This kind of lock is used when
+either `ddl_locking = on` or `ddl_locking = dml`, and the DDL statement might cause
+in-flight DML statements to fail, such as when we add or modify a constraint
+such as a unique constraint, check constraint or NOT NULL constraint.
+Relation DML locks affect only one relation at a time. Relation DML
+locks ensure that no DDL executes while there are changes in the queue that
+might cause replication to halt with an error.
+
+To acquire the global DML lock on a table, the BDR node executing the DDL
+contacts **all** other nodes in a BDR group, asking them to lock the table
+against writes, and we wait while all pending changes to that table are drained.
+Once all nodes are fully caught up, the originator of the DML lock is free
+to perform schema changes to the table and replicate them to the other nodes.
+
+Note that the global DML lock holds an EXCLUSIVE LOCK on the table on each node,
+so will block DML, other DDL, VACUUMs and index commands against that table while
+it runs. This is true even if the global DML lock is held for a command that
+would not normally take an EXCLUSIVE LOCK or higher.
+
+Waiting for pending DML operations to drain could take a long time, or longer
+if replication is currently lagging behind.
+This means that schema changes affecting row representation and constraints,
+unlike with data changes, can only be performed while all configured nodes
+are reachable and keeping up reasonably well with the current write rate.
+If such DDL commands absolutely must be performed while a node is down, the
+down node must first be removed from the configuration.
+
+If a DDL statement is not replicated, no global locks will be acquired.
+
+Locking behavior is specified by the `bdr.ddl_locking` parameter, as
+explained in [Executing DDL on BDR systems](#Executing-DDL-on-BDR-systems):
+
+-   `ddl_locking = on` takes Global DDL Lock and, if needed, takes Relation DML Lock.
+-   `ddl_locking = dml` skips Global DDL Lock and, if needed, takes Relation DML Lock.
+-   `ddl_locking = off` skips both Global DDL Lock and Relation DML Lock.
+
+Note also that some BDR functions make DDL changes, so for those functions,
+DDL locking behavior applies. This will be noted in the docs for each function.
+
+Thus, `ddl_locking = dml` is safe only when we can guarantee that
+no conflicting DDL will be executed from other nodes, because with this setting,
+the statements which only require the Global DDL Lock will not use the global
+locking at all.
+
+`ddl_locking = off` is safe only when the user can guarantee that there are no
+conflicting DDL and no conflicting DML operations on the database objects
+we execute DDL on. If you turn locking off and then experience difficulties,
+you may lose in-flight changes to data; any issues caused will need to be
+resolved by the user application team.
+
+In some cases, concurrently executing DDL can properly be serialized.
+Should these serialization failures occur, the DDL may be re-executed.
+
+DDL replication is not active on Logical Standby nodes until they are promoted.
+
+Note that some BDR management functions act like DDL, meaning that they will
+attempt to take global locks and their actions will be replicated, if DDL
+replication is active. The full list of replicated functions is listed in
+[BDR Functions that behave like DDL].
+
+DDL executed on temporary tables never need global locks.
+
+ALTER or DROP of an object crrated in current transactioon does not required
+global DML lock.
+
+Monitoring of global DDL locks and global DML locks is shown in the
+[Monitoring](monitoring) chapter.
+
+## Minimizing the Impact of DDL
+
+Good operational advice for any database, these points become even more
+important with BDR:
+
+-   To minimize the impact of DDL, transactions performing DDL should be short,
+    should not be combined with lots of row changes, and should avoid long
+    running foreign key or other constraint re-checks.
+
+-   For `ALTER TABLE`, please use ADD CONSTRAINT NOT VALID, followed by another
+    transaction with VALIDATE CONSTRAINT, rather than just using ADD CONSTRAINT.
+    Note that VALIDATE CONSTRAINT will wait until replayed on all nodes, which
+    gives a noticeable delay to receive confirmations.
+
+-   When indexing, use CONCURRENTLY option whenever possible.
+
+An alternate way of executing long running DDL is to disable DDL replication
+and then to execute the DDL statement separately on each node. That can
+still be done using a single SQL statement, as shown in the example below.
+Note that global locking rules still apply, so be careful not to lock
+yourself out with this type of usage, which should be seen as more of a
+workaround than normal usage.
+
+```sql
+SELECT bdr.run_on_all_nodes($ddl$
+        CREATE INDEX CONCURRENTLY index_a ON table_a(i);
+$ddl$);
+```
+
+We recommend using the bdr.run_on_all_nodes() technique above with CREATE
+INDEX CONCURRENTLY, noting that DDL replication must be disabled for whole
+session because CREATE INDEX CONCURRENTLY is a multi-transaction command.
+CREATE INDEX should be avoided on production systems
+since it prevents writes while it executes.
+REINDEX is replicated in versions up to BDR3.6, but not in BDR3.7 or later.
+Using REINDEX should be avoided because of the AccessExclusiveLocks it holds.
+
+Instead, REINDEX CONCURRENTLY should be used (or reindexdb --concurrently),
+which is available in PG12+ or 2QPG11+.
+
+REINDEX or REINDEX CONCURRENTLY on an invalid index will fail to execute
+on a BDR node. The invalid indexes must be dropped and created again.
+The invalid indexes must be dropped using DROP INDEX .. IF EXISTS.
+DROP INDEX or DROP INDEX CONCURRENTLY without IF EXISTS clause on an
+invalid index will fail on a BDR node when DDL replication is enabled.
+
+DDL replication can be disabled when using command line utilities like this:
+
+```sql
+$ export PGOPTIONS="-c bdr.ddl_replication=off"
+$ pg_restore --section=post-data
+```
+
+Multiple DDL statements might benefit from bunching into a single transaction
+rather than fired as individual statements, so the DDL lock only has to be
+taken once. This may not be desirable if the table-level locks interfere with
+normal operations.
+
+If DDL is holding the system up for too long, it is possible and safe to
+cancel the DDL on the originating node as you would cancel any other
+statement, e.g. with `Control-C` in `psql` or with `pg_cancel_backend()`.
+You cannot cancel a DDL lock from any other node.
+
+It is possible to control how long the global lock will take with (optional)
+global locking timeout settings.
+The `bdr.global_lock_timeout` will limit how long the wait
+for acquiring the global lock can take before it is cancelled;
+`bdr.global_lock_statement_timeout` limits the runtime length of any statement
+in transaction that holds global locks, and `bdr.global_lock_idle_timeout`
+sets the maximum allowed idle time (time between statements) for a transaction
+holding any global locks. All of these timeouts can be disabled by setting
+their values to zero.
+
+Once the DDL operation has committed on the originating node, it cannot be
+canceled or aborted. The BDR group must wait for it to apply successfully on
+other nodes that confirmed the global lock and for them to acknowledge replay.
+This is why it is important to keep DDL transactions short and fast.
+
+## Handling DDL With Down Nodes
+
+If the node initiating the global DDL lock goes down after it has acquired
+the global lock (either DDL or DML), the lock stays active.
+The global locks will not time out, even if timeouts have been set.
+In case the node comes back up, it will automatically release all the global
+locks that it holds.
+
+If it stays down for a prolonged period time (or forever),
+remove the node from BDR group in order to release the global locks. This
+might be one reason for executing emergency DDL using the `SET` command as
+the `bdr_superuser` to update the `bdr.ddl_locking` value.
+
+If one of the other nodes goes down after it has confirmed the global lock,
+but before the command acquiring it has been executed, the execution of
+that command requesting the lock will continue as if the node was up.
+
+As mentioned in the previous section, the global DDL lock only requires a majority of
+the nodes to respond, and so it will work if part of the cluster is down, as long as a
+majority is running and reachable, while the DML lock cannot be acquired
+unless the whole cluster is available.
+
+If we have the global DDL or global DML lock and another node goes down, the
+command will continue normally and the lock will be released.
+
+## Statement Specific DDL Replication Concerns
+
+Not all commands can be replicated automatically. Such commands
+are generally disallowed, unless DDL replication is turned off
+by turning `bdr.ddl_replication` off.
+
+BDR prevents some DDL statements from running when it is active on a
+database. This protects the consistency of the system by disallowing
+statements that cannot be replicated correctly, or for which replication is
+not yet supported. Statements that are supported with some restrictions
+are covered in [DDL Statements With Restrictions]; while commands that are
+entirely disallowed in BDR are covered in prohibited DDL statements.
+
+If a statement is not permitted under BDR, it is often possible to find
+another way to do the same thing. For example, you can't do an `ALTER TABLE`
+which adds column with a volatile default value, but it is generally possible to
+rephrase that as a series of independent `ALTER TABLE` and `UPDATE` statements
+that will work.
+
+Generally unsupported statements are prevented from being
+executed, raising a `feature_not_supported` (SQLSTATE `0A000`) error.
+
+Note that any DDL that references or relies upon a temporary object cannot
+be replicated by BDR and will throw an ERROR, if executed with DDL replication
+enabled.
+
+## BDR DDL Command Handling Matrix
+
+Following table describes which utility or DDL commands are allowed, which
+are replicated and what type of global lock they take when they are replicated.
+
+For some more complex statements like `ALTER TABLE` these can differ depending
+on the sub-command(s) executed. Every such command has detailed explanation
+under the following table.
+
+| Command                          | Allowed                                       | Replicated                                 | Lock                                             |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| ALTER AGGREGATE                  | Y                                             | Y                                          | DDL                                              |
+| ALTER CAST                       | Y                                             | Y                                          | DDL                                              |
+| ALTER COLLATION                  | Y                                             | Y                                          | DDL                                              |
+| ALTER CONVERSION                 | Y                                             | Y                                          | DDL                                              |
+| ALTER DATABASE                   | Y                                             | N                                          | N                                                |
+| ALTER DATABASE LINK              | Y                                             | Y                                          | DDL                                              |
+| ALTER DEFAULT PRIVILEGES         | Y                                             | Y                                          | DDL                                              |
+| ALTER DIRECTORY                  | Y                                             | Y                                          | DDL                                              |
+| ALTER DOMAIN                     | Y                                             | Y                                          | DDL                                              |
+| ALTER EVENT TRIGGER              | Y                                             | Y                                          | DDL                                              |
+| ALTER EXTENSION                  | Y                                             | Y                                          | DDL                                              |
+| ALTER FOREIGN DATA WRAPPER       | Y                                             | Y                                          | DDL                                              |
+| ALTER FOREIGN TABLE              | Y                                             | Y                                          | DDL                                              |
+| ALTER FUNCTION                   | Y                                             | Y                                          | DDL                                              |
+| ALTER INDEX                      | Y                                             | Y                                          | DDL                                              |
+| ALTER LANGUAGE                   | Y                                             | Y                                          | DDL                                              |
+| ALTER LARGE OBJECT               | N                                             | N                                          | N                                                |
+| ALTER MATERIALIZED VIEW          | Y                                             | N                                          | N                                                |
+| ALTER OPERATOR                   | Y                                             | Y                                          | DDL                                              |
+| ALTER OPERATOR CLASS             | Y                                             | Y                                          | DDL                                              |
+| ALTER OPERATOR FAMILY            | Y                                             | Y                                          | DDL                                              |
+| ALTER PACKAGE                    | Y                                             | Y                                          | DDL                                              |
+| ALTER POLICY                     | Y                                             | Y                                          | DDL                                              |
+| ALTER PROCEDURE                  | Y                                             | Y                                          | DDL                                              |
+| ALTER PROFILE                    | Y                                             | Y                                          | DDL                                              |
+| ALTER PUBLICATION                | Y                                             | Y                                          | DDL                                              |
+| ALTER QUEUE                      | Y                                             | Y                                          | DDL                                              |
+| ALTER QUEUE TABLE                | Y                                             | Y                                          | DDL                                              |
+| ALTER REDACTION POLICY           | Y                                             | Y                                          | DDL                                              |
+| ALTER RESOURCE GROUP             | Y                                             | N                                          | N                                                |
+| ALTER ROLE                       | Y                                             | Y                                          | DDL                                              |
+| ALTER ROUTINE                    | Y                                             | Y                                          | DDL                                              |
+| ALTER RULE                       | Y                                             | Y                                          | DDL                                              |
+| ALTER SCHEMA                     | Y                                             | Y                                          | DDL                                              |
+| ALTER SEQUENCE                   | [Details](#bdr_ddl_allowed_AlterSeqStmt)      | Y                                          | DML                                              |
+| ALTER SERVER                     | Y                                             | Y                                          | DDL                                              |
+| ALTER SESSION                    | Y                                             | N                                          | N                                                |
+| ALTER STATISTICS                 | Y                                             | Y                                          | DDL                                              |
+| ALTER SUBSCRIPTION               | Y                                             | Y                                          | DDL                                              |
+| ALTER SYNONYM                    | Y                                             | Y                                          | DDL                                              |
+| ALTER SYSTEM                     | Y                                             | N                                          | N                                                |
+| ALTER TABLE                      | [Details](#bdr_ddl_allowed_AlterTableStmt)    | Y                                          | [Details](#bdr_ddl_lock_relation_AlterTableStmt) |
+| ALTER TABLESPACE                 | Y                                             | N                                          | N                                                |
+| ALTER TEXT SEARCH CONFIGURATION  | Y                                             | Y                                          | DDL                                              |
+| ALTER TEXT SEARCH DICTIONARY     | Y                                             | Y                                          | DDL                                              |
+| ALTER TEXT SEARCH PARSER         | Y                                             | Y                                          | DDL                                              |
+| ALTER TEXT SEARCH TEMPLATE       | Y                                             | Y                                          | DDL                                              |
+| ALTER TRIGGER                    | Y                                             | Y                                          | DDL                                              |
+| ALTER TYPE                       | Y                                             | Y                                          | DDL                                              |
+| ALTER USER MAPPING               | Y                                             | Y                                          | DDL                                              |
+| ALTER VIEW                       | Y                                             | Y                                          | DDL                                              |
+| ANALYZE                          | Y                                             | N                                          | N                                                |
+| BEGIN                            | Y                                             | N                                          | N                                                |
+| CHECKPOINT                       | Y                                             | N                                          | N                                                |
+| CLOSE                            | Y                                             | N                                          | N                                                |
+| CLOSE CURSOR                     | Y                                             | N                                          | N                                                |
+| CLOSE CURSOR ALL                 | Y                                             | N                                          | N                                                |
+| CLUSTER                          | Y                                             | N                                          | N                                                |
+| COMMENT                          | Y                                             | [Details](#bdr_ddl_can_replicate_comment)  | DDL                                              |
+| COMMIT                           | Y                                             | N                                          | N                                                |
+| COMMIT PREPARED                  | Y                                             | N                                          | N                                                |
+| COPY                             | Y                                             | N                                          | N                                                |
+| COPY FROM                        | Y                                             | N                                          | N                                                |
+| CREATE ACCESS METHOD             | Y                                             | Y                                          | DDL                                              |
+| CREATE AGGREGATE                 | Y                                             | Y                                          | DDL                                              |
+| CREATE CAST                      | Y                                             | Y                                          | DDL                                              |
+| CREATE COLLATION                 | Y                                             | Y                                          | DDL                                              |
+| CREATE CONSTRAINT                | Y                                             | Y                                          | DDL                                              |
+| CREATE CONVERSION                | Y                                             | Y                                          | DDL                                              |
+| CREATE DATABASE                  | Y                                             | N                                          | N                                                |
+| CREATE DATABASE LINK             | Y                                             | Y                                          | DDL                                              |
+| CREATE DIRECTORY                 | Y                                             | Y                                          | DDL                                              |
+| CREATE DOMAIN                    | Y                                             | Y                                          | DDL                                              |
+| CREATE EVENT TRIGGER             | Y                                             | Y                                          | DDL                                              |
+| CREATE EXTENSION                 | Y                                             | Y                                          | DDL                                              |
+| CREATE FOREIGN DATA WRAPPER      | Y                                             | Y                                          | DDL                                              |
+| CREATE FOREIGN TABLE             | Y                                             | Y                                          | DDL                                              |
+| CREATE FUNCTION                  | Y                                             | Y                                          | DDL                                              |
+| CREATE INDEX                     | Y                                             | Y                                          | DML                                              |
+| CREATE LANGUAGE                  | Y                                             | Y                                          | DDL                                              |
+| CREATE MATERIALIZED VIEW         | Y                                             | N                                          | N                                                |
+| CREATE OPERATOR                  | Y                                             | Y                                          | DDL                                              |
+| CREATE OPERATOR CLASS            | Y                                             | Y                                          | DDL                                              |
+| CREATE OPERATOR FAMILY           | Y                                             | Y                                          | DDL                                              |
+| CREATE PACKAGE                   | Y                                             | Y                                          | DDL                                              |
+| CREATE PACKAGE BODY              | Y                                             | Y                                          | DDL                                              |
+| CREATE POLICY                    | Y                                             | Y                                          | DML                                              |
+| CREATE PROCEDURE                 | Y                                             | Y                                          | DDL                                              |
+| CREATE PROFILE                   | Y                                             | Y                                          | DDL                                              |
+| CREATE PUBLICATION               | Y                                             | Y                                          | DDL                                              |
+| CREATE QUEUE                     | Y                                             | Y                                          | DDL                                              |
+| CREATE QUEUE TABLE               | Y                                             | Y                                          | DDL                                              |
+| CREATE REDACTION POLICY          | Y                                             | Y                                          | DDL                                              |
+| CREATE RESOURCE GROUP            | Y                                             | N                                          | N                                                |
+| CREATE ROLE                      | Y                                             | Y                                          | DDL                                              |
+| CREATE ROUTINE                   | Y                                             | Y                                          | DDL                                              |
+| CREATE RULE                      | Y                                             | Y                                          | DDL                                              |
+| CREATE SCHEMA                    | Y                                             | Y                                          | DDL                                              |
+| CREATE SEQUENCE                  | [Details](#bdr_ddl_allowed_CreateSeqStmt)     | Y                                          | DDL                                              |
+| CREATE SERVER                    | Y                                             | Y                                          | DDL                                              |
+| CREATE STATISTICS                | Y                                             | Y                                          | DDL                                              |
+| CREATE SUBSCRIPTION              | Y                                             | Y                                          | DDL                                              |
+| CREATE SYNONYM                   | Y                                             | Y                                          | DDL                                              |
+| CREATE TABLE                     | [Details](#bdr_ddl_allowed_CreateStmt)        | Y                                          | DDL                                              |
+| CREATE TABLE AS                  | [Details](#bdr_ddl_allowed_CreateTableAsStmt) | Y                                          | DDL                                              |
+| CREATE TABLESPACE                | Y                                             | N                                          | N                                                |
+| CREATE TEXT SEARCH CONFIGURATION | Y                                             | Y                                          | DDL                                              |
+| CREATE TEXT SEARCH DICTIONARY    | Y                                             | Y                                          | DDL                                              |
+| CREATE TEXT SEARCH PARSER        | Y                                             | Y                                          | DDL                                              |
+| CREATE TEXT SEARCH TEMPLATE      | Y                                             | Y                                          | DDL                                              |
+| CREATE TRANSFORM                 | Y                                             | Y                                          | DDL                                              |
+| CREATE TRIGGER                   | Y                                             | Y                                          | DDL                                              |
+| CREATE TYPE                      | Y                                             | Y                                          | DDL                                              |
+| CREATE TYPE BODY                 | Y                                             | Y                                          | DDL                                              |
+| CREATE USER MAPPING              | Y                                             | Y                                          | DDL                                              |
+| CREATE VIEW                      | Y                                             | Y                                          | DDL                                              |
+| DEALLOCATE                       | Y                                             | N                                          | N                                                |
+| DEALLOCATE ALL                   | Y                                             | N                                          | N                                                |
+| DECLARE CURSOR                   | Y                                             | N                                          | N                                                |
+| DISCARD                          | Y                                             | N                                          | N                                                |
+| DISCARD ALL                      | Y                                             | N                                          | N                                                |
+| DISCARD PLANS                    | Y                                             | N                                          | N                                                |
+| DISCARD SEQUENCES                | Y                                             | N                                          | N                                                |
+| DISCARD TEMP                     | Y                                             | N                                          | N                                                |
+| DO                               | Y                                             | N                                          | N                                                |
+| DROP ACCESS METHOD               | Y                                             | Y                                          | DDL                                              |
+| DROP AGGREGATE                   | Y                                             | Y                                          | DDL                                              |
+| DROP CAST                        | Y                                             | Y                                          | DDL                                              |
+| DROP COLLATION                   | Y                                             | Y                                          | DDL                                              |
+| DROP CONSTRAINT                  | Y                                             | Y                                          | DDL                                              |
+| DROP CONVERSION                  | Y                                             | Y                                          | DDL                                              |
+| DROP DATABASE                    | Y                                             | N                                          | N                                                |
+| DROP DATABASE LINK               | Y                                             | Y                                          | DDL                                              |
+| DROP DIRECTORY                   | Y                                             | Y                                          | DDL                                              |
+| DROP DOMAIN                      | Y                                             | Y                                          | DDL                                              |
+| DROP EVENT TRIGGER               | Y                                             | Y                                          | DDL                                              |
+| DROP EXTENSION                   | Y                                             | Y                                          | DDL                                              |
+| DROP FOREIGN DATA WRAPPER        | Y                                             | Y                                          | DDL                                              |
+| DROP FOREIGN TABLE               | Y                                             | Y                                          | DDL                                              |
+| DROP FUNCTION                    | Y                                             | Y                                          | DDL                                              |
+| DROP INDEX                       | Y                                             | Y                                          | DDL                                              |
+| DROP LANGUAGE                    | Y                                             | Y                                          | DDL                                              |
+| DROP MATERIALIZED VIEW           | Y                                             | N                                          | N                                                |
+| DROP OPERATOR                    | Y                                             | Y                                          | DDL                                              |
+| DROP OPERATOR CLASS              | Y                                             | Y                                          | DDL                                              |
+| DROP OPERATOR FAMILY             | Y                                             | Y                                          | DDL                                              |
+| DROP OWNED                       | Y                                             | Y                                          | DDL                                              |
+| DROP PACKAGE                     | Y                                             | Y                                          | DDL                                              |
+| DROP PACKAGE BODY                | Y                                             | Y                                          | DDL                                              |
+| DROP POLICY                      | Y                                             | Y                                          | DDL                                              |
+| DROP PROCEDURE                   | Y                                             | Y                                          | DDL                                              |
+| DROP PROFILE                     | Y                                             | Y                                          | DDL                                              |
+| DROP PUBLICATION                 | Y                                             | Y                                          | DDL                                              |
+| DROP QUEUE                       | Y                                             | Y                                          | DDL                                              |
+| DROP QUEUE TABLE                 | Y                                             | Y                                          | DDL                                              |
+| DROP REDACTION POLICY            | Y                                             | Y                                          | DDL                                              |
+| DROP RESOURCE GROUP              | Y                                             | N                                          | N                                                |
+| DROP ROLE                        | Y                                             | Y                                          | DDL                                              |
+| DROP ROUTINE                     | Y                                             | Y                                          | DDL                                              |
+| DROP RULE                        | Y                                             | Y                                          | DDL                                              |
+| DROP SCHEMA                      | Y                                             | Y                                          | DDL                                              |
+| DROP SEQUENCE                    | Y                                             | Y                                          | DDL                                              |
+| DROP SERVER                      | Y                                             | Y                                          | DDL                                              |
+| DROP STATISTICS                  | Y                                             | Y                                          | DDL                                              |
+| DROP SUBSCRIPTION                | Y                                             | Y                                          | DDL                                              |
+| DROP SYNONYM                     | Y                                             | Y                                          | DDL                                              |
+| DROP TABLE                       | Y                                             | Y                                          | DML                                              |
+| DROP TABLESPACE                  | Y                                             | N                                          | N                                                |
+| DROP TEXT SEARCH CONFIGURATION   | Y                                             | Y                                          | DDL                                              |
+| DROP TEXT SEARCH DICTIONARY      | Y                                             | Y                                          | DDL                                              |
+| DROP TEXT SEARCH PARSER          | Y                                             | Y                                          | DDL                                              |
+| DROP TEXT SEARCH TEMPLATE        | Y                                             | Y                                          | DDL                                              |
+| DROP TRANSFORM                   | Y                                             | Y                                          | DDL                                              |
+| DROP TRIGGER                     | Y                                             | Y                                          | DDL                                              |
+| DROP TYPE                        | Y                                             | Y                                          | DDL                                              |
+| DROP TYPE BODY                   | Y                                             | Y                                          | DDL                                              |
+| DROP USER MAPPING                | Y                                             | Y                                          | DDL                                              |
+| DROP VIEW                        | Y                                             | Y                                          | DDL                                              |
+| EXECUTE                          | Y                                             | N                                          | N                                                |
+| EXPLAIN                          | Y                                             | [Details](#bdr_ddl_can_replicate_explain)  | [Details](#bdr_ddl_lock_explain_stmt)            |
+| FETCH                            | Y                                             | N                                          | N                                                |
+| GRANT                            | Y                                             | [Details](#bdr_ddl_can_replicate_grant)    | DDL                                              |
+| GRANT ROLE                       | Y                                             | Y                                          | DDL                                              |
+| IMPORT FOREIGN SCHEMA            | Y                                             | Y                                          | DDL                                              |
+| LISTEN                           | Y                                             | N                                          | N                                                |
+| LOAD                             | Y                                             | N                                          | N                                                |
+| LOAD ROW DATA                    | Y                                             | Y                                          | DDL                                              |
+| LOCK TABLE                       | Y                                             | N                                          | N                                                |
+| MOVE                             | Y                                             | N                                          | N                                                |
+| NOTIFY                           | Y                                             | N                                          | N                                                |
+| PREPARE                          | Y                                             | N                                          | N                                                |
+| PREPARE TRANSACTION              | Y                                             | N                                          | N                                                |
+| REASSIGN OWNED                   | Y                                             | Y                                          | DDL                                              |
+| REFRESH MATERIALIZED VIEW        | Y                                             | N                                          | N                                                |
+| REINDEX                          | Y                                             | N                                          | N                                                |
+| RELEASE                          | Y                                             | N                                          | N                                                |
+| RESET                            | Y                                             | N                                          | N                                                |
+| REVOKE                           | Y                                             | [Details](#bdr_ddl_can_replicate_grant)    | DDL                                              |
+| REVOKE ROLE                      | Y                                             | Y                                          | DDL                                              |
+| ROLLBACK                         | Y                                             | N                                          | N                                                |
+| ROLLBACK PREPARED                | Y                                             | N                                          | N                                                |
+| SAVEPOINT                        | Y                                             | N                                          | N                                                |
+| SECURITY LABEL                   | Y                                             | [Details](#bdr_ddl_can_replicate_seclabel) | DDL                                              |
+| SELECT INTO                      | [Details](#bdr_ddl_allowed_CreateTableAsStmt) | Y                                          | DDL                                              |
+| SET                              | Y                                             | N                                          | N                                                |
+| SET CONSTRAINTS                  | Y                                             | N                                          | N                                                |
+| SHOW                             | Y                                             | N                                          | N                                                |
+| START TRANSACTION                | Y                                             | N                                          | N                                                |
+| TRUNCATE TABLE                   | Y                                             | [Details](#bdr_ddl_can_replicate_truncate) | [Details](#bdr_ddl_lock_truncate_stmt)           |
+| UNLISTEN                         | Y                                             | N                                          | N                                                |
+| VACUUM                           | Y                                             | N                                          | N                                                |
+
+<div id='bdr_ddl_allowed_AlterSeqStmt'></div>
+
+### ALTER SEQUENCE 
+
+Generally `ALTER SEQUENCE` is supported, but when using global
+sequences, some options have no effect.
+
+`ALTER SEQUENCE ... RENAME` is not supported on galloc sequences (only).
+`ALTER SEQUENCE ... SET SCHEMA` is not supported on galloc sequences (only).
+
+### ALTER TABLE
+
+Generally, `ALTER TABLE` commands are allowed. There are, however, several
+sub-commands that are not supported.
+
+<div id='bdr_ddl_allowed_AlterTableStmt'></div>
+
+#### ALTER TABLE Disallowed Commands 
+
+Some variants of `ALTER TABLE` are currently not allowed on a BDR node:
+
+-   `ADD COLUMN ... DEFAULT (non-immutable expression)` - This is not allowed because
+    it would currently result in different data on different nodes. See
+    [Adding a Column](#adding-a-column) for a suggested workaround.
+-   `ADD CONSTRAINT ... EXCLUDE` - Exclusion constraints are not supported for now.
+    Exclusion constraints do not make much sense in an asynchronous system and
+    lead to changes that cannot be replayed.
+-   `ALTER TABLE ... SET WITH[OUT] OIDS` - Is not supported for the same reasons
+    as in `CREATE TABLE`.
+-   `ALTER COLUMN ... SET STORAGE external` - Will be rejected if the column is
+    one of the columns of the replica identity for the table.
+-   `RENAME` - cannot rename an Autopartitioned table.
+-   `SET SCHEMA` - cannot set the schema of an Autopartitioned table.
+-   `ALTER COLUMN ... TYPE` - Changing a column's type is not supported if the
+    command causes the whole table to be rewritten, which occurs when the change
+    is not binary coercible.
+    Note that binary coercible changes may only be allowed one way. For example,
+    the change from VARCHAR(128) to VARCHAR(256) is binary coercible and therefore
+    allowed, whereas the change VARCHAR(256) to VARCHAR(128) is not binary coercible
+    and therefore normally disallowed. For non-replicated `ALTER COLUMN ... TYPE`
+    it can be allowed if the column is automatically castable to the new type
+    (it does not contain the `USING` clause). See below for an example.
+    Table rewrites would hold an
+    AccessExclusiveLock for extended periods on larger tables, so such commands
+    are likely to be infeasible on highly available databases in any case.
+    See [Changing a Column's Type](#changing-a-columns-type) for a suggested workarounds.
+-   `ALTER TABLE ... ADD FOREIGN KEY` - Is not supported if current user does not have
+     permission to read the referenced table, or if the referenced table
+     has RLS restrictions enabled which current user cannot bypass.
+
+The following example fails because it tries to add a constant value of type `timestamp`
+onto a column of type `timestamptz`. The cast between `timestamp` and `timestamptz`
+relies upon the time zone of the session and so is not immutable.
+
+```sql
+ALTER TABLE foo
+  ADD expiry_date timestamptz DEFAULT timestamp '2100-01-01 00:00:00' NOT NULL;
+```
+
+Starting BDR 3.7.4, certain types of constraints, such as CHECK and
+FOREIGN KEY constraints, can be added without taking a DML lock. But
+this requires a 2-step process of first creating a NOT VALID constraint
+and then validating the constraint in a separate transaction via `ALTER TABLE ... VALIDATE CONSTRAINT` command. See [Adding a CONSTRAINT](#adding-a-constraint)
+for more details.
+
+<div id='bdr_ddl_lock_relation_AlterTableStmt'></div>
+
+#### ALTER TABLE Locking 
+
+The following variants of `ALTER TABLE` will only take DDL lock and **not** a
+DML lock:
+
+-   `ALTER TABLE ... ADD COLUMN ... (immutable) DEFAULT`
+
+-   `ALTER TABLE ... ALTER COLUMN ... SET DEFAULT expression`
+
+-   `ALTER TABLE ... ALTER COLUMN ... DROP DEFAULT`
+
+-   `ALTER TABLE ... ALTER COLUMN ... TYPE` if it does not require rewrite
+
+-   `ALTER TABLE ... ALTER COLUMN ... SET STATISTICS`
+
+-   `ALTER TABLE ... VALIDATE CONSTRAINT`
+
+-   `ALTER TABLE ... ATTACH PARTITION`
+
+-   `ALTER TABLE ... DETACH PARTITION`
+
+-   `ALTER TABLE ... ENABLE TRIGGER` (`ENABLE REPLICA TRIGGER` will still take a DML lock)
+
+-   `ALTER TABLE ... CLUSTER ON`
+
+-   `ALTER TABLE ... SET WITHOUT CLUSTER`
+
+-   `ALTER TABLE ... SET ( storage_parameter = value [, ... ] )`
+
+-   `ALTER TABLE ... RESET ( storage_parameter = [, ... ] )`
+
+-   `ALTER TABLE ... OWNER TO`
+
+All other variants of `ALTER TABLE` take a DML lock on the table being modified.
+Some variants of `ALTER TABLE` have restrictions, noted below.
+
+#### ALTER TABLE Examples
+
+This next example works because the type change is binary coercible and so does not
+cause a table rewrite, so it will execute as a catalog-only change.
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(20));
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(128);
+```
+
+However, making this change to reverse the above command is not possible because
+the change from VARCHAR(128) to VARCHAR(20) is not binary coercible.
+
+```sql
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
+```
+
+See later for suggested workarounds.
+
+It is useful to provide context for different types of ALTER TABLE ...
+ALTER COLUMN TYPE (ATCT) operations that are possible in general and in
+non-replicated environments.
+
+Some ATCT operations only update the metadata of the underlying column
+type and do not require a rewrite of the underlying table data. This is
+typically the case when the existing column type and the target type are
+binary coercible. For example:
+
+```sql
+CREATE TABLE sample (col1 BIGINT PRIMARY KEY, col2 VARCHAR(128), col3 INT);
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(256);
+```
+
+It will also be OK to change the column type to `VARCHAR` or `TEXT`
+datatypes because of binary coercibility. Again, this is just a metadata
+update of the underlying column type.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR;
+ALTER TABLE sample ALTER COLUMN col2 TYPE TEXT;
+```
+
+However, if you want to reduce the size of col2, then that will lead to
+a rewrite of the underlying table data. Rewrite of a table is normally
+restricted.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+```
+
+To give an example with non-text types, consider col3 above with type
+INTEGER. An ATCT operation which tries to convert to SMALLINT or BIGINT
+will fail in a similar manner as above.
+
+```sql
+ALTER TABLE sample ALTER COLUMN col3 TYPE bigint;
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+```
+
+In both the above failing cases, there exists an automatic assignment
+cast from the current types to the target types. However there is no
+binary coercibility, which ends up causing a rewrite of the underlying
+table data.
+
+In such cases, in controlled DBA environments, it is possible to change
+the type of a column to an automatically castable one, by adopting
+a rolling upgrade for the type of this column in a non-replicated
+environment on all the nodes, one by one. If the DDL is not replicated
+and the change of the column type is to an automatically castable one
+as above, then it is possible to allow the rewrite locally on the node
+performing the alter, along with concurrent activity on other nodes on
+this same table. This non-replicated ATCT operation can then be repeated
+on all the nodes one by one to bring about the desired change of the
+column type across the entire BDR cluster. Note that because this
+involves a rewrite, the activity will still take the DML lock for a
+brief period, and thus requires that the whole cluster is available. With
+the above specifics in place, the rolling upgrade of the non-replicated
+alter activity can be carried out as below:
+
+```sql
+-- foreach node in BDR cluster do:
+SET bdr.ddl_replication TO FALSE;
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
+ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
+RESET bdr.ddl_replication;
+-- done
+```
+
+Due to automatic assignment casts being available for many data types,
+this local non-replicated ATCT operation supports a wide variety of
+conversions. Also note that ATCT operations that use a `USING` clause
+are likely to fail because of the lack of automatic assignment casts.
+A few common conversions with automatic assignment casts are mentioned
+below.
+
+```sql
+-- foreach node in BDR cluster do:
+SET bdr.ddl_replication TO FALSE;
+ATCT operations to-from {INTEGER, SMALLINT, BIGINT}
+ATCT operations to-from {CHAR(n), VARCHAR(n), VARCHAR, TEXT}
+ATCT operations from numeric types to text types
+RESET bdr.ddl_replication;
+-- done
+```
+
+The above is not an exhaustive list of possibly allowable ATCT
+operations in a non-replicated environment. Obviously, not all ATCT
+operations will work. The cases where no automatic assignment is
+possible will fail even if we disable DDL replication. So, while
+conversion from numeric types to text types works in non-replicated
+environment, conversion back from text type to numeric types will fail.
+
+```sql
+SET bdr.ddl_replication TO FALSE;
+-- conversion from BIGINT to TEXT works
+ALTER TABLE sample ALTER COLUMN col3 TYPE TEXT;
+-- conversion from TEXT back to BIGINT fails
+ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE which cannot be automatically cast to new type may not affect replicated tables on a BDR node
+RESET bdr.ddl_replication;
+```
+
+While the ATCT operations in non-replicated environments support a
+variety of type conversions, it is important to note that the rewrite
+can still fail if the underlying table data contains values that cannot
+be assigned to the new data type. For example, the current type for
+a column might be `VARCHAR(256)` and we tried a non-replicated ATCT
+operation to convert it into `VARCHAR(128)`. If there is any existing data
+in the table which is wider than 128 bytes, then the rewrite operation
+will fail locally.
+
+```sql
+INSERT INTO sample VALUES (1, repeat('a', 200), 10);
+SET bdr.ddl_replication TO FALSE;
+ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(128);
+INFO:  in rewrite
+ERROR:  value too long for type character varying(128)
+```
+
+If underlying table data meets the characteristics of the new type,
+then the rewrite will succeed. However, there is a possibility that
+replication will fail if other nodes (which have not yet performed the
+non-replicated rolling data type upgrade) introduce new data that
+is wider than 128 bytes concurrently to this local ATCT operation. This
+will bring replication to a halt in the cluster. So it is important
+to be aware of the data type restrictions and characteristics at the
+database and application levels while performing these
+non-replicated rolling data type upgrade operations. It is **strongly**
+recommended and advisable to perform and test such ATCT operations in
+controlled and fully-aware DBA environments. We need to be aware that these
+ATCT operations are asymmetric, and backing out certain changes that fail
+could lead to table rewrites lasting long durations.
+
+Also note that the above implicit castable ALTER activity cannot be
+performed in transaction blocks.
+
+### ALTER TYPE
+
+Users should note that `ALTER TYPE` is replicated but a Global DML lock is *not*
+applied to all tables that use that data type, since PostgreSQL does not
+record those dependencies. See workarounds, below.
+
+<div id='bdr_ddl_can_replicate_comment'></div>
+
+### COMMENT ON 
+
+All variants of COMMENT ON are allowed, but
+`COMMENT ON TABLESPACE/DATABASE/LARGE OBJECT` will not be replicated.
+
+<div id='bdr_ddl_allowed_CreateSeqStmt'></div>
+
+### CREATE SEQUENCE 
+
+Generally `CREATE SEQUENCE` is supported, but when using global
+sequences, some options have no effect.
+
+<div id='bdr_ddl_allowed_CreateStmt'></div>
+
+### CREATE TABLE 
+
+Generally `CREATE TABLE` is supported but `CREATE TABLE WITH OIDS` is not
+allowed on a BDR node.
+
+<div id='bdr_ddl_allowed_CreateTableAsStmt'></div>
+
+### CREATE TABLE AS and SELECT INTO 
+
+`CREATE TABLE AS` and `SELECT INTO` are only allowed on Enteprise Edition of
+BDR and only if any sub-commands are also allowed.
+
+### EXPLAIN
+
+Generally `EXPLAIN` is allowed, but because `EXPLAIN ANALYZE` can have side
+effects on the database, there are some restrictions on it.
+
+<div id='bdr_ddl_can_replicate_explain'></div>
+
+#### EXPLAIN ANALYZE Replication 
+
+EXPLAIN ANALYZE will follow replication rules of the analyzed statement.
+
+<div id='bdr_ddl_lock_explain_stmt'></div>
+
+#### EXPLAIN ANALYZE Locking 
+
+EXPLAIN ANALYZE will follow locking rules of the analyzed statement.
+
+<div id='bdr_ddl_can_replicate_grant'></div>
+
+### GRANT and REVOKE 
+
+Generally `GRANT` and `REVOKE` statements are supported, however
+`GRANT/REVOKE ON TABLESPACE/LARGE OBJECT` will not be replicated.
+
+### LOCK TABLE
+
+`LOCK TABLE` is only executed locally and is not replicated. Normal replication
+happens after transaction commit, so `LOCK TABLE` would not have any effect
+on other nodes.
+
+For globally locking table, users can request a global DML lock explicitly
+by calling `bdr.global_lock_table()`.
+
+<div id='bdr_ddl_can_replicate_seclabel'></div>
+
+### SECURITY LABEL 
+
+All variants of `SECURITY LABEL` are allowed, but
+`SECURITY LABEL ON TABLESPACE/DATABASE/LARGE OBJECT` will not be replicated.
+
+<div id='bdr_ddl_can_replicate_truncate'></div>
+
+### TRUNCATE Replication 
+
+`TRUNCATE` command is replicated as DML, not as DDL statement, so whether
+the `TRUNCATE` on table is replicated depends on replication set settings for
+each affected table.
+
+<div id='bdr_ddl_lock_truncate_stmt'></div>
+
+### TRUNCATE Locking 
+
+Even though `TRUNCATE` is not replicated same way as other DDL, it may acquire
+the global DML lock when `bdr.truncate_locking` is set to `on`.
+
+### Role manipulation statements
+
+Users are global objects in a PostgreSQL instance, which means they span
+multiple databases while BDR operates on an individual database level. This means
+that role manipulation statement handling needs extra thought.
+
+BDR requires that any roles that are referenced by any replicated DDL must
+exist on all nodes. The roles are not required to have the same grants,
+password, etc., but they must exist.
+
+BDR will replicate role manipulation statements if `bdr.role_replication` is
+enabled (default) *and role manipulation statements are run in a BDR-enabled
+database*.
+
+The role manipulation statements include the following statements:
+
+-   CREATE ROLE
+-   ALTER ROLE
+-   DROP ROLE
+-   GRANT ROLE
+-   CREATE USER
+-   ALTER USER
+-   DROP USER
+-   CREATE GROUP
+-   ALTER GROUP
+-   DROP GROUP
+
+In general, either:
+
+-   The system should be configured with `bdr.role_replication = off` and
+    all role (user and group) changes should be deployed by external orchestration
+    tools like Ansible, Puppet, Chef, etc., or explicitly replicated via
+    `bdr.replicate_ddl_command(...)`; or
+
+-   The system should be configured so that exactly one BDR-enabled database
+    on the PostgreSQL instance has `bdr.role_replication = on` and all
+    role management DDL should be run on that database.
+
+It is strongly recommended that you run all role management commands within one
+database.
+
+If role replication is turned off, then the administrator must ensure that
+any roles used by DDL on one node also exist on the other nodes, or BDR apply
+will stall with an `ERROR` until the role is created on the other node(s).
+
+Note: BDR will *not* capture and replicate role management statements when they
+are run on a non-BDR-enabled database within a BDR-enabled PostgreSQL instance.
+For example if you have DBs 'bdrdb' (bdr group member) and 'postgres' (bare db),
+and `bdr.role_replication = on`, then a `CREATE USER` run in `bdrdb` will be
+replicated, but a `CREATE USER` run in `postgres` will not.
+
+### Restricted DDL Workarounds
+
+Some of the limitations of BDR DDL operation handling can be worked around,
+often splitting up the operation into smaller changes can produce desired
+result that is either not allowed as single statement or requires excessive
+locking.
+
+#### Adding a CONSTRAINT
+
+Starting BDR 3.7.4, a CHECK and FOREIGN KEY constraint can be added
+without requiring a DML lock. This requires a 2-step process.
+
+-   `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID`
+-   `ALTER TABLE ... VALIDATE CONSTRAINT`
+
+These steps must be executed in two different transactions. Both these
+steps only take DDL lock on the table and hence can be run even when one
+or more nodes are down. But in order to validate a constraint, BDR must
+ensure that all nodes in the cluster has seen the `ADD CONSTRAINT`
+command and the node validating the constraint has applied replication
+changes from all other nodes prior to creating the NOT VALID constraint
+on those nodes. So even though the new mechanism does not need all nodes
+to be up while validating the constraint, it still requires that all
+nodes should have applied the `ALTER TABLE .. ADD CONSTRAINT ... NOT VALID`
+command and made enough progress. BDR will wait for a consistent
+state to be reached before validating the constraint.
+
+Note that the new facility requires the cluster to run with RAFT protocol
+version 24 and beyond. If the RAFT protocol is not yet upgraded, the old
+mechanism will be used, resulting in a DML lock request.
+
+#### Adding a Column
+
+To add a column with a volatile default, run these commands in
+separate transactions:
+
+```sql
+    ALTER TABLE mytable ADD COLUMN newcolumn coltype; -- Note the lack of DEFAULT or NOT NULL
+
+    ALTER TABLE mytable ALTER COLUMN newcolumn DEFAULT volatile-expression;
+
+	BEGIN;
+	SELECT bdr.global_lock_table('mytable');
+    UPDATE mytable SET newcolumn = default-expression;
+	COMMIT;
+```
+
+This splits schema changes and row changes into separate transactions that
+can be executed by BDR and result in consistent data across all nodes in a
+BDR group.
+
+For best results, batch the update into chunks so that you do not update more than
+a few tens or hundreds of thousands of rows at once. This can be done using
+a `PROCEDURE` with embedded transactions.
+
+It is important that the last batch of changes runs in a transaction that
+takes a global DML lock on the table, otherwise it is possible to miss rows
+that are inserted concurrently into the table on other nodes.
+
+If required, `ALTER TABLE mytable ALTER COLUMN newcolumn NOT NULL;` can be
+run after the `UPDATE` has finished.
+
+#### Changing a Column's Type
+
+PostgreSQL causes a table rewrite in some cases where it could be avoided,
+for example:
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
+```
+
+This statement can be rewritten to avoid a table rewrite by making the
+restriction a table constraint rather than a datatype change, which can
+then be validated in a subsequent command to avoid long locks, if desired.
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
+ALTER TABLE foo
+  ALTER COLUMN description TYPE varchar,
+  ADD CONSTRAINT description_length_limit CHECK (length(description) <= 20) NOT VALID;
+ALTER TABLE foo VALIDATE CONSTRAINT description_length_limit;
+```
+
+Should the validation fail, then it is possible to UPDATE just the failing rows.
+This technique can be used for TEXT and VARCHAR using `length()`, or with
+NUMERIC datatype using `scale()`.
+
+In the general case for changing column type, first add a column of the desired type:
+
+```
+ALTER TABLE mytable ADD COLUMN newcolumn newtype;
+```
+
+Create a trigger defined as `BEFORE INSERT OR UPDATE ON mytable FOR EACH ROW ..`,
+which assigns `NEW.newcolumn` to `NEW.oldcolumn` so that new writes to the
+table update the new column automatically.
+
+`UPDATE` the table in batches to copy the value of `oldcolumn` to
+`newcolumn` using a `PROCEDURE` with embedded transactions. Batching the work
+will help reduce replication lag if it is a big table. Updating by range of
+IDs or whatever method you prefer is fine, or the whole table in one go for
+smaller tables.
+
+`CREATE INDEX ...` any required indexes on the new column. It is safe to
+use `CREATE INDEX ... CONCURRENTLY` run individually without DDL replication
+on each node, to reduce lock durations.
+
+`ALTER` the column to add a `NOT NULL` and `CHECK` constraints, if required.
+
+`BEGIN` a transaction, `DROP` the trigger you added, `ALTER TABLE` to add any
+`DEFAULT` required on the column, `DROP` the old column, and
+`ALTER TABLE mytable RENAME COLUMN newcolumn TO oldcolumn`, then `COMMIT`.
+
+**Because you are dropping a column, you may have to re-create views, procedures,
+etc. that depend on the table. Be careful if you `CASCADE` drop the column,
+as you will need to ensure you re-create everything that referred to it.**
+
+#### Changing Other Types
+
+The `ALTER TYPE` statement is replicated, but affected tables are not locked.
+
+When this DDL is used, the user should ensure that the statement has successfully
+executed on all nodes before using the new type. This can be achieved using
+the `bdr.wait_slot_confirm_lsn()` function.
+
+For example,
+
+```
+ALTER TYPE contact_method ADD VALUE 'email';
+SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+```
+
+will ensure that the DDL has been written to all nodes before using the new value
+in DML statements.
+
+### BDR Functions that behave like DDL
+
+The following BDR management functions act like DDL. This means that they will
+attempt to take global locks and their actions will be replicated, if DDL
+replication is active and DDL filter settings allow that. For detailed
+information, see the documentation for the individual functions.
+
+Replication Set Management
+
+-   bdr.create_replication_set
+-   bdr.alter_replication_set
+-   bdr.drop_replication_set
+-   bdr.replication_set_add_table
+-   bdr.replication_set_remove_table
+-   bdr.replication_set_add_ddl_filter
+-   bdr.replication_set_remove_ddl_filter
+
+Conflict Management
+
+-   bdr.alter_table_conflict_detection
+-   bdr.column_timestamps_enable
+-   bdr.column_timestamps_disable
+
+Sequence Management
+
+-   bdr.alter_sequence_set_kind
+
+Stream Triggers
+
+-   bdr.create_conflict_trigger
+-   bdr.create_transform_trigger
+-   bdr.drop_trigger

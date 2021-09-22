@@ -219,8 +219,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // set computed frontmatter
     node.frontmatter = computeFrontmatterForTreeNode(curr);
 
-    configureRedirects(node.fields.path, node.frontmatter.redirects, actions);
-
     // build navigation tree
     const navigationDepth = 2;
     let navRoot = curr;
@@ -231,6 +229,18 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const prevNext = findPrevNextNavNodes(navTree, curr);
 
     const { docType } = node.fields;
+
+    const isLatest =
+      docType === "doc"
+        ? productVersions[node.fields.product][0] === node.fields.version
+        : false;
+    configureRedirects(
+      node.fields.path,
+      isLatest,
+      node.frontmatter.redirects,
+      actions,
+    );
+
     if (docType === "doc") {
       createDoc(navTree, prevNext, node, productVersions, actions);
     } else if (docType === "advocacy") {
@@ -426,6 +436,8 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
+      hideVersion: Boolean
+      displayBanner: String
     }
 
     enum TileModes {

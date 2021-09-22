@@ -1,4 +1,4 @@
-<img src="static/images/edb-docs-logo-disk-dark.svg" alt='EDB Docs' width="200">
+<img src="static/icons/edb-docs-logo-disc-dark.svg" alt='EDB Docs' width="200">
 
 ![Deploy Main to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Main%20to%20Netlify/badge.svg)
 ![Deploy Develop to Netlify](https://github.com/EnterpriseDB/docs/workflows/Deploy%20Develop%20to%20Netlify/badge.svg)
@@ -18,7 +18,7 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git using Homebrew with `brew install git`, if it's not already installed. (Use `git --version` to check.)
+1. Install Git as well as Git-LFS using Homebrew with `brew install git git-lfs`, if they're not already installed. (Use `git --version` and `git-lfs --version` to check.)
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
@@ -26,7 +26,75 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Navigate to the cloned repo directory in your Terminal, if you haven't already done so.
 
-1. Create a `.env` file: `cp env .env.development`.
+1. Create a `.env.development` file: `cp env.development.example .env.development`.
+
+At this point you have a couple options.
+- [**Quick set up with Docker**](#get-started-quickly-with-docker)
+
+   This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
+
+- [**Set up a full development environment**](#set-up-a-full-development-environment)
+
+   Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
+
+### Get Started Quickly With Docker
+
+1. Install Docker on your mac. [Follow the direction below.](#install-docker-using-homebrew)
+
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions below](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
+
+1. Navigate to the cloned repo directory in your terminal
+
+1. Run `npm run start`. The application will start in the background and take a few minutes to load.
+
+1. You can view logs and monitor the startup process by running `npm run logs`. Once it's finished it can be accessed at `http://localhost:8000/`.
+
+#### Additional Commands and Options for the Docker Environment
+
+- `npm run stop` — Stop the dev server
+
+- `npm run logs` — View logs from the server, to exit the logs press `ctrl`+`c`
+
+- `npm run shell` — open up a shell for the dev container
+
+- `npm run docker:rebuild` — rebuild the images used for the dev container
+
+- To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
+
+### Install Docker using Homebrew
+
+You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
+
+```sh
+brew install --cask docker
+```
+
+If you get a message saying that you already have Docker installed, check which version is installed using these commands:
+
+```sh
+brew ls --formula docker
+brew ls --cask docker
+```
+
+If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
+
+```sh
+brew uninstall -f docker && brew install --cask docker
+```
+
+### Prepare Your Environment to Download Icons
+
+These instructions are for members of the EnterpriseDB Github Org only. The icons we are using are not free, and so cannot be distributed as part of the open source docs repository. You'll want to follow these steps so that icons are pulled to the docs application instead of placeholder icons.
+
+1. Create a Github token which can pull private packages. [You can learn how to do that here.](https://docs.github.com/en/github/authenticating-to-github/keeping-your-account-and-data-secure/creating-a-personal-access-token)
+
+   - The minimum scope the token requires is `read:packages`
+
+   - Make sure to enable SSO for your token or it may not work correctly
+
+1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+
+### Set up a full development environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
@@ -36,36 +104,27 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
-1. Install Yarn with `npm i -g yarn`. Yarn is the package manager we're using for this project, instead of NPM. NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
+1. NPM 7 is the package manager we're using for this project.
+
+   - run `npm -v` to ensure you are using the correct version of npm. If you do not have version 7, you can run `npm install -g npm@7` to install it.
+
+   - NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
 1. Install Gatsby with `npm i -g gatsby-cli`. Gatsby is the software that powers the EDB Docs site.
 
-1. Install all required packages by running `yarn`.
+1. If you're a member of the EnterpriseDB Github Org, [follow the instructions above](#prepare-your-environment-to-download-icons) to enable icons in the docs application.
 
-1. And finally, you can start up the site locally with `yarn develop`, which should make it live at `http://localhost:8000/`. Huzzah!
+1. In order to ensure environmental variables are properly set, [install direnv](https://direnv.net/#getting-started) and run `direnv allow .`
+
+1. Install all required packages by running `npm install`
+
+1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
 ### Building Local PDFs (optional)
 
 To build PDFs locally, you'll need to use a Docker container.
 
-1. Install Docker using Homebrew:
-
-   ```sh
-   brew install --cask docker
-   ```
-
-   If you get a message saying that you already have Docker installed, check which version is installed using these commands:
-
-   ```sh
-   brew ls --formula docker
-   brew ls --cask docker
-   ```
-
-   If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
-
-   ```sh
-   brew uninstall -f docker && brew install --cask docker
-   ```
+1. Install Docker on your mac. [Follow the direction above.](#install-docker-using-homebrew)
 
 1. Start the Docker app. You can tell whether Docker has started or not by looking at your menu bar icons, you should see a whale with containers on its back:
 
@@ -80,13 +139,13 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   yarn build-pdf product_docs/docs/<product_folder>/<version>
+   npm run build-pdf product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   yarn build-pdf product_docs/docs/epas/13
+   npm run build-pdf product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
@@ -109,9 +168,9 @@ If you are a Windows user, you can work with Docs without installing it locally 
 
 By default, all document sources will be loaded into the app during development. It's possible to set up a configuration file, `dev-sources.json`, to only load specific sources, but this is not required.
 
-#### `yarn config-sources`
+#### `npm run config-sources`
 
-Run `yarn config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
+Run `npm run config-sources` to setup your `dev-sources.json` file. This file tells Gatsby which sources to load. The script is interactive!
 
 Alternatively, you can setup your `dev-sources.json` file manually by copying `dev-sources.sample` to `dev-sources.json`, and editing as desired. The sample file will source everything by default.
 
@@ -132,13 +191,15 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 If you experience errors or other issues with the site, try the following in the project folder:
 
 1. `rm -rf node_modules` to clean out installed JavaScript packages
-1. `yarn` to reinstall JavaScript packages
-1. `yarn clean` to clean up Gatsby cache
-1. `yarn develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
+1. `npm install` to reinstall JavaScript packages
+1. `npm run clean` to clean up Gatsby cache
+1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
 
 ## Development
 
-All changes should have a pull request opened against the default branch, `develop`. When a pull request is opened, Heroku should automatically create a review build, which should be linked in the pull request under "deployments". Review builds only include advocacy content. When a pull request is merged, `develop` will automatically deploy the changes to the staging environment.
+All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
+
+When a PR is merged into the `develop` branch, the result will be deployed to the [staging](#staging) environment.
 
 To deploy to production, create a pull request merging `develop` into `main`. When that PR is merged, `main` will automatically build and deploy to the production site.
 
@@ -150,19 +211,25 @@ Deployments of the site use the `build-sources.json` file to determine which sou
 
 Staging is hosted on Netlify, and is built from the `develop` branch. The build and deployment process is handled by the `deploy-develop.yml` GitHub workflow.
 
+Staging environment URL: https://edb-docs-staging.netlify.app/docs/
+
 #### Production
 
 Production is hosted on Netlify, and is built from the `main` branch. The build and deployment process is handled by the `deploy-main.yml` GitHub workflow. The production deployment process will update the search index on Algolia.
 
-#### Review Builds
+Production environment URL: https://www.enterprisedb.com/docs
 
-Review builds are automatically created for pull requests. These builds are created by Heroku, and only include advocacy content, no other sources.
+#### Draft deployments
+
+Review builds are automatically created for pull requests when the `deploy` tag is added. The build and deployment process is handled by the `deploy-draft.yml` GitHub workflow. Draft builds are [a Netlify feature](https://docs.netlify.com/cli/get-started/#draft-and-production-deploys) - each new draft has a unique URL (based on the Staging URL) that will persist even when later revisions are deployed.
 
 ## Redirects
 
 The app is concerned with two different types of redirects that can be defined in frontmatter.
 
 ### Internal Redirects (within Docs 2.0)
+
+*For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md).*
 
 #### `redirects`
 
@@ -174,7 +241,17 @@ redirects:
   - "/another_old_path"
 ```
 
-both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301). 
+
+These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
+
+   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/ 
+   - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
+   - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
+
+#### Netlify-specific redirects
+
+Netlify is the hosting service we use for Docs. Netlify-specific redirects can be found in [`/static/_redirects`](static/_redirects). These are generally used for large-scale redirects, such as when renaming or removing an entire product version.
 
 ### Docs 1.0 to Docs 2.0 redirects
 
@@ -285,4 +362,3 @@ Option 2: on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
-

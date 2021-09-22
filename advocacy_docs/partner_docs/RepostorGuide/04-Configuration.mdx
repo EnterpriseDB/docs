@@ -1,0 +1,165 @@
+---
+title: 'Configuring the Integration'
+description: 'Walkthrough of configuring the Data Protector for PostgreSQL integration'
+---
+
+## Prerequisites
+
+- The database host with the EDB Postgres Advanced environment needs the following components:
+    
+   - IBM supported operating system for Spectrum Protect clients.
+
+  - Spectrum Protect BA client (used for regular file backup).
+
+  - Spectrum Protect API client.
+
+  - EDB Postgres Advanced version 9.6 or above.
+
+  - Repostor Data Protector client.
+
+
+- A PostgreSQL user needs to be defined for use with the RDP.
+    
+  - This user needs to be able to connect to EDB Postgres Advanced and have sufficient permissions for
+database backup and restore.
+
+  - This user needs access to local Spectrum Protect files to read configuration files and to write to log files.
+
+    !!! Note
+        If the user is not the same user that owns the PostgreSQL server process, make sure that the server process owner has the correct SP client file access so they can execute `archive_command`.
+
+- A Spectrum Protect node needs to be defined in the Spectrum Protect server environment in a
+management class that suits the needs of the DBA team.
+
+- The Spectrum Protect client details for setting up connection to Spectrum Protect server needs to be
+available including the client Spectrum Protect password.
+
+
+## Installation and configuration of Repostor Data Protector for PostgreSQL
+
+The high-level steps for installing and configuring the integration are:
+
+1. [Configure local Spectrum Protect configuration files.](/#configure-local-spectrum-protect-configuration-files)
+1. [Install Repostor Data Protector client.](#install-repostor-data-protector-client)
+1. [Verify the Connection to PostgreSQL psql.](/#verify-the-connection-to-postgresql-psql)
+1. [Configure PostgreSQL `archive_command` to use logwriter.](#configure-postgresql-archive_command-to-use-logwriter)
+1. [Set up a backup script.](#set-up-a-backup-script)
+
+### Configure the Local Spectrum Protect Configuration Files 
+
+Configure the local Spectrum Protect configuration files with details needed to connect to
+Spectrum Protect server:
+
+1. Create Spectrum Protect options file with the logical servername.
+
+2. Edit the `dsm.sys` file by adding a section for the new logical servername for this Spectrum Protect node with
+connection details.
+
+3. Create soft links from the API directory to the ba clients bin directory, for `dsm.sys` and `dsm.opt`. This example uses `dsm.postgres.opt` Spectrum Protect options filename:
+
+   ``` 
+    ln -s /opt/tivoli/tsm/client/ba/bin/dsm.sys
+        /opt/tivoli/tsm/client/api/bin64/dsm.sys
+    ln -s /opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+        /opt/tivoli/tsm/client/api/bin64/dsm.opt
+   ```    
+
+   Here is the listing (`ls -l` command) from API directory for this example showing the links:
+
+   ```    
+    dsm.opt -> /opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+    dsm.sys -> /opt/tivoli/tsm/client/ba/bin/dsm.sys
+   ```    
+
+4. Set the `DSMI_CONFIG` variable for the OS user that runs the RDP tools. This is preferably the same user
+that owns the PostgreSQL server process.
+
+5. Verify that the OS user can connect to Spectrum Protect server. This also verifies the correct file access to local SP files.
+    
+   ``` 
+   dsmc q session -se=XXX
+   ``` 
+  
+  where ‘XXX’ is your logical servername.
+    
+
+### Install the Repostor Data Protector Client
+
+1. Verify that IBM Spectrum Protect clients for API and BA are already installed. For example:
+
+   ```    
+    rpm -aq | grep TIV
+    TIVsm-API64-8.1.8-0.x86_64
+    TIVsm-BA-8.1.8-0.x86_64
+   ```   
+
+2. Install RDP (verify that you have latest version on www.repostor.com):
+    ```   
+    rpm -ivh rdp4Postgres-4.4.4.0-31.x86_64
+    ```   
+    If you are on Ubuntu, you need to prepare the package with the `alien` tool:
+    
+    ```
+     sudo apt-get install alien
+     sudo alien rdp4Postgres-4.4.4.0-31.x86_64.rpm
+     sudo dpkg -I rdp4Postgres-4.4.4.0-31.deb
+    ```
+
+
+3. Install the license file. The `license.dat` file should be placed in the Repostor `/opt/repostor/rdp4Postgres/etc` directory. If no
+license is available yet a trial license is automatically generated the first time a backup is run. This
+trial license needs to be cleared with a special `UNLOCK` key before changing to a contract license.
+
+4. Add the Repostor `bin` directory to the PATH. All users that run RDP commands need to have the PATH set to include the Repostor `bin` directory.
+The path is `/opt/repostor/rdp4Postgres/bin`.
+
+### Verify the Connection to PostgreSQL psql
+
+The user used with the `-u` option to the RDP commands needs to be able to connect to PostgreSQL and be
+allowed to backup/restore databases.
+
+For example, to verify the connection for user `enterprisedb`:
+
+```
+    psql -U enterprisedb -l
+```
+### Configure PostgreSQL `archive_command` to Use logwriter
+
+If your PostgreSQL environment has WAL activated and you plan to backup PostgreSQL on the instance
+level (`-f` option with RDP), then you need to configure the PostgreSQL ‘archive_command’ to run the
+RDP `logwriter.script`.
+
+For example, this is a sample specification of the `archive_command` in the `postgresql.conf` file:
+```
+    archive_command =
+    ‘/opt/repostor/rdp4Postgres/bin/logwriter.script -v -S instName
+    -s “%p” -d %f’
+```
+!!! note
+    The instance name you specify with the `-S` option needs to be the same as the one you use with the RDP `postgresbackup`
+    command. The `logwriter.script` is a script that calls the logwriter binary. It is a script to allow for local configuration if you want
+    to set a specific environment before running the logwriter.
+
+### Set up a Backup Script
+
+If you run `postgresbackup` from a script that initiated from Spectrum Protect scheduler, you should set `LOGNAME`.
+
+Note that the PATHs and filenames are unique to each installation in this exampple:
+
+```
+    #!/bin/bash
+    #
+
+    ### Set PATH & DSMI_CONFIG
+    export PATH=$PATH:/opt/repostor/rdp4Postgres/bin
+    export DSMI_CONFIG=/opt/tivoli/tsm/client/ba/bin/dsm.postgres.opt
+
+    ### Set LOGNAME
+    export LOGNAME=enterprisedb
+
+    ### Run postgresbackup command, send output to logfile under /tmp
+    postgresbackup -u enterprisedb -f -z -v >/tmp/postgresbackup.log 2>&1
+```
+
+
+

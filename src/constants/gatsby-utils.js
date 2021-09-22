@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
@@ -251,20 +252,30 @@ const findPrevNextNavNodes = (navTree, currNode) => {
   return prevNext;
 };
 
-const configureRedirects = (toPath, redirects, actions, config = {}) => {
+const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
   if (!redirects) return;
   redirects.forEach((fromPath) => {
-    actions.createRedirect(
-      Object.assign(
-        {
+    // allow relative paths in redirects
+    fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
+    if (fromPath !== toPath)
+      actions.createRedirect({
+        fromPath,
+        toPath,
+        redirectInBrowser: true,
+        isPermanent: true,
+      });
+    if (toIsLatest) {
+      fromPath = replacePathVersion(fromPath);
+      toPath = replacePathVersion(toPath);
+      if (fromPath !== toPath)
+        actions.createRedirect({
           fromPath,
-          toPath: toPath,
+          toPath,
           redirectInBrowser: true,
-          isPermanent: true,
-        },
-        config,
-      ),
-    );
+          isPermanent: false,
+          force: true,
+        });
+    }
   });
 };
 

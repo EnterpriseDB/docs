@@ -1,0 +1,70 @@
+---
+title: "Managing Postgres Access"
+---
+
+The `edb_admin` database role and `edb_admin` database created during the _Create Cluster_ process should not be used by your application. Instead, create a new database role and a new database, which provides a high level of isolation in Postgres. If multiple applications are using the same cluster, each database can also contain multiple schemas, essentially a namespace in the database. If strict isolation is needed, use a dedicated cluster or dedicated database. If that strict isolation level is not required, a single database can be deployed with multiple schemas. Please refer to the [Privileges](https://www.postgresql.org/docs/current/ddl-priv.html) topic in the PostgreSQL documentation to further customize ownership and roles to your requirements.
+
+To create a new role and database, first connect using `psql`:
+
+```
+psql -W "postgres://edb_admin@xxxxxxxxx.xxxxx.edbcloud.io:5432/edb_admin?sslmode=require"
+```
+## Notes on the edb_admin Role
+
+The `edb_admin` role does not have superuser priviledges by default. You should contact [Support](../overview/06_support) to request superuser priviledges for `edb_admin`.
+
+superuser setting changes are not retained after a restart. To avoid issues, do not run the system out of superuser connections.
+
+You have to remember your `edb_admin` password as EDB does not have access to it. If you forget it, you can set a new one in the EDB Cloud portal on the **Edit Cluster** page.
+Don't use the `edb_admin` user or the `edb_admin` database in your applications. Instead, use `CREATE USER; GRANT; CREATE DATABASE.`
+
+EDB Cloud stores all database-level authentication securely and directly in PostgreSQL. The `edb_admin` user password is SCRAM-SHA-256 hashed prior to storage. This hash, even if compromised, cannot be replayed by an attacker to gain access to the system.
+
+## One Database with One Application
+
+For one database hosting a single application, replacing app1 with your preferred user name:
+
+1. Create a new database user. For example,
+    ```
+    edb_admin=# create user app1 with password 'app1_pwd';
+    ```
+
+1. Assign the `edb_admin` role to your new user. For example,
+    ```
+    edb_admin=# grant app1 to edb_admin;
+    ```
+
+1. Create a new database to store application data. For example,
+    ```
+    edb_admin=# create database app1 with owner app1;
+    ```
+
+Using this example, the username and database in your connection string would be `app1`.
+
+## One Database with Multiple Schemas
+
+If a single database is used to host multiple schemas, create a database owner and then roles and schemas for each application. The example in the following steps shows creating two database roles and two schemas. The default `search_path` for database roles in EDB Cloud is `"$user",public`. If the role name and schema match, then objects in that schema will match first, and no `search_path` changes or fully qualifying of objects are needed. The [PostgreSQL documentation](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH) covers the schema search path in detail.
+
+1. Create a database owner and new database. For example,
+    ```
+    edb_admin=# create user prod_admin with password 'prod_pwd';
+    edb_admin=# create database prod1 with owner prod_admin;
+    ```
+
+1. Connect to the new database. For example,
+    ```
+    edb_admin=# \c prod1
+    ```
+1. Create new application roles. For example,
+    ```
+    prod1=# create user app1 with password 'app1_pwd';
+    prod1=# grant app1 to edb_admin;
+
+    prod1=# create user app2 with password 'app2_pwd';
+    prod1=# grant app2 to edb_admin;
+    ```
+1. Create a new schema for each application with the AUTHORIZATION clause for the application owner. For example,
+    ```
+    prod1=# create schema app1 authorization app1;
+    prod1=# create schema app2 authorization app2;
+    ```
