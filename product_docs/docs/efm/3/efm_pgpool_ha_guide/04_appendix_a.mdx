@@ -1,0 +1,67 @@
+---
+title: "EFM Pgpool Integration Using Azure Network Load Balancer"
+
+---
+
+<div id="appendix_a" class="registered_link"></div>
+
+This section describes a specific use case for EFM Pgpool integration, where the database, EFM, and Pgpool are installed on CentOS 8 Virtual Machines in Azure. For this specific use case, Azure Load Balancer (LNB) has been used to distribute the traffic amongst all the active Pgpool Instances instead of directing the traffic using Pgpool VIP.
+
+![Architecture diagram for EFM and Pgpool integration using Azure Load Balancer](images/EFM_PgPool_Azure.png)
+
+**Step 1 (Installation)**:
+
+Install and configure Advanced Server database, EFM, and Pgpool on Azure Virtual Machines as following:
+
+| **Systems** | **Components**                                                                 |
+| ----------- | ------------------------------------------------------------------------------ |
+| Primary     | Primary node running Advanced Server 13 and Failover Manager 4.1               |
+| Standby 1   | Standby node running Advanced Server 13, Failover Manager 4.1, and Pgpool 4.1. |
+| Standby 2   | Standby node running Advanced Server 13, Failover Manager 4.1, and Pgpool 4.1. |
+| Witness     | Witness node running Failover Manager 4.1 and Pgpool 4.1.                      |
+
+**Step 2 (Pgpool configuration)**:
+
+Configure Pgpool as per the steps given in chapter 3 (except for delegate_ip, which should be left empty in this architecture).
+
+**Step 3 (Azure Load Balancer configuration)**:
+
+You need to do the following configuration for using Azure NLB:
+
+**Networking**: You need to ensure the following settings for Network Load Balancer and for each of the virtual machines: Assign Public IP as well as private IP to the NLB, and only private IP to the virtual machines. The application server should connect to the NLB over public IP and NLB in turn should connect to the virtual machines over private IPs.
+
+In the current scenario, following are the IP addresses assigned to each component:
+
+-   Public IP of NLB : 40.76.240.33 (pcp.host)
+-   Private IP of Primarydb : 172.16.1.3 (note that this is not part of the backend pool of the Load Balancer)
+-   Private IP of Standby 1 : 172.16.1.4
+-   Private IP of Standby 2 : 172.16.1.5
+-   Private IP of witness node: 172.16.1.6
+
+Ensure that the ports required to run the database, EFM, and Pgpool are open for communication. Following is the list of default ports for each of these component (you can customize the ports for your environment):
+
+-   Database: 5444
+-   EFM: 7800 (bind.address)
+-   Pgpool: 9000, 9694, 9898, 9999
+
+**Backend pool**: Create a Backend pool consisting of all the 3 virtual machines running Pgpool instances. Use the private IPs of the virtual machines to create the Backend pool.
+
+![Backend pool in Azure console](images/backend_pools.png)
+
+**Health Probe**: Add a health probe to check if the Pgpool instance is available on the virtual machines. The health probe periodically pings the virtual machines of the Backend pool on port 9999. If it does not receive any response from any of the virtual machines, it assumes that the Pgpool instance is not available and hence stops sending traffic towards that particular machine.
+
+![Health probes in Azure console](images/health_probes.png)
+
+**Load balancing rules**: Add two Load balancing rules - one each for port 9898 and port 9999. These rules should ensure that the network traffic coming towards that particular port gets distributed evenly among all the virtual machines present in the Backend pool.
+
+![Load balancing rules in Azure console](images/load_balancing_rules.png)
+
+1.  Rule created for port 9999 (i.e. PCP port)
+
+![Load balancing rule for port 9999](images/rule_port_9898.png)
+
+1.  Rule created for port 9999 (i.e. Pgpool port)
+
+![Load balancing rule for port 9999](images/rule_port_9999.png)
+
+After configuration of the above-mentioned setup, you can connect to Postgres on the IP address of the Network Load Balancer on port 9999. If a failure occurs on the Primary database server, EFM will promote a new Primary and then reconfigure Pgpool to redistribute traffic. If any one of the Pgpool processes is not available to accept traffic anymore, the Network Load Balancer will redistribute all the traffic to the remaining two Pgpool processes. Make sure that listen_backlog_multiplier is tuned to compensate for the higher number of connections in case of failover.

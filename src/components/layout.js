@@ -3,12 +3,14 @@ import { Helmet } from "react-helmet";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import {
   Archive,
+  AuthenticatedContentPlaceholder,
   CodeBlock,
   KatacodaPageLink,
   KatacodaPanel,
   LayoutContext,
   Link,
   StubCards,
+  IconList,
   TextBalancer,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
@@ -80,7 +82,9 @@ const Layout = ({
       KatacodaPageLink,
       Icon,
       StubCards,
+      IconList,
       Archive,
+      AuthenticatedContentPlaceholder,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage],
   );

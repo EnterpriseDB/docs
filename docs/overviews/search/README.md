@@ -34,7 +34,7 @@ There is an algolia index setup specificially for testing index changes called `
 
 The `edb-docs-test.netlify.app` environment also uses this index. This environment can be handy to show others the changes you've made.
 
-To enable indexing locally, set `INDEX_ON_BUILD=true` when you run `yarn build`.
+To enable indexing locally, set `INDEX_ON_BUILD=true` when you run `npm run build`.
 
 ### Example: Add a New Field
 

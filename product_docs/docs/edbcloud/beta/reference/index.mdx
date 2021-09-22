@@ -1,0 +1,214 @@
+---
+title: Using the EDB Cloud API
+---
+
+Use the EDB Cloud API to integrate directly with EDB Cloud for management activities such as cluster provisioning, de-provisioning, and scaling.
+
+The API reference documentation is available from the [EDB Cloud portal](https://portal.edbcloud.com). The direct documentation link is [https://portal.edbcloud.com/api/docs/](https://portal.edbcloud.com/api/docs/).
+
+To access the API, you need a token. The high-level steps to obtain a token are:
+1. [Query the authentication endpoint](#query-the-authentication-endpoint).
+2. [Request the device code](#request-the-device-code).
+3. [Authorize as a user](#authorize-as-a-user).
+4. [Request the token](#request-the-token).
+
+
+
+## Query the Authentication Endpoint
+
+Use the following command to get the information returned by the authentication endpoint that you need later:
+
+```
+curl https://portal.edbcloud.com/api/v1/auth/provider
+```
+
+The response returns the `clientId`, `issuerUri`, `scope`, and `audience`. For example:
+```
+{
+  "clientId": "pM8PRguGtW9yVnrsvrvpaPyyeS9fVvFh",
+  "issuerUri": "https://auth.edbcloud.com",
+  "scope": "openid profile email offline_access",
+  "audience": "https://portal.edbcloud.com/api"
+}
+```
+
+EDB recommends you store the output in environment variables to make including them in the following calls easier. For example,
+
+```
+CLIENT_ID=pM8PRguGtW9yVnrsvrvpaPyyeS9fVvFh
+ISSUER_URL=https://auth.edbcloud.com
+SCOPE="openid profile email offline_access"
+AUDIENCE="https://portal.edbcloud.com/api"
+```
+The following example calls show use these environment variables.
+
+## Request the Device code
+
+Use the following call to get a device code:
+```
+curl --request POST \
+  --url "$ISSUER_URL/oauth/device/code" \
+  --header "content-type: application/x-www-form-urlencoded" \
+  --data "client_id=$CLIENT_ID" \
+  --data "scope=$SCOPE" \
+  --data "audience=$AUDIENCE"
+```
+
+The response returns:
+
+- `device_code` - the unique code for the device. When you go to the `verification_uri` in your browser-based device, this code is bound to your session. You use this code in your [request for a token](#request-the-token).
+- `user_code` - the code you input at the `verification_uri` to authorize the device. You use this code when you [authorize yourself as a user](#authorize-as-a-user).
+- `verification_uri` - the URL you use to authorize your device.
+- `verification_uri_complete` - the complete URL you use to authorize the device. You can use this URL to embed the user code in your app's URL.
+- `expires_in` indicates the lifetime (in seconds) of the `device_code` and `user_code`.
+- `interval` indicates the interval (in seconds) at which the app should poll the token URL to request a token.
+
+For example:
+```
+{
+  "device_code": "KEOY2_5YjuVsRuIrrR-aq5gs",
+  "user_code": "HHHJ-MMSZ",
+  "verification_uri": "https://auth.edbcloud.com/activate",
+  "expires_in": 900,
+  "interval": 5,
+  "verification_uri_complete": "https://auth.edbcloud.com/activate?user_code=HHHJ-MMSZ"
+}
+```
+
+Store the device_code in an environment variable for future use. For example;
+
+```
+DEVICE_CODE=KEOY2_5YjuVsRuIrrR-aq5gs
+```
+
+## Authorize as a User
+
+1. Go to the `verification_uri` in your web browser, enter your `user_code`, and select **Continue**.
+
+4. Select **Confirm** on the Device Confirmation dialog.
+
+5. Select **Continue with Microsoft Azure AD** on the EDB Cloud Welcome screen.
+
+6. Log in with your Azure AD credentials.
+
+
+## Request the Token
+
+Use the `curl --request POST` command to request a token. For example,
+```
+curl --request POST \
+  --url "$ISSUER_URL/oauth/token" \
+  --header "content-type: application/x-www-form-urlencoded" \
+  --data "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  --data "device_code=$DEVICE_CODE" \
+  --data "client_id=$CLIENT_ID"
+```
+If successful, the call returns:
+- `access_token` - use to access the EDB Cloud API. See [Access Tokens](https://auth0.com/docs/tokens/access-tokens) for more information.
+
+- `refresh_token` - use to obtain a new access token or ID token after the previous one has expired. (See [Refresh Tokens](https://auth0.com/docs/tokens/refresh-tokens) for more information.) Refresh tokens expire after 30 days.
+
+- `expires_in` - means the token expires after 24 hours since its creation.
+
+For example:
+```
+{
+  "access_token": "eyJhbGc.......1Qtkaw2fyho",
+  "id_token": "eyJhbGci.......FBra7tA",
+  "refresh_token": "v1.MTvuZpu.......sbiionEhtTw",
+  "scope": "openid profile email offline_access",
+  "expires_in": 86400,
+  "token_type": "Bearer"
+}
+```
+Store the access_token and refresh_token in environment variables for future use. For example,
+
+```
+ACCESS_TOKEN="eyJhbGc.......1Qtkaw2fyho"
+REFRESH_TOKEN="v1.MTvuZpu.......sbiionEhtTw"
+```
+
+If not successful, you receive one of the following errors:
+- `authorization_pending` - continue polling using the suggested interval retrieved when you [requested the device code](#request-the-device-code).
+
+- `slow_down` - slow down and use the suggested interval retrieved when you [requested the device code](#request-the-device-code). To avoid receiving this error due to network latency, you should start counting each interval after receipt of the last polling request's response.
+- `expired_token` - you have not authorized the device quickly enough, so the `device_code` has expired. Your application should notify you that it has expired and to restore it.
+- `access_denied`
+
+!!! Tip
+Contact [Customer Support](../overview/06_support) if you have trouble obtaining a valid access token to access EDB Cloud API.
+!!!
+
+## Calling the API
+
+To call the EDB Cloud API, your application must pass the retrieved access token as a bearer token in the Authorization header of your HTTP request. For example:
+
+```
+curl --request GET \
+  --url "$AUDIENCE/v1/postgres-types" \
+  --header "authorization: Bearer $ACCESS_TOKEN"  \
+  --header "content-type: application/json"
+```
+
+Example response:
+```
+{
+  "pgTypesList": [
+    {
+      "id": "epas",
+      "name": "EDB Postgres Advanced Server",
+      "description": "",
+      "dockerImage": ""
+    },
+    {
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "description": "",
+      "dockerImage": ""
+    }
+  ]
+}
+```
+
+
+## Refreshing your Token
+
+You can use the refresh token to get a new access token. Usually you need a new access token only after the previous one expires or when gaining access to a new resource for the first time. You shouldn't call the endpoint to get a new access token every time you call an API. There are rate limits that throttle the amount of requests to the endpoint that can be executed using the same token from the same IP.
+
+To refresh your token, make a POST request to the `/oauth/token` endpoint in the Authentication API, using `grant_type=refresh_token`. For example:
+```
+curl --request POST \
+  --url "$ISSUER_URL/oauth/token" \
+  --header "content-type: application/x-www-form-urlencoded" \
+  --data "grant_type=refresh_token" \
+  --data "client_id=$CLIENT_ID" \
+  --data "refresh_token=$REFRESH_TOKEN"
+```
+The `refresh_token` is in the response when you [requested the token](#request-the-device-code).
+
+The `client_id` is always the same one in the response when you [queried the authentication endpoint](#query-the-authentication-endpoint).
+
+The response of this API call includes the `access_token`. For example:
+```
+{
+  "access_token": "eyJ...MoQ",
+  "expires_in": 86400,
+  "scope": "openid offline_access",
+  "id_token": "eyJ...0NE",
+  "refresh_token": "v1.Mjv..._2pRs",
+  "token_type": "Bearer"
+}
+```
+
+!!! Note
+    You need to save the `refresh_token` retrieved from this response for the next refresh call. The `refresh_token` in the response when you originally [requested the token](#request-the-token) is obsoleted once it has been used.
+
+
+
+
+
+
+
+
+
+

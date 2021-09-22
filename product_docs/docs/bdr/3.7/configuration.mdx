@@ -1,0 +1,411 @@
+---
+navTitle: Configuration
+title: PostgreSQL Configuration for BDR
+originalFilePath: configuration.md
+
+---
+
+There are several PostgreSQL configuration parameters that affect BDR
+nodes. Note that these parameters could be set differently on each node,
+though that is not recommended, in general.
+
+## PostgreSQL Settings for BDR
+
+BDR requires these PostgreSQL settings to run correctly:
+
+-   `wal_level` - Must be set to `logical`, since BDR relies upon logical decoding.
+-   `shared_preload_libraries` - This must contain `pglogical,bdr` (in that order),
+    though may also contain other entries before or afterwards, as needed.
+-   `track_commit_timestamp` - Must be set to 'on' for conflict resolution to
+    retrieve the timestamp for each conflicting row.
+
+BDR requires these PostgreSQL settings to be set to appropriate values,
+which vary according to the size and scale of the cluster.
+
+-   `logical_decoding_work_mem` - memory buffer size used by logical decoding.
+    Transactions larger than this will overflow the buffer and be stored
+    temporarily on local disk. Default 64MB, but can be set much higher.
+
+-   `max_worker_processes` - BDR uses background workers for replication
+    and maintenance tasks, so there need to be enough worker slots for it to
+    work correctly. The formula for the correct minimal number of workers is:
+    one per PostgreSQL instance + one per database on that instance + four
+    per BDR-enabled database + one per peer node in the BDR group + one for each
+    writer enabled per peer node in the BDR group, for each database.
+    Additional worker processes may be needed temporarily when node is being
+    removed from a BDR group.
+
+-   `max_wal_senders` - Two needed per every peer node.
+
+-   `max_replication_slots` - Same as `max_wal_senders`.
+
+-   `wal_sender_timeout` and `wal_receiver_timeout` - Determine how
+    quickly an origin considers its CAMO partner as disconnected or
+    reconnected; see [CAMO Failure Scenarios](camo#failure-scenarios) for
+    details.
+
+Note that in normal running for a group with N peer nodes, BDR will require
+N slots/walsenders. During synchronization, BDR will temporarily use another
+N - 1 slots/walsenders, so be careful to set the above parameters high enough
+to cater for this occasional peak demand.
+
+With parallel apply turned on, the number of slots needs to be increased to
+N slots from above formula \* writers. This is because the `max_replication_slots`
+also sets maximum number of replication origins and some of the functionality
+of parallel apply uses extra origin per writer.
+
+When WAL Decoder is enabled, the WAL decoder process will require one extra 
+replication slot per BDR group.
+
+The general safe recommended value on a 4 node BDR Group with a single database
+is just to set `max_replication_slots` and `max_worker_processes` to something
+like `50` and `max_wal_senders` to at least `10`.
+
+Note also that changing these parameters requires restarting the local node:
+`max_worker_processes`, `max_wal_senders`, `max_replication_slots`.
+
+Applications may also wish to set these parameters. Please see chapter on
+[Durability & Performance Options] for further discussion.
+
+-   `synchronous_commit` - affects the durability and performance of BDR replication
+    in a similar way to [physical replication](https://www.postgresql.org/docs/11/runtime-config-wal.html#GUC-SYNCHRONOUS-COMMIT).
+-   `synchronous_standby_names` - same as above
+
+## 2ndQPostgres Settings for BDR
+
+The following Postgres settings need to be considered for commit at
+most once (CAMO), a feature that is only available for BDR in
+combination with 2ndQPostgres.  Some of these are only available in
+2ndQPostgres; others already exist in the community version, but only
+become relevant with BDR in combination with CAMO.
+
+-   `synchronous_replication_availability` - Can optionally be `async`
+    for increased availability by allowing an origin to continue and
+    commit after its CAMO partner got disconnected.  Under the default
+    value of `wait`, the origin will wait indefinitely, and proceed to
+    commit only after the CAMO partner reconnects and sends
+    confirmation.
+-   `snapshot_timestamp` - Turns on the usage of
+    [timestamp-based snapshots](tssnapshots) and sets the timestamp to use.
+
+## pglogical Settings for BDR
+
+BDR is also affected by some of the pglogical settings as it uses 
+pglogical internally to implement the basic replication.
+
+-   `pglogical.track_subscription_apply` - Track apply statistics for 
+    each subscription.
+-   `pglogical.track_relation_apply` - Track apply statistics for each 
+    relation.
+-   `pglogical.track_apply_lock_timing` - Track lock timing when tracking
+    statistics for relations.
+-   `pglogical.standby_slot_names` - When using physical Standby nodes
+    intended for failover purposes, should be set to the replication 
+    slot(s) for each intended Standby.
+-   `pglogical.writers_per_subscription` - Default number of writers per
+    subscription (in BDR this can also be changed by
+    `bdr.alter_node_group_config` for a group).
+-   `pglogical.max_writers_per_subscription` - Maximum number of writers
+    per subscription (sets upper limit for the setting above).
+
+## BDR Specific Settings
+
+There are also BDR specific configuration settings that can be set.
+Unless noted otherwise, values may be set by any user at any time.
+
+### Conflict Handling
+
+-   `bdr.default_conflict_detection` - Sets the default conflict detection method
+    for newly created tables; accepts same values as
+    [bdr.alter_table_conflict_detection()](conflicts#bdralter_table_conflict_detection)
+
+### Global Sequence Parameters
+
+-   `bdr.default_sequence_kind` - Sets the default [sequence kind](sequences).
+
+### DDL Handling
+
+-   `bdr.default_replica_identity` - Sets the default value for `REPLICA IDENTITY`
+    on newly created tables. The `REPLICA IDENTITY` defines which information is
+    written to the write-ahead log to identify rows which are updated or deleted.
+
+    The accepted values are:
+
+    -   `DEFAULT` - records the old values of the columns of the primary key,
+        if any (this is the default PostgreSQL behavior).
+    -   `FULL` - records the old values of all columns in the row.
+    -   `NOTHING` - records no information about the old row.
+
+    See [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY)
+    for more details.
+
+    BDR can not replicate `UPDATE`s and `DELETE`s on tables without a `PRIMARY KEY`
+    or `UNIQUE` constraint, unless the replica identity for the table is `FULL`,
+    either by table-specific configuration or via `bdr.default_replica_identity`.
+
+    If bdr.default_replica_identity is DEFAULT and there is a `UNIQUE`
+    constraint on the table, it will not be automatically picked up as `REPLICA
+    IDENTITY`.  It needs to be set explicitly at the time of creating the table,
+    or afterwards as described in the documentation above.
+
+    Setting the replica identity of table(s) to `FULL` increases the volume of
+    WAL written and the amount of data replicated on the wire for the table.
+
+-   `bdr.ddl_replication` - Automatically replicate DDL across nodes (default
+    "on").
+
+    This parameter can be only set by bdr_superuser or superuser roles.
+
+    Running DDL or calling BDR administration functions with
+    `bdr.ddl_replication = off` can create situations where replication stops
+    until an administrator can intervene. See [the DDL replication chapter](ddl)
+    for details.
+
+    A `LOG`-level log message is emitted to the PostgreSQL server logs whenever
+    `bdr.ddl_replication` is set to `off`. Additionally, a `WARNING-level`
+    message is written whenever replication of captured DDL commands or BDR
+    replication functions is skipped due to this setting.
+
+-   `bdr.role_replication` - Automatically replicate ROLE commands across nodes
+    (default "on"). This parameter is settable by a superuser only. This setting
+    only works if `bdr.ddl_replication` is turned on as well.
+
+    Turning this off without using external methods to ensure roles are in sync
+    across all nodes may cause replicated DDL to interrupt replication until
+    the administrator intervenes.
+
+    See [Role manipulation statements in the DDL replication chapter](ddl#Role_manipulation_statements)
+    for details.
+
+-   `bdr.ddl_locking` - Configures the operation mode of global locking for DDL.
+
+    This parameter can be only set by bdr_superuser or superuser roles.
+
+    Possible options are:
+
+    -   off - do not use global locking for DDL operations
+    -   on - use global locking for all DDL operations
+    -   dml - only use global locking for DDL operations that need to prevent
+        writes by taking the global DML lock for a relation
+
+    A `LOG`-level log message is emitted to the PostgreSQL server logs
+    whenever `bdr.ddl_replication` is set to `off`. Additionally, a `WARNING`
+    message is written whenever any global locking steps are skipped due to
+    this setting. It is normal for some statements to result in two `WARNING`s,
+    one for skipping the DML lock and one for skipping the DDL lock.
+
+-   `bdr.truncate_locking` - False by default, this configuration option sets the 
+    TRUNCATE command's locking behavior. Determines whether (when true) TRUNCATE
+    obeys the bdr.ddl_locking setting.
+
+### Global Locking
+
+-   `bdr.ddl_locking` - Described above.
+-   `bdr.global_lock_max_locks` - Maximum number of global locks that can be
+    held on a node (default 1000). May only be set at Postgres server start.
+-   `bdr.global_lock_timeout` - Sets the maximum allowed duration of any wait
+    for a global lock (default 1 minute). A value of zero disables this timeout.
+-   `bdr.global_lock_statement_timeout` - Sets the maximum allowed duration of
+    any statement holding a global lock (default 10 minutes).
+    A value of zero disables this timeout.
+-   `bdr.global_lock_idle_timeout` - Sets the maximum allowed duration of
+    idle time in transaction holding a global lock (default 10 minutes).
+    A value of zero disables this timeout.
+
+### Node Management
+
+-   `bdr.replay_progress_frequency` - Interval for sending replication position
+    info to the rest of the cluster (default 1 minute).
+
+### Generic Replication
+
+-   `bdr.xact_replication` - Replicate current transaction (default "on").
+
+    Turning this off will make the whole transaction local only, which
+    means the transaction will not be visible to logical decoding by
+    BDR and all other downstream targets of logical decoding. Data will
+    not be transferred to any other node, including logical standby nodes.
+
+    This parameter can be only set by the bdr_superuser or superuser roles.
+
+    This parameter can only be set inside the current transaction using the
+    `SET LOCAL` command unless `bdr.permit_unsafe_commands = on`.
+
+!!! Note
+    Even with transaction replication disabled, WAL will be generated
+    but those changes will be filtered away on the origin.
+
+!!! Warning
+    Turning off `bdr.xact_replication` *will* lead to data
+    inconsistency between nodes, and should only be used to recover from
+    data divergence between nodes or in
+    replication situations where changes on single nodes are required for
+    replication to continue. Use at your own risk.
+
+-   `bdr.permit_unsafe_commands` - Option to override safety check on commands
+    that are deemed unsafe for general use.
+
+    Requires `bdr_superuser` or PostgreSQL superuser.
+
+!!! Warning
+    The commands that are normally not considered safe may either
+    produce inconsistent results or break replication altogether. Use at your
+    own risk.
+
+-   `bdr.batch_inserts` - How many consecutive inserts to one table within
+    a single transaction turns on batch processing of inserts for that table.
+
+    This option allows replication of large data loads as COPY internally,
+    rather than set of inserts. It also how the initial data during node join
+    is copied.
+
+-   `bdr.maximum_clock_skew`
+
+    This specifies what should be considered as the maximum difference between
+    the incoming transaction commit timestamp and the current time on the
+    subscriber before triggering `bdr.maximum_clock_skew_action`.
+
+    This checks if the timestamp of the currently replayed transaction is in the
+    future compared to the current time on the subscriber; and if it is, and the
+    difference is larger than `bdr.maximum_clock_skew`, it will do the action
+    specified by the `bdr.maximum_clock_skew_action` setting.
+
+    The default is -1, which means: ignore clock skew (the check is turned
+    off). It is valid to set 0 as when the clock on all servers are synchronized,
+    the fact that we are replaying the transaction means it has been committed in
+    the past.
+
+-   `bdr.maximum_clock_skew_action`
+
+    This specifies the action to take if a clock skew higher than
+    `bdr.maximum_clock_skew` is detected.
+
+    There are two possible values for this option:
+
+    -   `WARN` - Log a warning about this fact. The warnings are logged once per
+        minute (the default) at the maximum to prevent flooding the server log.
+    -   `WAIT` - Wait for as long as the current local timestamp is no longer older than
+        remote commit timestamp minus the `bdr.maximum_clock_skew`.
+
+### CRDTs
+
+-   `bdr.crdt_raw_value` - Sets the output format of [CRDT Data Types](crdt).
+    The default output (when this setting is `off`) is to return only the current
+    value of the base CRDT type (for example, a bigint for `crdt_pncounter`).
+    When set to `on`, the returned value represents the full representation of
+    the CRDT value, which can for example include the state from multiple nodes.
+
+### Max Prepared Transactions
+
+-   `max_prepared_transactions` - Needs to be set high enough to cope
+    with the maximum number of concurrent prepared transactions across
+    the cluster due to explicit two-phase commits, CAMO or Eager
+    transactions.  Exceeding the limit prevents a node from running a
+    local two-phase commit or CAMO transaction, and will prevent all
+    Eager transactions on the cluster.
+    May only be set at Postgres server start.
+
+### Eager Replication
+
+-   `bdr.commit_scope` - Setting the commit scope to `global` enables
+    [eager all node replication](eager) (default `local`).
+
+-   `bdr.global_commit_timeout` - Timeout for both stages of a global
+    two-phase commit (default 60s) as well as for CAMO-protected transactions
+    in their commit phase, as a limit for how long to wait for the CAMO
+    partner.
+
+### Commit at Most Once
+
+-   `bdr.enable_camo` - Used to enable and control the CAMO feature.
+    Defaults to `off`.  CAMO can be switched on per transaction by
+    setting this to `remote_write`, `remote_commit_async`, or
+    `remote_commit_flush`.  For backwards-compatibility, the values
+    `on`, `true`, and `1` set the safest `remote_commit_flush` mode.
+    While `false` or `0` also disable CAMO.
+-   `bdr.camo_partner_of` - Allows specifying a CAMO partner per database.
+    Expects pairs of database name and node name joined by a colon.  Multiple
+    pairs may be specified, but only the first occurrence per database
+    is taken into account.  For example: `'db1:node_4 test_db:test_node_3'`.
+    May only be set at Postgres server start.
+-   `bdr.camo_origin_for` - Per-database node name of the origin of
+    transactions in a CAMO pairing; for each database, this needs to match
+    with the `bdr.camo_partner_of` setting on the corresponding origin node.
+    May only be set at Postgres server start.
+-   `bdr.standby_dsn` - Allows manual override of the connection
+    string (DSN) to reach the CAMO partner, in case it has changed since
+    the crash of the local node.  Should usually be unset.
+    May only be set at Postgres server start.
+-   `bdr.camo_local_mode_delay` - The commit delay that applies in
+    CAMO's Local mode to emulate the overhead that normally occurs with
+    the CAMO partner having to confirm transactions.  Defaults to 5 ms.
+    Setting to 0 disables this feature.
+-   `bdr.camo_enable_client_warnings` - Emit warnings if an activity is
+    carried out in the database for which CAMO properties cannot be
+    guaranteed. This is enabled by default. Well-informed users can choose
+    to disable this to reduce the amount of warnings going into their logs.
+
+### Timestamp-based Snapshots
+
+-   `bdr.timestamp_snapshot_keep` - For how long to keep valid snapshots for the
+    timestamp-based snapshot usage (default 0, meaning do not keep past snapshots).
+    Also see `snapshot_timestamp` above.
+
+### Monitoring and Logging
+
+-   `bdr.debug_level` - Defines the log level that BDR uses to write
+    its debug messages. The default value is `debug2`. If you want to see
+    detailed BDR debug output, set `bdr.debug_level = 'log'`.
+
+-   `bdr.trace_level` - Similar to the above, this defines the log level
+    to use for BDR trace messages.  Enabling tracing on all nodes of a
+    BDR cluster may help 2ndQuadrant Support to diagnose issues.
+    May only be set at Postgres server start.
+
+!!! Warning
+    Setting `bdr.debug_level` or `bdr.trace_level` to a value >=
+    `log_min_messages` can produce a very large volume of log output, so it should not
+    be enabled long term in production unless plans are in place for log filtering,
+    archival and rotation to prevent disk space exhaustion.
+
+### Internals
+
+-   `bdr.raft_keep_min_entries` - The minimum number of entries to keep in the
+    Raft log when doing log compaction (default 100). The value of 0 will disable
+    log compaction. **WARNING: If log compaction is disabled, the log will
+    grow in size forever.** May only be set at Postgres server start.
+
+-   `bdr.raft_response_timeout` - To account for network failures, the
+    Raft consensus protocol implemented will time out requests after a
+    certain amount of time.  This timeout defaults to 30 seconds.
+
+-   `bdr.raft_log_min_apply_duration` - To move the state machine
+    forward, Raft appends entries to its internal log.  During normal
+    operation, appending takes only a few milliseconds.  This poses an
+    upper threshold on the duration of that append action, above which
+    an `INFO` message is logged.  This may indicate an
+    actual problem. Default value of this parameter is 3000 ms.
+
+-   `bdr.raft_log_min_message_duration` - When to log a consensus request.
+     Measure round trip time of a bdr consensus request and log an
+     `INFO` message if the time exceeds this parameter. Default value
+     of this parameter is 5000 ms.
+
+-   `bdr.backwards_compatibility` - Specifies the version to be
+    backwards-compatible to, in the same numerical format as used by
+    `bdr.bdr_version_num`, e.g. `30618`.  Enables exact behavior of a
+    former BDR version, even if this has generally unwanted effects.
+    Defaults to the current BDR version. Since this changes from release
+    to release, we advise against explicit use within the configuration
+    file unless the value is different to the current version.
+
+-   `bdr.track_replication_estimates` - Track replication estimates in terms
+    of apply rates and catchup intervals for peer nodes.  This information can
+    be used by protocols like CAMO to estimate the readiness of a
+    peer node. This parameter is enabled by default.
+
+-   `bdr.lag_tracker_apply_rate_weight` - We monitor how far behind peer nodes
+    are in terms of applying WAL from the local node, and calculate a moving
+    average of the apply rates for the lag tracking. This parameter specifies
+    how much contribution newer calculated values have in this moving average
+    calculation. Default value is 0.1.

@@ -12,11 +12,10 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
-  TopBar,
 } from "../components";
 
 export const query = graphql`
-  query($nodeId: String!) {
+  query ($nodeId: String!) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
@@ -138,7 +137,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav

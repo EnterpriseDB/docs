@@ -1,0 +1,693 @@
+---
+title: Application Usage
+originalFilePath: appusage.md
+
+---
+
+This chapter looks at BDR from an application or user perspective.
+
+Setting up nodes is discussed in a later chapter, as is replication
+of DDL, and various options for controlling replication using
+replication sets.
+
+## Application Behavior
+
+BDR supports replicating changes made on one node to other nodes.
+
+BDR will, by default, replicate all changes from INSERTs, UPDATEs, DELETEs
+and TRUNCATEs from the source node to other nodes. Only the final changes
+will be sent, after all triggers and rules have been processed. For example,
+INSERT ... ON CONFLICT UPDATE will send either an INSERT or an UPDATE
+depending on what occurred on the origin. If an UPDATE or DELETE affects
+zero rows, then no changes will be sent.
+
+INSERTs can be replicated without any pre-conditions.
+
+For UPDATEs and DELETEs to be replicated on other nodes, we must be able to
+identify the unique rows affected. BDR requires that a table have either
+a PRIMARY KEY defined, a UNIQUE constraint or have an explicit REPLICA IDENTITY
+defined on specfic column(s). If one of those is not defined, a WARNING will be
+generated, and later UPDATEs or DELETEs will be explicitly blocked.
+If REPLICA IDENTITY FULL is defined for a table, then a unique index is not required;
+in that case, UPDATEs and DELETEs are allowed and will use the first non-unique
+index that is live, valid, not deferred and does not have expressions or WHERE
+clauses, otherwise a sequential scan will be used.
+
+TRUNCATE can be used even without a defined replication identity.
+Replication of TRUNCATE commands is supported, but some care must be taken
+when truncating groups of tables connected by foreign keys. When replicating
+a truncate action, the subscriber will truncate the same group of tables that
+was truncated on the origin, either explicitly specified or implicitly
+collected via CASCADE, except in cases where replication sets are defined,
+see [Replication Sets](repsets) chapter for further details and examples.
+This will work correctly if all affected tables are part of the same
+subscription. But if some tables to be truncated on the subscriber have
+foreign-key links to tables that are not part of the same (or any)
+replication set, then the application of the truncate action on the
+subscriber will fail.
+
+Row-level locks taken implicitly by INSERT, UPDATE and DELETE commands will
+be replicated as the changes are made.
+Table-level locks taken implicitly by INSERT, UPDATE, DELETE and TRUNCATE
+commands will also be replicated.
+Explicit row-level locking (SELECT ... FOR UPDATE/FOR SHARE) by user sessions
+is not replicated, nor are advisory locks. Information stored by transactions
+running in SERIALIZABLE mode is not replicated to other nodes; the
+transaction isolation level of SERIALIAZABLE is supported but transactions
+will not be serialized across nodes, in the presence of concurrent
+transactions on multiple nodes.
+
+If DML is executed on multiple nodes concurrently then potential conflicts
+could occur if executing with asynchronous replication and these must be
+must be either handled or avoided. Various avoidance mechanisms are possible,
+discussed in the chapter on [Conflicts](conflicts) which is also
+required reading.
+
+Sequences need special handling, described in the [Sequences](sequences)
+chapter.
+
+Binary data in BYTEA columns is replicated normally, allowing "blobs" of data
+up to 1GB in size. Use of the PostgreSQL "Large object" facility is not
+supported in BDR.
+
+Rules execute only on the origin node, so are not executed during apply,
+even if they are enabled for replicas.
+
+Replication is only possible from base tables to base tables. That is, the
+tables on the source and target on the subscription side must be
+tables, not views, materialized views, or foreign tables. Attempts to
+replicate tables other than base tables will result in an error.
+DML changes that are made through updatable views are resolved through to
+base tables on the origin and then applied to the same base table name on
+the target.
+
+BDR supports partitioned tables transparently, meaning that a partitioned
+table can be added to a replication set and
+changes that involve any of the partitions will be replicated downstream.
+
+By default, triggers execute only on the origin node. For example, an INSERT
+trigger executes on the origin node and is ignored when we apply the change on
+the target node. You can specify that triggers should execute on both the origin
+node at execution time and on the target when it is replicated ("apply time")
+by using `ALTER TABLE ... ENABLE ALWAYS TRIGGER`, or use the `REPLICA` option
+to execute only at apply time, `ALTER TABLE ... ENABLE REPLICA TRIGGER`.
+
+Some types of trigger are not executed on apply, even if they exist on a
+table and are currently enabled. Trigger types not executed are
+
+-   Statement-level triggers (FOR EACH STATEMENT)
+-   Per-column UPDATE triggers (UPDATE OF column_name [, ...])
+
+BDR replication apply uses the system-level default search_path. Replica
+triggers, stream triggers and index expression functions may assume
+other search_path settings which will then fail when they execute on apply.
+To ensure this does not occur, resolve object references clearly using
+either the default search_path only, always use fully qualified references to
+objects, e.g. schema.objectname, or set the search path for a function using
+`ALTER FUNCTION ... SET search_path = ...` for the functions affected.
+
+Note that BDR assumes that there are no issues related to text or other
+collatable datatypes, i.e. all collations in use are available on all
+nodes and the default collation is the same on all nodes. Replication of
+changes uses equality searches to locate Replica Identity values, so this
+will not have any effect except where unique indexes are explicitly defined
+with non-matching collation qualifiers. Row filters might be affected
+by differences in collations if collatable expressions were used.
+
+BDR handling of very-long "toasted" data within PostgreSQL is transparent to
+the user. Note that the TOAST "chunkid" values will likely differ between
+the same row on different nodes, but that does not cause any problems.
+
+BDR cannot work correctly if Replica Identity columns are marked as "external".
+
+PostgreSQL allows CHECK() constraints that contain volatile functions. Since
+BDR re-executes CHECK() constraints on apply, any subsequent re-execution that
+doesn't return the same result as previously will cause data divergence.
+
+BDR does not restrict the use of Foreign Keys; cascading FKs are allowed.
+
+BDR does not currently support the use of non-ASCII schema or relation names.
+Later versions will remove this restriction.
+
+## Non-replicated statements
+
+None of the following user commands are replicated by BDR, so their effects
+occur on the local/origin node only:
+
+-   Cursor operations (DECLARE, CLOSE, FETCH)
+-   Execution commands (DO, CALL, PREPARE, EXECUTE, EXPLAIN)
+-   Session management (DEALLOCATE, DISCARD, LOAD)
+-   Parameter commands (SET, SHOW)
+-   Constraint manipulation (SET CONSTRAINTS)
+-   Locking commands (LOCK)
+-   Table Maintenance commands (VACUUM, ANALYZE, CLUSTER, REINDEX)
+-   Async operations (NOTIFY, LISTEN, UNLISTEN)
+
+Note that since the `NOTIFY` SQL command and the `pg_notify()` functions
+are not replicated, notifications are *not* reliable in case of failover.
+This means that notifications could easily be lost at failover if a
+transaction is committed just at the point the server crashes.
+Applications running `LISTEN` may miss notifications in case of failover.
+This is regrettably true in standard PostgreSQL replication and BDR does
+not yet improve on this. CAMO and Eager replication options do not
+allow the `NOTIFY` SQL command or the `pg_notify()` function.
+
+## DML and DDL Replication
+
+Note that BDR does not replicate the DML statement, it replicates the changes
+caused by the DML statement. So for example, an UPDATE that changed
+two rows would replicate two changes, whereas a DELETE that did not
+remove any rows would not replicate anything. This means that the results
+of execution of volatile statements are replicated, ensuring there is no
+divergence between nodes as might occur with statement-based replication.
+
+DDL replication works differently to DML. For DDL, BDR replicates the
+statement, which is then executed on all nodes. So a DROP TABLE IF EXISTS
+might not replicate anything on the local node, but the statement is
+still sent to other nodes for execution if DDL replication is enabled.
+Full details are covered in their own chapter: [DDL replication].
+
+BDR goes to great lengths to ensure that intermixed DML and DDL
+statements work correctly, even within the same transaction.
+
+## Replicating between different release levels
+
+BDR is designed to replicate between nodes that have different major
+versions of PostgreSQL. This is a feature designed to allow major
+version upgrades without downtime.
+
+BDR is also designed to replicate between nodes that have different
+versions of BDR software. This is a feature designed to allow version
+upgrades and maintenance without downtime.
+
+However, while it's possible to join a node with a major version in
+a cluster, you can not add a node with a minor version if the cluster
+uses a newer protocol version, this will return error. 
+
+Both of the above features may be affected by specific restrictions;
+any known incompatibilities will be described in the release notes.
+
+## Replicating between nodes with differences
+
+By default, DDL will automatically be sent to all nodes. This can be
+controlled manually, as described in [DDL Replication](ddl), which
+could be used to create differences between database schemas across nodes.
+BDR is designed to allow replication to continue even while minor
+differences exist between nodes. These features are designed to allow
+application schema migration without downtime, or to allow logical
+standby nodes for reporting or testing.
+
+Currently, replication requires the same table name on all nodes. A future
+feature may allow a mapping between different table names.
+
+It is possible to replicate between tables with dissimilar partitioning
+definitions, such as a source which is a normal table replicating to a
+partitioned table, including support for updates that change partitions
+on the target. It can be faster if the partitioning definition is the
+same on the source and target since dynamic partition routing need not be
+executed at apply time.
+Further details are available in the chapter on Replication Sets.
+
+By default, all columns are replicated.
+BDR replicates data columns based on the column name. If a column
+has the same name but a different datatype, we attempt to cast from the source
+type to the target type, if casts have been defined that allow that.
+
+BDR supports replicating between tables that have a different number of columns.
+
+If the target has missing column(s) from the source then BDR will raise
+a target_column_missing conflict, for which the default conflict resolver
+is ignore_if_null. This will throw an ERROR if a non-NULL value arrives.
+Alternatively, a node can also be configured with a conflict resolver of ignore.
+This setting will not throw an ERROR, just silently ignore any additional
+columns.
+
+If the target has additional column(s) not seen in the source record then BDR will
+raise a source_column_missing conflict, for which the default conflict resolver
+is use_default_value. Replication will proceed if the additional columns
+have a default, either NULL (if nullable) or a default expression, but will
+throw an ERROR and halt replication if not.
+
+Transform triggers can also be used on tables to provide default values
+or alter the incoming data in various ways before apply.
+
+If the source and the target have different constraints, then
+replication will be attempted, but it might fail if the rows from
+source cannot be applied to the target. Row filters may help here.
+
+Replicating data from one schema to a more relaxed schema won't cause failures.
+Replicating data from a schema to a more restrictive schema will be a source of
+potential failures.
+The right way to solve this is to place a constraint on the more relaxed side,
+so bad data is prevented from being entered. That way, no bad data ever arrives
+via replication, so it will never fail the transform into the more restrictive
+schema. For example, if one schema has a column of type TEXT and another schema
+defines the same column as XML, add a CHECK constraint onto the TEXT column
+that enforces that the text is XML.
+
+A table may be defined with different indexes on each node. By default, the
+index definitions will be replicated. Refer to [DDL Replication](ddl) to
+specify how to create an index only on a subset of nodes, or just locally.
+
+Storage parameters, such as fillfactor and toast_tuple_target, may differ
+between nodes for a table without problems. An exception to that is the
+value of a table's storage parameter `user_catalog_table` must be identical
+on all nodes.
+
+A table being replicated should be owned by the same user/role on each node.
+Refer to [Security and Roles](security) for further discussion.
+
+Roles may have different passwords for connection on each node, though
+by default changes to roles are replicated to each node. Refer to
+[DDL Replication](ddl) to specify how to alter a role password only on a
+subset of nodes, or just locally.
+
+## Comparison between nodes with differences
+
+Livecompare is a tool used for data comparison on a database, against BDR and
+non-BDR nodes. It needs a minimum number of two connections to compare against
+and reach a final result.
+
+From Livecompare 1.3 , you could configure with `all_bdr_nodes` set. This will
+save you from clarifying all the relevant DSNs for each separate node in the
+cluster. A BDR cluster has N amount of nodes with connection information, but
+its only the initial and output connection that livecompare 1.3+ needs in order
+to complete its job. Setting `logical_replication_mode` will state how all the
+nodes are communicating.
+
+All the configuration is done within a .ini file, named bdrLC.ini for example.
+Templates for this configuration file can be seen within the
+`/etc/2ndq-livecompare/` location, where they were placed after the package
+install.
+
+During the execution of LiveCompare, you will see N+1 progress bars, N being
+the number of processes. Once all the tables are sourced a time will display,
+as the transactions per second (tps) has been measured. This will continue to
+count the time, giving you an estimate, then a total execution time at the end.
+
+This tool has a lot of customisation and filters. Such as tables, schemas and
+replication_sets. LiveCompare can use stop-start without losing context
+information, so it can be run at convenient times. After the comparison, a
+summary and a DML script are generated so the user can review it. Please apply
+the DML to fix the found differences, if any.
+
+## General Rules for Applications
+
+As discussed above, BDR uses replica identity values to identify the rows to
+be changed.
+Applications can cause difficulties if they insert, delete, and then later
+re-use the same unique identifiers.
+This is known as the ABA Problem. BDR cannot know whether the rows are the
+current row, the last row, or much older rows.
+See <https://en.wikipedia.org/wiki/ABA_problem>.
+
+Similarly, since BDR uses table names to identify the table against which
+changes will be replayed, a similar ABA problem exists with applications that
+CREATE, then DROP, and then later re-use the same object names.
+
+These issues give rise to some simple rules for applications to follow:
+
+1.  Use unique identifiers for rows (INSERT)
+2.  Avoid modification of unique identifiers (UPDATE)
+3.  Avoid reuse of deleted unique identifiers
+4.  Avoid reuse of dropped object names
+
+In the general case, breaking those rules can lead to data anomalies and
+divergence. Applications can break those rules as long as certain conditions
+are met, but use caution: although anomalies can be unlikely, they are not
+impossible. For example, a row value can be reused as long as the DELETE has
+been replayed on all nodes, including down nodes. This might normally occur in
+less than a second, but could potentially take days if a severe issue occurred
+on one node that prevented it from restarting correctly.
+
+## Timing Considerations and Synchronous Replication
+
+Being asynchronous by default, peer nodes may lag behind making it's
+possible for a client connected to multiple BDR nodes or switching
+between them to read stale data.
+
+A [queue wait function](functions#bdrwait_for_apply_queue) is
+provided for clients or proxies to prevent such stale reads.
+
+In addition, BDR provides multiple variants for more synchronous
+replication.  Please refer to the
+[Durability & Performance Options](durability)
+chapter for an overview and comparison of all variants available and
+its different modes.
+
+## Application Testing
+
+BDR applications can be tested using the following programs,
+in addition to other techniques.
+
+-   [TPAexec]
+-   [pgbench with CAMO/Failover options]
+-   [isolationtester with multi-node access]
+
+### TPAexec
+
+TPAexec is the system used by EDB to deploy reference TPA
+architectures, including those based on Postgres-BDR.
+
+TPAexec includes test suites for each reference architecture; it also
+simplifies creating and managing a local collection of tests to be run
+against a TPA cluster, using a syntax as in the following example:
+
+```
+tpaexec test mycluster mytest
+```
+
+We strongly recommend that developers write their own multi-node suite
+of TPAexec tests which verify the main expected properties of the
+application.
+
+### pgbench with CAMO/Failover options
+
+pgbench has been extended to allow users to run failover tests while
+using CAMO or regular BDR deployments. The following new options have
+been added:
+
+```
+-m, --mode=regular|camo|failover
+mode in which pgbench should run (default: regular)
+
+--retry
+retry transactions on failover
+```
+
+in addition to the above options, the connection information about the
+peer node for failover must be specified in [DSN
+form](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
+
+-   Use `-m camo` or `-m failover` to specify the mode for pgbench.
+    The `-m failover` specification can be used to test failover in
+    regular BDR deployments.
+
+-   Use `--retry` to specify whether transactions should be retried when
+    failover happens with `-m failover` mode. This is enabled by default
+    for `-m camo` mode.
+
+Here's an example invocation in a CAMO environment:
+
+```sh
+    pgbench -m camo -p $node1_port -h $node1_host bdrdemo \
+        "host=$node2_host user=postgres port=$node2_port dbname=bdrdemo"
+```
+
+The above command will run in `camo` mode. It will connect to `node1` and run the tests; if the
+connection to `node1` connection is lost, then pgbench will connect to
+`node2`. It will query `node2` to get the status of in-flight transactions.
+Aborted and in-flight transactions will be retried in `camo` mode.
+
+In `failover` mode, if `--retry` is specified then in-flight transactions will be retried. In
+this scenario there is no way to find the status of in-flight transactions.
+
+### isolationtester with multi-node access
+
+isolationtester has been extended to allow users to run tests on multiple
+sessions and on multiple nodes. This is used for internal BDR testing,
+though it is also available for use with user application testing.
+
+```
+$ isolationtester \
+     --outputdir=./iso_output \
+     --create-role=logical \
+     --dbname=postgres \
+     --server 'd1=dbname=node1' \
+     --server 'd2=dbname=node2' \
+     --server 'd3=dbname=node3'
+```
+
+Isolation tests are a set of tests run for examining concurrent behaviors in
+PostgreSQL. These tests require running multiple interacting transactions,
+which requires management of multiple concurrent connections, and therefore
+can't be tested using the normal `pg_regress` program.  The name "isolation"
+comes from the fact that the original motivation was to test the
+serializable isolation level; but tests for other sorts of concurrent
+behaviors have been added as well.
+
+It is built using PGXS as an external module.
+On installation, it creates isolationtester binary file which is run by
+`pg_isolation_regress` to perform concurrent regression tests and observe
+results.
+
+`pg_isolation_regress` is a tool similar to `pg_regress`, but instead of using
+psql to execute a test, it uses isolationtester. It accepts all the same
+command-line arguments as `pg_regress`. It has been modified to accept multiple
+hosts as parameters. It then passes these host conninfo's along with server names
+to isolationtester binary. Isolation tester compares these server names with the
+names specified in each session in the spec files and runs given tests on
+respective servers.
+
+To define tests with overlapping transactions, we use test specification
+files with a custom syntax, which is described in the next section. To add
+a new test, place a spec file in the specs/ subdirectory, add the expected
+output in the expected/ subdirectory, and add the test's name to the Makefile.
+
+Isolationtester is a program that uses libpq to open multiple connections,
+and executes a test specified by a spec file. A libpq connection string
+specifies the server and database to connect to; defaults derived from
+environment variables are used otherwise.
+
+Specification consists of five parts, tested in this order:
+
+`server "<name>"`
+
+  This defines the name of the servers that the sessions will run on.
+  There can be zero or more server `<name>` specifications.
+  The conninfo corresponding to the names is provided via the command to
+  run isolationtester. This is described in `quickstart_isolationtest.md`.
+  This part is optional.
+
+`setup { <SQL> }`
+
+  The given SQL block is executed once, in one session only, before running
+  the test.  Create any test tables or other required objects here. This
+  part is optional.  Multiple setup blocks are allowed if needed; each is
+  run separately, in the given order.  (The reason for allowing multiple
+  setup blocks is that each block is run as a single PQexec submission,
+  and some statements such as VACUUM cannot be combined with others in such
+  a block.)
+
+`teardown { <SQL> }`
+
+  The teardown SQL block is executed once after the test is finished. Use
+  this to clean up in preparation for the next permutation, e.g dropping
+  any test tables created by setup. This part is optional.
+
+`session "<name>"`
+
+  There are normally several "session" parts in a spec file. Each
+  session is executed in its own connection. A session part consists
+  of three parts: setup, teardown and one or more "steps". The per-session
+  setup and teardown parts have the same syntax as the per-test setup and
+  teardown described above, but they are executed in each session. The
+  setup part typically contains a "BEGIN" command to begin a transaction.
+
+  Additionally, a session part also consists of `connect_to` specification.
+  This points to server name specified in the beginning which
+  indicates the server on which this session runs.
+
+  `connect_to "<name>"`
+
+  Each step has the syntax
+
+  `step "<name>" { <SQL> }`
+
+  where `<name>` is a name identifying this step, and SQL is a SQL statement
+  (or statements, separated by semicolons) that is executed in the step.
+  Step names must be unique across the whole spec file.
+
+`permutation "<step name>"`
+
+  A permutation line specifies a list of steps that are run in that order.
+  Any number of permutation lines can appear.  If no permutation lines are
+  given, the test program automatically generates all possible orderings
+  of the steps from each session (running the steps of any one session in
+  order).  Note that the list of steps in a manually specified
+  "permutation" line doesn't actually have to be a permutation of the
+  available steps; it could for instance repeat some steps more than once,
+  or leave others out.
+
+Lines beginning with a # are considered comments.
+
+For each permutation of the session steps (whether these are manually
+specified in the spec file, or automatically generated), the isolation
+tester runs the main setup part, then per-session setup parts, then
+the selected session steps, then per-session teardown, then the main
+teardown script.  Each selected step is sent to the connection associated
+with its session.
+
+To run isolation tests in a BDR3 environment that ran all prerequisite make
+commands, follow the below steps, 
+
+1.  Run `make isolationcheck-install` to install the isolationtester submodule
+
+2.  You can run isolation regression tests using either
+    of the following commands from the bdr-private repo
+
+      `make isolationcheck-installcheck`
+      `make isolationcheck-makecheck`
+
+A. To run isolationcheck-installcheck, you need to have two or more postgresql
+servers running. Pass the conninfo's of servers to `pg_isolation_regress`
+in BDR 3.0 Makefile.
+  Ex: `pg_isolation_regress --server 'd1=host=myhost dbname=mydb port=5434'
+  --server 'd2=host=myhost1 dbname=mydb port=5432'`
+
+Now, add a .spec file containing tests in specs/isolation directory
+of bdr-private/ repo. Add .out file in expected/isolation directory of
+bdr-private/ repo.
+
+Then run 
+  `make isolationcheck-installcheck`
+
+B. Isolationcheck-makecheck currently supports running isolation tests on a
+single instance by setting up BDR between multiple databases.
+
+You need to pass appropriate database names, conninfos of bdr instances
+to `pg_isolation_regress` in BDR Makefile as follows:
+  `pg_isolation_regress --dbname=db1,db2 --server 'd1=dbname=db1'
+  --server 'd2=dbname=db2'`
+
+Then run 
+  `make isolationcheck-makecheck`
+
+Each step may contain commands that block until further action has been taken
+(most likely, some other session runs a step that unblocks it or causes a
+deadlock).  A test that uses this ability must manually specify valid
+permutations, i.e. those that would not expect a blocked session to execute a
+command.  If a test fails to follow that rule, isolationtester will cancel it
+after 300 seconds.  If the cancel doesn't work, isolationtester will exit
+uncleanly after a total of 375 seconds of wait time.  Testing invalid
+permutations should be avoided because they can make the isolation tests take
+a very long time to run, and they serve no useful testing purpose.
+
+Note that isolationtester recognizes that a command has blocked by looking
+to see if it is shown as waiting in the `pg_locks` view; therefore, only
+blocks on heavyweight locks will be detected.
+
+## Performance Testing & Tuning
+
+BDR allows you to issue write transactions onto multiple master nodes.
+Bringing those writes back together onto each node has a cost in
+performance that you should be aware of.
+
+First, replaying changes from another node has a CPU cost, an I/O cost
+and it will generate WAL records. The resource usage is usually less
+than in the original transaction since CPU overheads are lower as a result
+of not needing to re-execute SQL. In the case of UPDATE and DELETE
+transactions there may be I/O costs on replay if data isn't cached.
+
+Second, replaying changes holds table-level and row-level locks that can
+produce contention against local workloads. The CRDT (Conflict-free Replicated Data Types) and CLCD (Column-Level Conflict Detection) features
+ensure you get the correct answers even for concurrent updates, but they
+don't remove the normal locking overheads. If you get locking contention,
+try to avoid conflicting updates and/or keep transactions as short as
+possible. A heavily updated row within a larger transaction will cause
+a bottleneck on performance for that transaction. Complex applications
+require some thought to maintain scalability.
+
+If you think you're having performance problems, you're encouraged
+to develop performance tests using the benchmarking tools above. pgbench
+allows you to write custom test scripts specific to your use case
+so you can understand the overheads of your SQL and measure the impact
+of concurrent execution.
+
+So if "BDR is running slow", then we suggest the following:
+
+1.  Write a custom test script for pgbench, as close as you can make it
+    to the production system's problem case.
+2.  Run the script on one node to give you a baseline figure.
+3.  Run the script on as many nodes as occurs in production, using the
+    same number of sessions in total as you did on one node. This will
+    show you the effect of moving to multiple nodes.
+4.  Increase the number of sessions for the above 2 tests, so you can
+    plot the effect of increased contention on your application.
+5.  Make sure your tests are long enough to account for replication delays.
+6.  Ensure that replication delay isn't growing during your tests.
+
+Use all of the normal Postgres tuning features to improve the speed
+of critical parts of your application.
+
+## Assessing Suitability
+
+BDR is compatible with PostgreSQL, but not all PostgreSQL applications are
+suitable for use on distributed databases. Most applications are already, or
+can be easily modified to become BDR compliant. Users can undertake an
+assessment activity in which they can point their application to a BDR-enabled
+setup. BDR provides a few knobs which can be set during the assessment period.
+These will aid in the process of deciding suitability of their application in
+a BDR-enabled environment.
+
+### Assessing updates of Primary Key/Replica Identity
+
+BDR cannot currently perform conflict resolution where the PRIMARY KEY is changed
+by an UPDATE operation. It is permissible to update the primary key, but you must
+ensure that no conflict with existing values is possible.
+
+BDR-EE provides the following configuration
+parameter to assess how frequently the primary key/replica identity of any table
+is being subjected to update operations.
+
+Note that these configuration parameters must only be used for assessment only.
+They can be used on a single node BDR instance, but must not be used on a production
+BDR cluster with two or more nodes replicating to each other. In fact, a node
+may fail to start or a new node will fail to join the cluster if any of the
+assessment parameters are set to anything other than `IGNORE`.
+
+```sql
+bdr.assess_update_replica_identity = IGNORE (default) | LOG | WARNING | ERROR
+```
+
+By enabling this parameter during the assessment period, one can log updates to
+the key/replica identity values of a row. One can also potentially block such
+updates, if desired. E.g.
+
+```sql
+CREATE TABLE public.test(g int primary key, h int);
+INSERT INTO test VALUES (1, 1);
+
+SET bdr.assess_update_replica_identity TO 'error';
+UPDATE test SET g = 4 WHERE g = 1;
+ERROR:  bdr_assess: update of key/replica identity of table public.test
+```
+
+Apply worker processes will always ignore any settings for this parameter.
+
+### Assessing use of LOCK on tables or in SELECT queries
+
+Because BDR writer processes operate much like normal user sessions, they are subject to
+the usual rules around row and table locking. This can sometimes lead to BDR writer
+processes waiting on locks held by user transactions, or even by each other.
+
+BDR-EE provides the following configuration parameter
+to assess if the application is taking explicit locks.
+
+```sql
+bdr.assess_lock_statement = IGNORE (default) | LOG | WARNING | ERROR
+```
+
+Two types of locks that can be tracked are:
+
+-   explicit table-level locking (LOCK TABLE ...) by user sessions
+-   explicit row-level locking (SELECT ... FOR UPDATE/FOR SHARE) by user sessions
+
+By enabling this parameter during the assessment period, one can track (or block) such explicit
+locking activity.  E.g.
+
+```sql
+CREATE TABLE public.test(g int primary key, h int);
+INSERT INTO test VALUES (1, 1);
+
+SET bdr.assess_lock_statement TO 'error';
+SELECT * FROM test FOR UPDATE;
+ERROR:  bdr_assess: "SELECT FOR UPDATE" invoked on a BDR node
+
+SELECT * FROM test FOR SHARE;
+ERROR:  bdr_assess: "SELECT FOR SHARE" invoked on a BDR node
+
+SET bdr.assess_lock_statement TO 'warning';
+LOCK TABLE test IN ACCESS SHARE MODE;
+WARNING:  bdr_assess: "LOCK STATEMENT" invoked on a BDR node
+```

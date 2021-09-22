@@ -13,14 +13,12 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
-  TopBar,
 } from "../components";
 import { products } from "../constants/products";
-import Icon from "../components/icon";
-import { createImportSpecifier } from "typescript";
+import Icon, { iconNames } from "../components/icon";
 
 export const query = graphql`
-  query($nodeId: String!, $potentialLatestNodePath: String) {
+  query ($nodeId: String!, $potentialLatestNodePath: String) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
@@ -183,7 +181,7 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     title={
       //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
       <Icon
-        iconName="ellipsis"
+        iconName={iconNames.ELLIPSIS}
         className="fill-orange mr-2"
         width="15"
         height="15"
@@ -255,7 +253,6 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta}>
-      <TopBar />
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
