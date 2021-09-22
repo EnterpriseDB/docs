@@ -63,13 +63,23 @@ At this point you have a couple options.
 
 #### Resolving issues in the Docker Environment
 
-If you experience errors or other issues with the site, try the following in the project folder:
+If you find that the container crashes frequently or see that your container has exited with code 137, increasing the Docker memory should help. Allocating at least 4GB is recommended.
+
+1. open Docker Desktop
+
+1. Go to Preferences (gear icon in the top right corner)
+
+1. Click on Resources in the left nav menu
+
+1. In the Memory section, adjust the slider to 4.00 GB
+
+1. Click Apply & Restart button
+
+If you are still experiencing errors or other issues with the site, try the following in the project folder:
 
 1. `npm run stop` then `npm run start` to restart the docker container
 
 1. `npm run docker:rebuild` then `npm run start` to rebuild and restart the container
-
-1. If you find that the container crashes frequently or see that your container has exited with code 137, [try increasing the memory available to docker](https://docs.docker.com/desktop/mac/#resources).
 
 ### Install Docker using Homebrew
 
