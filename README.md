@@ -229,6 +229,8 @@ The app is concerned with two different types of redirects that can be defined i
 
 ### Internal Redirects (within Docs 2.0)
 
+*For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md).*
+
 #### `redirects`
 
 The `redirects` frontmatter is to be used for redirects internal to Docs. For example, if you had a file `great_file.mdx` with this following frontmatter...
@@ -239,7 +241,17 @@ redirects:
   - "/another_old_path"
 ```
 
-both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301). 
+
+These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
+
+   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/ 
+   - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
+   - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
+
+#### Netlify-specific redirects
+
+Netlify is the hosting service we use for Docs. Netlify-specific redirects can be found in [`/static/_redirects`](static/_redirects). These are generally used for large-scale redirects, such as when renaming or removing an entire product version.
 
 ### Docs 1.0 to Docs 2.0 redirects
 
