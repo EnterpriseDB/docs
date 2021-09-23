@@ -1,0 +1,85 @@
+---
+title: VNet-VNet Example
+---
+
+These are the steps to connect using VNet-VNet connections To walk through this example in you own environment, see the prerequisites described in [Connection Examples](../01_connecting_from_azure/#connection-examples).
+
+The Azure resources you need to create in this method include:
+
+-   [Azure VPN Gateways](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways), one in each connected virtual network. See [Connect Using Azure VPN Gateway Point to Site](#connect-using-azure-vpn-gateway-point-to-site) for details about creating a virtual network gateway. 
+
+!!! Tip (Tip)
+    A VPN gateway creation can take up to 45 minutes. 
+
+#### Step 1: Create a VPN Gateway for the EDB Cloud cluster virtual network.
+
+ In the "Virtual network gateway" page, create the first VPN gateway for the EDB Cloud Cluster resource virtual network 'vnet-japaneast'. Name the VPN gateway as `vpng-edbcloud`.
+
+ ![](../images/image8.png)
+
+ !!! Note
+    The VPN gateway automatically creates a dedicated subnet to accommodate its gateway VMs. Ensure that your EDB Cloud virtual network address space has sufficient IP range for the subnet to prevent errors in the virtual network.
+
+#### Step 2: Create a VPN Gateway for the client VM virtual network
+
+In the same way, create the second gateway for your client VM virtual network 'vnet-client'. Name the client VPN gateway as 'vpng-client'.
+
+#### Step 3: Add a gateway connection between the two VPN gateways
+
+Add a VPN gateway connection from `vpng-edbcloud`. Azure portal only supports creating gateway connections
+between gateways in the same subscription. Use Azure CLI (or [PowerShell](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-vnet-vnet-rm-ps)) as follows:
+
+1. Get the VPN gateway ID of `vpng-client`.
+
+ -   In the EDB Cloud subscription:
+
+    ```
+   $ az network vnet-gateway show -n vpng-edbcloud -g
+   brCxzr08qr7RBEi1-rg-japaneast-management --query "[id]" -otsv
+   subscriptions\.../vpng-edbcloud
+   ```
+
+ -   In the VM's subscription:
+
+   ```
+   $ az network vnet-gateway show -n vpng-client -g rg-client --query "[id]" -o tsv
+   /subscriptions/.../vpng-client
+   ```
+
+2. In the EDB Cloud subscription, create a connection from `vpng-edbcloud` to `vpng-client`.
+
+  ```
+  $ az network vpn-connection create -n vpnc-edbcloud-client -g
+  brCxzr08qr7RBEi1-rg-japaneast-management --vnet-gateway1
+  /subscriptions/.../vpng-edbcloud -l japaneast --shared-key
+  "a_very_long_and_complex_psk" \--vnet-gateway2
+  /subscriptions/.../vpng-client
+
+  ```
+
+ Note down '\--shared-key'. It is a PSK for pairing authentication from both sides, which is needed in the next step.
+
+3. In the VM's subscription, create another connection from `vpng-client` to `vpng-ebdcloud`.
+
+    ```
+    $ az network vpn-connection create -n vpnc-client-edbcloud -g
+   rg-client --vnet-gateway1 /subscriptions/.../vpng-client -l japaneast
+   --shared-key "a_very_long_and_complex_psk!" --vnet-gateway2
+   /subscriptions/.../vpng-edbcloud
+
+    ```
+
+#### Step 4: Verify the connection
+
+1. After a few minutes, verify the gateway connection status either from either virtual networks with the following command:
+
+ ```
+   $ az network vpn-connection show --name vpnc-client-edbcloud -g rg-client --query "[connectionStatus]" -o tsv
+   Connected
+ ```
+
+2. Verify the PG service connectivity.
+
+ ![](../images/image20.png)
+
+

@@ -1,0 +1,151 @@
+---
+title: Private Endpoint Example
+---
+
+These are the steps to connect using Azure Private Endpoint. To walk through this example in you own environment, see the prerequisites described in [Connection Examples](../01_connecting_from_azure/#connection-examples).
+
+#### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service
+ 
+  In the EDB Cloud cluster's virtual network, 
+  create an [Azure Private Link Service](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview) in your EDB Cloud cluster resource group. 
+
+  1. Obtain the resource group details with a CLI command or from the Azure portal and note down the resource group name. For example, if the EDB Cloud cluster's virtual network is `vnet-japaneast`, use the following command: 
+ 
+     ```
+       $ az network vnet list --query
+      "[?name==\'vnet-japaneast\'].resourceGroup" -o json
+
+     ```
+  
+  1. On the upper-left part of the page in the Azure portal, select **Create a resource**.
+  
+  1. Search for Private Link in the Search the Marketplace box.
+
+  1. Select **Create**.
+
+  1. Enter `pg-service-private-link` as the name for the Private Link Service and provide additional details as shown in the following screenshot. 
+    
+    ![Create private link service](../images/image5.png)
+
+  3. In the **Outbound settings** page, select the `kubernetes-inernal` load balancer,
+    and select the IP address of your cluster from **Load balancer frontend IP
+    address**.
+
+     ![Outbound settings](../images/image1.png)
+
+  4. On the **Access security** page, configure the level of access for the private link service.
+
+     ![](../images/image21.png) 
+   
+   !!! Note
+      Depending on the visibility level you set, the client application might need to request access
+    permission from the EDB Cloud tenant to access this private link
+    service. See [control service exposure](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview#control-service-exposure)
+    for details.
+    
+
+  5. After the Private Link Service is created, note down its `alias`. The `alias`
+   is the unique ID for your private service that can be shared offline with any of
+   the service consumers. Obtain the 'alias' either from the Azure portal
+   or by the using the following CLI command:
+
+     ```
+       $ az network private-link-service list --query 
+      "[?name=='pg-service-private-link'].alias" -o tsv
+      pg-service-private-link.48f26b42-45dc-4e80-8e3d-307d58d7d274.japaneast.azure.privatelinkservice
+     
+     ```
+  6. Select **Review + Create**.
+
+  7. Select **Create**.
+
+#### Step 2: Create an Azure Private Endpoint linking to the Private Link Service
+
+  To connect to the PG service create an Azure Private Endpoint in your VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.
+  
+  1. On the upper-left side of the screen in the portal, select **Create a resource > Networking > Private Link**, or in the search box enter Private Link.
+  
+  1. Select **Create**.
+
+  1. In Private Link Center, select **Private endpoints** in the left-hand menu.
+
+  1. In Private endpoints, select **+ Add**.
+
+  1. Enter pg-service-private-link as the name for the Private Link Service and provide additional details as shown in the following screeshot.
+
+   ![](../images/image12.png)
+
+  1. Connect the private endpoint to the EDB Cloud private link service we created by entering its alias.
+
+   ![](../images/image17.png)
+
+  1. In the **Configuration** page, enter the VM's Virtual Network `vnet-client`.
+
+  1. Select **Review + Create**.
+
+  7. Select **Create**.
+   
+  8. You might have to approve the connection request from the `pg-service-private-link` owner, if the private endpoint is in the **Pending** status. 
+   
+   Switch to the EDB Cloud subscription and from the **Pending connections** page in **Private Link Center** and approve the connection request.
+
+   ![](../images/image3.png)
+
+
+11. Now that you have successfully built a tunnel between your VM's virtual network and the EDB Cloud cluster network, access the private PG service by using the private endpoint.
+   
+   Get the private endpoint's private IP address with following scripts.
+
+ ```
+  $ NICID=$(az network private-endpoint show -n pl-private-pg-service
+  -g rg-client --query "networkInterfaces[0].id" -o tsv)
+  $ az network nic show -n ${NICID##*/} -g rg-client --query
+  "ipConfigurations[0].privateIpAddress" -o tsv
+  100.64.111.5
+ ``` 
+
+12. From the VM `vm-client`, access the PG service by using the private IP address.
+
+ ![](../images/image20.png)
+
+#### Step 3: Create Azure Private DNS Zone for Private Endpoint
+
+We recommend using an [Azure Private DNS Zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) with the Private Endpoint to establish a secure connection with the PG service. Create a Private DNS Zone manually with the following steps.
+
+We will create a private domain name in an identical name to EDB Cloud PG
+service's default domain name, i.e.
+`p-c4ia6jleig40jngmac40.brcxzr08qr7rbei1.edbcloud.io`. This allows your
+application to access the service in a consistent way from every place.
+Azure's DNS resolving mechanism will ensure all access to this domain
+name from `vnet-client` are resolved to private IP address of Private
+Endpoint `pl-private-pg-service` instead of the original PG service's IP
+address.
+
+First, create a private DNS zone using the organization level domain
+name as apex domain, `Brcxzr08qr7rbei1.edbcloud.io`.
+
+![](../images/image6.png)
+
+Then you need to link this private DNS Zone to VM virtual network
+`vnet-client`, this is done through the **Virtual network** link on the
+**Private DNS Zone** page of `brcxzr08qr7rbei1.edbcloud.io`.
+
+![](../images/image10.png)
+
+Then add a new record for the private endpoint, the address is a
+private IP address associated with the private endpoint's NIC.
+
+![](../images/image4.png)
+
+Wait for a few second to let DNS setting fully propagate, then you can
+start access your PG service with this private domain name.
+
+![](../images/image20.png)
+
+Sometimes, you may need to flush your local DNS cache, to resolve your
+domain name to new private IP after adding the private endpoint. E.g. on
+Ubuntu you can do this by:
+
+```
+  $ sudo systemd-resolve --flush-caches
+```
