@@ -1,10 +1,12 @@
 ---
-title: Connecting from External Azure Resources
+title: Connecting from Azure 
 ---
 
+There are three different methods to connect to your cluster from Azure. Each method offers a different level of availability and security. The Azure Private Endpoint is the most commonly used method, however you can implement other solutions depending on your organization's requirements.
 
-There are three different Azure connectivity solutions you can use to
-connect to your cluster from Azure cloud applications. Each solution offers a different level of availability and security. The Azure Private Endpoint is the recommended solution and is applicable in most scenarios, but you can implement other solutions depending on your organization's requirements. 
+- [Azure Private Endpoint (Recommended)](#azure-private-endpoint-recommended)
+- [Virtual Network Peering](#virtual-network-peering)
+- [Azure VNet-VNet Connection](#azure-vnet-vnet-connection)
 
 
 ## Azure Private Endpoint (Recommended)
@@ -24,7 +26,7 @@ connect to your cluster from Azure cloud applications. Each solution offers a di
  - EDB Cloud virtual network can not initiate traffic to your application.
  - There is an associated cost. See [Azure Private Link pricing](https://azure.microsoft.com/en-us/pricing/details/private-link/#pricing).
 
-See the [Azure Private Endpoint example](#azure-private-endpoint-example) for the steps for connecting using this solution.
+See the [Azure Private Endpoint example](#azure-private-endpoint-example) for the steps for connecting using this method.
 
 ## Virtual Network Peering
 
@@ -62,9 +64,9 @@ connect your EDB Cloud virtual network and your client VM virtual network by usi
 
 
 
-## Walkthroughs
+## Examples
 
-This section contains walkthroughs to guide you through each of the connection solutions. For the examples used in the walkthroughs, assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a VM on another subscription `test`.
+This section contains walkthroughs to guide you through each of the connection methods. For the examples used in the walkthroughs, assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a VM on another subscription `test`.
 
 To walk through an example in your own environment, you need: 
  - Your EDB Cloud cluster URL. You can find the URL in the **Connect** tab of your cluster instance in the EDB Cloud portal.
@@ -84,7 +86,7 @@ To walk through an example in your own environment, you need:
 ### Azure Private Endpoint Example
 These are the steps to connect using Azure Private Endpoint. To walk through this example in you own environment, see the prerequisites described in [Walkthroughs](#walkthroughs).
 
-#### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service**
+#### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service
  
   In the EDB Cloud cluster's virtual network, 
   create an [Azure Private Link Service](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview) in your EDB Cloud cluster resource group. 
@@ -113,13 +115,16 @@ These are the steps to connect using Azure Private Endpoint. To walk through thi
 
      ![](images/image1.png)
 
-  4. On the **Access security** page, configure the level of access for the private link service. 
-    Depending on the visibility level you set on this page, the client application might need to request access
+  4. On the **Access security** page, configure the level of access for the private link service.
+
+     ![](images/image21.png) 
+   
+   !!! Note
+      Depending on the visibility level you set, the client application might need to request access
     permission from the EDB Cloud tenant to access this private link
     service. See [control service exposure](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview#control-service-exposure)
     for details.
-
-     ![](images/image21.png)
+    
 
   5. After the Private Link Service is created, note down its `alias`. The `alias`
    is the unique ID for your private service that can be shared offline with any of
@@ -136,7 +141,7 @@ These are the steps to connect using Azure Private Endpoint. To walk through thi
 
   7. Select **Create**.
 
-#### Step 2: Create an Azure Private Endpoint linking to the Private Link Service**
+#### Step 2: Create an Azure Private Endpoint linking to the Private Link Service
 
   To connect to the PG service create an Azure Private Endpoint in your VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.
   
@@ -144,9 +149,9 @@ These are the steps to connect using Azure Private Endpoint. To walk through thi
 
   1. Select **Create**.
 
-  1.In Private Link Center, select Private endpoints in the left-hand menu.
+  1. In Private Link Center, select **Private endpoints** in the left-hand menu.
 
-  1. In Private endpoints, select + Add.
+  1. In Private endpoints, select **+ Add**.
 
   1. Enter pg-service-private-link as the name for the Private Link Service and provide additional details as shown in the following screeshot.
 
@@ -161,54 +166,33 @@ These are the steps to connect using Azure Private Endpoint. To walk through thi
   1. Select **Review + Create**.
 
   7. Select **Create**.
+   
+  8. You might have to approve the connection request from the `pg-service-private-link` owner, if the private endpoint is in the **Pending** status. 
+   
+   Switch to the EDB Cloud subscription and from the **Pending connections** page in **Private Link Center** and approve the connection request.
 
-According to the **Visibility** option you set for your private link
-resource in the previous step, your private endpoint may need the
-EDB Cloud tenant to approve the access to PG private link service. For
-the detailed access request and approval workflow see [Access to a
-private link resource using approval
-workflow](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview#access-to-a-private-link-resource-using-approval-workflow).
+   ![](images/image3.png)
 
-After being created, the private endpoint is in Pending status,
-waiting for the approval from the `pg-service-private-link` owner.
 
-IMAGE PLACEHOLDER
+11. Now that you have successfully built a tunnel between your VM's virtual network and the EDB Cloud cluster network, access the private PG service by using the private endpoint.
+   
+   Get the private endpoint's private IP address with following scripts.
 
-Switch to the EDB Cloud subscription and approve the connection request
-from the **Pending connections** page in **Private Link Center**.
-
-IMAGE PLACEHOLDER
-
-At this point, you've built a tunnel between your VM virtual network and
-EDB Cloud cluster network, you access private PG service with private IP
-from your VM now. The private IP is tied to an independent virtual
-network NIC, you can get the private IP with following scripts.
-
-```
+ ```
   $ NICID=$(az network private-endpoint show -n pl-private-pg-service
   -g rg-client --query "networkInterfaces[0].id" -o tsv)
   $ az network nic show -n ${NICID##*/} -g rg-client --query
   "ipConfigurations[0].privateIpAddress" -o tsv
   100.64.111.5
-```
+ ``` 
 
-Then from VM `vm-client`, you can access PG service with an IP address.
+12. From the VM `vm-client`, access the PG service by using the private IP address.
 
-IMAGE PLACEHOLDER
+ ![](images/image20.png)
 
 #### Step 3: Create Azure Private DNS Zone for Private Endpoint
 
-Accessing a PG service with an IP address is insecure, as client has no
-chance to verify EBD Cloud service certificate to make a trusted
-connection. And it is inconvenient for sure, when IP address changes,
-you have to update your application too. Practically, you can solve
-these problems by creating a [Azure Private DNS Zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) 
-for the Private Endpoint. Azure Service Endpoint support associates a private DNS to its [homebrew
-private link
-resources](https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-overview#private-link-resource)
-in a one-button manner. However, it does not support the Private Link
-Service custom type. You have to create the Private DNS Zone
-manually using the following steps.
+We recommend using an [Azure Private DNS Zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) with the Private Endpoint to establish a secure connection with the PG service. Create a Private DNS Zone manually with the following steps.
 
 We will create a private domain name in an identical name to EDB Cloud PG
 service's default domain name, i.e.
@@ -222,23 +206,23 @@ address.
 First, create a private DNS zone using the organization level domain
 name as apex domain, `Brcxzr08qr7rbei1.edbcloud.io`.
 
-IMAGE PLACEHOLDER
+![](images/image6.png)
 
 Then you need to link this private DNS Zone to VM virtual network
 `vnet-client`, this is done through the **Virtual network** link on the
 **Private DNS Zone** page of `brcxzr08qr7rbei1.edbcloud.io`.
 
-IMAGE PLACEHOLDER
+![](images/image10.png)
 
 Then add a new record for the private endpoint, the address is a
 private IP address associated with the private endpoint's NIC.
 
-IMAGE PLACEHOLDER
+![](images/image4.png)
 
 Wait for a few second to let DNS setting fully propagate, then you can
 start access your PG service with this private domain name.
 
-IMAGE PLACEHOLDER
+![](images/image20.png)
 
 Sometimes, you may need to flush your local DNS cache, to resolve your
 domain name to new private IP after adding the private endpoint. E.g. on
@@ -250,21 +234,6 @@ Ubuntu you can do this by:
 
 
 ### Azure Virtual Network Peering Example
-
-Virtual network peering connects two Azure virtual networks. Once
-peered, the virtual networks appear as one for connectivity purposes.
-Traffic between virtual machines in the peered virtual networks is
-routed through the Microsoft backbone infrastructure, through private IP
-addresses and not the internet.
-
-IMAGE PLACEHOLDER
-
-!!! Note
-    Two peered clusters can not have an overlapping IP range.
-   Because you can't change the EDB Cloud cluster virtual network, if
-   your application virtual network you plan to peer with happens to
-   overlap with 10.240.0.0/16, you have to either update its IP space, or
-   you have to use another connectivity solution.
 
 #### Step 1: Create virtual network peering
 
@@ -278,72 +247,63 @@ We add two peering links called peer-client-edb and peer-edb-client,
 they will join the address space of two virtual networks
 together.
 
-IMAGE PLACEHOLDER
+![](images/image25.png)
 
-IMAGE PLACEHOLDER
+![](images/image7.png)
 
 #### Step 2: Access EDB Cloud cluster PG service directly
 
-Access EDB Cloud cluster PG with it's domain name from your cluster
+Access the EDB Cloud cluster PG with its domain name from your cluster
 connection string, it's accessible from "vnet-client" after peering.
 
-IMAGE PLACEHOLDER
+![](images/image20.png)
 
 
-### Walkthrough: Connect Using Azure VNet-VNet Connection
+### Azure VNet-VNet Connection Example
 
-The Azure resources you need to create in this approach include:
+The Azure resources you need to create in this method include:
 
--   [Azure VPN Gateways](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways), one in each connected virtual network. See [Connect Using Azure VPN Gateway Point to Site](#connect-using-azure-vpn-gateway-point-to-site) for detailed resources created for a virtual network gateway.
+-   [Azure VPN Gateways](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpngateways), one in each connected virtual network. See [Connect Using Azure VPN Gateway Point to Site](#connect-using-azure-vpn-gateway-point-to-site) for details about creating a virtual network gateway. 
 
-#### Step 1: Create VPN Gateway for EDB Cloud cluster virtual network.
+!!! Tip (Tip)
+    A VPN gateway creation can take up to 45 mins. 
 
-In the Azure portal "Virtual network gateway" page, create the first VPN
-gateway for EDB Cloud Cluster resource virtual network vnet-japaneast.
-The VPN gateway is called `vpng-edbcloud`.
+#### Step 1: Create a VPN Gateway for the EDB Cloud cluster virtual network.
 
-It is worth noticing that a VPN gateway needs a dedicated subnet to
-accommodate its gateway VMs, the subnet is called "GatewaySubnet", and
-it is unique per virtual network. You can either create it by yourself
-beforehand, or VPN gateway creation does this automatically, so you need
-to ensure that your EDB Cloud virtual network address space has spare IP
-range to use, otherwise. an "in use" error message will be shown aside
-the virtual network you selected.
+ In the "Virtual network gateway" page, create the first VPN gateway for the EDB Cloud Cluster resource virtual network 'vnet-japaneast'. Name the VPN gateway as `vpng-edbcloud`.
 
-IMAGE PLACEHOLDER
+ ![](images/image8.png)
 
-#### Step 2: Create VPN Gateway for client VM virtual network
+ !!! Note
+    The VPN gateway automatically creates a dedicated subnet to accommodate its gateway VMs. Ensure that your EDB Cloud virtual network address space has sufficient IP range for the subnet to prevent errors in the virtual network.
 
-A VPN gateway creation can take upto 45 mins. You can create the second
-gateway for your client VM virtual network vnet-client by repeating step
-1, and create the client VPN gateway vpng-client.
+#### Step 2: Create a VPN Gateway for the client VM virtual network
 
-#### Step 3: Add gateway connection between two VPN gateways
+In the same way, create the second gateway for your client VM virtual network 'vnet-client'. Name the client VPN gateway as 'vpng-client'.
 
-We need to add a VPN gateway connection from `vpng-edbcloud` side,
-unfortunately Azure portal only supports creating gateway connection
-between gateways from the same subscription, so in most cases you need
-Azure CLI to do this. (For Windows user, PowerShell is another option,
-see the detailed [PowerShell
-guide](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-vnet-vnet-rm-ps)
-here)
+#### Step 3: Add a gateway connection between the two VPN gateways
 
--   [edbcloud subscription] Get VPN gateway id of `vpng-edbcloud`
+Add a VPN gateway connection from `vpng-edbcloud`. Azure portal only supports creating gateway connections
+between gateways in the same subscription. Use Azure CLI (or [PowerShell](https://docs.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-vnet-vnet-rm-ps)) as follows:
 
-  ```
-  $ az network vnet-gateway show -n vpng-edbcloud -g
-  brCxzr08qr7RBEi1-rg-japaneast-management --query "[id]" -otsv
-  subscriptions\.../vpng-edbcloud
-  ```
+1. Get the VPN gateway ID of `vpng-client`.
 
--   [vm subscription] Get VPN gateway id of `vpng-client`.
+ -   In the EDB Cloud subscription:
 
-  ```
-  $ az network vnet-gateway show -n vpng-client -g rg-client --query "[id]" -o tsv
-  /subscriptions/.../vpng-client
-  ```
+    ```
+   $ az network vnet-gateway show -n vpng-edbcloud -g
+   brCxzr08qr7RBEi1-rg-japaneast-management --query "[id]" -otsv
+   subscriptions\.../vpng-edbcloud
+   ```
 
--   [edbcloud subscription] Create a connection from `vpng-edbcloud` to `vpng-client` using the gateway ids you listed previously.
+ -   In the VM's subscription:
+
+   ```
+   $ az network vnet-gateway show -n vpng-client -g rg-client --query "[id]" -o tsv
+   /subscriptions/.../vpng-client
+   ```
+
+2. In the EDB Cloud subscription, create a connection from `vpng-edbcloud` to `vpng-client`.
 
   ```
   $ az network vpn-connection create -n vpnc-edbcloud-client -g
@@ -351,38 +311,32 @@ here)
   /subscriptions/.../vpng-edbcloud -l japaneast --shared-key
   "a_very_long_and_complex_psk" \--vnet-gateway2
   /subscriptions/.../vpng-client
+
   ```
 
-    "\--share-key" : this is a PSK you make for pairing authentication from both sides, it\'s an arbitrary key string, you will need it again
- from the other side.
+ Note down '\--shared-key'. It is a PSK for pairing authentication from both sides, which is needed in the next step.
 
--   [vm subscription] Create another connection from `vpng-client` to `vpng-ebdcloud`
+3. In the VM's subscription, create another connection from `vpng-client` to `vpng-ebdcloud`.
 
     ```
     $ az network vpn-connection create -n vpnc-client-edbcloud -g
-  rg-client --vnet-gateway1 /subscriptions/.../vpng-client -l japaneast
-  --shared-key "a_very_long_and_complex_psk!" --vnet-gateway2
-  /subscriptions/.../vpng-edbcloud
- ```
+   rg-client --vnet-gateway1 /subscriptions/.../vpng-client -l japaneast
+   --shared-key "a_very_long_and_complex_psk!" --vnet-gateway2
+   /subscriptions/.../vpng-edbcloud
+
+    ```
 
 #### Step 4: Verify the connection
 
-You can verify the Gateway connection's status with the following
-command, from either side. The status may take minutes to get to
-"Connected", from "Unknown" or "Connecting".
+1. After a few minutes, verify the gateway connection status either from either virtual networks with the following command:
 
-```
-  $ az network vpn-connection show --name vpnc-client-edbcloud -g rg-client --query "[connectionStatus]" -o tsv
-  Connected
-```
+ ```
+   $ az network vpn-connection show --name vpnc-client-edbcloud -g rg-client --query "[connectionStatus]" -o tsv
+   Connected
+ ```
 
-  
+2. Verify the PG service connectivity.
 
-Then let's verify the PG service connectivity. Behind the scene, cross
-VNet routing rules through connected VPN gateways are added at both
-virtual networks automatically, so all resources through all virtual
-networks are mutually accessible directly.
-
-IMAGE PLACEHOLDER
+ ![](images/image20.png)
 
 
