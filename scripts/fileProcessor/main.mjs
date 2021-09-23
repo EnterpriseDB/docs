@@ -16,32 +16,43 @@ const args = arg({
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const processFiles = async () => {
+const run = async () => {
   const paths = await globby(args["--files"]);
+  const allFiles = paths.map((path) => vfile.readSync(path, "utf8"));
 
-  console.log(`Processing ${paths.length} files`);
+  console.log(`Processing ${allFiles.length} files`);
 
-  paths.forEach(processSingleFile);
+  // First, process all of the files
+  for (const file of allFiles) {
+    console.log(`Processing ${file.path}`);
+    await runProcessorsForFile(file, allFiles);
+  }
+
+  // Because processors could possibly affect any file, write the files out after all processors have run
+  Promise.all(allFiles.map(writeFile));
 };
 
-const processSingleFile = async (filePath) => {
-  console.log(`Processing ${filePath}`);
+const runProcessorsForFile = async (file, allFiles) => {
+  for (const index in args["--processor"]) {
+    await import(
+      `${__dirname}/processors/${args["--processor"][index]}.mjs`
+    ).then(async (module) => {
+      await module.process(file, allFiles);
+    });
+  }
 
-  const file = vfile.readSync(filePath, "utf8");
+  console.error(report(file));
+};
 
-  // run the processor scripts
-  await runProcessorsForFile(file);
-
+const writeFile = async (file) => {
   const ogFilePath = file.history[0];
-  const filePathUpdated = file.history.length > 1;
+  const isFilePathUpdated = file.history.length > 1;
 
-  if (filePathUpdated) {
+  if (isFilePathUpdated) {
     console.log(`Writing ${file.path} (previously ${ogFilePath})`);
   } else {
     console.log(`Writing ${file.path}`);
   }
-
-  console.error(report(file));
 
   vfile
     .write(file)
@@ -50,7 +61,7 @@ const processSingleFile = async (filePath) => {
       process.exit(1);
     })
     .then(() => {
-      if (filePathUpdated) {
+      if (isFilePathUpdated) {
         console.log(`Removing ${ogFilePath}`);
 
         fs.rm(ogFilePath).catch((err) => {
@@ -61,14 +72,4 @@ const processSingleFile = async (filePath) => {
     });
 };
 
-const runProcessorsForFile = async (file) => {
-  for (const index in args["--processor"]) {
-    await import(
-      `${__dirname}/processors/${args["--processor"][index]}.mjs`
-    ).then(async (module) => {
-      await module.process(file);
-    });
-  }
-};
-
-processFiles();
+run();
