@@ -23,28 +23,30 @@ const run = async () => {
   console.log(`Processing ${allFiles.length} files`);
 
   // First, process all of the files
-  for (const file of allFiles) {
-    console.log(`Processing ${file.path}`);
-    await runProcessorsForFile(file, allFiles);
+  for (const processorName of args["--processor"]) {
+    console.log(`Running processor: ${processorName}`);
+    await runProcessor(processorName, allFiles);
   }
 
   // Because processors could possibly affect any file, write the files out after all processors have run
   Promise.all(allFiles.map(writeFile));
 };
 
-const runProcessorsForFile = async (file, allFiles) => {
-  for (const index in args["--processor"]) {
-    await import(
-      `${__dirname}/processors/${args["--processor"][index]}.mjs`
-    ).then(async (module) => {
-      await module.process(file, allFiles);
-    });
-  }
-
-  console.error(report(file));
+const runProcessor = async (processorName, allFiles) => {
+  await import(`${__dirname}/processors/${processorName}.mjs`).then(
+    async (module) => {
+      Promise.all(
+        allFiles.map(async (file) => {
+          await module.process(file, allFiles);
+        }),
+      );
+    },
+  );
 };
 
 const writeFile = async (file) => {
+  console.error(report(file));
+
   const ogFilePath = file.history[0];
   const isFilePathUpdated = file.history.length > 1;
 
