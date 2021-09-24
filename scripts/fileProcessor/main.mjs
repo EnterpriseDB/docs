@@ -5,6 +5,7 @@ import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { toVFile as vfile } from "to-vfile";
 import { reporter as report } from "vfile-reporter";
+import { mkdirp } from "vfile-mkdirp";
 
 const args = arg({
   "--files": [String],
@@ -55,6 +56,8 @@ const writeFile = async (file) => {
   } else {
     console.log(`Writing ${file.path}`);
   }
+
+  await mkdirp(file);
 
   vfile
     .write(file)
