@@ -15,4 +15,5 @@ rm $SOURCE_CHECKOUT/docs/en_US/pem_release_notes*.rst
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "$SOURCE_CHECKOUT/**/*.rst" \
-  -p pandoc/rst-to-mdx
+  -p pandoc/rst-to-mdx \
+  -p pem/toc-to-directories
