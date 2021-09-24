@@ -1,0 +1,300 @@
+---
+navTitle: PostgreSQL Configuration
+title: PostgreSQL settings which affect pglogical
+originalFilePath: configuration.md
+
+---
+
+Several PostgreSQL configuration options may need adjusting for pglogical
+to work.
+
+PostgreSQL must be configured for logical replication:
+
+```
+wal_level = 'logical'
+```
+
+The pglogical library need to be loaded at server start, so the parameter
+`shared_preload_libraries` must contain pglogical, e.g.:
+
+```
+shared_preload_libraries = 'pglogical'
+```
+
+As pglogical uses additional worker processes to maintain state and apply
+the replicated changes, enough worker process slots need to be present:
+
+```
+max_worker_processes = 10
+```
+
+The formula for computing the correct value of `max_worker_processes` is:
+one for instance + one per database on the provider (upstream), one for instance + one 
+per database + two per subscription on the subscriber (downstream).
+
+The replication slots and origins are used so enough slots for those need
+to exist; both replication slots and origins are controlled by same
+configuration option:
+
+```
+max_replication_slots = 10
+```
+
+One per subscription on both provider and subscriber is needed.
+
+The replication data is sent using walsender (just like physical replication):
+
+```
+max_wal_senders = 10
+```
+
+There is one walsender needed for every subscriber (on top of any standbys
+or backup streaming connections).
+
+If you are using PostgreSQL 9.5+ (this won't work on 9.4) and want to handle
+conflict resolution with last/first update wins (see [pglogical writer](pglogical-writer)),
+you can add this additional option to postgresql.conf:
+
+```
+track_commit_timestamp = on
+```
+
+Also `pg_hba.conf` has to allow replication connections from the subscribers.
+
+## pglogical specific settings
+
+There are additional pglogical specific configuration options. Some generic
+options are mentioned below, but most of the configuration options depend on
+which [writer](subscriptions) is used and are documented as part of the
+individual [writer](subscriptions) documentation.
+
+### `pglogical.synchronous_commit`
+
+This controls whether pglogical apply worker should use synchronous commit. By
+default this is off. Turning it on has performance implications - the maximum
+replication throughput will be much lower. However in low TPS environments which
+use `synchronous_commit = remote_apply` on the provider, turning this option on
+can improve the transaction latency. This guidance may change in later releases.
+
+The pglogical.synchronous_commit setting for a subscription determines what
+happens to the things that the subscription's apply worker writes
+locally.  The subscription's apply worker operates much like a normal
+client backend, and whatever it writes and commits is subject to its
+current pglogical.synchronous_commit setting.
+
+In most cases, pglogical.synchronous_commit off is the best setting because it
+avoids the flushing work at commit time, and it is safe because in case
+of a crash the data can be re-obtained from the publishing server.
+
+But if you use synchronous replication on the publishing server, then
+the publishing server will wait for the subscribing server to send
+feedback messages when the sent data has been flushed to disk on the
+subscribing server (depending on the particular setting).  If the
+subscriber has pglogical.synchronous_commit off, then the flushing happens at some
+random later time, and then the upstream publisher has to wait for that
+to happen.  In order to speed that up, you need to make the subscriber
+flush stuff faster, and the way to do that is to set pglogical.synchronous_commit
+to a value other than off on the subscriber.
+
+Also if you have standbys connected to this subscriber server then you can set the
+value of pglogical.synchronous_commit to wait for confirmation from its standbys.
+
+**NOTE** As per design, if on, this configuration will always wait for the local
+flush confirmation, even if the `synchronous_standby_names` would point to any
+physical standby/s.
+
+The default is off.
+
+### `pglogical.track_subscription_apply`
+
+This controls whether to track per subscription apply statistics. If this is on, the
+`pglogical.stat_subscription` view will contain performance statistics for
+each subscription which has received any data, otherwise the view is empty.
+
+Collecting statistics requires additional CPU resources on the subscriber.
+
+The default is on.
+
+### `pglogical.track_relation_apply`
+
+This controls whether to track per table apply statistics. If this is on, the
+`pglogical.stat_relation` view will contain performance statistics for
+each subscribed relation which has received any data, otherwise the view is
+empty.
+
+Collecting statistics requires additional CPU resources on the subscriber.
+
+The default is off.
+
+### `pglogical.temp_directory`
+
+This defines system path for where to put temporary files needed for schema
+synchronization. This path needs to exist and be writeable by users running
+Postgres.
+
+The default is empty, which tells pglogical to use the default temporary
+directory based on environment and operating system settings.
+
+### `pglogical.extra_connection_options`
+
+This option may be set to assign connection options that apply to all
+connections made by pglogical. This can be a useful
+place to set up custom keepalive options, etc.
+
+pglogical defaults to enabling TCP keepalives to ensure that it notices
+when the upstream server disappears unexpectedly. To disable them, add
+`keepalives = 0` to `pglogical.extra_connection_options`.
+
+### `pglogical.synchronize_failover_slot_names`
+
+This standby option allows setting which logical slots should be synchronized
+to this physical standby. It's comma separated list of slot filters.
+
+Slot filter is defined as `key:value` pair (separated by colon) where `key`
+can be one of:
+
+-   `name` - specifies to match exact slot name
+-   `name_like` - specifies to match slot name against SQL `LIKE` expression
+-   `plugin` - specifies to match slot plugin name agains the value
+
+The `key` can be omitted and will default to `name` in that case.
+
+For example `'my_slot_name,plugin:pglogical_output,plugin:pglogical'` will
+synchronize slot named "my_slot_name" and any pglogical slots.
+
+If this is set to empty string, no slots will be synchronized to this physical
+standby.
+
+Default value is `'plugin:pglogical,plugin:pglogical_output'` meaning pglogical
+slots will be synchronized.
+
+### `pglogical.synchronize_failover_slots_drop`
+
+This standby option controls what happens to extra slots on standby that are
+not found on primary using pglogical.synchronize_failover_slot_names filter.
+If it's set to true, they will be dropped, otherwise they will be kept.
+
+The default value is `true`.
+
+### `pglogical.synchronize_failover_slots_dsn`
+
+A standby option for specifying which connection string to use to connect to
+primary when fetching slot information.
+
+If empty (and default) is to use same connection string as `primary_conninfo`.
+
+Note that `primary_conninfo` cannot be used if there is a `password` field in
+the connection string because it gets obfuscated by PostgreSQL and pglogical
+can't actually see the password. In this case the
+`pglogical.synchronize_failover_slots_dsn` must be used.
+
+### `pglogical.standby_slot_names`
+
+This option is typically used in failover configurations to ensure that the
+failover-candidate streaming physical replica(s) for this pglogical provider
+have received and flushed all changes before they ever become visible to any
+subscribers. That guarantees that a commit cannot vanish on failover to a
+standby for the provider.
+
+Replication slots whose names are listed in the comma-separated
+`pglogical.standby_slot_names` list are treated specially by the walsender
+on a pglogical provider.
+
+pglogical's logical replication walsenders will ensure that all local changes
+are sent and flushed to the replication slots in `pglogical.standby_slot_names`
+before the provider sends those changes to any other pglogical replication
+clients. Effectively it provides a synchronous replication barrier between the
+named list of slots and all pglogical replication clients.
+
+Any replication slot may be listed in `pglogical.standby_slot_names`; both
+logical and physical slots work, but it's generally used for physical slots.
+
+Without this safeguard, two anomalies are possible where a commit can be
+received by a subscriber then vanish from the provider on failover because
+the failover candidate hadn't received it yet:
+
+-   For 1+ subscribers, the subscriber may have applied the change but the new
+    provider may execute new transactions that conflict with the received change,
+    as it never happened as far as the provider is concerned;
+
+and/or
+
+-   For 2+ subscribers, at the time of failover, not all subscribers have applied 
+    the change.The subscribers now have inconsistent and irreconcilable states
+    because the subscribers that didn't receive the commit have no way to get it
+    now.
+
+Setting `pglogical.standby_slot_names` will (by design) cause subscribers to
+lag behind the provider if the provider's failover-candidate replica(s) are not
+keeping up. Monitoring is thus essential.
+
+Note that this setting is generally not required for BDR3 nodes (which are
+based on pglogical). Unlike base pglogical3, BDR3 is capable of reconciling
+lost changes from surviving peer nodes.
+
+### `pglogical.standby_slots_min_confirmed`
+
+Controls how many of the `pglogical.standby_slot_names` have to confirm before
+we send data to pglogical subscribers.
+
+### `pglogical.writer_input_queue_size`
+
+This option is used to specify the size of the shared memory queue used
+by the receiver to send data to the writer process. If the writer process is
+stalled or making slow progress, then the queue might get filled up, stalling
+the receiver process too. So it's important to provide enough shared memory for
+this queue. The default is 1MB and the maximum allowed size is 1GB. While any
+storage size specifier can be used to set the GUC, the default is kB.
+
+### `pglogical.writer_output_queue_size`
+
+This option is used to specify the size of the shared memory queue used
+by the receiver to receive data from the writer process. Since the writer is
+not expected to send a large amount of data, a relatively smaller sized queue
+should be enough. The default is 32kB and the maximum allowed size is 1MB.
+While any storage size specifier can be used to set the GUC, the default is
+kB.
+
+### `pglogical.min_worker_backoff_delay`
+
+Rate limit pglogical background worker launches by preventing a given worker
+from being relaunched more often than every
+`pglogical.min_worker_backoff_delay` milliseconds. Time-unit suffixes are
+supported.
+
+The default is 0, meaning no rate limit. The delay is a time limit applied from
+launch-to-launch, so a value of `'500ms'` would limit all types of workers to
+at most 2 (re)launches per second.
+
+If the backoff delay setting is changed and the PostgreSQL configuration is
+reloaded then all current backoff waits will be reset. Additionally, the
+`pglogical.worker_task_reset_backoff_all()` function is provided to allow the
+administrator to force all backoff intervals to immediately expire.
+
+A tracking table in shared memory is maintained to remember the last launch
+time of each type of worker. This tracking table is not persistent; it is
+cleared by PostgreSQL restarts, including soft-restarts during crash recovery
+after an unclean backend exit.
+
+The view [`pglogical.worker_tasks`](troubleshooting#pglogical.worker_tasks)
+may be used to inspect this state so the administrator can see any backoff
+rate-limiting currently in effect.
+
+For rate limiting purposes, workers are classified by "task". This key consists
+of the worker role, database oid, subscription id, subscription writer id,
+extension library name and function name, extension-supplied worker name, and
+the remote relation id for sync writers. `NULL` is used where a given
+classifier does not apply, e.g. manager workers don't have a subscription ID
+and receivers don't have a writer id.
+
+### `pglogical.max_writers_per_subscription`
+
+Specifies the maximum number of parallel writers that a subscription may use.
+Values between 1 and 64 are allowed, with the default being 8. When set to 1,
+parallel apply is effectively disabled.
+
+### `pglogical.writers_per_subscription`
+
+Sets the default number of parallel writers for subscriptions without an
+explicitly set value. Values between 1 and 64 are allowed, with the default
+being 4.
