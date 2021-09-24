@@ -42,21 +42,29 @@ const basePath = path.resolve("temp_pglogical3/docs/");
           {
             if (subDest && !(subDest instanceof Array))
             {
-              subIndexFilename = subDest;
-              break;
+              if (!subIndexFilename) subIndexFilename = subDest;
+              fileToMetadata[subDest] = {
+                ...fileToMetadata[subDest], 
+                redirects: ["../" + path.basename(subDest, ".md")]
+              };    
             }
           }
-          if (subIndexFilename)
-          break;
         }
         for (const subEntry of dest) {
           await processEntry(subEntry, path.resolve(destPath, navTitle.toLowerCase()), subIndexFilename)        
         }
         // write out index w/ navigation tree
+        fileToMetadata[subIndexFilename] = {
+          ...fileToMetadata[subIndexFilename], 
+          navTitle
+        };
         await process(path.resolve(basePath, subIndexFilename), subIndexFilename, path.resolve(destPath, navTitle.toLowerCase(), "index.mdx"));
+
+        // add subindex to parent
+        fileToMetadata[indexFilename] = {navigation: [], ...fileToMetadata[indexFilename]};
+        fileToMetadata[indexFilename].navigation.push(navTitle.toLowerCase());  
         continue;
       }
-      console.log(basePath, dest, destPath)
       const fileAbsolutePath = path.resolve(basePath, dest);
       const filename = path.relative(basePath, fileAbsolutePath);
       const destFilepath = path.resolve(destPath, filename.replace(/\//g, '_')+"x");
@@ -78,7 +86,7 @@ const basePath = path.resolve("temp_pglogical3/docs/");
     file.path = destFilepath;
     try 
     {
-      await fs.mkdir(path.dirname(file.path));
+      await fs.mkdir(path.dirname(file.path), {recursive: true});
     } catch {}
     await write(file);
   }
@@ -94,11 +102,11 @@ const basePath = path.resolve("temp_pglogical3/docs/");
 
   for (const dirEntry of markdownToProcess) {
     if (!dirEntry) continue;
-    processEntry(dirEntry, destPath, indexFilename);
+    await processEntry(dirEntry, destPath, indexFilename);
   }
 
   // write out index w/ navigation tree
-  process(path.resolve(basePath, indexFilename), indexFilename, path.resolve(destPath, "index.mdx"));
+  await process(path.resolve(basePath, indexFilename), indexFilename, path.resolve(destPath, "index.mdx"));
 })();
 
 // GPP leaves the files littered with these; they alter parsing by flipping sections to HTML context
