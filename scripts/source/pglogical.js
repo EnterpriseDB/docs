@@ -5,9 +5,9 @@
 const path = require("path");
 const fs = require("fs/promises");
 const { read, write } = require("to-vfile");
-const remarkParse = require("@mdx-js/mdx/node_modules/remark-parse");
+const remarkParse = require("remark-parse");
 const mdx = require("remark-mdx");
-const unified = require("@mdx-js/mdx/node_modules/unified");
+const unified = require("unified");
 const remarkFrontmatter = require("remark-frontmatter");
 const remarkStringify = require("remark-stringify");
 const admonitions = require("remark-admonitions");
@@ -42,11 +42,13 @@ const basePath = path.resolve("temp_pglogical3/docs/");
           {
             if (subDest && !(subDest instanceof Array))
             {
-              if (!subIndexFilename) subIndexFilename = subDest;
-              fileToMetadata[subDest] = {
-                ...fileToMetadata[subDest], 
-                redirects: ["../" + path.basename(subDest, ".md")]
-              };    
+              if (!subIndexFilename) 
+                subIndexFilename = subDest;
+              else
+                fileToMetadata[subDest] = {
+                  ...fileToMetadata[subDest], 
+                  redirects: ["../../" + path.basename(subDest, ".md")]
+                };    
             }
           }
         }
