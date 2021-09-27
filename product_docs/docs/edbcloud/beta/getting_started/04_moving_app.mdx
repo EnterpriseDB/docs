@@ -7,12 +7,12 @@ tags:
   - live-demo
 katacodaPanel:
   scenario: ubuntu:2004
-  codelanguages: shell, sql:exec
+  codelanguages: shell, sql
   initializeCommand: "docker run -it shog9/dbaasdemo:porting_app_data /bin/bash"
 showInteractiveBadge: true
 ---
 
-Once you've [created a cluster](03_create_cluster), you can move data into it and [run applications against it](../using_cluster/02_connect_to_cluster/). If you choose to create an EDB Postgres Advanced Server cluster, this includes compatibility with much of the Oracle syntax and built-in packages. 
+After [creating a cluster](03_create_cluster), you can move data into it and [run applications against it](../using_cluster/02_connect_to_cluster/). If you choose to create an EDB Postgres Advanced Server cluster, this includes compatibility with much of the Oracle syntax and many built-in packages. 
 
 This section demonstrates that compatibility, using a sample reporting application (an analytical query originally written against Oracle) and [a sample database](https://github.com/lerocha/chinook-database/blob/master/ChinookDatabase/DataSources/Chinook_Oracle.sql) (converted from Oracle via [the EDB Migration Toolkit](/migration_toolkit/latest/)).  
 
@@ -21,36 +21,15 @@ This section demonstrates that compatibility, using a sample reporting applicati
 
 <KatacodaPanel />
 
-
-## Oracle-compatible syntax: a small demonstration
+## Demo: Oracle-compatible syntax
 
 A critical question for people migrating applications from one platform to another is "How much will need to change?" While tools such as EDB's [Migration Portal](/migration_portal/latest/) and Migration Toolkit ease the burden of transforming the schema, data, and associated server-side logic, this still leaves open the question of whether or not application-side SQL queries will translate cleanly. 
 
-Let's consider an application that searches for album titles in the [Chinook dataset](https://github.com/lerocha/chinook-database) and returns the list of tracks along with their size. The SQL might look like this:
-
-```sql
-SELECT UNIQUE title,
-       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
-       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
-         WITHIN GROUP (ORDER BY trackid)
-         OVER (PARTITION BY title)  track_list
-FROM track t
-JOIN album
-  USING (albumid)
-JOIN mediatype
-  USING (mediatypeid)
-WHERE lower(title) LIKE :search
-ORDER BY title;
-```
-
-This query uses two seperate [window functions](https://en.wikipedia.org/wiki/Window_function_(SQL)) (Oracle calls them [analytic functions](https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/Analytic-Functions.html)) that aggregate based on a group of rows. The first is `AVG(...) OVER (...)`, which has been a standard since [SQL:2003](https://en.wikipedia.org/wiki/SQL:2003). The query also uses `LISTAGG (...)`, which was introduced in Oracle 11g Release 2. Very few database systems support `LISTAGG`, but it is possible to [use a workaround such as `STRING_AGG`](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql). Unfortunately, `STRING_AGG` is an aggregate function requires rewriting the entire query to include a `GROUP BY` clause. Fortunately [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) so this query doesn't need to change when migrating from Oracle.
-
-Window functions greatly simplify application code by moving logic closer to the data. This in turn  helps maintain [consistent data](https://en.wikipedia.org/wiki/ACID) and reduce the number of roundtrips to the database. For the sake of demonstration, here's a script for searching album titles on the command line:
+Let's consider an application that searches for album titles in the [Chinook dataset](https://github.com/lerocha/chinook-database) and returns the list of tracks along with their size. We can implement this using a shell script:
 
 ```bash
-#!/usr/bin/env ksh
+#!/usr/bin/env bash
 
-#set -x
 query="'%`echo $1 | tr '[:upper:]' '[:lower:]'`%'"
 
 
@@ -76,7 +55,9 @@ WHERE lower(title) LIKE :search
 ORDER BY title;
 ```
 
-The first half of the code (everything before `__SQL__` line) prepares to run the SQL command in the second half. It sets up a variable to be bound, which avoids SQL injection attacks. Next it sends the SQL command to the database indicated by a connection string. The bulk of the business logic resides in SQL. Here's what it looks like in action:
+This query uses two seperate [window functions](https://en.wikipedia.org/wiki/Window_function_(SQL)) (Oracle calls them [analytic functions](https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/Analytic-Functions.html)) that aggregate based on a group of rows. The first is `AVG(...) OVER (...)`, which has been a standard since [SQL:2003](https://en.wikipedia.org/wiki/SQL:2003). The query also uses `LISTAGG (...)`, which was introduced in Oracle 11g Release 2. Very few database systems support `LISTAGG`, but it is possible to [use a workaround such as `STRING_AGG`](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql). Unfortunately, `STRING_AGG` is an aggregate function requires rewriting the entire query to include a `GROUP BY` clause. Fortunately [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) so this query doesn't need to change when migrating from Oracle.
+
+Here's what it looks like in action:
 
 ```shell
 ~/chinook_report.sh baby
@@ -106,7 +87,9 @@ psql $PGDATABASE
 
 Now let's move this data into your own cluster and reconfigure the script to run against it...
 
-## Prerequesites
+## Moving a database's schema and data into an EDB Cloud cluster
+
+### Prerequesites
 
 You'll need a fresh cluster configured for this demo (as described in [the previous section](03_create_cluster)), and the connection URL and admin password handy. We recommend creating a fresh cluster and password before you begin. For the purpose of this demo, please create a small cluster running EDB Postgres Advanced Server with public networking.
 
@@ -115,18 +98,25 @@ You'll need a fresh cluster configured for this demo (as described in [the previ
     a connection over the public Internet; you should be very cautious about any use of these features when handling sensitive
     or proprietary data. Prefer private links for connections whenever feasible!
 
-## Connecting to the destination databases 
+Let's start by collecting the information needed to connect to your cluster. You'll need:
 
-For the destination, you'll use the connection string and credentials you created. For convenience, let's save those in another environmental variable - use the format `postgres://edb_admin:PASSWORD@SERVER:PORT/DATABASE?sslmode=require` - you can copy most of this off of the "Connect" tab for your cluster on the portal, just add the admin username (`edb_admin`) and your password, separated by a colon, before the server name in the URL.  
+- **The host:** this will look like `something.edbmp.edbcloud.io` - you can find it on the Connect tab for your cluster on the portal. 
+- **The port:** this will usually be `5432`, but you can double-check that on the Connect tab for your cluster as well.
+- **The admin username:** this will be `edb_admin`, and again will be listed on the Connect tab.
+- **The admin database name:** this will *also* be `edb_admin`, and also will be listed on the Connect tab.
+- **Your admin password:** this will not be listed *anywhere* - you specified it while creating your cluster, and only you know what it is; you'll need it to connect.  
+
+### Connecting to the destination databases 
+
+For the destination, you'll create a connection string using the information you collected above. For convenience, let's save those in another environmental variable: use the format `postgres://USERNAME:PASSWORD@HOST:PORT/DATABASE?sslmode=require`. 
 
 ```shell
-read -p "Enter connection string: " PGDEST
-__OUTPUT__
-Enter connection string: postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
+export PGDEST=postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
 ```
 
 !!! Warning
-    Don't re-use a password here, and be sure to bring the cluster down once you're done experimenting. 
+    Even though you're working with this information in the privacy of your own account, please be mindful of the fact that you've now stored sensitive credentials in a place where they might be retrieved later; for safety, you should change your password 
+    after you're done experimenting.
     EDB Cloud does not store your password and will not ask you for it; never share the admin password for
     a database.
 
@@ -135,7 +125,9 @@ Before moving on, please verify that you are able to connect to your cluster by 
 ```shell
 psql $PGDEST
 __OUTPUT__
-psql (13.4.8, server 13.4.8 (Debian 13.4.8-1+deb10))
+psql (13.0 (Debian 13.0-1.pgdg100+1), server 13.4.8 (Debian 13.4.8-1+deb10))
+WARNING: psql major version 13, server major version 13.
+         Some psql features might not work.
 SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
 Type "help" for help.
 
@@ -144,19 +136,19 @@ edb_admin=>
 
 Leave this connection open - we'll be using it to set up a new database & role next.
 
-## Identifying the necessary roles and database
+### Identifying the necessary roles and database
 
 Before embarking on a migration, we'll need to audit the role(s) used by our application to ensure that they remain available. We should keep the principle of least-privilege in mind here, and avoid creating (or migrating) roles that are not strictly needed by our application.
 
 As shown in the listings above, our reporting query needs to read data from tables in the "chinook" database. Let's start by creating that & connecting to it:
 
-```sql:exec
+```sql
 CREATE DATABASE chinook;
 __OUTPUT__
 CREATE DATABASE
 ```
 
-```sql:exec
+```sql
 \c chinook
 __OUTPUT__
 psql (13.4.8, server 13.4.8 (Debian 13.4.8-1+deb10))
@@ -167,7 +159,7 @@ chinook=>
 
 The script needs to be able to select from tables in this database, but does not need to write to it, modify the schema, etc. So we'll need a read-only user: `chinook`. For convenience in this demo, we'll give it a password of `chinook`.
 
-```sql:exec
+```sql
 CREATE USER chinook WITH PASSWORD 'chinook';
 __OUTPUT__
 CREATE USER
@@ -175,17 +167,17 @@ CREATE USER
 
 Since this database will ONLY be used for this purpose, we'll grant this user select privileges on any future tables created in it:
 
-```sql:exec
+```sql
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO chinook;
 ```
 
 The database is now ready for data, so exit psql.
 
-```sql:exec
+```sql
 \q
 ```
 
-## Exporting schema and data
+### Exporting schema and data
 
 Next we'll use `pg_dump` to export the application's schema and data:
 
@@ -193,25 +185,31 @@ Next we'll use `pg_dump` to export the application's schema and data:
 pg_dump --format custom $PGDATABASE > chinook.dump
 ```
 
-This uses a binary format to efficiently capture the schema and data into the file `chinook.dump`. 
+This uses a binary format to efficiently capture the schema and data into the file `chinook.dump`.
 	 
-## Importing schema and data
+### Importing schema and data
 
-Now import this into your own database:
+Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to point to the new `chinook` database. Use the same password and host you identified earlier, as we still need write access!
 
 ```shell
-pg_restore -d $PGDEST
+export PGDEST=postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/chinook?sslmode=require
 ```
 
-## Reconfiguring and running the application
-
-Now all that remains is to point our application to the new database. We want a new connection string for this, 
-one that points at the newly-created database and authenticates with the newly-created (read-access-only) user. Look up your cluster's host again (Connect tab for your cluster on the portal), and compose a connection string in the form, `postgres://chinook:chinook@HOST:5432/chinook?sslmode=require` - then overwrite the original connection string (stored in `PGDATABASE`):
+Now we can bring in the schema and data using `pg_restore`:
 
 ```shell
-read -p "Enter connection string: " PGDATABASE
-__OUTPUT__
-Enter connection string: postgres://chinook:chinook@HOST:5432/chinook?sslmode=require
+pg_restore --no-owner -d $PGDEST chinook.dump
+```
+
+The option `--no-owner` ensures that pg_restore does not try to assign ownership of objects to their original owner; instead they will be owned by edb_admin, and thus safe from modification unless we connect as that user.
+
+## Reconfiguring and testing application queries
+
+Now all that remains is to point our application to the new database. Once again, we want a new connection string for this, 
+one that points at the newly-created database and authenticates with the newly-created (read-access-only) user. Look up your cluster's host again, and compose a connection string in the form, `postgres://chinook:chinook@HOST:5432/chinook?sslmode=require` - then overwrite the original connection string (stored in `PGDATABASE`):
+
+```shell
+export PGDATABASE="postgres://chinook:chinook@something.edbmp.edbcloud.io:5432/chinook?sslmode=require"
 ```
 
 Try it out:
@@ -239,6 +237,7 @@ __OUTPUT__
 The same results as at the start, but now running against your own cluster!
 
 ## Next steps
+
 
  
 - [Managing Postgres Access](../using_cluster/01_postgres_access/)
