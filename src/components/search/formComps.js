@@ -43,7 +43,7 @@ export const SearchPane = ({ arrowIndex }) => (
 
 export const AdvancedSearchTabLink = ({ query }) => (
   <div className="flex-grow-1 d-flex align-items-center justify-content-flex-end mr-4">
-    <Link to={`/search?query=${query}`}>Advanced Search</Link>
+    <Link to={`/search?query=${query}`}>Search by Product</Link>
   </div>
 );
 
