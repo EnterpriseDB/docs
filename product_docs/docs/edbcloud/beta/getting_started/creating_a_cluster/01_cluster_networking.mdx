@@ -2,33 +2,64 @@
 title: Cluster Networking Architecture
 ---
 
+EDB Cloud clusters can be exposed to client applications in two ways -
+"Public", where the cluster is available on the Internet, and
+"Private", where access to the cluster is restricted to specific
+sources and network traffic never leaves the Azure network.
 
-You can deploy your cluster in a private network. A private cluster restricts access to the PostgreSQL service from outside the network. You can use access control to allow selected access from other networks and the internet.
+### Basic Architecture
 
-When you create your first cluster, EDB Cloud deploys a dedicated virtual network in Azure for all your resources.
+When you create your first cluster in a region, EDB Cloud deploys a
+dedicated virtual network (VNet) in Azure to host all clusters and
+supporting management services.
 
-The virtual network or VNet is named after the region where the cluster is deployed `vnet-{azure-location}`. For example, if the EDB Cloud Cluster is deployed in the East US region, it is named `vnet-eastus`.
+This VNet is named after the region where the cluster is deployed. .
+For example, if the cluster is deployed in the East US region, it is
+named `vnet-eastus`. This VNet uses IP addresses in the
+`10.240.0.0.16` space.
 
-For each subsequent private cluster added in the same region,
-EDB Cloud adds the following additional network infrastructure:
+### Public Cluster Load Balancing
 
-- An Azure Standard SKU Internal Load Balancer (ILB) named `kubernetes-internal`
+When a cluster is created with public network access, an Azure
+Standard SKU Load Balancer is created and configured with a public IP
+address that will always route to the leader of your cluster. Once
+assigned, this IP address will not change unless you change the
+networking configuration for your cluster.
 
-  The ILB connects to the EDB Postgres service through the virtual network private IP. The ILB service is exclusively available for resources in the virtual network.
+Only one Azure Load Balancer is typically deployed in your Azure
+Subscription per EDB Cloud region; subsequent public clusters will add
+additional IP addresses to the existing load balancer.
 
-   In the Azure CLI, you can list this ILB by using the following command:
+### Private Cluster Load Balancing
 
-   ```
-   $ az network lb list --query "[?name=='kubernetes-internal' && location=='japaneast']" -o table
-   Name                 Location    ResourceGuid                          ProvisioningState    ResourceGroup
-   -------------------  ----------  ------------------------------------  -------------------  ---------------
-   kubernetes-internal  japaneast   763196da-e0ae-4ad5-a160-9c15c091ec20  Succeeded            mc_dp-brcxzr08qr7rbei1-aks-japaneast-0_japaneast
+When a cluster is created with public network access, an Azure
+Standard SKU Load Balancer is created and configured with an IP
+address that will always route to the leader of your cluster. Once
+assigned, this IP address will not change unless you change the
+networking configuration for your cluster.
 
-- A public DNS zone for the EDB Cloud cluster
+This IP address is private to the VNet hosting your EDB Cloud
+services; by defaul it is not routable from other networks, even in
+your Azure account. Please see [Connecting to Your
+Cluster](../../connecting_your_cluster/) for details and instructions
+on how to properly configure routing for private clusters.
 
-  Note that you can resolve a domain name from inside or outside of the virtual network.
-  However, for a private EDB Cloud resource, the DNS resolves to a private IP address, which cannot be accessed from outside the virtual network.
+Only one Azure Internal Load Balancer is typically deployed in your
+Azure Subscription per EDB Cloud region; subsequent private clusters
+will add additional IP addresses to the existing load balancer.
 
-   Example of a public DNS:
-   `p-c4ia6jleig40jngmac40.brcxzr08qr7rbei1.edbcloud.io`
+### DNS
+
+Every EDB Cloud cluster, regardless of public or private networking
+status, is assigned a single DNS zone that maps to its exposed IP
+address, either public or private. When toggling between public and
+private, please wait up to 120 seconds for DNS caches to flush.
+
+### Toggling Between Public and Private
+
+Clusters can be changed from public to private and vice versa at any
+time. When this happens, the IP address previously assigned to the
+cluster is de-allocated, a new one is assigned, and DNS is updated
+accordingly.
+
 
