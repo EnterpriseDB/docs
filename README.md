@@ -162,19 +162,19 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Create the Docker image (optional):
 
    ```sh
-   docker-compose -f docker/docker-compose.build-pdf.yaml build --pull
+   npm run pdf:rebuild-docker-image
    ```
 
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   npm run build-pdf product_docs/docs/<product_folder>/<version>
+   npm run pdf:build product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   npm run build-pdf product_docs/docs/epas/13
+   npm run pdf:build product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
