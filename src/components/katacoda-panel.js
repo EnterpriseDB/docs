@@ -131,7 +131,7 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
 
   const embedScript =
     account === "notKC"
-      ? "http://shell-test-app.eastus.cloudapp.azure.com/javascripts/embed.js"
+      ? "https://shell-test-app.eastus.cloudapp.azure.com/javascripts/embed.js"
       : "https://katacoda.com/embed.js";
 
   return (
