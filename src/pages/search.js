@@ -30,7 +30,7 @@ const Search = (data) => {
   });
 
   return (
-    <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
+    <Layout background="white" pageMeta={{ title: "Search by Product" }}>
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}

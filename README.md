@@ -29,13 +29,14 @@ We recommend using MacOS to work with the EDB Docs application.
 1. Create a `.env.development` file: `cp env.development.example .env.development`.
 
 At this point you have a couple options.
+
 - [**Quick set up with Docker**](#get-started-quickly-with-docker)
 
-   This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
+  This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
 
 - [**Set up a full development environment**](#set-up-a-full-development-environment)
 
-   Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
+  Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
 
 ### Get Started Quickly With Docker
 
@@ -112,7 +113,7 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
    - Make sure to enable SSO for your token or it may not work correctly
 
-1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`. That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
 ### Set Up a Full Development Environment
 
@@ -162,19 +163,19 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Create the Docker image (optional):
 
    ```sh
-   docker-compose -f docker/docker-compose.build-pdf.yaml build --pull
+   npm run pdf:rebuild-docker-image
    ```
 
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   npm run build-pdf product_docs/docs/<product_folder>/<version>
+   npm run pdf:build product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   npm run build-pdf product_docs/docs/epas/13
+   npm run pdf:build product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
@@ -249,7 +250,7 @@ The app is concerned with two different types of redirects that can be defined i
 
 ### Internal Redirects (within Docs 2.0)
 
-*For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md).*
+_For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md)._
 
 #### `redirects`
 
@@ -265,9 +266,9 @@ both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s cu
 
 These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
 
-   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/
-   - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
-   - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
+- Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/
+- Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
+- Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
 
 #### Netlify-specific redirects
 
