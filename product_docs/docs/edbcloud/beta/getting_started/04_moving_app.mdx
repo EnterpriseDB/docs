@@ -6,9 +6,9 @@ tags:
   - epas
   - live-demo
 katacodaPanel:
-  scenario: ubuntu:2004
+  account: notKC
+  scenario: dbaasdemo
   codelanguages: shell, sql
-  initializeCommand: "docker run -it shog9/dbaasdemo:porting_app_data /bin/bash"
 showInteractiveBadge: true
 ---
 
@@ -106,20 +106,25 @@ Let's start by collecting the information needed to connect to your cluster. You
 - **The admin database name:** this will *also* be `edb_admin`, and also will be listed on the Connect tab.
 - **Your admin password:** this will not be listed *anywhere* - you specified it while creating your cluster, and only you know what it is; you'll need it to connect.  
 
-### Connecting to the destination databases 
-
-For the destination, you'll create a connection string using the information you collected above. For convenience, let's save those in another environmental variable: use the format `postgres://USERNAME:PASSWORD@HOST:PORT/DATABASE?sslmode=require`. 
+For convenience, let's put these - EXCEPT for the password - into variables:
 
 ```shell
-export PGDEST=postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
+read -p "Enter host: " DEST_HOST \
+&& read -p "Enter port: " DEST_PORT \
+&& read -p "Enter username: " -i edb_admin DEST_USER \
+&& read -p "Enter database: " DEST_DB
 ```
 
-!!! Warning
-    Even though you're working with this information in the privacy of your own account, please be mindful of the fact that you've now stored sensitive credentials in a place where they might be retrieved later; for safety, you should change your password 
-    after you're done experimenting.
-    EDB Cloud does not store your password and will not ask you for it; never share the admin password for
-    a database.
+### Connecting to the destination databases 
 
+For the destination, you'll create a connection string using the information you collected above. For convenience, let's save those in another environmental variable: use the format `postgres://USERNAME@HOST:PORT/DATABASE?sslmode=require`. 
+
+```shell
+export PGDEST=postgres://$DEST_USER@$DEST_HOST:$DEST_PORT/$DEST_DB?sslmode=require
+echo $PGDEST
+__OUTPUT__
+postgres://edb_admin@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
+```
 Before moving on, please verify that you are able to connect to your cluster by using PSQL to list available databases:
 
 ```shell
@@ -133,6 +138,12 @@ Type "help" for help.
 
 edb_admin=>
 ```
+
+!!! Warning
+    Even though you're working with this information in the privacy of your own account, please be mindful of the fact that you've now entering sensitive credentials into a shared sandbox environment; for safety, you should change your password 
+    after you're done experimenting.
+    EDB Cloud does not store your password and will not ask you for it; never share the admin password for
+    a database.
 
 Leave this connection open - we'll be using it to set up a new database & role next.
 
@@ -189,10 +200,13 @@ This uses a binary format to efficiently capture the schema and data into the fi
 	 
 ### Importing schema and data
 
-Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to point to the new `chinook` database. Use the same password and host you identified earlier, as we still need write access!
+Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to point to the new `chinook` database. We *won't* use our newly-created user just yet, as we still need write access!
 
 ```shell
-export PGDEST=postgres://edb_admin:password@something.edbmp.edbcloud.io:5432/chinook?sslmode=require
+export PGDEST=postgres://$DEST_USER@$DEST_HOST:$DEST_PORT/chinook?sslmode=require
+echo $PGDEST
+__OUTPUT__
+postgres://edb_admin@something.edbmp.edbcloud.io:5432/chinook?sslmode=require
 ```
 
 Now we can bring in the schema and data using `pg_restore`:
@@ -206,10 +220,11 @@ The option `--no-owner` ensures that pg_restore does not try to assign ownership
 ## Reconfiguring and testing application queries
 
 Now all that remains is to point our application to the new database. Once again, we want a new connection string for this, 
-one that points at the newly-created database and authenticates with the newly-created (read-access-only) user. Look up your cluster's host again, and compose a connection string in the form, `postgres://chinook:chinook@HOST:5432/chinook?sslmode=require` - then overwrite the original connection string (stored in `PGDATABASE`):
+one that points at the newly-created database and authenticates with the newly-created (read-access-only) user. This time, we'll overwrite the original connection string (stored in `PGDATABASE`):
 
 ```shell
-export PGDATABASE="postgres://chinook:chinook@something.edbmp.edbcloud.io:5432/chinook?sslmode=require"
+export PGDATABASE="postgres://chinook:chinook@$DEST_HOST:$DEST_PORT/chinook?sslmode=require"
+echo $PGDATABASE
 ```
 
 Try it out:

@@ -124,19 +124,20 @@ const KatacodaPanel = ({ katacodaPanelData }) => {
     setShown(!isShown);
     if (!isShown) {
       window.katacoda.init();
-      window.katacoda.write = katacodaHttpsWriter;
     }
   };
 
   useAdjustLayoutCloseDetection(isShown, panelElementId, setShown);
 
+  const embedScript =
+    account === "notKC"
+      ? "http://shell-test-app.eastus.cloudapp.azure.com/javascripts/embed.js"
+      : "https://katacoda.com/embed.js";
+
   return (
     <>
       <Helmet>
-        <script
-          src="https://katacoda.com/embed.js"
-          data-katacoda-ondemand="true"
-        />
+        <script src={embedScript} data-katacoda-ondemand="true" />
       </Helmet>
 
       {isShown ? (
@@ -181,27 +182,6 @@ const useAdjustLayoutCloseDetection = (isShown, panelElementId, setShown) => {
       };
     }
   }, [isShown, panelElementId, setShown]);
-};
-
-// adapted from Katacoda src to patch over http to https redirect issues
-// when testing locally - remove once Katacoda has this fixed
-const katacodaHttpsWriter = (cmd) => {
-  let target = document.querySelectorAll("[data-katacoda-env]");
-  if (target.length === 0)
-    target = document.querySelectorAll("[data-katacoda-id]");
-  if (target.length === 0) {
-    if (console && console.error) console.error("No katacoda elements found");
-    return;
-  }
-
-  const p = document.getElementById(target[0].getAttribute("id"));
-  const iframe = p.getElementsByTagName("iframe")[0];
-  if (!iframe) return;
-
-  iframe.contentWindow.postMessage(
-    { cmd: "writeTerm", data: cmd },
-    `https://${new URL(iframe.src).host}`,
-  );
 };
 
 export default KatacodaPanel;
