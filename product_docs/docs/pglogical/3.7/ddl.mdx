@@ -1,0 +1,263 @@
+---
+title: DDL Replication
+originalFilePath: ddl.md
+
+---
+
+pglogical3 supports *transparent DDL replication*, where schema change commands
+run on provider node(s) are automatically captured and replicated to subscriber
+node(s) without the need for wrapper functions like
+`pglogical.replicate_ddl_command` or external schema management tools.
+
+The main difference from normal replication of table rows ("table replication")
+is that DDL replication replicates statements themselves rather than the
+effects of those statements.  Normal data replication replicates the changes
+made by a statement, e.g. it sends the rows that got `UPDATE`d by an `UPDATE`
+command rather than replicating and executing the `UPDATE` statement itself.
+pglogical's DDL replication captures, replicates and executes *the text of the
+DDL statement itself*.
+
+## Minimal example
+
+Enabling DDL replication on a pglogical provider can be as simple as:
+
+```
+SELECT * FROM pglogical.replication_set_add_ddl('ddl_sql', 'all', NULL, NULL);
+```
+
+to replicate any captureable DDL statements executed by any user on the
+provider database to any subscriber(s) that subscribe to the enabled-by-default
+`ddl_sql` replication set.
+
+However it's generally *recommended* to enable replication of a targeted subset
+of DDL instead.
+
+There are also caveats relating to replication of changes to "global objects"
+like roles, the handling of some `ALTER TABLE` modes, etc that are important to
+understand. See ["Restrictions"](#Restrictions) below.
+
+## How to use DDL replication
+
+Transparent DDL replication in pglogical builds on the same [Replication
+Sets](replication-sets) model that's used by replication of table contents.
+The same replication set(s) may be used for both replicating table contents
+and for DDL.
+
+To replicate future DDL commands on a provider, a DDL replication filter must
+be added to the replication set(s) used by subscribers that should receive
+and apply the DDL.
+
+The DDL filter can specify a `command_tag` and `role_name` to allow
+replication of only some DDL statements. The `command_tag` is same as those
+used by [EVENT TRIGGERs](https://www.postgresql.org/docs/current/static/event-trigger-matrix.html).
+The `role_name` is used for matching against the current role which is executing the
+command. Both `command_tag` and `role_name` are evaluated as regular expressions
+which are case sensitive.
+
+## Functions for managing DDL replication filters
+
+The following functions are provided for managing DDL replication filters using
+replication sets:
+
+### pglogical.replication_set_add_ddl
+
+Adds a DDL replication filter to a replication set.
+
+#### Synopsis
+
+```postgresql
+pglogical.replication_set_add_ddl (
+    set_name name,
+    ddl_filter_name text,
+    command_tag text,
+    role_name text
+)
+```
+
+#### Parameters
+
+-   `set_name` - name of the existing replication set
+-   `ddl_filter_name` - name of the new DDL replication filter
+-   `command_tag` - regular expression for matching command tags
+-   `role_name` - regular expression for matching role name
+
+The `command_tag` and `role_name` parameters can be set to `NULL` in which case
+they will match any command tag or role respectively. They are both regular
+expressions, so you can use patterns like `'CREATE.*'` or `'(CREATE|DROP).*'`.
+
+The target object identity (oid, name, etc) are not exposed, so you cannot
+filter on them.
+
+### pglogical.replication_set_remove_ddl
+
+Remove a DDL replication filter from replication set.
+
+#### Synopsis
+
+```postgresql
+pglogical.replication_set_remove_ddl(set_name name, ddl_filter_name text)
+```
+
+#### Parameters
+
+-   `set_name` - name of the existing replication set
+-   `ddl_filter_name` - name of the DDL replication filter to be removed from the set
+
+## Additional functions and views
+
+## `pglogical.ddl_replication`
+
+This view lists ddl replication configuration as set up by current ddl_filters.
+
+### `pglogical.ddl_replication` Columns
+
+| Name         | Type | Description                                                  |
+| ------------ | ---- | ------------------------------------------------------------ |
+| set_ddl_name | name | Name of DDL filter                                           |
+| set_ddl_tag  | text | Which command tags it applies to (regular expression)        |
+| set_ddl_role | text | Which roles it applies to (regular expression)               |
+| set_name     | name | Name of the replication set for which this filter is defined |
+
+## `pglogical.ddl_replication`
+
+This view lists ddl replication configuration as set up by current ddl_filters.
+
+### `pglogical.ddl_replication` Columns
+
+| Name         | Type | Description                                                  |
+| ------------ | ---- | ------------------------------------------------------------ |
+| set_ddl_name | name | Name of DDL filter                                           |
+| set_ddl_tag  | text | Which command tags it applies to (regular expression)        |
+| set_ddl_role | text | Which roles it applies to (regular expression)               |
+| set_name     | name | Name of the replication set for which this filter is defined |
+
+### pglogical.replicate_ddl_command
+
+This function can be used to explicitly replicate a command as-is using the
+specified set of replication sets. The command will also be executed locally.
+
+In most cases `pglogical.replicate_ddl_command` is rendered obsolete by
+pglogical's support for DDL replication filters.
+
+#### Synopsis
+
+```
+pglogical.replicate_ddl_command(command text, replication_sets text[])`
+```
+
+#### Parameters
+
+-   `command` - DDL query to execute
+-   `replication_sets` - array of replication sets which this command should be
+    associated with; default "{ddl_sql}"
+
+## Restrictions
+
+When the DDL replication filter matches a DDL command it will modify the
+`search_path` configuration parameter used to execute the DDL on both provider
+and subscriber(s) to include only `pg_catalog` i.e. the system catalogs. This
+means that all the user objects referenced in the query must be fully schema
+qualified. For example `CREATE TABLE foo...` will raise an error when
+executed and has to be rewritten as `CREATE TABLE public.foo...`.
+
+DDL that matches the DDL replication filter and does not comply with this
+requirement will fail with an error like this:
+
+```
+ERROR:  no schema has been selected to create in
+STATEMENT: CREATE TABLE foo (id integer);
+```
+
+or will raise an `ERROR` message complaining that data types, tables, etc
+referenced by the DDL statement do not exist even when they can be queried
+normally, are shown by `psql`, etc.
+
+For example, attempting to drop some table `public.a` will fail:
+
+```
+ERROR: table "a" does not exist
+STATEMENT: DROP TABLE a;
+```
+
+and must be reframed as:
+
+```
+DROP TABLE public.a;
+```
+
+The same restriction applies to any command executed using the
+`pglogical.replicate_ddl_command` function. The function call has the
+additional restriction that it cannot execute special commands which need to be
+run outside of a transaction. Most notably `CREATE INDEX CONCURRENTLY` will
+fail if run using `pglogical.replicate_ddl_command` but will work via DDL
+replication sets.
+
+For testing purposes it can be useful to simulate the behaviour of
+DDL replication capture manually in psql. To do so, set the `search_path` to
+the empty string, e.g.
+
+```
+BEGIN;
+SET LOCAL search_path = '';
+CREATE TABLE mytable(id integer);
+COMMIT;
+```
+
+will fail with `ERROR: no schema selected to create in`.
+
+## Considerations with global objects
+
+Because PostgreSQL has objects that exist within one database, objects shared
+by all databases, and objects that exist outside the catalogs, some care is
+required when you may potentially replicate a subset of DDL or replicate DDL
+from more than one database:
+
+-   pglogical can capture and replicate DDL that affects global objects like
+    roles, users, groups, etc, but only if the commands are run in a database
+    with pglogical ddl replication enabled. So it's easy to get into inconsistent
+    states if you do something like `CREATE ROLE` in the `postgres` db then
+    `ALTER ROLE` in the `my_pglogical_enabled`. The resulting captured DDL may
+    not apply on the downstream, requiring a transaction to be skipped over or
+    non-replicated DDL to be run on the downstream to create the object that's
+    targeted by the replicated DDL.
+
+-   pglogical can also capture and replicate DDL that references global objects
+    that may not exist on the other node(s), such as tablespaces and users/roles.
+    So an `ALTER TABLE ... OWNER TO ...` can fail to apply if the role, a global
+    object, does not exist on the downstream. You may have to create a dummy
+    global object on the downstream or if absolutely necessary, skip some changes
+    from the stream.
+
+-   DDL that references local paths like tablespaces may fail to apply on the other
+    end if paths differ.
+
+In general you should run all your DDL via your pglogical-enabled database, and
+ensure that all global objects *exist* on the provider and all subscribers. This
+may require the creation of dummy roles, dummy tablespaces, etc.
+
+## `pglogical.tables`
+
+This view lists information about table membership in replication sets.
+If a table exists in multiple replication sets it will appear multiple times
+in this table.
+
+### `pglogical.tables` Columns
+
+| Name        | Type    | Description                                          |
+| ----------- | ------- | ---------------------------------------------------- |
+| relid       | oid     | The OID of the relation                              |
+| nspname     | name    | Name of the schema relation is in                    |
+| relname     | name    | Name of the relation                                 |
+| set_name    | name    | Name of the replication set                          |
+| set_ops     | text\[] | List of replicated operations                        |
+| rel_columns | text\[] | List of replicated columns (NULL = all columns) (\*) |
+| row_filter  | text    | Row filtering expression                             |
+
+## `pglogical.queue`
+
+DDL can also be queued up with a message to state the replication information.
+This can be seen in ascending order, on this view.
+
+## `pglogical.queue_truncate`
+
+A function that erase's all the logging information of the view.
