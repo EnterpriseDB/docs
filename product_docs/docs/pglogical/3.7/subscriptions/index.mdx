@@ -1,0 +1,961 @@
+---
+navigation:
+  - subscriptions
+  - pglogical-writer
+navTitle: Subscriptions
+title: Subscription Overview
+originalFilePath: subscriptions.md
+
+---
+
+A subscription is the receiving side (or downstream) of the pglogical
+replication setup. Just like on the upstream, the subscription first needs
+local node to be created (see [#Nodes](nodes)).
+
+## Subscription information
+
+## pglogical.stat_subscription
+
+Apply statistics for each subscription. Only contains data if the tracking
+is enabled.
+
+## `pglogical.stat_subscription` Columns
+
+| Column               | Type                     | Description                                                                                                         |
+| -------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| sub_name             | name                     | Name of the subscription                                                                                            |
+| subid                | oid                      | Oid of the subscription                                                                                             |
+| nconnect             | bigint                   | Number of times this subscription has connected upstream                                                            |
+| ncommit              | bigint                   | Number of commits this subscription did                                                                             |
+| nabort               | bigint                   | Number of aborts writer did for this subscription                                                                   |
+| nerror               | bigint                   | Number of errors writer has hit for this subscription                                                               |
+| nskippedtx           | bigint                   | Number of transactions skipped by writer for this subscription (currently normally 0 for pgl subscription)          |
+| ninsert              | bigint                   | Number of inserts this subscription did                                                                             |
+| nupdate              | bigint                   | Number of updates this subscription did                                                                             |
+| ndelete              | bigint                   | Number of deletes this subscription did                                                                             |
+| ntruncate            | bigint                   | Number of truncates this subscription did                                                                           |
+| nddl                 | bigint                   | Number of DDL operations this subscription has executed                                                             |
+| ndeadlocks           | bigint                   | Number of errors that were caused by deadlocks                                                                      |
+| nretries             | bigint                   | Number of retries the writer did (without going for full restart/reconnect)                                         |
+| shared_blks_hit      | bigint                   | Total number of shared block cache hits by the subscription                                                         |
+| shared_blks_read     | bigint                   | Total number of shared blocks read by the subscription                                                              |
+| shared_blks_dirtied  | bigint                   | Total number of shared blocks dirtied by the subscription                                                           |
+| shared_blks_written  | bigint                   | Total number of shared blocks written by the subscription                                                           |
+| blk_read_time        | double precision         | Total time the subscription spent reading blocks, in milliseconds (if `track_io_timing` is enabled, otherwise zero) |
+| blk_write_time       | double precision         | Total time the subscription spent writing blocks, in milliseconds (if `track_io_timing` is enabled, otherwise zero) |
+| connect_time         | timestamp with time zone | Time when the current upstream connection was established, NULL if not connected                                    |
+| last_disconnect_time | timestamp with time zone | Time when the last upstream connection was dropped                                                                  |
+| start_lsn            | pg_lsn                   | LSN from which this subscription requested to start replication from the upstream                                   |
+| retries_at_same_lsn  | bigint                   | Number of attempts the subscription was restarted from the same LSN value                                           |
+| curr_ncommit         | bigint                   | Number of commits this subscription did after the current connection was established                                |
+
+## `pglogical.stat_relation`
+
+Apply statistics for each relation. Only contains data if the tracking
+is enabled and something was replicated for a given relation.
+
+## `pglogical.stat_relation` Columns
+
+| Column              | Type             | Description                                                                                                          |
+| ------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| nspname             | name             | Name of the relation's schema                                                                                        |
+| relname             | name             | Name of the relation                                                                                                 |
+| relid               | oid              | OID of the relation                                                                                                  |
+| total_time          | double precision | Total time spent processing replication for the relation                                                             |
+| ninsert             | bigint           | Number of inserts replicated for the relation                                                                        |
+| nupdate             | bigint           | Number of updates replicated for the relation                                                                        |
+| ndelete             | bigint           | Number of deletes replicated for the relation                                                                        |
+| ntruncate           | bigint           | Number of truncates replicated for the relation                                                                      |
+| shared_blks_hit     | bigint           | Total number of shared block cache hits for the relation                                                             |
+| shared_blks_read    | bigint           | Total number of shared blocks read for the relation                                                                  |
+| shared_blks_dirtied | bigint           | Total number of shared blocks dirtied for the relation                                                               |
+| shared_blks_written | bigint           | Total number of shared blocks written for the relation                                                               |
+| blk_read_time       | double precision | Total time spent reading blocks for the relation, in milliseconds (if `track_io_timing` is enabled, otherwise zero)  |
+| blk_write_time      | double precision | Total time spent writing blocks for the relation, in milliseconds (if `track_io_timing` is enabled, otherwise zero)  |
+| lock_acquire_time   | double precision | Total time spent acquiring locks on the relation (if `pglogical.track_apply_lock_timing` is enabled, otherwise zero) |
+
+## `pglogical.replication_status`
+
+Replication status view for each subscription. We consider replication
+to be blocked when the subscription has restarted from the same LSN at
+least twice and not a single transaction is yet applied after the
+current upstream connection was established. If the very first
+transaction after restart is very big and still being applied, the
+`replication_blocked` result maybe wrong.
+
+## `pglogical.replication_status` Columns
+
+|      Column         |           Type           |  Description
+|-----|---------------+--------------------------+--------------------------
+| sub_name            | name                     | Name of the subscription
+| connected           | boolean                  | Is the subscription connected to the upstream?
+| replication_blocked | boolean                  | Is the replication currently blocked?
+| connect_time        | timestamp with time zone | Time when the current connection was established
+| disconnect_time     | timestamp with time zone | Time when the last connection was dropped
+| uptime              | interval                 | Duration since the current connection is active
+
+## pglogical.local_sync_status
+
+An updated view of the synchronization locally. Columns include subscription ID, sync status and kind.
+
+## pglogical.show_workers
+
+A function to bring the user information of the worker PID, role and subscription ID.
+
+## SQL interfaces
+
+### pglogical.create_subscription
+
+Creates a subscription from the current node to the provider node. Command
+does not block, just initiates the action.
+
+#### Synopsis
+
+```postgresql
+pglogical.create_subscription (
+    subscription_name name,
+    provider_dsn text,
+    replication_sets text[],
+    synchronize_structure boolean,
+    synchronize_data boolean,
+    create_slot boolean,
+    slot_name text,
+    forward_origins text[],
+    strip_origins boolean,
+    num_writers int,
+    apply_delay interval,
+    writer name,
+    writer_options text[]
+)
+```
+
+The `subscription_name` is used as `application_name` by the replication
+connection. This means that it's visible in the `pg_stat_replication`
+monitoring view. It can also be used in `synchronous_standby_names` when
+pglogical is used as part of the synchronous replication setup.
+
+Subscription setup is asynchronous. `pglogical.create_subscription` returns
+after creating the replication slot (unless `create_slot` is false) but
+before the subscription is synchronized and streaming. Use
+`pglogical.wait_for_subscription_sync_complete` to wait until the subscription
+is up and has completed any requested schema and/or data sync.
+
+`synchronize_structure` internally uses `pg_dump` and `pg_restore` to copy schema
+definitions. If more than one upstream is being subscribed to, only use
+`synchronize_data` on the first one, because it cannot de-duplicate schema
+definitions.
+
+`synchronize_data` internally uses `COPY` to unload and load the data
+from the provider.
+
+If both `synchronize_structure` and `synchronize_data` are used, take care to
+create table definitions, then copy data, and only create indexes etc. at the end.
+
+**Note**: An alternative to `pglogical.create_subscription` is the
+`pglogical_create_subscriber` tool, which takes a `pg_basebackup` or uses a
+pre-existing streaming replica of the provider node and converts it into a new
+logical replica. It's often much faster where network bandwidth is sufficient,
+but cannot filter the initial dump to exclude some databases/tables/etc.
+
+**Note**: `pglogical.create_subscription` will appear to hang (it will wait
+indefinitely without returning) if the database pointed to by `provider_dsn` is
+on the same PostgreSQL instance as the subscriber and `create_slot` is true.
+This happens because the replication slot creation command on the provider
+waits for all transactions that were in-progress at the time it started to
+commit, but the transaction running `pglogical.create_subscription` cannot
+commit until after the create replication slot command returns, so the two
+deadlock. The PostgreSQL deadlock detector does not identify this condition as
+it is not a deadlock on heavyweight locks, and is not visible in the `pg_locks`
+view. To make this fairly uncommon use case work, manually create a logical
+replication slot for the pglogical subscription on the provider using the
+`'pglogical_output'` output plugin, e.g.
+
+```
+SELECT pg_catalog.create_logical_replication_slot(
+  pglogical.gen_slot_name(
+    'SUBSCRIBER_DBNAME',
+    'PROVIDER_NODE_NAME',
+    'SUBSCRIPTION_NAME'
+  ), 'pglogical_output');
+```
+
+then specify `create_slot := false` to `pglogical.create_subscription()`. You may
+alternately choose your own replication slot name instead of using
+`gen_slot_name` then pass it as the `slot_name` parameter to
+`create_subscription`.
+
+#### Parameters
+
+-   `subscription_name` - name of the subscription; must be unique
+-   `provider_dsn` - connection string to a provider
+-   `replication_sets` - array of replication sets to subscribe to, these must
+    already exist, default is "{default,ddl_sql}"
+-   `synchronize_structure` - specifies if to synchronize structure from
+    provider to the subscriber; default false
+-   `synchronize_data` - specifies if to synchronize data from provider to
+    the subscriber; default true
+-   `create_slot` - set to false to suppress automatic creation of a logical
+    replication slot on the provider in order to use a pre-created one; default true
+-   `slot_name` - override the autogenerated replication slot name pglogical
+    generates in order to supply your own; default is same as that generated by
+    `pglogical.pglogical_gen_slot_name()`
+-   `forward_origins` - array of replication origin names to forward. Currently the only
+    supported values are: an empty array meaning don't forward any changes
+    that didn't originate on provider node (this is useful for two-way
+    replication between the nodes); or "{all}" which means replicate all
+    changes no matter what is their origin. The default is "{all}"
+-   `apply_delay` - how much to delay replication; default is 0 seconds.
+    Mainly used for application testing, but also useful for delayed
+    standbys.
+-   `forward_origins` - array of origin names to forward; currently only
+    supported values are empty array meaning don't forward any changes
+    that didn't originate on provider node (this is useful for two-way
+    replication between the nodes), or "{all}" which means replicate all
+    changes no matter what is their origin; default is "{all}"
+-   `apply_delay` - how much to delay replication; default is 0 seconds
+-   `strip_origins` - determines whether to remove origin names from
+    forwarded data, making it look like the data originate from local node,
+    and allowing to forward the data to a subscription in the same instance
+    (default is "false" which keeps origin info). The negative effect is
+    it makes it impossible to redirect the subscription to the first node.
+-   `num_writers` - number of parallel writers for this subscription, -1
+     means the subscription will use the default as specified by the GUC
+     pglogical.writers_per_subscription. Valid values are either -1 or a
+     positive integer.
+-   `writer` - which writer to use for writing the data from the replication
+    stream. Available writers currently are `local`, `HeapWriter` and
+    `SPIWriter`; the local is an alias that automatically selects either
+    `HeapWriter` or `SPIWriter` based on the version of PostgreSQL being used.
+-   `writer_options` - writer-specific options as an array of keys and values
+
+### `pglogical_create_subscriber`
+
+`pglogical_create_subscriber` isn't a SQL function, it's a standalone command
+that provides an alternative way to create a subscriber. By default it will
+take a `pg_basebackup` of the provider node and convert that into a `pglogical`
+subscriber.
+
+This can be a lot faster than `pglogical.create_subscription` where network and
+disk bandwidth is sufficient. However, it cannot filter out individual tables
+or table subsets, and it copies all databases whether or not they are intended
+for use with pglogical. It does not respect replication sets for the initial
+data copy. Unlike `pglogical.create_subscription`, it copies indexes rather
+than rebuilding them on the subscriber side.
+
+It may be necessary to specify a customized `postgresql.conf` and/or `pg_hba.conf`
+for the copied node. In particular, you *must* copy the provider's `postgresql.conf`
+and edit it to change the `port` if you plan on creating a subscriber on the same
+host, where the port number would otherwise conflict.
+
+`pglogical_create_subscriber` may also be used to convert an existing, running
+streaming replica of the provider into a subscriber. This lets the user clone
+the provider using alternative methods like `pg_start_backup()`, `rsync`, and
+`pg_stop_backup()`, or from a SAN snapshot. This conversion is done
+automatically when the target data directory is non-empty and instead contains
+a suitable PostgreSQL streaming replica.
+
+#### Synopsis
+
+```shell
+pglogical_create_subscriber [OPTION]...
+```
+
+#### Options
+
+##### General Options
+
+-   `-D, --pgdata=DIRECTORY` - data directory to be used for new node;
+                               can be either empty/non-existing directory,
+                               or directory populated using
+                               pg_basebackup -X stream command
+-   `--databases`            - optional list of databases to replicate
+-   `-n, --subscriber-name=NAME` -  name of the newly created subscriber
+-   `--subscriber-dsn=CONNSTR` - connection string to the newly created subscriber
+-   `--provider-dsn=CONNSTR` - connection string to the provider
+-   `--replication-sets=SETS` - comma separated list of replication set names
+-   `--apply-delay=DELAY` - apply delay in seconds (by default 0)
+-   `--drop-slot-if-exists` - drop replication slot of conflicting name
+-   `-s, --stop` - stop the server once the initialization is done
+-   `-v` -                     increase logging verbosity
+-   `--extra-basebackup-args` - additional arguments to pass to pg_basebackup.
+                               Safe options: `-T, -c, --xlogdir/--waldir`
+
+##### Configuration Files Override
+
+-   `--hba-conf`         - path to the new pg_hba.conf
+-   `--postgresql-conf`  - path to the new postgresql.conf
+
+**WARNING: pglogical will always overwrite the `recovery.conf`, this behavior
+will be fixed in the next release.**
+
+### pglogical.drop_subscription
+
+Disconnects the subscription and removes it from the catalog.
+
+#### Synopsis
+
+```postgresql
+pglogical.drop_subscription (
+    subscription_name name,
+    ifexists bool
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `ifexists` - if true, error is not thrown when subscription does not exist;
+    default is false
+
+### pglogical.alter_subscription_disable
+
+   Disables a subscription and disconnects it from the provider.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_disable (
+    subscription_name name,
+    immediate bool
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `immediate` - if true, the subscription is stopped immediately, otherwise
+     it will be only stopped at the end of the current transaction; default is false
+
+### pglogical.alter_subscription_enable
+
+Enables disabled subscription.
+
+```postgresql
+pglogical.alter_subscription_enable(subscription_name name, immediate bool)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `immediate` - if true, the subscription is started immediately, otherwise
+    it will be only started at the end of current transaction; default is false
+
+### pglogical.alter_subscription_num_writers
+
+Changes the number of writers for a subscription.
+
+```postgresql
+pglogical.alter_subscription_num_writers(subscription_name name, num_writers int, immediate bool)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `num_writers` - number of writers for this subscription, -1 means the
+     subscription will use value set by pglogical.writers_per_subscription GUC
+-   `immediate` - if true, the subscription is started immediately, otherwise
+    it will be only started at the end of current transaction, default is false
+
+### pglogical.alter_subscription_interface
+
+Switch the subscription to use a different interface to connect to the provider node.
+This is how you change the address, port etc that a subscription uses when connecting
+to a provider.
+
+See [`pglogical.alter_node_create_interface()`](nodes#pglogical_alter_node_add_interface)
+for usage.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_interface (
+    subscription_name name,
+    interface_name name
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of an existing subscription
+-   `interface_name` - name of an existing interface of the current provider
+    node
+
+### pglogical.alter_subscription_synchronize
+
+All unsynchronized tables in all sets are synchronized in a single operation.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_synchronize (
+    subscription_name name,
+    truncate bool
+)
+```
+
+Tables are copied and synchronized one by one. Command does not block, just
+initiates the action.
+
+Use `pglogical.wait_for_subscription_sync_complete('sub_name')` to wait for
+the resynchronization to complete.
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `truncate` - if true, tables will be truncated before copy; default false
+
+### pglogical.alter_subscription_resynchronize_table
+
+Asynchronously resynchronize one existing table.
+
+**WARNING: This function will truncate the table first.** The table will be
+visibly empty to transactions between when the resync is scheduled and
+when it completes.
+
+Use `pglogical.wait_for_subscription_sync_complete('sub_name')` to wait for all
+pending resynchronizations to complete, or
+`pglogical.wait_for_table_sync_complete` for just the named table.
+
+#### Synopsis
+
+```
+pglogical.alter_subscription_resynchronize_table (
+    subscription_name name,
+    relation regclass
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `relation` - name of existing table, optionally qualified
+
+### pglogical.show_subscription_status
+
+Shows status and basic information about a subscription.
+
+```
+pglogical.show_subscription_status (subscription_name name)
+```
+
+#### Parameters
+
+-   `subscription_name` - optional name of the existing subscription, when no
+    name was provided, the function will show status for all subscriptions on
+    local node
+
+### pglogical.show_subscription_table
+
+Shows the synchronization status of a table.
+
+#### Synopsis
+
+```postgresql
+pglogical.show_subscription_table (
+    subscription_name name,
+    relation regclass
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `relation` - name of existing table, optionally qualified
+
+### pglogical.show_subscription_clock_drift
+
+Shows clock drift between provider and subscriber.
+
+On the subscriber at apply time, we track the commit timestamp
+received from the provider and the current local timestamp. When
+the above function is invoked, we generate a diff (interval) of
+these values. A negative value will indicate clock drift.
+
+```
+pglogical.show_subscription_clock_drift (subscription_name name)
+```
+
+#### Parameters
+
+-   `subscription_name` - optional name of the existing subscription; when no
+    name is provided, the function will show clock drift information for all
+    subscriptions on the local node
+
+### pglogical.alter_subscription_add_replication_set
+
+Adds one replication set into a subscriber. Does not synchronize, only
+activates consumption of events.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_add_replication_set (
+    subscription_name name,
+    replication_set name
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `replication_set` - name of replication set to add
+
+### pglogical.alter_subscription_remove_replication_set
+
+Removes one replication set from a subscriber.
+
+#### Synopsis
+
+```postgresql
+ pglogical.alter_subscription_remove_replication_set (
+    subscription_name name,
+    replication_set name
+)
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription
+-   `replication_set` - name of replication set to remove
+
+### pglogical.wait_for_subscription_sync_complete
+
+Wait on the subscriber side until the named subscription is fully synchronized.
+The function waits for both the initial schema and data syncs (if any) and any
+currently outstanding individual table resyncs.
+
+To ensure that this function sees and waits for pending resynchronizations
+triggered by provider-side replication set changes, make sure to
+`pglogical.wait_slot_confirm_lsn(NULL, NULL)` on the provider after any
+replication set changes.
+
+#### Synopsis
+
+```postgresql
+  pglogical.wait_for_subscription_sync_complete(
+    subscription_name name
+  )
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription to wait for
+
+### pglogical.wait_for_table_sync_complete
+
+Same as `pglogical.wait_for_subscription_sync_complete`, except that
+it waits for the subscription to be synced and for exactly one named table,
+which must exist on the downstream. You can use this variant to wait for
+a specific table resync to complete while ignoring other pending resyncs.
+
+#### Synopsis
+
+```postgresql
+  pglogical.wait_for_table_sync_complete(
+    subscription_name name,
+    relid regclass
+  )
+```
+
+#### Parameters
+
+-   `subscription_name` - name of the existing subscription to wait for
+-   `relid` - possibly schema-qualified relation name (cast to regclass if needed)
+              for the relation to wait for sync completion of.
+
+### `pglogical.wait_slot_confirm_lsn(name, pg_lsn)`
+
+On a pglogical provider, wait for the specified replication slot(s) to pass
+all the requested WAL position.
+
+Note that to wait for a subscriber this function should be called on the
+*provider*, not the subscriber.
+
+Waits for one specified slot if named explicitly, or all logical slots that use
+the pglogical output plugin if the slot name is null.
+
+If no position is supplied the current WAL write position on the Pg instance
+this function is called on is used.
+
+No timeout is offered, use a `statement_timeout`.
+
+This function can only wait for physical slots and for logical slots with
+output plugins other than 'pglogical' if specified as a single named slot
+argument.
+
+For physical slots the LSN waited for is the `restart_lsn`, because
+physical slots don't have the same two-phase advance as logical slots
+and they have a NULL `confirmed_flush_lsn`. Because physical standbys
+guarantee durability (flush) before visibility (replay), if you want
+to ensure transactions are actually visible you should call
+`pglogical.standby_wait_replay_upstream_lsn` on the standby instead.
+
+Waiting with default (null) position can cause delays on idle systems
+because the slot position may not advance until the next standby status
+update if there are no further txns to replay. If you can ensure there will
+be are no concurrent transactions you can instead capture
+`pg_current_wal_insert_lsn()` after the writes you are interested in but
+before you commit the transaction, then wait for that. Ideally commit would
+report the commit lsn, and you could wait for that, but Pg doesn't do that
+yet. Doing this may lead to waits ending prematurely if there are concurrent
+txns, so only do it on test harness setups that do only one thing at a time.
+
+#### Synopsis
+
+```postgresql
+  SELECT pglogical.wait_slot_confirm_lsn(
+    slotname name,
+    target_lsn pg_lsn
+  );
+```
+
+Typically it's sufficient to use:
+
+```postgresql
+SELECT pglogical.wait_slot_confirm_lsn(NULL, NULL);
+```
+
+to wait until all pglogical (and bdr3) subscriber replication slots'
+`confirmed_flush_lsn`s have confirmed a successful flush to disk of all WAL
+that was written on the provider as of the start of the
+`pglogical.wait_slot_confirm_lsn` call.
+
+#### Parameters
+
+-   `slotname` - name of the replication slot to wait for, or NULL for all
+                 pglogical slots
+-   `target_lsn` - xlog position to wait for slots to confirm, or NULL for current
+                   xlog insert location.
+
+### `pglogical.standby_wait_replay_upstream_lsn(pg_lsn)`
+
+On a physical streaming replica (hot standby), wait for the
+standby to replay WAL from the upstream up to or past the
+specified lsn before returning.
+
+Does not support an explicit timeout. Use a `statement_timeout`.
+
+ERRORs if called on a non-standby, or when a standby is promoted
+while waiting.
+
+Use this where you need to guarantee that changes are replayed and
+visible on a replica, not just safe on disk. The sender-side function
+`pglogical.wait_slot_confirm_lsn()` only ensures durability, not
+visibility, when applied to physical replicas, because there's
+no guarantee the flushed WAL is replayed and commits become visible
+before the flush position is reported to the upstream.
+
+This is effectively a convenience function for a loop over
+`pg_last_wal_replay_lsn()` for use in testing.
+
+### pglogical.alter_subscription_skip_changes_upto
+
+Because logical replication can replicate across versions, doesn't replicate
+global changes like roles, and can replicate selectively, sometimes the logical
+replication apply process can encounter an error and stop applying changes.
+
+Wherever possible such problems should be fixed by making changes to the
+subscriber side.  `CREATE`ing any missing table that's blocking replication,
+`CREATE` a needed role, `GRANT` a necessary permission, etc. But occasionally a
+problem can't be fixed that way and it may be necessary to skip entirely over a
+transaction.
+
+There's no support in pglogical for skipping over only parts of a transaction,
+i.e. subscriber-side filtering.  Changes are skipped as entire transactions,
+all or nothing. To decide where to skip to, use log output to find the commit
+LSN, per the example below, or peek the change stream with the logical decoding
+functions.
+
+Unless a transaction only made one change, it's often necessary to manually
+apply the transaction's effects on the downstream side, so it's important to
+save the problem transaction whenever possible. See the example below.
+
+It's possible to skip over changes without
+`pglogical.alter_subscription_skip_changes_upto` by using
+`pg_catalog.pg_logical_slot_get_binary_changes` to skip to the LSN of interest,
+so this is really a convenience function. It does do a faster skip; however, it
+may bypass some kinds of errors in logical decoding.
+
+This function only works on disabled subscriptions.
+
+The usual sequence of steps is:
+
+-   identify the problem subscription and LSN of the problem commit
+-   disable the subscription
+-   save a copy of the transaction(s) using `pg_catalog.pg_logical_slot_peek_changes` *on the provider* (if possible)
+-   `pglogical.alter_subscription_skip_changes_upto` on the subscriber
+-   apply repaired or equivalent changes on the subscriber manually if necessary
+-   re-enable the subscription
+
+**WARNING**: It's easy to make problems worse when using this function.  Don't
+do anything unless you're really, really sure it's the only option.
+
+#### Synopsis
+
+```postgresql
+  pglogical.alter_subscription_skip_changes_upto(
+    subname text,
+    skip_upto_and_including pg_lsn
+  );
+```
+
+#### Example
+
+Apply of a transaction is failing with an ERROR, and you've determined that
+lower-impact fixes such as changes to the subscriber side will not resolve this
+issue. You determine that you must skip the transaction.
+
+In the error logs, find the commit record LSN to skip to, as     in this
+artificial example:
+
+```
+  ERROR:  55000: pglogical target relation "public.break_me" does not exist
+  CONTEXT:  during apply of INSERT in commit before 0/1B28848, xid 670 committed
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                    this LSN
+  at 2018-07-03 14:28:48.58659+08 (action #2) from node replorigin 1
+```
+
+and if needed use the `pglogical.subscriptions` view to map the origin back to
+a subscription name, e.g.:
+
+```postgresql
+  SELECT subscription_name, slot_name
+  FROM pglogical.subscriptions s
+  WHERE replication_origin_id = 1
+```
+
+Next, disable the subscription so the apply worker doesn't try to connect to the replication slot:
+
+```postgresql
+  SELECT pglogical.alter_subscription_disable('the_subscription');
+```
+
+Note that you cannot skip only parts of the transaction, it's all or nothing. So
+it's strongly recommended that you save a record of it by `COPY`ing it out on the
+provider side first, using the subscription's slot name (as obtained above).
+
+```postgresql
+  \copy (SELECT * FROM pg_catalog.pg_logical_slot_peek_changes('the_slot_name',
+      'the_target_lsn', NULL, 'min_proto_version', '1', 'max_proto_version', '1',
+      'startup_params_format', '1', 'proto_format', 'json')
+   TO 'transaction_to_drop.csv' WITH (FORMAT csv);
+```
+
+*(Note that the example is broken into multiple lines for readability,
+but it should be issued in a single line because `\copy` does not
+support multi-line commands)*
+
+Now you can skip the change by changing "peek" to "get" above, but
+`pglogical.skip_changes_upto` does a faster skip that avoids decoding
+and outputting all the data:
+
+```postgresql
+  SELECT pglogical.alter_subscription_skip_changes_upto('subscription_name',
+      'the_target_lsn');
+```
+
+If necessary or desired, apply the same changes (or repaired versions of them)
+manually to the subscriber, using the dumped transaction contents as a guide.
+
+Finally, re-enable the subscription:
+
+```postgresql
+  SELECT pglogical.alter_subscription_enable('the_subscription');
+```
+
+### pglogical.alter_subscription_writer_options
+
+Change the writer options first addressed when `writer_name` and `writer_options`
+are clarified with pglogical.create_subscription.
+
+#### Synopsis
+
+```postgresql
+  pglogical.alter_subscription_writer_options(
+  subscription_name name,
+  writer_name name,
+  writer_options text[] = '{}'
+
+  );
+```
+
+#### Example
+
+Find the subscription you want to alter and use that as the `subscription_name` and
+possibly the `writer_name` if chosen (shown first). Then the DML with the `writer_options`
+text array.
+
+```postgresql
+SELECT pglogical.alter_subscription_writer_options(sub_name, sub_name, '{}') FROM pglogical.subscription;
+```
+
+Grant all writer options to `writer_name` super; array has to be an even number of elements.
+
+```postgresql
+SELECT pglogical.alter_subscription_writer_options(sub_name, 'super', '{UPDATE,INSERT,DELETE,''}') FROM pglogical.subscription;
+```
+
+### pglogical.alter_subscription_set_conflict_resolver
+
+Change the conflict resolver of given conflict type for the given subscription.
+
+#### Synopsis
+
+```
+pglogical.alter_subscription_set_conflict_resolver(
+	sub_name text,
+	conflict_type text,
+	conflict_resolver text
+	)
+```
+
+#### Parameters
+
+-   `sub_name` - name of subscription to change
+-   `conflict_type` - type of conflict to configure (see bellow)
+-   `conflict_resolver` - which resolver to use for the given conflict type (see bellow)
+
+Conflict type can be one of:
+
+-   `insert_exists` - the row being inserted exists locally
+-   `update_differing` - the origin has updated a different version of row that
+    the local has
+-   `update_missing` - the row being updated does not exist locally
+-   `delete_missing` - the row being deleted does not exist locally
+-   `update_origin_change` - the row being updated was updated on a different
+    origin
+-   `target_table_missing` - the table corresponding to the change does not
+    exist locally
+-   `target_column_missing` - the column being updated or inserted to does not
+    exist locally
+-   `source_column_missing` - a column that exists locally is not available in
+    the updated or inserted row
+    replicated
+-   `update_recently_deleted` - the row being updated was deleted locally recently
+-   `delete_recently_updated` - the row being deleted was updated locally
+    recently
+-   `update_pkey_exists` - the updated primary key exists locally
+-   `apply_error` - an error occured while applying the change locally
+-   `apply_error_trigger` - an error occured while firing a trigger locally
+    after applying the change
+-   `apply_error_ddl` - an error occured during applying a DDL that was
+    replicated
+-   `apply_error_dml` - an error occured while applying a DML that was
+
+    Note that `apply_error`, `apply_error_trigger`, `apply_error_ddl` and
+    `apply_error_dml` are never raised right now. They may be used in future.
+
+Conflict resolver can be one of:
+
+-   `error` - the replication will stop on error if conflict is detected; manual
+    action is then required for resolution.
+-   `skip` - keep the local version of the data and ignore the
+    conflicting change that is coming from the remote node. This is same as
+    `keep_local` which is now deprecated.
+-   `update` - always apply the upstream change that's conflicting with local data.
+    This is same as `apply_remote`, which is now deprecated.
+-   `update_if_newer` - the version of data with the newest commit timestamp
+    will be kept (this can be either the local or the remote version). This is same
+    as `last_update_wins` which is now deprecated.
+-   `update_if_older` - the version of the data with the oldest timestamp will
+    be kept (this can be either the local or the remote version). This is same
+    as `first_update_wins` which is now deprecated.
+-   `insert_or_skip` - if the row being updated is missing and the downstream
+    can verify that the updated row was none of the ones that exist the new row
+    will be inserted. Otherwise the change will be skipped.
+-   `insert_or_error` - if the row being updated is missing and the downstream
+    can verify that the updated row was none of the ones that exist the new row
+    will be inserted. Otherwise the replication will stop on error.
+-   `ignore` - if the updated or inserted column is missing, it will be ignored
+    while applying the upstream change
+-   `ignore_or_error` - if the updated or inserted column is missing, it will be ignored
+    if it the new value is NULL. Otherwise replication will stop on error
+-   `use_default_value` - if a column is present locally but is not available on
+    the source, a default value will be used for that column.
+
+The available settings and defaults depend on the version of PostgreSQL and
+other settings.
+
+The `skip`, `update_if_newer` and `first_update_wins` settings require the
+`track_commit_timestamp` PostgreSQL setting to be enabled.  Those can not be
+used with PostgreSQL 9.4 as `track_commit_timestamp` is not available in there.
+
+Some conflict resolvers can not be used with some conflict types e.g. resolver
+`update_if_newer` can not be used with conflict type `target_table_missing`.
+`error` is the only resolved available to handle conflict types `apply_error`,
+`apply_error_trigger`, `apply_error_ddl`, or `apply_error_dml`. The function
+throws an error when an incompatible resolver is used.
+
+#### Example
+
+Find the subscription you want to change the conflict resolver for and use that as the `sub_name`.
+
+```postgresql
+SELECT pglogical.alter_subscription_set_conflict_resolver(`sub_name`, 'insert_exists', 'update_if_newer')
+```
+
+Changes the conflict resolver of conflict type `insert_exists` for subscription
+`sub_name` to `update_if_newer`.  If the row specified by INSERT change on
+subscription `sub_name` already exists locally, out of the two rows, the one
+with the newest commit will be kept.
+
+#### Listing Conflict Resolution Configurations
+
+The catalog `pglogical.sub_cfl_res` show non-default conflict resolution
+configuration settings for each subscription.
+
+### pglogical.alter_subscription_add_log
+
+Add conflict logging configuration for a subscription.
+
+This can primarily be used to log conflicts into the `pglogical.apply_log`
+table.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_add_log(
+    sub_name text,
+    log_name text,
+    log_to_file bool DEFAULT true,
+    log_to_table regclass DEFAULT NULL,
+    conflict_type text[] DEFAULT NULL,
+    conflict_resolution text[] DEFAULT NULL
+)
+```
+
+#### Listing Conflict Logging Configurations
+
+The catalog `pglogical.sub_log` shows all the logging configurations.
+It lists the name of the logging configuration, where it logs and which
+conflicts type and resolution it logs.
+
+#### Parameters
+
+-   `sub_name` - name of the subscription that is being changed
+-   `log_name` - name of the logging configuration
+-   `log_to_file` - whether to log to the server log file
+-   `log_to_table` - whether to log to a table, and which table should be the
+    target; NULL (the default) means do not log to a table
+-   `conflict_type` - which conflict types to log; NULL (the default) means all
+-   `conflict_resolution` - which conflict resolutions to log; NULL
+    (the default) means all
+
+### pglogical.alter_subscription_remove_log
+
+Remove existing conflict logging configuration for a subscription.
+
+#### Synopsis
+
+```postgresql
+pglogical.alter_subscription_remove_log(
+    sub_name text,
+    log_name text
+)
+```
+
+#### Parameters
+
+-   `node_name` - name of the subscription that is being changed
+-   `log_name` - name of the logging configuration to be removed

@@ -1,0 +1,186 @@
+---
+redirects:
+  - ../../pglogical-writer
+navTitle: pglogical Writer
+title: pglogical writer
+originalFilePath: pglogical-writer.md
+
+---
+
+The pglogical writer (or HeapWriter) is the standard way of writing into a local
+PostgreSQL instance when using pglogical subscription. This is the default
+writer used when no writer is specified in `pglogical.create_subscription()`.
+
+The pglogical writer is using low-level APIs to write the data into local
+tables and sequences. It supports conflict detection and resolution,
+has full support for `REPLICA IDENTITY`, invokes constraints with the exception
+of foreign keys (see [Foreign Keys](#foreign-keys) for details) and row triggers
+marked as `REPLICA` (see [Triggers](#triggers)).
+
+Changes are applied as the table owning-user, thus security concerns are similar
+to the use of triggers by table owners.
+
+## Conflict handling
+
+In case the node is subscribed to multiple providers, or when local writes
+happen on a subscriber, conflicts can arise for the incoming changes. These
+are automatically detected and can be acted on depending on the configuration.
+
+The configuration of the conflicts resolver is done using
+pglogical.alter_subscription_set_conflict_resolver().
+
+### Row versioning
+
+To ease reasoning about different versions of a row, it can be helpful for it
+to carry a row version. PGLogical provides the helper trigger
+`pglogical.inc_row_version` to simplify this task. It requires a user
+provided integer column of any bitwidth (usually, `SMALLINT` is enough) and
+needs to be added to a table as follows (assuming a table `my_table` with
+an integer column `row_version`):
+
+```
+CREATE TRIGGER my_row_version_trigger
+    BEFORE UPDATE ON my_table
+    FOR EACH ROW
+    EXECUTE PROCEDURE pglogical.inc_row_version('row_version');
+```
+
+This approach resembles Lamport timestamps and - in combination with
+`REPLICA IDENTITY FULL` and `check_full_tuple` (see below) - fully prevents
+the ABA problem for conflict detection.
+
+## Configuration options
+
+Some aspects of pglogical can be configured using configuration options that
+can be either set in `postgresql.conf` or via `ALTER SYSTEM SET`.
+
+### pglogical.conflict_log_level
+
+Sets the log level for reporting detected conflicts.
+
+Main use for this setting is to suppress logging of conflicts.
+
+Possible values are the same as for PostgreSQL `log_min_messages` parameter.
+
+The default is `LOG`.
+
+### pglogical.conflict_ignore_redundant_updates
+
+In case the subscriber retrieves an INSERT or UPDATE to a locally
+pre-existing and equivalent tuple, it is simply ignored without invoking any
+conflict handler or logging on the subscriber side, if this option is turned
+on.
+
+To be used in combination with `REPLICA IDENTITY FULL`.
+
+The default is `false`.
+
+### pglogical.conflict_check_full_tuple
+
+This option controls the detection of UPDATE-UPDATE conflicts. By default,
+the origin of the existing tuple is compared to the expected origin -
+every mismatch is considered a conflict and initiates conflict handling.
+This is a low-overhead conflict detection mechanism and is therefore the
+default. However, it can lead to false positives and invoke conflict
+handlers inadvertently.
+
+With this option turned on, the expected tuple, as it was before the update on
+the provider, is compared to the existing tuple on the subscriber. This
+allows for a better conflict detection mechanism and (in combination with
+a row version column) can mitigate all false positives.
+
+Due to the requirement to know the full old tuple, this option only ever
+affects relations that are set to `REPLICA IDENTITY FULL`.
+
+The default is `false`.
+
+### pglogical.batch_inserts
+
+This tells pglogical writer to use the batch insert mechanism if possible. The
+Batch mechanism uses PostgreSQL internal batch insert mode which is also used
+by `COPY` command.
+
+The batch inserts will improve replication performance of transactions that
+perform many inserts into one table. pglogical will switch to batch mode when
+the transaction performed than 5 INSERTs, or 5 rows within a COPY.
+
+It's only possible to switch to batch mode when there are no
+`INSTEAD OF INSERT` and `BEFORE INSERT` triggers on the table and when
+there are no defaults with volatile expressions for columns of the table.
+
+The default is `true`.
+
+### config.session_replication_role
+
+This tells pglogical writer what `session_replication_role` to use. This can be
+useful mainly in case when it's desirable to enforce `FOREIGN KEY` constraints.
+
+The default is `replica` which ignores foreign keys when writing changes
+to the database.
+
+**WARNING: Use with caution.**
+This option changes trigger execution behavior as documented in
+[PostgreSQL documentation](https://www.postgresql.org/docs/current/static/runtime-config-client.html#GUC-SESSION-REPLICATION-ROLE).
+If set to `origin` or `local` this will fire **normal** triggers in the
+database which can leadi to the trigger being executed both on the upstream and on
+the downstream!
+
+## Restrictions
+
+There are some additional restrictions imposed by pglogical writer over the
+standard set of [restrictions](restrictions).
+
+### Only one unique index/constraint/PK
+
+If more than one upstream is configured, or the downstream accepts local writes,
+then only one `UNIQUE` index should be present on downstream replicated tables.
+Conflict resolution can only use one index at a time, so conflicting rows may
+`ERROR` if a row satisfies the `PRIMARY KEY` but violates a `UNIQUE` constraint
+on the downstream side. This will stop replication until the downstream table
+is modified to remove the violation.
+
+It's fine to have extra unique constraints on an upstream if the downstream only
+gets writes from that upstream and nowhere else. The rule is that the downstream
+constraints must *not be more restrictive* than those on the upstream(s).
+
+### Deferrable unique indexes
+
+Deferrable unique indexes are supported; however initially deferred unique
+indexes might result in apply retries, as the conflicts might not be detected
+on first try due to the deferred uniqueness check.
+
+Note that deferred `PRIMARY KEY` cannot be used as `REPLICA IDENTITY` - PostgreSQL
+will throw an error if this is attempted. As a result a table withi a deferred
+`PRIMARY KEY` does not have `REPLICA IDENTITY` unless another `REPLICA IDENTITY`
+is explicitly set. Replicated tables without `REPLICA IDENTITY` cannot receive
+`UPDATEs` or `DELETEs`.
+
+### Foreign Keys
+
+By default foreign key constraints are not enforced for the replication
+process - what succeeds on the provider side gets applied to the subscriber
+even if the `FOREIGN KEY` would be violated.
+
+This behavior can be changed using `config.session_replication_role` writer
+option.
+
+### TRUNCATE
+
+Using `TRUNCATE ... CASCADE` will only apply the `CASCADE` option on the
+provider side.
+
+(Properly handling this would probably require the addition of `ON TRUNCATE CASCADE`
+support for foreign keys in PostgreSQL).
+
+`TRUNCATE ... RESTART IDENTITY` is not supported. The identity restart step is
+not replicated to the replica.
+
+### Triggers
+
+Trigger behavior depends on the `config.session_replication_role` setting of
+the writer. By default it's set to `replica`, which means that `ENABLE REPLICA`
+and `ENABLE ALWAYS` triggers will be fired. When it's set to `origin` or
+`local`, it will trigger normal triggers.
+
+Only row triggers are fired. Statement triggers are ignored as there are no
+statements executed by the writer. Per-column UPDATE triggers are ignored.
