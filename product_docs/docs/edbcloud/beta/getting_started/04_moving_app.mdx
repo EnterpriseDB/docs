@@ -62,7 +62,7 @@ Here's what it looks like in action:
 ```shell
 ~/chinook_report.sh baby
 __OUTPUT__
-    title     | media_avg_mb |                    track_list
+    title     | media_avg_mb |                    track_list                     
 --------------+--------------+---------------------------------------------------
  Achtung Baby |            9 | Zoo Station (9 mb)                               +
               |              | Even Better Than The Real Thing (7 mb)           +
@@ -83,6 +83,12 @@ This little "app" is configured to run against a Postgres Advanced Server cluste
 
 ```shell
 psql $PGDATABASE
+```
+
+When you're done, quit psql with `\q`:
+
+```shell
+\q
 ```
 
 Now let's move this data into your own cluster and reconfigure the script to run against it...
@@ -109,10 +115,10 @@ Let's start by collecting the information needed to connect to your cluster. You
 For convenience, let's put these - EXCEPT for the password - into variables:
 
 ```shell
-read -p "Enter host: " DEST_HOST \
-&& read -p "Enter port: " DEST_PORT \
-&& read -p "Enter username: " -i edb_admin DEST_USER \
-&& read -p "Enter database: " DEST_DB
+read -p "Enter host: " DEST_HOST && \
+read -e -i 5432 -p "Enter port: " DEST_PORT && \
+read -e -i edb_admin -p "Enter username: " DEST_USER && \
+read -e -i edb_admin -p "Enter database: " DEST_DB
 ```
 
 ### Connecting to the destination databases 
@@ -125,14 +131,13 @@ echo $PGDEST
 __OUTPUT__
 postgres://edb_admin@something.edbmp.edbcloud.io:5432/edb_admin?sslmode=require
 ```
-Before moving on, please verify that you are able to connect to your cluster by using PSQL to list available databases:
+Before moving on, please verify that you are able to connect to your cluster by using PSQL to list available databases (you'll be prompted to enter your password):
 
 ```shell
 psql $PGDEST
 __OUTPUT__
-psql (13.0 (Debian 13.0-1.pgdg100+1), server 13.4.8 (Debian 13.4.8-1+deb10))
-WARNING: psql major version 13, server major version 13.
-         Some psql features might not work.
+Password for user edb_admin: 
+psql.bin (13.4.8 (Debian 13.4.8-1+deb10), server 13.4.8 (Debian 13.4.8-1+deb10))
 SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
 Type "help" for help.
 
@@ -162,10 +167,10 @@ CREATE DATABASE
 ```sql
 \c chinook
 __OUTPUT__
-psql (13.4.8, server 13.4.8 (Debian 13.4.8-1+deb10))
+psql.bin (13.4.8 (Debian 13.4.8-1+deb10), server 13.4.8 (Debian 13.4.8-1+deb10))
 SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
 You are now connected to database "chinook" as user "edb_admin".
-chinook=> 
+chinook=>
 ```
 
 The script needs to be able to select from tables in this database, but does not need to write to it, modify the schema, etc. So we'll need a read-only user: `chinook`. For convenience in this demo, we'll give it a password of `chinook`.
@@ -193,14 +198,19 @@ The database is now ready for data, so exit psql.
 Next we'll use `pg_dump` to export the application's schema and data:
 
 ```shell
-pg_dump --format custom $PGDATABASE > chinook.dump
+pg_dump --format custom --schema=public --blobs $PGDATABASE > chinook.dump
 ```
 
-This uses a binary format to efficiently capture the schema and data into the file `chinook.dump`.
+This uses a binary format (`--format custom`) to efficiently capture the schema and data into the file `chinook.dump`. 
+It will capture *only* the public schema (`--schema=public`) and associated data (including large objects, `--blobs`) for 
+the database specified in the `$PGDATABASE` connection string (chinook). 
 	 
 ### Importing schema and data
 
-Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to point to the new `chinook` database. We *won't* use our newly-created user just yet, as we still need write access!
+Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to
+point to the new `chinook` database. We *won't* use our newly-created user just yet, as we still need write access!
+
+Once again, you'll be prompted to enter your admin password for this.
 
 ```shell
 export PGDEST=postgres://$DEST_USER@$DEST_HOST:$DEST_PORT/chinook?sslmode=require
@@ -213,9 +223,30 @@ Now we can bring in the schema and data using `pg_restore`:
 
 ```shell
 pg_restore --no-owner -d $PGDEST chinook.dump
+__OUTPUT__
+Password: 
+pg_restore: while PROCESSING TOC:
+pg_restore: from TOC entry 9; 2615 2200 SCHEMA public postgres
+pg_restore: error: could not execute query: ERROR:  schema "public" already exists
+Command was: CREATE SCHEMA public;
+
+
+pg_restore: from TOC entry 4766; 0 0 COMMENT SCHEMA public postgres
+pg_restore: error: could not execute query: ERROR:  must be owner of schema public
+Command was: COMMENT ON SCHEMA public IS 'standard public schema';
+
+
+pg_restore: warning: errors ignored on restore: 2
 ```
 
-The option `--no-owner` ensures that pg_restore does not try to assign ownership of objects to their original owner; instead they will be owned by edb_admin, and thus safe from modification unless we connect as that user.
+!!! Note The errors are expected
+    You can safely ignore these errors: because we specified the "public" schema explicitly, 
+    the dump file contained entries for recreating it - but of course as the *default* schema, 
+    "public" already exists and cannot be modified (at least, not by `edb_admin`).
+
+The option `--no-owner` ensures that pg_restore does not try to assign ownership of objects to their original owner
+(which probably does not exist in our new database); instead, these objects will be owned by edb_admin, and thus safe 
+from modification unless we connect as that user.
 
 ## Reconfiguring and testing application queries
 
@@ -225,6 +256,8 @@ one that points at the newly-created database and authenticates with the newly-c
 ```shell
 export PGDATABASE="postgres://chinook:chinook@$DEST_HOST:$DEST_PORT/chinook?sslmode=require"
 echo $PGDATABASE
+__OUTPUT__
+postgres://chinook:chinook@something.edbmp.edbcloud.io:5432/chinook?sslmode=require
 ```
 
 Try it out:
