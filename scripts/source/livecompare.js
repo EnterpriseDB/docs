@@ -97,7 +97,7 @@ function livecompareTransformer() {
     {
       const node = tree.children[i];
       if (node.type !== "jsx") stub = false;
-      if (node.type === "heading" && node.depth === 1)
+      if (node.type === "heading" && node.depth === 1 && !title)
       {
         title = mdast2string(node);
         tree.children.splice(i--,1);
