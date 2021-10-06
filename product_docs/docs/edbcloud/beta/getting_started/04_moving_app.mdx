@@ -198,19 +198,17 @@ The database is now ready for data, so exit psql.
 Next we'll use `pg_dump` to export the application's schema and data:
 
 ```shell
-pg_dump --format custom --schema=public --blobs $PGDATABASE > chinook.dump
+pg_dump --format custom $PGDATABASE > chinook.dump
 ```
 
 This uses a binary format (`--format custom`) to efficiently capture the schema and data into the file `chinook.dump`. 
-It will capture *only* the public schema (`--schema=public`) and associated data (including large objects, `--blobs`) for 
-the database specified in the `$PGDATABASE` connection string (chinook). 
+It will capture all objects associated with the database specified in the `$PGDATABASE` connection string (chinook). Note
+that this may *potentially* include things that cannot be restored... You can view what's in the dump via 
 	 
 ### Importing schema and data
 
 Before we import the schema and data that we exported in the previous step, we'll want to modify the connection string to
 point to the new `chinook` database. We *won't* use our newly-created user just yet, as we still need write access!
-
-Once again, you'll be prompted to enter your admin password for this.
 
 ```shell
 export PGDEST=postgres://$DEST_USER@$DEST_HOST:$DEST_PORT/chinook?sslmode=require
@@ -219,30 +217,26 @@ __OUTPUT__
 postgres://edb_admin@something.edbmp.edbcloud.io:5432/chinook?sslmode=require
 ```
 
-Now we can bring in the schema and data using `pg_restore`:
+Now we can bring in the schema and data using `pg_restore`; once again, you'll be prompted to enter your admin password for this:
 
 ```shell
 pg_restore --no-owner -d $PGDEST chinook.dump
 __OUTPUT__
 Password: 
 pg_restore: while PROCESSING TOC:
-pg_restore: from TOC entry 9; 2615 2200 SCHEMA public postgres
-pg_restore: error: could not execute query: ERROR:  schema "public" already exists
-Command was: CREATE SCHEMA public;
+pg_restore: from TOC entry 4766; 0 0 COMMENT EXTENSION pg_stat_statements 
+pg_restore: error: could not execute query: ERROR:  must be owner of extension pg_stat_statements
+Command was: COMMENT ON EXTENSION pg_stat_statements IS 'track planning and execution statistics of all SQL statements executed';
 
 
-pg_restore: from TOC entry 4766; 0 0 COMMENT SCHEMA public postgres
-pg_restore: error: could not execute query: ERROR:  must be owner of schema public
-Command was: COMMENT ON SCHEMA public IS 'standard public schema';
-
-
-pg_restore: warning: errors ignored on restore: 2
+pg_restore: warning: errors ignored on restore: 1
 ```
 
-!!! Note The errors are expected
-    You can safely ignore these errors: because we specified the "public" schema explicitly, 
-    the dump file contained entries for recreating it - but of course as the *default* schema, 
-    "public" already exists and cannot be modified (at least, not by `edb_admin`).
+!!! Note The error is fine
+    You can safely ignore this error: pg_stat_statements is a very useful extension
+    and is installed by default on EDB Cloud clusters, but since we're running as
+    the admin user and *not* a superuser, we can't modify it.
+    The rest of the schema and data has been restored just fine however.
 
 The option `--no-owner` ensures that pg_restore does not try to assign ownership of objects to their original owner
 (which probably does not exist in our new database); instead, these objects will be owned by edb_admin, and thus safe 
