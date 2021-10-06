@@ -1,0 +1,256 @@
+---
+title: 'Integration Views'
+description: 'Walkthroughs of multiple Flyway usage scenarios '
+---
+
+This section shows how database changes are applied on EDB Postgres Advanced using Flyway.
+
+### 4.1 Applying Database Changes
+
+This section provides the following examples which demonstrates how Flyway performs the SQL Migrations:
+- **Making Changes using Versioned Migration**
+- **Rolling back changes using Undo Migration**
+- **Display the migration details using Info command**
+
+Refer to the [Flyway documentation](https://flywaydb.org/documentation/concepts/migrations) for details on SQL Migrations.
+
+!!! Note
+    All Flyway commands in the examples are executed from the directory where Flyway is installed.
+
+### 4.1.1 Examples 1: Making Changes in Database using SQL Versioned Migration
+
+In this example, flyway will use the SQL Version Migration to make changes in the target database by executing the SQL Script files created in the <code>../flyway-7.11.4/sql/</code>. The SQL Scripts files contain the DDL and DML SQL Statements.
+
+Following shows the steps required to run the example # 1.
+1. To make changes in the Database, create SQL file in <code>../flyway-7.11.4/sql</code> Directory with the name <code>V1__Create_db_objects.sql</code>, as shown below the script contains the DDL SQL Statements which will create the Database Objects Sequence, Table,View, Indexes and constraints on the target database.
+
+```bash
+CREATE SEQUENCE public.sal_seq
+    MINVALUE 1
+    START WITH 1
+    INCREMENT BY 1
+    NOCACHE;
+
+
+CREATE TABLE public.tp_sales_db
+(
+    salesman_id        INT4,
+    salesman_name      VARCHAR2(30),
+    sales_region       VARCHAR2(30),
+    sales_amount       INT4 DEFAULT public.sal_seq.nextval,
+    deptno             INT4
+);
+
+
+CREATE TABLE public.tp_department_db
+(
+    deptno   INT4 Primary Key,
+        dname    VARCHAR(50),
+        location VARCHAR(100)
+);
+
+
+ALTER TABLE public.tp_sales_db ADD CONSTRAINT department_employee_fk FOREIGN KEY (deptno) REFERENCES public.tp_department_db(deptno);
+
+CREATE SYNONYM public.syn_tbl_sales FOR public.tp_sales_db;
+
+CREATE VIEW public.v1 (Dept_No,Dept_Name,Sales_No,Sales_Name,Sales_Salary,Sales_Dept_No)
+AS
+SELECT d.deptno,d.dname,s.salesman_id,s.salesman_name,s.sales_amount,s.deptno FROM public.tp_department_db d, public.tp_sales_db s
+WHERE d.deptno=s.deptno;
+
+CREATE INDEX lower_reg_idx ON public.tp_sales_db ((LOWER(sales_region)));
+
+CREATE INDEX reg1_idx ON public.tp_sales_db (salesman_id);
+```
+
+2. Execute Flyway <code>migrate</code> command to make changes on the database as shown by the below example.
+
+```bash
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$ ./flyway migrate
+Flyway Teams Edition 7.11.4 by Redgate
+Database: jdbc:postgresql://localhost:5460/edb (PostgreSQL 13.3)
+----------------------------------------
+Flyway Teams features are enabled by default for the next 27 days. Learn more at https://flywaydb.org/try-flyway-teams-edition?ref=v7.11.4_teams_default_trial
+----------------------------------------
+Successfully validated 1 migration (execution time 00:00.036s)
+Current version of schema "public": << Empty Schema >>
+Migrating schema "public" to version "1 - Create db objects"
+Successfully applied 1 migration to schema "public", now at version v1 (execution time 00:00.144s)
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$
+```
+
+3. To execute DML Operation on the database, create SQL file in <code>../flyway-7.11.4/sql</code> Directory with the name <code>V2__add_data.sql</code> with version V2, as shown below the script contains the DML SQL Statements which will insert data on the tables created in Step # 2 on the target database. 
+
+```bash
+INSERT INTO tp_department_db VALUES
+    (10,'Development','Pakistan'),
+    (20,'Testing','Pakistan'),
+    (30,'CM','Pakistan'),
+    (40,'Marketing','India');
+
+INSERT INTO tp_sales_db VALUES
+    (100,'Person 1','CITY 1',DEFAULT,10),
+    (110,'Person 2','CITY 2',sal_seq.nextval,20),
+    (120,'Person 3','CITY 3',sal_seq.nextval,30),
+    (130,'Person 4','CITY 4',10000,40);
+```
+
+4. Execute Flyway <code>migrate</code> command to make changes on the database as shown by the below example.
+
+```bash
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$ ./flyway migrate
+Flyway Teams Edition 7.11.4 by Redgate
+Database: jdbc:postgresql://localhost:5460/edb (PostgreSQL 13.3)
+----------------------------------------
+Flyway Teams features are enabled by default for the next 27 days. Learn more at https://flywaydb.org/try-flyway-teams-edition?ref=v7.11.4_teams_default_trial
+----------------------------------------
+Successfully validated 2 migrations (execution time 00:00.033s)
+Current version of schema "public": 1
+Migrating schema "public" to version "2 - Add data"
+Successfully applied 1 migration to schema "public", now at version v2 (execution time 00:00.059s)
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$
+```
+
+5. Connect with the target databases to cross check the database changes made once the migrate statements mentioned above are executed successfully.
+
+```bash
+centos@kashif-cent0s7-thales-cte bin]$ ./psql -p 5460 -d edb
+psql (13.3.7, server 13.3.7)
+Type "help" for help.
+
+edb=# \dt
+                List of relations
+ Schema |         Name          | Type  | Owner  
+--------+-----------------------+-------+--------
+ public | flyway_schema_history | table | centos
+ public | tp_department_db      | table | centos
+ public | tp_sales_db           | table | centos
+(3 rows)
+
+edb=#
+edb=# desc tp_department_db
+                  Table "public.tp_department_db"
+  Column  |          Type          | Collation | Nullable | Default
+----------+------------------------+-----------+----------+---------
+ deptno   | integer                |           | not null |
+ dname    | character varying(50)  |           |          |
+ location | character varying(100) |           |          |
+Indexes:
+    "tp_department_db_pkey" PRIMARY KEY, btree (deptno)
+Referenced by:
+    TABLE "tp_sales_db" CONSTRAINT "department_employee_fk" FOREIGN KEY (deptno) REFERENCES tp_department_db(deptno)
+
+edb=# desc tp_sales_db
+                                 Table "public.tp_sales_db"
+    Column     |         Type          | Collation | Nullable |           Default            
+---------------+-----------------------+-----------+----------+------------------------------
+ salesman_id   | integer               |           |          |
+ salesman_name | character varying(30) |           |          |
+ sales_region  | character varying(30) |           |          |
+ sales_amount  | integer               |           |          | nextval('sal_seq'::regclass)
+ deptno        | integer               |           |          |
+Indexes:
+    "lower_reg_idx" btree (lower(sales_region::text))
+    "reg1_idx" btree (salesman_id)
+Foreign-key constraints:
+    "department_employee_fk" FOREIGN KEY (deptno) REFERENCES tp_department_db(deptno)
+
+edb=#
+edb=# select * from tp_department_db;
+ deptno |    dname    | location
+--------+-------------+----------
+     10 | Development | Pakistan
+     20 | Testing     | Pakistan
+     30 | CM          | Pakistan
+     40 | Marketing   | India
+(4 rows)
+
+edb=# select * from tp_sales_db;
+ salesman_id | salesman_name | sales_region | sales_amount | deptno
+-------------+---------------+--------------+--------------+--------
+         100 | Person 1      | CITY 1       |            4 |     10
+         110 | Person 2      | CITY 2       |            5 |     20
+         120 | Person 3      | CITY 3       |            6 |     30
+         130 | Person 4      | CITY 4       |        10000 |     40
+(4 rows)
+
+edb=#
+```
+
+### 4.1.2 Examples 2: Rolling back changes using the Undo Command
+
+In this example, flyway will use the SQL Version Migration to rollback changes in the target database by executing the SQL Script files created in the <code>../flyway-7.11.4/sql/</code>. The SQL Scripts files contain the DDL and DML SQL Statements which will rollback the changes made in the example # 1.
+
+Following shows the steps required to run the example # 2.
+
+1. To roll back the changes done by the migrate command, create the SQL files <code>U1__create_db_objects.sql</code>  and <code>U2_add_data.sql</code> with prefix <code>U</code> in <code>../flyway-7.11.4/sql</code> Directory with the following script , as shown below the script contains the DDL and DML SQL Statements that will be used to rollback the changes made in example # 1 on the target database.
+
+<code>U1__create_db_objects.sql</code>
+
+```bash
+DROP TABLE public.tp_sales_db;
+DROP TABLE public.tp_department_db;
+DROP VIEW public.v1;
+DROP SEQUENCE public.sal_seq;
+```
+
+<code>U2__add_data.sql</code>
+
+```bash
+DELETE FROM tp_sales_db;
+DELETE FROM tp_department_db;
+```
+
+2. Execute Flyway <code>undo</code> command to rollback changes on the database as shown by the below example.
+
+```bash
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$ flyway undo
+Flyway Teams Edition 7.11.4 by Redgate
+Database: jdbc:postgresql://localhost:5460/edb (PostgreSQL 13.3)
+----------------------------------------
+Flyway Teams features are enabled by default for the next 27 days. Learn more at https://flywaydb.org/try-flyway-teams-edition?ref=v7.11.4_teams_default_trial
+----------------------------------------
+Current version of schema "public": 2
+Undoing migration of schema "public" to version 2 - Add data
+Successfully undid 1 migration to schema "public", now at version v1 (execution time 00:00.090s)
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$
+```
+
+3. Connect with the target databases to cross check the database changes are rolled back once the undo statement mentioned above is executed successfully.
+
+```bash
+[centos@kashif-cent0s7-thales-cte bin]$ ./psql -p 5460 -d edb
+psql (13.3.7, server 13.3.7)
+Type "help" for help.
+edb=#
+edb=# \dt
+Did not find any relations.
+edb=#
+```
+
+### 4.1.3 Examples 3: Display migration details using the Info Command
+
+In this example, flyway will use the <code>info</code> command to display details and status information about all the migrations executed on the target database.
+
+1. Execute Flyway <code>info</code> command to display migration details as shown by the below example.
+
+```bash
+[centos@kashif-cent0s7-thales-cte flyway-7.11.4]$ flyway info
+Flyway Teams Edition 7.11.4 by Redgate
+Database: jdbc:postgresql://localhost:5460/edb (PostgreSQL 13.3)
+----------------------------------------
+Flyway Teams features are enabled by default for the next 27 days. Learn more at https://flywaydb.org/try-flyway-teams-edition?ref=v7.11.4_teams_default_trial
+----------------------------------------
+Schema version: 2
+
++-----------+---------+---------------------+----------+---------------------+---------+----------+
+| Category  | Version | Description         | Type     | Installed On        | State   | Undoable |
++-----------+---------+---------------------+----------+---------------------+---------+----------+
+| Versioned | 1       | Create db Objects | SQL      | 2021-08-02 12:04:59 | Success | Yes      |
+| Versioned | 2       | Add data            | SQL      | 2021-08-02 12:04:59 | Undone  |          |
+| Undo      | 2       | Add data            | UNDO_SQL | 2021-08-02 12:27:08 | Success |          |
+| Versioned | 2       | Add data            | SQL      | 2021-08-02 12:30:26 | Success | Yes      |
++-----------+---------+---------------------+----------+---------------------+---------+----------+
+```
