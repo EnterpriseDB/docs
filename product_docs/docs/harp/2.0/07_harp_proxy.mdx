@@ -1,0 +1,88 @@
+---
+navTitle: HARP Proxy
+title: HARP Proxy
+---
+
+HARP Proxy is a daemon which acts as an abstraction layer between the client 
+application and Postgres. It interfaces with the Consensus Layer to obtain the 
+identity of the current Lead Master node and directs traffic to that location. 
+In the event of a planned switchover or unplanned failover, it will 
+automatically redirect to the new Lead Master node as dictated by the DCS.
+
+This HARP component is currently an interface layer between the DCS and 
+PgBouncer. As such, PgBouncer is a prerequisite and should be installed in addition, in order for HARP Proxy to fully manage its activity.
+
+## How it Works
+
+Upon starting, HARP Proxy will launch PgBouncer if it is not already running, 
+and leave client connections in a paused state. Afterwards, it will contact the 
+DCS to determine the identity of the Lead Master, configure PgBouncer to use 
+this as the target for database connections, and resume connection activity. 
+All application client traffic will then pass through PgBouncer into the 
+current Lead Master node for the Location where this proxy is operating.
+
+While PgBouncer is running, HARP Proxy will check its status based on the 
+`monitor_interval` configuration setting within the DCS, and store it in the
+DCS for monitoring purposes. This will allow interrogation with `harpctl` to
+retrieve status of all configured proxies, or any one proxy in particular.
+
+In the event the Lead Master lease is not set, HARP Proxy will pause all 
+connection traffic until a new Lead Master is established. This also applies
+to circumstances when `harpctl promote` is used to invoke a planned transition
+to a new Lead Master. It uses a PgBouncer `PAUSE` command for this, so existing
+sessions are allowed to complete any pending transactions before they are held
+in stasis.
+
+## Configuration
+
+HARP Proxy expects the `dcs`, `cluster`, and `proxy` configuration stanzas. The 
+following is a functional example:
+
+```yaml
+cluster:
+  name: mycluster
+
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+
+proxy:
+  name: proxy1
+```
+
+## Usage
+
+This is the basic usage for HARP Proxy:
+
+```bash
+Usage of ./harp_proxy:
+  -f string
+    	Optional path to config file (shorthand)
+  --config string
+    	Optional path to config file
+```
+
+Note that there are no arguments to launch `harp_proxy` as a forked daemon. 
+This software is designed to be launched through systemd or within a container 
+as a top-level process. This also means output is directed to STDOUT and STDERR
+for capture and access through journald or an attached container terminal.
+
+## Disabling and Re-enabling HARP Proxy Node Management
+
+It is possible to temporarily pause HARP Proxy control of PgBouncer. This 
+results in a state where the daemon continues running but does not perform any 
+operations that could affect existing behavior of the cluster. Re-enabling 
+management causes it to resume operation.
+
+An example of temporarily disabling management of a specific proxy would be:
+
+```bash
+harpctl unmanage proxy proxy1
+```
+
+See the [harpctl](08_harpctl) documentation for more details.
+
+Proxy node management is enabled by default.

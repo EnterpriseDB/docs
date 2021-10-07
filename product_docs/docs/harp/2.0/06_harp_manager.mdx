@@ -1,0 +1,122 @@
+---
+navTitle: HARP Manager
+title: HARP Manager
+---
+
+HARP Manager is a daemon which interacts with the local PostgreSQL / BDR node
+and stores information about its state in the Consensus Layer. Manager
+determines which node currently holds Leader status for a respective location,
+and enforces configuration (lag, CAMO lag, etc.) constraints to prevent
+ineligible nodes from Leader consideration.
+
+Every Postgres node in the cluster should have an associated HARP Manager. 
+Other nodes may exist, but they will not be able to participate as Lead or 
+Shadow Master roles, or other functionality HARP supports in the future.
+
+## How it Works
+
+Upon starting, HARP Manager will use `pg_ctl` to start Postgres if it is not
+already running. After this, it will periodically check the server as defined
+by the `node.lease_refresh_interval` setting. HARP Manager collects various
+bits of data about Postgres including:
+
+* The node's current LSN
+* If Postgres is running and accepting connections. This particular data point
+  is considered a lease which must be periodically renewed. If it expires, HARP
+  Proxy will remove the node from any existing routing.
+* The current apply LSN position for all upstream BDR peer nodes.
+* If CAMO is enabled:
+    - Name of the CAMO partner
+    - Peer CAMO state (`is_ready`)
+    - CAMO queue received and applied LSN positions
+* Node type, such as whether the node is BDR or regular Postgres.
+* The node's current role, such as a read/write, physical streaming replica, 
+  logical standby, and so on.
+* BDR node state, which should be `ACTIVE` except in limited cases.
+* BDR Node ID for other metadata gathering.
+* Other tracking values.
+
+!!! Important 
+    When naming BDR nodes within HARP, the BDR node name should match the node
+    name represented in the `node.name` configuration attribute. This should
+    have already been done in the bootstrap process.
+
+The data collected here is fully available to other HARP Manager processes, and
+is used to evaluate lag, partner readiness, and other criteria that will direct
+switchover and failover behavior.
+
+After updating the node metadata, HARP Manager will either refresh the Lead 
+Master lease if it is already held by the local node, or seek to obtain the 
+lease if it has expired. Since the current state of all nodes is known to all
+other nodes, the node which was the previous Lead Master is given automatic
+priority ranking if present. If not, all other nodes will list themselves by
+LSN lag, node priority, and other criteria, and the most qualified node will seize the Lead Master lease.
+
+This procedure happens for every defined Location where nodes are present. Thus 
+for Locations DC1 and DC2, there would be a Lead Master node in each, with a 
+separate lease and election process for both.
+
+HARP Manager repeats these Postgres status checks, lease renewals, and 
+elections repeatedly to ensure the Cluster always has a Lead Master target for 
+connections from HARP Proxy. 
+
+## Configuration
+
+HARP Manager expects the `dcs`, `cluster`, and `manager` configuration stanzas. 
+The following is a functional example:
+
+```yaml
+cluster:
+  name: mycluster
+
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+
+manager:
+  name: node1
+  postgres_bin_dir: /usr/lib/postgresql/13/bin
+```
+
+Changes to the configuration file (default: `/etc/harp/config.yml`) can be
+applied by issuing `SIGHUP` to the running instance, or by calling a
+service-level reload.
+
+See [Configuration](04_configuration) for further details.
+
+## Usage
+
+This is the basic usage for HARP Manager:
+
+```
+Usage of ./harp_manager:
+  -f string
+    	Optional path to config file (shorthand)
+  --config string
+    	Optional path to config file
+```
+
+Note that there are no arguments to launch `harp_manager` as a forked daemon. 
+This software is designed to be launched through systemd or within a container 
+as a top-level process. This also means output is directed to STDOUT and STDERR
+for capture and access through journald or an attached container terminal.
+
+## Disabling and Re-enabling HARP Manager Control of Postgres
+
+It is possible to temporarily pause HARP Manager control of Postgres. This 
+results in a state where the daemon continues running but does not perform any 
+operations that could affect existing behavior of the cluster. Re-enabling 
+management causes it to resume operation.
+
+An example of temporarily disabling node management would be:
+
+```bash
+harpctl unmanage node node1
+```
+
+See the [harpctl](08_harpctl) documentation for more details.
+
+Node management by HARP Manager is enabled by default.

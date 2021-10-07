@@ -1,0 +1,144 @@
+---
+navTitle: Consensus Layer
+title: Consensus Layer Considerations
+---
+
+HARP is designed so that it can work with different implementations of 
+Consensus Layer, also known as Distributed Control Systems (DCS).
+
+Currently the following DCS implementations are supported:
+
+ - etcd
+ - BDR
+
+This section provides information specific to HARP's interaction with the 
+supported DCS implementations.
+
+## BDR Driver Compatibility
+
+The `bdr` native consensus layer is available from BDR versions 
+[3.6.21](/bdr/latest/release-notes/#bdr-3621) 
+and [3.7.3](/bdr/latest/release-notes/#bdr-373) respectively.
+
+Note that for the purpose of maintaining a voting Quorum, BDR Logical Standby 
+nodes do not participate in consensus communications within a BDR cluster. Do
+not count these in the total node list to fulfill DCS Quorum requirements.
+
+## Maintaining Quorum
+
+Clusters of any architecture require at least n/2 + 1 nodes to maintain 
+Consensus via a voting Quorum. Thus a 3-node cluster may tolerate the outage of 
+a single node, a 5-node cluster can tolerate a 2-node outage, and so on. If 
+consensus is ever lost, HARP will become inoperable because the DCS prevents it 
+from deterministically identifying which node is the Lead Master within a 
+particular Location.
+
+As a result, whichever DCS is chosen, more than half of the nodes must always 
+be available _cluster-wide_. This can become a non-trivial element when 
+distributing DCS nodes among two or more Data Centers. A Network Partition will 
+prevent Quorum in any Location that cannot maintain a voting majority, and thus 
+HARP will cease operations.
+
+Thus an odd-number of nodes (with a minimum of 3) is crucial when building the 
+Consensus Layer itself. An ideal case distributes nodes across a minimum of 
+three independent locations to prevent a single Network Partition from 
+disrupting Consensus.
+
+One example configuration is to designate two DCS nodes in two Data Centers 
+coinciding with the primary BDR nodes, and a fifth DCS node (such as a BDR 
+Witness) elsewhere. Using such a design, a network partition between the two 
+BDR Data Centers would not disrupt Consensus thanks to the independently
+located node.
+
+### Multi-Consensus Variant
+
+HARP itself assumes one Lead Master per configured Location. Normally each 
+Location is specified within HARP using the `location` configuration setting. 
+By creating a separate DCS cluster per Location, it becomes possible to emulate
+this behavior independently of HARP.
+
+To accomplish this, HARP should be configured in `config.yml` to use a different
+DCS connection target per desired Location.
+
+HARP nodes in DC-A would use something like this:
+
+```yaml
+location: dca
+dcs:
+  driver: etcd
+  endpoints:
+    - dcs-a1:2379
+    - dcs-a2:2379
+    - dcs-a3:2379
+```
+
+While DC-B would use different hostnames corresponding to nodes in its 
+canonical Location:
+
+```yaml
+location: dcb
+dcs:
+  driver: etcd
+  endpoints:
+    - dcs-b1:2379
+    - dcs-b2:2379
+    - dcs-b3:2379
+```
+
+There is no DCS communication between different Data Centers in this design, 
+and thus a Network Partition between them will not impact HARP operation. A 
+consequence of this is that HARP is completely unaware of nodes in the other 
+Location, and each Location operates essentially as a separate HARP cluster.
+
+This is not possible when using BDR as the DCS, as BDR maintains a Consensus 
+Layer across all participant nodes. 
+
+A possible drawback to this approach is that `harpctl` is unable to interact 
+with nodes outside of the current Location. It will be impossible to obtain 
+node information, get or set the Lead Master, or any other operation that 
+targets the other Location. Essentially this organization renders the 
+`--location` parameter to `harpctl` unusable.
+
+### TPAexec and Consensus
+
+The above considerations are integrated into TPAexec as well. When deploying a
+cluster using etcd, it will automatically construct a separate DCS cluster per
+Location to facilitate High Availability in favor of strict Consistency.
+
+Thus this configuration example:
+
+```yaml
+cluster_vars:
+  failover_manager: harp
+  harp_consensus_protocol: etcd
+
+locations:
+  - Name: first
+  - Name: second
+```
+
+Would group any DCS nodes assigned to the `first` location together, and the 
+`second` location would be a separate cluster. To override this behavior, 
+configure the `harp_location` implicitly to force a particular grouping.
+
+Thus this example would return all etcd nodes into a single cohesive DCS layer:
+
+```yaml
+cluster_vars:
+  failover_manager: harp
+  harp_consensus_protocol: etcd
+
+locations:
+  - Name: first
+  - Name: second
+  - Name: all_dcs
+
+instance_defaults:
+  vars:
+    harp_location: all_dcs
+```
+
+The `harp_location` override may also be necessary to favor specific node 
+groupings when using cloud providers such as Amazon which favor Availability
+Zones within Regions in favor of traditional Data Centers.
+
