@@ -32,6 +32,10 @@ const sourceToPluginConfig = {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
   },
+  livecompare: {
+    name: "livecompare",
+    path: "product_docs/docs/livecompare",
+  },
   migration_portal: {
     name: "migration_portal",
     path: "product_docs/docs/migration_portal",
