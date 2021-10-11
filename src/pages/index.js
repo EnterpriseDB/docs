@@ -241,6 +241,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/NutanixGuide">
               Nutanix AHV
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/RepostorGuide">
+              Repostor Data Protector for PostgresSQL
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
