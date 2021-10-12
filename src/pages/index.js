@@ -136,6 +136,7 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
@@ -160,7 +161,7 @@ const Page = () => (
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Cluster Management
             </span>
