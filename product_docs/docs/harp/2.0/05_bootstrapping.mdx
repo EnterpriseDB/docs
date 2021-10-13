@@ -1,0 +1,199 @@
+---
+navTitle: Bootstrapping
+title: Cluster Bootstrapping
+---
+
+In order to use HARP, a minimum amount of metadata must exist in the DCS. The 
+process of "bootstrapping" a cluster essentially means initializing node, 
+location, and other run-time configuration either all at once, or on a 
+per-resource basis.
+
+This entire process is governed through the `harpctl apply` command. For more
+information on this, please check the [harpctl docs](08_harpctl).
+
+This section assumes the DCS is set up and functional.
+
+!!! Important
+    While examples in this document imply bootstrapping must be done section
+    by section, this is not the case. It is possible to combine any or all of
+    these into a single YAML document and apply it all at once. We simply split
+    up these sections for illustrative purposes and to simplify.
+
+## Cluster-Wide Bootstrapping
+
+Some settings are applied cluster-wide, and can be specified during 
+bootstrapping. Currently this only applies to the `event_sync_interval` 
+run-time directive, but others may be added later.
+
+The format for this is as follows:
+
+```yaml
+cluster: 
+  name: mycluster
+  event_sync_interval: 100
+```
+
+Assuming that file was named `cluster.yml`, you would then apply it with the
+following:
+
+```bash
+harpctl apply cluster.yml
+```
+
+If the cluster name is not already defined within the DCS, this will also
+initialize that value.
+
+!!! Important
+    The Cluster name parameter specified here will always override the cluster
+    name supplied in `config.yml`. The assumption is that the bootstrap file
+    supplies all necessary elements to bootstrap a cluster or some portion of
+    its larger configuration. A `config.yml` file is primarily meant to control
+    the execution of HARP Manager, HARP Proxy, or `harpctl` specifically.
+
+## Location Bootstrapping
+
+Every HARP node is associated with at most one Location. This Location may be
+a single Data Center, a grouped Region consisting of multiple underlying
+servers, an Amazon Availability Zone, and so on. This is merely a logical
+structure that allows HARP to group nodes together such that only one will
+represent the nodes in that Location as the Lead Master.
+
+Thus it is necessary to initialize one or more locations. The format for this
+is as follows:
+
+```yaml
+cluster: 
+  name: mycluster
+
+locations:
+  - location: dc1
+  - location: dc2
+```
+
+Assuming that file was named `locations.yml`, you would then apply it with the
+following:
+
+```bash
+harpctl apply locations.yml
+```
+
+Note that when performing any manipulation of the cluster, the name should be
+included as a preamble so the changes get directed to the right place.
+
+Once Locations are bootstrapped, they should show up with a quick examination:
+
+```bash
+> harpctl get locations
+
+Cluster   Location Leader Previous Leader Target Leader Lease Renewals 
+-------   -------- ------ --------------- ------------- -------------- 
+mycluster dc1                                           <nil>          
+mycluster dc2                                           <nil>          
+```
+
+As can be seen here, both locations are recognized by HARP and available for
+node and Proxy assignment.
+
+## Node Bootstrapping
+
+HARP Nodes exist within a named cluster, and must have a designated name. 
+Beyond this, all other settings are retained within the DCS itself, as they are 
+dynamic and may affect how HARP interacts with them. To this end, each node
+should be bootstrapped using one or more of the run-time directives discussed
+in the [Configuration](04_configuration) documentation.
+
+While bootstrapping a node, there are a few required fields:
+
+* `name`
+* `location`
+* `dsn`
+* `pg_data_dir`
+
+Everything else is optional and may depend on the cluster itself. Because it
+is possible to bootstrap multiple nodes at once, the format generally fits
+this structure:
+
+```yaml
+cluster: 
+  name: mycluster
+
+nodes:
+  - name: node1
+    location: dc1
+    dsn: host=node1 dbname=bdrdb user=postgres 
+    pg_data_dir: /db/pgdata
+    leader_lease_duration: 10
+    priority: 500
+```
+
+Assuming that file was named `node1.yml`, you would then apply it with the
+following:
+
+```bash
+harpctl apply node1.yml
+```
+
+Once Nodes are bootstrapped, they should show up with a quick examination:
+
+```bash
+> harpctl get nodes
+
+Cluster   Name  Ready Role Type Location Fenced Lease Duration 
+-------   ----  ----- ---- ---- -------- ------ -------------- 
+mycluster node1 true            dc1      false  30            
+```
+
+## Proxy Bootstrapping
+
+Unlike Locations or Nodes, Proxies can also supply a configuration template 
+that is applied to all proxies within a Location. These are stored in the DCS 
+under the `global` designation. Each proxy also requires a name to exist as
+an instance, but no further customization is necessary unless some setting
+needs a specific override.
+
+This is because there are likely to be multiple proxies that have the same
+default configuration settings for the cluster, and repeating these values for
+every single proxy shouldn't be necessary.
+
+Additionally, when bootstrapping the Proxy template, at least one database 
+should be defined for connection assignments. With these notes in mind, the 
+format for this is as follows:
+
+```yaml
+cluster: 
+  name: mycluster
+
+proxies:
+  monitor_interval: 5
+  default_pool_size: 20
+  max_client_connections: 1000
+  database_name: bdrdb
+  instances:
+    - name: proxy1
+    - name: proxy2
+      default_pool_size: 50
+```
+
+This would configure HARP for two proxies: `proxy1` and `proxy2`, which only 
+`proxy2` would have a custom `default_pool_size`, while using the global 
+settings otherwise.
+
+Assuming that file was named `proxy.yml`, you would then apply it with the
+following:
+
+```bash
+harpctl apply proxy.yml
+```
+
+Once the Proxy template is bootstrapped, it should show up with a quick 
+examination:
+
+```bash
+> harpctl get proxies
+
+Cluster   Name   Pool Mode Auth Type Max Client Conn Default Pool Size 
+-------   ----   --------- --------- --------------- ----------------- 
+mycluster global session   md5       1000            20                
+mycluster proxy1 session   md5       1000            20                
+mycluster proxy2 session   md5       1000            50                
+```
