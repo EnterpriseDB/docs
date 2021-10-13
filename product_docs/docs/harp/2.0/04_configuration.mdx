@@ -64,10 +64,20 @@ supplementary entries that will be described here.
   additional software for consensus storage, but expects a minimum of three 
   full BDR member nodes to maintain quorum during database maintenance.
 
-- **`endpoints`**: Required array of connection strings to contact the DCS.
-  Every node of the DCS should be listed here if possible. This ensures HARP
-  will continue to function so long as a majority of the DCS is still
+- **`endpoints`**: Required list of connection strings to contact the DCS.
+  Every node of the DCS should be listed here if possible. This ensures HARP 
+  will continue to function so long as a majority of the DCS is still 
   operational and reachable via the network.
+
+  Format is as follows:
+  
+  ```yaml
+  dcs:
+    endpoints:
+      - host1:2379
+      - host2:2379
+      - host3:2379
+  ```
 
 - **`request_timeout`**: Time in milliseconds to consider a request as failed.
   If HARP makes a request to the DCS and receives no response within this time
@@ -114,12 +124,6 @@ needs at least one more setting:
   `bdr.local_node_summary.node_name` view column. Alphanumeric characters
   and underscores only.
 
-- **`postgres_bin_dir`**: Directory where Postgres binaries are located.
-  As HARP utilizes Postgres binaries, such as `pg_ctl`, it needs to know where 
-  these are located. This can be platform or distribution dependent, so has no 
-  default. The assumption is that the appropriate binaries are in the 
-  environment's `PATH` variable otherwise.
-
 Thus a complete configuration example for HARP Manager could resemble this:
 
 ```yaml
@@ -136,7 +140,6 @@ dcs:
 manager:
   name: node1
   log_level: INFO
-  postgres_bin_dir: /usr/lib/postgresql/13/bin
 ```
 
 Note that this is essentially the DCS contact information, any associated 
@@ -169,12 +172,6 @@ Proxy-based settings may be specified under a `proxy` heading, and include:
   Each Proxy node is named to ensure any associated statistics or operating
   state are available in status checks and other interactive events.
 
-- **`postgres_bin_dir`**: Directory where Postgres binaries are located.
-  As HARP utilizes Postgres binaries, such as `psql`, it needs to know where 
-  these are located. This can be platform or distribution dependent, so has no 
-  default. The assumption is that the appropriate binaries are in the 
-  environment's `PATH` variable otherwise.
-
 - **`pgbouncer_bin_dir`**: Directory where PgBouncer binaries are located.
   As HARP utilizes PgBouncer binaries, it needs to know where these are 
   located. This can be platform or distribution dependent, so has no
@@ -186,7 +183,7 @@ Proxy-based settings may be specified under a `proxy` heading, and include:
 HARP Proxy requires the cluster name, DCS connection settings, location, and
 name of the proxy in operation. An example lies below:
 
-```
+```yaml
 cluster:
   name: mycluster
 
@@ -252,6 +249,12 @@ modified with a `harpctl set node` command.
   This parameter applies equally to all HARP services and enables
   micro-architectures which run only one service per container.
 
+  !!! Note
+      HARP sets the `sslmode` argument to `require` by default and will prevent 
+      connections to servers that do not require SSL. To disable this behavior, 
+      explicitly set this parameter to a more permissive value such as 
+      `disable`, `allow`, or `prefer`.
+
 - **`db_data_dir`**: Required Postgres data directory.
   This is required by HARP Manager to start, stop, or reload the Postgres 
   service. It is also the default location for configuration files, which may 
@@ -269,7 +272,7 @@ modified with a `harpctl set node` command.
   grace period to refresh the lock, before expiration allows another node to 
   obtain the Lead Master lock instead.
 
-  * Default: 15
+  * Default: 30
 
 - **`lease_refresh_interval`**: Amount of time in milliseconds between 
   refreshes of the Lead Master lease. This essentially controls the time 
@@ -282,7 +285,7 @@ modified with a `harpctl set node` command.
 - **`maximum_lag`**: Highest allowable variance (in bytes) between last
   recorded LSN of previous Lead Master and this node before being allowed to
   take the Lead Master lock. This prevents nodes experiencing terminal amounts
-  of lag from taking the Lead Master lock.
+  of lag from taking the Lead Master lock. Set to -1 to disable this check.
 
   * Default: 1048576 (1MB)
 
@@ -291,9 +294,23 @@ modified with a `harpctl set node` command.
   This should only apply to clusters where CAMO is both available and enabled.
   Thus this only applies to BDR EE clusters where `pg2q.enable_camo` is set.
   Clusters with particularly stringent CAMO apply queue restrictions should set
-  this very low, or even to 0 to avoid any unapplied CAMO transactions.
+  this very low, or even to 0 to avoid any unapplied CAMO transactions. Set to
+  -1 to disable this check.
 
   * Default: 1048576 (1MB)
+
+- **`ready_status_duration`**: Amount of time in seconds the node's readiness 
+  status will persist if not refreshed. This is a failsafe that will remove a
+  node from being contacted by HARP Proxy if the HARP Manager in charge if it
+  stops operating.
+
+  * Default: 30
+
+- **`postgres_bin_dir`**: Directory where Postgres binaries are located.
+  As HARP utilizes Postgres binaries, such as `pg_ctl`, it needs to know where 
+  these are located. This can be platform or distribution dependent, so has no 
+  default. The assumption is that the appropriate binaries are in the 
+  environment's `PATH` variable otherwise.
 
 - **`priority`**: Any numeric value greater than or equal to 0.
   In the case two nodes have an equal amount of lag and other qualified 
@@ -348,21 +365,87 @@ mappings to their PgBouncer equivalent, and we will note these where relevant.
 Settings here should be set under a `proxies` YAML heading during bootstrap, or
 modified with a `harpctl set proxy` command.
 
+- **`auth_file`**: The full path to a PgBouncer-style `userlist.txt` file.
+  HARP Proxy will use this file to store a `pgbouncer` user which will have
+  access to PgBouncer's Admin database. This file may be used for other users
+  as well. Proxy will modify this file to add and modify the password for the
+  `pgbouncer` user.
+
+  * Default `/etc/harp/userlist.txt`
+
+- **`auth_type`**: What type of Postgres authentication to use for password
+  matching. This is actually a PgBouncer setting and is not fully compatible
+  with the Postgres `pg_hba.conf` capabilities. We recommend using `md5`, `pam`
+  `cert`, or `scram-sha-256`.
+
+  * Default `md5`
+
+- **`auth_query`**: Query to verify a user’s password with Postgres.
+  Direct access to `pg_shadow` requires admin rights. It’s preferable to use a
+  non-superuser that calls a `SECURITY DEFINER` function instead. If using
+  TPAexec to create a cluster, a function named `pgbouncer_get_auth` will be
+  installed on all databases within the `pg_catalog` namespace to fulfill this
+  purpose.
+
+- **`auth_user`**: If `auth_user` is set, then any user not specified in
+  `auth_file` will be queried through the `auth_query` query from `pg_shadow` 
+  in the database, using `auth_user`. The password of `auth_user` will be
+  taken from `auth_file`.
+
+- **`client_tls_ca_file`**: Root certificate file to validate client
+  certificates. Requires `client_tls_sslmode` to be set.
+
+- **`client_tls_cert_file`**: Certificate for private key. Clients can
+  validate it. Requires `client_tls_sslmode` to be set.
+
+- **`client_tls_key_file`**: Private key for PgBouncer to accept client
+  connections. Requires `client_tls_sslmode` to be set.
+
+- **`client_tls_protocols`**: Which TLS protocol versions are allowed for 
+  client connections.
+  Allowed values: `tlsv1.0`, `tlsv1.1`, `tlsv1.2`, `tlsv1.3`. 
+  Shortcuts: `all` (tlsv1.0,tlsv1.1,tlsv1.2,tlsv1.3), 
+  `secure` (tlsv1.2,tlsv1.3), `legacy` (all).
+
+  * Default `secure`
+
+- **`client_tls_sslmode`**: Whether to enable client SSL functionality.
+  May be one of `disable` `allow` `prefer` `require` `verify-ca` `verify-full`.
+
+  * Default `disable`
+
+- **`database_name`**: Required name that represents which database clients
+  will use when connecting to HARP Proxy. This is a stable endpoint that will 
+  not change and points to the current node, database name, port, etc., 
+  necessary to connect to the Lead Master. The global value `*` may be used
+  here so all connections get directed to this target regardless of database
+  name.
+
 - **`default_pool_size`**: The maximum amount of active connections to allow
   per database / user combination. This is for connection pooling purposes,
   but will do nothing in session pooling mode. This is a PgBouncer setting.
 
   * Default 25
 
+- **`ignore_startup_parameters`**: By default, PgBouncer allows only
+  parameters it can keep track of in startup packets: `client_encoding`,
+  `datestyle`, `timezone`, and `standard_conforming_strings`. All other
+  parameters will raise an error. To allow other parameters, they can be
+  specified here so that PgBouncer knows that they are handled by the admin
+  and it can ignore them. It is often necessary to set this to 
+  `extra_float_digits` for Java applications to function properly.
+
+  * Default `extra_float_digits`
+
 - **`listen_address`**: IP address(es) where Proxy should listen for
   connections. This is a PgBouncer setting.
-  
+
   * Default 0.0.0.0
 
 - **`listen_port`**: System Port where Proxy should listen for connections.
   This is a PgBouncer setting.
 
-  * Default 5432
+  * Default 6432
 
 - **`max_client_conn`**: The total maximum amount of active client 
   connections that are allowed on the Proxy. This can be many orders of 
@@ -379,6 +462,20 @@ modified with a `harpctl set proxy` command.
   registered to the DCS.
 
   * Default 5
+
+- **`server_tls_protocols`**: Which TLS protocol versions are allowed for
+  server connections. 
+  Allowed values: `tlsv1.0`, `tlsv1.1`, `tlsv1.2`, `tlsv1.3`. 
+  Shortcuts: `all` (tlsv1.0,tlsv1.1,tlsv1.2,tlsv1.3), 
+  `secure` (tlsv1.2,tlsv1.3), `legacy` (all).
+
+  * Default `secure`
+
+- **`server_tls_sslmode`**: Whether to enable server SSL functionality.
+  May be one of `disable` `allow` `prefer` `require` `verify-ca` `verify-full`.
+
+  * Default `disable`
+
 
 When using `harpctl` to change any of these settings for all proxies, use the 
 `global` keyword in place of the proxy name. Example:
