@@ -43,7 +43,7 @@ const addIndexFrontmatterSection = async (frontmatter) => {
     `indexCards: none
 directoryDefaults:
   prevNext: true
-  iconName: kubernetes
+  iconName: logos/KubernetesMono
 
 navigation:
 `;

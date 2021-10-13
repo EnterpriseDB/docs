@@ -136,6 +136,7 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
@@ -158,7 +159,9 @@ const Page = () => (
               BDR (Bi-Directional Replication)
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+            <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
+
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Cluster Management
             </span>
@@ -234,12 +237,14 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixGuide">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/RepostorGuide">
+              Repostor Data Protector for PostgresSQL
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption

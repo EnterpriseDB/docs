@@ -4,7 +4,7 @@ import { Link } from "./";
 const SearchNavigationLinks = () => (
   <>
     <Link to="/search" className="btn btn-link text-nowrap ml-2">
-      Advanced Search
+      Search by Product
     </Link>
   </>
 );
