@@ -1,0 +1,216 @@
+---
+navTitle: Troubleshooting
+title: Error handling in pglogical
+originalFilePath: troubleshooting.md
+
+---
+
+The main tool for troubleshooting is the PostgreSQL log file.
+
+On the upstream side, monitoring uses the views:
+
+```
+pg_catalog.pg_replication_slots
+pg_catalog.pg_stat_replication
+```
+
+On the subscriber side there are numerous helper functions and views that may
+be consulted to gain insight into pglogical's configuration and behaviour.
+
+Start with the configuration and status summary views:
+
+Configuration can be fetched from:
+
+```
+SELECT * FROM pglogical.subscriptions;
+SELECT * FROM pglogical.TABLES;
+SELECT * FROM pglogical.SEQUENCES;
+SELECT * FROM pglogical.DDL_REPLICATION;
+```
+
+Observe worker activity with:
+
+```
+SELECT * FROM pglogical.workers;
+SELECT * FROM pglogical.worker_error_summary;
+SELECT * FROM pglogical.apply_log;
+SELECT * FROM pglogical.apply_log_summary;
+SELECT * FROM pglogical.worker_locks;
+```
+
+Statistics are reported by:
+
+```
+SELECT * FROM pglogical.stat_relation;
+SELECT * FROM pglogical.stat_subscription;
+```
+
+Other views provide logs and details:
+
+```
+SELECT * FROM pglogical.local_sync_status;
+SELECT * FROM pglogical.show_subscription_status();
+SELECT * FROM pglogical.sub_history;
+SELECT * FROM pglogical.worker_error;
+SELECT * FROM pglogical.show_workers();
+SELECT * FROM pglogical.worker_tasks;
+
+SELECT * FROM pg_catalog.pg_stat_activity;
+SELECT * FROM pg_catalog.pg_locks;
+SELECT * FROM pg_catalog.pg_replication_origin_status;
+```
+
+The relation `pglogical.worker_error_summary` is particularly important for
+getting a quick overview of recent problems, though the logs should generally
+be your main reference.
+
+## `pglogical.worker_error` and `pglogical.worker_error_summary`
+
+These relations show the last error reported by each kind of pglogical worker.
+Only the most recent error is retained for each distinct worker task. Receiver
+workers are tracked separately to their writer(s), as are any writer(s) used
+for table (re)sync purposes.
+
+walsender workers cannot record errors in `pglogical.worker_error`. Their
+errors are only available in the log files.
+
+`pglogical.worker_error_summary` is a convenience view over
+`pglogical.worker_error` available in 3.7 and above.
+
+## `pglogical.worker_tasks`
+
+The `pglogical.worker_tasks` view shows pglogical's current worker launch rate
+limiting state as well as some basic statistics on background worker launch
+and registration activity.
+
+Unlike the other views listed here, it is not specific to the current database
+and pglogical node; state for all pglogical nodes on the current PostgreSQL
+instance is shown. Join on the current database to filter it.
+
+`pglogical.worker_tasks` does not track walsenders and output plugins.
+
+See the configuration option
+[`pglogical.min_worker_backoff_delay`](configuration#pglogical.min_worker_backoff_delay) for
+rate limit settings and overrides.
+
+## `pglogical.apply_log` and `pglogical.apply_log_summary`
+
+The `pglogical.apply_log_summary` view summarizes the record of apply worker
+events kept in `pglogical.apply_log`. This records human-readable information
+about conflicts and errors that arose during apply.
+
+## `pglogical.sub_log`
+
+The `pglogical.sub_log` table contains *conflict log filter definitions* that
+are applied when recording entries in `pglogical.apply_log`, controlling
+whether conflicts are recorded to a log table and/or postgres log, or silently
+dropped. It's managed by `pglogical.alter_subscription_add_log(...)` and
+`pglogical.alter_subscription_remove_log()`.
+
+If you aren't seeing expected conflict information when debugging an issue, check
+to make sure you have not filtered it out.
+
+When pglogical workers encounter an error condition during operation they
+report the error to the PostgreSQL log file, record the error to the
+`pglogical.worker_error` table if possible, and exit.
+
+Unlike normal PostgreSQL user backends they do not attempt to recover from most
+errors and resume normal operation. Instead the worker in question will be
+relaunched soon and will resume operations at the last recoverable point.
+In the case of apply workers and walsenders that generally means restarting the
+last uncommitted transaction from the beginning.
+
+This is an intentional design choice to make error handling and recovery
+simpler and more robust.
+
+For example, if an apply worker tries to apply an `UPDATE` and the new row
+violates a secondary unique constraint on the target table, the apply worker
+will report the unique violation error and exit. The error information will be
+visible in `pglogical.worker_error_summary` (3.7+, `pglogical.worker_error` on 3.6).
+The walsender worker on the peer end will exit automatically as well. The apply
+worker will be relaunched by the manager worker for the database in a few
+seconds and will retry the failed transaction from the beginning. If the
+conflicting row has since been removed the transaction will apply normally and
+replication will resume. If not, the worker will error again and the cycle will
+repeat until the cause of the error is fixed. In this case the fix would
+typically be for another subscription or a local application write to replicate
+a change that clears the unhandled conflict condition or for the administrator
+to intervene to change the conflicting row.
+
+## Diagnosing and fixing errors
+
+It's important to first check that your schema and deployment don't violate any
+of the [restrictions](restrictions) imposed by pglogical. Also check the
+additional writer-specific restrictions from the pglogical writer you are using,
+most likely the [HeapWriter](pglogical-writer#Restrictions).
+
+### Common problems
+
+Some issues that arise when operating pglogical include:
+
+-   Incorrect or changed provider address or hostname. Update the interface definition
+    for the subscription.
+
+    Use `pglogical.alter_node_add_interface(...)` and
+    `pglogical.alter_subscription_interface(...)` to change the subscriber's
+    recorded address for the provider.
+
+-   Incorrect `pg_hba.conf` on provider disallowing subscriber from connecting.
+    The subscriber must be able to connect in both replication and ordinary
+    non-replication mode.
+
+    Correct the `pg_hba.conf` on the provider and `SELECT pg_reload_conf();` on
+    the provider.
+
+-   Incompatible schema definitions on provider and subscriber caused by schema changes
+    being made without [DDL replication](ddl) enabled and without use of
+    `pglogical.replicate_ddl_command`. For example, missing columns on subscriber
+    that haven't been excluded by a column filter, differing data types for columns
+    between provider and subscriber, etc.
+
+    (Some data type differences are actually permitted, but care must be taken
+    that the text representations are compatible. Do not use differing data types
+    for PostgreSQL built-in data types. See [restrictions](restrictions).)
+
+-   Incorrectly defined `ENABLE REPLICA` or `ENABLE ALWAYS` triggers firing on
+    apply on the subscriber and causing errors.
+
+-   Heap writers configured to fire normal triggers and foreign key validation
+    triggers (using writer option `config.session_replication_role`). Problems
+    arise when not all triggers have been checked to ensure they'll work
+    correctly with row-replication and without statement triggers being fired as
+    well. Or when FK violations or check constraint violations are created by
+    replication set configuration such as row and column filters or by referenced
+    tables not being replicated along with the referencing tables.
+
+-   Inconsistent versions of PostgreSQL or extensions between provider and subscriber
+    where the version difference affects the behaviour or limits of a data type being
+    replicated.
+
+    pglogical explicitly supports replicating between different versions of
+    PostgreSQL, so a version difference alone is not a problem. But the data
+    being replicated must be valid on the subscriber's PostgreSQL version.
+
+    For example, apply errors may occur when replicating data from PostGIS 3.0 to
+    PostGIS 2.5 where not all the 3.0 data is understood by 2.5. Similarly,
+    replicating from a PostgreSQL configured without integer datetimes to one
+    with integer datetimes may result in errors if there are non-integer
+    datetimes with values outside the somewhat narrower range permitted by
+    integer datetimes support.
+
+### Multiple data source issues
+
+Additional classes of error tend to arise with any sort of multiple-data-source
+configuration, i.e. multiple subscriptions to different providers for the same
+tables and/or local writes to tables that are also part of a subscription. Some of
+these affect BDR3 as well.
+
+These include:
+
+-   Tables with multiple unique constraints may cause unique violation errors
+    during apply if the table receives writes from multiple sources.
+
+-   Updating the PRIMARY KEY value for rows, or deleting a key then inserting the same
+    key again soon afterwards. This may cause unique violation errors during apply
+    if the table receives writes from more than one source, i.e. multiple providers
+    and/or local writes.

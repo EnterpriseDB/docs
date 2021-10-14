@@ -78,7 +78,7 @@ const SuggestedLinksSearch = ({ query }) => {
       <div>
         Not finding what you need?
         <Link to={`/search?query=${query}`} className="ml-2">
-          Try Advanced Search
+          Try Search by Product
         </Link>
       </div>
     </InstantSearch>
