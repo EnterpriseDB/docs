@@ -23,7 +23,7 @@ const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
     <FooterItem url="https://www.enterprisedb.com/support-portal">
-      Support
+      Knowledge Base
     </FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
     <FooterItem url="/community/contributing/">Have feedback?</FooterItem>

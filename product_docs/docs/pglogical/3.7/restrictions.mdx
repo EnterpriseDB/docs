@@ -1,0 +1,114 @@
+---
+title: Restrictions
+originalFilePath: restrictions.md
+
+---
+
+pglogical currently has the following restrictions or missing functionality.
+These might be addressed in future releases.
+
+## Superuser is required
+
+Currently pglogical replication and administration requires superuser
+privileges. It may be later extended to more granular privileges.
+
+## UNLOGGED and TEMPORARY not replicated
+
+`UNLOGGED` and `TEMPORARY` tables will not and cannot be replicated, similar to
+physical streaming replication.
+
+## One database at a time
+
+To replicate multiple databases you must set up individual provider/subscriber
+relationships for each. There is no way to configure replication for all databases
+in a PostgreSQL install at once.
+
+## PRIMARY KEY or REPLICA IDENTITY required
+
+When replicating `UPDATE`s and `DELETE`s for tables that lack a `PRIMARY
+KEY`, the `REPLICA IDENTITY` must be set to `FULL`.  However it's important
+to note that without `PRIMARY KEY` every `UPDATE` or `DELETE` will produce a
+sequential scan on a table which will have severe detrimental effect on
+performance of replication and subsequently the replication lag.
+
+Note: On regular PostgreSQL nodes it's only possible to set the
+`REPLICA IDENTITY` to `FULL` via `ALTER TABLE`, however on pglogical nodes
+tables can be created with `REPLICA IDENTITY FULL` directly using the following
+syntax:
+
+```sqlpostgresql
+CREATE TABLE name (column_a int) WITH (replica_identity = full);
+```
+
+See <http://www.postgresql.org/docs/current/static/sql-altertable.html#SQL-CREATETABLE-REPLICA-IDENTITY> for details on replica identity.
+
+## DDL
+
+There are several limitations of DDL replication in pglogical, for details
+check the [DDL Replication](ddl) chapter.
+
+## Sequences
+
+The state of sequences added to replication sets is replicated periodically
+and not in real-time. A dynamic buffer is used for the value being replicated so
+that the subscribers actually receive the future state of the sequence. This
+minimizes the chance of the subscriber's notion of the sequence's last_value
+falling behind but does not completely eliminate the possibility.
+
+It might be desirable to call `synchronize_sequence` to ensure all subscribers
+have up to date information about a given sequence after "big events" in the
+database such as data loading or during the online upgrade.
+
+The types bigserial and bigint are recommended for sequences on multi-node
+systems as smaller sequences might reach the end of the sequence space fast.
+
+Users who want to have independent sequences on the provider and subscriber can
+avoid adding sequences to replication sets and create sequences with a step
+interval equal to or greater than the number of nodes, and then set a different
+offset on each node. Use the `INCREMENT BY` option for `CREATE SEQUENCE` or
+`ALTER SEQUENCE`, and use `setval(...)` to set the start point.
+
+## PostgreSQL Version differences
+
+PGLogical can replicate across PostgreSQL major versions. Despite that, long
+term cross-version replication is not considered a design target, though it may
+often work. Issues where changes are valid on the provider but not on the
+subscriber are more likely to arise when replicating across versions.
+
+It is safer to replicate from an old version to a newer version since PostgreSQL
+maintains solid backward compatibility but only limited forward compatibility.
+Initial schema synchronization is only supported when replicating between the
+same version of PostgreSQL or from lower version to a higher version.
+
+Replicating between different minor versions makes no difference at all.
+
+### pglogical.pglogical_version
+
+This function retrieves the textual representation of the PGL version that is currently in use.
+
+```
+SELECT pglogical.pglogical_version();
+```
+
+### pglogical.pglogical_version_num
+
+This function retrieves a numerical representation of the PGL version that is currently in use.
+Version numbers are monotonically increasing, allowing this value to be used for less-than and greater-than comparisons.
+
+## Database encoding differences
+
+PGLogical does not support replication between databases with different
+encoding. We recommend using `UTF-8` encoding in all replicated databases.
+
+## Large objects
+
+PostgreSQL's logical decoding facility does not support decoding changes
+to large objects, so pglogical cannot replicate Large Objects. This does
+not restrict the use of large values in normal columns.
+
+## Additional restrictions
+
+Please node that additional restrictions may apply depending on which
+[writers.md](writer) is being used and which version of PostgreSQL is being
+used. These additional restrictions are documented in their respective
+sections (ie., every writer documents it's own additional restrictions).
