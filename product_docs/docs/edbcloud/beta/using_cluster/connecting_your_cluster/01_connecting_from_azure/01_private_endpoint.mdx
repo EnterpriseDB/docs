@@ -2,7 +2,23 @@
 title: Private Endpoint Example
 ---
 
-These are the steps to connect using Azure Private Endpoint. To walk through this example in your own environment, see the prerequisites described in [Connection Walkthrough Examples](../../connecting_your_cluster/#connection-walkthrough-examples).
+These are the steps to connect using Azure Private Endpoint. 
+
+#### Prerequisites
+
+Assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a VM on another subscription `test`. To walk through an example in your own environment, you need: 
+ - Your EDB Cloud cluster URL. You can find the URL in the **Connect** tab of your cluster instance in the EDB Cloud portal.
+ -  IP address of your EDB Cloud cluster. For example:
+   ```
+  $ dig +short p-c4j0jfcmp3af2ieok5eg.brcxzr08qr7rbei1.edbcloud.io 
+  10.240.1.218
+ ```
+ -  A Linux VM called `vm-client` on subscription `test` with the following properties:
+    -   Subscription: `test`
+    -   resource group: `rg-client`
+    -   virtual network: `vnet-client`
+    -   virtual network subnet: `snet-client`
+ - [psql Postgresql client](https://www.postgresql.org/download/) installed on your VM.
 
 #### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service
  
@@ -34,15 +50,11 @@ in your EDB Cloud cluster resource group:
 
      ![Outbound settings](../images/image1.png)
 
-  4. On the **Access security** page, configure the level of access for the private link service.
+  4. On the **Access security** page, configure the level of access for the private link service. You can choose to limit the exposure to subscriptions with Azure role-based access control (Azure RBAC) permissions, a restricted set of subscriptions, or all Azure subscriptions. See [control service exposure](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview#control-service-exposure)
+    for details. 
 
-     ![](../images/image21.png) 
+     ![](../images/image21.png)  
    
-   !!! Note
-      Depending on the visibility level you set, the client application might need to request access permission from the EDB Cloud tenant to access this private link
-    service. See [control service exposure](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview#control-service-exposure)
-    for details.
-    
 
   5. After the Private Link Service is created, note down its *alias*. The *alias*
    is the unique ID for your private service, which can be shared with the service consumers. Obtain the alias either from the Azure portal
@@ -52,13 +64,14 @@ in your EDB Cloud cluster resource group:
        $ az network private-link-service list --query "[?name=='pg-service-private-link'].alias" -o tsv
        pg-service-private-link.48f26b42-45dc-4e80-8e3d-307d58d7d274.japaneast.azure.privatelinkservice
      ```
+
   6. Select **Review + Create**.
 
   7. Select **Create**.
 
 #### Step 2: Create an Azure Private Endpoint linking to the Private Link Service
 
-  To connect to the PG service, create an Azure Private Endpoint in your VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.
+  To connect to the PG service, create an Azure Private Endpoint in the application VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.
   
   1. On the upper-left side of the screen in the portal, select **Create a resource > Networking > Private Link** or in the search box enter Private Link.
   
@@ -82,11 +95,12 @@ in your EDB Cloud cluster resource group:
 
   7. Select **Create**.
    
-  8. You might have to approve the connection request from the `pg-service-private-link` owner, if the private endpoint's status appears as **Pending** for a long period. 
-   
-   Switch to the EDB Cloud subscription and from the **Pending connections** page in **Private Link Center** approve the connection request.
+   !!! Note
+      If the private endpoint's status appears as **Pending** for a long period, the private endpoint might not have the required permissions to access the `pg-service-private-link`. 
+  
+      Manually approve the connection request from the **Pending connections** page in **Private Link Center** using the Azure subscription for EDB Cloud.
 
-  ![](../images/image3.png)
+      ![](../images/image3.png)
 
 
 11. You have now successfully built a tunnel between your VM's virtual network and the EDB Cloud cluster network. You can access the private PG service by using the private endpoint:
@@ -101,7 +115,18 @@ in your EDB Cloud cluster resource group:
 
 12. From the VM `vm-client`, access the PG service by using the private IP address.
 
- ![](../images/image20.png)
+ ```
+ $ psql -h 100.64.111.5 -0 edb_admin 
+ 
+ Password for user edb_admin : 
+ 
+ psql (13.4 (Ubuntu 13.4-1.pgdg20.04+1), server 13.4.8 (Debian 13.4.8-1+deb10)) 
+ WARNING : psql major version 13, server major version 13. Some psql features might not work. 
+ SSL connection (protocol : TLSV1.3, cipher : TLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help. 
+ 
+ edb_admin=>
+
+ ```
 
 #### Step 3: Create an Azure Private DNS Zone for the Private Endpoint
 
@@ -114,9 +139,7 @@ EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft
 1. Click **Create private DNS zone**.
 
 1. Create a private DNS zone using your organization-level domain name as an apex domain, `brcxzr08qr7rbei1.edbcloud.io`.
-
- **//////////DO WE NEED TO CORRECT THE NAME IN THE SCREENSHOT?/////////**
-
+ 
  ![](../images/image6.png)
 
 1. Select the **Virtual network** link on the **Private DNS Zone** page of `brcxzr08qr7rbei1.edbcloud.io` and link the private DNS Zone to the VM's virtual network
@@ -130,7 +153,20 @@ EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft
 
 1. You can now access your PG service with this private domain name.
 
- ![](../images/image20.png)
+ ```
+ $ dig +short p-c4iabjleig4@jngmac48. bxcxztésqr7rbeil.enterprisedb.network 
+ 10.240.1.123 
+       
+ $ psql -h p-c41a6jleig4@jngmac48.brcxzreaqr7rbeil.enterprisedb.network -u edh_admin      
+ Password for user edb_admin: 
+ 
+ psql (13.4 (Ubuntu 13.4-1.pgdg28.84+1), server 13.4.8 (Debian 13.4.8-1+deb10)) 
+ WARNING : psql major version 13, server major version 13. Some psql features might not work. 
+ SSL connection (protocol : TLSV1.3cipherTLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help. 
+ 
+ edb_admins>
+ 
+ ```
 
  !!! Tip
     You might need to flush your local DNS cache, to resolve your domain name to the new private IP address after adding the private endpoint. For example, on Ubuntu run the following command:
