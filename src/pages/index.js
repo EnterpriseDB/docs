@@ -243,6 +243,9 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <IndexCardLink to="/partner_docs/FlywayGuide">
+              Flyway
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
