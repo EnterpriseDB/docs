@@ -1,0 +1,215 @@
+---
+title: "Replicating DDL Changes"
+---
+
+<div id="replicating_ddl_changes" class="registered_link"></div>
+
+Once a replication system has been created and is in operation, there may be occasions where it is necessary to make changes to the publication table definitions. These data definition language (DDL) changes may include the following:
+
+-   Adding new columns to a table
+-   Renaming existing columns
+-   Modifying a column data type
+-   Modifying a column constraint
+-   Removing columns
+
+!!! Note
+    See [Validating a Publication](../06_managing_publication/05_validating_publication/#validating_publication) for information on dealing with other types of table definition changes.
+
+Table definition changes are generally implemented using the `SQL ALTER TABLE` statement, which is issued in an SQL command line utility program such as PSQL.
+
+The DDL change replication feature accepts one or more `ALTER TABLE` statements. The statements may be provided by means of a text file or by entering them directly into the Alter Publication Table dialog box. The latter can be done by copying and pasting the statements into the dialog box, or by directly typing in the statements. The DDL change replication feature then performs the following actions:
+
+-   Applies the `ALTER TABLE` statements to the appropriate target table in the publication and subscription databases of a single-master replication system, or in all primary nodes (including the primary definition node) of a multi-master replication system.
+-   For the trigger-based method of synchronization replication, modifies the insert/update/delete triggers that add data into the shadow table whenever a transaction occurs on the target table.
+-   For the trigger-based method of synchronization replication, modifies the shadow table to properly accommodate the target table changes.
+
+The DDL change replication feature is supported for Oracle and SQL Server subscription databases as well as Postgres subscription databases. However, the publication database must always be a Postgres database.
+
+The syntax of the `ALTER TABLE` statement accepted by the DDL change replication features is as follows:
+
+```text
+ALTER TABLE schema.table_name action
+```
+
+where `action` can be any of the following:
+
+Rename an existing column:
+
+```text
+RENAME [ COLUMN ] column_name TO  new_column_name
+```
+
+Add a column to the table:
+
+```text
+ADD [ COLUMN ] column_name data_type
+[ DEFAULT dflt_expr ]
+[ column_constraint_1 [ column_constraint_2 ] ...]
+```
+
+Drop a column from the table:
+
+```text
+DROP [ COLUMN ] column_name [ RESTRICT ]
+```
+
+Change the data type of a column:
+
+```text
+ALTER [ COLUMN ] column_name [ SET DATA ] TYPE data_type
+[ COLLATE "collation" ]
+[ USING data_type_expr ]
+```
+
+Set the DEFAULT value of a column:
+
+```text
+ALTER [ COLUMN ] column_name SET DEFAULT dflt_expr
+```
+
+!!! Note
+    The SET DEFAULT clause is not supported when Oracle or SQL Server is the subscription database.
+
+Drop the DEFAULT value of a column:
+
+```text
+ALTER [ COLUMN ] column_name DROP DEFAULT
+```
+
+!!! Note
+    The DROP DEFAULT clause is not supported when Oracle or SQL Server is the subscription database.
+
+Set the column to reject null values:
+
+```text
+ALTER [ COLUMN ] column_name SET NOT NULL
+```
+
+!!! Note
+    The SET NOT NULL clause is not supported when SQL Server is the subscription database.
+
+Allow the column to accept null values:
+
+```text
+ALTER [ COLUMN ] column_name DROP NOT NULL
+```
+
+!!! Note
+    The DROP NOT NULL clause is not supported when SQL Server is the subscription database.
+
+The following restrictions apply to the manner in which the `ALTER TABLE` statements are specified whether it is in a text file or entered directly into the dialog box:
+
+-   Each `ALTER TABLE` statement must be terminated by a semicolon and begin on a separate line.
+-   Although the Postgres `ALTER TABLE` statement allows multiple actions per statement, the xDB DDL change replication feature permits only one action per ALTER TABLE statement.
+-   The target table of all `ALTER TABLE` statements must be the same.
+-   The `DROP COLUMN` action cannot be specified for a column that comprises part of the table’s primary key.
+
+**Parameters**
+
+`schema`
+
+> The name of the schema containing table_name. This value is case-sensitive.
+
+`table_name`
+
+> The name of the table containing the column to be added, modified, or dropped. This value is case-sensitive.
+
+`column_name`
+
+> The name of the column to be added, modified, or dropped.
+
+`new_column_name`
+
+> The new name of the column specified in the `RENAME COLUMN` clause.
+
+`data_type`
+
+> The data type of the column.
+
+`dflt_expr`
+
+> An expression for the default value of the column.
+
+`column_constraint_n`
+
+A column constraint such as a ``UNIQUE`` or ``CHECK`` constraint. For additional information on column constraints see the `CREATE TABLE SQL` command in the PostgreSQL Core Documentation located at:
+
+<https://www.postgresql.org/docs/current/static/sql-createtable.html>
+
+`RESTRICT`
+
+> In the DROP COLUMN clause, do not drop the column if there are objects dependent upon it. This is the default. Note: You cannot specify the CASCADE option as it is not supported by the DDL change replication feature.
+
+`collation`
+
+> Collation assigned to the column. If omitted, the column data type’s default collation is used. Examples of collation are default, C, POSIX, en_US, en_GB, or de_DE.
+
+`data_type_expr`
+
+> An expression specifying how the column value with the new data type is to be converted from the column value with the old data type. This expression may reference other columns in the same table. If omitted, the default conversion is an assignment cast from the old data type to the new data type.
+
+**Examples**
+
+The following are examples of `ALTER TABLE` statements that can be used by the DDL change replication feature.
+
+The following set of ALTER TABLE statements, either specified by a text file or entered directly into the dialog box, adds columns to the `edb.emp` table.
+
+```text
+ALTER TABLE edb.emp ADD COLUMN gender CHAR(1) CHECK(gender IN ('M','F'));
+ALTER TABLE edb.emp ADD COLUMN gradelevel VARCHAR2(4);
+ALTER TABLE edb.emp ADD COLUMN title VARCHAR2(10);
+```
+
+The following ALTER TABLE statement changes the data type length of the title column and sets its values with the USING `data_type_expr clause`.
+
+```text
+ALTER TABLE edb.emp
+  ALTER COLUMN title SET DATA TYPE VARCHAR(25) USING
+    CASE job
+      WHEN 'CLERK' THEN 'ADMINISTRATIVE ASSISTANT'
+      WHEN 'ANALYST' THEN 'R & D SPECIALIST'
+      WHEN 'SALESMAN' THEN 'MARKETING REPRESENTATIVE'
+      WHEN 'MANAGER' THEN 'SUPERVISOR'
+      WHEN 'PRESIDENT' THEN 'CHIEF EXECUTIVE OFFICER'
+    END;
+```
+
+The following query shows the values assigned to the title column after the DDL change replication feature applies the preceding ALTER TABLE statement to the `edb.emp` table. This change to the title column and assignment of values occurs in all the subscription databases of a single-master replication system or in all the primary nodes of a multi-master replication system.
+
+```text
+edb=# SELECT empno, ename, job, title FROM emp;
+ empno | ename  |    job    |          title
+-------+--------+-----------+--------------------------
+  7369 | SMITH  | CLERK     | ADMINISTRATIVE ASSISTANT
+  7499 | ALLEN  | SALESMAN  | MARKETING REPRESENTATIVE
+  7521 | WARD   | SALESMAN  | MARKETING REPRESENTATIVE
+  7566 | JONES  | MANAGER   | SUPERVISOR
+  7654 | MARTIN | SALESMAN  | MARKETING REPRESENTATIVE
+  7698 | BLAKE  | MANAGER   | SUPERVISOR
+  7782 | CLARK  | MANAGER   | SUPERVISOR
+  7788 | SCOTT  | ANALYST   | R & D SPECIALIST
+  7839 | KING   | PRESIDENT | CHIEF EXECUTIVE OFFICER
+  7844 | TURNER | SALESMAN  | MARKETING REPRESENTATIVE
+  7876 | ADAMS  | CLERK     | ADMINISTRATIVE ASSISTANT
+  7900 | JAMES  | CLERK     | ADMINISTRATIVE ASSISTANT
+  7902 | FORD   | ANALYST   | R & D SPECIALIST
+  7934 | MILLER | CLERK     | ADMINISTRATIVE ASSISTANT
+(14 rows)
+```
+
+The following set of ALTER TABLE statements drops the columns that were added in the first example.
+
+```text
+ALTER TABLE edb.emp DROP COLUMN gender;
+ALTER TABLE edb.emp DROP COLUMN gradelevel;
+ALTER TABLE edb.emp DROP COLUMN title;
+```
+
+The DDL change replication feature can be invoked from either the xDB Replication Console (see [DDL Change Replication Using the xDB Replication Console](02_ddl_change_replication_using_xdb_console/#ddl_change_replication_using_xdb_console)) or the xDB Replication Server CLI (see [Replicating DDL Changes (replicateddl)](../../08_xdb_cli/03_xdb_cli_commands/30_replicating_ddl_changes_cli/#replicating_ddl_changes_cli) 
+The next section describes the process that occurs during DDL change replication.
+
+<div class="toctree" maxdepth="3">
+
+ddl_change_replication ddl_change_replication_using_xdb_console
+
+</div>
