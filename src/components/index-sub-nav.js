@@ -14,7 +14,7 @@ const IndexSubNav = () => (
     <ul className="list-inline mr-3">
       <IndexSubLink url="https://www.enterprisedb.com/">EDB Home</IndexSubLink>
       <IndexSubLink url="https://www.enterprisedb.com/support-portal">
-        Knowledge Base
+        Support
       </IndexSubLink>
       <IndexSubLink url="https://enterprisedb.com/contact">
         Contact Us

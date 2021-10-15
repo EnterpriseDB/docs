@@ -23,12 +23,14 @@ This chapter covers row-level conflicts with standard data types in detail.
 
 Conflict handling is configurable, as described later in this chapter.
 Conflicts can be detected and handled differently for each table using
-conflict triggers, described in the [Stream Triggers](striggers) chapter.
 
-Column-level conflict detection and resolution is available with BDR,
+conflict triggers, available with BDR-EE,
+described in the [Stream Triggers](striggers) chapter.
+
+Column-level conflict detection and resolution is available with BDR-EE,
 described in the [CLCD](column-level-conflicts) chapter.
 
-If you wish to avoid conflicts, you can use these features in BDR.
+If you wish to avoid conflicts, you can use these features in BDR-EE
 
 -   Conflict-free data types (CRDTs) - described in the [CRDT](crdt) chapter.
 -   Eager replication - described in the [Eager Replication](eager) chapter.
@@ -53,6 +55,8 @@ some types of conflict to occur and resolve them when they arise.
     `bdr_crdt` schema were removed and will **not** work on 3.7+ nodes or in
     groups that contain at least one 3.7+ node.
     Please use the ones in `bdr` schema that are already present in all BDR versions.
+
+.
 
 ## How conflicts happen
 
@@ -116,8 +120,8 @@ default resolved by choosing the newer (based on commit time) row and keeping
 only that one (`update_if_newer` resolver). Other resolvers can be configured -
 see [Conflict Resolution] for details.
 
-To resolve this conflict type, you can also use column-level conflict
-resolution and user-defined conflict triggers.
+To resolve this conflict, type in the Enterprise Edition; you can also use
+column-level conflict resolution and user-defined conflict triggers.
 
 This type of conflict can be effectively eliminated by use of
 [Global Sequences](sequences).
@@ -140,8 +144,6 @@ preserve the row with the correct `PRIMARY KEY` and delete the others.
     In case of multiple rows conflicting this way, if the result of conflict
     resolution is to proceed with the insert operation, some of the data will
     always be deleted!
-
-It's also possible to define a different behaviour using a conflict trigger.
 
 #### UPDATE/UPDATE Conflicts
 
@@ -408,6 +410,7 @@ these conflicts. Note however that enabling this option opens the door for
 
 If these are problems, it's recommended to tune freezing settings for a table
 or database so that they are correctly detected as `update_recently_deleted`.
+This is done automatically in BDR Enterprise Edition.
 
 Another alternative is to use [Eager Replication] to prevent these conflicts.
 
@@ -706,16 +709,6 @@ as is normally the case with BDR AlwaysOn architecture.
     such a statement, the protection against these concurrency issues will not
     be present.
 
-!!! Warning
-    The additional WAL logging of TOAST is done using the `BEFORE UPDATE`
-    trigger. This trigger must be sorted alphabetically
-    last (based on trigger name) among all `BEFORE UPDATE` triggers on the
-    table. It's prefixed with `zzzz_bdr_` to make this easier, but make sure
-    you don't create any trigger with name that would sort after it, otherwise
-    the protection against the concurrency issues will not be present.
-    This trigger is not created or used when using BDR with EDB Postgres
-    Extended.
-
 For the `insert_or_error` conflict resolution, the use of
 `REPLICA IDENTITY FULL` is however still required.
 
@@ -777,8 +770,13 @@ mechanisms to cope with the conflict.
 BDR provides these mechanisms for conflict detection:
 
 -   [Origin Conflict Detection] \(default)
+
 -   [Row Version Conflict Detection]
+
 -   [Column-Level Conflict Detection](column-level-conflicts)
+    .
+
+as well as other mechanisms when using BDR-EE.
 
 ### Origin Conflict Detection
 
@@ -813,51 +811,11 @@ frozen rows that they update. Inserts and Deletes are not affected by this situa
 Users are advised to not leave down nodes for extended outages,
 as discussed in [Node Restart and Down Node Recovery](nodes).
 
-On EDB Postgres Extended, BDR will automatically hold back the freezing of
-rows while a node is down to handle this situation gracefully without the need
-for changing parameter settings.
+To handle this situation gracefully, BDR-EE will automatically hold
+back the freezing of rows while a node is down.
 
-On other variants of Postgres, users may need to manage this situation with
-some care:
-
-Freezing normally occurs when a row being vacuumed is older than
-`vacuum_freeze_min_age` xids from the current xid, which means that you
-need to configure suitably high values for these parameters:
-
--   vacuum_freeze_min_age
--   vacuum_freeze_table_age
--   autovacuum_freeze_max_age
-
-Values should be chosen based upon the transaction rate, giving
-a grace period of downtime before any conflict data is removed
-from the database server. For example, a node performing
-1000 TPS could be down for just over 5.5 days before conflict
-data is removed, when vacuum_freeze_min_age is set to 500 million.
-The CommitTS datastructure will take on-disk space of 5 GB with
-that setting, so lower transaction rate systems may benefit from
-lower settings.
-
-Initially recommended settings would be:
-
-```sql
-# 1 billion = 10GB
-autovacuum_freeze_max_age = 1000000000
-
-vacuum_freeze_min_age = 500000000
-
-# 90% of autovacuum_freeze_max_age
-vacuum_freeze_table_age = 900000000
-```
-
-Note that:
-
--   autovacuum_freeze_max_age can only be set at server start.
--   vacuum_freeze_min_age is user-settable, so using a
-    low value will freeze rows early and could result in conflicts being
-    ignored. autovacuum_freeze_min_age and toast.autovacuum_freeze_min_age
-    can also be set for individual tables.
--   running the CLUSTER or VACUUM FREEZE commands will also
-    freeze rows early and could result in conflicts being ignored.
+No changes to parameter settings are required.
+.
 
 ### Row Version Conflict Detection
 
@@ -919,10 +877,13 @@ The recognized methods for conflict detection are:
 -   `row_origin` - origin of the previous change made on the tuple (see
     [Origin Conflict Detection] above). This is the only method supported which
     does not require an extra column in the table.
+
 -   `row_version` - row version column (see [Row Version Conflict Detection]
     above).
+
 -   `column_commit_timestamp` - per-column commit timestamps (described in the
     [CLCD](column-level-conflicts) chapter).
+
 -   `column_modify_timestamp` - per-column modification timestamp (described in
     the [CLCD](column-level-conflicts) chapter).
 

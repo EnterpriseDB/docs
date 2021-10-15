@@ -29,14 +29,13 @@ We recommend using MacOS to work with the EDB Docs application.
 1. Create a `.env.development` file: `cp env.development.example .env.development`.
 
 At this point you have a couple options.
-
 - [**Quick set up with Docker**](#get-started-quickly-with-docker)
 
-  This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
+   This is the preferred set up method. Choose this option if you just want to make updates to documentation, and don't want to worry about installing and managing the correct version of Node.
 
 - [**Set up a full development environment**](#set-up-a-full-development-environment)
 
-  Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
+   Choose this option if you are an advanced user and need to make more in depth changes to the docs application, such as new functionality.
 
 ### Get Started Quickly With Docker
 
@@ -61,26 +60,6 @@ At this point you have a couple options.
 - `npm run docker:rebuild` — rebuild the images used for the dev container
 
 - To run the server on a different port, change the `PORT` config in `.env.development` and restart the dev server
-
-#### Resolving issues in the Docker Environment
-
-If you find that the container crashes frequently or see that your container has exited with code 137, increasing the Docker memory should help. Allocating at least 4GB is recommended.
-
-1. open Docker Desktop
-
-1. Go to Preferences (gear icon in the top right corner)
-
-1. Click on Resources in the left nav menu
-
-1. In the Memory section, adjust the slider to 4.00 GB
-
-1. Click Apply & Restart button
-
-If you are still experiencing errors or other issues with the site, try the following in the project folder:
-
-1. `npm run stop` then `npm run start` to restart the docker container
-
-1. `npm run docker:rebuild` then `npm run start` to rebuild and restart the container
 
 ### Install Docker using Homebrew
 
@@ -113,9 +92,9 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
    - Make sure to enable SSO for your token or it may not work correctly
 
-1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`. That will be utilized in the NPM_TOKEN variable in the .npmrc file.
+1. Once you have that token, update your `.env.development` file with this line: `NPM_TOKEN=your-token-here`.  That will be utilized in the NPM_TOKEN variable in the .npmrc file.
 
-### Set Up a Full Development Environment
+### Set up a full development environment
 
 1. Install [Node.js version 14 LTS](https://nodejs.org/en/download/). We recommend using Node version 14 LTS (the Long Term Support release) as version 15 is not compatible with some of our dependencies at this time.
 
@@ -141,15 +120,6 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 1. And finally, you can start up the site locally with `npm run develop`, which should make it live at `http://localhost:8000/`. Huzzah!
 
-#### Resolving issues in the Full Dev Environment
-
-If you experience errors or other issues with the site, try the following in the project folder:
-
-1. `rm -rf node_modules` to clean out installed JavaScript packages
-1. `npm install` to reinstall JavaScript packages
-1. `npm run clean` to clean up Gatsby cache
-1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
-
 ### Building Local PDFs (optional)
 
 To build PDFs locally, you'll need to use a Docker container.
@@ -163,19 +133,19 @@ To build PDFs locally, you'll need to use a Docker container.
 1. Create the Docker image (optional):
 
    ```sh
-   npm run pdf:rebuild-docker-image
+   docker-compose -f docker/docker-compose.build-pdf.yaml build --pull
    ```
 
 1. Run the following command inside the docs project to create a PDF:
 
    ```sh
-   npm run pdf:build product_docs/docs/<product_folder>/<version>
+   npm run build-pdf product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
    ```sh
-   npm run pdf:build product_docs/docs/epas/13
+   npm run build-pdf product_docs/docs/epas/13
    ```
 
 ### Converting RST to MDX (optional)
@@ -216,6 +186,15 @@ More details can be found on the [Adding New Sources](README_ADDING_NEW_SOURCES.
 
 See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a source type, adding the files, and other configuration.
 
+## Resolving issues
+
+If you experience errors or other issues with the site, try the following in the project folder:
+
+1. `rm -rf node_modules` to clean out installed JavaScript packages
+1. `npm install` to reinstall JavaScript packages
+1. `npm run clean` to clean up Gatsby cache
+1. `npm run develop` to start the development environment again. Keep in mind this will take longer than usual as Gatsby will need to rebuild everything.
+
 ## Development
 
 All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
@@ -250,7 +229,7 @@ The app is concerned with two different types of redirects that can be defined i
 
 ### Internal Redirects (within Docs 2.0)
 
-_For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md)._
+*For specific examples of when to use redirects, see: [How to avoid breaking links when reorganizing, consolidating or deprecating content](docs/how-tos/avoid-breaking-links.md).*
 
 #### `redirects`
 
@@ -262,13 +241,13 @@ redirects:
   - "/another_old_path"
 ```
 
-both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
+both `/old_path` and `/another_old_path` would redirect to `great_file.mdx`'s current path. This is perfect for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301). 
 
 These paths can be absolute (starting with the root of the site) or relative (to the file in which they are contained). For a `/file/at/path/`,
 
-- Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/
-- Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
-- Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
+   - Absolute: `/path/to/file/` - redirects requests for /path/to/file to /file/at/path/ 
+   - Relative: `former_child/` - redirects requests for /file/at/path/former_child/ to /file/at/path/
+   - Relative: `../sibling/` - redirects requests for /file/at/sibling/ to /file/at/path/
 
 #### Netlify-specific redirects
 

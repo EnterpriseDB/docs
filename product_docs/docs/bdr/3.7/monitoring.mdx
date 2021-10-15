@@ -158,9 +158,6 @@ column that refers to the time required for the peer node to catch up to the
 local node data. The other fields are also available via the `bdr.node_slots`
 view, as explained below.
 
-!!! Note
-    This catalog is only present when bdr-enterprise extension is installed.
-
 Administrators may query `bdr.node_slots` for outgoing replication from the
 local node. It shows information about replication status of all other nodes
 in the group that are known to the current node, as well as any additional
@@ -271,27 +268,6 @@ sub_enabled         | t
 sub_slot_name       | bdr_postgres_bdrgroup_node1
 subscription_status | replicating
 ```
-
-### Monitoring WAL senders using LCR
-
-If the [Decoding Worker](nodes#decoding-worker) is enabled, information about the
-current LCR (`Logical Change Record`) file for each WAL sender can be monitored
-via the function [bdr.wal_sender_stats](functions#bdrwal_sender_stats),
-e.g.:
-
-```
-postgres=# SELECT * FROM bdr.wal_sender_stats();
-   pid   | is_using_lcr |       decoder_slot_name       |              lcr_file_name
----------+--------------+-------------------------------+------------------------------------------
- 2059904 | f            |                               |
- 2059909 | t            | bdr_postgres_bdrgroup_decoder | 0000000000000000000000140000000000000000
- 2059916 | t            | bdr_postgres_bdrgroup_decoder | 0000000000000000000000140000000000000000
-(3 rows)
-```
-
-If `is_using_lcr` is `FALSE`, `decoder_slot_name`/`lcr_file_name` will be `NULL`.
-This will be the case if the Decoding Worker is not enabled, or the WAL sender is
-serving a [logical standby]\(nodes.md#Logical Standby Nodes).
 
 ## Monitoring BDR Replication Workers
 
@@ -546,8 +522,8 @@ bdrdb=# SELECT node_name, postgres_version, pglogical_version,
 bdr_version FROM bdr.group_versions_details;
  node_name | postgres_version | pglogical_version | bdr_version
 -----------+------------------+-------------------+-------------
- node1     | 13.3             | 3.7.10            | 3.7.10
- node2     | 13.3             | 3.7.10            | 3.7.10
+ node1     | 11.7             | 3.6.17            | 3.6.17
+ node2     | 11.7             | 3.6.17            | 3.6.17
 ```
 
 The recommended setup is to try to have all nodes running the same
@@ -583,13 +559,19 @@ Raft Consensus should be working cluster-wide at all times. The impact
 of running a BDR cluster without Raft Consensus working might be as
 follows:
 
--   BDR data changes replication may still be working correctly
+-   BDR replication might still be working correctly
+
 -   Global DDL/DML locks will not work
+
 -   Galloc sequences will eventually run out of chunks
--   Eager Replication will not work
+
+-   Eager Replication (EE only) will not work
+
 -   Cluster maintenance operations (join node, part node, promote standby)
     are still allowed but they might not finish (simply hang)
+
 -   Node statuses might not be correctly synced among the BDR nodes
+
 -   BDR group replication slot does not advance LSN, thus keeps WAL files on
     disk
 
@@ -733,7 +715,7 @@ bdrdb=# SELECT * FROM bdr.monitor_local_replslots();
  OK     | All BDR replication slots are working correctly
 ```
 
-## Monitoring Transaction COMMITs
+## Tracing Transaction COMMITs
 
 By default, BDR transactions commit only on the local node. In that case,
 transaction `COMMIT` will be processed quickly.
@@ -743,7 +725,38 @@ BDR also provides two new transaction commit modes: CAMO and Eager
 replication. Each of these modes provides additional robustness
 features, though at the expense of additional latency at `COMMIT`.
 The additional time at `COMMIT` can be monitored dynamically using the
-`bdr.stat_activity` catalog, where processes report different `wait_event`
+`pg_stat_activity` catalog, where processes report different `wait_event`
 states.  A transaction in `COMMIT` waiting for confirmations from one or
 more synchronous standbys reports a `SyncRep` wait event, whereas the
 two new modes report `EagerRep`.
+
+Also, transaction `COMMIT` can be traced in more detail using the
+`tracelog_timeout` parameter. If the `COMMIT` takes longer than this
+time, additional log messages will show what steps occurred at
+which point.  All such messages are prefixed with `TRACELOG: ` and are
+disabled until the timeout is reached.  Thus the first line per
+transaction describes the activity during which the timeout triggered.
+Timestamps on the following log lines allow us to determine the duration
+of all following actions during the `COMMIT`.  As an example, the
+tracelog lines for a transaction that took too long to write to disk
+look similar to:
+
+```
+LOG:  00000: TRACELOG: Flushed WAL to disk
+LOG:  00000: TRACELOG: End of critical section for commit
+LOG:  00000: TRACELOG: Finished waiting for SyncRep
+LOG:  00000: TRACELOG: XIDs marked as committed in pg_xact
+LOG:  00000: TRACELOG: Marked transaction as no longer running
+LOG:  00000: TRACELOG: Commit XactCallbacks fired
+LOG:  00000: TRACELOG: Released before locks resources
+LOG:  00000: TRACELOG: Released all buffer pins
+LOG:  00000: TRACELOG: Cleaned up relation cache
+LOG:  00000: TRACELOG: Catalog changes visible to all backends
+LOG:  00000: TRACELOG: Transaction end for multiXact
+```
+
+Note that this can cause substantial additional logs, so it should be
+enabled with care.  If used in production, it should be set to catch
+outliers.  It is not intended for regular performance monitoring.
+Please start with high timeouts and decrease, until a useful amount of
+log is available for analysis, to minimize its impact on performance.

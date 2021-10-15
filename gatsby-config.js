@@ -32,10 +32,6 @@ const sourceToPluginConfig = {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
   },
-  livecompare: {
-    name: "livecompare",
-    path: "product_docs/docs/livecompare",
-  },
   migration_portal: {
     name: "migration_portal",
     path: "product_docs/docs/migration_portal",
@@ -66,7 +62,6 @@ const sourceToPluginConfig = {
   },
   pem: { name: "pem", path: "product_docs/docs/pem" },
   pgbouncer: { name: "pgbouncer", path: "product_docs/docs/pgbouncer" },
-  pglogical: { name: "pglogical", path: "product_docs/docs/pglogical" },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },

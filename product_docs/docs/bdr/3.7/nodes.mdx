@@ -86,12 +86,6 @@ The logical join procedure (which uses `bdr.join_node_group()` function)
 performs data sync doing `COPY` operations and will use multiple writers
 (parallel apply) if those are enabled.
 
-Node join can execute concurrently with other node joins for the majority of
-the time taken to join. Only one regular node at a time can be in either of
-the states PROMOTE or PROMOTING, which are typically fairly short.
-The subscriber-only nodes are an exception to this rule, and they can be
-cocurrently in PROMOTE and PROMOTING states as well.
-
 Note that the join process uses only one node as the source, so can be
 executed when nodes are down, if a majority of nodes are available.
 This can cause a complexity when running logical join:
@@ -149,7 +143,7 @@ connection string from the client connecting to the node in which it is
 specified. An example of such a set of parameters using a client certificate is
 shown here:
 
-```ini
+```
 sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key
 sslrootcert=root.crt
 ```
@@ -172,7 +166,7 @@ BDR connection.
 This is usually the user `postgres`. Each node will require matching
 lines permitting the connection in the `pg_hba.conf` file; for example:
 
-```ini
+```
 hostssl all         postgres 10.1.2.3/24 cert
 hostssl replication postgres 10.1.2.3/24 cert
 ```
@@ -181,13 +175,13 @@ Another setup could be to use `SCRAM-SHA-256` passwords instead of client
 certificates, and not bother about verifying the server identity as long as
 the certificate is properly signed. Here the DSN parameters might be just:
 
-```ini
+```
 sslmode=verify-ca sslrootcert=root.crt
 ```
 
 ...and the corresponding `pg_hba.conf` lines would be like this:
 
-```ini
+```
 hostssl all         postgres 10.1.2.3/24 scram-sha-256
 hostssl replication postgres 10.1.2.3/24 scram-sha-256
 ```
@@ -244,42 +238,16 @@ slot was last advanced. In extreme cases, this may require a full
 16 MB before slots are synced/created on the streaming replica. If
 a failover or switchover occurs during this interval, the
 streaming standby cannot be promoted to replace its BDR node, as the
-group slot and other dependent slots do not exist yet. 
+group slot and other dependent slots do not exist yet. This is resolved
+automatically by BDR-EE, but not by BDR-SE.
 
-On EDB Postgres Extended and EDB Postgres Advaced, this is resolved
-automatically. The slot sync-up process on the standby solves this by
-invoking a function on the upstream. This function moves the group slot in the
+The slot sync-up process on the standby solves this by invoking a
+function on the upstream. This function moves the group slot in the
 entire BDR cluster by performing WAL switches and requesting all BDR
 peer nodes to replay their progress updates. The above causes the
 group slot to move ahead in a short timespan. This reduces the time
 required by the standby for the initial slot's sync-up, allowing for
 faster failover to it, if required.
-
-On PostgreSQL, it is important to ensure that slot's sync up has completed on
-the standby before promoting it. The following query can be run on the
-standby in the target database to monitor and ensure that the slots have
-synced up with the upstream. The promotion can go ahead when this query
-returns `true`.
-
-```sql
-SELECT true FROM pg_catalog.pg_replication_slots WHERE
-    slot_type = 'logical' AND confirmed_flush_lsn IS NOT NULL;
-```
-
-It is also possible to nudge the slot sync-up process in the entire BDR
-cluster by manually performing WAL switches and by requesting all BDR
-peer nodes to replay their progress updates. This activity will cause
-the group slot to move ahead in a short timespan, and also hasten the
-slot sync-up activity on the standby. The following queries can be run
-on any BDR peer node in the target database for this:
-
-```sql
-SELECT bdr.run_on_all_nodes('SELECT pg_catalog.pg_switch_wal()');
-SELECT bdr.run_on_all_nodes('SELECT bdr.request_replay_progress_update()');
-```
-
-Use the monitoring query from above on the standby to check that these
-queries indeed help in faster slot sync-up on that standby.
 
 Logical standby nodes can themselves be protected using physical standby nodes,
 if desired, so Master->LogicalStandby->PhysicalStandby. Note that you cannot
@@ -358,14 +326,16 @@ For these reasons it's generally recommended to use either logical standby nodes
 or subscribe-only group instead of physical stanby nodes because they both
 have better operational characteristics in comparison.
 
-When bdr-enterprise extension is installed, you can can manually ensure the
-group slot is advanced on all nodes (as much as possible), which helps hasten
-the creaation of BDR-related replication slots on a physical standby using the
-following  SQL syntax:
+BDR3 Enterprise installations can manually trigger creation of 
+BDR-related replication slots on a physical standby using the following 
+SQL syntax:
 
 ```sql
 SELECT bdr.move_group_slot_all_nodes();
 ```
+
+This will also advance the BDR group slot used to ensure that all nodes have
+reached a minimum LSN across the cluster.
 
 Upon failover, the Standby must perform one of two actions to replace
 the Primary:
@@ -502,9 +472,9 @@ since the WAL Sender process now spends more time on communication.
 
 `enable_wal_decoder` is an option for each BDR group, which is currently
 disabled by default. `bdr.alter_node_group_config()` can be used to enable or
-disable the Decoding Worker for a BDR group.
+disable WAL decoder for a BDR group.
 
-When the Decoding Worker is enabled, BDR stores `Logical Change Record` (LCR, in
+When WAL decoder is enabled, BDR stores `Logical Change Request` (LCR, in
 short) files to allow buffering of changes between decoding and when all
 subscribing nodes have received data. LCR files are stored under the
 `pg_logical` directory within each local node's data directory. The number and
@@ -517,22 +487,21 @@ disabled when `bdr.lcr_cleanup_interval` is zero.
 When disabled, logical decoding is performed by the WAL Sender process for each
 node subscribing to each node. In this case, no LCR files are written.
 
-Even though the Decoding Worker is enabled for a BDR group, following
-GUCs control the production and usage of LCR per node. By default
-these are `false`.  For production and usage of LCRs we need the
-Decoding Worker to be enabled for the BDR group and these GUCs to be
-set to `true` on each of the nodes in BDR group.
+Even though WAL decoder is enabled for a BDR group, following GUCs control the
+production and usage of LCR per node. By default these are `false`.  For
+production and usage of LCRs we need WAL decoder to be enabled for the BDR
+group and these GUCs to be set to `true` on each of the nodes in BDR group.
 
--   `pglogical.enable_wal_decoder` - when turned `false`, all WAL
-    Senders using LCRs are restarted to use WAL directly. When `true`
-    along with the BDR group config, a Decoding Worker process is
-    started to produce LCR and WAL Senders use LCR.
+-   `pglogical.enable_wal_decoder` - when turned `false` it stops WAL decoder, if
+    running, and any WAL Senders using LCRs are restarted to use WAL. When `true`
+    along with the BDR group config, a WAL decoder is run to produce LCR and WAL
+    Senders use LCR.
 -   `bdr.receive_lcr` - when `true` on the subscribing node, it requests WAL
     Sender on the publisher node to use LCRs if available.
 
 ### Notes
 
-As of now, a Decoding Worker decodes changes corresponding to the node where it is
+As of now, a WAL decoder decodes changes corresponding to the node where it is
 running. A Logical standby is sent changes from all the nodes in BDR group
 through a single source. Hence a WAL sender serving a Logical standby can not
 use LCRs right now.
@@ -557,8 +526,6 @@ sub-segment number within an LCR segment. Each LCR file corresponds to a
 sub-segment. LCR files are binary and variable sized. The maximum size of an
 LCR file can be controlled by pglogical.max_lcr_segment_file_size, which
 defaults to 1GB.
-
-EDB Postgres Extended 13 and above is required for this feature to work.
 
 ## Node Restart and Down Node Recovery
 
@@ -597,9 +564,9 @@ PANIC: could not write to file "pg_wal/xlogtemp.559": No space left on device
 In addition, slots for offline nodes also hold back the catalog xmin, preventing 
 vacuuming of catalog tables.
 
-On EDB Postgres Extended, offline nodes also hold back freezing of data to
-prevent losing conflict resolution data
-(see: [Origin Conflict Detection](conflicts)).
+In BDR-EE, offline nodes also hold back freezing of data to prevent losing
+conflict resolution data (see: [Origin Conflict Detection](conflicts)).
+BDR-SE users may need to alter their configuration settings as specified.
 
 Administrators should monitor for node outages (see: [monitoring](monitoring))
 and make sure nodes have sufficient free disk space. If the workload is
@@ -665,11 +632,11 @@ The group slot can:
 -   join new nodes to the BDR group without having all existing nodes 
     up and running (although the majority of nodes should be up), without
     incurring data loss in case the node which was down during join starts
-    replicating again
+    replicating again.
 -   part nodes from cluster consistently, even if some nodes have not
-    caught up fully with the parted node
--   hold back the freeze point to avoid missing some conflicts (EDB Postgres Extended)
--   keep the historical snapshot for timestamp based snapshots (EDB Postgres Extended)
+    caught up fully with the parted node.
+-   hold back the freeze point to avoid missing some conflicts.
+-   keep the historical snapshot for timestamp based snapshots.
 
 The group slot is usually inactive, and is only fast-forwarded periodically
 in response to Raft progress messages from other nodes.
@@ -1070,7 +1037,7 @@ bdr.alter_node_group_config(node_group_name text,
      this node group, -1 means the default (as specified by the pglogical
      GUC pglogical.writers_per_subscription) will be used. Valid values
      are either -1 or a positive integer.
--   `enable_wal_decoder` - Enables/disables the Decoding Worker process.
+-   `enable_wal_decoder` - Enables/disables the WAL decoder process.
 
 Note that all of the options parameters are simply used to control the
 pglogical writer.
@@ -1369,8 +1336,7 @@ using a fast block-level copy operation.
 
 When starting from an empty data directory, if the selective backup option
 is chosen, then only that database will be copied from the source node. The
-excluded databases will be dropped and cleaned up on the new node
-(EDB Postgres Extended).
+excluded databases will be dropped and cleaned up on the new node.
 
 If the specified data directory is non-empty, this will be used as the
 base for the new node. If the data directory is already active as a
@@ -1401,18 +1367,27 @@ bdr_init_physical [OPTION] ...
 -   `-D, --pgdata=DIRECTORY` - The data directory to be used for the new node; it
     can be either empty/non-existing directory, or a directory populated using the
     `pg_basebackup -X stream` command (required).
+
 -   `-l, --log-file=FILE` - Use FILE for logging; default is
     bdr_init_physical_postgres.log .
+
 -   `-n, --node-name=NAME` - The name of the newly created node (required).
+
 -   `--replication-sets=SETS` - The name of a comma-separated list of replication
     set names to use; all replication sets will be used if not specified.
+
 -   `--standby` - Create a logical standby (receive only node) rather than full
     send/receive node.
+
 -   `--node-group-name` - Group to join, defaults to the same group as source node.
+
 -   `-s, --stop` - Stop the server once the initialization is done.
+
 -   `-v` - Increase logging verbosity.
+
 -   `-L` - Perform selective pg_basebackup when used in conjunction with an
-    empty/non-existing data directory (-D option). (EDB Postgres Extended)
+    empty/non-existing data directory (-D option).
+
 -   `-S` - Instead of dropping logical replication subscriptions, just disable
     them.
 
