@@ -38,6 +38,7 @@ function linkRewriter() {
     // - make relative to parent (because gatsby URL paths are always directories)
     visit(tree, "link", (node) => {
       if (isAbsoluteUrl(node.url) || node.url[0] === '/') return;
+      if (!node.url.includes(".yaml")) return;
       node.url = node.url.replace(/^(?:\.\/)?samples\//, "../samples/");
     });
   };
