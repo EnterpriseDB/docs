@@ -6,24 +6,25 @@ These are the steps to connect using Azure Private Endpoint.
 
 #### Prerequisites
 
-Assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a VM on another subscription `test`. To walk through an example in your own environment, you need: 
+Assume that your EDB Cloud cluster is on a subscription called `development` and is being accessed from a client VM on another subscription `test`. To walk through an example in your own environment, you need: 
  - Your EDB Cloud cluster URL. You can find the URL in the **Connect** tab of your cluster instance in the EDB Cloud portal.
  -  IP address of your EDB Cloud cluster. For example:
    ```
   $ dig +short p-c4j0jfcmp3af2ieok5eg.brcxzr08qr7rbei1.edbcloud.io 
   10.240.1.218
  ```
- -  A Linux VM called `vm-client` on subscription `test` with the following properties:
+ -  A Linux client VM called `vm-client` on subscription `test` with the following properties:
     -   Subscription: `test`
     -   resource group: `rg-client`
     -   virtual network: `vnet-client`
     -   virtual network subnet: `snet-client`
- - [psql Postgresql client](https://www.postgresql.org/download/) installed on your VM.
+ - [psql Postgresql client](https://www.postgresql.org/download/) installed on your client VM.
 
-#### Step 1: Create an Azure Private Link Service tied to your EBD Cloud PG service
+#### Step 1: Create an Azure Private Link Service in each EDB Cloud cluster
  
-In the EDB Cloud cluster's virtual network, create an [Azure Private Link Service](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview)
-in your EDB Cloud cluster resource group:
+ Perform this procedure for every EDB Cloud cluster you want to connect to in Azure. 
+ 
+ In this example, you will create an [Azure Private Link Service](https://docs.microsoft.com/en-us/azure/private-link/private-link-service-overview) in your EDB Cloud cluster resource group. 
 
   1. Get the resource group details from the Azure CLI or the Azure portal and note down the resource group name. For example, if the EDB Cloud cluster's virtual network is `vnet-japaneast`, use the following command: 
  
@@ -69,9 +70,11 @@ in your EDB Cloud cluster resource group:
 
   7. Select **Create**.
 
-#### Step 2: Create an Azure Private Endpoint linking to the Private Link Service
+#### Step 2: Create an Azure Private Endpoint in each client virtual network
 
-  To connect to the PG service, create an Azure Private Endpoint in the application VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.
+  Perform this procedure for every client application in Azure.
+
+  In this example you will create an Azure Private Endpoint in the client VM's virtual network. After you have created the private endpoint, you can use its private IP address to access the PG service.  
   
   1. On the upper-left side of the screen in the portal, select **Create a resource > Networking > Private Link** or in the search box enter Private Link.
   
@@ -89,7 +92,7 @@ in your EDB Cloud cluster resource group:
 
    ![](../images/image17.png)
 
-  1. In the **Configuration** page, enter the VM's Virtual Network `vnet-client`.
+  1. In the **Configuration** page, enter the client VM's Virtual Network `vnet-client`.
 
   1. Select **Review + Create**.
 
@@ -103,7 +106,7 @@ in your EDB Cloud cluster resource group:
       ![](../images/image3.png)
 
 
-11. You have now successfully built a tunnel between your VM's virtual network and the EDB Cloud cluster network. You can access the private PG service by using the private endpoint:
+11. You have now successfully built a tunnel between your client VM's virtual network and the EDB Cloud cluster network. You can access the private PG service by using the private endpoint:
    
    Get the private endpoint's private IP address using the following scripts:
 
@@ -113,7 +116,7 @@ in your EDB Cloud cluster resource group:
   100.64.111.5
  ``` 
 
-12. From the VM `vm-client`, access the PG service by using the private IP address.
+12. From the client VM `vm-client`, access the PG service by using the private IP address.
 
  ```
  $ psql -h 100.64.111.5 -0 edb_admin 
@@ -130,7 +133,16 @@ in your EDB Cloud cluster resource group:
 
 #### Step 3: Create an Azure Private DNS Zone for the Private Endpoint
 
-EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) with the Private Endpoint to establish a connection with the PG service. This is important for security purposes; it's not possible to validate TLS certificates (i.e., using `verify-full`) when specifying an IP address to connect to. This is achieved using something akin to a "split horizon" DNS configuration: we'll configure a DNS entry for your cluster's public hostname, and Azure DNS will ensure that all requests to that domain name from your VNet resolve to the private endpoint's IP address instead of the cluster's "normal" IP address.
+EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone) with the Private Endpoint to establish a connection with a cluster, because it is not possible to validate TLS certificates using `verify-full` when connecting to an IP address. 
+
+You will configure a DNS entry for your cluster's public hostname, and Azure DNS will ensure that all requests to that domain name from your VNet resolve to the private endpoint's IP address instead of the cluster's IP address.
+
+
+!!! Note
+     You need to create a single Azure Private DNS Zone for each VNet, even if you are connecting to multiple clusters.
+    
+
+
 
 1. In the Azure portal search bar, enter "Private DNS Zones" in the search text box and press Enter.
  
@@ -142,7 +154,7 @@ EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft
  
  ![](../images/image6.png)
 
-1. Select the **Virtual network** link on the **Private DNS Zone** page of `brcxzr08qr7rbei1.edbcloud.io` and link the private DNS Zone to the VM's virtual network
+1. Select the **Virtual network** link on the **Private DNS Zone** page of `brcxzr08qr7rbei1.edbcloud.io` and link the private DNS Zone to the client VM's virtual network
 `vnet-client`.
 
  ![](../images/image10.png)
@@ -164,7 +176,7 @@ EDB strongly recommends using an [Azure Private DNS Zone](https://docs.microsoft
  WARNING : psql major version 13, server major version 13. Some psql features might not work. 
  SSL connection (protocol : TLSV1.3cipherTLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help. 
  
- edb_admins>
+ edb_admins=>
  
  ```
 
