@@ -107,6 +107,13 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard
+            iconName={iconNames.CLOUD_DB}
+            headingText="Cloud Solutions"
+          >
+            <IndexCardLink to="/edbcloud/latest">EDB Cloud</IndexCardLink>
+          </IndexCard>
+
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
             <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
               Cloud Native PostgreSQL Operator
