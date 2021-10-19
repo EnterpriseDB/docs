@@ -9,25 +9,28 @@ The `createpub` command creates a new publication.
 Synopsis
 
 ```text
--createpub pubname
-  -repsvrfile pubsvrfile
-  -pubdbid dbid
-  -reptype { s | t }
-  -tables schema_t1.table_1 [ schema_t2.table_2 ] ...
-[ -views schema_v1.view_1 [ schema_v2.view_2 ] ...]
-[ -tablesfilterclause
-    "ordinal_t1:filtername_t1:filterclause_t1"
-  [ "ordinal_t2:filtername_t2:filterclause_t2" ] ...]
-[ -viewsfilterclause
-    "ordinal_v1:filtername_v1:filterclause_v1"
-  [ "ordinal_v2:filtername_v2:filterclause_v2" ] ...]
-[ -conflictresolution
-    ordinal_t1:{ E | L | N | M | C:customhandler_t1 }
-  [ ordinal_t2:{ E | L } N | M | C:customhandler_t2 } ] ...]
-[ -standbyconflictresolution
-    ordinal_t1:{ E | L | N | M | C:customhandler_t1 }
-  [ ordinal_t2:{ E | L } N | M | C:customhandler_t2 } ] ...]
-[ -repgrouptype { m | s } ]
+-createpub pubname 
+-repsvrfile pubsvrfile 
+-pubdbid dbid 
+-reptype { s | t } 
+[ { -tables schema_t1.table_1 [schema_t2.table_2] ... | -alltables   
+    [ schema1 [ schema2 ] ... ] } ]
+[ { -views schema_v1.view_1 [ schema_v2.view_2 ] ... | -allviews 
+    [ schema_v1 [ schema_v2 ] ... ] } ]
+[ -tablesfilterclause 
+    "schema_t1.table_1:filtername_t1:filterclause_t1" 
+  [ "schema_t2.table_2:filtername_t2:filterclause_t2" ] ...] 
+[ -viewsfilterclause 
+    "schema_v1.view_1:filtername_v1:filterclause_v1" 
+  [ "schema_v2.view_2:filtername_v2:filterclause_v2" ] ...] 
+[-defaultconflictresolution {E|L|N|M}]
+[-defaultstandbyconflictresolution {E|L|N|M}]
+[ -conflictresolution 
+    schema_t1.table_1:{ E | L | N | M | C:customhandler_t1 } 
+  [ schema_t2.table_2:{ E | L } N | M | C:customhandler_t2 } ] ...] 
+[ -standbyconflictresolution 
+    schema_t1.table_1:{ E | L | N | M | C:customhandler_t1 } 
+  [ schema_t2.table_2:{ E | L } N | M | C:customhandler_t2 } ] ...] 
 ```
 
 The `createpub` command adds a new publication subordinate to the publication database definition with the publication database ID given by parameter `pubdbid`. If the publication is designated as snapshot-only by setting parameter `reptype` to `s`, then any views listed after the views parameter are ignored.
@@ -49,11 +52,22 @@ Parameters
 
 `dbid`
 
-> The publication database ID of the publication database definition subordinate to which the new publication is to be added.
+> The publication database ID of the publication database definition subordinate to which the new publication is to be added. This createpub command will be applied to a single-master replication (SMR) or multi-master replication (MMR) system according to the Replication Group Type of this database.
 
 `-reptype`
 
-> Specify s if the publication is to be a snapshot-only publication. Specify `t` if the publication is to allow synchronization replications.
+> Specify `s` if the publication is to be a snapshot-only publication. Specify `t` if the publication is transactional (to allow synchronization replications).
+
+`-tables or -alltables`
+
+> These options are used to include tables into publication. If `reptype` is `t (transactional)`, then `-tables` or `-alltables`  is a must, otherwise it is optional. 
+> The `-tables` option  includes tables from the tables list to the publication. The -alltables option allows to include all tables of the database or only tables from the listed schemas. 
+
+`-views or -allviews`
+
+> For SMR  and `-reptype s` (snapshot) only: optional `-views` or `-allviews` option can be used to include views into publication.
+> The `-views` option  includes views from the views list to the publication. The `-allviews` option allows to include all views of the database or only views from the listed schemas (optional) to the publication.
+
 
 `schema_tn`
 
@@ -65,15 +79,11 @@ Parameters
 
 `schema_vn`
 
-> **For SMR only:** The name of the schema containing the nth view of the views parameter list. This value is case-sensitive.
+> **For SMR only:** The name of the schema containing the nth view of the views parameter list or the name of the nth schema of the allviews parameter list . This value is case-sensitive. 
 
 `view_n`
 
 > **For SMR only:** View name of the nth view in the views parameter list. This value is case-sensitive.
-
-`ordinal_tn`
-
-> The ordinal number (that is, the position in the list counting from left to right starting with 1) of a table in the tables parameter list to which an attribute is to be applied.
 
 `filtername_tn`
 
@@ -83,10 +93,6 @@ Parameters
 
 > The filter clause to be applied to the table in the tables parameter list at the position indicated by ordinal_tn.
 
-`ordinal_vn`
-
-> **For SMR only:** The ordinal number (that is, the position in the list counting from left to right starting with 1) of a view in the views parameter list to which an attribute is to be applied.
-
 `filtername_vn`
 
 > The filter name to be assigned to the filter rule on the view.
@@ -94,6 +100,14 @@ Parameters
 `filterclause_vn`
 
 > **For SMR only:** The filter clause to be applied to the view in the views parameter list at the position indicated by ordinal_vn.
+
+`-defaultconflictresolution`
+
+> For MMR only: Default conflict resolution (E, L, N, or M), if the `-conflictresolution` option is omitted. If `-defaultconflictresolution` option is omitted, then default is `E`.
+
+`-defaultstandbyconflictresolution`
+
+> For MMR only: Default standby conflict resolution (E, L, N, or M), if the `-defaultconflictresolution` option is omitted. If `-defaultstandbyconflictresolution`  option is omitted, then default is M.
 
 `-conflictresolution`
 
@@ -107,9 +121,7 @@ Parameters
 
 > **For MMR only:** For the conflict resolution option or the standby conflict resolution option, specify customhandler_tn as the function name with an optional schema prefix (that is, formatted as schema.function_name) as given in the CREATE FUNCTION command for the custom conflict handling function created for the table in the tables parameter list at the position indicated by ordinal_tn. The custom conflict handling function must be added to the primary definition node. See [Adding a Custom Conflict Handling Function](../../06_mmr_operation/06_conflict_resolution/08_custom_conflict_handling/02_adding_custom_conflict_handling_function/#adding_custom_conflict_handling_function) for an example of adding the custom conflict handling function using PSQL. The custom handler name option must be specified if and only if the conflict resolution option or the standby conflict resolution option is set for custom conflict handling with the C value.
 
-`-repgrouptype`
 
-> Specify s if this command applies to a single-master replication system. Specify m if this command applies to a multi-master replication system. If omitted, the default is s.
 
 Examples
 
