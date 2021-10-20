@@ -10,7 +10,8 @@ To access the API, you need a token. The high-level steps to obtain a token are:
 1. [Query the authentication endpoint](#query-the-authentication-endpoint).
 2. [Request the device code](#request-the-device-code-using-curl).
 3. [Authorize as a user](#authorize-as-a-user).
-4. [Request the token](#request-the-token-using-curl).
+4. [Request the raw token](#request-the-raw-token-using-curl).
+5. [Exchange for the raw token for the EDB Cloud token](#exchange-the-edbcloud-token-using-curl).
 
 
 EDB provides an optional script to simplify getting your device code and getting and refreshing your tokens. See [Using the `get-token` Script](#using-the-get-token-script) for details.
@@ -20,7 +21,7 @@ EDB provides an optional script to simplify getting your device code and getting
 
 This call returns the information that either:
 
-- you need later if you are using `curl` to request the device code and tokens, or 
+- you need later if you are using `curl` to request the device code and tokens, or
 - the `get-token` script uses to generate the tokens for you
 
 
@@ -50,8 +51,8 @@ The following example calls use these environment variables.
 
 ## Request the Device Code Using `curl`
 !!!note
-   The `get-token` script executes this step. You don't need to make this call if you are using the script. 
-!!!   
+   The `get-token` script executes this step. You don't need to make this call if you are using the script.
+!!!
 This call gets a device code:
 ```
 curl --request POST \
@@ -102,10 +103,10 @@ To authorize as a user:
 4. Log in with your Azure AD credentials.
 
 
-## Request the Token Using `curl`
+## Request the Raw Token Using `curl`
 !!!note
    The `get-token` script executes this step. You don't need to make this call if you are using the script. See [Request Your Token Using `get-token`](#request-your-token-using-get-token).
-!!!   
+!!!
 
 The `curl --request POST` call requests a token. For example:
 ```
@@ -117,7 +118,7 @@ curl --request POST \
   --data "client_id=$CLIENT_ID"
 ```
 If successful, the call returns:
-- `access_token` - use to access the EDB Cloud API. See [Access Tokens](https://auth0.com/docs/tokens/access-tokens) for more information.
+- `access_token` - use to exchange for the token to access EDB Cloud API.
 
 - `refresh_token` - use to obtain a new access token or ID token after the previous one has expired. (See [Refresh Tokens](https://auth0.com/docs/tokens/refresh-tokens) for more information.) Refresh tokens expire after 30 days.
 
@@ -134,12 +135,17 @@ For example:
   "token_type": "Bearer"
 }
 ```
+
 Store the access token and refresh token in environment variables for future use. For example:
 
 ```
-ACCESS_TOKEN="eyJhbGc.......1Qtkaw2fyho"
+RAW_ACCESS_TOKEN="eyJhbGc.......1Qtkaw2fyho"
 REFRESH_TOKEN="v1.MTvuZpu.......sbiionEhtTw"
 ```
+
+!!!note
+The access token obtained at this step is only used in the next step to exchange the EDB Cloud token.
+!!!
 
 If not successful, you receive one of the following errors:
 - `authorization_pending` - continue polling using the suggested interval retrieved when you [requested the device code](#request-the-device-code-using-curl).
@@ -147,6 +153,37 @@ If not successful, you receive one of the following errors:
 - `slow_down` - slow down and use the suggested interval retrieved when you [requested the device code](#request-the-device-code-using-curl). To avoid receiving this error due to network latency, you should start counting each interval after receipt of the last polling request's response.
 - `expired_token` - you have not authorized the device quickly enough, so the `device_code` has expired. Your application should notify you that it has expired and to restore it.
 - `access_denied`
+
+## Exchange the EDB Cloud token using `curl`
+!!!note
+   The `get-token` script executes this step. You don't need to make this call if you are using the script.
+!!!
+
+Use the raw token you obtained in the previous step [Request the Raw Token Using `curl`](#request-the-raw-token-using-curl) to get the EDB Cloud token:
+
+```
+curl -s --request POST \
+     --url "https://portal.edbcloud.com/api/v1/auth/token" \
+     --header "content-type: application/json" \
+     --data "{\"token\":\"$RAW_ACCESS_TOKEN\"}"
+```
+
+If successful, the call returns:
+- `token` - The bearer token used to access the EDB Cloud API.
+
+For example:
+```
+{
+  "token": "eyJhbGc.......0HFkr_19Vr7w"
+}
+```
+
+This token, as opposed to the raw access token, is recognized by the EDB Cloud API.
+Store this token in environment variables for future use. For example:
+
+```
+ACCESS_TOKEN="eyJhbGc.......0HFkr_19Vr7w"
+```
 
 !!! Tip
 Contact [Customer Support](../overview/06_support) if you have trouble obtaining a valid access token to access EDB Cloud API.
@@ -186,7 +223,7 @@ Example response:
 
 ## Refresh your Token
 
-You use the refresh token to get a new access token. Usually you need a new access token only after the previous one expires or when gaining access to a new resource for the first time. You shouldn't call the endpoint to get a new access token every time you call an API. There are rate limits that throttle the amount of requests to the endpoint that can be executed using the same token from the same IP.
+You use the refresh token to get a new raw access token. Usually you need a new access token only after the previous one expires or when gaining access to a new resource for the first time. You shouldn't call the endpoint to get a new access token every time you call an API. There are rate limits that throttle the amount of requests to the endpoint that can be executed using the same token from the same IP.
 
 ### Refresh your Token Using `curl`
 !!!note
@@ -218,6 +255,15 @@ The response of this API call includes the `access_token`. For example:
 }
 ```
 
+Store the access token and refresh token in environment variables for future use. For example:
+
+```
+RAW_ACCESS_TOKEN="eyJhbGc.......1Qtkaw2fyho"
+REFRESH_TOKEN="v1.MTvuZpu.......sbiionEhtTw"
+```
+
+The token you obtain from this step is the raw access token, you need to exchange this token for an EDB Cloud token. See [Exchange for EDB Cloud token](#exchange-the-edbcloud-token-using-curl) for more information.
+
 !!! Note
     You need to save the refresh token retrieved from this response for the next refresh call. The refresh token in the response when you originally [requested the token](#request-the-token) is obsoleted once it has been used.
 
@@ -235,20 +281,22 @@ Before running the script, [query the authentication endpoint](#query-the-authen
 ### get-token Usage
 
 ```
+Get Tokens for EDB Cloud API
+
 Usage:
-./get-token.sh [flags] [options]
+  ./get-token.sh [flags] [options]
 
-flags:
---format (-o) json | plain   output format
---refresh <refresh_token>    [optional] query for tokens
-                             again using  given <refresh_token>
-                             this revokes and rotates the refresh
-                             token. Please remember the newly
-                             returned refresh_token for the next use.
+      -o, --format  json | plain         [optional] output format, default 'json'
+      -r, --refresh <refresh_token>      [optional] query for tokens again by the given refresh_token
+                                         this revokes and rotates the given refresh token,
+                                         please remember the newly returned refresh_token for
+                                         the next use
+      -h, --help                         show this help message
 
+Reference: https://www.enterprisedb.com/docs/edbcloud/latest/reference/
 ```
 
-### Request Your Token Using `get-token` 
+### Request Your Token Using `get-token`
 To use the `get-token` script to get your tokens, use the script without the `--refresh` option. For example:
 
 ```
@@ -264,13 +312,10 @@ eyxxxxxxxxxxxxxx
 ####### Refresh Token ###############
 xxxxxxxxxx
 
-#######   ID Token    ###############
-xxxxxxxxxxxx
-
 #####   Expires In Seconds ##########
 86400
 ```
-###  Refresh the Token Using `get-token` 
+###  Refresh the Token Using `get-token`
  To use the `get-token` script to refresh your token, use the script with the `--refresh  <refresh_token>` option. For example:
 
 ```
@@ -278,7 +323,6 @@ xxxxxxxxxxxx
 {
   "access_token": "xxxxxxxxxx",
   "refresh_token": "xxxxxxxxxxxx",
-  "id_token": "xxxxxxxx",
   "scope": "openid profile email offline_access",
   "expires_in": 86400,
   "token_type": "Bearer"
