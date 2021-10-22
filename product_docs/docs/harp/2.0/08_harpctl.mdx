@@ -1,0 +1,453 @@
+---
+navTitle: harpctl
+title: harpctl Command-line Tool
+---
+
+`harpctl` is a command-line tool for directly manipulating the Consensus Layer
+contents to fit desired cluster geometry. It can be used to e.g. examine node
+status, "promote" a node to Lead Master, disable/enable cluster management,
+bootstrap cluster settings, and so on.
+
+## Synposis
+
+```bash
+$ harpctl --help
+
+Usage:
+  harpctl [command]
+
+Available Commands:
+  apply       Command to set up a cluster
+  completion  generate the autocompletion script for the specified shell
+  fence       Fence specified node
+  get         Command to get resources
+  help        Help about any command
+  manage      Manage Cluster
+  promote     Promotes the sepcified node to be primary,
+  set         Command to set resources.
+  unfence     unfence specified node
+  unmanage    Unmanage Cluster
+  version     Command to get version information
+
+Flags:
+  -c, --cluster string       name of cluster.
+  -f, --config-file string   config file (default is /etc/harp/config.yml)
+      --dcs stringArray      Address of dcs endpoints. ie: 127.0.0.1:2379
+  -h, --help                 help for harpctl
+  -o, --output string         'json, yaml'.
+  -t, --toggle               Help message for toggle
+
+Use "harpctl [command] --help" for more information about a command.
+```
+
+In addition to this basic synopsis, each of the available commands has its own
+series of allowable sub-commands and flags.
+
+## Configuration
+
+It's important to be aware that `harpctl` must interact with the Consensus 
+Layer to operate. This means a certain minimum amount of settings should be 
+defined in `config.yml` for successful execution. This includes:
+
+* `dcs.driver`
+* `dcs.endpoints`
+* `cluster.name`
+
+As an example using etcd:
+
+```yaml
+cluster:
+  name: mycluster
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+```
+
+See [Configuration](04_configuration) for details.
+
+## Execution
+
+Execute `harpctl` like this:
+
+```bash
+harpctl command [flags]
+```
+
+Each command has its own series of sub-commands and flags. Further help for 
+these are available by executing the command this way:
+
+```bash
+harpctl command --help
+```
+
+## `harpctl apply`
+
+It is necessary to use an `apply` command to "bootstrap" a HARP cluster using a
+file which defines various attributes of the intended cluster.
+
+An `apply` command should be executed like this:
+
+```bash
+harpctl apply <filename>
+```
+
+This essentially creates all of the initial cluster metadata, default or custom 
+management settings, and so on. This is done here because the DCS is used as 
+the ultimate source of truth for managing the cluster, and this makes it 
+possible to change these settings dynamically.
+
+This can either be done once to bootstrap the entire cluster, once per type
+of object, or even on a per-node basis for the sake of simplicity.
+
+This is an example of a bootstrap file for a single node:
+
+```yaml
+cluster: 
+  name: mycluster
+nodes:
+  - name: firstnode
+    dsn: host=host1 dbname=bdrdb user=harp_user
+    location: dc1
+    priority: 100
+    db_data_dir: /db/pgdata
+```
+
+As seen here, it is good practice to always include a cluster name preamble to 
+ensure all changes target the correct HARP cluster, in case several are 
+operating in the same environment.
+
+Once `apply` completes without error, the node will be integrated with the rest 
+of the cluster.
+
+!!! Note
+    This command can also be used to bootstrap the entire cluster at once since
+    all defined sections are applied at the same time. However, we do not
+    encourage this use for anything but testing as it increases the difficulty
+    of validating each portion of the cluster during initial definition.
+
+## `harpctl fence`
+
+Marks the local or specified node as **fenced**. A node with this status is 
+essentially completely excluded from the cluster. HARP Proxy will not send it 
+traffic, its representative HARP Manager will not claim the Lead Master lease, 
+and further steps are also taken. If running, HARP Manager will stop Postgres 
+on the node as well.
+
+A `fence` command should be executed like this:
+
+```bash
+harpctl fence (<node-name>)
+```
+
+The node-name itself is optional; if ommitted, `harpctl` will use the name of
+the locally configured node.
+
+## `harpctl get`
+
+Fetches information stored in the Consensus Layer for various elements of the
+cluster. This includes nodes, locations, the cluster itself, and so on. The
+full list includes:
+
+* `cluster` - Returns the Cluster state
+* `leader` - Returns the current or specified location leader
+* `location` - Returns current or specified location information
+* `locations` -  Returns list of all locations
+* `logs` - Returns important events logged in the DCS
+* `node` - Returns the specified Postgres node
+* `nodes` - Returns list of all Postgres nodes
+* `proxy` - Returns current or specified proxy information
+* `proxies` - Returns list of all Proxy nodes
+
+### `harpctl get cluster`
+
+Fetches information stored in the Consensus Layer for the current cluster:
+
+```bash
+> harpctl get cluster
+
+Name      Leader Previous Leader Enabled Lock Duration 
+----      ------ --------------- ------- ------------- 
+mycluster                        true    30            
+```
+
+### `harpctl get leader`
+
+Fetches node information for the current Lead Master stored in the DCS for the 
+specified location. If no location is passed, `harpctl` will attempt to 
+derive it based on the location of the current Node where it was executed.
+
+Example:
+
+```bash
+> harpctl get leader dc1
+
+Cluster   Name   Ready Role    Type Location Fenced Lock Duration 
+-------   ----   ----- ----    ---- -------- ------ ------------- 
+mycluster mynode true  primary bdr  dc1      false  30            
+```
+
+### `harpctl get location`
+
+Fetches location information for the specified location. If no location is 
+passed, `harpctl` will attempt to derive it based on the location of the 
+current Node where it was executed.
+
+Example:
+
+```bash
+> harpctl get location dc1
+
+Cluster   Location Leader Previous Leader Target Leader Lease Renewals 
+-------   -------- ------ --------------- ------------- -------------- 
+mycluster dc1      mynode mynode                        <nil>          
+```
+
+### `harpctl get locations`
+
+Fetches information for all locations currently present in the DCS.
+
+Example:
+
+```bash
+> harpctl get locations
+
+Cluster   Location Leader   Previous Leader Target Leader Lease Renewals 
+-------   -------- ------   --------------- ------------- -------------- 
+mycluster dc1      mynode   mynode                        <nil>          
+mycluster dc2      thatnode thatnode                      <nil>          
+```
+
+### `harpctl get logs`
+
+Fetches all significant events logged directly to the DCS.
+
+Example:
+
+```bash
+> harpctl get logs
+
+Cluster   Time                                    Id  Source  Message                                                   
+-------   ----                                    --  ------  -------                                                   
+mycluster 2021-09-29 21:02:17.934711738 +0000 UTC 500 Manager mynode: manager started                                   
+mycluster 2021-09-29 21:05:19.869309853 +0000 UTC 500 Manager mynode: manager started                                   
+mycluster 2021-09-29 21:05:24.842886355 +0000 UTC 508 Manager mynode: attempting to start database                      
+mycluster 2021-09-29 21:05:26.185850583 +0000 UTC 503 Manager mynode: setting as location leader with routing status ok 
+```
+
+### `harpctl get node`
+
+Fetches node information stored in the DCS for the specified node.
+
+Example:
+
+```bash
+> harpctl get node mynode
+
+Cluster   Name   Ready Role    Type Location Fenced Lock Duration 
+-------   ----   ----- ----    ---- -------- ------ ------------- 
+mycluster mynode true  primary bdr  dc1      false  30            
+```
+
+### `harpctl get nodes`
+
+Fetches node information stored in the DCS for the all nodes in the cluster.
+
+Example:
+
+```bash
+> harpctl get nodes
+
+Cluster   Name     Ready Role    Type Location Fenced Lock Duration 
+-------   ----     ----- ----    ---- -------- ------ ------------- 
+mycluster mynode   true  primary bdr  dc1      false  30            
+mycluster thatnode true  primary bdr  dc2      false  30            
+```
+
+### `harpctl get proxy`
+
+Fetches proxy information stored in the DCS for specified proxy. Specify
+`global` to see proxy defaults for this cluster.
+
+Example:
+
+```bash
+> harpctl get proxy proxy1
+
+Cluster   Name   Pool Mode Auth Type Max Client Conn Default Pool Size 
+-------   ----   --------- --------- --------------- ----------------- 
+mycluster proxy1 session   md5       1000            20                
+```
+
+### `harpctl get proxies`
+
+Fetches proxy information stored in the DCS for all proxies in the cluster. 
+Additionally will list the `global` pseudo-proxy for default proxy settings.
+
+Example:
+
+```bash
+> harpctl get proxies
+
+Cluster   Name   Pool Mode Auth Type Max Client Conn Default Pool Size 
+-------   ----   --------- --------- --------------- ----------------- 
+mycluster global session   md5       500             25
+mycluster proxy1 session   md5       1000            20
+mycluster proxy2 session   md5       1500            30
+```
+
+## `harpctl manage`
+
+In the event a cluster is not in a managed state, instructs all HARP Manager
+services to resume monitoring Postgres and updating the Consensus Layer. This
+should be done after maintenance is complete following HARP software updates
+or other significant changes that could affect the whole cluster.
+
+A `manage` command should be executed like this:
+
+```bash
+harpctl manage cluster
+```
+
+!!! Note
+    Currently it is only possible to enable or disable cluster management at
+    the `cluster` level. Later versions will also make it possible to do this
+    for individual nodes or proxies.
+
+
+## `harpctl promote`
+
+Promotes the local or specified node to Lead Master in the current Location. 
+Since this is a requested event, it invokes a smooth handover where:
+
+1. The existing Lead Master will release the Lead Master lease, provided:
+    - If CAMO is enabled, the promoted node must be up to date and CAMO ready,
+      and the CAMO queue must have less than `node.maximum_camo_lag` bytes
+      remaining to be applied.
+    - Replication lag between the old Lead Master and the promoted node is
+      less than `node.maximum_lag`
+2. The promoted node will be the only valid candidate to take the Lead Master
+   lease, and will do so as soon as it is released by the current holder. All 
+   other nodes will ignore the unset Lead Master lease.
+    - If CAMO is enabled, the promoted node will temporarily disable client
+      traffic until the CAMO queue is fully applied, even though it holds the 
+      Lead Master lease.
+3. HARP Proxy will `PAUSE` connections to allow ongoing transactions to 
+   complete. Once the Lead Master lease is claimed by the promoted node, it
+   will reconfigure PgBouncer for the new connection target and resume database
+   traffic.
+
+A `promote` command should be executed like this:
+
+```bash
+harpctl promote (<node-name>)
+```
+
+The `--force` option can be provided to forcibly set a node to Lead Master, 
+even if it does not meet the criteria for becoming lead master. This will 
+circumvent any verification of CAMO status or replication lag and cause an 
+immediate transition to the promoted node.
+
+Note that the node must be online and operational for this to succeed. This 
+option should be used with care.
+
+
+## `harpctl set`
+
+Sets a specific attribute in the cluster to the supplied value. This is used to 
+tweak configuration settings for a specific node, proxy, location, or the 
+cluster itself rather than using `apply`. This can be used for the following
+object types:
+
+* `cluster` - Sets cluster-related attributes.
+* `location` - Sets specific location attributes.
+* `node` - Sets specific node attributes.
+* `proxy` - Sets specific proxy attributes.
+
+### `harpctl set cluster`
+
+Sets cluster-related attributes only. There's only one of these at the moment,
+but future versions of HARP may add more.
+
+Example:
+
+```bash
+harpctl set cluster event_sync_interval=200
+```
+
+### `harpctl set location`
+
+Sets location-related attributes only. There are none of these at the moment,
+and calling this command will result in an error regarding unrecognized options.
+
+!!! Note
+    This is a placeholder for future capabilities.
+
+### `harpctl set node`
+
+Sets node-related attributes for the named node. Any options mentioned in the 
+"Node Directives" section of the [Configuration](04_configuration) 
+documentation are valid here.
+
+Example:
+
+```bash
+harpctl set node mynode priority=500
+```
+
+### `harpctl set proxy`
+
+Sets proxy-related attributes for the named proxy. Any options mentioned in the 
+"Proxy Directives" section of the [Configuration](04_configuration) 
+documentation are valid here. 
+
+Example:
+
+```bash
+harpctl set proxy proxy1 max_client_conn=750
+```
+
+Use `global` for cluster-wide proxy defaults:
+
+```bash
+harpctl set proxy global default_pool_size=10
+```
+
+## `harpctl unfence`
+
+Removes the **fenced** attribute from the local or specified node. This will 
+remove all previously applied cluster exclusions from the node so that it can 
+again receive traffic or hold the Lead Master lease. Postgres will also be 
+started if it is not running.
+
+An `unfence` command should be executed like this:
+
+```bash
+harpctl unfence (<node-name>)
+```
+
+The node-name itself is optional; if ommitted, `harpctl` will use the name of
+the locally configured node.
+
+## `harpctl unmanage`
+
+Instructs all HARP Manager services in the cluster to remain running but no 
+longer actively monitor Postgres, or modify the contents of the Consensus 
+Layer. This will mean that any ordinary failover event such as a node outage 
+will not result in a leadership migration. This is intended for system or HARP 
+maintenance, and should be done prior to making changes to HARP software or
+other significant modifications to the cluster.
+
+An `unmanage` command should be executed like this:
+
+```bash
+harpctl unmanage cluster
+```
+
+!!! Note
+    Currently it is only possible to enable or disable cluster management at
+    the `cluster` level. Later versions will also make it possible to do this
+    for individual nodes or proxies.
+
