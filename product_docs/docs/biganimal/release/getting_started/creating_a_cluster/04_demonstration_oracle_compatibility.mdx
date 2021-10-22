@@ -1,0 +1,192 @@
+---
+title: "Demonstration of Oracle compatible functions and syntax"
+navTitle: "Demo: Oracle compatibility"
+---
+
+EDB Postgres Advanced Server's Oracle compatible syntax and supporting software is available in EDB Cloud. If you'd like to see it in action, there's a test cluster available, populated with the Chinook sample database: feel free to connect and try out a few queries! This topic presents a couple to get you started...
+
+<iframe src="https://drive.google.com/file/d/1niRThmobt5iPV3wgzTrEYxMhUEMEr0SO/preview" width="720" height="405" allow="autoplay fullscreen"></iframe>
+
+
+You can use any recent version of psql to connect to EDB Postgres Advanced Server. If you choose to use the version that ships with Advanced Server, you'll get a few nice SQL*Plus compatibility features, but the queries we'll examine here will work the same either way. For convenience, I'll illustrate these examples with the version of psql available in Azure's Cloud Shell; you can launch this directly from the Azure portal, or on your desktop using Windows Terminal:
+
+```shell
+Welcome to Azure Cloud Shell
+
+Type "az" to use Azure CLI
+Type "help" to learn about Cloud Shell
+
+$
+```
+
+The connection string for the demo Advanced Server cluster looks like this:
+
+```
+postgres://demo:password@p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io:5432/chinook?sslmode=require
+```
+
+In case you're unfamiliar with PostgreSQL URLs, let's break that down:
+
+- `demo` is the user role I'm connecting as. This is a user set up with select privileges on the database
+- `password` is the password for this user. Since it's a demonstration database with limited access, I don't mind putting this right in the connection string; one might also use this approach for an application-specific connection string stored securely - but of course, you should never do this for sensitive accounts that might be exposed!
+- p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io is the host name for the Advanced Server cluster on EDB Cloud that I'm connecting to. 
+- 5432 is the usual PostgreSQL port number
+- chinook is the name of the database
+- sslmode=require ensures that we establish a secure connection
+
+With that in hand, we can launch psql:
+
+```shell 
+psql postgres://demo:password@p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io:5432/chinook?sslmode=require
+__OUTPUT__
+psql (13.0 (Debian 13.0-1.pgdg100+1), server 13.4.8 (Debian 13.4.8-1+deb10))
+WARNING: psql major version 13, server major version 13.
+         Some psql features might not work.
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+chinook=>
+```
+
+Let's take a look at the schema:
+
+```
+\dt
+```
+
+There's an employee table, let's examine its definition: 
+
+```
+\d+ employee
+__OUTPUT__
+                                              Table "public.employee"
+   Column   |            Type             | Collation | Nullable | Default | Storage  | Stats target | Description
+------------+-----------------------------+-----------+----------+---------+----------+--------------+-------------
+ employeeid | numeric                     |           | not null |         | main     |              |
+ lastname   | character varying(20)       |           | not null |         | extended |              |
+ firstname  | character varying(20)       |           | not null |         | extended |              |
+ title      | character varying(30)       |           |          |         | extended |              |
+ reportsto  | numeric                     |           |          |         | main     |              |
+ birthdate  | timestamp without time zone |           |          |         | plain    |              |
+ hiredate   | timestamp without time zone |           |          |         | plain    |              |
+ address    | character varying(70)       |           |          |         | extended |              |
+ city       | character varying(40)       |           |          |         | extended |              |
+ state      | character varying(40)       |           |          |         | extended |              |
+ country    | character varying(40)       |           |          |         | extended |              |
+ postalcode | character varying(10)       |           |          |         | extended |              |
+ phone      | character varying(24)       |           |          |         | extended |              |
+ fax        | character varying(24)       |           |          |         | extended |              |
+ email      | character varying(60)       |           |          |         | extended |              |
+...
+```
+
+This table has a "reportsto" field - that means we have a heirarchy. 
+
+Let's try a [heirarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/). Modern SQL would use a recursive CTE for this, as those are widely supported. But Oracle has, for decades, supported an alternative mechanism for querying heirarchy in the form of CONNECT BY - let's put that into action:
+
+```sql
+SELECT firstname, lastname, (
+	SELECT LISTAGG(lastname, ', ') 
+	FROM employee rt 
+	START WITH rt.employeeid=e.reportsto 
+	CONNECT BY employeeid = PRIOR reportsto
+	) AS "chain of command" 
+FROM employee e;
+__OUTPUT__
+ firstname | lastname | chain of command
+-----------+----------+------------------
+ Andrew    | Adams    |
+ Nancy     | Edwards  | Adams
+ Jane      | Peacock  | Edwards, Adams
+ Margaret  | Park     | Edwards, Adams
+ Steve     | Johnson  | Edwards, Adams
+ Michael   | Mitchell | Adams
+ Robert    | King     | Mitchell, Adams
+ Laura     | Callahan | Mitchell, Adams
+(8 rows)
+```
+Here, we use CONNECT BY and the LISTAGG function in a subquery to generate the chain of command for each employee. 
+
+Now, the `LISTAGG()` function was introduced in Oracle 11g Release 2. Very few database systems support it. PostgreSQL DOES support `string_agg()`, and in the previous example that could be used as a drop-in replacement...
+
+```sql
+SELECT firstname, lastname, (
+	SELECT string_agg(lastname, ', ') 
+	FROM employee rt 
+	START WITH rt.employeeid=e.reportsto 
+	CONNECT BY employeeid = PRIOR reportsto
+	) AS "chain of command" 
+FROM employee e;
+__OUTPUT__
+ firstname | lastname | chain of command
+-----------+----------+------------------
+ Andrew    | Adams    |
+ Nancy     | Edwards  | Adams
+ Jane      | Peacock  | Edwards, Adams
+ Margaret  | Park     | Edwards, Adams
+ Steve     | Johnson  | Edwards, Adams
+ Michael   | Mitchell | Adams
+ Robert    | King     | Mitchell, Adams
+ Laura     | Callahan | Mitchell, Adams
+(8 rows)
+```
+
+But [the semantics of the two functions are different for even slightly less-trivial uses](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql), specifically when used as a window function. 
+
+Let's demonstrate that. This database has "album" and "track" tables containing metadata on digital recordings. We can use some window functions, including LISTAGG, to put together a report on average track storage requirements for albums with "baby" in the title.
+
+```sql
+SELECT UNIQUE title, 
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10)) 
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list 
+FROM track t
+JOIN album USING (albumid)
+JOIN mediatype USING (mediatypeid)
+WHERE lower(title) LIKE '%baby%'
+ORDER BY title;
+__OUTPUT__
+    title     | media_avg_mb |                    track_list
+--------------+--------------+---------------------------------------------------
+ Achtung Baby |            9 | Zoo Station (9 mb)                               +
+              |              | Even Better Than The Real Thing (7 mb)           +
+              |              | One (9 mb)                                       +
+              |              | Until The End Of The World (9 mb)                +
+              |              | Who's Gonna Ride Your Wild Horses (10 mb)        +
+              |              | So Cruel (11 mb)                                 +
+              |              | The Fly (8 mb)                                   +
+              |              | Mysterious Ways (8 mb)                           +
+              |              | Tryin' To Throw Your Arms Around The World (7 mb)+
+              |              | Ultraviolet (Light My Way) (10 mb)               +
+              |              | Acrobat (8 mb)                                   +
+              |              | Love Is Blindness (8 mb)
+(1 row)
+```
+
+If we try replacing LISTAGG with string_agg in this example, it's going to fail - the window definition syntax for string_agg is different.
+
+```sql
+SELECT UNIQUE title, 
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       string_agg(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10)) 
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list 
+FROM track t
+JOIN album USING (albumid)
+JOIN mediatype USING (mediatypeid)
+WHERE lower(title) LIKE '%baby%'
+ORDER BY title;
+__OUTPUT__
+ERROR:  function string_agg(text, text, numeric) does not exist
+LINE 3:        string_agg(t.name || ' (' || ROUND(bytes/1048576) || ...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+```
+
+Now, this isn't terribly difficult to correct, but it requires restructuring the query to replace the grouping construct - such work can quickly accumulate errors. Fortunately, [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) 
+supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) AND `string_agg`, 
+so this query doesn't need to change when migrating from Oracle.
+
+For more information on Oracle compatibility features in EDB Postgres Advanced Server, check out [the Oracle Developers section of the documentation](https://www.enterprisedb.com/docs/epas/latest/).
+
