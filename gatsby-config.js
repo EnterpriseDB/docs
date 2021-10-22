@@ -160,6 +160,7 @@ module.exports = {
       options: {
         headers: {
           "/*": isProduction ? [] : ["X-Robots-Tag: noindex"],
+          "/static/*.pdf": ["X-Robots-Tag: noindex"],
         },
       },
     },
