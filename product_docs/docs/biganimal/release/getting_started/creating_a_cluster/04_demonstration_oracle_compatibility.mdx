@@ -3,12 +3,11 @@ title: "Demonstration of Oracle compatible functions and syntax"
 navTitle: "Demo: Oracle compatibility"
 ---
 
-EDB Postgres Advanced Server's Oracle compatible syntax and supporting software is available in EDB Cloud. If you'd like to see it in action, there's a test cluster available, populated with the Chinook sample database: feel free to connect and try out a few queries! This topic presents a couple to get you started...
+[EDB Postgres Advanced Server's Oracle compatible syntax and supporting packages](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/) are available in EDB Cloud. If you'd like to see them in action, there's a test cluster available, populated with [the Chinook sample database](https://github.com/lerocha/chinook-database): feel free to connect and try out a few queries! This topic presents a couple to get you started...
 
 <iframe src="https://drive.google.com/file/d/1niRThmobt5iPV3wgzTrEYxMhUEMEr0SO/preview" width="720" height="405" allow="autoplay fullscreen"></iframe>
 
-
-You can use any recent version of psql to connect to EDB Postgres Advanced Server. If you choose to use the version that ships with Advanced Server, you'll get a few nice SQL*Plus compatibility features, but the queries we'll examine here will work the same either way. For convenience, I'll illustrate these examples with the version of psql available in Azure's Cloud Shell; you can launch this directly from the Azure portal, or on your desktop using Windows Terminal:
+You can use any recent version of psql to connect to EDB Postgres Advanced Server. If you choose to use the version that ships with Advanced Server, you'll get a few nice SQL*Plus compatibility features (with more availability in [EDB*Plus](https://www.enterprisedb.com/docs/epas/latest/edb_plus/)). The queries and commands that we'll examine here will work the same in either version of psql. For convenience, these examples use the version of psql available in Azure's Cloud Shell; you can launch this directly from the Azure portal, or on your desktop using Windows Terminal:
 
 ```shell
 Welcome to Azure Cloud Shell
@@ -25,14 +24,19 @@ The connection string for the demo Advanced Server cluster looks like this:
 postgres://demo:password@p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io:5432/chinook?sslmode=require
 ```
 
-In case you're unfamiliar with PostgreSQL URLs, let's break that down:
+In case you're unfamiliar with [PostgreSQL connection URIs](https://www.postgresql.org/docs/current/libpq-connect.html#id-1.7.3.8.3.6), let's break that down:
 
 - `demo` is the user role I'm connecting as. This is a user set up with select privileges on the database
-- `password` is the password for this user. Since it's a demonstration database with limited access, I don't mind putting this right in the connection string; one might also use this approach for an application-specific connection string stored securely - but of course, you should never do this for sensitive accounts that might be exposed!
-- p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io is the host name for the Advanced Server cluster on EDB Cloud that I'm connecting to. 
-- 5432 is the usual PostgreSQL port number
-- chinook is the name of the database
-- sslmode=require ensures that we establish a secure connection
+- `password` is the password for this user. 
+  !!! Warning Passwords in connection strings.
+  This example illustrates a complete connection URL, including the password. This is fine for a demonstration,
+  and may also be acceptable for applications configuration if access to the configuration is limited. 
+  Avoid this practice for admin, superuser, or other roles used interactively - `psql` will prompt for a password
+  if none is supplied. 
+- `p-c5kdmd43ehc3kenab0c0.dqrgadbpjqv8pwzl.edbcloud.io` is the host name for the Advanced Server cluster on EDB Cloud that I'm connecting to. 
+- `5432` is the usual PostgreSQL port number
+- `chinook` is the name of the database
+- `sslmode=require` ensures that we establish a secure connection
 
 With that in hand, we can launch psql:
 
@@ -52,6 +56,24 @@ Let's take a look at the schema:
 
 ```
 \dt
+__OUTPUT__
+                          List of relations
+ Schema |                Name                 | Type  |     Owner
+--------+-------------------------------------+-------+---------------
+ public | album                               | table | chinook_owner
+ public | artist                              | table | chinook_owner
+ public | customer                            | table | chinook_owner
+ public | employee                            | table | chinook_owner
+ public | genre                               | table | chinook_owner
+ public | invoice                             | table | chinook_owner
+ public | invoiceline                         | table | chinook_owner
+ public | mediatype                           | table | chinook_owner
+ public | playlist                            | table | chinook_owner
+ public | playlisttrack                       | table | chinook_owner
+ public | track                               | table | chinook_owner
+ sys    | callback_queue_table                | table | postgres
+ sys    | dual                                | table | postgres
+ ...
 ```
 
 There's an employee table, let's examine its definition: 
@@ -80,9 +102,12 @@ __OUTPUT__
 ...
 ```
 
-This table has a "reportsto" field - that means we have a heirarchy. 
+This table has a "reportsto" field - that means this is a heirarchical reporting structure, with some employees reporting to
+other employees who may in turn report to still *other* employees.
 
-Let's try a [heirarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/). Modern SQL would use a recursive CTE for this, as those are widely supported. But Oracle has, for decades, supported an alternative mechanism for querying heirarchy in the form of CONNECT BY - let's put that into action:
+Let's construct a [heirarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/) to expose this [chain of command](https://en.wikipedia.org/wiki/Chain_of_command). 
+
+Modern SQL would use a recursive CTE for this, as those are widely supported. But Oracle has, for decades, supported an alternative mechanism for querying heirarchy in the form of CONNECT BY - let's put that into action:
 
 ```sql
 SELECT firstname, lastname, (
@@ -105,7 +130,7 @@ __OUTPUT__
  Laura     | Callahan | Mitchell, Adams
 (8 rows)
 ```
-Here, we use CONNECT BY and the LISTAGG function in a subquery to generate the chain of command for each employee. 
+Here, we use CONNECT BY and the LISTAGG function in a subquery to generate the chain of command for each employee: who they report to, who *that* person reports to, etc.
 
 Now, the `LISTAGG()` function was introduced in Oracle 11g Release 2. Very few database systems support it. PostgreSQL DOES support `string_agg()`, and in the previous example that could be used as a drop-in replacement...
 
@@ -188,5 +213,10 @@ Now, this isn't terribly difficult to correct, but it requires restructuring the
 supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) AND `string_agg`, 
 so this query doesn't need to change when migrating from Oracle.
 
-For more information on Oracle compatibility features in EDB Postgres Advanced Server, check out [the Oracle Developers section of the documentation](https://www.enterprisedb.com/docs/epas/latest/).
+In both of the examples shown here, you probably would not use the functions and syntax demonstrated for new work; there are 
+better, more familiar or at least more widely-availability equivalents provided natively by PostgreSQL (and many other databases). But by supporting them, EDB Advanced Server gives you the ability to re-using existing logic with minimal modification, allowing
+you to focus your time and expertise on solving new problems.
+
+For more information on Oracle compatibility features in EDB Postgres Advanced Server, refer to [the Database Compatibility for
+Oracle Developers Guide](https://www.enterprisedb.com/docs/epas/latest/).
 
