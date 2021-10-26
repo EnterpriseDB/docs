@@ -1,10 +1,10 @@
 ---
-title: "High Availability Using EFM"
+title: "High Availability Using Failover Manager"
 ---
 
 Postgres Enterprise Manager (PEM) assists database administrators, system architects, and performance analysts in administering, monitoring, and tuning Postgres database servers.
 
-EDB Postgres Failover Manager (EFM) is a high availability tool from EDB that enables a Postgres primary node to automatically failover to a standby node in the event of a software or hardware failure on the primary.
+Failover Manager (EFM) is a high availability tool from EDB that enables a Postgres primary node to automatically failover to a standby node in the event of a software or hardware failure on the primary.
 
 The examples in the following sections use these IP addresses:
 
@@ -14,9 +14,15 @@ The examples in the following sections use these IP addresses:
 -   172.16.161.203 - EFM Witness Node
 -   172.16.161.245 - PEM VIP (used by agents and users to connect)
 
-# Initial product installation and configuration
+The following needs to use the VIP address:
 
-1.  Install the following on the primary and one or more standbys
+-   The PEM Agent binding of the monitored database servers
+-   Accessing the PEM Web Client
+-   Accessing the Webserver services
+
+# Initial Product Installation and Configuration
+
+1.  Install the following on the primary and one or more standbys:
 
     -   [EDB Postgres Advanced Server 13](https://www.enterprisedb.com/docs/epas/latest/epas_inst_linux/) (as backend database server for PEM)
     -   [PEM Server](https://www.enterprisedb.com/docs/pem/latest/pem_inst_guide_linux/)
@@ -28,8 +34,12 @@ The examples in the following sections use these IP addresses:
 
     You need to install the `java-1.8.0-openjdk` package to install EFM.
 
-2.  Configure the PEM Server on the primary server with initial configuration of type - 1 (i.e. Web Services and Database). For more detail, see Configuring the PEM Server section in the [PEM Installation Guides](https://www.enterprisedb.com/docs/pem/latest/pem_inst_guide_linux/04_installing_postgres_enterprise_manager/05_configuring_the_pem_server_on_linux/).
+2.  Configure the PEM Server on the primary server with initial configuration of type 1 (i.e. Web Services and Database): 
 
+    ```text
+    /usr/edb/pem/bin/configure-pem-server.sh -t 1
+    ```
+    For more detail on configuration types see, [Configuring the PEM Server](https://www.enterprisedb.com/docs/pem/latest/pem_inst_guide_linux/04_installing_postgres_enterprise_manager/05_configuring_the_pem_server_on_linux/).
 
 3.  Add the following ports in the firewall on the primary and all the standby servers to allow the access:
 
@@ -37,6 +47,8 @@ The examples in the following sections use these IP addresses:
     -   `5444` - for EPAS 13 
     -   `7800` - for EFM
     -   `7908` - for EFM Admin
+
+    For example:
 
     ```text
         $ sudo firewall-cmd --zone=public --add-port=5444/tcp --permanent 
@@ -51,9 +63,9 @@ The examples in the following sections use these IP addresses:
         success
     ```
 
-# Set up the primary node for streaming replication.
+# Set Up the Primary Node for Streaming Replication.
 
-1.  Create the replication role using the following command
+1.  Create the replication role using the following command.
 
     ```text
         $ /usr/edb/as13/bin/psql -h 172.16.161.200 -p 5444 -U enterprisedb edb -c “CREATE ROLE repl REPLICATION LOGIN PASSWORD 'password'”;
@@ -73,17 +85,17 @@ The examples in the following sections use these IP addresses:
 
     For more detailed information on configuring parameters for streaming replication refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/13/warm-standby.html#STREAMING-REPLICATION).
 
-!!! Note
-    The configuration parameters may be different for different versions of database server. You can email support at [techsupport@enterprisedb.com](mailto:techsupport@enterprisedb.com) for any help in setting up these parameters.
+    !!! Note
+        The configuration parameters may be different for different versions of database server. You can email support at [techsupport@enterprisedb.com](mailto:techsupport@enterprisedb.com) for any help in setting up these parameters.
 
-3.  Add the following entry in the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file to allow replication user to connect from all the standbys:
+3.  Add the following entry in the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file to allow the replication user to connect from all the standbys:
 
     ```text
         hostssl  replication  repl  172.16.161.201/24  scram-sha-256
     ```
 
     !!! Note
-        You can provide ip address with a more appropriate cidr range.
+        You can change the cidr range of the IP address, if needed. 
 
 4.  Modify the host-based authentication (`/var/lib/edb/as13/data/pg_hba.conf`) file for the `pem_user` role to connect to all databases using the `scram-sha-256` authentication method as below:
 
@@ -97,13 +109,13 @@ The examples in the following sections use these IP addresses:
         hostssl pem   +pem_agent   0.0.0.0/0          cert
     ```
 
-5.  Restart the EPAS 13 Server
+5.  Restart the EPAS 13 Server.
 
     ```text
         systemctl restart edb-as-13.service
     ```
 
-# Set up the Standby Nodes for Streaming Replication
+# Set Up the Standby Nodes for Streaming Replication
 
 1.  Stop the service for EPAS 13 on all the standby nodes:
 
@@ -111,8 +123,8 @@ The examples in the following sections use these IP addresses:
         $ systemctl stop edb-as-13.service
     ```
 
-!!! Note
-    We are using `pg_basebackup` utility to create the replicas of the PEM backend database server on the standby servers. In order to do that, we need to stop the existing database server and remove the existing data directories.
+    !!! Note
+        This example uses the `pg_basebackup` utility to create the replicas of the PEM backend database server on the standby servers. When using `pg_basebackup`, you need to stop the existing database server and remove the existing data directories.
 
 2.  Remove the data directory of the database server on all the standby nodes:
 
@@ -152,13 +164,13 @@ The examples in the following sections use these IP addresses:
         primary_conninfo = ‘user=repl passfile=’’/var/lib/edb/.pgpass’’ channel_binding=prefer host=172.16.161.200 port=5444 sslmode=prefer sslcompression=0 ssl_min_protocol_version=TLSv1.2 gssencmode=prefer krbsvrname=postgres target_session_attrs=any’
     ```
 
-5.  Edit the following parameter in `postgresql.conf` file on each standby nodes:
+5.  Edit the following parameter in `postgresql.conf` file on each of the standby nodes:
 
     ```text
         hot_standby = on
     ```
 
-6.  Start the EPAS 13 database server on each standby nodes.
+6.  Start the EPAS 13 database server on each of the standby nodes:
 
     ```text
         $ systemctl enable edb-as-13
@@ -166,7 +178,7 @@ The examples in the following sections use these IP addresses:
         $ systemctl start edb-as-13
     ```
 
-7.  Copy following files from the primary node to the standby nodes at the same location, overwriting any existing files. Also, set the following permissions:
+7.  Copy the following files from the primary node to the standby nodes at the same location, overwriting any existing files, and set the following permissions on the files:
 
     -   `/etc/httpd/conf.d/edb-pem.conf`
     -   `/etc/httpd/conf.d/edb-ssl-pem.conf`
@@ -177,6 +189,7 @@ The examples in the following sections use these IP addresses:
     -   `/usr/edb/pem/web/pem.wsgi`
     -   `/usr/edb/pem/web/config_setup.py`
 
+For example,
 
 ```text
     $ mkdir -p /root/.pem
@@ -202,6 +215,8 @@ The examples in the following sections use these IP addresses:
     $ chown root:root /root/.pem/agent1.key
 ```
 
+This ensures that webserver is configured on the standby and is disabled by default. It is enabled automatically at switchover by EFM.
+
 !!! Note
     You need to keep the certificates in sync on master and standbys manually whenever the certificates are updated.
 
@@ -221,10 +236,10 @@ The examples in the following sections use these IP addresses:
 ```
 
 !!! Note
-    At this point you should have a PEM Primary Server and two standbys that are ready to takeover from the primary whenever needed.
+    At this point you should have a PEM Primary Server and two standbys that are ready to take over from the primary whenever needed.
 
 
-# Set up EFM to manage failover on all hosts
+# Set Up EFM to Manage Failover on All Hosts
 
 1.  Prepare the Primary Node to support EFM:
 
@@ -232,6 +247,8 @@ The examples in the following sections use these IP addresses:
     -   Grant the execute privileges on the functions related to WAL logs and the monitoring privileges to the user.
     -   Add entries in pg_hba.conf to allow the `efm` database user to connect to the database server from all nodes on all the hosts.
     -   Reload the configurations on all the database servers.
+    
+    For example,
 
     ```text
         $ cat > /tmp/efm-role.sql << _EOF_
@@ -328,7 +345,7 @@ The examples in the following sections use these IP addresses:
         $ sudo chmod a+r /etc/edb/efm-4.1/efm.properties
     ```
 
-7.  Encrypt the `efm` user's password using efm utility:
+7.  Encrypt the efm user's password using efm utility:
 
     ```text
         $ export EFMPASS=password
@@ -402,7 +419,7 @@ The examples in the following sections use these IP addresses:
         script.post.promotion=/usr/local/bin/start-pemagent.sh
     ```
 
-9.  Set the value of `is.witness` configuration parameter on the witness node to `true`:
+9.  Set the value of the `is.witness` configuration parameter on the witness node to `true`:
 
     ```text
         is.witness=true
@@ -463,6 +480,11 @@ The examples in the following sections use these IP addresses:
 
 This status confirms that EFM is set up successfully and managing the failover for the PEM Server.
 
-The monitored database servers should register their PEM Agents using the VIP address. Also, access the PEM Web Client using a VIP address.
+In case of failover, any of the standbys get promoted as the primary node. PEM Agents automatically connect to the new primary node. You can replace the failed primary node with a new standby using this procedure.
 
-In case of failover, any of the standbys get promoted as the primary node. PEM Agents automatically connects to the new primary node. All the user sessions are lost, and they will have to log in again. You can replace the failed primary node with a new standby using this procedure.
+# Current Limitations
+
+The current limitations include:
+-   Web console sessions for the users are lost during the switch over.
+-   Per user settings done from the `Preferences` dialog are lost as they’re stored in local configuration files on the file system.
+-   Background processes, started via `Backup`, `Restore`, and `Maintenance` dialogs, and their logs are not shared between the systems and are lost during switch over. 
