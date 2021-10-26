@@ -4,4 +4,290 @@ originalFilePath: backup.md
 
 ---
 
-<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/backup/" topic="Backup and Recovery" />
+In this chapter we discuss the backup and restore of a BDR 3.x cluster.
+
+BDR is designed to be a distributed, highly available system. If
+one or more nodes of a cluster are lost, the best way to replace them
+is to clone new nodes directly from the remaining nodes.
+
+The role of backup and recovery in BDR is to provide for Disaster
+Recovery (DR), such as in the following situations:
+
+-   Loss of all nodes in the cluster
+-   Significant, uncorrectable data corruption across multiple nodes
+    as a result of data corruption, application error or
+    security breach
+
+## Backup
+
+### `pg_dump`
+
+`pg_dump`, sometimes referred to as "logical backup", can be used
+normally with BDR.
+
+Note that `pg_dump` dumps both local and global sequences as if
+they were local sequences. This is intentional, to allow a BDR
+schema to be dumped and ported to other PostgreSQL databases.
+This means that sequence kind metadata is lost at the time of dump,
+so a restore would effectively reset all sequence kinds to
+the value of `bdr.default_sequence_kind` at time of restore.
+
+To create a post-restore script to reset the precise sequence kind
+for each sequence, you might want to use an SQL script like this:
+
+```sql
+SELECT 'SELECT bdr.alter_sequence_set_kind('''||
+		nspname||'.'||relname||''','''||seqkind||''');'
+FROM bdr.sequences
+WHERE seqkind != 'local';
+```
+
+Note that if `pg_dump` is run using `bdr.crdt_raw_value = on` then the
+dump can only be reloaded with `bdr.crdt_raw_value = on`.
+
+Technical Support recommends the use of physical backup techniques for
+backup and recovery of BDR.
+
+### Physical Backup
+
+Physical backups of a node in a BDR cluster can be taken using
+standard PostgreSQL software, such as
+[Barman](https://www.2ndquadrant.com/en/resources/barman/).
+
+A physical backup of a BDR node can be performed with the same
+procedure that applies to any PostgreSQL node: a BDR node is just a
+PostgreSQL node running the BDR extension.
+
+There are some specific points that must be considered when applying
+PostgreSQL backup techniques to BDR:
+
+-   BDR operates at the level of a single database, while a physical
+    backup includes all the databases in the instance; you should plan
+    your databases to allow them to be easily backed-up and restored.
+
+-   Backups will make a copy of just one node. In the simplest case,
+    every node has a copy of all data, so you would need to backup only
+    one node to capture all data. However, the goal of BDR will not be
+    met if the site containing that single copy goes down, so the
+    minimum should be at least one node backup per site (obviously with
+    many copies etc.).
+
+-   However, each node may have un-replicated local data, and/or the
+    definition of replication sets may be complex so that all nodes do
+    not subscribe to all replication sets. In these cases, backup
+    planning must also include plans for how to backup any unreplicated
+    local data and a backup of at least one node that subscribes to each
+    replication set.
+
+### Eventual Consistency
+
+The nodes in a BDR cluster are *eventually consistent*, but not
+entirely *consistent*; a physical backup of a given node will
+provide Point-In-Time Recovery capabilities limited to the states
+actually assumed by that node (see the [Example] below).
+
+The following example shows how two nodes in the same BDR cluster might not 
+(and usually do not) go through the same sequence of states.
+
+Consider a cluster with two nodes `N1` and `N2`, which is initially in
+state `S`. If transaction `W1` is applied to node `N1`, and at the same
+time a non-conflicting transaction `W2` is applied to node `N2`, then
+node `N1` will go through the following states:
+
+```
+(N1)   S  -->  S + W1  -->  S + W1 + W2
+```
+
+...while node `N2` will go through the following states:
+
+```
+(N2)   S  -->  S + W2  -->  S + W1 + W2
+```
+
+That is: node `N1` will *never* assume state `S + W2`, and node `N2`
+likewise will never assume state `S + W1`, but both nodes will end up
+in the same state `S + W1 + W2`. Considering this situation might affect how 
+you decide upon your backup strategy.
+
+### Point-In-Time Recovery (PITR)
+
+In the example above, the changes are also inconsistent in time, since
+`W1` and `W2` both occur at time `T1`, but the change `W1` is not
+applied to `N2` until `T2`.
+
+PostgreSQL PITR is designed around the assumption of changes arriving
+from a single master in COMMIT order. Thus, PITR is possible by simply
+scanning through changes until one particular point-in-time (PIT) is reached.
+With this scheme, you can restore one node to a single point-in-time
+from its viewpoint, e.g. `T1`, but that state would not include other
+data from other nodes that had committed near that time but had not yet
+arrived on the node. As a result, the recovery might be considered to
+be partially inconsistent, or at least consistent for only one
+replication origin.
+
+To request this, use the standard syntax:
+
+```
+recovery_target_time = T1
+```
+
+BDR allows for changes from multiple masters, all recorded within the
+WAL log for one node, separately identified using replication origin
+identifiers.
+
+BDR allows PITR of all or some replication origins to a specific point in time, 
+providing a fully consistent viewpoint across all subsets of nodes.
+
+Thus for multi-origins, we view the WAL stream as containing multiple
+streams all mixed up into one larger stream. There is still just one PIT,
+but that will be reached as different points for each origin separately.
+
+We read the WAL stream until requested origins have found their PIT. We
+apply all changes up until that point, except that we do not mark as committed
+any transaction records for an origin after the PIT on that origin has been
+reached.
+
+We end up with one LSN "stopping point" in WAL, but we also have one single
+timestamp applied consistently, just as we do with "single origin PITR".
+
+Once we have reached the defined PIT, a later one may also be set to allow
+the recovery to continue, as needed.
+
+After the desired stopping point has been reached, if the recovered server
+will be promoted, shut it down first and move the LSN forwards using
+`pg_resetwal` to an LSN value higher than used on any timeline on this server.
+This ensures that there will be no duplicate LSNs produced by logical
+decoding.
+
+In the specific example above, `N1` would be restored to `T1`, but
+would also include changes from other nodes that have been committed
+by `T1`, even though they were not applied on `N1` until later.
+
+To request multi-origin PITR, use the standard syntax in
+the recovery.conf file:
+
+```
+recovery_target_time = T1
+```
+
+The list of replication origins which would be restored to `T1` need either
+to be specified in a separate multi_recovery.conf file via the use of
+a new parameter `recovery_target_origins`:
+
+```
+recovery_target_origins = '*'
+```
+
+...or one can specify the origin subset as a list in `recovery_target_origins`.
+
+```
+recovery_target_origins = '1,3'
+```
+
+Note that the local WAL activity recovery to the specified
+`recovery_target_time` is always performed implicitly. For origins
+that are not specified in `recovery_target_origins`, recovery may
+stop at any point, depending on when the target for the list
+mentioned in `recovery_target_origins` is achieved.
+
+In the absence of the `multi_recovery.conf` file, the recovery defaults
+to the original PostgreSQL PITR behaviour that is designed around the assumption
+of changes arriving from a single master in COMMIT order.
+
+!!! Note
+    This is feature is only available on EDB Postgres Extended and 
+    Barman does not currently automatically create a `multi_recovery.conf` file.
+
+## Restore
+
+While you can take a physical backup with the same procedure as a
+standard PostgreSQL node, what is slightly more complex is
+**restoring** the physical backup of a BDR node.
+
+### BDR Cluster Failure or Seeding a New Cluster from a Backup
+
+The most common use case for restoring a physical backup involves the failure
+or replacement of all the BDR nodes in a cluster, for instance in the event of
+a datacentre failure.
+
+You may also want to perform this procedure to clone the current contents of a
+BDR cluster to seed a QA or development instance.
+
+In that case, BDR capabilities can be restored based on a physical backup
+of a single BDR node, optionally plus WAL archives:
+
+-   If you still have some BDR nodes live and running, fence off the host you
+    restored the BDR node to, so it cannot connect to any surviving BDR nodes.
+    This ensures that the new node does not confuse the existing cluster.
+-   Restore a single PostgreSQL node from a physical backup of one of
+    the BDR nodes.
+-   If you have WAL archives associated with the backup, create a suitable
+    `recovery.conf` and start PostgreSQL in recovery to replay up to the latest
+    state. You can specify a alternative `recovery_target` here if needed.
+-   Start the restored node, or promote it to read/write if it was in standby
+    recovery. Keep it fenced from any surviving nodes!
+-   Clean up any leftover BDR metadata that was included in the physical backup,
+    as described below.
+-   Fully stop and restart the PostgreSQL instance.
+-   Add further BDR nodes with the standard procedure based on the
+    `bdr.join_node_group()` function call.
+
+#### Cleanup BDR Metadata
+
+The cleaning of leftover BDR metadata is achieved as follows:
+
+1.  Drop the `bdr` extension with `CASCADE`.
+2.  Drop all the replication origins previously created by BDR.
+3.  Drop any replication slots left over from BDR.
+4.  Fully stop and re-start PostgreSQL (important!).
+5.  Create the `bdr` extension.
+
+The `DROP EXTENSION`/`CREATE EXTENSION` cycle guarantees that all the
+BDR metadata from the previous cluster is removed, and that the node
+can be used to grow a new BDR cluster from scratch.
+
+#### Cleanup of Replication Origins
+
+Replication origins must be explicitly removed with a separate step
+because they are recorded persistently in a system catalog, and
+therefore included in the backup and in the restored instance. They
+are not removed automatically when dropping the BDR extension, because
+they are not explicitly recorded as its dependencies.
+
+BDR creates one replication origin for each remote master node, to
+track progress of incoming replication in a crash-safe way. Therefore
+we need to run:
+
+```
+SELECT pg_replication_origin_drop('bdr_dbname_grpname_nodename');
+```
+
+...once for each node in the (previous) cluster. Replication origins can
+be listed as follows:
+
+```
+SELECT * FROM pg_replication_origin;
+```
+
+...and those created by BDR are easily recognized by their name, as in
+the example shown above.
+
+#### Cleanup of Replication Slots
+
+If a physical backup was created with `pg_basebackup`, replication slots
+will be omitted from the backup.
+
+Some other backup methods may preserve replications slots, likely in
+outdated or invalid states. Once you restore the backup, just:
+
+```
+SELECT pg_drop_replication_slot(slot_name)
+FROM pg_replication_slots;
+```
+
+...to drop *all* replication slots. If you have a reason to preserve some,
+you can add a `WHERE slot_name LIKE 'bdr%'` clause, but this is rarely
+useful.
+
+!!! Warning
+    Never run this on a live BDR node.

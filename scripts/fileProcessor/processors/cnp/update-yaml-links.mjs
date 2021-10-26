@@ -1,18 +1,45 @@
-export const process = (filename, content) => {
-  const newContent = content.split("\n").map(rewriteLink).join("\n");
+import toVFile from "to-vfile";
+import remarkParse from "remark-parse";
+import mdx from "remark-mdx";
+import unified from "unified";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkStringify from "remark-stringify";
+import admonitions from "remark-admonitions";
+import visit from "unist-util-visit";
+import isAbsoluteUrl from "is-absolute-url";
+
+export const process = async (filename, content) => {
+
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
+    .use(admonitions, {
+      tag: "!!!", icons: "none", infima: true, customTypes: {
+        seealso: "note", hint: "tip", interactive: "interactive",
+      }
+    })
+    .use(remarkFrontmatter)
+    .use(mdx)
+    .use(linkRewriter);
+
+  const output = await processor.process(toVFile({ path: filename, contents: content }));
 
   return {
     newFilename: filename,
-    newContent,
+    newContent: output.contents.toString(),
   };
 };
 
-const rewriteLink = (line) => {
-  const regex = /\[.+\]\((.+)\.yaml\)/;
-  const match = line.match(regex);
-  if (match === null) {
-    return line;
-  }
+function linkRewriter() {
+  return (tree) => {
 
-  return line.replace(match[1], match[1].replace("samples/", "../samples/"));
-};
+    // link rewriter:
+    // - only links to .yaml files in samples dir
+    // - make relative to parent (because gatsby URL paths are always directories)
+    visit(tree, "link", (node) => {
+      if (isAbsoluteUrl(node.url) || node.url[0] === '/') return;
+      if (!node.url.includes(".yaml")) return;
+      node.url = node.url.replace(/^(?:\.\/)?samples\//, "../samples/");
+    });
+  };
+}
