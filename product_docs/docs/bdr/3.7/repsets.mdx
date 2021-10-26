@@ -4,4 +4,670 @@ originalFilePath: repsets.md
 
 ---
 
-<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/repsets/" topic="Replication Sets" />
+A replication set is a group of tables which can be subscribed to by a BDR node.
+Replication sets can be used to create more complex replication topologies
+than regular symmetric multi-master where each node is exact copy of the other
+nodes.
+
+Every BDR group automatically creates a replication set with the same name as
+the group itself. This replication set is the default replication set, which is
+used for all user tables and DDL replication and all nodes are subscribed to it.
+In other words, by default all user tables are replicated between all nodes.
+
+## Using Replication Sets
+
+Additional replication sets can be created using `create_replication_set()`,
+specifying whether to include insert, update, delete or truncate actions.
+An option exists to add existing tables to the set automatically, and
+a second option defines whether to add tables automatically when they are
+created.
+
+You may also define manually which tables are added or removed from a
+replication set.
+
+Tables included in the replication set will be maintained when the node
+joins the cluster and afterwards.
+
+Once the node is joined, you may still remove tables from the replication
+set, but adding new tables must be done via a resync operation.
+
+By default, a newly defined replication set does not replicate DDL or BDR
+administration function calls. Use the `replication_set_add_ddl_filter`
+to define which commands will be replicated.
+
+BDR creates replication set definitions on all nodes. Each node can then be
+defined to publish and/or subscribe to each replication set using
+`alter_node_replication_sets`.
+
+Functions exist to alter these definitions later, or to drop the replication
+set.
+
+!!! Note
+    Do not use the default replication set for selective replication.
+    You should not drop or modify the default replication set on any of
+    the BDR nodes in the cluster as it is also used by default for DDL
+    replication and administration function calls.
+
+## Behavior of Partitioned Tables
+
+BDR supports partitioned tables transparently, meaning that a partitioned
+table can be added to a replication set and
+changes that involve any of the partitions will be replicated downstream.
+
+!!! Note
+    When partitions are replicated through a partitioned table, the
+    statements executed directly on a partition are replicated as they
+    were executed on the parent table. The exception is the `TRUNCATE` command
+    which always replicates with the list of affected tables or partitions.
+
+It's possible to add individual partitions to the replication set, in
+which case they will be replicated like regular tables (to the table of the
+same name as the partition on the downstream). This has some performance
+advantages if the partitioning definition is the same on both provider and
+subscriber, as the partitioning logic does not have to be executed.
+
+!!! Note
+    If a root partitioned table is part of any replication set, memberships
+    of individual partitions are ignored, and only the membership of said root
+    table will be taken into account.
+
+## Behavior with Foreign Keys
+
+A Foreign Key constraint ensures that each row in the referencing
+table matches a row in the referenced table. Therefore, if the
+referencing table is a member of a replication set, the referenced
+table must also be a member of the same replication set.
+
+The current version of BDR does not automatically check or enforce
+this condition. It is therefore the responsibility of the database
+administrator to make sure, when adding a table to a replication set,
+that all the tables referenced via foreign keys are also added.
+
+The following query can be used to list all the foreign keys and
+replication sets that do not satisfy this requirement, i.e. such that
+the referencing table is a member of the replication set, while the
+referenced table is not:
+
+```sql
+SELECT t1.relname,
+       t1.nspname,
+       fk.conname,
+       t1.set_name
+  FROM bdr.tables AS t1
+  JOIN pg_catalog.pg_constraint AS fk
+    ON fk.conrelid = t1.relid
+   AND fk.contype = 'f'
+ WHERE NOT EXISTS (
+  SELECT *
+    FROM bdr.tables AS t2
+   WHERE t2.relid = fk.confrelid
+     AND t2.set_name = t1.set_name
+);
+```
+
+The output of this query looks like the following:
+
+```sql
+ relname | nspname |  conname  | set_name
+---------+---------+-----------+----------
+ t2      | public  | t2_x_fkey | s2
+(1 row)
+```
+
+This means that table `t2` is a member of replication set `s2`, but the
+table referenced by the foreign key `t2_x_fkey` is not.
+
+!!! Note
+    The `TRUNCATE CASCADE` command takes into account the
+    replication set membership before replicating the command, e.g.
+
+```sql
+TRUNCATE table1 CASCADE;
+```
+
+This will become a `TRUNCATE` without cascade on all the tables that are
+part of the replication set only:
+
+```sql
+TRUNCATE table1, referencing_table1, referencing_table2 ...
+```
+
+## Replication Set Management
+
+Management of replication sets.
+
+Note that, with the exception of `bdr.alter_node_replication_sets`, the following
+functions are considered to be `DDL` so DDL replication and global locking
+applies to them, if that is currently active. See [DDL Replication].
+
+### bdr.create_replication_set
+
+This function creates a replication set.
+
+Replication of this command is affected by DDL replication configuration
+including DDL filtering settings.
+
+#### Synopsis
+
+```sql
+bdr.create_replication_set(set_name name,
+                           replicate_insert boolean DEFAULT true,
+                           replicate_update boolean DEFAULT true,
+                           replicate_delete boolean DEFAULT true,
+                           replicate_truncate boolean DEFAULT true,
+                           autoadd_tables boolean DEFAULT false,
+                           autoadd_existing boolean DEFAULT true)
+```
+
+#### Parameters
+
+-   `set_name` - name of the new replication set; must be unique across the BDR
+     group
+-   `replicate_insert` - indicates whether inserts into tables in this
+    replication set should be replicated
+-   `replicate_update` - indicates whether updates of tables in this
+    replication set should be replicated
+-   `replicate_delete` - indicates whether deletes from tables in this
+    replication set should be replicated
+-   `replicate_truncate` - indicates whether truncates of tables in this
+    replication set should be replicated
+-   `autoadd_tables` - indicates whether newly created (future) tables should be
+    added to this replication set
+-   `autoadd_existing` - indicates whether all existing user tables should be
+    added to this replication set; this only has effect if `autoadd_tables` is
+    set to true
+
+#### Notes
+
+By default, new replication sets do not replicate DDL or BDR administration
+function calls. See [ddl filters](repsets#ddl-replication-filtering) below on how to set
+up DDL replication for replication sets. There is a preexisting DDL filter
+set up for the default group replication set that replicates all DDL and admin
+function calls, which is created when the group is created, but can be dropped
+in case it's not desirable for the BDR group default replication set to replicate
+DDL or the BDR administration function calls.
+
+This function uses the same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction and the changes are visible to the current
+transaction.
+
+### bdr.alter_replication_set
+
+This function modifies the options of an existing replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+#### Synopsis
+
+```sql
+bdr.alter_replication_set(set_name name,
+                          replicate_insert boolean DEFAULT NULL,
+                          replicate_update boolean DEFAULT NULL,
+                          replicate_delete boolean DEFAULT NULL,
+                          replicate_truncate boolean DEFAULT NULL,
+                          autoadd_tables boolean DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `set_name` - name of an existing replication set
+-   `replicate_insert` - indicates whether inserts into tables in this
+    replication set should be replicated
+-   `replicate_update` - indicates whether updates of tables in this
+    replication set should be replicated
+-   `replicate_delete` - indicates whether deletes from tables in this
+    replication set should be replicated
+-   `replicate_truncate` - indicates whether truncates of tables in this
+    replication set should be replicated
+-   `autoadd_tables` - indicates whether newly created (future) tables should be
+    added to this replication set
+
+Any of the options that are set to NULL (the default) will remain the same as
+before.
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+### bdr.drop_replication_set
+
+This function removes an existing replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+#### Synopsis
+
+```sql
+bdr.drop_replication_set(set_name name)
+```
+
+#### Parameters
+
+-   `set_name` - name of an existing replication set
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+!!! Warning
+    Do not drop a replication set which is being used by at least
+    another node, because this will stop replication on that
+    node. Should this happen, please unsubscribe the affected node
+    from that replication set.  
+
+    For the same reason, you should not drop a replication set if
+    there is a join operation in progress, and the node being joined
+    is a member of that replication set; replication set membership is
+    only checked at the beginning of the join.  
+
+    This happens because the information on replication set usage is
+    local to each node, so that it can be configured on a node before
+    it joins the group.
+
+You can manage replication set subscription for a node using `alter_node_replication_sets` 
+which is mentioned below.
+
+### bdr.alter_node_replication_sets
+
+This function changes which replication sets a node publishes and is subscribed to.
+
+#### Synopsis
+
+```sql
+bdr.alter_node_replication_sets(node_name name,
+                                set_names text[])
+```
+
+#### Parameters
+
+-   `node_name` - which node to modify; currently has to be local node
+-   `set_names` - array of replication sets to replicate to the specified
+    node; an empty array will result in the use of the group default replication set
+
+#### Notes
+
+This function is only executed on the local node and is not replicated in any manner.
+
+The replication sets listed are *not* checked for existence,
+since this function is designed to be executed before the node joins. Be careful
+to specify replication set names correctly to avoid errors.
+
+This allows for calling the function not only on the node that is part of the
+BDR group, but also on a node that has not joined any group yet in order to limit
+what data is synchronized during the join. However, please note that schema is
+*always fully synchronized* without regard to the replication sets setting,
+meaning that all tables are copied across, not just the ones specified
+in the replication set. Unwanted tables can be dropped by referring to
+the `bdr.tables` catalog table. These might be removed automatically in later
+versions of BDR. This is currently true even if the [ddl filters](repsets#ddl-replication-filtering)
+configuration would otherwise prevent replication of DDL.
+
+The replication sets that the node subscribes to after this call should be published
+by the other node/s for actually replicating the changes from those nodes to
+the node where this function is executed.
+
+## Replication Set Membership
+
+Tables can be added and removed to one or multiple replication sets. This only
+affects replication of changes (DML) in those tables, schema changes (DDL) are
+handled by DDL replication set filters (see [DDL Replication Filtering] below).
+
+The replication uses the table membership in replication sets in combination
+with the node replication sets configuration to determine which actions should be
+replicated to which node. The decision is done using the union of all the
+memberships and replication set options. This means that if a table is a member
+of replication set A which replicates only INSERTs, and replication set B which
+replicates only UPDATEs, both INSERTs and UPDATEs will be replicated if the
+target node is also subscribed to both replication set A and B.
+
+### bdr.replication_set_add_table
+
+This function adds a table to a replication set.
+
+This will add a table to replication set and start replication of changes
+from this moment (or rather transaction commit). Any existing data the table
+may have on a node will not be synchronized.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+#### Synopsis
+
+```sql
+bdr.replication_set_add_table(relation regclass,
+                              set_name name DEFAULT NULL,
+                              columns text[] DEFAULT NULL,
+                              row_filter text DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `relation` - name or Oid of a table
+-   `set_name` - name of the replication set; if NULL (the default) then the BDR
+     group default replication set is used
+-   `columns` - reserved for future use (currently does nothing and must be NULL)
+-   `row_filter` - SQL expression to be used for filtering the replicated rows;
+    if this expression is not defined (i.e. NULL - the default) then all rows are sent
+
+The `row_filter` specifies an expression producing a Boolean result, with NULLs.
+Expressions evaluating to True or Unknown will replicate the row; a False value
+will not replicate the row. Expressions cannot contain subqueries, nor refer to
+variables other than columns of the current row being replicated. No system
+columns may be referenced.
+
+`row_filter` executes on the origin node, not on the target node. This puts an
+additional CPU overhead on replication for this specific table, but will
+completely avoid sending data for filtered rows, hence reducing network
+bandwidth and apply overhead on the target node.
+
+`row_filter` will never remove `TRUNCATE` commands for a specific table.
+`TRUNCATE` commands can be filtered away at the replication set level; see
+earlier.
+
+It is possible to replicate just some columns of a table, see
+[Replicating between nodes with differences](appusage).
+
+#### Notes
+
+This function uses same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DML` global lock on the relation that is being
+added to the replication set if the `row_filter` is not NULL, otherwise
+it will take just a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction and the changes are visible to the current
+transaction.
+
+### bdr.replication_set_remove_table
+
+This function removes a table from the replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+#### Synopsis
+
+```sql
+bdr.replication_set_remove_table(relation regclass,
+                                 set_name name DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `relation` - name or Oid of a table
+-   `set_name` - name of the replication set; if NULL (the default) then the BDR
+     group default replication set is used
+
+#### Notes
+
+This function uses same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction and the changes are visible to the current
+transaction.
+
+## Listing Replication Sets
+
+Existing replication sets can be listed with the following query:
+
+```sql
+SELECT set_name
+FROM bdr.replication_sets;
+```
+
+This query can be used to list all the tables in a given replication
+set:
+
+```sql
+SELECT nspname, relname
+FROM bdr.tables
+WHERE set_name = 'myrepset';
+```
+
+In the section [Behavior with Foreign Keys] above, we report a
+query that lists all the foreign keys whose referenced table is not
+included in the same replication set as the referencing table.
+
+Use the following SQL to show those replication sets that the
+current node publishes and subscribes from:
+
+```sql
+SELECT s.node_id,
+        s.node_name,
+        COALESCE(
+                i.pub_repsets, s.pub_repsets
+        ) AS pub_repsets,
+        COALESCE(
+                i.sub_repsets, s.sub_repsets
+        ) AS sub_repsets
+FROM bdr.local_node_summary s
+INNER JOIN bdr.node_local_info i ON i.node_id = s.node_id;
+```
+
+This produces output like this:
+
+```sql
+  node_id   | node_name |    pub_repsets     |   sub_repsets
+------------+-----------+----------------------------------------
+ 1834550102 | s01db01   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+(1 row)
+```
+
+To get the same query executed on against all nodes in the cluster, thus getting
+which replication sets are associated to all nodes at the same time, we can use
+the following query:
+
+```sql
+WITH node_repsets AS (
+  SELECT jsonb_array_elements(
+    bdr.run_on_all_nodes($$
+        SELECT s.node_id,
+        s.node_name,
+        COALESCE(
+                i.pub_repsets, s.pub_repsets
+        ) AS pub_repsets,
+        COALESCE(
+                i.sub_repsets, s.sub_repsets
+        ) AS sub_repsets
+		FROM bdr.local_node_summary s
+		INNER JOIN bdr.node_local_info i
+		ON i.node_id = s.node_id;
+    $$)::jsonb
+  ) AS j
+)
+SELECT j->'response'->'command_tuples'->0->>'node_id' AS node_id,
+       j->'response'->'command_tuples'->0->>'node_name' AS node_name,
+       j->'response'->'command_tuples'->0->>'pub_repsets' AS pub_repsets,
+       j->'response'->'command_tuples'->0->>'sub_repsets' AS sub_repsets
+FROM node_repsets;;
+```
+
+This will show, for example:
+
+```sql
+  node_id   | node_name |    pub_repsets     |    sub_repsets
+------------+-----------+----------------------------------------
+ 933864801  | s02db01   | {bdrglobal,bdrs02} | {bdrglobal,bdrs02}
+ 1834550102 | s01db01   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+ 3898940082 | s01db02   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+ 1102086297 | s02db02   | {bdrglobal,bdrs02} | {bdrglobal,bdrs02}
+(4 rows)
+```
+
+## DDL Replication Filtering
+
+By default, the replication of all supported DDL happens via the default BDR
+group replication set. This is achieved by the existence of a DDL filter with
+the same name as the BDR group, which is automatically added to the default BDR
+group replication set when the BDR group is created.
+
+The above can be adjusted by changing the DDL replication filters for
+all existing replication sets. These filters are independent of table
+membership in the replication sets. Just like data changes, each DDL statement
+will be replicated only once, no matter if it is matched by multiple filters on
+multiple replication sets.
+
+You can list existing DDL filters with the following query, which
+shows for each filter the regular expression applied to the command
+tag and to the role name:
+
+```sql
+SELECT * FROM bdr.ddl_replication;
+```
+
+The following functions can be used to manipulate DDL filters. Note
+that they are considered to be `DDL`, and therefore subject to DDL
+replication and global locking.
+
+### bdr.replication_set_add_ddl_filter
+
+This function adds a DDL filter to a replication set.
+
+Any DDL that matches the given filter will be replicated to any node which
+is subscribed to that set. This also affects replication of BDR admin functions.
+
+Note that this does not prevent execution of DDL on any node, it only
+alters whether DDL is replicated, or not, to other nodes. So if two nodes have
+a replication filter between them that excludes all index commands, then
+index commands can still be executed freely by directly connecting to
+each node and executing the desired DDL on that node.
+
+The DDL filter can specify a `command_tag` and `role_name` to allow
+replication of only some DDL statements. The `command_tag` is same as those
+used by [EVENT TRIGGERs](https://www.postgresql.org/docs/current/static/event-trigger-matrix.html)
+for regular PostgreSQL commands. A typical example might be to create a
+filter that prevents additional index commands on a logical standby from
+being replicated to all other nodes.
+
+The BDR admin functions use can be filtered using a tagname matching the
+qualified function name (for example `bdr.replication_set_add_table` will be the
+command tag for the function of the same name). For example, this allows all BDR
+functions to be filtered using `bdr.*`.
+
+The `role_name` is used for matching against the current role which is executing
+the command. Both `command_tag` and `role_name` are evaluated as regular
+expressions which are case sensitive.
+
+#### Synopsis
+
+```sql
+bdr.replication_set_add_ddl_filter(set_name name,
+                                   ddl_filter_name text,
+                                   command_tag text,
+                                   role_name text DEFAULT NULL)
+```
+
+#### Parameters
+
+-   `set_name` - name of the replication set; if NULL then the BDR
+     group default replication set is used
+-   `ddl_filter_name` - name of the DDL filter; this must be unique across the
+    whole BDR group
+-   `command_tag` - regular expression for matching command tags; NULL means
+    match everything
+-   `role_name` - regular expression for matching role name; NULL means
+    match all roles
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration. Please note - this means that replication of changes to ddl
+filter configuration is affected by existing ddl filter configuration!
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+To view which replication filters are defined, use the view `bdr.ddl_replication`.
+
+#### Examples
+
+To include only BDR admin functions, define a filter like this:
+
+```sql
+SELECT bdr.replication_set_add_ddl_filter('mygroup', 'mygroup_admin', $$bdr\..*$$);
+```
+
+To exclude everything apart from index DDL:
+
+```sql
+SELECT bdr.replication_set_add_ddl_filter('mygroup', 'index_filter',
+				'^(?!(CREATE INDEX|DROP INDEX|ALTER INDEX)).*');
+```
+
+To include all operations on tables and indexes, but exclude all others, add
+two filters, one for tables, one for indexes. This illustrates that
+multiple filters provide the union of all allowed DDL commands:
+
+```sql
+SELECT bdr.replication_set_add_ddl_filter('bdrgroup','index_filter', '^((?!INDEX).)*$');
+SELECT bdr.replication_set_add_ddl_filter('bdrgroup','table_filter', '^((?!TABLE).)*$');
+```
+
+### bdr.replication_set_remove_ddl_filter
+
+This function removes the DDL filter from a replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings themselves!
+
+#### Synopsis
+
+```sql
+bdr.replication_set_remove_ddl_filter(set_name name,
+                                      ddl_filter_name text)
+```
+
+#### Parameters
+
+-   `set_name` - name of the replication set; if NULL then the BDR
+     group default replication set is used
+-   `ddl_filter_name` - name of the DDL filter to remove
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This
+means that the replication is affected by the
+[ddl filters](repsets#ddl-replication-filtering) configuration. Please note
+that this means that replication of changes to the DDL filter configuration is
+affected by the existing DDL filter configuration.
+
+The function will take a `DDL` global lock.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
