@@ -1,74 +1,52 @@
 ---
 title: EDB Cloud preflight checklist
 ---
-Before you can use EDB Cloud in your Azure subscription to deploy your Postgres clusters in the designated regions, your Azure subscription has to meet certain requirements:
 
-* [Registered *Azure Service providers*](#azure-service-providers)
-* [Raising Azure resource limits on *vCPU*, and *IP Addresses* in the designated regions](#raising-azure-resource-limits)
-* [Absence of any restrictions on *Virtual Machine SKU* in the designated regions](#virtual-machine-sku)
+EDB Cloud creates and manages several different types of resources in your Azure subscription. To enable EDB Cloud to perform its operations successfully, you must complete a series of preflight checks before deploying your clusters in Azure, such as: 
 
+ * Is there enough quota for vCPU and IP addresses in your region?
 
-To automate EDB Cloud preflight chek, EDB provides shell script [azure-preflight.sh](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh). The comment's section of the script contains a description of its usage.
-[This blogpost](https://support.edbcloud.com/hc/en-us/articles/4408171743897-How-to-check-Azure-available-resources-and-quota-limit-with-script-azure-preflight-sh) describes the examples of the usage.
+ * Are there enough SKUs available in your region?
 
-While the script [azure-preflight.sh](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) is a recommended way of performing EDB Cloud preflight check, you can also perform this check using [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/) or [Azure portal](https://portal.azure.com/) as described below.
+ * Are the necessary Azure resource providers registered to your subscription?
 
-## Azure Service Providers
-EDB Cloud creates and manages [certain types of Azure resources](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/resource-providers-and-types). P
-Please, ensure that the following Azure service providers have been registered in your Azure subscription:
+### Azure preflight script
 
-| Provider Namespace             | Purpose                                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Microsoft.Compute              | PG cluster workload needs to run on VirtualMachine (managed by AKS)                                             |
-| Microsoft.ContainerService     | The management to PG cluster workload runs on Azure Kubernetes Service cluster                                  |
-| Microsoft.KeyVault             | The PG cluster’s data volume is encrypted by keys stored in the Azure KeyVault.  The credential information created to manage all the Azure resources used by EDB Cloud in the user’s Azure subscription will also be stored in Azure KeyVault  |
-| Microsoft.Storage              | The PG cluster backups the data to Azure Service Account, the data is encrypted by the key stored in AKV above. |
-| Microsoft.ManagedIdentity      | The management software access to the local Azure service by Azure Managed-Identity in password-less manner     |
-| Microsoft.Network              | All the management and PG cluster workload runs in AKS setup in the dedicated VNet                              |
-| Microsoft.OperationalInsights  | All the management and PG clusters’ workload’s logging (log workspace)                                          |
-| Microsoft.OperationsManagement | All workloads’ monitoring (container insight)                                                                   |
-| Microsoft.Portal               | Predefined dashboard for user to monitor the running status of the PG clusters (aggregated logs and metrics)    |
+EDB provides an [azure-preflight](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) shell script to perform the preflight checks in your subscription automatically. 
 
 !!! Note
-    Absence of registration for any of these service providers in you Azure subscription leads to failure to create Postgres cluster in EDB Cloud.
+    Ensure that the following utilities are installed on the server where the scripts is run:
+    * jq
+    * azure cli v2.26 or above
 
-### Managing Service Providers using Azure CLI
-
-You can check the status of a service provides as follows:
-
-```az provider show -n Provider.Name ```
-
-Example:
-```
-$ az provider show -n Microsoft.ContainerService
-Namespace                   RegistrationPolicy    RegistrationState
---------------------------  --------------------  -------------------
-Microsoft.ContainerService  RegistrationRequired  NotRegistered
+1. Run 
 
 ```
-If a required provider `RegistrationStatus` is `NotRegistered`, you can register it using the [register command](https://docs.microsoft.com/en-us/cli/azure/provider?view=azure-cli-latest#az_provider_register)  :
-
-```az provider register -n Provider.Name ```
-
-Example:
-```
- az provider register -n Microsoft.ContainerService
-Registering is still on-going. You can monitor using 'az provider show -n Microsoft.ContainerService
-
+git clone https://github.com/EnterpriseDB/cloud-utilities/ to get the script.
 ```
 
-### Managing Service Providers using Azure portal
+1. Run 
 
-1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
-2. Select your specific subscription.
-3. In navigation panel **Settings** group, select **Resource providers**.
-4. Review the status of the required providers. To register a provider, select the provider, and, on the top menu, click **Register**.
+```
+./cloud-utilities/azure/azure-preflight.sh --location <location> --pgtype <pg-type> --endpoint <endpoint> [--ha] [--with-infra]
+```
 
+Let us consider an example where you want deploy a cluster with the following parameters:
+Region: eastus2 
+Cluster type: E2s_v3
+Endpoint type: public 
+Existing cluster: No 
 
-## Raising Azure resource limits
+Run the following command:
+./azure-preflight.sh --location eastus2 --pgtype e2s_v3 --endpoint public --with-infra
 
-EDB Cloud deploys the “Infrastructure” to manage the PG clusters in your Azure subscription. This infrastructure is deployed in  every region you designated for the deployment of your Postgres cluster. The infrastructure contains VM(Virtual Machines, used as the AKS worker nodes) vCPU cores and Public IP(used as the Azure Standard LoadBalancer for the user to access its PG clusters).
-Any time a new VM is deployed the vCPUs for the VM must not exceed the vCPU quota for the VM size family or the total regional vCPU quota. If either of those quotas are exceeded, the VM deployment will not be allowed. There is also a quota for the overall number of IP Addresses in the region. Thus, the creation of a PG cluster in one region might fail due to insufficient resources for the creation of EDB Cloud “infrastructure” in the designated region.
+## Quota for vCPU and IP addresses
+
+EDB Cloud infrastructure consists of VMs, vCPU cores, and Public IP addresses. 
+
+Any time a new VM is deployed the vCPUs for the VM must not exceed the vCPU quota for the VM size family or the total regional vCPU quota. If either of those quotas are exceeded, the VM deployment will not be allowed. There is also a quota for the overall number of IP Addresses in the region. Thus, the creation of a PG cluster in one region might fail due to insufficient resources for the creation of EDB Cloud infrastructure in the designated region.
+
+### Raising Azure resource limits
 
 To prevent EDB Cloud from hitting resource limits, you need to
 
@@ -161,4 +139,63 @@ To check SKU restrictions using Azure portal use [this reference documents](http
 [Open a support request](https://docs.microsoft.com/en-us/troubleshoot/azure/general/region-access-request-process)  to remove SKU restrictions in the designated region.
 
 
+## Azure Service Providers
+EDB Cloud creates and manages [certain types of Azure resources](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/resource-providers-and-types). P
+Please, ensure that the following Azure service providers have been registered in your Azure subscription:
 
+| Provider Namespace             | Purpose                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Microsoft.Compute              | PG cluster workload needs to run on VirtualMachine (managed by AKS)                                             |
+| Microsoft.ContainerService     | The management to PG cluster workload runs on Azure Kubernetes Service cluster                                  |
+| Microsoft.KeyVault             | The PG cluster’s data volume is encrypted by keys stored in the Azure KeyVault.  The credential information created to manage all the Azure resources used by EDB Cloud in the user’s Azure subscription will also be stored in Azure KeyVault  |
+| Microsoft.Storage              | The PG cluster backups the data to Azure Service Account, the data is encrypted by the key stored in AKV above. |
+| Microsoft.ManagedIdentity      | The management software access to the local Azure service by Azure Managed-Identity in password-less manner     |
+| Microsoft.Network              | All the management and PG cluster workload runs in AKS setup in the dedicated VNet                              |
+| Microsoft.OperationalInsights  | All the management and PG clusters’ workload’s logging (log workspace)                                          |
+| Microsoft.OperationsManagement | All workloads’ monitoring (container insight)                                                                   |
+| Microsoft.Portal               | Predefined dashboard for user to monitor the running status of the PG clusters (aggregated logs and metrics)    |
+
+!!! Note
+    Absence of registration for any of these service providers in you Azure subscription leads to failure to create Postgres cluster in EDB Cloud.
+
+### Managing Service Providers using Azure CLI
+
+You can check the status of a service provides as follows:
+
+```az provider show -n Provider.Name ```
+
+Example:
+```
+$ az provider show -n Microsoft.ContainerService
+Namespace                   RegistrationPolicy    RegistrationState
+--------------------------  --------------------  -------------------
+Microsoft.ContainerService  RegistrationRequired  NotRegistered
+
+```
+If a required provider `RegistrationStatus` is `NotRegistered`, you can register it using the [register command](https://docs.microsoft.com/en-us/cli/azure/provider?view=azure-cli-latest#az_provider_register)  :
+
+```az provider register -n Provider.Name ```
+
+Example:
+```
+ az provider register -n Microsoft.ContainerService
+Registering is still on-going. You can monitor using 'az provider show -n Microsoft.ContainerService
+
+```
+
+### Managing Service Providers using Azure portal
+
+1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
+2. Select your specific subscription.
+3. In navigation panel **Settings** group, select **Resource providers**.
+4. Review the status of the required providers. To register a provider, select the provider, and, on the top menu, click **Register**.
+
+
+
+
+
+See Also:
+
+* [This blogpost](https://support.edbcloud.com/hc/en-us/articles/4408171743897-How-to-check-Azure-available-resources-and-quota-limit-with-script-azure-preflight-sh) describes the examples of the usage.
+
+* While the script [azure-preflight.sh](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) is a recommended way of performing EDB Cloud preflight check, you can also perform this check using [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/) or [Azure portal](https://portal.azure.com/) as described below.
