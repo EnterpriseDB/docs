@@ -5,9 +5,9 @@
 const path = require("path");
 const fs = require("fs/promises");
 const { read, write } = require("to-vfile");
-const remarkParse = require("@mdx-js/mdx/node_modules/remark-parse");
+const remarkParse = require("remark-parse");
 const mdx = require("remark-mdx");
-const unified = require("@mdx-js/mdx/node_modules/unified");
+const unified = require("unified");
 const remarkFrontmatter = require("remark-frontmatter");
 const remarkStringify = require("remark-stringify");
 const admonitions = require("remark-admonitions");
@@ -26,7 +26,11 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const processor = unified()
     .use(remarkParse)
     .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
-    .use(admonitions, { tag: "!!!", icons: "none", infima: true })
+    .use(admonitions, { 
+      tag: "!!!", icons: "none", infima: true, customTypes: {
+        seealso: "note", hint: "tip", interactive: "interactive",
+      }
+    })
     .use(remarkFrontmatter)
     .use(mdx)
     .use(bdrTransformer);

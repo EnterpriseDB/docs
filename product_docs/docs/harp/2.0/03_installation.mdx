@@ -1,0 +1,129 @@
+---
+navTitle: Installation
+title: Installation
+---
+
+A standard installation of HARP includes two system services:
+
+* HARP Manager (`harp_manager`) on the node being managed
+* HARP Proxy (`harp_router`) elsewhere
+
+There are generally two ways to install and configure these services to manage
+Postgres for proper Quorum-based connection routing.
+
+## Software Versions
+
+HARP does have dependencies on external software. These must fit a minimum
+version as listed here.
+
+| Software  | Min Ver |
+|-----------|---------|
+| etcd      | 3.4     |
+| PgBouncer | 1.14    |
+
+## TPAExec
+
+The easiest way to install and configure HARP is to use EDB's TPAexec utility
+for cluster deployment and management. For details on this software, see the
+[TPAexec product page](https://access.2ndquadrant.com/customer_portal/sw/tpa/).
+
+!!! Note
+    TPAExec is currently only available through an EULA specifically dedicated
+    to BDR cluster deployments. If you are unable to access the above URL,
+    please contact your sales or account representative for more information.
+
+TPAexec itself must be configured to recognize that cluster routing should be
+managed through HARP by ensuring the TPA `config.yml` file contains these
+attributes:
+
+```yaml
+cluster_vars:
+  failover_manager: harp
+```
+
+!!! Note
+    Versions of TPAexec prior to 21.1 require a slightly different approach:
+
+    ```yaml
+    cluster_vars:
+      enable_harp: true
+    ```
+
+After this, HARP will be installed by invoking the regular `tpaexec` commands
+for making cluster modifications:
+
+```bash
+tpaexec provision ${CLUSTER_DIR}
+tpaexec deploy ${CLUSTER_DIR}
+```
+
+No other modifications should be necessary, barring cluster-specific
+considerations.
+
+
+## Package Installation
+
+Currently CentOS/RHEL packages are provided via the EDB packaging
+infrastructure. For details, see the [HARP product
+page](https://access.2ndquadrant.com/customer_portal/sw/harp/).
+
+### etcd Packages
+
+Currently `etcd` packages for many popular Linux distributions are not 
+available via their standard public repositories. EDB has therefore packaged 
+`etcd` for RHEL and CentOS versions 7 and 8, Debian, and variants such as 
+Ubuntu LTS. Again, access to our HARP package repository is necessary to use
+these libraries.
+
+## Consensus layer
+
+HARP requires a distributed consensus layer to operate. Currently this must be
+either `bdr` or `etcd`. If using fewer than 3 BDR nodes, it may become
+necessary to rely on `etcd`. Otherwise any BDR service outage will reduce the
+consensus layer to a single node and thus prevent node consensus and disable
+Postgres routing.
+
+### etcd
+
+If using `etcd` as the consensus layer, `etcd` must be installed either
+directly on the Postgres nodes, or in some separate location they can access.
+
+To set `etcd` as the consensus layer, include this in the HARP `config.yml`
+configuration file:
+
+```yaml
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+```
+
+When using TPAExec, all configured etcd endpoints will be entered here 
+automatically.
+
+### BDR
+
+The `bdr` native consensus layer is available from BDR 3.6.21 and 3.7.3. This 
+Consensus Layer model requires no supplementary software when managing routing 
+for a BDR cluster.
+
+As previously mentioned, to ensure Quorum is possible in the cluster, always
+use more than two nodes so BDR's consensus layer remains responsive during node
+maintenance or outages.
+
+To set BDR as the consensus layer, include this in the `config.yml` 
+configuration file:
+
+```yaml
+dcs:
+  driver: bdr
+  endpoints:
+    - host=host1 dbname=bdrdb user=harp_user
+    - host=host2 dbname=bdrdb user=harp_user
+    - host=host3 dbname=bdrdb user=harp_user
+```
+
+As can be seen here, the endpoints for a BDR consensus layer follow the
+standard Postgres DSN connection format.
