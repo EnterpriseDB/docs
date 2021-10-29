@@ -1,0 +1,188 @@
+---
+title: Increasing qotas in Azure
+---
+
+Your Azure subscription must meet certain quota (service limit) requirements to work with EDB Cloud. By default, Azure sets a very low limit on the number of VMs, vCPUs (cores), and Public IP Addresses permitted for a particular region in your subscription.
+
+To enable EDB Cloud to perform its operations successfully, ensure that the following requirements are met.  
+
+ * Is there enough quota for vCPU and IP addresses in your region?
+ * Are there enough virtual machine SKUs available in your region?
+ * Are the necessary Azure resource providers registered to your subscription?
+
+For information about planning for qota requirements, see [Understanding qotas in Azure](../01_increasing_qotas_in_azure/01_understanding_qotas_in_azure) 
+
+Before you use EDB Cloud to deploy your clusters:
+
+1. [Check the qota requirements for your cluster](#check-qota-requirements).
+1. [Remediate qota issues in your Azure subscription](#remediate-qota-issues).
+
+## Check the qota requirements
+
+EDB provides an [azure-preflight](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) shell script to check your subscription automatically. Although EDB recommends using the the azure-preflight script, you can also use the Azure CLI or the Azure portal to manually check the requirements.
+
+### Using the azure-preflight shell script
+
+Before proceeding, ensure that the following utilities are installed on the server where the script is run.
+ 
+ * jq
+ * azure cli v2.26 or above
+
+1. From the Azure CLI, run the following command to download the script.  
+
+ ```
+ git clone https://github.com/EnterpriseDB/cloud-utilities/
+ ```
+
+1. Next, run the **azure-preflight.sh** script. 
+
+ ```
+  ./cloud-utilities/azure/azure-preflight.sh --location azure_region --pgtype pg_type --endpoint end_point [--ha] [--with-infra]
+ ```
+
+ Replace the following variables with:
+   * **azure_region**: the Azure region where you plan to deploy the cluster
+   * **pg_type**: virtual machine instance of type E{N}Sv3 or D{N}Sv2 using {N} cores.
+   * **end_point**: indicates either public or private endpoint
+   * **--ha**: indicates that instance is run with high availability enabled
+   * **--with-infra**: NEED INPUTS HERE
+
+ For example, if you want to deploy a cluster in the eastus2 region with E2s_v3 cores, in a public network, and no existing cluster. Run the following command:
+
+ ```
+  ./azure-preflight.sh --location eastus2 --pgtype e2s_v3 --endpoint public --with-infra
+ ```
+
+1. The script displays whether you have adequate quotas for vCPU, IP addresses, and VM SKUs.  
+ 
+ ```
+  ####################### 
+  # Quota Limitation # 
+  ####################### 
+
+ Resource                        Limit   Used    Available    Gap   Suggestion 
+ Total Regional vCPUs            130     27      103          89    OK 
+ Standard DSv2 Family vCPUs      20      14      6            0     Need Increase 
+ Standard ESv3 Family vCPUs      20      4       16           8     OK 
+ Public IP Addresses — Basic     20      11      9            8     OK 
+ Public IP Addresses — Standard  20      3       17           16    OK 
+ ```
+
+ ```
+  ####################### 
+  # Virtual—Machine SKU # 
+  ####################### 
+  
+  Resource Type     Locations   Name              Zones    Restrictions 
+  VirtualMachines   eastus2     Standard_DS2_v2   1,2,3    NotAvailabtcForSubscription, type: Lone locations: eastus2, zones: 3,2
+  VirtualMachines   eastus2     Standard_E2s_v3   1,2,3    NotAvailableForSubscription, type: Zone, Locations: eastus2, zones: 3,2 
+ ```
+ It also displays a list of Azure Service Providers that need to be registered.
+
+ ```
+ ########################### 
+ # Azure Service Providers # 
+ ########################### 
+
+ Namespace                   RegistrationPolicy    RegistrationState
+ --------------------------  --------------------  -------------------
+ Microsoft.ContainerService  RegistrationRequired  NotRegistered
+ 
+ ```
+ 
+
+### Using the Azure protal or the the Azure CLI
+
+#### Checking qota utilization for vCPUs and Public IP Addresses
+
+To check if you have adequate Azure resources to provision new clusters:
+
+1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
+2. Select your specific subscription.
+3. Select **Usage + quotas** in the **Settings** section.
+4. Search for "Total Regional vCPUs" and select the **Location** to check the regional vCPUs limits.
+5. Search for "DSv2" and "ESv3" to view virtual machines limits.
+6. Search for Public IP to view networks limits.
+
+
+#### Checking Virtual Machine SKU restrictions
+
+You can check SKU restrictions using Azure CLI. Below is the example of command to check the Standard_DS2_v2 VM SKU restriction in westus2 location for all zones:
+
+```
+az vm list-skus -l eastus2 --zone --size Standard_DS2_v2
+ResourceType     Locations    Name             Zones    Restrictions
+---------------  -----------  ---------------  -------  -----------------------------------------------------------------------
+virtualMachines  eastus2      Standard_DS2_v2  1,2,3    NotAvailableForSubscription, type: Zone, locations: eastus2, zones: 3,2
+```
+The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in in Restrictions column must be `None` as in the example below:
+
+```
+$ az vm list-skus -l westus2 --zone --size Standard_DS2_v2
+ResourceType     Locations    Name             Zones    Restrictions
+---------------  -----------  ---------------  -------  --------------
+virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
+```
+To check SKU restrictions using Azure portal use [this reference documents](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/error-sku-not-available#solution-3---azure-portal).
+
+
+#### Checking Azure Service Providers registerations using Azure CLI
+
+The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in in Restrictions column must be `None` as in the example below:
+
+```
+$ az vm list-skus -l westus2 --zone --size Standard_DS2_v2
+
+ResourceType     Locations    Name             Zones    Restrictions
+---------------  -----------  ---------------  -------  --------------
+virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
+```
+
+## Remediate qota issues
+
+### Increasing Public IP Address quota
+
+You can increase the number of public IP addresses for your account either by using Azure's portal if you have appropriate privileges or by submitting a support request. See:
+
+- [Request Networking quota increase at subscription level using Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-help--support)
+
+- [Request networking quota increase at subscription level using Usages + quotas](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-usages--quotas)
+
+
+### Increasing vCPU quota
+
+You can increase the number of ESv3 Series virtual machines per region for your account either by using Azure's portal if you have appropriate privileges or by submitting a support request. See:
+
+- [Request a quota increase by region from Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-help--support)
+
+- [Request a quota increase by region from subscriptions](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-subscriptions)
+
+### Fixing issues with SKU restrictions
+
+[Open a support request](https://docs.microsoft.com/en-us/troubleshoot/azure/general/region-access-request-process)  to remove SKU restrictions in the designated region.
+
+
+### Registering Azure Service Providers using the Azure CLI
+
+If a required provider `RegistrationStatus` is `NotRegistered`, you can register it using the [register command](https://docs.microsoft.com/en-us/cli/azure/provider?view=azure-cli-latest#az_provider_register)  :
+
+```az provider register -n Provider.Name ```
+
+Example:
+```
+ az provider register -n Microsoft.ContainerService
+Registering is still on-going. You can monitor using 'az provider show -n Microsoft.ContainerService
+
+```
+
+### Registering the Service Providers using Azure portal
+
+1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
+2. Select your specific subscription.
+3. In navigation panel **Settings** group, select **Resource providers**.
+4. Review the status of the required providers. To register a provider, select the provider, and, on the top menu, click **Register**.
+
+
+
+
+
