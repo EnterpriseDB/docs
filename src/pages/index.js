@@ -108,9 +108,7 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/edbcloud/latest">
-              EDB Cloud Database Service
-            </IndexCardLink>
+            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
