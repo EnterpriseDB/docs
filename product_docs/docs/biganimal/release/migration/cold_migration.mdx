@@ -1,0 +1,177 @@
+---
+title: Importing an existing Postgres database
+---
+
+The simplest way to import a database into EDB Cloud is using logical backups taken with `pg_dump` and loaded using `pg_restore`. This approach provides a way to export and import a database across different versions of Postgres, including exporting from PostgreSQL and EDB Postgres Advanced Server versions prior to 10.
+
+The high-level steps are:
+
+1. [Export existing roles](#exporting-existing-roles)
+1. [Import existing roles](#importing-the-roles)
+1. For each database, you are migrating:
+   1. [logical export using `pg_dump`](#exporting-a-database)
+   1. [logical import with `pg_restore`](#importing-a-database)
+
+In case your source PostgreSQL instance hosts multiple databases, you have the option to segment them in multiple EDB Cloud clusters, for easier management, better performance, increased predictability and finer control of resources. For example, if your host has ten databases, you can select to import one database (and related users) on a different EDB Cloud cluster, one at a time.
+
+## Downtime considerations
+
+This approach requires suspension of write operations to the database application for the duration of the export/import process. The write operations can then be resumed on the new system. This is because `pg_dump` takes an online snapshot of the source database. As a result, the changes after the backup starts are not included in the output.
+
+The required downtime depends on many factors, including:
+ - Size of the database
+ - Speed of the network between the two systems
+ - Your team's familiarity with the migration procedure.
+
+To minimize the downtime, you can test the process as many times as needed before the actual migration, as the export with `pg_dump` can be performed online and the process is repeatable and measurable.
+
+## Before you begin
+
+Ensure you:
+ - Understand the [terminology conventions](#terminology-conventions) used in this topic
+ - Have the [required Postgres client binaries and libraries](/#postgres-client-libraries)
+ - Can [access the source and target databases](#access-to-the-source-and-target-database)
+
+### Terminology conventions
+
+| Term | Alias | Description |
+| ---- | ----- | ---------- |
+| source database | `pg-source` | Postgres instance from which you want to import your data. |
+| target database | `pg-target` | Postgres cluster in EDB Cloud where you want to import your data. |
+| migration host | `pg-migration` | Temporary Linux machine in your trusted network from which to execute the export of the database and the subsequent import into EDB Cloud. The migration host needs access to both the source and target databases.  Or, if your source and target databases are on the same version of Postgres, the source host can serve as your migration host. |
+
+
+### Postgres client libraries
+
+The following client binaries must be on the migration host:
+
+- `pg_dumpall`
+- `pg_dump`
+- `pg_restore`
+- `psql`
+
+They must be the same version as the Postgres version of the target database. For example, if you want to import a PostgreSQL 9.6 database from your private network into a PostgreSQL 13 database in EDB Cloud, use the client libraries and binaries from version 13.
+
+### Access to the source and target database
+
+Access requirements:
+
+- PostgreSQL superuser access to the source database. This could be the `postgres` user or another user with `SUPERUSER` privileges.
+- Access to the target database in EDB Cloud as the `edb_admin` user.
+
+
+To verify you have the proper access:
+1. Connect to the source database using `psql`. For example:
+   ```
+   psql -d "host=pg-source user=postgres dbname=postgres"
+   ```
+   Replace `pg-source` with the actual hostname or IP address of the source database and the `user` and `dbname` values as appropriate. If the connection does not work, contact your system and database administrators to make sure that you can access the source database (this might require changes to your `pg_hba.conf` and network settings). If `pg_hba.conf` is changed, the configuration should be reloaded with either `SELECT pg_reload_conf();` via a psql connection or `pg_ctl reload` in a shell connection to the database host.
+
+1. Connect to the target database using the `edb_admin` user. For example:
+   ```
+   psql -d "host=pg-target user=edb_admin dbname=edb_admin"
+   ```
+   Replace `pg-source` with the actual hostname of your EDB Cloud cluster.
+
+## Exporting existing roles
+Export the existing roles from your source Postgres instance by running the following command on the migration host:
+```
+pg_dumpall -r -d "host=pg-source user=postgres dbname=postgres" > roles.sql
+```
+
+The generated SQL file should look like this:
+
+```
+--
+-- PostgreSQL database cluster dump
+--
+
+SET default_transaction_read_only = off;
+
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+
+--
+-- Roles
+--
+
+--- … Your roles are here ...
+
+--
+-- PostgreSQL database cluster dump complete
+--
+```
+
+
+
+## Importing the roles
+1. Your EDB Cloud cluster already contains the `edb_admin` user, as well as the following system required roles:
+   - `postgres` (the superuser, needed by the EDB Cloud to manage the cluster)
+   - `streaming_replica` (required to manage streaming replication)
+
+   As a result, you need to modify the `roles.sql` file to:
+   1. Remove the lines involving the `postgres` user. For example, remove lines like these:
+      ```
+      CREATE ROLE postgres;
+      ALTER ROLE postgres WITH SUPERUSER ….;
+      ```
+    2. Remove any role with superuser or replication privileges. For example, remove lines like these:
+       ```
+       CREATE ROLE admin;
+       ALTER ROLE admin WITH SUPERUSER ….;
+       ```
+    3. For every role that is created, grant the new role to the `edb_admin` user immediately after the creation of the user. For example:
+       ```
+       CREATE ROLE my_role;
+       GRANT my_role TO edb_admin;
+       ```
+    4. Remove the `NOSUPERUSER`, `NOCREATEROLE`, `NOCREATEDB`, `NOREPLICATION`, `NOBYPASSRLS` permission attributes on the other users.
+
+   The role section in the modified file should look similar to:
+   ```
+   CREATE ROLE my_role;
+   GRANT my_role TO edb_admin;
+   ALTER ROLE my_role WITH INHERIT LOGIN PASSWORD 'SCRAM-SHA-256$4096:my-Scrambled-Password';
+   ```
+1. From the migration host, execute:
+
+   ```
+   psql -1 -f roles.sql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full"
+   ```
+   (Replace `pg-target` with the Fully Qualified Domain Name (FQDN) of your EDB Cloud cluster).
+
+
+   This command tries to create the roles in a single transaction. In case of errors, the transaction is rolled back, leaving the database cluster in the same state as before the import attempt. This behavior is enforced using the `-1` option of `psql`.
+
+## Exporting a database
+From the migration host, use the `pg_dump` command to export the source database into the target database in EDB Cloud. For example:
+
+```
+pg_dump -Fc -d "host=pg-source user=postgres dbname=app" -f app.dump
+```
+
+!!! Note
+    You can use the `--verbose` option to monitor the progress of the operation.
+
+The command generates a custom .dump archive (`app.dump` in this example), which contains the compressed dump of the source database. The duration of the command execution varies depending on several variables including size of the database, network speed, disk speed, and CPU of both the source instance and the migration host. You can inspect the table of contents of the dump with `pg_restore -l <db_name>.dump`.
+
+As with any other custom format dump produced with `pg_dump`, you can take advantage of the features that `pg_restore` provides you with, including:
+- Selecting a subset of the import tasks by editing the table of contents and passing it to the `-L` option.
+- Running the command in parallel using the `-j` option in conjunction with the directory format.
+
+For further information, see the [`pg_restore` documentation](https://www.postgresql.org/docs/current/app-pgrestore.html).
+
+## Importing a database
+Use the `pg_restore` command and the .dump file you creating when exporting the source database to import the database into EDB Cloud. For example:
+
+```
+pg_restore -C -d  "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=require" app.dump
+```
+This process might take some time depending on the size of the database and the speed of the network.
+
+In case of error, repeat the restore operation once you have deleted the database using the following command:
+
+```
+psql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=require" \
+    -c ‘DROP DATABASE app’
+```
