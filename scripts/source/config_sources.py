@@ -26,7 +26,7 @@ PRODUCT_DOCS = [
     'pgpool',
     'postgis',
     'slony',
-    'edbcloud',
+    'biganimal',
 ]
 
 BASE_OUTPUT = {}
@@ -54,7 +54,7 @@ OPTIONS = [
     { 'index': '1q', 'name': 'Mongo Data Adapter', 'key': 'mongo_data_adapter', 'indent': True },
     { 'index': '1r', 'name': 'MySQL Data Adapter', 'key': 'mysql_data_adapter', 'indent': True },
     { 'index': '1s', 'name': 'Replication Server', 'key': 'eprs', 'indent': True },
-    { 'index': '1t', 'name': 'EDB Cloud', 'key': 'edbcloud', 'indent': True },
+    { 'index': '1t', 'name': 'BigAnimal', 'key': 'biganimal', 'indent': True },
 ]
 
 print('Which sources would you like loaded when you run `npm run develop`?')
