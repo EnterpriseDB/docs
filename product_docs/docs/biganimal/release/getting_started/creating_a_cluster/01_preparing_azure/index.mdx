@@ -1,28 +1,25 @@
 ---
-title: Managing service limits and constraints in Azure
+title: "Preparing your Azure account"
 
 ---
 
-Your Azure subscription must meet certain quota (service limit) requirements to work with EDB Cloud. By default, Azure sets a very low limit on the number of VMs, vCPUs (cores), and public IP addresses permitted for a particular region in your subscription.
+BigAnimal requires you to configure your Azure subscription before you deploy your clusters. The configurations you perform ensure that your Azure subscription is prepared to meet your clusters's resource requirements, such as: 
 
-To enable EDB Cloud to perform its operations successfully, ensure that the following requirements are met.  
+ * Is there sufficient limit on the number vCPU or Public IP addresses in your region?
+ * Is there sufficient limit on the number of vCPUs for the Standard Dsv2 and Standard Esv3 VM size families?
+ * Are the necessary Azure Service Providers registered for your subscription?
 
- * Is there enough quota for vCPU and IP addresses in your region?
- * Are there enough virtual machine SKUs available in your region?
- * Are the necessary Azure resource providers registered to your subscription?
+Before proceeding, see [Understanding quotas in Azure](../01_preparing_azure/01_understanding_qotas_in_azure) for information about planning for your clusters' resource requirements in Azure.
 
-For information about planning for quota requirements, see [Understanding quotas in Azure](../01_increasing_qotas_in_azure/01_understanding_qotas_in_azure). 
+## Step 1: Check the resource limit requirements
 
-Before you use EDB Cloud to deploy your clusters:
+EDB provides a shell script called [`azure-preflight`](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) that automatically checks your Azure subscription based on the clusters you plan to deploy. Although EDB recommends using the `azure-preflight` script, you also have the option of using the Azure CLI or the Azure Portal to check the requirements manually.
 
-1. [Check the quota requirements are met for your cluster](#check-qota-requirements).
-1. [Remediate quota issues in your Azure subscription](#remediate-qota-issues).
+ * [Use the Azure shell script](#use-the-azure-shell-script) (recommended)
+ * [Use the Azure Portal or the Azure CLI](#use-the-azure-portal-or-the-azure-cli)
 
-## Check the quota requirements
 
-EDB provides a shell script called [`azure-preflight`](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) to check your subscription automatically.  Although EDB recommends using the the `azure-preflight` script, you can also use the Azure CLI or the Azure portal to manually check the requirements.
-
-### Using the `azure-preflight` shell script
+### Use the Azure shell script
 
 Before proceeding, ensure that the following utilities are installed on the server where the script is run.
  
@@ -40,7 +37,7 @@ Before proceeding, ensure that the following utilities are installed on the serv
   ./cloud-utilities/azure/azure-preflight.sh --location <azure_region> --pgtype <pg_type> --endpoint <end_point> [--ha] [--with-infra]
    ```
    where, 
-   - `azure_region` is the Azure region where you plan to deploy the cluster
+   - `azure_region` is the Azure region where you plan to deploy your clusters
    - `pg_type` is the virtual machine instance of type E{N}Sv3 or D{N}Sv2 using {N} cores.
    - `end_point` indicates either public or private endpoint
    - `--ha` indicates that the instance is run with high availability enabled
@@ -52,8 +49,10 @@ Before proceeding, ensure that the following utilities are installed on the serv
   ./azure-preflight.sh --location eastus2 --pgtype e2s_v3 --endpoint public --with-infra
  ```
 
-1. The script displays whether you have adequate quotas for vCPU, IP addresses, and VM SKUs.  
+1. The script displays the following output:  
  
+ * Whether you have sufficient limits on vCPUs and IP addresses your region:
+
  ```
   ####################### 
   # Quota Limitation # 
@@ -67,6 +66,8 @@ Before proceeding, ensure that the following utilities are installed on the serv
  Public IP Addresses — Standard  20      3       17           16    OK 
  ```
 
+ * Whether you have sufficient limits on vCPUs for the `Standard_DS2_v2` and `Standard_E2s_v3` VM size family in your region and availability zone (if HA is enabled).
+
  ```
   ####################### 
   # Virtual—Machine SKU # 
@@ -76,7 +77,7 @@ Before proceeding, ensure that the following utilities are installed on the serv
   VirtualMachines   eastus2     Standard_DS2_v2   1,2,3    NotAvailabtcForSubscription, type: Lone locations: eastus2, zones: 3,2
   VirtualMachines   eastus2     Standard_E2s_v3   1,2,3    NotAvailableForSubscription, type: Zone, Locations: eastus2, zones: 3,2 
  ```
- It also displays a list of Azure Service Providers that need to be registered.
+ * A list of Azure Service Providers that need to be registered for your subscription.
 
  ```
  ########################### 
@@ -90,23 +91,23 @@ Before proceeding, ensure that the following utilities are installed on the serv
  ```
  
 
-### Using the Azure portal or the the Azure CLI
-Alternatives to using the `azure-preflight` script are using the Azure portal and the Azure CLI.
+### Use the Azure Portal or the Azure CLI
+If you are using the Azure Portal and the Azure CLI, instead of the `azure-preflight` script, perform the following procedures:
 
-#### Checking quota utilization for vCPUs and Public IP Addresses
+#### Check the resource limits for vCPUs and Public IP Addresses for your region
 
 To check if you have adequate Azure resources to provision new clusters:
 
-1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
+1. In the [Azure Portal](https://portal.azure.com/), select **Subscription**.
 2. Select your specific subscription.
 3. Select **Usage + quotas** in the **Settings** section.
 4. Search for "Total Regional vCPUs" and select the **Location** to check the regional vCPUs limits.
-5. Search for "DSv2" and "ESv3" to view virtual machines limits.
-6. Search for Public IP to view networks limits.
+5. Search for "DSv2" and "ESv3" to view virtual machine limits.
+6. Search for Public IP addresses to view networks limits.
 
 
-#### Checking Virtual Machine SKU restrictions
-To check SKU restrictions using Azure portal use [these instructions](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/error-sku-not-available#solution-3---azure-portal).
+#### Check for Virtual Machine SKU restrictions
+To check SKU restrictions using Azure Portal use [these instructions](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/error-sku-not-available#solution-3---azure-portal).
 
 Alternatively, you can check SKU restrictions using Azure CLI. Below is the example of command to check the Standard_DS2_v2 VM SKU restriction in westus2 location for all zones:
 
@@ -126,10 +127,9 @@ virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
 ```
 
 
-
 #### Checking Azure Service Providers registrations using Azure CLI
 
-The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in in Restrictions column must be `None` as in this example:
+The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in Restrictions column must be `None` as in this example:
 
 ```
 $ az vm list-skus -l westus2 --zone --size Standard_DS2_v2
@@ -139,49 +139,54 @@ ResourceType     Locations    Name             Zones    Restrictions
 virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
 ```
 
-## Remediate quota issues
+## Step 2: Configure your Azure subscription
 
-### Increasing Public IP Address quota
+After checking the whether the resource requirements are met, configure your Azure subscription based on the output of the `azure-preflight.sh`. 
+
+!!! Note
+    If you have manually checked the resource requirements (without using the script), see [Understanding quotas in Azure](../01_increasing_qotas_in_azure/01_understanding_qotas_in_azure) for a detailed explanation of the resource limit requirements in your Azure. 
+
+### Increase Public IP Addresses limits
+
+Increase the limit of `Public IP Addresses - Basic` and `Public IP Addresses - Standard` for the regions where you plan to deploy your clusters with the total number of clusters you plan to use.
 
 You can increase the number of public IP addresses for your account either by using Azure's portal if you have appropriate privileges or by submitting a support request. See:
 
-- [Request Networking quota increase at subscription level using Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-help--support)
+* [Request Networking quota increase at subscription level using Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-help--support)
 
-- [Request networking quota increase at subscription level using Usages + quotas](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-usages--quotas)
+* [Request networking quota increase at subscription level using Usages + quotas](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/networking-quota-requests#request-networking-quota-increase-at-subscription-level-using-usages--quotas)
 
 
-### Increasing vCPU quota
+### Increase vCPU limits
 
-You can increase the number of ESv3 Series virtual machines per region for your account either by using Azure's portal if you have appropriate privileges or by submitting a support request. See:
+You can increase the number of Esv3 Series virtual machines per region either by: 
 
-- [Request a quota increase by region from Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-help--support)
-
-- [Request a quota increase by region from subscriptions](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-subscriptions)
+* Using the Azure Portal, if you have appropriate privileges
+* Submitting a support request. See:
+ * [Request a quota increase by region from Help + support](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-help--support)
+ * [Request a quota increase by region from subscriptions](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/regional-quota-requests#request-a-quota-increase-by-region-from-subscriptions)
 
 ### Fixing issues with SKU restrictions
 
 [Open a support request](https://docs.microsoft.com/en-us/troubleshoot/azure/general/region-access-request-process)  to remove SKU restrictions in the designated region.
 
 
-### Registering Azure Service Providers 
-To register Service Providers using the Azure portal:
+### Register Azure Service Providers 
+To register Service Providers using the Azure Portal:
 
-1. In the [Azure portal](https://portal.azure.com/), select **Subscription**.
+1. In the [Azure Portal](https://portal.azure.com/), select **Subscription**.
 2. Select your specific subscription.
 3. In navigation panel **Settings** group, select **Resource providers**.
 4. Review the status of the required providers. To register a provider, select the provider, and, on the top menu, select **Register**.
 
 To register Service Providers using the Azure CLI,
 use the [register command](https://docs.microsoft.com/en-us/cli/azure/provider?view=azure-cli-latest#az_provider_register). For example:
+
 ```sh
  az provider register -n Microsoft.ContainerService
 Registering is still on-going. You can monitor using 'az provider show -n Microsoft.ContainerService
 
 ```
-
-
-
-
 
 
 
