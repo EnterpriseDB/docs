@@ -22,7 +22,7 @@ const FooterItem = ({ url, children }) => (
 const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="https://www.enterprisedb.com/support-portal">
+    <FooterItem url="https://support.enterprisedb.com/support/s/">
       Knowledge Base
     </FooterItem>
     <FooterItem url="https://enterprisedb.com/contact">Contact Us</FooterItem>
