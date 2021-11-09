@@ -16,7 +16,7 @@ const IndexSubNav = () => (
       <IndexSubLink url="https://support.enterprisedb.com/support/s/">
         Knowledge Base
       </IndexSubLink>
-      <IndexSubLink url="https://enterprisedb.com/contact">
+      <IndexSubLink url="https://www.enterprisedb.com/contact">
         Contact Us
       </IndexSubLink>
       <IndexSubLink url="/community/contributing/">Have feedback?</IndexSubLink>
