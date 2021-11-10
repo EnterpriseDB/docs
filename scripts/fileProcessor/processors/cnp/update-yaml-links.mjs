@@ -8,7 +8,7 @@ import admonitions from "remark-admonitions";
 import visit from "unist-util-visit";
 import isAbsoluteUrl from "is-absolute-url";
 
-export const process = (filename, content) => {
+export const process = async (filename, content) => {
 
   const processor = unified()
     .use(remarkParse)
@@ -22,7 +22,7 @@ export const process = (filename, content) => {
     .use(mdx)
     .use(linkRewriter);
 
-  const output = processor.processSync(toVFile({ path: filename, contents: content }));
+  const output = await processor.process(toVFile({ path: filename, contents: content }));
 
   return {
     newFilename: filename,
