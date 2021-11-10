@@ -5,55 +5,61 @@ title: "Preparing your Azure account"
 
 BigAnimal requires you to configure your Azure subscription, before you deploy your clusters. The configurations that you perform ensure that your Azure subscription is prepared to meet your clusters' resource requirements, such as: 
 
- * Is there sufficient limit on the number vCPU or Public IP addresses in your region?
- * Is there sufficient limit on the number of vCPUs for the Standard Dsv2 and Standard Esv3 VM size families?
+ * Is there a sufficient limit on the number vCPU or Public IP addresses in your region?
+ * Is there a restriction on SKUs for the Standard Dsv2 and Standard Esv3 VM size families?
  * Are the necessary Azure Service Providers registered for your subscription?
 
 Before proceeding, see [Understanding requirements in Azure](../01_preparing_azure/01_understanding_qotas_in_azure) for information about planning for your clusters' resource requirements in Azure.
 
-## Step 1: Check the resource limit requirements
+## Step 1: Check the Azure requirements
 
-EDB provides a shell script called [`azure-preflight`](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) that automatically checks your Azure subscription based on the clusters you plan to deploy. Although EDB recommends using the `azure-preflight` script, you also have the option of using the Azure CLI or the Azure Portal to check the requirements manually.
+Although EDB recommends using the `azure-preflight` script, you also have the option of using the Azure CLI or the Azure Portal to manually check the requirements.
 
- * [Use the Azure shell script](#use-the-azure-shell-script) (recommended)
- * [Use the Azure Portal or the Azure CLI](#use-the-azure-portal-or-the-azure-cli)
+ * [Method 1: Use the Azure shell script](#use-the-azure-shell-script) (recommended)
+ * [Method 2: Manually check requirements](#manually-check-requirements)
 
 
 ### Use the Azure shell script
 
-Before proceeding, ensure that the following utilities are installed on the server where the script is run.
+EDB provides a shell script called [`azure-preflight`](https://github.com/EnterpriseDB/cloud-utilities/blob/main/azure/azure-preflight.sh) that automatically checks requirements in your Azure subscription based on the clusters you plan to deploy.
+
+1. Open the [Azure Cloud Shell](https://shell.azure.com/) in your browser.
  
- - [jq command-line JSON processor](https://stedolan.github.io/jq/) specific to your OS
- - Azure CLI v2.26 or later
+ !!! Note
+     Before proceeding, ensure that the [jq command-line JSON processor](https://stedolan.github.io/jq/) utility is installed in your environment.
 
-1. From the Azure CLI, run the following command to download the script:  
+1. From the Azure Cloud Shell, run the following command to download the script:  
 
  ```
- git clone https://github.com/EnterpriseDB/cloud-utilities/
+ curl -fsSL https://raw.githubusercontent.com/EnterpriseDB/cloud-utilities/main/azure/azure-preflight.sh
  ```
 
-1. Run the `azure-preflight.sh` script: 
-   ```
+1. Run the `azure-preflight.sh` script with the following options: 
+   - *azure_region* is the Azure region you plan to deploy your clusters.
+   - *pg_type* is virtual machine instance of type E{N}Sv3 or D{N}Sv2 using {N} cores.
+   - *end_point* indicates either `public` or `private` endpoint.
+   - *--ha* indicates that the instance is run with high availability enabled.
+   - *--with-infra* indicates that no clusters have been created in the region.
+
+  
+ ```
   ./cloud-utilities/azure/azure-preflight.sh --location <azure_region> --pgtype <pg_type> --endpoint <end_point> [--ha] [--with-infra]
    ```
-   where, 
-   - `azure_region` is the Azure region where you plan to deploy your clusters
-   - `pg_type` is the virtual machine instance of type E{N}Sv3 or D{N}Sv2 using {N} cores.
-   - `end_point` indicates either public or private endpoint
-   - `--ha` indicates that the instance is run with high availability enabled
-   - `--with-infra` displays infrastructure information  
+    
 
- For example, if you want to deploy a cluster in the eastus2 region with E2s_v3 cores, in a public network, and no existing cluster, run the following command:
 
- ```
+ For example, if you want to deploy a cluster in the `eastus2` region with `E2s_v3` cores, in a `public` network, and no existing cluster, run the following command:
+
+ ```sh
   ./azure-preflight.sh --location eastus2 --pgtype e2s_v3 --endpoint public --with-infra
  ```
 
-1. The script displays the following output:  
+The script displays the following:  
  
- * Whether you have sufficient limits on vCPUs and IP addresses your region:
+ * Whether you have sufficient limits on vCPUs and IP addresses for your region:
 
  ```
+ __OUTPUT__
   ####################### 
   # Quota Limitation # 
   ####################### 
@@ -66,9 +72,10 @@ Before proceeding, ensure that the following utilities are installed on the serv
  Public IP Addresses — Standard  20      3       17           16    OK 
  ```
 
- * Whether you have sufficient limits on vCPUs for the `Standard_DS2_v2` and `Standard_E2s_v3` VM size family in your region and availability zone (if HA is enabled).
+ * Whether you have sufficient limits on vCPUs for the `Standard_DS2_v2` and `Standard_E2s_v3` VM size families in your region and availability zone (if HA is enabled).
 
  ```
+ __OUTPUT__
   ####################### 
   # Virtual—Machine SKU # 
   ####################### 
@@ -80,6 +87,7 @@ Before proceeding, ensure that the following utilities are installed on the serv
  * A list of Azure Service Providers that need to be registered for your subscription.
 
  ```
+ __OUTPUT__
  ########################### 
  # Azure Service Providers # 
  ########################### 
@@ -91,8 +99,8 @@ Before proceeding, ensure that the following utilities are installed on the serv
  ```
  
 
-### Use the Azure Portal or the Azure CLI
-If you are using the Azure Portal and the Azure CLI, instead of the `azure-preflight` script, perform the following procedures:
+### Manually check requirements
+If you are manually checking the requirements, instead of using the `azure-preflight` script, perform the following procedures:
 
 #### Check the resource limits for vCPUs and Public IP Addresses for your region
 
@@ -101,50 +109,53 @@ To check if you have adequate Azure resources to provision new clusters:
 1. In the [Azure Portal](https://portal.azure.com/), select **Subscription**.
 2. Select your specific subscription.
 3. Select **Usage + quotas** in the **Settings** section.
-4. Search for "Total Regional vCPUs" and select the **Location** to check the regional vCPUs limits.
-5. Search for "Dsv2" and "Esv3" to view virtual machine limits.
-6. Search for Public IP addresses to view networks limits.
+4. Search for *Total Regional vCPUs* and select the **Location** to check the regional vCPUs limits.
+5. Search for *Dsv2* and *Esv3* to view virtual machine limits.
+6. Search for Public IP addresses to view network limits.
 
 
-#### Check for Virtual Machine SKU restrictions
+#### Check for vCPU restrictions for the VM size family
 To check SKU restrictions using Azure Portal use [these instructions](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/error-sku-not-available#solution-3---azure-portal).
 
-Alternatively, you can check SKU restrictions using Azure CLI. Below is the example of command to check the Standard_DS2_v2 VM SKU restriction in westus2 location for all zones:
+Alternatively, you can check vCPU limits for the VM size family using the Azure CLI. Below is the example of command to check the Standard_DS2_v2 VM SKU restriction in westus2 location for all zones:
 
-```
+```sh
 az vm list-skus -l eastus2 --zone --size Standard_DS2_v2
+
+__OUTPUT__
 ResourceType     Locations    Name             Zones    Restrictions
 ---------------  -----------  ---------------  -------  -----------------------------------------------------------------------
 virtualMachines  eastus2      Standard_DS2_v2  1,2,3    NotAvailableForSubscription, type: Zone, locations: eastus2, zones: 3,2
 ```
-The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in in Restrictions column must be `None` as in the example below:
+The presence of entries in the **Restrictions** column would block BigAnimal from deploying clusters in the region. The value in **Restrictions** must be `None` as in the example below:
 
-```
+```sh
 $ az vm list-skus -l westus2 --zone --size Standard_DS2_v2
+__OUTPUT__
 ResourceType     Locations    Name             Zones    Restrictions
 ---------------  -----------  ---------------  -------  --------------
 virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
 ```
 
 
-#### Checking Azure Service Providers registrations using Azure CLI
+#### Checking Azure Service Provider registrations using Azure CLI
 
-The presence of entries in Restriction column would block EDB Cloud from deploying Postgres cluster in the specified region. The value in Restrictions column must be `None` as in this example:
+To check if a  resource provider is registered in Azure use the below command. 
 
 ```
-$ az vm list-skus -l westus2 --zone --size Standard_DS2_v2
-
-ResourceType     Locations    Name             Zones    Restrictions
----------------  -----------  ---------------  -------  --------------
-virtualMachines  westus2      Standard_DS2_v2  1,2,3    None
+ az provider show -n Microsoft.ContainerService
+__OUTPUT__
+Namespace                   RegistrationPolicy    RegistrationState
+--------------------------  --------------------  -------------------
+Microsoft.ContainerService  RegistrationRequired  Registered
 ```
 
 ## Step 2: Configure your Azure subscription
 
-After checking the whether the resource requirements are met, configure your Azure subscription based on the output of the `azure-preflight.sh`. 
+After checking whether the resource requirements are met, configure your Azure subscription based on the output of the `azure-preflight.sh`. 
 
 !!! Note
-    If you have manually checked the resource requirements (without using the script), see [Understanding quotas in Azure](../01_increasing_qotas_in_azure/01_understanding_qotas_in_azure) for a detailed explanation of the resource limit requirements in your Azure. 
+    If you have manually checked the requirements (using method 2), see [Understanding quotas in Azure](../01_increasing_qotas_in_azure/01_understanding_qotas_in_azure) for a detailed explanation of the requirements in your Azure. 
 
 ### Increase Public IP Addresses limits
 
@@ -176,7 +187,7 @@ To register Service Providers using the Azure Portal:
 
 1. In the [Azure Portal](https://portal.azure.com/), select **Subscription**.
 2. Select your specific subscription.
-3. In navigation panel **Settings** group, select **Resource providers**.
+3. In the navigation panel **Settings** group, select **Resource providers**.
 4. Review the status of the required providers. To register a provider, select the provider, and, on the top menu, select **Register**.
 
 To register Service Providers using the Azure CLI,
