@@ -141,9 +141,9 @@ module.exports = {
   pathPrefix: "/docs",
   siteMetadata: {
     title: "EDB Docs",
-    baseUrl: "https://enterprisedb.com/docs",
-    imageUrl: "https://enterprisedb.com/docs/images/social.jpg",
-    siteUrl: "https://enterprisedb.com/docs",
+    baseUrl: "https://www.enterprisedb.com/docs",
+    imageUrl: "https://www.enterprisedb.com/docs/images/social.jpg",
+    siteUrl: "https://www.enterprisedb.com/docs",
     algoliaIndex: algoliaIndex,
     isDevelopment: !isBuild,
     cacheBuster: 2, // for busting gh actions cache if needed
@@ -160,6 +160,7 @@ module.exports = {
       options: {
         headers: {
           "/*": isProduction ? [] : ["X-Robots-Tag: noindex"],
+          "/static/*.pdf": ["X-Robots-Tag: noindex"],
         },
       },
     },
