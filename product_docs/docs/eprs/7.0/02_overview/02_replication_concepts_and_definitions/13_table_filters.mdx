@@ -10,6 +10,61 @@ Table filters specify the selection criteria for rows in publication tables or v
 
 Implementing table filters is a two-part process. First, a set of available table filters must be defined. This can be done during the process of creating the publication by defining specific, named rules applicable to selected publication tables or views expressed in the form of `SQL WHERE` clauses.
 
+While simple conditions with comparison and logical operators (=, >, <, LIKE, etc.) are allowed as filters for all use cases, there is one use case when a more complex condition can be used as a filter. A subquery can be used in establishing an inclusion/exclusion list of IDs, if a single column is returned from the subquery. This is only supported for trigger-based SMR use case. Here are the patterns for this type of queries:
+
+```text
+PUBLISHED_TABLE_COLUMN_NAME IN (SELECT COLUMN_NAME FROM TABLE_NAME)
+
+PUBLISHED_TABLE_COLUMN_NAME NOT IN (SELECT COLUMN_NAME FROM TABLE_NAME)
+```
+
+For example, if we have a tables `dept` and `dept_filter_lookup` created with:
+
+
+```text
+CREATE TABLE public.dept (
+
+deptno NUMERIC(2) PRIMARY KEY,
+
+dname VARCHAR(14) UNIQUE,
+
+loc VARCHAR(13)
+
+);
+
+CREATE TABLE public.dept_filter_lookup (
+
+id NUMERIC(2) PRIMARY KEY
+
+);
+```
+
+then following filters can be used:
+
+```text
+deptno IN (SELECT id FROM public.dept_filter_lookup)
+```
+or 
+
+```text
+deptno NOT IN (SELECT id FROM public.dept_filter_lookup)
+```
+
+to create a publication with the following RepCLI commands:
+
+```text
+$ java -jar edb-repcli.jar -createpub  pub -repsvrfile ~/pubsvrfile -pubdbid 1 -tables public.dept -reptype T \
+
+-tablesfilterclause "public.dept:lookup_filter:deptno IN (SELECT id FROM public.dept_filter_lookup)"
+```
+or
+
+```text
+$ java -jar edb-repcli.jar -createpub  pub -repsvrfile ~/pubsvrfile -pubdbid 1 -tables public.dept -reptype T \
+
+-tablesfilterclause "public.dept:lookup_filter:deptno NOT IN (SELECT id FROM public.dept_filter_lookup)"
+```
+
 Once a set of available table filters have been defined, they must be enabled only on those subscription tables of a single-master replication system or primary node tables of a multi-master replication system where filtering is to occur during replication to those particular target tables. No filtering occurs during replication to a target subscription table or primary node table if no filters have been specifically enabled on that table in the subscription or primary node.
 
 It is strongly recommended that a snapshot replication be performed to the subscriptions or primary nodes that contain tables on which the filtering criteria has changed either by the addition of filter rules, the removal of filter rules, or the modification of existing filter rules.
