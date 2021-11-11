@@ -125,7 +125,15 @@ cnp_collector_sync_replicas{value="observed"} 0
 
 # HELP cnp_collector_up 1 if PostgreSQL is up, 0 otherwise.
 # TYPE cnp_collector_up gauge
-cnp_collector_up 1
+cnp_collector_up{cluster="cluster-example"} 1
+
+# HELP cnp_collector_postgres_version Postgres version
+# TYPE cnp_collector_postgres_version gauge
+cnp_collector_postgres_version{cluster="cluster-example",full="13.4.0"} 13.4
+
+# HELP cnp_collector_first_recoverability_point The first point of recoverability for the cluster as a unix timestamp
+# TYPE cnp_collector_first_recoverability_point gauge
+cnp_collector_first_recoverability_point 1.63238406e+09
 
 # HELP cnp_collector_lo_pages Estimated number of pages in the pg_largeobject table
 # TYPE cnp_collector_lo_pages gauge
@@ -251,6 +259,12 @@ go_memstats_sys_bytes 7.6891144e+07
 go_threads 18
 ```
 
+!!! Note
+    `cnp_collector_postgres_version` is a GaugeVec metric containing the
+    `Major.Minor` version of Postgres (either PostgreSQL or EPAS). The full
+    semantic version `Major.Minor.Patch` can be found inside one of its label
+    field named `full`.
+
 ### User defined metrics
 
 This feature is currently in *beta* state and the format is inspired by the
@@ -287,6 +301,11 @@ Take care that the referred resources have to be created **in the same namespace
     add a label with key `k8s.enterprisedb.io/reload` to it, otherwise you will have to reload
     the instances using the `kubectl cnp reload` subcommand.
 
+!!! Important
+    When a user defined metric overwrites an already existing metric the instance manager prints a json warning log,
+    containing the message:`Query with the same name already found. Overwriting the existing one.`
+    and a key `queryName` containing the overwritten query name.
+
 #### Example of a user defined metric
 
 Here you can see an example of a `ConfigMap` containing a single custom query,
@@ -308,7 +327,10 @@ data:
               ELSE GREATEST (0,
                 EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())))
               END AS lag,
-              pg_is_in_recovery() AS in_recovery"
+              pg_is_in_recovery() AS in_recovery,
+              EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
+              (SELECT count(*) FROM pg_stat_replication) AS streaming_replicas"
+
       metrics:
         - lag:
             usage: "GAUGE"
@@ -316,6 +338,12 @@ data:
         - in_recovery:
             usage: "GAUGE"
             description: "Whether the instance is in recovery"
+        - is_wal_receiver_up:
+            usage: "GAUGE"
+            description: "Whether the instance wal_receiver is up"
+        - streaming_replicas:
+            usage: "GAUGE"
+            description: "Number of streaming replicas connected to the instance"
 ```
 
 A list of basic monitoring queries can be found in the [`cnp-basic-monitoring.yaml` file](../samples/cnp-basic-monitoring.yaml).
@@ -421,7 +449,7 @@ Here is a short description of all the available fields:
     -   `primary`: whether to run the query only on the primary instance <!-- wokeignore:rule=master -->
     -   `master`: same as `primary` (for compatibility with the Prometheus PostgreSQL exporter's syntax - deprecated) <!-- wokeignore:rule=master -->
     -   `runonserver`: a semantic version range to limit the versions of PostgreSQL the query should run on
-         (e.g. `">=10.0.0"` or `">=12.0.0 <=14.0.0"`)
+         (e.g. `">=10.0.0"` or `">=12.0.0 <=14.1.0"`)
     -   `target_databases`: a list of databases to run the `query` against,
         or a [shell-like pattern](#example-of-a-user-defined-metric-running-on-multiple-databases)
         to enable auto discovery. Overwrites the default database if provided.
@@ -468,7 +496,12 @@ cnp_pg_replication_in_recovery 0
 # HELP cnp_pg_replication_lag Replication lag behind primary in seconds
 # TYPE cnp_pg_replication_lag gauge
 cnp_pg_replication_lag 0
-
+# HELP cnp_pg_replication_streaming_replicas Number of streaming replicas connected to the instance
+# TYPE cnp_pg_replication_streaming_replicas gauge
+cnp_pg_replication_streaming_replicas 2
+# HELP cnp_pg_replication_is_wal_receiver_up Whether the instance wal_receiver is up
+# TYPE cnp_pg_replication_is_wal_receiver_up gauge
+cnp_pg_replication_is_wal_receiver_up 0
 ```
 
 ### Differences with the Prometheus Postgres exporter
