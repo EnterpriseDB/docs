@@ -1,6 +1,7 @@
 ---
 title: "Demonstration of Oracle SQL compatible functions and syntax"
-navTitle: "Demo: Oracle SQL compatibility"
+navTitle: "Oracle SQL compatibility"
+showInteractiveBadge: true
 ---
 
 BigAnimal lets you run Oracle SQL queries in the cloud via [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/). This topic demonstrates two Oracle SQL-syntax queries running unmodified on a BigAnimal test cluster, populated with the [Chinook sample database](https://github.com/lerocha/chinook-database).
@@ -8,10 +9,10 @@ BigAnimal lets you run Oracle SQL queries in the cloud via [EDB Postgres Advance
 Watch the video, or load up psql and follow along below!
 
 <figure class="embed-responsive embed-responsive-16by9">
-  <iframe src="https://www.youtube.com/embed/lV4QQ53kgew" 
+  <iframe src="https://www.youtube.com/embed/lV4QQ53kgew"
     title="Video recording of this demonstration"
-    class="embed-responsive-item" 
-    frameborder="0" 
+    class="embed-responsive-item"
+    frameborder="0"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 </figure>
 
@@ -37,20 +38,20 @@ postgres://demo:password@p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io:54
 In case you're unfamiliar with [PostgreSQL connection URIs](https://www.postgresql.org/docs/current/libpq-connect.html#id-1.7.3.8.3.6), let's break that down:
 
 - `demo` is the user role we're connecting as. This is a user set up with select privileges on the database.
-- `password` is the password for this user. 
+- `password` is the password for this user.
   !!! Warning Passwords in connection strings.
   This example illustrates a complete connection URL, including the password. This is fine for a demonstration,
-  and may also be acceptable for applications configuration if access to the configuration is limited. 
+  and may also be acceptable for applications configuration if access to the configuration is limited.
   Avoid this practice for admin, superuser, or other roles used interactively - psql will prompt for a password
-  if none is supplied. 
-- `p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io` is the host name for the Advanced Server cluster on BigAnimal that I'm connecting to. 
+  if none is supplied.
+- `p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io` is the host name for the Advanced Server cluster on BigAnimal that I'm connecting to.
 - `5432` is the usual PostgreSQL port number.
 - `chinook` is the name of the database.
 - `sslmode=require` ensures that we establish a secure connection.
 
 With that in hand, we can launch psql:
 
-```shell 
+```shell
 psql postgres://demo:password@p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io:5432/chinook?sslmode=require
 __OUTPUT__
 psql (13.0 (Debian 13.0-1.pgdg100+1), server 13.4.8 (Debian 13.4.8-1+deb10))
@@ -86,7 +87,7 @@ __OUTPUT__
  ...
 ```
 
-There's an employee table, let's examine its definition: 
+There's an employee table, let's examine its definition:
 
 ```
 \d+ employee
@@ -117,17 +118,17 @@ other employees who may in turn report to still *other* employees.
 
 ## Demo #1: exposing an organization hierarchy with `CONNECT BY`
 
-Let's construct a [hierarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/) to expose this [chain of command](https://en.wikipedia.org/wiki/Chain_of_command). 
+Let's construct a [hierarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/) to expose this [chain of command](https://en.wikipedia.org/wiki/Chain_of_command).
 
 Modern SQL would use a recursive CTE for this, as those are widely supported. But Oracle has, for decades, supported an alternative mechanism for querying hierarchy in the form of `CONNECT BY` - let's put that into action:
 
 ```sql
 SELECT firstname, lastname, (
-	SELECT LISTAGG(lastname, ', ') 
-	FROM employee rt 
-	START WITH rt.employeeid=e.reportsto 
+	SELECT LISTAGG(lastname, ', ')
+	FROM employee rt
+	START WITH rt.employeeid=e.reportsto
 	CONNECT BY employeeid = PRIOR reportsto
-	) AS "chain of command" 
+	) AS "chain of command"
 FROM employee e;
 __OUTPUT__
  firstname | lastname | chain of command
@@ -148,11 +149,11 @@ Now, the `LISTAGG()` function was introduced in Oracle 11g Release 2. Very few d
 
 ```sql
 SELECT firstname, lastname, (
-	SELECT string_agg(lastname, ', ') 
-	FROM employee rt 
-	START WITH rt.employeeid=e.reportsto 
+	SELECT string_agg(lastname, ', ')
+	FROM employee rt
+	START WITH rt.employeeid=e.reportsto
 	CONNECT BY employeeid = PRIOR reportsto
-	) AS "chain of command" 
+	) AS "chain of command"
 FROM employee e;
 __OUTPUT__
  firstname | lastname | chain of command
@@ -168,20 +169,20 @@ __OUTPUT__
 (8 rows)
 ```
 
-But [the semantics of the two functions are different for even slightly less-trivial uses](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql), specifically when using the grouping construct. 
+But [the semantics of the two functions are different for even slightly less-trivial uses](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql), specifically when using the grouping construct.
 
-Let's demonstrate that. 
+Let's demonstrate that.
 
 ## Demo #2: group concatenation with `LISTAGG`
 
 As we saw above, this database has "album" and "track" tables containing metadata on digital recordings. We can use some analytic functions, including `LISTAGG`, to put together a report on average track storage requirements for albums with "baby" in the title.
 
 ```sql
-SELECT UNIQUE title, 
+SELECT UNIQUE title,
        ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
-       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10)) 
+       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
          WITHIN GROUP (ORDER BY trackid)
-         OVER (PARTITION BY title)  track_list 
+         OVER (PARTITION BY title)  track_list
 FROM track t
 JOIN album USING (albumid)
 JOIN mediatype USING (mediatypeid)
@@ -208,11 +209,11 @@ __OUTPUT__
 If we try replacing `LISTAGG` with `string_agg` in this example, it's going to fail - the [expression syntax for `string_agg`](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES) is different.
 
 ```sql
-SELECT UNIQUE title, 
+SELECT UNIQUE title,
        ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
-       string_agg(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10)) 
+       string_agg(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
          WITHIN GROUP (ORDER BY trackid)
-         OVER (PARTITION BY title)  track_list 
+         OVER (PARTITION BY title)  track_list
 FROM track t
 JOIN album USING (albumid)
 JOIN mediatype USING (mediatypeid)
@@ -225,13 +226,13 @@ LINE 3:        string_agg(t.name || ' (' || ROUND(bytes/1048576) || ...
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 ```
 
-Now, this isn't terribly difficult to correct, but it requires restructuring the query to replace the grouping construct - such work can quickly accumulate errors. Fortunately, [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/) 
-supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) AND `string_agg`, 
+Now, this isn't terribly difficult to correct, but it requires restructuring the query to replace the grouping construct - such work can quickly accumulate errors. Fortunately, [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/)
+supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) AND `string_agg`,
 so this query doesn't need to change when migrating from Oracle.
 
 ## Compatibility preserves the value of your existing work
 
-In both of the examples shown here, you probably would not use the functions and syntax demonstrated for new work; there are 
+In both of the examples shown here, you probably would not use the functions and syntax demonstrated for new work; there are
 better, more familiar or at least more widely-available equivalents provided natively by PostgreSQL (and many other databases). But by supporting them, EDB Advanced Server gives you the ability to reuse existing logic with minimal modification, allowing
 you to focus your time and expertise on solving new problems.
 

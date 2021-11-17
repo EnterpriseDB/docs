@@ -51,7 +51,7 @@ const Page = () => (
           <div className="pt-0">
             <div className="d-flex pb-0 align-items-center">
               <div className="mr-3">
-                <Link to="/kubernetes/cloud_native_postgresql/interactive_demo/">
+                <Link to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/">
                   <img
                     src={cliImg}
                     alt="Illustration of a Kubernetes Terminal Command"
@@ -60,32 +60,25 @@ const Page = () => (
                 </Link>
               </div>
               <div className="flex-fill pl-3">
-                <h2 className="card-title mb-2 font-weight-bold">
+                <h2 className="card-title mb-4 font-weight-bold">
                   <span className="text-muted font-weight-normal">
-                    Cloud Native Postgres
+                    BigAnimal
                   </span>
                   <br />
-                  Install, Configure and Deploy PostgreSQL with Kubernetes
+                  Demonstration of Oracle SQL compatiblity in BigAnimal
                 </h2>
-
-                <p className="pt-2 pb-1 balance-text">
-                  Test drive Cloud Native Postgres in the browser.
-                </p>
 
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn btn-info"
-                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                      to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
                     >
-                      Try the Interactive Demo &rarr;
+                      Watch Demo &rarr;
                     </Link>
                   </p>
                   <p className="ml-3">
-                    <Link
-                      to="/kubernetes/cloud_native_postgresql/"
-                      className="border-bottom"
-                    >
+                    <Link to="/biganimal/latest" className="border-bottom">
                       Learn More
                     </Link>
                   </p>
@@ -109,6 +102,15 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink
+              to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+              className="nested-link"
+            >
+              Oracle SQL Compatiblity
+              <span className="new-thing" title="Interactive Demo">
+                Demo
+              </span>
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
