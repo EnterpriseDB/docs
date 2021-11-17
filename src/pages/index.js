@@ -44,7 +44,7 @@ const Page = () => (
         {/* Sign Post */}
 
         <div className="new-thing-header" aria-roledescription="badge">
-          <span className="badge-text font-weight-bold">Interactive Demo</span>
+          <span className="badge-text font-weight-bold">Demo</span>
         </div>
 
         <div className="full-width mt-3 mb-5">
@@ -60,13 +60,20 @@ const Page = () => (
                 </Link>
               </div>
               <div className="flex-fill pl-3">
-                <h2 className="card-title mb-4 font-weight-bold">
+                <h2 className="card-title mb-2 font-weight-bold">
                   <span className="text-muted font-weight-normal">
                     BigAnimal
                   </span>
                   <br />
-                  Demonstration of Oracle SQL compatiblity in BigAnimal
+                  Demonstration of Oracle SQL compatibility in BigAnimal
                 </h2>
+
+                <p>
+                  BigAnimal lets you run Oracle SQL queries in the cloud via EDB
+                  Postgres Advanced Server. This topic demonstrates two Oracle
+                  SQL-syntax queries running unmodified on a BigAnimal test
+                  cluster.
+                </p>
 
                 <div className="d-flex align-items-center">
                   <p>
