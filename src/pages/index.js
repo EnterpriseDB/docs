@@ -70,9 +70,8 @@ const Page = () => (
 
                 <p>
                   BigAnimal lets you run Oracle SQL queries in the cloud via EDB
-                  Postgres Advanced Server. This topic demonstrates two Oracle
-                  SQL-syntax queries running unmodified on a BigAnimal test
-                  cluster.
+                  Postgres Advanced Server. Watch the video, or load up psql and
+                  follow along.
                 </p>
 
                 <div className="d-flex align-items-center">
@@ -81,7 +80,7 @@ const Page = () => (
                       className="btn btn-info"
                       to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
                     >
-                      Watch Demo &rarr;
+                      View demo &rarr;
                     </Link>
                   </p>
                   <p className="ml-3">
