@@ -383,3 +383,7 @@ Option 2: on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
+
+### Style Guide for EDB contributors
+
+See [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide).
