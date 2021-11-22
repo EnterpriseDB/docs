@@ -1,7 +1,6 @@
 import React from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
-import cliImg from "../images/screen-demo.gif";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 
 const IndexCard = ({ iconName, headingText, children }) => (
@@ -43,50 +42,86 @@ const Page = () => (
       <MainContent searchNavLogo={true}>
         {/* Sign Post */}
 
-        <div className="new-thing-header" aria-roledescription="badge">
-          <span className="badge-text font-weight-bold">Interactive Demo</span>
-        </div>
-
-        <div className="full-width mt-3 mb-5">
-          <div className="pt-0">
-            <div className="d-flex pb-0 align-items-center">
-              <div className="mr-3">
-                <Link to="/kubernetes/cloud_native_postgresql/interactive_demo/">
-                  <img
-                    src={cliImg}
-                    alt="Illustration of a Kubernetes Terminal Command"
-                    className="img-fluid shadow rounded card"
-                  />
-                </Link>
+        <div className="container">
+          <div className="row">
+            <div className="col-sm mb-3 mr-1">
+              <div className="mb-2">
+                <div className="new-thing-header" aria-roledescription="badge">
+                  <span className="badge-text font-weight-bold">Demo</span>
+                </div>
               </div>
-              <div className="flex-fill pl-3">
-                <h2 className="card-title mb-2 font-weight-bold">
-                  <span className="text-muted font-weight-normal">
-                    Cloud Native Postgres
-                  </span>
-                  <br />
-                  Install, Configure and Deploy PostgreSQL with Kubernetes
-                </h2>
 
-                <p className="pt-2 pb-1 balance-text">
-                  Test drive Cloud Native Postgres in the browser.
+              <div className="mb-3">
+                <h3 className="card-title mb-2 font-weight-bold">
+                  <Link
+                    className="homepage-headling-link"
+                    to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                  >
+                    Demonstration of Oracle SQL <br />
+                    compatibility in BigAnimal
+                  </Link>
+                </h3>
+                <p>
+                  BigAnimal lets you run Oracle SQL queries in the cloud via EDB
+                  Postgres Advanced Server. Watch the video, or load up psql and
+                  follow along.
                 </p>
-
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
-                      className="btn btn-info"
-                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                      className="btn btn-info btn-sm"
+                      to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
                     >
-                      Try the Interactive Demo &rarr;
+                      Watch demo
                     </Link>
                   </p>
-                  <p className="ml-3">
+                  <p>
+                    <Link className="btn-sm ml-2" to="/biganimal/latest/">
+                      Find out more &rarr;
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="col-sm mb-3">
+              <div className="mb-2">
+                <div className="new-thing-header" aria-roledescription="badge">
+                  <span className="badge-text font-weight-bold">
+                    Interactive Demo
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <h3 className="card-title mb-2 font-weight-bold">
+                  <Link
+                    className="homepage-headling-link"
+                    to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                  >
+                    Install, Configure and Deploy PostgreSQL <br />
+                    with Kubernetes
+                  </Link>
+                </h3>
+                <p>
+                  Want to see what it takes to get the Cloud Native PostgreSQL
+                  Operator up and running? Try in the browser now, no downloads
+                  required.
+                </p>
+                <div className="d-flex align-items-center">
+                  <p>
                     <Link
-                      to="/kubernetes/cloud_native_postgresql/"
-                      className="border-bottom"
+                      className="btn btn-info btn-sm"
+                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
                     >
-                      Learn More
+                      Try it now
+                    </Link>
+                  </p>
+                  <p>
+                    <Link
+                      className="btn-sm ml-2"
+                      to="/kubernetes/cloud_native_postgresql/"
+                    >
+                      Find out more &rarr;
                     </Link>
                   </p>
                 </div>
@@ -109,6 +144,15 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink
+              to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+              className="nested-link"
+            >
+              Oracle SQL Compatiblity
+              <span className="new-thing" title="Interactive Demo">
+                Demo
+              </span>
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
