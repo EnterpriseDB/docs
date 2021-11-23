@@ -7,8 +7,9 @@ product: 'Cloud Native Operator'
 The operator can orchestrate a continuous backup infrastructure
 that is based on the [Barman](https://pgbarman.org) tool. Instead
 of using the classical architecture with a Barman server, which
-backup many PostgreSQL instances, the operator will use the
-`barman-cloud-wal-archive` and `barman-cloud-backup` tools.
+backs up many PostgreSQL instances, the operator relies on the
+`barman-cloud-wal-archive`, `barman-cloud-backup`, `barman-cloud-backup-list`,
+and `barman-cloud-backup-delete` tools.
 As a result, base backups will be *tarballs*. Both base backups and WAL files
 can be compressed and encrypted.
 
@@ -17,24 +18,23 @@ You can use the image `quay.io/enterprisedb/postgresql` for this scope,
 as it is composed of a community PostgreSQL image and the latest
 `barman-cli-cloud` package.
 
+!!! Important
+    Always ensure that you are running the latest version of the operands
+    in your system to take advantage of the improvements introduced in
+    Barman cloud (as well as improve the security aspects of your cluster).
+
 A backup is performed from a primary or a designated primary instance in a
 `Cluster` (please refer to
 [replica clusters](replication.md#replication-from-an-external-postgresql-cluster)
 for more information about designated primary instances).
-
-!!! Warning
-    Cloud Native PostgreSQL does not currently manage the deletion of backup files 
-    from the backup object store. The retention policy feature will be merged from 
-    Barman to Barman Cloud in the future. For the time being, it is your responsibility 
-    to configure retention policies directly on the object store. 
 
 ## Cloud provider support
 
 You can archive the backup files in any service that is supported
 by the Barman Cloud infrastructure. That is:
 
-- [AWS S3](https://aws.amazon.com/s3/)
-- [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/services/storage/blobs/).
+-   [AWS S3](https://aws.amazon.com/s3/)
+-   [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/services/storage/blobs/).
 
 You can also use any compatible implementation of the
 supported services.
@@ -46,12 +46,12 @@ discussed in the following sections.
 
 You will need the following information about your environment:
 
-- `ACCESS_KEY_ID`: the ID of the access key that will be used
-  to upload files in S3
+-   `ACCESS_KEY_ID`: the ID of the access key that will be used
+    to upload files in S3
 
-- `ACCESS_SECRET_KEY`: the secret part of the previous access key
+-   `ACCESS_SECRET_KEY`: the secret part of the previous access key
 
-- `ACCESS_SESSION_TOKEN`: the optional session token in case it is required
+-   `ACCESS_SESSION_TOKEN`: the optional session token in case it is required
 
 The access key used must have permission to upload files in
 the bucket. Given that, you must create a k8s secret with the
@@ -249,9 +249,9 @@ proceeding with a backup.
 In order to access your storage account, you will need one of the following combinations
 of credentials:
 
-- [**Connection String**](https://docs.microsoft.com/en-us/azure/storage/common/storage-configure-connection-string#configure-a-connection-string-for-an-azure-storage-account)
-- **Storage account name** and [**Storage account access key**](https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage)
-- **Storage account name** and [**Storage account SAS Token**](https://docs.microsoft.com/en-us/azure/storage/blobs/sas-service-create).
+-   [**Connection String**](https://docs.microsoft.com/en-us/azure/storage/common/storage-configure-connection-string#configure-a-connection-string-for-an-azure-storage-account)
+-   **Storage account name** and [**Storage account access key**](https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage)
+-   **Storage account name** and [**Storage account SAS Token**](https://docs.microsoft.com/en-us/azure/storage/blobs/sas-service-create).
 
 The credentials need to be stored inside a Kubernetes Secret, adding data entries only when
 needed. The following command performs that:
@@ -401,9 +401,8 @@ You can also schedule your backups periodically by creating a
 resource named `ScheduledBackup`. The latter is similar to a
 `Backup` but with an added field, called `schedule`.
 
-This field is a [Cron](https://en.wikipedia.org/wiki/Cron) schedule
-specification with a prepended field for seconds. This schedule format
-is the same used in Kubernetes CronJobs.
+This field is a *cron schedule* specification, which follows the same
+[format used in Kubernetes CronJobs](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
 
 This is an example of a scheduled backup:
 
@@ -418,7 +417,20 @@ spec:
     name: pg-backup
 ```
 
-The proposed specification will schedule a backup every day at midnight.
+The above example will schedule a backup every day at midnight.
+
+!!! Hint
+    Backup frequency might impact your recovery time object (RTO) after a
+    disaster which requires a full or Point-In-Time recovery operation. Our
+    advice is that you regularly test your backups by recovering them, and then
+    measuring the time it takes to recover from scratch so that you can refine
+    your RTO predictability. Recovery time is influenced by the size of the
+    base backup and the amount of WAL files that need to fetched from the archive
+    and replayed during recovery (remember that WAL archiving is what enables
+    continuous backup in PostgreSQL!).
+    Based on our experience, a weekly base backup is more than enough for most
+    cases - while it is extremely rare to schedule backups more frequently than once
+    a day.
 
 ScheduledBackups can be suspended if needed by setting `.spec.suspend: true`,
 this will stop any new backup to be scheduled as long as the option is set to false.
@@ -452,6 +464,7 @@ will use it unless you override it in the cluster configuration.
 
 ## Recovery
 
+Cluster restores are not performed "in-place" on an existing cluster.
 You can use the data uploaded to the object storage to bootstrap a
 new cluster from a backup. The operator will orchestrate the recovery
 process using the `barman-cloud-restore` tool.
@@ -529,3 +542,42 @@ You can optionally specify a `recoveryTarget` to perform a point in time
 recovery. If left unspecified, the recovery will continue up to the latest
 available WAL on the default target timeline (`current` for PostgreSQL up to
 11, `latest` for version 12 and above).
+
+## Retention policies
+
+Cloud Native PostgreSQL can manage the automated deletion of backup files from the backup object store, using **retention policies** based on recovery window.
+
+Internally, the retention policy feature uses `barman-cloud-backup-delete`
+with `--retention-policy “RECOVERY WINDOW OF {{ retention policy value }} {{ retention policy unit }}”`.
+
+For example, you can define your backups with a retention policy of 30 days as
+follows:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      destinationPath: "<destination path here>"
+      s3Credentials:
+        accessKeyId:
+          name: aws-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: aws-creds
+          key: ACCESS_SECRET_KEY
+    retentionPolicy: "30d"
+```
+
+!!! Note "There's more ..."
+    The **recovery window retention policy** is focused on the concept of
+    *Point of Recoverability* (`PoR`), a moving point in time determined by
+    `current time - recovery window`. The *first valid backup* is the first
+    available backup before `PoR` (in reverse chronological order).
+    Cloud Native PostgreSQL must ensure that we can recover the cluster at
+    any point in time between `PoR` and the latest successfully archived WAL
+    file, starting from the first valid backup. Base backups that are older
+    than the first valid backup will be marked as *obsolete* and permanently
+    removed after the next backup is completed.

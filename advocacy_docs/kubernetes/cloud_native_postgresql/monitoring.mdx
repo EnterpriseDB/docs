@@ -21,10 +21,10 @@ curl http://<pod_ip>:9187/metrics
 
 All monitoring queries that are performed on PostgreSQL are:
 
-- transactionally atomic (one transaction per query)
-- executed with the `pg_monitor` role
-- executed with `application_name` set to `cnp_metrics_exporter`
-- executed as user `postgres`
+-   transactionally atomic (one transaction per query)
+-   executed with the `pg_monitor` role
+-   executed with `application_name` set to `cnp_metrics_exporter`
+-   executed as user `postgres`
 
 Please refer to the "Default roles" section in PostgreSQL
 [documentation](https://www.postgresql.org/docs/current/default-roles.html)
@@ -34,9 +34,9 @@ Queries, by default, are run against the *main database*, as defined by
 the specified `bootstrap` method of the `Cluster` resource, according
 to the following logic:
 
-- using `initdb`: queries will be run against the specified database by default, so the
-  value passed as `initdb.database` or defaulting to `app` if not specified.
-- not using `initdb`: queries will run against the `postgres` database, by default.
+-   using `initdb`: queries will be run against the specified database by default, so the
+    value passed as `initdb.database` or defaulting to `app` if not specified.
+-   not using `initdb`: queries will run against the `postgres` database, by default.
 
 The default database can always be overridden for a given user-defined metric,
 by specifying a list of one or more databases in the `target_databases` option.
@@ -70,16 +70,16 @@ spec:
 Every PostgreSQL instance exporter automatically exposes a set of predefined
 metrics, which can be classified in two major categories:
 
-- PostgreSQL related metrics, starting with `cnp_collector_*`, including:
+-   PostgreSQL related metrics, starting with `cnp_collector_*`, including:
 
-    - number of WAL files and total size on disk
-    - number of `.ready` and `.done` files in the archive status folder
-    - requested minimum and maximum number of synchronous replicas, as well as
-      the expected and actually observed values
-    - flag indicating if replica cluster mode is enabled or disabled
-    - flag indicating if a manual switchover is required
+    -   number of WAL files and total size on disk
+    -   number of `.ready` and `.done` files in the archive status folder
+    -   requested minimum and maximum number of synchronous replicas, as well as
+        the expected and actually observed values
+    -   flag indicating if replica cluster mode is enabled or disabled
+    -   flag indicating if a manual switchover is required
 
-- Go runtime related metrics, starting with `go_*`
+-   Go runtime related metrics, starting with `go_*`
 
 Below is a sample of the metrics returned by the `localhost:9187/metrics`
 endpoint of an instance. As you can see, the Prometheus format is
@@ -125,7 +125,15 @@ cnp_collector_sync_replicas{value="observed"} 0
 
 # HELP cnp_collector_up 1 if PostgreSQL is up, 0 otherwise.
 # TYPE cnp_collector_up gauge
-cnp_collector_up 1
+cnp_collector_up{cluster="cluster-example"} 1
+
+# HELP cnp_collector_postgres_version Postgres version
+# TYPE cnp_collector_postgres_version gauge
+cnp_collector_postgres_version{cluster="cluster-example",full="13.4.0"} 13.4
+
+# HELP cnp_collector_first_recoverability_point The first point of recoverability for the cluster as a unix timestamp
+# TYPE cnp_collector_first_recoverability_point gauge
+cnp_collector_first_recoverability_point 1.63238406e+09
 
 # HELP cnp_collector_lo_pages Estimated number of pages in the pg_largeobject table
 # TYPE cnp_collector_lo_pages gauge
@@ -250,6 +258,13 @@ go_memstats_sys_bytes 7.6891144e+07
 # TYPE go_threads gauge
 go_threads 18
 ```
+
+!!! Note
+    `cnp_collector_postgres_version` is a GaugeVec metric containing the
+    `Major.Minor` version of Postgres (either PostgreSQL or EPAS). The full
+    semantic version `Major.Minor.Patch` can be found inside one of its label
+    field named `full`.
+
 ### User defined metrics
 
 This feature is currently in *beta* state and the format is inspired by the
@@ -286,6 +301,11 @@ Take care that the referred resources have to be created **in the same namespace
     add a label with key `k8s.enterprisedb.io/reload` to it, otherwise you will have to reload
     the instances using the `kubectl cnp reload` subcommand.
 
+!!! Important
+    When a user defined metric overwrites an already existing metric the instance manager prints a json warning log,
+    containing the message:`Query with the same name already found. Overwriting the existing one.`
+    and a key `queryName` containing the overwritten query name.
+
 #### Example of a user defined metric
 
 Here you can see an example of a `ConfigMap` containing a single custom query,
@@ -307,7 +327,10 @@ data:
               ELSE GREATEST (0,
                 EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())))
               END AS lag,
-              pg_is_in_recovery() AS in_recovery"
+              pg_is_in_recovery() AS in_recovery,
+              EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
+              (SELECT count(*) FROM pg_stat_replication) AS streaming_replicas"
+
       metrics:
         - lag:
             usage: "GAUGE"
@@ -315,6 +338,12 @@ data:
         - in_recovery:
             usage: "GAUGE"
             description: "Whether the instance is in recovery"
+        - is_wal_receiver_up:
+            usage: "GAUGE"
+            description: "Whether the instance wal_receiver is up"
+        - streaming_replicas:
+            usage: "GAUGE"
+            description: "Number of streaming replicas connected to the instance"
 ```
 
 A list of basic monitoring queries can be found in the [`cnp-basic-monitoring.yaml` file](../samples/cnp-basic-monitoring.yaml).
@@ -415,33 +444,32 @@ Every custom query has the following basic structure:
 
 Here is a short description of all the available fields:
 
-- `<MetricName>`: the name of the Prometheus metric
-    - `query`: the SQL query to run on the target database to generate the metrics
-    - `primary`: whether to run the query only on the primary instance <!-- wokeignore:rule=master -->
-    - `master`: same as `primary` (for compatibility with the Prometheus PostgreSQL exporter's syntax - deprecated) <!-- wokeignore:rule=master -->
-    - `runonserver`: a semantic version range to limit the versions of PostgreSQL the query should run on
-       (e.g. `">=10.0.0"` or `">=12.0.0 <=14.0.0"`)
-    - `target_databases`: a list of databases to run the `query` against,
-      or a [shell-like pattern](#example-of-a-user-defined-metric-running-on-multiple-databases)
-      to enable auto discovery. Overwrites the default database if provided.
-    - `metrics`: section containing a list of all exported columns, defined as follows:
-      - `<ColumnName>`: the name of the column returned by the query
-          - `usage`: one of the values described below
-          - `description`: the metric's description
-          - `metrics_mapping`: the optional column mapping when `usage` is set to `MAPPEDMETRIC`
+-   `<MetricName>`: the name of the Prometheus metric
+    -   `query`: the SQL query to run on the target database to generate the metrics
+    -   `primary`: whether to run the query only on the primary instance <!-- wokeignore:rule=master -->
+    -   `master`: same as `primary` (for compatibility with the Prometheus PostgreSQL exporter's syntax - deprecated) <!-- wokeignore:rule=master -->
+    -   `runonserver`: a semantic version range to limit the versions of PostgreSQL the query should run on
+         (e.g. `">=10.0.0"` or `">=12.0.0 <=14.1.0"`)
+    -   `target_databases`: a list of databases to run the `query` against,
+        or a [shell-like pattern](#example-of-a-user-defined-metric-running-on-multiple-databases)
+        to enable auto discovery. Overwrites the default database if provided.
+    -   `metrics`: section containing a list of all exported columns, defined as follows:
+        -   `<ColumnName>`: the name of the column returned by the query
+            -   `usage`: one of the values described below
+            -   `description`: the metric's description
+            -   `metrics_mapping`: the optional column mapping when `usage` is set to `MAPPEDMETRIC`
 
 The possible values for `usage` are:
 
-| Column Usage Label  | Description                                              |
-|:--------------------|:---------------------------------------------------------|
-| `DISCARD`           | this column should be ignored                            |
-| `LABEL`             | use this column as a label                               |
-| `COUNTER`           | use this column as a counter                             |
-| `GAUGE`             | use this column as a gauge                               |
-| `MAPPEDMETRIC`      | use this column with the supplied mapping of text values |
-| `DURATION`          | use this column as a text duration (in milliseconds)     |
-| `HISTOGRAM`         | use this column as a histogram                          |
-
+| Column Usage Label | Description                                              |
+| :----------------- | :------------------------------------------------------- |
+| `DISCARD`          | this column should be ignored                            |
+| `LABEL`            | use this column as a label                               |
+| `COUNTER`          | use this column as a counter                             |
+| `GAUGE`            | use this column as a gauge                               |
+| `MAPPEDMETRIC`     | use this column with the supplied mapping of text values |
+| `DURATION`         | use this column as a text duration (in milliseconds)     |
+| `HISTOGRAM`        | use this column as a histogram                           |
 
 Please visit the ["Metric Types" page](https://prometheus.io/docs/concepts/metric_types/)
 from the Prometheus documentation for more information.
@@ -458,7 +486,6 @@ cnp_<MetricName>_<ColumnName>{<LabelColumnName>=<LabelColumnValue> ... } <Column
 !!! Note
     `LabelColumnName` are metrics with `usage` set to `LABEL` and their `Value`
 
-
 Considering the `pg_replication` example above, the exporter's endpoint would
 return the following output when invoked:
 
@@ -469,7 +496,12 @@ cnp_pg_replication_in_recovery 0
 # HELP cnp_pg_replication_lag Replication lag behind primary in seconds
 # TYPE cnp_pg_replication_lag gauge
 cnp_pg_replication_lag 0
-
+# HELP cnp_pg_replication_streaming_replicas Number of streaming replicas connected to the instance
+# TYPE cnp_pg_replication_streaming_replicas gauge
+cnp_pg_replication_streaming_replicas 2
+# HELP cnp_pg_replication_is_wal_receiver_up Whether the instance wal_receiver is up
+# TYPE cnp_pg_replication_is_wal_receiver_up gauge
+cnp_pg_replication_is_wal_receiver_up 0
 ```
 
 ### Differences with the Prometheus Postgres exporter
@@ -479,7 +511,7 @@ presents some differences. In particular, the following fields of a metric that
 are defined in the official Prometheus exporter are not implemented in Cloud
 Native PostgreSQL's exporter:
 
-- `cache_seconds`: number of seconds to cache the result of the query
+-   `cache_seconds`: number of seconds to cache the result of the query
 
 Similarly, the `pg_version` field of a column definition is not implemented.
 

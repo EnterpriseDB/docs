@@ -25,4 +25,5 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
 
-cp -rf src/* $DESTINATION_CHECKOUT/advocacy_docs/kubernetes/cloud_native_postgresql/
+rsync -a --delete src/ $DESTINATION_CHECKOUT/advocacy_docs/kubernetes/cloud_native_postgresql/
+cp $DESTINATION_CHECKOUT/merge_sources/kubernetes/cloud_native_postgresql/interactive_demo.mdx $DESTINATION_CHECKOUT/advocacy_docs/kubernetes/cloud_native_postgresql/interactive_demo.mdx
