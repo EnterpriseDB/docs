@@ -23,8 +23,15 @@ const DocsLink = () => (
 const SearchNavigation = ({ children, logo = false }) => {
   return (
     <Navbar variant="light" className="flex-md-nowrap p-3 border-bottom">
-      {logo && <LogoLink />}
-      <DocsLink />
+      {logo ? (
+        <>
+          {/* Homepage */}
+          <LogoLink />
+          <DocsLink />
+        </>
+      ) : (
+        <></>
+      )}
       <SearchBar />
       <SearchNavigationLinks />
     </Navbar>
