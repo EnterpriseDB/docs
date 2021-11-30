@@ -122,7 +122,7 @@ function bdrTransformer() {
         if (!title)
           title = node.value.match(/topic="([^"]+)"/)[1];
         description = (node.value.match(/description="([^"]+)"/)||[])[1];
-        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/${filename.replace(".md", "/")}"`);
+        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.enterprisedb.com/bdr4/release/latest/${filename.replace(".md", "/")}"`);
       }
     }
 
