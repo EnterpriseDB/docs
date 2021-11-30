@@ -1,26 +1,19 @@
-# Parameterize Docs (Nunjucks ed.)
+# Install Docs Templates
 
-A prototype exploring the use of [Nunjucks](https://mozilla.github.io/nunjucks/) to generate product instalation docs for many different product versions and platforms with a minimum of duplicated copy
+This script allows the generation of product instalation docs for many different product versions and platforms with a minimum of duplicated copy. [Nunjucks](https://mozilla.github.io/nunjucks/) is used as our templating engine.
 
 ## Quick Start
 
-install dependencies
+The following commands can be run from the Docs project directory.
 
-```sh
-npm install
-```
-
-run the main script
-
-```sh
-node main.mjs
-```
+- `npm run install-docs:build` — Renders the templates and generates the final install doc files.
+- `npm run install-docs:rebuild-docker-container` — Rebuilds the docker container used to render templates.
 
 ## Configuration
 
 The docs to be generated are defined in `config.yaml`. This file lists out all of the products to generate docs for, the platforms that product supports, and the supported versions for each platform.
 
-When generating docs, `main.mjs` will look for templates in `templates/products/[product-name]/`, where product name is all lower case, and spaces have been replaced with dashes. It will look for template files with names in the format below. It will use the first template found in the order below:
+When generating docs, this script will look for templates in `templates/products/[product-name]/`, where product name is all lower case, and spaces have been replaced with dashes. It will look for template files with names in the format below. It will use the first template found in the order below:
 
 1. `v{product version}_{platform name}_{platform architecture}.njk`
    e.g. for EDB postgres advanced server 13 on centos 7 for x86_64, it would check for a file called `v13_centos-7_x86_64.njk`
@@ -36,7 +29,7 @@ When generating docs, `main.mjs` will look for templates in `templates/products/
 
 ## Writing Templates
 
-We are using Nunjucks as the templating language, which is a javascript implementation of Jinja.
+We are using Nunjucks as the templating engine, which is a javascript implementation of Jinja.
 
 - [Nunjucks templating documentation](https://mozilla.github.io/nunjucks/templating.html)
 - [Jinja templating documentation](https://jinja.palletsprojects.com/en/3.0.x/templates/) — most of this applies to nunjucks as well, and it is more detailed
@@ -48,7 +41,7 @@ Context based on the config will be passed in automatically. The following can b
 - `platform.name` — the name of the platform we are rendering a template for. e.g. "CentOS 8"
 - `platform.arch` — the architecture of the platform we are rendering a template for. e.g. "x86_64"
 
-### Example Template Structure
+### Template Structure
 
 After a template file is found, no rules are enforced on how that template should behave. That said, templates for EPAS docs have already been created and a general structure has been provided as an example of how future templates could be implemented. Here is an overview of how these templates are currently working
 
