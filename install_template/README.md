@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Install Docs Templates
 
 This script allows the generation of product instalation docs for many different product versions and platforms with a minimum of duplicated copy. [Nunjucks](https://mozilla.github.io/nunjucks/) is used as our templating engine.
@@ -9,35 +8,12 @@ The following commands can be run from the Docs project directory.
 
 - `npm run install-docs:build` — Renders the templates and generates the final install doc files.
 - `npm run install-docs:rebuild-docker-container` — Rebuilds the docker container used to render templates.
-=======
-# Parameterize Docs (Nunjucks ed.)
-
-A prototype exploring the use of [Nunjucks](https://mozilla.github.io/nunjucks/) to generate product instalation docs for many different product versions and platforms with a minimum of duplicated copy
-
-## Quick Start
-
-install dependencies
-
-```sh
-npm install
-```
-
-run the main script
-
-```sh
-node main.mjs
-```
->>>>>>> 58e8f9cb6... feat: initial consolidation of templatized install into docs repo
 
 ## Configuration
 
 The docs to be generated are defined in `config.yaml`. This file lists out all of the products to generate docs for, the platforms that product supports, and the supported versions for each platform.
 
-<<<<<<< HEAD
-When generating docs, this script will look for templates in `templates/products/[product-name]/`, where product name is all lower case, and spaces have been replaced with dashes. It will look for template files with names in the format below. It will use the first template found in the order below:
-=======
 When generating docs, `main.mjs` will look for templates in `templates/products/[product-name]/`, where product name is all lower case, and spaces have been replaced with dashes. It will look for template files with names in the format below. It will use the first template found in the order below:
->>>>>>> 58e8f9cb6... feat: initial consolidation of templatized install into docs repo
 
 1. `v{product version}_{platform name}_{platform architecture}.njk`
    e.g. for EDB postgres advanced server 13 on centos 7 for x86_64, it would check for a file called `v13_centos-7_x86_64.njk`
@@ -53,11 +29,7 @@ When generating docs, `main.mjs` will look for templates in `templates/products/
 
 ## Writing Templates
 
-<<<<<<< HEAD
 We are using Nunjucks as the templating engine, which is a javascript implementation of Jinja.
-=======
-We are using Nunjucks as the templating language, which is a javascript implementation of Jinja.
->>>>>>> 58e8f9cb6... feat: initial consolidation of templatized install into docs repo
 
 - [Nunjucks templating documentation](https://mozilla.github.io/nunjucks/templating.html)
 - [Jinja templating documentation](https://jinja.palletsprojects.com/en/3.0.x/templates/) — most of this applies to nunjucks as well, and it is more detailed
@@ -69,11 +41,7 @@ Context based on the config will be passed in automatically. The following can b
 - `platform.name` — the name of the platform we are rendering a template for. e.g. "CentOS 8"
 - `platform.arch` — the architecture of the platform we are rendering a template for. e.g. "x86_64"
 
-<<<<<<< HEAD
 ### Template Structure
-=======
-### Example Template Structure
->>>>>>> 58e8f9cb6... feat: initial consolidation of templatized install into docs repo
 
 After a template file is found, no rules are enforced on how that template should behave. That said, templates for EPAS docs have already been created and a general structure has been provided as an example of how future templates could be implemented. Here is an overview of how these templates are currently working
 
@@ -98,7 +66,6 @@ After a template file is found, no rules are enforced on how that template shoul
 - This template will choose a `platformBase` template to inherit from based on the value of `platformBaseTemplate`, which must be set by a child template.
 - the `packageName` macro used by the `platformBase` templates can be found in this template
 - a `postinstall` block containing copy shared by all of the EPAS docs can be found here. That said, this block is extended by some child templates.
-<<<<<<< HEAD
 
 ### Template techniques
 
@@ -139,5 +106,3 @@ We also use global variables to trigger conditionals:
 For small template systems, this system works well enough. But as the number of templates increases, this becomes harder to understand. In this case, we need to search through the template files to find out where the variables are being used. Fortunately, they are used just once, but it's not hard to imagine multiple (and exclusive) conditionals that are hard to read, modify and debug.
 
 It's almost always better to use one of the other techniques than fall back on conditionals triggered by global variables.
-=======
->>>>>>> 58e8f9cb6... feat: initial consolidation of templatized install into docs repo
