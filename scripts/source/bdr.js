@@ -51,7 +51,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const mdIndex = yaml.load(await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), 'utf8'));
 
   const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
-  const version = mdIndex.site_name.match(/Postgres-BDR (\d+\.\d+)/)[1];
+  const version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
   const destPath = path.resolve("product_docs", "docs", "bdr", version);
   const indexFilename = "index.md";
 
