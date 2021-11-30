@@ -218,7 +218,7 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
-              repmgr (Replication Manager)
+              Replication Manager (repmgr)
             </IndexCardLink>
 
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
