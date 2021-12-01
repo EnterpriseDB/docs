@@ -18,7 +18,10 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git as well as Git-LFS using Homebrew with `brew install git git-lfs`, if they're not already installed. (Use `git --version` and `git-lfs --version` to check.)
+1. Install NodeJS, Git and Git-LFS using Homebrew with `brew install node git git-lfs`
+   (Some or all of these may already be installed - check using `node --version`, `git --version` and `git-lfs --version`)
+
+1. Initialize Git-LFS (if newly installed) using `git lfs install`
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
