@@ -1,0 +1,482 @@
+---
+title: "Configuring the Hadoop Foreign Data Wrapper"
+---
+
+Before creating the extension and the database objects that use the extension, you must modify the Postgres host, providing the location of the supporting libraries.
+
+After installing Postgres, modify `postgresql.conf` located in:
+
+ `/var/lib/edb/as_version/data`
+
+Modify the configuration file with your editor of choice, adding the `hdfs_fdw.jvmpath` parameter to the end of the configuration file, and setting the value to specify the location of the Java virtual machine (`libjvm.so`). Set the value of `hdfs_fdw.classpath` to indicate the location of the java class files used by the adapter. Use a colon (:) as a delimiter between each path. For example:
+
+ ``` Text
+ hdfs_fdw.classpath=
+ '/usr/edb/as12/lib/HiveJdbcClient-1.0.jar:/home/edb/Projects/hadoop_fdw/hadoop/share/hadoop/common/hadoop-common-2.6.4.jar:/home/edb/Projects/hadoop_fdw/apache-hive-1.0.1-bin/lib/hive-jdbc-1.0.1-standalone.jar'
+ ```
+
+!!! Note
+The jar files (hive-jdbc-1.0.1-standalone.jar and hadoop-common-2.6.4.jar) mentioned in the above example should be copied from the respective Hive and Hadoop sources or website to the PostgreSQL instance where Hadoop Foreign Data Wrapper is installed.
+
+If you are using EDB Advanced Server and have a `DATE` column in your database, you must set `edb_redwood_date = OFF` in the `postgresql.conf` file.
+!!!
+
+After setting the parameter values, restart the Postgres server. For detailed information about controlling the service on an Advanced Server host, see the [EDB Postgres Advanced Server documentation](../epas/latest).
+
+ <https://www.enterprisedb.com/docs>
+
+Before using the Hadoop Foreign Data Wrapper, you must:
+
+ 1.  Use the [CREATE EXTENSION](#create-extension) command to create the extension on the Postgres host.
+ 2.  Use the [CREATE SERVER](#create-server) command to define a connection to the Hadoop file system.
+ 3.  Use the [CREATE USER MAPPING](#create-user-mapping) command to define a mapping that associates a Postgres role with the server.
+ 4.  Use the [CREATE FOREIGN TABLE](#create-foreign-table) command to define a table in the Advanced Server database that corresponds to a database that resides on the Hadoop cluster.
+
+<div id="create_extension" class="registered_link"></div>
+
+## CREATE EXTENSION
+
+Use the `CREATE EXTENSION` command to create the `hdfs_fdw` extension. To invoke the command, use your client of choice (for example, psql) to connect to the Postgres database from which you will be querying the Hive or Spark server, and invoke the command:
+
+```text
+CREATE EXTENSION [IF NOT EXISTS] hdfs_fdw [WITH] [SCHEMA schema_name];
+```
+
+**Parameters**
+
+`IF NOT EXISTS`
+
+ Include the `IF NOT EXISTS` clause to instruct the server to issue a notice instead of throwing an error if an extension with the same name already exists.
+
+`schema_name`
+
+ Optionally specify the name of the schema in which to install the extension's objects.
+
+**Example**
+
+The following command installs the `hdfs_fdw` hadoop foreign data wrapper:
+
+ `CREATE EXTENSION hdfs_fdw;`
+
+For more information about using the foreign data wrapper `CREATE EXTENSION` command, see:
+
+ <https://www.postgresql.org/docs/current/static/sql-createextension.html>.
+
+<div id="create_server" class="registered_link"></div>
+
+## CREATE SERVER
+
+Use the `CREATE SERVER` command to define a connection to a foreign server. The syntax is:
+
+```text
+CREATE SERVER server_name FOREIGN DATA WRAPPER hdfs_fdw
+    [OPTIONS (option 'value' [, ...])]
+```
+
+The role that defines the server is the owner of the server; use the `ALTER SERVER` command to reassign ownership of a foreign server. To create a foreign server, you must have `USAGE` privilege on the foreign-data wrapper specified in the `CREATE SERVER` command.
+
+**Parameters**
+
+`server_name`
+
+ Use `server_name` to specify a name for the foreign server. The server name must be unique within the database.
+
+`FOREIGN_DATA_WRAPPER`
+
+ Include the `FOREIGN_DATA_WRAPPER` clause to specify that the server should use the `hdfs_fdw` foreign data wrapper when connecting to the cluster.
+
+`OPTIONS`
+
+ Use the `OPTIONS` clause of the `CREATE SERVER` command to specify connection information for the foreign server. You can include:
+
+| Option              | Description                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| host                | The address or hostname of the Hadoop cluster. The default value is \`localhost\`.                                                                                                                                                                                                                                                                                                                                                       |
+| port                | The port number of the Hive Thrift Server or Spark Thrift Server. The default is \`10000\`.                                                                                                                                                                                                                                                                                                                                              |
+| client_type         | Specify hiveserver2 or spark as the client type. To use the ANALYZE statement on Spark, you must specify a value of spark; if you do not specify a value for client_type, the default value is hiveserver2.                                                                                                                                                                                                                              |
+| auth_type<br />     | The authentication type of the client; specify LDAP or NOSASL. If you do not specify an auth_type, the data wrapper will decide the auth_type value on the basis of the user mapping.  If the user mapping includes a user name and password, the data wrapper will use LDAP authentication.     <If the user mapping does not include a user name and password, the data wrapper will use NOSASL authentication.      |
+| connect_timeout     | The length of time before a connection attempt times out. The default value is \`300\` seconds |                                                                                                                                                                                                              
+| enable_join_pushdown | Similar to the table-level option, but configured at the server-level. If true, pushes the join between two foreign tables from the same foreign server instead of fetching all the rows for both the tables and performing a join locally. This option can also be set for an individual table and if any of the tables involved in the join has set the option to false then the join is not pushed down. The table-level value of the option takes precedence over the server-level option value. Default is true.       |
+
+| fetch_size          | A user-specified value that is provided as a parameter to the JDBC API setFetchSize. The default value is \`10,000\`.                                                                                                                                                                                                                                                                                                                    |
+| log_remote_sql      | If true, logging will include SQL commands executed on the remote hive server and the number of times that a scan is repeated. The default is \`false\`.                                                                                                                                                                                                                                                                                 |
+| query_timeout       | Use query_timeout to provide the number of seconds after which a request will timeout if it is not satisfied by the Hive server. Query timeout is not supported by the Hive JDBC driver.                                                                                                                                                                                                                                                 |
+| use_remote_estimate | Include the use_remote_estimate to instruct the server to use EXPLAIN commands on the remote server when estimating processing costs. By default, use_remote_estimate is false, and remote tables are assumed to have \`1000\` rows.                                                                                                                                                                                                     |
+
+**Example**
+
+The following command creates a foreign server named `hdfs_server` that uses the `hdfs_fdw` foreign data wrapper to connect to a host with an IP address of `170.11.2.148`:
+
+```text
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS (host '170.11.2.148', port '10000', client_type 'hiveserver2', auth_type 'LDAP', connect_timeout '10000', query_timeout '10000');
+```
+
+The foreign server uses the default port (`10000`) for the connection to the client on the Hadoop cluster; the connection uses an LDAP server.
+
+For more information about using the `CREATE SERVER` command, see:
+
+ <https://www.postgresql.org/docs/current/static/sql-createserver.html>
+
+<div id="create_user_mapping" class="registered_link"></div>
+
+## CREATE USER MAPPING
+
+Use the `CREATE USER MAPPING` command to define a mapping that associates a Postgres role with a foreign server:
+
+```text
+CREATE USER MAPPING FOR role_name SERVER server_name
+       [OPTIONS (option 'value' [, ...])];
+```
+
+You must be the owner of the foreign server to create a user mapping for that server.
+
+Please note: the Hadoop Foreign Data Wrapper supports NOSASL and LDAP authentication. If you are creating a user mapping for a server that uses LDAP authentication, use the `OPTIONS` clause to provide the connection credentials (the username and password) for an existing LDAP user. If the server uses NOSASL authentication, omit the OPTIONS clause when creating the user mapping.
+
+**Parameters**
+
+`role_name`
+
+ Use `role_name` to specify the role that will be associated with the foreign server.
+
+`server_name`
+
+ Use `server_name` to specify the name of the server that defines a connection to the Hadoop cluster.
+
+`OPTIONS`
+
+ Use the `OPTIONS` clause to specify connection information for the foreign server. If you are using LDAP authentication, provide a:
+
+ `username`: the name of the user on the LDAP server.
+
+ `password`: the password associated with the username.
+
+ If you do not provide a user name and password, the data wrapper will use NOSASL authentication.
+
+**Example**
+
+The following command creates a user mapping for a role named `enterprisedb`; the mapping is associated with a server named `hdfs_server`:
+
+ `CREATE USER MAPPING FOR enterprisedb SERVER hdfs_server;`
+
+If the database host uses LDAP authentication, provide connection credentials when creating the user mapping:
+
+```text
+CREATE USER MAPPING FOR enterprisedb SERVER hdfs_server OPTIONS (username 'alice', password '1safepwd');
+```
+
+The command creates a user mapping for a role named `enterprisedb` that is associated with a server named `hdfs_server`. When connecting to the LDAP server, the Hive or Spark server will authenticate as `alice`, and provide a password of `1safepwd`.
+
+For detailed information about the `CREATE USER MAPPING` command, see:
+
+ <https://www.postgresql.org/docs/current/static/sql-createusermapping.html>
+
+<div id="create_foreign_table" class="registered_link"></div>
+
+## CREATE FOREIGN TABLE
+
+A foreign table is a pointer to a table that resides on the Hadoop host. Before creating a foreign table definition on the Postgres server, connect to the Hive or Spark server and create a table; the columns in the table will map to to columns in a table on the Postgres server. Then, use the `CREATE FOREIGN TABLE` command to define a table on the Postgres server with columns that correspond to the table that resides on the Hadoop host. The syntax is:
+
+```text
+CREATE FOREIGN TABLE [ IF NOT EXISTS ] table_name ( [
+  { column_name data_type [ OPTIONS ( option 'value' [, ... ] ) ] [ COLLATE collation ] [ column_constraint [ ... ] ]
+    | table_constraint }
+    [, ... ]
+] )
+[ INHERITS ( parent_table [, ... ] ) ]
+  SERVER server_name [ OPTIONS ( option 'value' [, ... ] ) ]
+```
+
+where `column_constraint` is:
+
+```text
+[ CONSTRAINT constraint_name ]
+{ NOT NULL | NULL | CHECK (expr) [ NO INHERIT ] | DEFAULT default_expr }
+```
+
+and `table_constraint` is:
+
+```text
+[ CONSTRAINT constraint_name ] CHECK (expr) [ NO INHERIT ]
+```
+
+**Parameters**
+
+`table_name`
+
+ Specify the name of the foreign table; include a schema name to specify the schema in which the foreign table should reside.
+
+`IF NOT EXISTS`
+
+ Include the `IF NOT EXISTS` clause to instruct the server to not throw an error if a table with the same name already exists; if a table with the same name exists, the server will issue a notice.
+
+`column_name`
+
+ Specifies the name of a column in the new table; each column should correspond to a column described on the Hive or Spark server.
+
+`data_type`
+
+ Specify the data type of the column; when possible, specify the same data type for each column on the Postgres server and the Hive or Spark server. If a data type with the same name is not available, the Postgres server will attempt to cast the data type to a type compatible with the Hive or Spark server. If the server cannot identify a compatible data type, it will return an error.
+
+`COLLATE collation`
+
+ Include the `COLLATE` clause to assign a collation to the column; if not specified, the column data type's default collation is used.
+
+`INHERITS (parent_table [, ... ])`
+
+ Include the `INHERITS` clause to specify a list of tables from which the new foreign table automatically inherits all columns. Parent tables can be plain tables or foreign tables.
+
+`CONSTRAINT constraint_name`
+
+ Specify an optional name for a column or table constraint; if not specified, the server will generate a constraint name.
+
+`NOT NULL`
+
+ Include the `NOT NULL` keywords to indicate that the column is not allowed to contain null values.
+
+`NULL`
+
+ Include the `NULL` keywords to indicate that the column is allowed to contain null values. This is the default.
+
+`CHECK (expr) [NO INHERIT]`
+
+ Use the `CHECK` clause to specify an expression that produces a Boolean result that each row in the table must satisfy. A check constraint specified as a column constraint should reference that column's value only, while an expression appearing in a table constraint can reference multiple columns.
+
+ A `CHECK` expression cannot contain subqueries or refer to variables other than columns of the current row.
+
+ Include the `NO INHERIT` keywords to specify that a constraint should not propagate to child tables.
+
+`DEFAULT default_expr`
+
+ Include the `DEFAULT` clause to specify a default data value for the column whose column definition it appears within. The data type of the default expression must match the data type of the column.
+
+`SERVER server_name [OPTIONS (option 'value' [, ... ] ) ]`
+
+ To create a foreign table that will allow you to query a table that resides on a Hadoop file system, include the `SERVER` clause and specify the `server_name` of the foreign server that uses the Hadoop data adapter.
+
+ Use the `OPTIONS` clause to specify the following `options` and their corresponding values:
+
+| option     | value                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------- |
+| dbname     | The name of the database on the Hive server; the database name is required.             |
+| table_name | The name of the table on the Hive server; the default is the name of the foreign table. |
+| enable_join_pushdown | Similar to the server-level option, but configured at table-level. If true, pushes the join between two foreign tables from the same foreign server instead of fetching all the rows for both the tables and performing a join locally. This option can also be set for an individual table and if any of the tables involved in the join has set the option to false then the join is not pushed down. The table-level value of the option takes precedence over the server-level option value. Default is true.       |
+
+**Example**
+
+To use data that is stored on a distributed file system, you must create a table on the Postgres host that maps the columns of a Hadoop table to the columns of a Postgres table. For example, for a Hadoop table with the following definition:
+
+```text
+CREATE TABLE weblogs (
+ client_ip           STRING,
+ full_request_date   STRING,
+ day                 STRING,
+ month               STRING,
+ month_num           INT,
+ year                STRING,
+ hour                STRING,
+ minute              STRING,
+ second              STRING,
+ timezone            STRING,
+ http_verb           STRING,
+ uri                 STRING,
+ http_status_code    STRING,
+ bytes_returned      STRING,
+ referrer            STRING,
+ user_agent          STRING)
+row format delimited
+fields terminated by '\t';
+```
+
+You should execute a command on the Postgres server that creates a comparable table on the Postgres server:
+
+```text
+CREATE FOREIGN TABLE weblogs
+(
+ client_ip                TEXT,
+ full_request_date        TEXT,
+ day                      TEXT,
+ Month                    TEXT,
+ month_num                INTEGER,
+ year                     TEXT,
+ hour                     TEXT,
+ minute                   TEXT,
+ second                   TEXT,
+ timezone                 TEXT,
+ http_verb                TEXT,
+ uri                      TEXT,
+ http_status_code         TEXT,
+ bytes_returned           TEXT,
+ referrer                 TEXT,
+ user_agent               TEXT
+)
+SERVER hdfs_server
+         OPTIONS (dbname 'webdata', table_name 'weblogs');
+```
+
+Include the `SERVER` clause to specify the name of the database stored on the Hadoop file system (`webdata`) and the name of the table (`weblogs`) that corresponds to the table on the Postgres server.
+
+For more information about using the `CREATE FOREIGN TABLE` command, see:
+
+ <https://www.postgresql.org/docs/current/static/sql-createforeigntable.html>
+
+### Data Type Mappings
+
+When using the foreign data wrapper, you must create a table on the Postgres server that mirrors the table that resides on the Hive server. The Hadoop data wrapper will automatically convert the following Hive data types to the target Postgres type:
+
+| **Hive**    | **Postgres**     |
+| ----------- | ---------------- |
+| BIGINT      | BIGINT/INT8      |
+| BOOLEAN     | BOOL/BOOLEAN     |
+| BINARY      | BYTEA            |
+| CHAR        | CHAR             |
+| DATE        | DATE             |
+| DOUBLE      | FLOAT8           |
+| FLOAT       | FLOAT/FLOAT4     |
+| INT/INTEGER | INT/INTEGER/INT4 |
+| SMALLINT    | SMALLINT/INT2    |
+| STRING      | TEXT             |
+| TIMESTAMP   | TIMESTAMP        |
+| TINYINT     | INT2             |
+| VARCHAR     | VARCHAR          |
+
+## DROP EXTENSION
+
+Use the `DROP EXTENSION` command to remove an extension. To invoke the command, use your client of choice (for example, psql) to connect to the Postgres database from which you will be dropping the Hadoop server, and run the command:
+
+```text
+DROP EXTENSION [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ];
+```
+
+**Parameters**
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of throwing an error if an extension with the specified name doesn't exists.
+
+`name`
+
+ Specify the name of the installed extension. It is optional.
+
+ `CASCADE`
+
+ Automatically drop objects that depend on the extension. It drops all the other dependent objects too.
+
+ `RESTRICT`
+
+ Do not allow to drop extension if any objects, other than its member objects and extensions listed in the same DROP command are dependent on it.
+
+**Example**
+
+The following command removes the extension from the existing database:
+
+ `DROP EXTENSION hdfs_fdw;`
+
+For more information about using the foreign data wrapper `DROP EXTENSION` command, see:
+
+ <https://www.postgresql.org/docs/current/sql-dropextension.html>.
+
+## DROP SERVER
+
+Use the `DROP SERVER` command to remove a connection to a foreign server. The syntax is:
+
+```text
+DROP SERVER [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ]
+```
+
+The role that drops the server is the owner of the server; use the `ALTER SERVER` command to reassign ownership of a foreign server. To drop a foreign server, you must have `USAGE` privilege on the foreign-data wrapper specified in the `DROP SERVER` command.
+
+**Parameters**
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of throwing an error if a server with the specified name doesn't exists.
+
+`name`
+
+ Specify the name of the installed server. It is optional.
+
+ `CASCADE`
+
+ Automatically drop objects that depend on the server. It should drop all the other dependent objects too.
+
+ `RESTRICT`
+
+ Do not allow to drop the server if any objects are dependent on it.
+
+**Example**
+
+The following command removes a foreign server named `hdfs_server`:
+
+ `DROP SERVER hdfs_server;`
+
+For more information about using the `DROP SERVER` command, see:
+
+ <https://www.postgresql.org/docs/current/sql-dropserver.html>
+
+## DROP USER MAPPING
+
+Use the `DROP USER MAPPING` command to remove a mapping that associates a Postgres role with a foreign server. You must be the owner of the foreign server to remove a user mapping for that server.
+
+```text
+DROP USER MAPPING [ IF EXISTS ] FOR { user_name | USER | CURRENT_USER | PUBLIC } SERVER server_name;
+```
+
+**Parameters**
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of throwing an error if the user mapping doesn't exist.
+
+`user_name`
+
+ Specify the user name of the mapping.
+
+`server_name`
+
+ Specify the name of the server that defines a connection to the Hadoop cluster.
+
+**Example**
+
+The following command drops a user mapping for a role named `enterprisedb`; the mapping is associated with a server named `hdfs_server`:
+
+ `DROP USER MAPPING FOR enterprisedb SERVER hdfs_server;`
+
+For detailed information about the `DROP USER MAPPING` command, see:
+
+ <https://www.postgresql.org/docs/current/static/sql-dropusermapping.html>
+
+## DROP FOREIGN TABLE
+
+A foreign table is a pointer to a table that resides on the Hadoop host. Use the `DROP FOREIGN TABLE` command to remove a foreign table. Only the owner of the foreign table can drop it.
+
+```text
+DROP FOREIGN TABLE [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ]
+```
+
+**Parameters**
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of throwing an error if the foreign table with the specified name doesn't exists.
+
+`name`
+
+ Specify the name of the foreign table.
+
+`CASCADE`
+
+ Automatically drop objects that depend on the foreign table. It should drop all the other dependent objects too.
+
+`RESTRICT`
+
+ Do not allow to drop foreign table if any objects are dependent on it.
+
+**Example**
+
+```text
+DROP FOREIGN TABLE warehouse;
+```
+
+For more information about using the `DROP FOREIGN TABLE` command, see:
+
+ <https://www.postgresql.org/docs/current/sql-dropforeigntable.html>
