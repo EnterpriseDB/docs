@@ -1,0 +1,178 @@
+---
+title: "Manual Publication Table Correction"
+---
+
+<div id="manual_publication_table_correction_log_based" class="registered_link"></div>
+
+The first step required in all manual conflict resolutions is to ensure all publication tables are consistent across all primary nodes – that is, all corresponding tables have the same rows with the same column values.
+
+Once this state is achieved, you can then reapply transactions that may have failed to replicate successfully.
+
+In the preceding example, the inconsistencies are the following:
+
+-   Primary nodes `MMRnode_a` and `MMRnode_b` each contain a row with primary key value 50, but the other column values in the row are different.
+-   Primary node `MMRnode_c` does not have a row with primary key value 50.
+
+Assuming that the correct state of the dept table should be the one in `MMRnode_b`, the following options are available to correct the state of all primary nodes:
+
+-   Manually correct the dept table in `MMRnode_a` and `MMRnode_c`. That is, update the row in `MMRnode_a` so it has the correct values, and insert the missing row in `MMRnode_c`. The dept table on all nodes is now consistent and up-to-date.
+-   Manually delete the row with primary key value 50 from the table on both `MMRnode_a` and `MMRnode_b`. This brings the dept table on all primary nodes back to a prior, consistent state. Then, with the multi-master replication system running, perform the insert transaction again using the correct column values on any one of the primary nodes.
+
+After the publication table rows are corrected, update the appropriate control schema table in the publication database currently designated as the controller database to indicate that the conflict has been resolved.
+
+Each of the methods outlined in the preceding bullet points are described in more detail in the following sections.
+
+The method outlined by the first bullet point is accomplished as follows.
+
+**Step 1:** Manually correct the rows in the publication tables with SQL statements incorporated within a transaction block as described in Section [Conflict Resolution Concept for the Log-Based Method](02_conflict_resolution_for_log_based/#conflict_resolution_for_log_based).
+
+On `MMRnode_a`, correct the erroneous row by running the following transaction block:
+
+```text
+BEGIN;
+UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+  WHERE key = 'last_mcr_timestamp';
+UPDATE edb.dept SET dname = 'MARKETING', loc = 'LOS ANGELES'
+  WHERE deptno = 50;
+COMMIT;
+```
+
+This is shown by the following:
+
+```text
+MMRnode_a=# BEGIN;
+BEGIN
+MMRnode_a=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+MMRnode_a-#   WHERE key = 'last_mcr_timestamp';
+UPDATE 1
+MMRnode_a=# UPDATE edb.dept SET dname = 'MARKETING', loc = 'LOS ANGELES'
+MMRnode_a-#   WHERE deptno = 50;
+UPDATE 1
+MMRnode_a=# COMMIT;
+COMMIT
+MMRnode_a=# SELECT * FROM edb.dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+On `MMRnode_c`, insert the missing row with the following transaction block:
+
+```text
+BEGIN;
+UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+  WHERE key = 'last_mcr_timestamp';
+INSERT INTO edb.dept VALUES (50,'MARKETING','LOS ANGELES');
+COMMIT;
+```
+
+This is shown by the following:
+
+```text
+MMRnode_c=# BEGIN;
+BEGIN
+MMRnode_c=# UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp
+MMRnode_c-#   WHERE key = 'last_mcr_timestamp';
+UPDATE 1
+MMRnode_c=# INSERT INTO edb.dept VALUES (50,'MARKETING','LOS ANGELES');
+INSERT 0 1
+MMRnode_c=# COMMIT;
+COMMIT
+MMRnode_c=# SELECT * FROM edb.dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+The dept table on `MMRnode_a` and `MMRnode_c` now match the content of the table on `MMRnode_b`:
+
+**Step 2:** In the control schema of the publication database currently designated as the controller database, modify the entry in the xdb_conflicts table to indicate the conflict has been resolved. Table `xdb_conflicts` is located in schema `_edb_replicator_pub`.
+
+!!! Note
+    The entries in table `xdb_conflicts` only affect the data that appears in the Conflict History tab and the SQL query described in Section [Finding Conflicts](../09_manual_conflict_resolution_trigger_based_method/01_find_conflict/#find_conflict). Changing entries in `xdb_conflicts` has no effect on future replication operations, but provides a way to keep a record of how past conflicts were resolved.
+
+Note the following points regarding the `xdb_conflicts` table:
+
+-   A row in the `xdb_conflicts` table appears as an entry in the Conflict History tab.
+-   The primary key of the xdb_conflicts table is coMMRised of columns `src_db_id`, `target_db_id`, `src_rrep_sync_id`, and `target_rrep_sync_id`. `Column src_db_id` contains a unique identifier for the primary node in which a transaction occurred that results in a conflict when replicated to the primary node identified by target_db_id. `src_rrep_sync_id` is the identifier of the transaction on the source primary node involved in the conflict while `target_rrep_sync_id` is the identifier of the transaction on the target primary node that is involved in the conflict. 
+
+  !!! Note
+    The ``src_rrep_sync_id`` and ``target_rrep_sync_id`` values are used internally by Replication Server and are not needed for the manual conflict resolution process.
+
+-   Table `xdb_pub_database` in the control schema associates the database identifiers `src_db_id` and `target_db_id` with the primary node attributes such as the database name, IP address, and port.
+-   Column table_id is the identifier of the publication table on which the conflict occurred. Association of the table_id value with the publication table attributes such as its name and schema is found in each primary node in `_edb_replicator_pub.rrep_tables`.
+-   Column `pk_value` contains text indicating the primary key value that resulted in the conflict. The text is formatted as `column_name=value`. If the primary key is composed of two or more columns, each column and value pair is separated by the keyword AND such as column_1=value_1 AND column_2=value_2. This provides the primary key of the row in the publication table designated by table_id that resulted in the conflict.
+-   Column resolution_status indicates the status of the conflict. Possible values are P (pending) or C (completed – the conflict has been resolved). This status appears in the Resolution Status column of the Conflict History tab.
+-   `Column win_db_id` can be used to record the database identifier of the primary node that contains the “winning” (accepted) transaction. This information appears in the Winning DB column of the Conflict History tab.
+
+The following shows the **Conflict History** tab prior to updating the `xdb_conflicts` table.
+
+![Pending uniqueness conflict](../../../images/image160.png)
+
+**Figure 6-51: Pending uniqueness conflict**
+
+The entry for the pending insert/insert conflict on the deptno primary key value of 50 can be located in xdb_conflicts with the following query for this example:
+
+```text
+MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
+MMRnode_a-#   WHERE pk_value = 'deptno=50'
+MMRnode_a-#     AND conflict_type = 'II'
+MMRnode_a-#     AND resolution_status = 'P';
+-[ RECORD 1 ]-------+--------------------------
+src_db_id           | 1
+target_db_id        | 22
+src_rrep_sync_id    | 44713808
+target_rrep_sync_id | 44718040
+table_id            | 31
+conflict_time       | 21-AUG-15 15:34:55.134171
+resolution_status   | P
+resolution_strategy |
+resolution_time     |
+alert_status        |
+conflict_type       | II
+win_db_id           | 0
+win_rrep_sync_id    | 0
+notes               |
+pk_value            | deptno=50
+```
+
+This entry appears in the Postgres Enterprise Manager Client as shown by the following:
+
+![Pending conflict in xdb_conflicts](../../../images/image161.png)
+
+**Figure 6-52: Pending conflict in xdb_conflicts**
+
+Change the value in column resolution_status from P (pending) to C (completed) to indicate this conflict has been resolved. The value in winning_db_id is changed to 22 to indicate primary node `MMRnode_b` contains the winning transaction.
+
+The SQL statement to perform this update for the `MMRnode_a` to the `MMRnode_b` synchronization conflict is the following:
+
+```text
+UPDATE _edb_replicator_pub.xdb_conflicts SET
+  resolution_status = 'C',
+  win_db_id = 22
+WHERE pk_value = 'deptno=50'
+    AND conflict_type = 'II'
+    AND resolution_status = 'P';
+```
+
+The following is the updated xdb_conflicts entry:
+
+![Resolved conflict in xdb_conflicts](../../../images/image162.png)
+
+**Figure 6-53: Resolved conflict in xdb_conflicts**
+
+When viewed in the **Conflict History** tab, the entry now shows Resolved instead of `Pending` in the **Resolution Status** column, and the **Winning DB** column shows the address of primary node `MMRnode_b`.
+
+![Resolved uniqueness conflict](../../../images/image163.png)
+
+**Figure 6-54: Resolved uniqueness conflict**

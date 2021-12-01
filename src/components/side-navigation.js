@@ -1,12 +1,23 @@
 import React from "react";
 import { DarkModeToggle, Link, Logo } from "./";
 
+const DocsLink = () => (
+  <Link
+    to="/"
+    className="mr-3 lead text-muted pt-3 header-docs-link"
+    title="EDB Docs homepage"
+  >
+    /<span className="pl-1">docs</span>
+  </Link>
+);
+
 const LogoLink = () => {
   return (
-    <h1 className="h3">
-      <Link className="d-block py-4 text-dark" to="/">
-        <Logo width="200" height="50" />
+    <h1 className="h3 p-3 d-flex">
+      <Link to="https://www.enterprisedb.com/" title="EDB Home">
+        <Logo width="120" height="50" className="mr-1" />
       </Link>
+      <DocsLink />
     </h1>
   );
 };
@@ -23,7 +34,7 @@ const SideNavigationFooter = () => (
   <ul className="list-unstyled mt-0">
     <hr />
     <FooterItem url="https://support.enterprisedb.com/support/s/">
-      Knowledge Base
+      Knowledge Base and Technical Alerts
     </FooterItem>
     <FooterItem url="https://www.enterprisedb.com/contact">
       Contact Us
