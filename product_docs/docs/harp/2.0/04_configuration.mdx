@@ -59,8 +59,8 @@ All elements should be specified under a section named `dcs` with multiple
 supplementary entries that will be described here.
 
 - **`driver`**: Required type of consensus layer to use. 
-  Currently may only be `etcd`. Support for `bdr` as a consensus layer is 
-  planned. When implemented, using `bdr` as the consensus layer reduces the 
+  Currently may be `etcd` or `bdr`. Support for `bdr` as a consensus layer is 
+  experimental. Using `bdr` as the consensus layer reduces the 
   additional software for consensus storage, but expects a minimum of three 
   full BDR member nodes to maintain quorum during database maintenance.
 
@@ -69,7 +69,7 @@ supplementary entries that will be described here.
   will continue to function so long as a majority of the DCS is still 
   operational and reachable via the network.
 
-  Format is as follows:
+  Format when using `etcd` as the consensus layer is as follows:
   
   ```yaml
   dcs:
@@ -78,6 +78,17 @@ supplementary entries that will be described here.
       - host2:2379
       - host3:2379
   ```
+  Format when using the experimental `bdr` consensus layer is as follows:
+  
+  ```yaml
+  dcs:
+  # either URI or DSN format is supported
+    endpoints:
+      - "postgres://postgres@host1:5432/bdrdb"
+      - "postgres://postgres@host2:5432/bdrdb"
+      - "postgres://postgres@host3:5432/bdrdb"
+  ```
+Currently, `bdr` consensus layer requires the first endpoint to point to the local postgres instance.  
 
 - **`request_timeout`**: Time in milliseconds to consider a request as failed.
   If HARP makes a request to the DCS and receives no response within this time
@@ -172,6 +183,11 @@ Proxy-based settings may be specified under a `proxy` heading, and include:
   Each Proxy node is named to ensure any associated statistics or operating
   state are available in status checks and other interactive events.
 
+- **`type`**: Specifies whether pgbouncer or the experimental simple passthrough proxy will be used.  All proxies must use the same proxy type.  It is recommended to only experiment with the simple proxy in combination with the experimental BDR DCS.
+  May be `pgbouncer` or `simpleproxy`.
+  
+  * Default: `pgbouncer`
+
 - **`pgbouncer_bin_dir`**: Directory where PgBouncer binaries are located.
   As HARP utilizes PgBouncer binaries, it needs to know where these are 
   located. This can be platform or distribution dependent, so has no
@@ -245,6 +261,10 @@ modified with a `harpctl set node` command.
   the time of the migration. When set to `lag_only`, only standard lag 
   thresholds such as `maximum_camo_lag` are applied.
 
+- **`dcs_reconnect_interval`**: The interval, measured in ms, between attempts that a disconnected node tries to reconnect to the DCS. 
+
+  * Default 1000.
+
 - **`dsn`**: Required full connection string to the managed Postgres node.
   This parameter applies equally to all HARP services and enables
   micro-architectures which run only one service per container.
@@ -266,7 +286,15 @@ modified with a `harpctl set node` command.
   expected location.
 
   * Default `db_data_dir`
+ 
+- **`db_log_file`**: Location of Postgres log file.
+  
+  * Default `/tmp/pg_ctl.out`
 
+- **`fence_node_on_dcs_failure`**: In the event HARP is unable to reach the DCS, several readiness keys and the leadership lease itself will expire. This will implicitly prevent a node from routing consideration. However, such a node is not officially fenced, and the manager will not stop monitoring the database if `stop_database_when_fenced` is set to false.
+
+  * Default: False
+ 
 - **`leader_lease_duration`**: Amount of time in seconds the Lead Master
   lease will persist if not refreshed. This allows any HARP Manager a certain 
   grace period to refresh the lock, before expiration allows another node to 
@@ -281,7 +309,10 @@ modified with a `harpctl set node` command.
   layer.
 
   * Default: 5000
+- **`max_dcs_failures`**: The amount of DCS request failures before marking a node as fenced according to fence_node_on_dcs_failure. This prevents transient communication disruptions from shutting down database nodes. 
 
+   * Default: 10
+  
 - **`maximum_lag`**: Highest allowable variance (in bytes) between last
   recorded LSN of previous Lead Master and this node before being allowed to
   take the Lead Master lock. This prevents nodes experiencing terminal amounts
@@ -306,7 +337,7 @@ modified with a `harpctl set node` command.
 
   * Default: 30
 
-- **`postgres_bin_dir`**: Directory where Postgres binaries are located.
+- **`db_bin_dir`**: Directory where Postgres binaries are located.
   As HARP utilizes Postgres binaries, such as `pg_ctl`, it needs to know where 
   these are located. This can be platform or distribution dependent, so has no 
   default. The assumption is that the appropriate binaries are in the 
@@ -329,16 +360,10 @@ modified with a `harpctl set node` command.
 
   * Default: 100
 
-- **`start_command`**: Required command to start this Postgres instance.
-  This may be a direct call to `pg_ctl` or a `sudo` command for `systemctl` to 
-  invoke a standard systemd service command necessary to start Postgres if it 
-  is not running.
+- **`stop_database_when_fenced`**: Rather than simply removing a node from all possible routing, stop the database on a node when it is fenced. This is an extra safeguard to prevent data from other sources than HARP Proxy from reaching the database, or in case proxies are unable to disconnect clients for some other reason. 
 
-- **`stop_command`**: Required command to stop this Postgres instance.
-  This may be a direct call to `pg_ctl` or a `sudo` command for `systemctl` to
-  invoke a standard systemd service command necessary to stop Postgres if it
-  should not be running.
-
+  * Default: False
+  
 - **`consensus_timeout`**: Amount of milliseconds before aborting a read or
   write to the consensus layer. In the event the consensus layer loses
   quorum or becomes unreachable, we want near-instant errors rather than
@@ -476,6 +501,14 @@ modified with a `harpctl set proxy` command.
 
   * Default `disable`
 
+- **`session_transfer_mode`**: Method by which to transfer sessions.
+  May be one of `fast` `wait` `reconnect`.
+
+  * Default `wait`
+
+- **`server_transfer_timeout`**: The number of seconds Harp proxy will wait before giving up on a PAUSE and issuing a KILL command.
+  
+  * Default 30
 
 When using `harpctl` to change any of these settings for all proxies, use the 
 `global` keyword in place of the proxy name. Example:
