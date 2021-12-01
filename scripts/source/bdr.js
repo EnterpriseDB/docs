@@ -51,7 +51,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const mdIndex = yaml.load(await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), 'utf8'));
 
   const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
-  const version = mdIndex.site_name.match(/Postgres-BDR (\d+\.\d+)/)[1];
+  const version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
   const destPath = path.resolve("product_docs", "docs", "bdr", version);
   const indexFilename = "index.md";
 
@@ -122,7 +122,7 @@ function bdrTransformer() {
         if (!title)
           title = node.value.match(/topic="([^"]+)"/)[1];
         description = (node.value.match(/description="([^"]+)"/)||[])[1];
-        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/${filename.replace(".md", "/")}"`);
+        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.enterprisedb.com/bdr4/release/latest/${filename.replace(".md", "/")}"`);
       }
     }
 
