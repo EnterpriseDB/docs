@@ -97,19 +97,24 @@ be user controlled to allow rolling application upgrades, if desired.
 
 ### Limits
 
-BDR has been tested with up to 99 master nodes in one cluster, but it is
-currently designed for use with up to 32 master nodes. Each master node
-can be protected by multiple physical or logical standby nodes; there is no
-specific limit on the number of standby nodes, but typical usage would be to
-have 2-3 standbys per master, with a typical maximum of 32 standbys per master.
+BDR can run hundreds of nodes on good enough hardware and network, however
+for mesh based deployments it's generally not recommended to run more than
+32 nodes in one cluster.
+Each master node can be protected by multiple physical or logical standby nodes;
+there is no specific limit on the number of standby nodes,
+but typical usage would be to have 2-3 standbys per master. Standby nodes don't
+add additional connections to the mesh network so they are not included in the
+32 node recommendation.
 
-BDR assumes there will be no more than 1024 nodes (counting both master nodes
-and logical standbys for the total) when using timeshard sequences, not
-counting nodes that have been previously removed (parted/dropped) from a group.
+BDR currently has hard limit of no more than 1000 active nodes as this is the
+current maximum Raft connections allowed.
 
 BDR places a limit that at most 10 databases in any one PostgreSQL instance
-can be BDR nodes across different BDR node groups. Having multiple nodes/databases
-within one instance be part of the same BDR node group is not supported.
+can be BDR nodes across different BDR node groups. However BDR works best if
+only one BDR database per PostgreSQL instance is used.
+
+The minimum recommended number of nodes in BDR cluster is 3, because with
+2 nodes the consensus stops working if one of the node stops working.
 
 ## Architectural Options & Performance
 
@@ -118,18 +123,23 @@ within one instance be part of the same BDR node group is not supported.
 BDR can be configured in a number of different architectures, each of which has
 different performance and scalability characteristics.
 
-The Group is the basic building block of a BDR Cluster consisting of 2+ nodes
+The Group is the basic building block of a BDR Group consisting of 2+ nodes
 (servers). Within a Group, each node is in a different AZ, with dedicated router
 and backup, giving Immediate Switchover and High Availability. Each Group has a
 dedicated Replication Set defined on it. If the Group loses a node it is easily
 repaired/replaced by copying an existing node from the Group.
 
+Adding more master nodes to a BDR Group does not result in significant write
+throughput increase when most tables are replicated because BDR has to replay
+all the writes on all nodes. Because BDR writes are in general more effective
+than writes coming from Postgres clients via SQL, some performance increase
+can be achieved. Read throughput generally scales linearly with the number of
+nodes.
+
 The following architectures are available:
 
 -   Multimaster/Single Group
 -   BDR AlwaysOn
--   BDR Worldwide
--   BDR AutoScale
 
 The simplest architecture is just to have one Group, so let's examine that first:
 
@@ -189,79 +199,6 @@ reduced or interrupted if the main application begins using that node.
 
 Future feature: One node is elected as main replicator to other Groups, limiting CPU
 overhead of replication as the cluster grows and minimizing the bandwidth to other Groups.
-
-### BDR Worldwide
-
-In this architecture, multiple BDR Groups exist in multiple worldwide Regions, but all
-nodes in a Group are always within one Region.
-
-If high volume tables are configured to that they only replicate within their own Group,
-then peak write TPS will scale linearly according to the number of Groups. This allows
-for sharding data based upon its input location, also known as geo-sharding.
-
-This makes this architecture very suitable for use in IoT, monitoring or other high
-volume data collection applications, where location is the way that the application is
-naturally partitioned. High volume data doesn't leave its Region, allowing us to avoid
-high bandwidth costs from cross-region replication as well as allowing us to follow
-strong laws on data privacy and data jurisdiction.
-
-BDR allows multi-node read queries in this architecture. Large multi-node queries will
-scale linearly in terms of response time as the number of nodes increases. Throughput is
-limited since each query runs on one node in every sub-cluster.
-
-### BDR AutoScale
-
-In this architecture, we use an array of Groups to create a parallel compute platform.
-
-By default, tables are created on all nodes. For range partitioned tables, the user can
-specify a distribution key that allows partitions to be striped across the Groups to
-allow automatic sharding. E.g. TimeStamp, CustomerId or WarehouseId. Note that individual
-key values may also be used instead of ranges, effectively supporting list-based partitioning.
-
-Tables that are identical on all nodes are referred to as Replicated Tables. Tables
-that are sharded across groups are referred to as Distributed or Sharded Tables.
-Replicated tables can be joined to any other table. Distributed tables can only be
-joined to Replicated tables, or to other Distributed tables that share the exact
-same data distribution.
-
-Distributed tables may not always be perfectly evenly distributed.
-If there are heavily accessed shards, we can add additional nodes to that Group
-to deal with the imbalanced workload.
-
-This form of sharding allows OLTP write performance to scale linearly, if the
-application sends transactions directly to the appropriate group, which is known
-as Direct Routing. In this mode, the architecture can be used somewhat similarly to
-distributed NoSQL systems such as Apache Cassandra. Autoscale doesn't support hash
-partitioning because it causes problems when the cluster needs to expand or contract,
-limiting the ability to scale elastically as needed.
-
-If the workload can't send transactions directly to the correct group, we execute
-them against a Coordinator node which then routes them to any node within the
-appropriate Group. The Coordinator is then acting as a proxy to perform Indirect
-or Proxy Routing. Each Group will have a preferred write node and 1-2 other shadow
-nodes; reads will be directed to the shadow nodes by default, or the preferred
-write node if it is the only one remaining.
-
-The Coordinator node adds latency and can limit scalability as the fraction of time
-spent in the coordinator increases. Workloads with lots of small read only requests
-cause a higher % of coordinator time, whereas large decision support queries show a
-small % of coordinator time, so scale the best.
-
-Shard Routing requires access to the Shard Distribution Metadata, held within BDR
-catalog tables. Coordinator nodes store this information in their catalog tables,
-so have direct local access. The Shard Distribution Metadata can also be cached
-within client-side programs or in routing middleware to allow Direct Routing to take
-place from those components.
-
-AutoScale allows multi-node read queries in this architecture. Large multi-node
-queries will scale linearly in terms of response time as the number of nodes
-increases. Throughput is limited since each query runs on one node in every
-sub-cluster.
-
-AutoScale doesn't yet support multi-node write transactions when using a
-Coordinator, but these will be supported in future releases. For now, these
-operations are accepted but are not atomic. Multi-node write transactions
-would limit scalability in a sharded architecture.
 
 ## Deployment
 
