@@ -1,0 +1,150 @@
+---
+title: "Loading Tables From an External Data Source (Offline Snapshot)"
+---
+
+<div id="offline_snapshot" class="registered_link"></div>
+
+There may be circumstances when you want to initially load your target tables (subscription tables of a single-master replication system, or non-PDN nodes of a multi-master replication system) using a method other than the snapshot replication functionality of Replication Server. This is referred to as using an offline snapshot.
+
+For example, you might initially load the tables by running the Migration Toolkit from the command line or by using a backup from an external data source. When you load the target tables using an offline snapshot, special preparations must be taken to account for the following deviations from the default target table creation and loading process:
+
+-   In the typical, default scenario Replication Server creates the target table definitions when you define the subscription in a single-master replication system, or add an additional primary node in a multi-master replication system. When using an offline snapshot, creation of the target table definitions is expected to be your responsibility. You must therefore prevent Replication Server from creating the target table definitions.
+-   In the typical, default scenario Replication Server performs synchronization replication using batches of SQL statements. If any statement in a batch results in an error, all statements in the batch are rolled back. When using an offline snapshot, if there is the possibility that the external data source used to load the target tables already has transactions applied to it that are also recorded in the shadow tables of the source tables, then you must perform the first synchronization replication in non-batch mode. This is because the batch of synchronization transactions may include SQL statements that have already been applied to the target, which may result in a statement failure in certain cases.
+
+This section discusses how to deal with the preceding two points for both a single-master and a multi-master replication system.
+
+First, non-batch mode synchronization and why it must be used in certain cases is explained in more detail in the following section.
+
+<div id="non_batch_mode_sync" class="registered_link"></div>
+
+## Non-Batch Mode Synchronization
+
+Synchronization replications are done in batches of updates, each batch committed in a separate transaction. Therefore if any single update in a batch fails, all the updates in the batch are rolled back.
+
+This process has the following implications.
+
+Prior to and during the time when the offline snapshot is in progress, there may be updates to the source tables, which are recorded in the source tables’ shadow tables. After the offline snapshot completes, there may be additional updates to the source tables that are also recorded in the shadow tables.
+
+Since Replication Server has no knowledge of the external data source used to load the target tables, it is unknown to Replication Server whether or not any of the updates made to the source tables during or after the offline snapshot, have already been included in the data used to load the target tables.
+
+As a result, the shadow tables may include a mixture of duplicate updates that have already been applied to the target tables, as well as new updates that have not been applied to the target tables.
+
+If you then perform synchronization replication, the publication server attempts to apply all updates recorded in the shadow tables in batches.
+
+If one of the updates had been an insertion of a new row, and this new row is already in the target table loaded from the offline snapshot, a duplicate key error results when the publication server attempts to apply the batch containing the `INSERT` statement for this row. The duplicate key error forces the rollback of the entire batch. This causes the exclusion of updates in the batch that may not yet have been carried over to the target tables. The source tables and target tables are now inconsistent since there were updates to the source tables that have not been applied to the target tables.
+
+!!! Note
+    The effects of applying `UPDATE` and `DELETE` statements in the batch to a target table that already has been changed by these updates does not cause the same problem as repeated application of INSERT statements. The UPDATE statement would just change the row to the same values a second time. When a DELETE statement affects no rows, this is not considered an error by the database server, and therefore, no rollback of the batch occurs.
+
+The solution to the potential rollback of a batch is to apply the shadow table updates in non-batch mode. That is, each SQL statement is individually committed. In that way, if an insertion of a row fails due to a duplicate key error, that statement alone is rolled back. The error does not affect the other shadow table updates that must be applied since all updates are enclosed within their own, individual transactions.
+
+The `batchInitialSync` configuration option controls whether the first synchronization replication occurs in batch or non-batch mode. If you are using an offline snapshot in an active replication system where updates are occurring to the source tables and transactions are thus accumulating in the shadow tables for the trigger-based method, it is advisable to set `batchInitialSync` to false to perform the first synchronization replication in non-batch mode.
+
+!!! Note
+    An offline snapshot cannot be used to add a subscription or a primary node to an active replication system that uses the log-based method. For the log-based method, offline snapshots can only be used to initially configure the system, and not to update it with additional nodes after the publication database or primary node is actively receiving transactions.
+
+If you are using offline snapshots to initially create the entire replication system that has yet to be activated, and the content of the offline snapshots are all assumed to be consistent for the source and target tables, then `batchInitialSync` can be left with its default setting of true since it is assumed that the first synchronization replication will not apply any duplicate updates.
+
+## Offline Snapshot Configuration Options
+
+The following are the configuration options that you need to modify when using an offline snapshot.
+
+!!! Note
+    These options apply to the publication server only.
+
+`offlineSnapshot`
+
+> The `offlineSnapshot` option must be set to true before creating the subscription for a single-master replication system, or before adding the primary node for a multi-master replication system.
+
+`offlineSnapshot={true | false}`
+
+> The default value is false.
+>
+> When set to true, the `offlineSnapshot` option prevents the usual creation of the subscription schema and table definitions when the subscription is defined in a single-master replication system since it is assumed that you are creating the subscription table definitions and loading them from an external source other than the publication.
+>
+> When adding the primary node in a multi-master replication system, leave the Replicate Publication Schema and Perform Initial Snapshot boxes unchecked (see [Creating Additional Primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)).
+>
+> When `offlineSnapshot` is set to true, this has the direct effect within the control schema by setting column has_initial_snapshot to a value of O indicating an offline snapshot is used for the target subscription or primary node represented by the row. Column has_initial_snapshot is set in table `xdb_publication_subscriptions` for a single-master replication system and in table `xdb_MMR_pub_group` for a multi-master replication system.
+
+The setting of has_initial_snapshot influences the behavior of the `batchInitialSync` option as explained in the following section.
+
+After the first replication completes to the target subscription or primary node, has_initial_snapshot is changed to Y by Replication Server.
+
+`batchInitialSync`
+
+> The `batchInitialSync` option is used to control whether the first synchronization after loading the target tables from an offline snapshot is done in batch mode (the default) or non-batch mode.
+>
+> Set the `batchInitialSync` option to false to perform synchronization replication in non-batch mode.
+>
+> The offlineSnapshot configuration option must have first been set to true prior to creating the subscription or adding the additional primary node. A non-batch mode synchronization occurs only if batchInitialSync is false and the has_initial_snapshot column in the control schema is set to a value of O as described for the offlineSnapshot option.
+
+`batchInitialSync={true | false}`
+
+The default value is true.
+
+<div id="smr_repln_offline_snapshot" class="registered_link"></div>
+
+## Single-Master Replication Offline Snapshot
+
+An offline snapshot can be used to initially load the subscription tables of a single-master replication system. For a publication that is intended to have multiple subscriptions, it is possible to create some of the subscriptions using the default Replication Server snapshot replication process as described in Section [Performing Snapshot Replication](../05_smr_operation/04_on_demand_replication/01_perform_replication/#perform_replication), while other subscriptions can be created from an offline snapshot.
+
+The following steps describe how to create a subscription from an offline snapshot.
+
+**Step 1:** Register the publication server, add the publication database definition, and create the publication as described in Section [Creating a Publication](../05_smr_operation/02_creating_publication/#creating_publication).
+
+**Step 2:** Register the subscription server and add the subscription database definition as described in sections [Registering a Subscription Server](../05_smr_operation/03_creating_subscription/01_registering_subscription_server/#registering_subscription_server) and [Adding a Subscription Database](../05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database), respectively.
+
+!!! Note
+    Steps 3 and 4 must be performed before creating the subscription. Steps 3 through 9 can be repeated each time you wish to create an additional subscription from an offline snapshot.
+
+**Step 3:** Modify the publication server configuration file if these options are not already set as described by the following:
+
+-   Change the `offlineSnapshot` option to true. When the publication server is restarted, `offlineSnapshot` set to `true` has the effect that: 1) creating a subscription does not create the schema and subscription table definitions in the subscription database as is done with the default setting, and 2) creating a subscription sets a column in the control schema indicating an offline snapshot is used to load this subscription.
+-   Set the `batchInitialSync` option to the appropriate setting for your particular situation as discussed at the end of Section [Non-Batch Mode Synchronization](#non_batch_mode_sync).
+
+**Step 4:** Restart the publication server if the publication server configuration file was modified in Step 3. See Section [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for directions on restarting a publication server.
+
+**Step 5:** In the subscription database, create the schema, the subscription table definitions, and load the subscription tables from your offline data source. The subscription database user name used in Section [Adding a Subscription Database](../05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database) must have full privileges over the database objects created in this step. Also review the beginning of Section [Adding a Subscription Database](../05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database) regarding the rules as to how Replication Server creates the subscription definitions from the publication for each database type as you must follow these same conventions when you create the target definitions manually.
+
+**Step 6:** Add the subscription as described in Section [Adding a Subscription](../05_smr_operation/03_creating_subscription/03_adding_subscription/#adding_subscription).
+
+**Step 7:** Perform an on demand synchronization replication. See [Performing Synchronization Replication](../05_smr_operation/04_on_demand_replication/02_perform_sync_replication/#perform_sync_replication) for directions on performing an on demand synchronization replication.
+
+**Step 8:** If you are not planning to load any other subscriptions using an offline snapshot at this time, change the `offlineSnapshot` option back to false and the `batchInitialSync` option to true in the publication server configuration file.
+
+**Step 9:** Restart the publication server if you modified the publication server configuration file in Step 8.
+
+## Multi-Master Replication Offline Snapshot
+
+An offline snapshot can be used to initially load the primary nodes of a multi-master replication system. It is possible to load some of the primary nodes using the Replication Server snapshot replication functionality when defining the primary node as described in Section [Creating Additional Primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) or by using an on demand snapshot as described in Section [Performing Snapshot Replication](../06_mmr_operation/05_on_demand_replication_mmr/#perform_snapshot_replication_mmr), while other primary nodes can be loaded from an offline snapshot.
+
+!!! Note
+    Offline snapshots are not supported for a multi-master replication system that is actively in use. Any changes on an active primary node will be lost during the offline snapshot process of dumping or restoring the data of another node.
+
+The following steps describe how to create a primary node from an offline snapshot.
+
+**Step 1:** Register the publication server, add the primary definition node, and create the publication as described in Section [Creating a Publication](../06_mmr_operation/02_creating_publication_mmr/#creating_publication_mmr).
+
+!!! Note
+    The following steps must be performed before adding a primary node that is to be loaded by an offline snapshot. Steps 2 through 10 can be repeated each time you wish to create an additional primary node from an offline snapshot.
+
+**Step 2:** Be sure there is no schedule defined on the replication system, otherwise remove the schedule for the duration of the following steps. See [Removing a Schedule](03_managing_schedule/#remove_schedule) for directions on removing a schedule.
+
+**Step 3:** Modify the publication server configuration file if these options are not already set as described by the following:
+
+-   Change the `offlineSnapshot` option to true. When the publication server is restarted, `offlineSnapshot` set to true has the effect that adding a primary node sets a column in the control schema indicating an offline snapshot is used to load this primary node.
+-   Set the `batchInitialSync` option to the appropriate setting for your particular situation as discussed at the end of Section [Non-Batch Mode Synchronization](#non_batch_mode_sync).
+
+**Step 4:** Restart the publication server if the publication server configuration file was modified in Step 3. See Section [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for directions on restarting a publication server.
+
+**Step 5:** In the database to be used as the new primary node, create the schema, the table definitions, and load the tables from your offline data source.
+
+**Step 6:** Add the primary node as described in Section [Creating Additional Primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) with options Replicate Publication Schema and Perform Initial Snapshot unchecked.
+
+**Step 7:** Perform an initial on demand synchronization. See Section [Performing Synchronization Replication](../06_mmr_operation/05_on_demand_replication_mmr/#perform_synchronization_replication_mmr) for directions on performing an on demand synchronization.
+
+**Step 8:** If you are not planning to load any other primary nodes using an offline snapshot at this time, change the `offlineSnapshot` option back to false and the `batchInitialSync` option to true in the publication server configuration file.
+
+**Step 9:** Restart the publication server if you modified the publication server configuration file in Step 8.
+
+**Step 10:** Re-add the schedule if one had been removed in Step 2. See Section [Creating a Schedule](02_creating_schedule/#creating_schedule) for directions on creating a schedule.

@@ -1,0 +1,217 @@
+---
+title: "Managing History"
+---
+
+<div id="managing_history" class="registered_link"></div>
+
+Replication Server maintains three types of history:
+
+-   Shadow Table History. Records of each change (insert, update, or delete) that was applied to each target table during synchronization replications using the trigger-based method. There is no shadow table history for synchronization replications using the log-based method.
+-   Replication History. Summary records of each replication.
+-   Event History. Records of each change that was applied to various control schema tables.
+
+The size of the control schema tables that store these history records grows over time, and thus there are a number of methods referred to as cleanup to delete such history records.
+
+Shadow table history cleanup information is described in sections [Scheduling Shadow Table History Cleanup](#schedule_shadow_table_history_cleanup) and [Cleaning Up Shadow Table History](../08_xdb_cli/03_xdb_cli_commands/49_clean_shadow_table_history/#clean_shadow_table_history). For replication history cleanup, see [Cleaning Up Replication History](../08_xdb_cli/03_xdb_cli_commands/50_clean_replication_history/#clean_replication_history).
+
+For event history cleanup, see [Cleaning Up Event History](#clean_event_history).
+
+<div id="schedule_shadow_table_history_cleanup" class="registered_link"></div>
+
+## Scheduling Shadow Table History Cleanup
+
+A preference can be set for each publication database definition to determine if and when shadow table history cleanup should be scheduled for all publications appearing under its corresponding Publication Database node. Shadow table history cleanup has no benefit for snapshot-only publications so if all of your publications under a Publication Database node are snapshot-only publications, then scheduled shadow table history cleanup should be disabled following steps 1 through 4.
+
+Replication history is not deleted by scheduling shadow table history cleanup. Whenever a new publication database definition is created, there is a scheduled default setting of every Sunday at 12:00 AM midnight for shadow table history cleanup.
+
+!!! Note
+    A configuration option is available to force shadow table history cleanup after every synchronization replication. See [Forcing Immediate Shadow Table Cleanup](../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/09_forcing_shadow_table_cleanup/#forcing_shadow_table_cleanup) for information on this option.
+
+!!! Note
+    The cleanup of certain processed rows in the shadow tables may be delayed beyond the next scheduled cleanup, but will eventually be removed in subsequent cleanup events.
+
+**For Oracle only:** For scheduling of shadow table history cleanup on an Oracle publication database, the Oracle DBMS_JOB package on the Oracle database server is used. The time you specify in the schedule for cleanup is passed and stored in `DBMS_JOB` without time zone translation.
+
+For example, assume the publication server is running on a host in New York and the Oracle publication database is on a server in California, which has a 3-hour time difference. If you set shadow table history cleanup to run at 12:00 AM midnight according to the New York based publication server, the cleanup job on the California based Oracle database will start at 12:00 AM midnight Pacific Time (in California), which would be 3:00 AM Eastern Time (in New York).
+
+**For SQL Server only:** For scheduling of shadow table history cleanup on a SQL Server publication database, SQL Server Agent is used on the host running SQL Server. The time you specify in the schedule for cleanup is passed to SQL Server Agent without time zone translation. The effect is the same as described for Oracle in the preceding example.
+
+**For Postgres only:** For scheduling of shadow table history cleanup on a Postgres publication database, the Quartz scheduler is used on the host running the publication server based on the location of the controller database.
+
+For example, assume the publication server is running on a host in New York and the Postgres publication database on which cleanup is to be scheduled is also the controller database and is on a host in California. If you set shadow table history cleanup to run at 12:00 AM midnight according to the New York based publication server, the cleanup job on the California based Postgres database will start at 12:00 AM midnight Pacific Time (in California), which would be 3:00 AM Eastern Time (in New York).
+
+By contrast, assume the publication server is running on a host in New York along with the controller database, and the Postgres publication database on which cleanup is to be scheduled is on a host in California. If you set shadow table history cleanup to run at 12:00 AM midnight according to the New York based publication server and controller database, the cleanup job on the California based Postgres database will start at 12:00 AM midnight Eastern Time (in New York), which would be 9:00 PM Pacific Time (in California).
+
+**For Oracle only:** The cleanup job on an Oracle publication database runs independently of the publication server, so the cleanup job will run regardless of whether or not the publication server is running.
+
+**For Postgres only:** The publication server must be running in order for the cleanup job to run on a Postgres publication database.
+
+!!! Note
+    An alternative to using the Quartz scheduler when Postgres is the publication database, is to use pgAgent job scheduling instead. See [Using pgAgent Job Scheduling](../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/08_using_pgagent_job_scheduling/#using_pgagent_job_scheduling) for information on how to use pgAgent job scheduling and the advantages, thereof.
+
+The following steps show how to alter the default setting.
+
+**Step 1:** Make sure the publication server whose node is the parent of the publication database definition whose cleanup scheduling preference you want to set is running and has been registered in the EPRS Replication Console you are using. See [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for directions on starting and registering a publication server.
+
+**Step 2:** Select the Publication Database node for which you want to set the cleanup scheduling preference.
+
+![Selecting the publication database for cleanup scheduling](../images/image223.png)
+
+**Figure 7-44: Selecting the publication database for cleanup scheduling**
+
+**Step 3:** From the `Publication` menu, choose `Preferences`. Alternatively, click the secondary mouse button on the Publication Database node and choose `Preferences`. The `Publication Server Preferences` dialog box appears.
+
+![Publication Server Preferences dialog box](../images/image224.png)
+
+**Figure 7-45: Publication Server Preferences dialog box**
+
+**Step 4:** In the `Publication Server Preferences` dialog box, uncheck the box if you do not want to run a scheduled shadow table history cleanup job. Click the `OK` button and skip the remaining steps.
+
+![Disabled schedule for shadow table history cleanup](../images/image225.png)
+
+**Figure 7-46: Disabled schedule for shadow table history cleanup**
+
+**Step 5:** If you want to schedule shadow table history cleanup, make sure the Run Cleanup Job check box is selected. Select the radio button for the cleanup frequency. The frequency choices have the following meanings:
+
+-   Every number of minutes/hours. Schedules shadow table history cleanup to run continuously at an interval in either minutes or hours that you specify. Select this option if there are huge volumes of updates to the publication tables during the course of the day, every day.
+-   Every Day at hour of day. Schedules shadow table history cleanup to run once a day on the hour you choose. Select this option if updates to the publication tables are frequent enough to require more than once a week cleanup, but not needed more than once a day.
+-   Every selected day of week at hour of day. Schedules shadow table history cleanup to run once a week on the day and at the hour you choose. Select this option if updates to the publication tables are infrequent and you do not want to run cleanup manually.
+-   Cron Expression. Provides additional flexibility for specifying a schedule beyond the three preceding radio button choices. See appendix [Writing a Cron Expression](../10_appendix/04_miscellaneous_xdb_processing_topics/03_writing_cron_exp/#writing_cron_exp) for directions on writing a cron expression.
+
+!!! Note
+    A configuration option is available to force shadow table history cleanup after every synchronization replication. See [Forcing Immediate Shadow Table Cleanup](../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/09_forcing_shadow_table_cleanup/#forcing_shadow_table_cleanup) for information on this option.
+
+![Cleanup Job dialog box](../images/image226.png)
+
+**Figure 7-47: Cleanup Job dialog box**
+
+**Step 6:** Click the `OK` button to accept the schedule.
+
+<div id="clean_the_shadow_table_history" class="registered_link"></div>
+
+## Cleaning Up the Shadow Table History
+
+Non snapshot-only publications (that is, publications on which synchronization replications occur) whose tables experience frequent changes should have their shadow table history cleaned up periodically, otherwise the amount of disk space consumed by the shadow tables in the publication database may grow too rapidly.
+
+When shadow table history is cleaned up, the rows in the following Replication Server metadata tables are deleted:
+
+-   `RREP_TXSET`
+-   `RREP_TXSET_LOG`
+-   `RRST_schema_table`
+
+**For Oracle only:** When Oracle is the publication database, these tables are located in the publication database in the schema of the publication database user.
+
+For SQL Server only: When SQL Server is the publication database, these tables are located in the publication database in the schema you chose during Step 5 of Section [SQL Server Publication Database](../05_smr_operation/01_prerequisites/04_preparing_pub_database/#sql_server_pub_db).
+
+**For Postgres only:** When Postgres is the publication database, these tables are located in the publication database in schema `_edb_replicator_pub`. Shadow table history cleanup can be scheduled to run periodically (see [Scheduling Shadow Table History Cleanup](#schedule_shadow_table_history_cleanup)) or it can be run on demand.
+
+!!! Note
+    The cleanup of certain processed rows in the shadow tables may not occur during an on demand cleanup or may be delayed beyond the next scheduled cleanup, but will eventually be removed in subsequent cleanup events.
+
+The following are the steps to run shadow table history cleanup on demand for a chosen publication.
+
+**Step 1:** Make sure the publication server whose node is the parent of the publication whose shadow table history you wish to clean up is running and has been registered in the EPRS Replication Console you are using. See [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for directions on starting and registering a publication server.
+
+**Step 2:** Select the Publication node of the publication for which you want to clean up the shadow table history.
+
+![Selecting a publication for shadow table history cleanup](../images/image227.png)
+
+**Figure 7-48: Selecting a publication for shadow table history cleanup**
+
+**Step 3:** From the `Publication` menu, choose `Cleanup Shadow Table History`. Alternatively, click the secondary mouse button on the Publication node and choose `Cleanup Shadow Table History`. The `Cleanup Synchronization History` confirmation box appears.
+
+![Cleaning up shadow table history](../images/image228.png)
+
+**Figure 7-49: Cleaning up shadow table history**
+
+**Step 4:** Click the `Yes` button in the `Cleanup Synchronization History` confirmation box.
+
+![Cleanup Synchronization History confirmation](../images/image229.png)
+
+**Figure 7-50: Cleanup Synchronization History confirmation**
+
+**Step 5:** Click the `Yes` button in response to `Shadow Table’s Transaction History Removed Successfully`.
+
+![Successful cleanup of shadow table history](../images/image230.png)
+
+**Figure 7-51: Successful cleanup of shadow table history**
+
+After shadow table history cleanup, if you click the `View Data` link of the `Replication History` tab, an information message appears stating that there is no synchronization history to view.
+
+![View Data link after shadow table history cleanup](../images/image231.png)
+
+**Figure 7-52: View Data link after shadow table history cleanup**
+
+<div id="clean_up_replication_history" class="registered_link"></div>
+
+## Cleaning Up Replication History
+
+Cleaning up replication history deletes rows from the following tables in the control schema:
+
+-   `xdb_pub_replog`
+-   `xdb_pub_table_replog`
+
+The following are the steps to run replication history cleanup for a chosen publication.
+
+**Step 1:** Make sure the publication server whose node is the parent of the publication whose replication history you wish to cleanup is running and has been registered in the EPRS Replication Console you are using. See [Registering a Publication Server](../05_smr_operation/02_creating_publication/01_registering_publication_server/#registering_publication_server) for directions on starting and registering a publication server.
+
+**Step 2:** Select the Publication node of the publication for which you want to clean up replication history.
+
+![Selecting a publication for replication history cleanup](../images/image227.png)
+
+**Figure 7-53: Selecting a publication for replication history cleanup**
+
+**Step 3:** From the `Publication` menu, choose `Cleanup Replication History`. Alternatively, click the secondary mouse button on the Publication node and choose Cleanup Replication History. The `Cleanup Replication History` confirmation box appears.
+
+![Cleaning up replication history](../images/image232.png)
+
+**Figure 7-54: Cleaning up replication history**
+
+**Step 4:** Click the `Yes` button in the Cleanup Replication History confirmation box.
+
+![Cleanup Replication History confirmation](../images/image233.png)
+
+**Figure 7-55: Cleanup Replication History confirmation**
+
+
+**Step 5:** Click the `Yes` button in response to Replication History Has Been Removed.
+
+![Successful cleanup of replication history](../images/image234.png)
+
+**Figure 7-56: Successful cleanup of replication history**
+
+After replication history cleanup, if you click the `Replication History` tab, no history records appear.
+
+![Successful cleanup of replication history](../images/image235.png)
+
+**Figure 7-57: Replication History tab after replication history cleanup**
+
+<div id="clean_event_history" class="registered_link"></div>
+
+## Cleaning Up Event History
+
+Unlike shadow table history (Section [Cleaning Up Shadow Table History](../08_xdb_cli/03_xdb_cli_commands/49_clean_shadow_table_history/#clean_shadow_table_history)) and replication history (Section [Cleaning Up Replication History](#clean_up_replication_history)), event history is neither viewable nor removable using the EPRS Replication Console.
+
+Event history is a recording of various updates to the control schema tables that occur during Replication Server processing. Hence, the event history content grows significantly over time.
+
+The tables containing event history, and thus the tables to be cleaned up are the following:
+
+-   `xdb_events`
+-   `xdb_events_status`
+
+In addition, the replication history tables are cleaned up as well. These tables can also be manually cleaned up as described in Section [Cleaning Up Replication History](#clean_up_replication_history).
+
+-   `xdb_pub_replog`
+-   `xdb_pub_table_replog`
+
+For Oracle, these tables are located in the schema of the publication database user.
+
+For SQL Server and Postgres, these tables are located in schema `_edb_replicator_pub`.
+
+The event history and replication history data in the control schema are deleted on a scheduled, daily basis at 12 AM, thus reducing the number of rows in tables `xdb_events, xdb_events_status, xdb_pub_replog`, and `xdb_pub_table_replog`.
+
+Publication server configuration option `historyCleanupDaysThreshold` provides the capability to designate how old the completed data must reach before its removal. The default setting is that completed data must be older than seven days before it is deleted during the daily 12 AM cleanup process.
+
+In order to cleanup all completed event and replication history regardless of its age, set `historyCleanupDaysThreshold` to a value of 0, then restart the publication server. The cleanup occurs during the next scheduled 12 AM cleanup process.
+
+See [Setting Event History Cleanup Threshold](../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/10_setting_event_history_cleanup/#setting_event_history_cleanup) for the `historyCleanupDaysThreshold` option.
