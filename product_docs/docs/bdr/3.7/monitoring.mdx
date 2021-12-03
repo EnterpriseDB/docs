@@ -293,6 +293,17 @@ If `is_using_lcr` is `FALSE`, `decoder_slot_name`/`lcr_file_name` will be `NULL`
 This will be the case if the Decoding Worker is not enabled, or the WAL sender is
 serving a [logical standby]\(nodes.md#Logical Standby Nodes).
 
+Additionally, information about the Decoding Worker can be monitored via the function
+[bdr.get_decoding_worker_stat](functions#bdr_get_decoding_worker_stat), e.g.:
+
+```
+postgres=# SELECT * FROM bdr.get_decoding_worker_stat();
+   pid   | decoded_upto_lsn | waiting | waiting_for_lsn
+---------+------------------+---------+-----------------
+ 1153091 | 0/1E5EEE8        | t       | 0/1E5EF00
+(1 row)
+```
+
 ## Monitoring BDR Replication Workers
 
 All BDR workers show up in the system view `bdr.stat_activity`,
@@ -701,30 +712,19 @@ Peer replication slots should be active on all nodes at all times.
 If a peer replication slot is not active, then it might mean:
 
 -   The corresponding peer is shutdown or not accessible; or
--   BDR replication is broken. Grep the log file for `ERROR` or
-    `FATAL` and also check `bdr.worker_errors` on all nodes.
-    The root cause might be, for example, an incompatible DDL was
-    executed with DDL replication disabled on one of the nodes.
+-   BDR replication is broken.
 
-The BDR group replication slot, on the other hand, is inactive most
-of the time. BDR keeps this slot and advances LSN, as all other peers
-have already consumed the corresponding transactions. So it is not
-possible to monitor the status (active or inactive) of the group slot.
+Grep the log file for `ERROR` or `FATAL` and also check `bdr.worker_errors` on
+all nodes.  The root cause might be, for example, an incompatible DDL was
+executed with DDL replication disabled on one of the nodes.
 
-We recommend the following monitoring alert levels:
+The BDR group replication slot is however inactive most of the time.  BDR
+maintains this slot and advances its LSN when all other peers have already
+consumed the corresponding transactions. Consequently it is not necessary to
+monitor the status of the group slot.
 
--   status=UNKNOWN, message=This node is not part of any BDR group
--   status=OK, message=All BDR replication slots are working correctly
--   status=CRITICAL, message=There is at least 1 BDR replication
-    slot which is inactive
--   status=CRITICAL, message=There is at least 1 BDR replication
-    slot which is missing
-
-The described behavior is implemented in the function
-`bdr.monitor_local_replslots()`, which uses replication slot status
-information returned from view `bdr.node_slots` (slot active or
-inactive) to provide a local check considering all BDR node replication
-slots, except the BDR group slot.
+The function `bdr.monitor_local_replslots()` provides a summary of whether all
+BDR node replication slots are working as expected, e.g.:
 
 ```sql
 bdrdb=# SELECT * FROM bdr.monitor_local_replslots();
@@ -732,6 +732,14 @@ bdrdb=# SELECT * FROM bdr.monitor_local_replslots();
 --------+-------------------------------------------------
  OK     | All BDR replication slots are working correctly
 ```
+
+One of the following status summaries will be returned:
+
+-   `UNKNOWN`: `This node is not part of any BDR group`
+-   `OK`: `All BDR replication slots are working correctly`
+-   `OK`: `This node is part of a subscriber-only group`
+-   `CRITICAL`: `There is at least 1 BDR replication slot which is inactive`
+-   `CRITICAL`: `There is at least 1 BDR replication slot which is missing`
 
 ## Monitoring Transaction COMMITs
 

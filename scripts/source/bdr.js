@@ -22,6 +22,7 @@ const fileToMetadata = {};
 const basePath = path.resolve("temp_bdr/docs/docs2/");
 const imgPath = path.resolve("temp_bdr/docs/img/");
 
+
 (async () => {
   const processor = unified()
     .use(remarkParse)
@@ -51,7 +52,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const mdIndex = yaml.load(await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), 'utf8'));
 
   const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
-  const version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
+  version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
   const destPath = path.resolve("product_docs", "docs", "bdr", version);
   const indexFilename = "index.md";
 
@@ -119,10 +120,17 @@ function bdrTransformer() {
       if (node.type === "jsx" && node.value.match(/^<AuthenticatedContentPlaceholder/) )
       {
         // todo: use HAST parser here
-        if (!title)
-          title = node.value.match(/topic="([^"]+)"/)[1];
-        description = (node.value.match(/description="([^"]+)"/)||[])[1];
-        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.enterprisedb.com/bdr4/release/latest/${filename.replace(".md", "/")}"`);
+          if (!title)
+          {
+             title = node.value.match(/topic="([^"]+)"/)[1];
+          }
+          description = (node.value.match(/description="([^"]+)"/)||[])[1];
+          if (parseFloat(version) < 4)
+          {  
+              node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/${filename.replace(".md", "/")}"`)
+          } else {
+              node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.enterprisedb.com/bdr4/release/latest/${filename.replace(".md", "/")}"`)
+          }
       }
     }
 
