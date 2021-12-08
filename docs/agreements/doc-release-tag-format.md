@@ -7,8 +7,9 @@
 | EDB Cloud                    | edbcloud                                                | product/edbcloud/*version*         | Aislinn Wright |
 | EDB Postgres Advanced Server | epas                                                    | product/epas/*version*             | Robert Haas |
 | Failover Manager             | efm                                                     | product/efm/*version*              | John Dalton, Robert Bissett (Bobby) |
-| Foriegn Data Wrappers        | *name*-fdw, where *name* is hadoop, mongo, or mysql       | product/*name*-fdw/*version*      | Jeevan Chalke |
+| Foriegn Data Wrappers        | *name*-fdw, where *name* is hadoop, mongo, or mysql     | product/*name*-fdw/*version*       | Jeevan Chalke |
 | HARP                         | harp                                                    | product/harp/*version*             | John Dalton |
+| LiveCompare                  | livecompare                                             | product/livecompare/*version*      | |
 | Migration Portal             | mp                                                      | product/mp/*version*               | Prashant Argawal |
 | Migration Toolkit            | mtk                                                     | product/mtk/*version*              | Prashant Argawal 
 | Postgres Enterprise Manager  | pem                                                     | product/pem/*version*              | Anthony Waite, Ashesh Vashi |
