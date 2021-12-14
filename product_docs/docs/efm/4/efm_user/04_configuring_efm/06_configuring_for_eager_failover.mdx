@@ -1,24 +1,25 @@
 ---
-title: "Configuring for Eager Failover"
+title: "Configuring for eager failover"
 ---
 <div id="configuring_for_eager_failover" class="registered_link"></div>
 
 
-In default run mode, if a primary Failover Manager process fails, there is no failover protection until the agent is restarted. To avoid such a case, you can set up the primary node through `systemd` to cause a failover when the primary agent exits, which is called Eager Failover. 
-You can set up Eager Failover by  performing the following steps (the example uses Advanced Server version 12 and EFM version 4.2):
+In default run mode, if a primary Failover Manager process fails, there's no failover protection until the agent restarts. To avoid this case, you can set up the primary node through `systemd` to cause a failover when the primary agent exits, which is called eager failover. 
+
+You can set up eager failover by  performing the following steps. The example uses EDB Postgres Advanced Server version 12 and Failover Manager version 4.2.
 
 <div id="enabling_the_eager_failover" class="registered_link"></div>
 
-# Enabling Eager Failover
+## Enabling eager failover
 
 - Since the database server stops as soon as the Failover Manager agent stops or fails, you must set the following property for all the agents before starting Failover Manager:
    ```text
     primary.shutdown.as.failure=true
     ```
 
-    If you do not set this property before starting Failover Manager, shutting down an EFM agent will shut down the database without failover.
+    If you don't set this property before starting Failover Manager, shutting down a Failover Manager agent shuts down the database without failover.
  
-- With Eager Failover enabled, using the `efm stop-cluster` command will stop all of the efm agents and shut down the primary database. Since the agents are not running, there is no failover. To avoid such a scenario, the command can be disabled with the `enable.stop.cluster` property.
+- With eager failover enabled, using the `efm stop-cluster` command stops all of the Failover Manager agents and shuts down the primary database. Since the agents aren't running, there's no failover. To avoid thihs scenario, you can disable the command using the `enable.stop.cluster` property.
  
     ```text
     enable.stop.cluster=false
@@ -40,11 +41,11 @@ You can set up Eager Failover by  performing the following steps (the example us
     systemctl daemon-reload
     ```
     
-With the above-mentioned changes, when the Failover Manager agent is stopped or is killed, the rest of the cluster will treat this situation as a failure and attempt a failover.
+With these changes, when the Failover Manager agent is stopped or ended, the rest of the cluster treats this situation as a failure and attempts a failover.
 
 <div id="disabling_the_eager_failover" class="registered_link"></div>
 
-# Disabling Eager Failover
+## Disabling eager failover
 
 - If you want to stop Failover Manager without stopping the database, comment out the following line in `/etc/systemd/system/edb-as-12.service`:
     ```text
@@ -55,41 +56,41 @@ With the above-mentioned changes, when the Failover Manager agent is stopped or 
     systemctl daemon-reload
     ```
 
-# Upgrading EFM in Eager Failover Mode
+## Upgrading Failover Manager in eager failover mode
 
-To upgrade Failover Manager without stopping Postgres, the Eager Failover mode should be temporarily disabled. Perform the following steps:
+To upgrade Failover Manager without stopping EDB Postgres Advanced Server, temporarily disable the eager failover mode. 
 
-1. [Disable Eager Failover](#disabling_the_eager_failover) 
+1. [Disable eager failover](#disabling_the_eager_failover) 
  
 2. [Stop and upgrade EFM](12_upgrading_existing_cluster/#upgrading_existing_cluster)
 
-3. [Enable Eager Failover](#enabling_the_eager_failover)
+3. [Enable eager failover](#enabling_the_eager_failover)
 
-# Important Notes
+## Important notes
 
-- Since systemd command is not used to manage the database while running EFM with a non-sudo setup,  Eager Failover is only supported in sudo mode and not supported in a non-sudo mode.
+- Since the `systemd` command isn't used to manage the database while running Failover Manager with a non-sudo setup, eager failover is supported only in sudo mode. It isn't supported in a non-sudo mode.
 
-- Eager failover is not suitable for situations where a VIP would not be released by the old primary. 
+- Eager failover isn't suitable for situations in which a VIP wouldn't be released by the old primary. 
 
 - Eager Failover is suitable in the following situations:
 
-  - With the `EDB Postgres High Availability` setup
-  - In a setup using client connection failover with [jdbc](https://jdbc.postgresql.org/documentation/head/connect.html#connection-failover) or libpq [(target-session-attrs)](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS)
-  - When custom scripting triggered by `script.fence` would fence the old primary server (STONITH). Some examples would be to shut down the VM with VMWare vCenter integration, openstack integration, or lights-out management. 
+  - With the EDB Postgres Advanced Server high-availability setup.
+  - In a setup using client connection failover with [jdbc](https://jdbc.postgresql.org/documentation/head/connect.html#connection-failover) or libpq [(target-session-attrs)](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS).
+  - When custom scripting triggered by `script.fence` would fence the old primary server (STONITH). Some examples are to shut down the VM with VMWare vCenter integration, openstack integration, or lights-out management. 
   - When custom scripting triggered by `script.fence` would use ssh to deactivate the VIP.
 
-    **Note:** 
-    Setting `check.vip.before.promotion=false` is required to allow the new primary to attach the VIP before the old primary has released it.  
+    !!! Note
+        Setting `check.vip.before.promotion=false` is required to allow the new primary to attach the VIP before the old primary releases it.  
 
-- Care must be taken when using `primary.shutdown.as.failure=true`. See the description of [primary.shutdown.as.failure](01_cluster_properties/#primary_shutdown_as_failure) property for information on how to safely bring down the database if needed.
+- Use care when using `primary.shutdown.as.failure=true`. See the description of the [primary.shutdown.as.failure](01_cluster_properties/#primary_shutdown_as_failure) property for information on how to safely bring down the database if needed.
 
-- With every failover, a primary ends up being a failed primary, which does not automatically recover as an operational standby. Therefore, the cluster should contain multiple promotable standbys, and the total number of standbys should be at least two more than the value specified for the `minimum.standbys` property. This is a general recommendation, but it becomes more pressing when using Eager Failover.
-- If the database server is stopped, restarting the database will also start Failover Manager. 
+- With every failover, a primary ends up being a failed primary, which doesn't automatically recover as an operational standby. Therefore, make sure the cluster contains multiple promotable standbys, and the total number of standbys is at least two more than the value specified for the `minimum.standbys` property. This is a general recommendation, but it becomes more pressing when using eager failover.
+- If the database server is stopped, restarting the database also starts Failover Manager. 
     
-    **Notes:**
-    - If there is a problem starting EFM, such as a bad property value, the database server will start and shut down again without displaying any warning that it is not running.
-    - If the Failover Manager process was previously killed, the lock file will still exist and the agent can not be restarted automatically.
-    - If there are problems starting the database server or the Failover Manager agent, check the EFM startup log for information.
+    !!! Note
+        - If there's a problem starting Failover Manager, such as a bad property value, the database server starts and shuts down again without displaying any warning that it isn't running.
+        - If the Failover Manager process was previously ended, the lock file still exists, and the agent can't restart automatically.
+        - If problems occur when starting the database server or the Failover Manager agent, check the Failover Manager startup log for information.
 
-- As a result of running the `stop-cluster` command, EFM will be stopped on all the nodes.  In Eager Failover mode, the  `stop-cluster` command would also stop Postgres without a failover. Set `enable.stop.cluster=false` to make sure the `stop-cluster` command can not unintentionally be invoked. 
+- As a result of running the `stop-cluster` command, Failover Manager stops on all the nodes. In eager failover mode, the `stop-cluster` command also stops EDB Postgres Advanced Server without a failover. Set `enable.stop.cluster=false` to make sure the `stop-cluster` command can't be invoked unintentionally. 
  
