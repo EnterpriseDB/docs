@@ -5,6 +5,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
@@ -24,11 +28,20 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: "14.x"
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "::set-output name=dir::$(npm config get cache)"
+      - uses: actions/cache@v2
+        id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
       - name: update npm
         run: npm install -g npm@7
         env:
           NODE_ENV: ${{ secrets.NODE_ENV }}
-      - name: npm install
+      - name: Install dependencies
         run: |
           npm run presetup
           npm ci
@@ -75,10 +88,15 @@ jobs:
           GTM_ID: GTM-5W8M67
           INDEX_ON_BUILD: true
 
-      - name: Netlify deploy
-        run: |
-          sudo npm install -g netlify-cli
-          netlify deploy --dir=public --prod
+      - name: Deploy to Netlify
+        id: netlify-deploy
+        uses: nwtgck/actions-netlify@v1.2.2
+        with:
+          publish-dir: "./public"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          enable-commit-comment: false
+          enable-pull-request-comment: false
+          production-deploy: true
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_MAIN_SITE_ID }}
