@@ -13,6 +13,11 @@ configurable and customizable system to define additional queries via one or
 more `ConfigMap` or `Secret` resources (see the
 ["User defined metrics" section](#user-defined-metrics) below for details).
 
+!!! Important
+    Starting from version 1.11, Cloud Native PostgreSQL already installs
+    [by default a set of predefined metrics](#default-set-of-metrics) in
+    a `ConfigMap` called `default-monitoring`.
+
 Metrics can be accessed as follows:
 
 ```shell
@@ -41,12 +46,23 @@ to the following logic:
 The default database can always be overridden for a given user-defined metric,
 by specifying a list of one or more databases in the `target_databases` option.
 
+!!! Seealso "Prometheus/Grafana"
+    If you are interested in evaluating the integration of Cloud Native PostgreSQL
+    with Prometheus and Grafana, please look at [cnp-sandbox](https://github.com/EnterpriseDB/cnp-sandbox).
+
 ### Prometheus Operator example
 
 A specific PostgreSQL cluster can be monitored using the
-[Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) by defining the following
-[PodMonitor](https://github.com/prometheus-operator/prometheus-operator/blob/v0.47.1/Documentation/api.md#podmonitor)
-resource:
+[Prometheus Operator's](https://github.com/prometheus-operator/prometheus-operator) resource 
+[PodMonitor](https://github.com/prometheus-operator/prometheus-operator/blob/v0.47.1/Documentation/api.md#podmonitor).
+A PodMonitor correctly pointing to a Cluster can be automatically created by the operator by setting
+`.spec.monitoring.enablePodMonitor` to `true` in the Cluster resource itself (default: false).
+
+!!! Important
+    Any change to the `PodMonitor` created automatically will be overridden by the Operator at the next reconciliation
+    cycle, in case you need to customize it, you can do so as described below.
+
+To deploy a `PodMonitor` for a specific Cluster manually, you can just define it as follows, changing it as needed:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -504,16 +520,37 @@ cnp_pg_replication_streaming_replicas 2
 cnp_pg_replication_is_wal_receiver_up 0
 ```
 
+### Default set of metrics
+
+The operator can be configured to automatically inject in a Cluster a set of 
+monitoring queries defined in a ConfigMap inside the operator's namespace.
+To do so, you have to set the `MONITORING_QUERIES_CONFIGMAP` key in the
+["operator configuration"](operator_conf.md) to the name of the ConfigMap;
+the operator will then use the content of the `queries` key.
+
+Any change to the `queries` content will be immediately reflected on all the
+deployed Clusters using it.
+
+The operator installation manifests come with a predefined ConfigMap, 
+called `default-monitoring`, to be used by all Clusters.
+`MONITORING_QUERIES_CONFIGMAP` is by default set to `default-monitoring` in the operator configuration.
+
+If you want to disable the default set of metrics, you can:
+
+-   disable it at operator level: set the `MONITORING_QUERIES_CONFIGMAP` key to `""` (empty string), in the operator
+    ConfigMap. Changes to operator ConfigMap require an operator restart.
+-   disable it for a specific Cluster: set `.spec.monitoring.disableDefaultQueries` to `true` in the Cluster.
+
+!!! Warning
+    Currently if you change the `MONITORING_QUERIES_CONFIGMAP` value, the operator will not
+    automatically remove the old ConfigMap reference from existing cluster.
+    The new ConfigMap reference will be added when the Cluster is reconciled.
+
 ### Differences with the Prometheus Postgres exporter
 
 Cloud Native PostgreSQL is inspired by the PostgreSQL Prometheus Exporter, but
-presents some differences. In particular, the following fields of a metric that
-are defined in the official Prometheus exporter are not implemented in Cloud
-Native PostgreSQL's exporter:
-
--   `cache_seconds`: number of seconds to cache the result of the query
-
-Similarly, the `pg_version` field of a column definition is not implemented.
+presents some differences. In particular, the `cache_seconds` field is not implemented
+in Cloud Native PostgreSQL's exporter.
 
 ## Monitoring the operator
 
@@ -548,3 +585,55 @@ spec:
   podMetricsEndpoints:
     - port: metrics
 ```
+
+## Monitoring on OpenShift
+
+Starting on Openshift 4.6 there is a complete monitoring stack called
+["Monitoring for user-defined projects"](https://docs.openshift.com/container-platform/4.6/monitoring/enabling-monitoring-for-user-defined-projects.html)
+which can be enabled by cluster administrators. Cloud Native PostgreSQL will
+automatically create a `PodMonitor` object if the option
+`spec.monitoring.enablePodMonitor` of the `Cluster` definition is set to
+`true`.
+
+To enable cluster wide `user-defined` monitoring you must first create a
+`ConfigMap` with the name `cluster-monitoring-config` in the
+`openshift-monitoring` namespace/project with the following content:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true
+```
+
+If the `ConfigMap` already exists, just add the variable `enableUserWorkload: true`.
+
+!!! Important
+    This will enable the monitoring for the whole cluster, if it is needed only
+    for one namespace/project please refer to the official Red Hat documentation or
+    talk with your cluster administrator.
+
+After that, just create the proper PodMonitor in the namespace/project with
+something similar to this:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cluster-sample
+spec:
+  selector:
+    matchLabels:
+      postgresql: cluster-sample
+  podMetricsEndpoints:
+  - port: metrics
+```
+
+!!! Note
+    We currently don’t use `ServiceMonitor` because our service doesn’t define
+    a port pointing to the metrics. If we added a metric port this could expose
+    sensitive data.
