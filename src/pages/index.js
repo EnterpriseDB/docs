@@ -226,6 +226,13 @@ const Page = () => (
             </span>
             <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              High Availability (HA) Solutions
+            </span>
+            <IndexCardLink to="/ha/latest">
+              Failover Manager HA use cases
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
