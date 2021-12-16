@@ -4,4 +4,61 @@ originalFilePath: known-issues.md
 
 ---
 
-<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/known-issues/" topic="Appendix C: Known Issues" />
+This section discusses currently known issues in BDR3.
+
+## Data Consistency
+
+Please remember to read about [Conflicts](conflicts) to understand
+the implications of the asynchronous operation mode in terms of data
+consistency.
+
+## List of Issues
+
+In the remaining part of this section we list a number of known issues
+that are tracked in BDR3's ticketing system, each marked with an
+unique identifier.
+
+-   If the resolver for the `update_origin_change` conflict
+    is set to `skip`, and `synchronous_commit=remote_apply` is used, and
+    concurrent updates of the same row are repeatedly applied on two
+    different nodes, then one of the update statements might hang due
+    to a deadlock with the pglogical writer.  As mentioned in the
+    [Conflicts](conflicts) chapter, `skip` is not the default
+    resolver for the `update_origin_change` conflict, and this
+    combination is not intended to be used in production: it discards
+    one of the two conflicting updates based on the order of arrival
+    on that node, which is likely to cause a divergent cluster.  
+    In the rare situation that you do choose to use the `skip`
+    conflict resolver, please note the issue with the use of the
+    `remote_apply` mode.
+
+-   A `galloc` sequence might skip some chunks if the
+    sequence is created in a rolled back transaction and then created
+    again with the same name, or if it is created and dropped when DDL
+    replication is not active and then it is created again when DDL
+    replication is active.
+    The impact of the problem is mild, because the sequence
+    guarantees are not violated; the sequence will only skip some
+    initial chunks. Also, as a workaround the user can specify the
+    starting value for the sequence as an argument to the
+    `bdr.alter_sequence_set_kind()` function.
+
+-   Upgrades on 2ndQPostgres 13 from BDR 3.7.7 are only supported by adding
+    new nodes, and **not** through in-place upgrade of the same data directory.
+
+-   The `bdr.monitor_local_replslots()` function may return CRITICAL result
+    saying "There is at least 1 BDR replication slot which is missing" even if
+    all slots exists in presence of logical standbys or subscribe-only node
+    groups.
+
+-   Decoding Worker feature does not work with CAMO/EAGER
+
+-   Decoding Worker works only with the default replication sets
+
+-   When Decoding Worker is enabled in BDR node group and a BDR  node is shutdown
+    in fast mode immediately after starting it, the shutdown may not complete
+    because WAL sender does not exit. This happens because WAL sender waits for
+    WAL decoder to start and WAL decoder may never start since the node is
+    shutting down. The situation can be worked around by using an immediate
+    shutdown or waiting for WAL decoder to start. The WAL decoder process is
+    reported in `pglogical.workers` as well as `pg_stat_activity` catalogs.

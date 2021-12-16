@@ -19,7 +19,6 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: default
   name: example-monitoring
   labels:
     k8s.enterprisedb.io/reload: ""
@@ -31,7 +30,10 @@ data:
               ELSE GREATEST (0, 
                 EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))) 
               END AS lag, 
-              pg_is_in_recovery() AS in_recovery"
+              pg_is_in_recovery() AS in_recovery,
+              EXISTS (TABLE pg_stat_wal_receiver) AS is_wal_receiver_up,
+              (SELECT count(*) FROM pg_stat_replication) AS streaming_replicas"
+
       metrics:
         - lag:
             usage: "GAUGE"
@@ -39,7 +41,12 @@ data:
         - in_recovery:
             usage: "GAUGE"
             description: "Whether the instance is in recovery"
-
+        - is_wal_receiver_up:
+            usage: "GAUGE"
+            description: "Whether the instance wal_receiver is up"
+        - streaming_replicas:
+            usage: "GAUGE"
+            description: "Number of streaming replicas connected to the instance"
 
     pg_postmaster:
       query: "SELECT pg_postmaster_start_time as start_time_seconds from pg_postmaster_start_time()"
@@ -230,7 +237,6 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  namespace: default
   name: example-monitoring-secret
   labels:
     k8s.enterprisedb.io/reload: ""

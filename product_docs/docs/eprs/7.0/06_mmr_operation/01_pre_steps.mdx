@@ -1,0 +1,198 @@
+---
+title: "Prerequisite Steps"
+---
+
+<div id="prerequisite_steps" class="registered_link"></div>
+
+Certain steps must be taken to prepare the host environments as well as the database servers used as primary nodes before beginning the process of building a multi-master replication system. This section describes these steps.
+
+<div id="set_heap_size_for_pub" class="registered_link"></div>
+
+## Setting Heap Memory Size for the Publication Server
+
+Replication speed and efficiency can be affected by the heap memory size set for the publication server. The Replication Server Startup Configuration file sets a parameter controlling the minimum and maximum heap size allocated for the publication server. See [Setting Heap Memory Size for the Publication and Subscription Servers](../05_smr_operation/01_prerequisites/01_setting_heap_size_for_pub_and_sub/#setting_heap_size_for_pub_and_sub) for guidelines and information on setting this parameter.
+
+<div id="enabling_sync_replication_log-based_method_mmr" class="registered_link"></div>
+
+## Enabling Synchronization Replication with the Log-Based Method
+
+This section applies only to Postgres database servers of version 9.4 and later. If you plan to use the log-based method of synchronization replication with any primary node running under a given Postgres database server, the following configuration parameter settings are required in the configuration file, `postgresql.conf`, of each such Postgres database server:
+
+-   `wal_level.` Set to logical.
+-   `max_wal_senders.` Specifies the maximum number of concurrent connections (that is, the maximum number of simultaneously running WAL sender processes). Set at minimum, to the number of MMR primary nodes on this database server that will use the log-based method. In addition, if SMR publication databases are to run on this database server, also add the number of SMR publication databases that will use the log-based method.
+-   `max_replication_slots.` Specifies the maximum number of replication slots. For support of MMR systems, the minimum is the total number of primary nodes in the multi-master replication system multiplied by the number of primary nodes residing on this database server. For information, see [Replication Origin](../02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/04_replication_origin/#replication_origin). In addition, if SMR publication databases are to run on this database server, also add the number of SMR publication databases that will use the log-based method.
+-   `track_commit_timestamp.` Set to on. This configuration parameter applies only to Postgres database servers of version 9.5 or later. See [Configuration Parameter and Table Setting Requirements](06_conflict_resolution/01_configuration_para_andtable_setting/#configuration_para_and_table_setting) for additional information.
+
+See [Synchronization Replication with the Log-Based Method](../02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/#sync_replication_log_based) for information on the log-based method of synchronization replication.
+
+The Postgres database server must be restarted after altering any of these configuration parameters.
+
+In addition, the `pg_hba.conf` file requires an entry for each publication database user of primary nodes that are to use the log-based method. Such database users must be included as a replication database user in the `pg_hba.conf` file. See [verify_host_accessibility](01_pre_steps/#verify_host_accessibility) for additional information.
+
+<div id="prepare_pdn" class="registered_link"></div>
+
+## Preparing the Primary definition node
+
+This section discusses the preparation of a database to be used as the primary definition node.
+
+When creating the publication database definition for the primary definition node, a database user name must be specified that has the following characteristics:
+
+-   The database user can connect to the primary definition node.
+-   The database user has superuser privileges. Superuser privileges are required because the database configuration parameter session_replication_role is altered by the database user when the primary definition node receives updates from other primary nodes during a synchronization replication. The database user temporarily changes session_replication_role to replica to prevent the triggers on the publication tables from firing. This session change also occurs for snapshot operations involving replication of the control schema from one publication database to another.
+-   The database user must have the ability to modify the system catalog tables in order to disable foreign key constraints on the publication tables for snapshots targeted to the publication, as well as for the control schema tables for snapshot operations involving the replication of the control schema from one publication database to another. (See appendix [Disabling Foreign Key Constraints for Snapshot Replications](../10_appendix/04_miscellaneous_xdb_processing_topics/04_disable_foreign_key_constraints_for_snapshot_replication/#disable_foreign_key_constraints_for_snapshot_replication) for more information on this requirement.)
+
+The examples used throughout the rest of this user’s guide are based on the following primary definition node:
+
+-   The database user name for the primary definition node is `pubuser`.
+-   The tables used in the publication reside in a schema named `edb`.
+-   Three tables named dept, emp, and jobhist are members of schema `edb`.
+-   The database name of the primary definition node is `edb`.
+
+The following steps illustrate the preparation of the primary definition node database user.
+
+**Step 1:** Create a user name with login and superuser privileges for the primary definition node. This user becomes the owner of Replication Server metadata database objects that will be created in the primary definition node to track, control, and record the replication process and history. The Replication Server metadata database objects are created in a schema named `_edb_replicator_pub`.
+
+When creating the publication database definition, the database user name is entered in the Publication Service – Add Database dialog box (see [Adding the Primary definition node](02_creating_publication_mmr/#adding_pdn)).
+
+```text
+CREATE ROLE pubuser WITH LOGIN SUPERUSER PASSWORD 'password';
+```
+
+**Step 2 (Optional):** If users are to access the data in the publication tables residing on this primary node, it is convenient to have one or more “group” roles containing the required privileges to access these tables. Privileges must also be granted on the control schema objects to users who are to perform inserts, updates, or deletions on the publication tables.
+
+When adding new users, granting these users membership in these roles gives them the privileges to access the publication tables. This eliminates the need to grant these privileges individually to each new user.
+
+See Step 2 of [Postgres Publication Database](../05_smr_operation/01_prerequisites/04_preparing_pub_database/#postgres_pub_db) for information on creating such roles.
+
+<div id="prepare_add_pdn" class="registered_link"></div>
+
+## Preparing Additional Primary nodes
+
+The following steps illustrate the creation of a database user and a database for an additional primary node.
+
+When creating the publication database definition for an additional primary node, a database user name must be specified that has the following characteristics:
+
+-   The database user can connect to the primary node.
+-   The database user has superuser privileges. Superuser privileges are required because the database configuration parameter session_replication_role is altered by the database user when the primary node receives updates from other primary nodes during a synchronization replication. The database user temporarily changes session_replication_role to replica to prevent the triggers on the publication tables from firing. This session change also occurs for snapshot operations involving replication of the control schema from one publication database to another.
+-   The database user must have the ability to modify the system catalog tables in order to disable foreign key constraints on the publication tables for snapshots targeted to the publication, as well as for the control schema tables for snapshot operations involving the replication of the control schema from one publication database to another. (See appendix [Disabling Foreign Key Constraints for Snapshot Replications](../10_appendix/04_miscellaneous_xdb_processing_topics/04_disable_foreign_key_constraints_for_snapshot_replication/#disable_foreign_key_constraints_for_snapshot_replication) for more information on this requirement.)
+-   If the additional primary node is to reside on a different database server instance (that is, on a different host or port number) than the primary definition node, then the same database user name should be used for this additional primary node as used for the primary definition node unless the publication server configuration option `skipTablePrivileges` is changed from its default value of false to true. See [Skipping Grants of Table Level User Privileges on MMR Target Tables](../10_appendix/04_miscellaneous_xdb_processing_topics/01_publications_and_subscriptions_server_conf_options/13_skipping_grants_of_table_level_user_privileges_on_mmr/#skipping_grants_of_table_level_user_privileges_on_mmr) for information on `skipTablePrivileges`.
+
+There are also two possible options available with respect to how the publication tables are to be created in the primary node:
+
+-   Allow the publication server to create the publication table definitions in the primary node by copying the definitions from the primary definition node at the time you add the publication database definition for the primary node.
+-   Define the publication tables in the primary node beforehand by running SQL `DDL` statements in the `PSQL` command line utility program or by using Postgres Enterprise Manager Client to create the tables.
+
+If you create the table definitions `manually` as described in the second bullet point, be sure the publication tables are defined identically to the tables in the primary definition node including schema names, table names, number of columns, column names, column data types, column lengths, primary key definitions, unique constraints, foreign key constraints, etc.
+
+The examples used throughout the rest of this user’s guide are based on the following:
+
+-   The database user name of the second primary node is `MMRuser`.
+-   The database name of the second primary node is `MMRnode`.
+
+**Step 1:** Create a database user name for the primary node. This user becomes the owner of Replication Server metadata database objects that will be created in the primary node to track, control, and record the replication process and history. The Replication Server metadata database objects are created in a schema named `_edb_replicator_pub`.
+
+When creating the publication database definition for the primary node, the database user name is entered in the Publication Service – Add Database dialog box (see [Creating Additional Primary nodes](03_creating_primary_nodes/#creating_primary_nodes)).
+
+```text
+CREATE ROLE MMRuser WITH LOGIN SUPERUSER PASSWORD 'password';
+```
+
+Step 2: Create a database that will be used as the primary node if such a database does not already exist.
+
+```text
+CREATE DATABASE MMRnode;
+```
+
+<div id="verify_host_accessibility" class="registered_link"></div>
+
+## Verifying Host Accessibility
+
+If more than one computer is used to host the components of the replication system, each computer must be able to communicate with the others on a network. There are a number of different aspects to this topic.
+
+-   For a discussion of firewalls and access to ports see [Firewalls and Access to Ports](../05_smr_operation/01_prerequisites/06_verifying_host_accessibility/#firewalls_and_access_to_ports).
+-   For a discussion of network IP addresses see [Network IP Addresses](../05_smr_operation/01_prerequisites/06_verifying_host_accessibility/#network_ip).
+
+A Postgres database server uses the host-based authentication file, `pg_hba.conf`, to control access to the databases in the database server. 
+
+You need to modify the `pg_hba.conf` file on each Postgres database server that contains a primary node.
+
+In a default Postgres installation, this file is located in the directory `POSTGRES_INSTALL_HOME/data`.
+
+The modification needed to the `pg_hba.conf` file is discussed in the following section.
+
+**Primary nodes**
+
+On each database server running a primary node, the following is needed to allow access to the database:
+
+`host primarynode_db   primarynode_user   pub_ipaddr/32   md5`
+
+The value you substitute for `primarynode_db` is the name of the database you intend to use as the primary node. The value you substitute for `primarynode_user` is the database user name you created in Step 1 of [Preparing the Primary definition node](#prepare_pdn) or Step 1 of Section [Preparing Additional Primary nodes](#prepare_add_pdn).
+
+For two primary nodes using databases named `edb` and `MMRnode` running on the same database server, the resulting `pg_hba.conf` file appears as follows:
+
+```text
+# TYPE  DATABASE    USER           ADDRESS           METHOD
+
+# "local" is for Unix domain socket connections only
+local   all         all                                md5
+# IPv4 local connections:
+host    edb         pubuser        192.168.2.22/32     md5
+host    MMRnode     MMRuser        192.168.2.22/32     md5
+host    all         all            127.0.0.1/32        md5
+# IPv6 local connections:
+host    all         all            ::1/128             md5
+# Allow replication connections from localhost, by a user with the
+# replication privilege.
+#local   replication  enterprisedb                      md5
+#host    replication  enterprisedb  127.0.0.1/32        md5
+#host    replication  enterprisedb  ::1/128             md5
+```
+
+If the primary node using database `MMRnode` with database user name `MMRuser` is running on a separate host than where database `edb` is running, the `pg_hba.conf` file on the database server with database `MMRnode` would look like the following:
+
+```text
+# TYPE  DATABASE    USER           ADDRESS           METHOD
+
+# "local" is for Unix domain socket connections only
+local   all         all                                md5
+# IPv4 local connections:
+host    MMRnode     MMRuser        192.168.2.22/32     md5
+host    all         all            127.0.0.1/32        md5
+# IPv6 local connections:
+host    all         all            ::1/128             md5
+# Allow replication connections from localhost, by a user with the
+# replication privilege.
+#local   replication  enterprisedb                      md5
+#host    replication  enterprisedb  127.0.0.1/32        md5
+#host    replication  enterprisedb  ::1/128             md5
+```
+
+The preceding examples assume databases `edb` and `MMRnode` are using the trigger-based method of synchronization replication. If the log-based method is used, the `pg_hba.conf` file must contain additional entries with the `DATABASE` field set to replication for `primarynode_user` and `pub_ipaddr` to allow replication connections from the publication server on the host on which it is running.
+
+The following shows a modification of the first example with these additional entries as the last two lines in the file:
+
+```text
+# TYPE  DATABASE    USER           ADDRESS           METHOD
+
+# "local" is for Unix domain socket connections only
+local   all         all                                md5
+# IPv4 local connections:
+host    edb         pubuser        192.168.2.22/32     md5
+host    MMRnode     MMRuser        192.168.2.22/32     md5
+host    all         all            127.0.0.1/32        md5
+# IPv6 local connections:
+host    all         all            ::1/128             md5
+# Allow replication connections from localhost, by a user with the
+# replication privilege.
+#local   replication  enterprisedb                      md5
+#host    replication  enterprisedb  127.0.0.1/32        md5
+#host    replication  enterprisedb  ::1/128             md5
+host    replication  pubuser       192.168.2.22/32     md5
+host    replication  MMRuser       192.168.2.22/32     md5
+```
+
+See sections [Synchronization Replication with the Log-Based Method](../02_overview/02_replication_concepts_and_definitions/10_sync_replication_log_based/#sync_replication_log_based) and [Enabling Synchronization Replication with the Log-Based Method](#enabling_sync_replication_log-based_method_mmr) for additional information on synchronization replication with the log-based method.
+
+Reload the configuration file after making the modifications.
+
+Choose `Reload Configuration` (Expert Configuration, then Reload Configuration on Advanced Server) from the Postgres application menu. This will put the modified `pg_hba.conf` file into effect.

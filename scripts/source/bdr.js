@@ -5,9 +5,9 @@
 const path = require("path");
 const fs = require("fs/promises");
 const { read, write } = require("to-vfile");
-const remarkParse = require("@mdx-js/mdx/node_modules/remark-parse");
+const remarkParse = require("remark-parse");
 const mdx = require("remark-mdx");
-const unified = require("@mdx-js/mdx/node_modules/unified");
+const unified = require("unified");
 const remarkFrontmatter = require("remark-frontmatter");
 const remarkStringify = require("remark-stringify");
 const admonitions = require("remark-admonitions");
@@ -22,11 +22,16 @@ const fileToMetadata = {};
 const basePath = path.resolve("temp_bdr/docs/docs2/");
 const imgPath = path.resolve("temp_bdr/docs/img/");
 
+
 (async () => {
   const processor = unified()
     .use(remarkParse)
     .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
-    .use(admonitions, { tag: "!!!", icons: "none", infima: true })
+    .use(admonitions, { 
+      tag: "!!!", icons: "none", infima: true, customTypes: {
+        seealso: "note", hint: "tip", interactive: "interactive",
+      }
+    })
     .use(remarkFrontmatter)
     .use(mdx)
     .use(bdrTransformer);
@@ -47,7 +52,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   const mdIndex = yaml.load(await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), 'utf8'));
 
   const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
-  const version = mdIndex.site_name.match(/Postgres-BDR (\d+\.\d+)/)[1];
+  version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
   const destPath = path.resolve("product_docs", "docs", "bdr", version);
   const indexFilename = "index.md";
 
@@ -115,10 +120,17 @@ function bdrTransformer() {
       if (node.type === "jsx" && node.value.match(/^<AuthenticatedContentPlaceholder/) )
       {
         // todo: use HAST parser here
-        if (!title)
-          title = node.value.match(/topic="([^"]+)"/)[1];
-        description = (node.value.match(/description="([^"]+)"/)||[])[1];
-        node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/${filename.replace(".md", "/")}"`);
+          if (!title)
+          {
+             title = node.value.match(/topic="([^"]+)"/)[1];
+          }
+          description = (node.value.match(/description="([^"]+)"/)||[])[1];
+          if (parseFloat(version) < 4)
+          {  
+              node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.2ndquadrant.com/bdr3-enterprise/release/latest/${filename.replace(".md", "/")}"`)
+          } else {
+              node.value = node.value.replace("<AuthenticatedContentPlaceholder", `<AuthenticatedContentPlaceholder target="https://documentation.enterprisedb.com/bdr4/release/latest/${filename.replace(".md", "/")}"`)
+          }
       }
     }
 

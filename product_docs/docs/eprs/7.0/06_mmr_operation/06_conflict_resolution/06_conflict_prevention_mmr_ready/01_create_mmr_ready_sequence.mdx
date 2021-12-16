@@ -1,0 +1,89 @@
+---
+title: "Creating an MMR-Ready Sequence"
+---
+
+<div id="create_mmr_ready_sequence" class="registered_link"></div>
+
+The following are the steps to create an MMR-ready sequence in a database to participate as a primary node in a multi-master replication system.
+
+Begin these steps with the database to be used as the primary definition node.
+
+**Step 1:** Assign a unique, database identifier as an integer from 1 to 1024, inclusive. Thus, a maximum of 1024 databases can be uniquely identified in a multi-master replication system with an MMR-ready sequence.
+
+Issue the following commands to create and set the database identifier:
+
+```text
+ALTER DATABASE dbname SET cluster.unique_db_id TO db_id;
+SET cluster.unique_db_id TO db_id;
+```
+
+Use a different `db_id` value for each database.
+
+**Step 2:** Create a sequence to uniquely identify each table row within the database.
+
+```text
+CREATE SEQUENCE seq_name START WITH 1 INCREMENT BY 1 NO CYCLE;
+```
+
+Multiple sequences can be created if it is desired to use separate sequences for multiple tables within the publication. Be sure that the same sequence name is used across all databases for the same given table.
+
+A publication table column that uses an MMR-ready sequence will include a DEFAULT clause referencing the sequence name in a function call. The publication table definition must be consistent across all primary nodes by referencing the same sequence name in the function call.
+
+**Step 3:** Create the following function that returns the next MMR-ready sequence value when a row is inserted into the table. This function is referenced by the `DEFAULT` clause of the publication table column.
+
+```text
+CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
+    seq_id          VARCHAR
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint +
+  nextval($1::regclass);
+$function$;
+```
+
+The sequence name created in Step 2 is specified as the `seq_id` input argument when the function is added to the `DEFAULT` clause of the publication table column.
+
+This function performs a bitwise shift left operation (``<< 52``) on the database identifier (`cluster.unique_db_id`), thus significantly increasing its numeric value. The next sequence value is then added to this number. Thus, all rows inserted in the table on a given database fall within a numeric range determined by the shifted, database identifier value.
+
+**Step 4 (Optional):** Create the following function to obtain the current MMR-ready sequence value.
+
+```text
+CREATE OR REPLACE FUNCTION MMR_sequence_currval (
+    seq_id          VARCHAR
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint +
+  currval($1::regclass);
+$function$;
+```
+
+The `MMR_sequence_nextval` function must be invoked in the current session before calling the `MMR_sequence_currval` function.
+
+**Step 5:** Add or modify the publication table column that is to use the MMR-ready sequence. The column data type must be `BIGINT`. The `MMR_sequence_nextval` function is specified in the `DEFAULT` clause as shown in the following example for column id.
+
+```text
+CREATE TABLE table_name (
+    id          BIGINT NOT NULL PRIMARY KEY
+                DEFAULT MMR_sequence_nextval('seq_name'),
+    field       VARCHAR2(20)
+);
+```
+
+The column will also typically be the primary key.
+
+**Step 6:** Repeat steps 1 through 4 for the other databases to be added as primary nodes.
+
+!!! Note
+    Step 5 is omitted for the additional primary nodes as the publication table definitions are replicated from the primary definition node to the additional primary nodes when they are created as described in [Creating Additional Primary nodes](../../03_creating_primary_nodes/#creating_primary_nodes).
+
+**Step 7:** Create the complete, multi-master replication system as described in Chapter [Multi-Master Replication Operation](../../#mmr_operation).

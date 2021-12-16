@@ -1,0 +1,243 @@
+---
+title: "Demonstration of Oracle SQL compatible functions and syntax"
+navTitle: "Oracle SQL compatibility"
+showInteractiveBadge: true
+---
+
+BigAnimal lets you run Oracle SQL queries in the cloud via [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/). This topic demonstrates two Oracle SQL-syntax queries running unmodified on a BigAnimal test cluster, populated with the [Chinook sample database](https://github.com/lerocha/chinook-database).
+
+Watch the video, or load up psql and follow along below!
+
+<figure class="embed-responsive embed-responsive-16by9">
+  <iframe src="https://www.youtube.com/embed/eD0tbUVumyA"
+    title="Video recording of this demonstration"
+    class="embed-responsive-item"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+</figure>
+
+## Connecting to the demo cluster with psql
+
+You can use any recent version of psql to connect to EDB Postgres Advanced Server. If you choose to use the version that ships with Advanced Server, you'll get a few nice SQL\*Plus compatibility features (with more availability in [EDB\*Plus](https://www.enterprisedb.com/docs/epas/latest/edb_plus/)). The queries and commands that we'll examine here will work the same in either version of psql. For convenience, these examples use the version of psql available in Azure's Cloud Shell; you can launch this directly from the Azure portal, or on your desktop using Windows Terminal:
+
+```shell
+Welcome to Azure Cloud Shell
+
+Type "az" to use Azure CLI
+Type "help" to learn about Cloud Shell
+
+$
+```
+
+The connection string for the demo Advanced Server cluster looks like this:
+
+```
+postgres://demo:password@p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io:5432/chinook?sslmode=require
+```
+
+In case you're unfamiliar with [PostgreSQL connection URIs](https://www.postgresql.org/docs/current/libpq-connect.html#id-1.7.3.8.3.6), let's break that down:
+
+- `demo` is the user role we're connecting as. This is a user set up with select privileges on the database.
+- `password` is the password for this user.
+  !!! Warning Passwords in connection strings.
+  This example illustrates a complete connection URL, including the password. This is fine for a demonstration,
+  and may also be acceptable for applications configuration if access to the configuration is limited.
+  Avoid this practice for admin, superuser, or other roles used interactively - psql will prompt for a password
+  if none is supplied.
+- `p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io` is the host name for the Advanced Server cluster on BigAnimal that I'm connecting to.
+- `5432` is the usual PostgreSQL port number.
+- `chinook` is the name of the database.
+- `sslmode=require` ensures that we establish a secure connection.
+
+With that in hand, we can launch psql:
+
+```shell
+psql postgres://demo:password@p-c64p9a3h5vfavr7tfrjg.qsbilba3hlgp1vqr.biganimal.io:5432/chinook?sslmode=require
+__OUTPUT__
+psql (13.0 (Debian 13.0-1.pgdg100+1), server 13.4.8 (Debian 13.4.8-1+deb10))
+WARNING: psql major version 13, server major version 13.
+         Some psql features might not work.
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+chinook=>
+```
+
+Let's take a look at the schema:
+
+```
+\dt
+__OUTPUT__
+                          List of relations
+ Schema |                Name                 | Type  |     Owner
+--------+-------------------------------------+-------+---------------
+ public | album                               | table | edb_admin
+ public | artist                              | table | edb_admin
+ public | customer                            | table | edb_admin
+ public | employee                            | table | edb_admin
+ public | genre                               | table | edb_admin
+ public | invoice                             | table | edb_admin
+ public | invoiceline                         | table | edb_admin
+ public | mediatype                           | table | edb_admin
+ public | playlist                            | table | edb_admin
+ public | playlisttrack                       | table | edb_admin
+ public | track                               | table | edb_admin
+ sys    | callback_queue_table                | table | postgres
+ sys    | dual                                | table | postgres
+ ...
+```
+
+There's an employee table, let's examine its definition:
+
+```
+\d+ employee
+__OUTPUT__
+                                              Table "public.employee"
+   Column   |            Type             | Collation | Nullable | Default | Storage  | Stats target | Description
+------------+-----------------------------+-----------+----------+---------+----------+--------------+-------------
+ employeeid | numeric                     |           | not null |         | main     |              |
+ lastname   | character varying(20)       |           | not null |         | extended |              |
+ firstname  | character varying(20)       |           | not null |         | extended |              |
+ title      | character varying(30)       |           |          |         | extended |              |
+ reportsto  | numeric                     |           |          |         | main     |              |
+ birthdate  | timestamp without time zone |           |          |         | plain    |              |
+ hiredate   | timestamp without time zone |           |          |         | plain    |              |
+ address    | character varying(70)       |           |          |         | extended |              |
+ city       | character varying(40)       |           |          |         | extended |              |
+ state      | character varying(40)       |           |          |         | extended |              |
+ country    | character varying(40)       |           |          |         | extended |              |
+ postalcode | character varying(10)       |           |          |         | extended |              |
+ phone      | character varying(24)       |           |          |         | extended |              |
+ fax        | character varying(24)       |           |          |         | extended |              |
+ email      | character varying(60)       |           |          |         | extended |              |
+...
+```
+
+This table has a "reportsto" field - that means this is a hierarchical reporting structure, with some employees reporting to
+other employees who may in turn report to still *other* employees.
+
+## Demo #1: exposing an organization hierarchy with `CONNECT BY`
+
+Let's construct a [hierarchical query](https://www.enterprisedb.com/docs/epas/latest/epas_compat_ora_dev_guide/03_advanced_concepts/05_hierarchical_queries/) to expose this [chain of command](https://en.wikipedia.org/wiki/Chain_of_command).
+
+Modern SQL would use a recursive CTE for this, as those are widely supported. But Oracle has, for decades, supported an alternative mechanism for querying hierarchy in the form of `CONNECT BY` - let's put that into action:
+
+```sql
+SELECT firstname, lastname, (
+	SELECT LISTAGG(lastname, ', ')
+	FROM employee rt
+	START WITH rt.employeeid=e.reportsto
+	CONNECT BY employeeid = PRIOR reportsto
+	) AS "chain of command"
+FROM employee e;
+__OUTPUT__
+ firstname | lastname | chain of command
+-----------+----------+------------------
+ Andrew    | Adams    |
+ Nancy     | Edwards  | Adams
+ Jane      | Peacock  | Edwards, Adams
+ Margaret  | Park     | Edwards, Adams
+ Steve     | Johnson  | Edwards, Adams
+ Michael   | Mitchell | Adams
+ Robert    | King     | Mitchell, Adams
+ Laura     | Callahan | Mitchell, Adams
+(8 rows)
+```
+Here, we use `CONNECT BY` and the `LISTAGG` function in a subquery to generate the chain of command for each employee: who they report to, who *that* person reports to, etc.
+
+Now, the `LISTAGG()` function was introduced in Oracle 11g Release 2. Very few database systems support it. PostgreSQL *does* support [`string_agg()`](https://www.postgresql.org/docs/current/functions-aggregate.html#id-1.5.8.27.5.2.4.18.1.1.1), and in the previous example that could be used as a drop-in replacement...
+
+```sql
+SELECT firstname, lastname, (
+	SELECT string_agg(lastname, ', ')
+	FROM employee rt
+	START WITH rt.employeeid=e.reportsto
+	CONNECT BY employeeid = PRIOR reportsto
+	) AS "chain of command"
+FROM employee e;
+__OUTPUT__
+ firstname | lastname | chain of command
+-----------+----------+------------------
+ Andrew    | Adams    |
+ Nancy     | Edwards  | Adams
+ Jane      | Peacock  | Edwards, Adams
+ Margaret  | Park     | Edwards, Adams
+ Steve     | Johnson  | Edwards, Adams
+ Michael   | Mitchell | Adams
+ Robert    | King     | Mitchell, Adams
+ Laura     | Callahan | Mitchell, Adams
+(8 rows)
+```
+
+But [the semantics of the two functions are different for even slightly less-trivial uses](https://www.enterprisedb.com/blog/how-workaround-oracle-listagg-function-postgresql), specifically when using the grouping construct.
+
+Let's demonstrate that.
+
+## Demo #2: group concatenation with `LISTAGG`
+
+As we saw above, this database has "album" and "track" tables containing metadata on digital recordings. We can use some analytic functions, including `LISTAGG`, to put together a report on average track storage requirements for albums with "baby" in the title.
+
+```sql
+SELECT UNIQUE title,
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       LISTAGG(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list
+FROM track t
+JOIN album USING (albumid)
+JOIN mediatype USING (mediatypeid)
+WHERE lower(title) LIKE '%baby%'
+ORDER BY title;
+__OUTPUT__
+    title     | media_avg_mb |                    track_list
+--------------+--------------+---------------------------------------------------
+ Achtung Baby |            9 | Zoo Station (9 mb)                               +
+              |              | Even Better Than The Real Thing (7 mb)           +
+              |              | One (9 mb)                                       +
+              |              | Until The End Of The World (9 mb)                +
+              |              | Who's Gonna Ride Your Wild Horses (10 mb)        +
+              |              | So Cruel (11 mb)                                 +
+              |              | The Fly (8 mb)                                   +
+              |              | Mysterious Ways (8 mb)                           +
+              |              | Tryin' To Throw Your Arms Around The World (7 mb)+
+              |              | Ultraviolet (Light My Way) (10 mb)               +
+              |              | Acrobat (8 mb)                                   +
+              |              | Love Is Blindness (8 mb)
+(1 row)
+```
+
+If we try replacing `LISTAGG` with `string_agg` in this example, it's going to fail - the [expression syntax for `string_agg`](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES) is different.
+
+```sql
+SELECT UNIQUE title,
+       ROUND(AVG(bytes) OVER (PARTITION BY mediatypeid)/1048576 ) media_avg_mb,
+       string_agg(t.name || ' (' || ROUND(bytes/1048576) || ' mb)', chr(10))
+         WITHIN GROUP (ORDER BY trackid)
+         OVER (PARTITION BY title)  track_list
+FROM track t
+JOIN album USING (albumid)
+JOIN mediatype USING (mediatypeid)
+WHERE lower(title) LIKE '%baby%'
+ORDER BY title;
+__OUTPUT__
+ERROR:  function string_agg(text, text, numeric) does not exist
+LINE 3:        string_agg(t.name || ' (' || ROUND(bytes/1048576) || ...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+```
+
+Now, this isn't terribly difficult to correct, but it requires restructuring the query to replace the grouping construct - such work can quickly accumulate errors. Fortunately, [EDB Postgres Advanced Server](https://www.enterprisedb.com/docs/epas/latest/)
+supports [`LISTAGG`](https://www.enterprisedb.com/docs/epas/latest/epas_compat_reference/02_the_sql_language/03_functions_and_operators/11_aggregate_functions/#listagg) AND `string_agg`,
+so this query doesn't need to change when migrating from Oracle.
+
+## Compatibility preserves the value of your existing work
+
+In both of the examples shown here, you probably would not use the functions and syntax demonstrated for new work; there are
+better, more familiar or at least more widely-available equivalents provided natively by PostgreSQL (and many other databases). But by supporting them, EDB Advanced Server gives you the ability to reuse existing logic with minimal modification, allowing
+you to focus your time and expertise on solving new problems.
+
+### Next steps
+
+- Read more on Oracle compatibility features in EDB Postgres Advanced Server: [EDB Advanced Server documentation](https://www.enterprisedb.com/docs/epas/latest/).
+
+- Learn about [migrating existing Oracle databases to BigAnimal](/biganimal/latest/migration/#migrating-from-oracle)
