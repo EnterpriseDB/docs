@@ -39,12 +39,7 @@ Follow the steps to configure the Kerberos Authentication for the PEM Server:
 
     ![Active Directory Users and Computers User Details](../../images/active_directory_users_and_computers_user_details.png)
 
-    e. On the `PEMServer Web Properties`, add the Users as member of the following groups:
-
-    -   Domain Admins
-    -   Domain Users
-    -   Enterprise Admins
-    -   Schema Admins
+    e. On the `PEMServer Web Properties`, add the Users as member of the `Domain Users` group:
 
     ![PEM Server Web Properties](../../images/pem_server_web_properties_member_of.png)
 
@@ -59,13 +54,13 @@ Follow the steps to configure the Kerberos Authentication for the PEM Server:
 a.  Open `Windows PowerShell` as an `Administrator` user, create a Key Table for HTTP Service Principal mapping with user `pemserverweb` and a Key Table for Postgres Service Principal mappping with user `pemserverdb`.
 
 ```text
-> ktpass /out pemserver.keytab /princ HTTP/pem.edbpem.internal@EDBPEM.INTERNAL /mapuser pemserverweb /crypto AES256-SHA1 +rndpass /target EDBPEM.INTERNAL -ptype KRB5_NT_PRINCIPAL
-> ktpass /out pemdb.keytab /princ postgres/pem.edbpem.internal@EDBPEM.INTERNAL /mapuser pemserverdb /crypto AES256-SHA1 +rndpass /target EDBPEM.INTERNAL -ptype KRB5_NT_PRINCIPAL
+ktpass /out pemserver.keytab /princ HTTP/pem.edbpem.internal@EDBPEM.INTERNAL /mapuser pemserverweb /crypto AES256-SHA1 +rndpass /target EDBPEM.INTERNAL -ptype KRB5_NT_PRINCIPAL
+ktpass /out pemdb.keytab /princ postgres/pem.edbpem.internal@EDBPEM.INTERNAL /mapuser pemserverdb /crypto AES256-SHA1 +rndpass /target EDBPEM.INTERNAL -ptype KRB5_NT_PRINCIPAL
 ```
 
 Where,
 
--   `pemserver.keytab` is the name of the Key Table for the PEM Web Apllication
+-   `pemserver.keytab` is the name of the Key Table for the PEM Web Application
 -   `pemdb.keytab` is the name of the key Table for the PEM Backend Database Server
 -   `pem.edbpem.internal@EDBPEM.INTERNAL` is the hostname of the PEM Server (here @EDBPEM.INTERNAL means @REALM)
 -   `pemserverweb` is the user for the PEM Web Application
@@ -90,7 +85,7 @@ c. Select `Trust this user for delegation to any service (Kerberos only)` option
 
 d. Copy both the Key Tables to the PEM Server Host (or respectively to PEM Web Server and PEM Backend Database Server hosts if installed on different hosts.)
 
-e.  On the PEM Server, move the Key Tables to required location and change the ownership as following:
+e.  On the PEM Server, move the Key Tables to the required location and change the ownership as following:
 
 ```text
 mv /tmp/pemserver.keytab <PEM_INSTALLATION_DIRECTORY>/share
@@ -119,7 +114,26 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/pemdb.keytab
 
     -   `DATA_DIRECTORY_OF_POSTGRES` is the path of the data directory of the installed postgres (PostgreSQL/EDB Postgres Advanced Server.
 
--   Restart the database server to have the effect of changes
+-   Edit the `krb5.conf` file:
+
+    ```text
+    $ sudo vim /etc/krb5.conf
+    [libdefaults]
+    default_realm = EDBPEM.INTERNAL
+    Forwardable = True
+
+    [domain_realm]
+    .edbpem.org = EDBPEM.INTERNAL
+    edbpem.org = EDBPEM.INTERNAL
+
+    [realms]
+    EDBPEM.INTERNAL = {
+       kdc = krb5server.edbpem.internal
+       admin_server = krb5server.edbpem.internal
+    }
+    ```
+
+-   Restart the database server to reflect the changes
 
     ```text
     systemctl restart <POSTGRES_SERVICE_NAME>
@@ -129,7 +143,26 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/pemdb.keytab
 
     -   `POSTGRES_SERVICE_NAME` is the service name of Postgres (PostgreSQL/EDB Postgres Advanced Server) database. For eg: postgresql-13 for PostgreSQL 13 database on CentOS or RHEL platforms.
 
-## 5. Configure the PEM Server
+## 5. Obtain and view the initial ticket
+
+-   The `kinit` utility obtains and caches Kerberos tickets. This utility is typically used to obtain the ticket-granting ticket, using a password entered by the user to decrypt the credential from the key distribution center (KDC). The ticket-granting ticket is then stored in the user's credential cache.
+
+-   You can view the details of the ticket using `klist` utility.
+
+!!! Note
+    The `Kerberos Client` must be installed on the PEM Server and the Client machine to use `kinit` and `klist`.
+
+```text
+$ kinit <USERNAME@REALM>
+$ klist 
+```
+
+It will display the principal along with the kerberos ticket.
+
+!!! Note
+    The `USERNAME@REALM` specified here must be a database user having the `pem_admin` role and `CONNECT` privilege on `pem` database.
+
+## 6. Configure the PEM Server
 
 -   Run the PEM configure script on the PEM Server to use Kerberos Authentication
 
@@ -180,7 +213,7 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/pemdb.keytab
 !!! Note
     You cannot specify connection type as `hostgssenc` as windows does not support gss encrypted connection.
 
-## 6. Browser Settings
+## 7. Browser Settings
 
 Configure the Browser on the Client machine to access the PEM Web Client to use the `Spnego/Kerberos`.
 
@@ -206,3 +239,12 @@ Configure the Browser on the Client machine to access the PEM Web Client to use 
     ```text
     https://<ip_address_of_PEM_server>:8443/pem
     ```
+
+!!! Note
+    If you run into the following error while connecting to your Postgres cluster:
+
+    `psql -h hostname template1`
+    `psql: GSSAPI continuation error: Unspecified GSS failure. Minor code may provide more information`
+    `GSSAPI continuation error: Key version is not available`
+
+    The resolution is to add the additional encryption types to the keytab using `ktutil` or recreating the Postgres keytab with all crypto systems from AD. 
