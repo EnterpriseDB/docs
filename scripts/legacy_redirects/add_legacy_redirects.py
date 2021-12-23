@@ -55,7 +55,7 @@ def write_redirects_to_mdx_files(output):
       # block existing legacyRedirects from being written back out
       if line.startswith('legacyRedirectsGenerated:'):
         in_existing_redirect_section = True
-      elif in_existing_redirect_section and not (line.startswith('  -') or line.startswith('  #')):
+      elif in_existing_redirect_section and not (line.startswith('  -') or line.lstrip().startswith('#')):
         in_existing_redirect_section = False
 
       if not in_existing_redirect_section:
@@ -273,6 +273,8 @@ for product in legacy_urls_by_product_version.keys():
 
         legacy_title = normalize_title(legacy_page['title'])
         legacy_parents = [normalize_title(t) for t in legacy_page['sub_nav']]
+
+        print('searching for {0} under {1} in {2}'.format(legacy_title, legacy_parents, subfolder_docs_path))
         title_matches = []
         heading_matches = []
         heading_matches_exact = []
@@ -317,6 +319,12 @@ for product in legacy_urls_by_product_version.keys():
             for filename in title_matches:
               print('{0} ({1}) - {2} - {3}'.format(legacy_title, legacy_parents, filename, url))
 
+        # if no match found, map what's new -> release notes
+        if not match_found and legacy_page_filename in ['whats_new.html'] and 'release_notes.mdx' in product_mdx_files:
+          output['release_notes.mdx'].append(url)
+          matched_count += 1
+          match_found = True
+
         # if no match found, check for files we remove
         legacy_page_filename = url.split('/')[-1].replace('.html', '')
         if not match_found and legacy_page_filename in OLD_URLS_REMOVED_FILES:
@@ -326,12 +334,15 @@ for product in legacy_urls_by_product_version.keys():
             matched_count += 1
             match_found = True
 
+        if match_found:
+          print("...FOUND!")
+
         if not match_found:
           ignore_legacy_titles = ['tableofcontents', 'introduction', 'typographicalconventionsusedinthisguide']
           if legacy_title in ignore_legacy_titles: continue
           old_failed_to_match[product][version][mdx_folder].append(url)
           old_failed_to_match_count += 1
-          print('{0} ({1}) - {2}'.format(legacy_title, legacy_parents, url))
+          print('...NOT FOUND: {0} ({1}) - {2}'.format(legacy_title, legacy_parents, url))
 
 
 print("\n{0}================ Report ================{1}".format(ANSI_BLUE, ANSI_STOP))
