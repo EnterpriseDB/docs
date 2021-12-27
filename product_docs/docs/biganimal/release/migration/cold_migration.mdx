@@ -6,11 +6,11 @@ The simplest way to import a database into BigAnimal is using logical backups ta
 
 The high-level steps are:
 
-1. [Export existing roles](#export-existing-roles).
-1. [Import existing roles](#import-the-roles).
-1. For each database, you are migrating:
-   1. [logical export using `pg_dump`](#export-a-database)
-   1. [logical import with `pg_restore`](#import-a-database)
+1.  [Export existing roles](#export-existing-roles).
+2.  [Import existing roles](#import-the-roles).
+3.  For each database, you are migrating:
+    1.  [logical export using `pg_dump`](#export-a-database)
+    2.  [logical import with `pg_restore`](#import-a-database)
 
 In case your source PostgreSQL instance hosts multiple databases, you can segment them in multiple BigAnimal clusters for easier management, better performance, increased predictability, and finer control of resources. For example, if your host has 10 databases, you can import one database (and related users) on a different BigAnimal cluster, one at a time.
 
@@ -19,36 +19,37 @@ In case your source PostgreSQL instance hosts multiple databases, you can segmen
 This approach requires suspending write operations to the database application for the duration of the export/import process. You can then resume the write operations on the new system. This is because `pg_dump` takes an online snapshot of the source database. As a result, the changes after the backup starts aren't included in the output.
 
 The required downtime depends on many factors, including:
- - Size of the database
- - Speed of the network between the two systems
- - Your team's familiarity with the migration procedure
+
+-   Size of the database
+-   Speed of the network between the two systems
+-   Your team's familiarity with the migration procedure
 
 To minimize the downtime, you can test the process as many times as needed before the actual migration. You can perform the export with `pg_dump` online, and the process is repeatable and measurable.
 
 ## Before you begin
 
 Make sure that you:
- - Understand the [terminology conventions](#terminology-conventions) used in this topic.
- - Have the [required Postgres client binaries and libraries](#postgres-client-libraries).
- - Can [access the source and target databases](#access-to-the-source-and-target-database).
+
+-   Understand the [terminology conventions](#terminology-conventions) used in this topic.
+-   Have the [required Postgres client binaries and libraries](#postgres-client-libraries).
+-   Can [access the source and target databases](#access-to-the-source-and-target-database).
 
 ### Terminology conventions
 
-| Term | Alias | Description |
-| ---- | ----- | ---------- |
-| source database | `pg-source` | Postgres instance from which you want to import your data. |
-| target database | `pg-target` | Postgres cluster in BigAnimal where you want to import your data. |
-| migration host | `pg-migration` | Temporary Linux machine in your trusted network from which to execute the export of the database and the subsequent import into BigAnimal. The migration host needs access to both the source and target databases. Or, if your source and target databases are on the same version of Postgres, the source host can serve as your migration host. |
-
+| Term            | Alias          | Description                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| source database | `pg-source`    | Postgres instance from which you want to import your data.                                                                                                                                                                                                                                                                                         |
+| target database | `pg-target`    | Postgres cluster in BigAnimal where you want to import your data.                                                                                                                                                                                                                                                                                  |
+| migration host  | `pg-migration` | Temporary Linux machine in your trusted network from which to execute the export of the database and the subsequent import into BigAnimal. The migration host needs access to both the source and target databases. Or, if your source and target databases are on the same version of Postgres, the source host can serve as your migration host. |
 
 ### Postgres client libraries
 
 The following client binaries must be on the migration host:
 
-- `pg_dumpall`
-- `pg_dump`
-- `pg_restore`
-- `psql`
+-   `pg_dumpall`
+-   `pg_dump`
+-   `pg_restore`
+-   `psql`
 
 They must be the same version as the Postgres version of the target database. For example, if you want to import a PostgreSQL 10 database from your private network into a PostgreSQL 14 database in BigAnimal, use the client libraries and binaries from version 14.
 
@@ -56,26 +57,27 @@ They must be the same version as the Postgres version of the target database. Fo
 
 Access requirements:
 
-- PostgreSQL superuser access to the source database. This could be the `postgres` user or another user with `SUPERUSER` privileges.
-- Access to the target database in BigAnimal as the `edb_admin` user.
-
+-   PostgreSQL superuser access to the source database. This could be the `postgres` user or another user with `SUPERUSER` privileges.
+-   Access to the target database in BigAnimal as the `edb_admin` user.
 
 #### Verify your access
 
-1. Connect to the source database using `psql`. For example:
-   ```
-   psql -d "host=pg-source user=postgres dbname=postgres"
-   ```
-   Replace `pg-source` with the actual hostname or IP address of the source database and the `user` and `dbname` values as appropriate. If the connection doesn't work, contact your system and database administrators to make sure that you can access the source database. This might require changes to your `pg_hba.conf` and network settings. If `pg_hba.conf` changes, reload the configuration with either `SELECT pg_reload_conf();` via a psql connection or `pg_ctl reload` in a shell connection to the database host.
+1.  Connect to the source database using `psql`. For example:
+    ```
+    psql -d "host=pg-source user=postgres dbname=postgres"
+    ```
+    Replace `pg-source` with the actual hostname or IP address of the source database and the `user` and `dbname` values as appropriate. If the connection doesn't work, contact your system and database administrators to make sure that you can access the source database. This might require changes to your `pg_hba.conf` and network settings. If `pg_hba.conf` changes, reload the configuration with either `SELECT pg_reload_conf();` via a psql connection or `pg_ctl reload` in a shell connection to the database host.
 
-1. Connect to the target database using the `edb_admin` user. For example:
-   ```
-   psql -d "host=pg-target user=edb_admin dbname=edb_admin"
-   ```
-   Replace `pg-target` with the actual hostname of your BigAnimal cluster.
+2.  Connect to the target database using the `edb_admin` user. For example:
+    ```
+    psql -d "host=pg-target user=edb_admin dbname=edb_admin"
+    ```
+    Replace `pg-target` with the actual hostname of your BigAnimal cluster.
 
 ## Export existing roles
+
 Export the existing roles from your source Postgres instance by running the following command on the migration host:
+
 ```
 pg_dumpall -r -d "host=pg-source user=postgres dbname=postgres" > roles.sql
 ```
@@ -103,49 +105,51 @@ SET standard_conforming_strings = on;
 --
 ```
 
-
-
 ## Import the roles
 
-1. Your BigAnimal cluster already contains the `edb_admin` user, as well as the following system required roles:
-  - `postgres` (the superuser, needed by the BigAnimal to manage the cluster)
-  - `streaming_replica` (required to manage streaming replication)
+1.  Your BigAnimal cluster already contains the `edb_admin` user, as well as the following system required roles:
 
-  As a result, you need to modify the `roles.sql` file to:
-   1. Remove the lines involving the `postgres` user. For example, remove lines like these:
-      ```
-      CREATE ROLE postgres;
-      ALTER ROLE postgres WITH SUPERUSER ….;
-      ```
-    2. Remove any role with superuser or replication privileges. For example, remove lines like these:
-       ```
-       CREATE ROLE admin;
-       ALTER ROLE admin WITH SUPERUSER ….;
-       ```
-    3. For every role that is created, grant the new role to the `edb_admin` user immediately after creating the user. For example:
-       ```
-       CREATE ROLE my_role;
-       GRANT my_role TO edb_admin;
-       ```
-    4. Remove the `NOSUPERUSER`, `NOCREATEROLE`, `NOCREATEDB`, `NOREPLICATION`, `NOBYPASSRLS` permission attributes on the other users.
+-   `postgres` (the superuser, needed by the BigAnimal to manage the cluster)
+-   `streaming_replica` (required to manage streaming replication)
 
-   The role section in the modified file, then, looks similar to:
-   ```
-   CREATE ROLE my_role;
-   GRANT my_role TO edb_admin;
-   ALTER ROLE my_role WITH INHERIT LOGIN PASSWORD 'SCRAM-SHA-256$4096:my-Scrambled-Password';
-   ```
-1. From the migration host, execute:
+    As a result, you need to modify the `roles.sql` file to:
 
-   ```
-   psql -1 -f roles.sql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full"
-   ```
-   (Replace `pg-target` with the Fully Qualified Domain Name (FQDN) of your BigAnimal cluster).
+1.  Remove the lines involving the `postgres` user. For example, remove lines like these:
+    ```
+    CREATE ROLE postgres;
+    ALTER ROLE postgres WITH SUPERUSER ….;
+    ```
+2.  Remove any role with superuser or replication privileges. For example, remove lines like these:
+    ```
+    CREATE ROLE admin;
+    ALTER ROLE admin WITH SUPERUSER ….;
+    ```
+3.  For every role that is created, grant the new role to the `edb_admin` user immediately after creating the user. For example:
+    ```
+    CREATE ROLE my_role;
+    GRANT my_role TO edb_admin;
+    ```
+4.  Remove the `NOSUPERUSER`, `NOCREATEROLE`, `NOCREATEDB`, `NOREPLICATION`, `NOBYPASSRLS` permission attributes on the other users.
 
+    The role section in the modified file, then, looks similar to:
+
+    ```
+    CREATE ROLE my_role;
+    GRANT my_role TO edb_admin;
+    ALTER ROLE my_role WITH INHERIT LOGIN PASSWORD 'SCRAM-SHA-256$4096:my-Scrambled-Password';
+    ```
+5.  From the migration host, execute:
+
+    ```
+    psql -1 -f roles.sql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full"
+    ```
+
+    (Replace `pg-target` with the Fully Qualified Domain Name (FQDN) of your BigAnimal cluster).
 
    This command tries to create the roles in a single transaction. In case of errors, the transaction is rolled back, leaving the database cluster in the same state as before the import attempt. This behavior is enforced using the `-1` option of `psql`.
 
 ## Export a database
+
 From the migration host, use the `pg_dump` command to export the source database into the target database in BigAnimal. For example:
 
 ```
@@ -158,17 +162,20 @@ pg_dump -Fc -d "host=pg-source user=postgres dbname=app" -f app.dump
 The command generates a custom .dump archive (`app.dump` in this example), which contains the compressed dump of the source database. The duration of the command execution varies depending on several variables including size of the database, network speed, disk speed, and CPU of both the source instance and the migration host. You can inspect the table of contents of the dump with `pg_restore -l <db_name>.dump`.
 
 As with any other custom format dump produced with `pg_dump`, you can take advantage of the features that `pg_restore` provides you with, including:
-- Selecting a subset of the import tasks by editing the table of contents and passing it to the `-L` option.
-- Running the command in parallel using the `-j` option with the directory format.
+
+-   Selecting a subset of the import tasks by editing the table of contents and passing it to the `-L` option.
+-   Running the command in parallel using the `-j` option with the directory format.
 
 For further information, see the [`pg_restore` documentation](https://www.postgresql.org/docs/current/app-pgrestore.html).
 
 ## Import a database
+
 Use the `pg_restore` command and the .dump file you created when exporting the source database to import the database into BigAnimal. For example:
 
 ```
 pg_restore -C -d  "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full" app.dump
 ```
+
 This process might take some time depending on the size of the database and the speed of the network.
 
 In case of error, repeat the restore operation once you have deleted the database using the following command:
