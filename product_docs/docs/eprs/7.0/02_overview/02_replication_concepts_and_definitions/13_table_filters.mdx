@@ -4,7 +4,7 @@ title: "Table filters"
 
 <div id="table_filters" class="registered_link"></div>
 
-Table filters specify the selection criteria for rows in publication tables or views to include during replications to subscriptions from the publication database in a single-master replication system. These table filters also apply between primary nodes in a multi-master replication system. Rows that don't satisfy the selection criteria are excluded from replications to subscriptions or primary nodes on which these table filters have been enabled.
+Table filters specify the selection criteria for rows in publication tables or views to include during replications to subscriptions from the publication database in a single-master replication system. These table filters also apply between primary nodes in a multi-master replication system. Rows that don't satisfy the selection criteria are excluded from replications to subscriptions or primary nodes on which these table filters were enabled.
 
 ## Implementing table filters
 
@@ -65,7 +65,11 @@ $ java -jar edb-repcli.jar -createpub  pub -repsvrfile ~/pubsvrfile -pubdbid 1 -
 -tablesfilterclause "public.dept:lookup_filter:deptno NOT IN (SELECT id FROM public.dept_filter_lookup)"
 ```
 
-After you define a set of available table filters, you must enable them only on those subscription tables of a single-master replication system or primary node tables of a multi-master replication system where filtering is to occur during replication to those particular target tables. No filtering occurs during replication to a target subscription table or primary node table if you didn't enable filters specifically on that table in the subscription or primary node.
+After you define a set of available table filters, you must enable them only on those subscription tables of eitther:
+-  A single-master replication system
+-  Primary node tables of a multi-master replication system where filtering is to occur during replication to those particular target tables. 
+
+No filtering occurs during replication to a target subscription table or primary node table if you didn't enable filters specifically on that table in the subscription or primary node.
 
 We strongly recommend that you perform a snapshot replication to the subscriptions or primary nodes that contain tables on which the filtering criteria changed by adding filter rules, removing filter rules, or modifying existing filter rules.
 
@@ -91,17 +95,17 @@ When an `INSERT` statement is executed on a source table followed by a synchroni
 
 When an `UPDATE` or `DELETE` statement executes on a source table followed by a synchronization replication, values of the identity columns are used in action on the target table of the synchronization. For non-PostgreSQL/EDB Postgres Advanced Server databases, the primary key columns are the identity columns. For PostgreSQL/EDB Postgres Advanced Server databases, the primary key or unique columns are the identity columns (see [Design considerations](../04_design_replication_system/02_design_considerations/#design_considerations) for details).
 
-When an `UPDATE` statement executes on a source table followed by a synchronization replication, the `UPDATE` result set of the source table determines the action on the target table of the synchronization as follows. 
+When an `UPDATE` statement executes on a source table followed by a synchronization replication, the `UPDATE` result set of the source table determines the action on the target table of the synchronization as follows: 
 
 
-- If a row in the result set has no corresponding row in the target table with the same identity columns values and the updated row in the result set satisfies the filtering criteria, then the row is inserted into the target table. That is, a row that previously did not exist in the target table is added because the updated row in the source table now satisfies the filtering criteria. 
-- If a row in the result set has a corresponding row in the target table with the same identity columns values and the updated row in the result set satisfies the filtering criteria, then the row in the target table is updated accordingly. That is, the update is applied to an existing, matching row in the target table that still satisfies the filtering criteria after the update.
-- If a row in the result set has a corresponding row in the target table with the same identity columns values and the updated row in the result set no longer satisfies the filtering criteria, then the corresponding row in the target table is deleted. That is, an existing, matching row in the target table no longer satisfies the filtering criteria after the update, so the row is removed from the target table.
+- If a row in the result set has no corresponding row in the target table with the same identity columns values and the updated row in the result set satisfies the filtering criteria, then the row is inserted into the target table. A row that previously didn't exist in the target table is added because the updated row in the source table now satisfies the filtering criteria. 
+- If a row in the result set has a corresponding row in the target table with the same identity columns values and the updated row in the result set satisfies the filtering criteria, then the row in the target table is updated accordingly. The update is applied to an existing, matching row in the target table that still satisfies the filtering criteria after the update.
+- If a row in the result set has a corresponding row in the target table with the same identity columns values and the updated row in the result set no longer satisfies the filtering criteria, then the corresponding row in the target table is deleted. An existing, matching row in the target table no longer satisfies the filtering criteria after the update, so the row is removed from the target table.
 
 When a `DELETE` statement executes on a source table followed by a synchronization replication, the `DELETE` result set of the source table determines the action on the target table of the synchronization as follows:
 
-- If a row in the result set has a corresponding row in the target table with the same identity columns values, then the row with that primary key value is deleted from the target table. That is, an existing, matching row in the target table is removed. 
-- If a row in the result set has no corresponding row in the target table with the same identity columns values, then no action is taken on the target table for that row. That is, there's no existing, matching row in the target table, so there is no row to remove from the target table.
+- If a row in the result set has a corresponding row in the target table with the same identity columns values, then the row with that primary key value is deleted from the target table. An existing, matching row in the target table is removed. 
+- If a row in the result set has no corresponding row in the target table with the same identity columns values, then no action is taken on the target table for that row. Because there's no existing, matching row in the target table, there's no row to remove from the target table.
 
 
 Thus, regardless of whether the transaction on the source table is an `INSERT`, `UPDATE`, or `DELETE` statement, the goal of a table filter is to ensure that all rows in the target table satisfy the filter rule.
@@ -150,20 +154,20 @@ Replica Identity: FULL
 
 The `REPLICA IDENTITY FULL` setting is required on tables in the following databases of a log-based replication system:
 
--   In a single-master replication system, you define table filters in the primary database. Thus, the publication tables in the primary database requiring filter definitions must be altered to a `REPLICA IDENTITY FULL` setting, but only if the publication is not a snapshot-only publication. See [Snapshot-only publications](07_snapshot_only_publications/#snapshot_only_publications).
+-   In a single-master replication system, you define table filters in the primary database. Thus, the publication tables in the primary database requiring filter definitions must be altered to a `REPLICA IDENTITY FULL` setting but only if the publication is not a snapshot-only publication. See [Snapshot-only publications](07_snapshot_only_publications/#snapshot_only_publications).
 -   In a multi-master replication system, table filters are defined in the primary definition node. Thus, publication tables in the primary definition node requiring filter definitions must be altered to a `REPLICA IDENTITY FULL` setting.
--   In a multi-master replication system, do not set non-PDN nodes tables `REPLICA IDENTITY` options to `FULL` unless transactions are expected to be targeted on those non-PDN nodes. In addition, the transactions will be filtered when they're replicated to the other primary nodes.
+-   In a multi-master replication system, don't set non-PDN nodes tables `REPLICA IDENTITY` options to `FULL` unless transactions are expected to be targeted on those non-PDN nodes. In addition, the transactions will be filtered when they're replicated to the other primary nodes.
 
 The `REPLICA IDENTITY FULL` setting on a source table ensures that certain types of transactions on the source table result in the proper updates to the target tables on which filters are enabled.
 
 !!! Note
     In addition to table filtering requirements, you might need the `REPLICA IDENTITY FULL` on publication tables for other reasons in Replication Server. See [Configuration parameter and table setting requirements](../../06_mmr_operation/06_conflict_resolution/01_configuration_para_andtable_setting/#configuration_para_and_table_setting) for additional requirements.
 
-### Filtering Restrictions on Data Types
+### Filtering restrictions on data types
 
 Table filters aren't supported on binary data type columns. A binary data type is the Postgres data type `BYTEA`. In addition, table filters aren't supported on EDB Postgres Advanced Server columns with data types `BINARY`, `VARBINARY`, `BLOB`, `LONG RAW`, and `RAW`, as these are alias names for the `BYTEA` data type.
 
-### Filtering Restrictions on Operators
+### Filtering restrictions on operators
 
 Replication Server supports modulus operator (denoted by %) to define a filter clause. However, the following restrictions apply:
 
@@ -180,7 +184,7 @@ Replication Server supports the modulus filter in the following formats:
 
 ## Roadmap for further instructions
 
-The specific details on implementing table filtering depend upon whether you're using a single-master replication system or a multi-master replication system. The following is a roadmap to where to find relevant information for each type of replication system.
+The specific details on implementing table filtering depend upon whether you're using a single-master replication system or a multi-master replication system. Use this roadmap to find relevant information for each type of replication system.
 
 For using table filters in a single-master replication system, see:
 
