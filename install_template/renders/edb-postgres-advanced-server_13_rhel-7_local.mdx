@@ -1,0 +1,190 @@
+# Installing EDB Postgres Advanced Server 13 on RHEL 7 local
+
+This topic describes how to install EDB Postgres Advanced Server and includes steps for getting started with your cluster and creating a database.
+
+There are three steps to completing an installation:
+
+- Setting up the repository
+- Installing the package
+- Performing the initial configuration
+
+For each step, you must be logged in as superuser.
+
+To log in as a superuser:
+
+```sh
+sudo su -
+```
+
+## Setting up the Repository
+
+1. To register with EDB to receive credentials for the EDB repository, visit: [Repository Access Request](https://www.enterprisedb.com/repository-access-request)
+
+1. Set up the EDB repository:
+
+   ```sh
+   yum -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
+   ```
+
+   This creates the /etc/yum.repos.d/edb.repo configuration file.
+
+1. Replace `'USERNAME:PASSWORD'` below with your username and password available from your
+   [EDB account](https://www.enterprisedb.com/user) in the edb.repo file:
+
+   ```sh
+   sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
+   ```
+
+1. Install EPEL repository and refresh the cache:
+
+   ```sh
+   yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+   yum makecache
+   ```
+
+1. Enable the optional, extras, and HA repositories since EPEL packages may depend on packages from these repositories
+
+   ```sh
+   subscription-manager repos --enable "rhel-*-optional-rpms" --enable "rhel-*-extras-rpms"  --enable "rhel-ha-for-rhel-*-server-rpms"
+   ```
+
+1. Install the `createrepo` utility on the source server to create the local repository:
+
+   ```sh
+   yum install -y yum-utils createrepo
+   ```
+
+1. Import EDB GPG key installed from edb-repo and also the other repositories:
+
+   ```sh
+   rpm --import /etc/pki/rpm-gpg/*
+   ```
+
+1. Create the download directory, download all the required packages and populate it using `createrepo`:
+
+   ```sh
+   $ mkdir -p /tmp/yumdownloaddir
+   $ cd /tmp/yumdownloaddir
+   $ repotrack parted edb-repo edb-as*-server java edb-pem edb-efm* edb-migrationtoolkit ppas-xdb edb-as*-pgagent.x86_64 edb-bart
+   $ createrepo /tmp/yumdownloaddir
+   ```
+
+1. Zip up the download directory, ready to be shipped to the target server(s):
+
+   ```sh
+   $ cd /tmp
+   $ tar -zcvf yumdownloaddir.tgz yumdownloaddir
+   ```
+
+1. Now login to the target server and copy the .tgz (zip) file to the /tmp directory using scp, or rsync, or any of the other methods. Then unzip it on all the servers needing EDB software.
+
+   ```sh
+   sudo tar -xvf /tmp/yumdownloaddir.tgz
+   ```
+
+1. Install the edb repo file and import the EDB GPG key from the archive:
+
+   ```sh
+   sudo yum localinstall yumdownloaddir/edb-repo*.rpm
+   sudo rpm --import /etc/pki/rpm-gpg/*
+   ```
+
+   This creates the /etc/yum.repos.d/edb.repo configuration file.
+
+1. Create an `edb_local.repo` file in /etc/yum.repos.d/ with the following contents:
+   ```sh
+   sudo cp /etc/yum.repos.d/edb.repo /etc/yum.repos.d/edb_local.repo
+   sudo vi /etc/yum.repos.d/edb_local.repo
+   [edb-localrepo]
+   name=EnterpriseDB Localrepo for install without internet access
+   baseurl=file:///tmp/yumdownloaddir/
+   enabled=1
+   repo_gpgcheck=0
+   gpgcheck=1
+   gpgkey=file:///etc/pki/rpm-gpg/ENTERPRISEDB-GPG-KEY
+   #skip_if_unavailable = 1
+   #keepcache = 0
+   ```
+
+## Installing the Package
+
+```sh
+yum -y install edb-as13-server
+```
+
+Installing the server package creates an operating system user named `enterprisedb`. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as13`.
+
+## Initial Configuration
+
+1. Initialize the database cluster:
+
+   ```sh
+   PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as13/bin/edb-as-13-setup initdb
+   ```
+
+1. Start the database cluster:
+
+   ```sh
+   systemctl start edb-as-13
+   ```
+
+## Connecting to Your Database cluster
+
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+
+1. To work in your cluster, login as `enterprisedb` user:
+
+   ```sh
+   su - enterprisedb
+   ```
+
+1. Connect to the database server using psql command line client:
+
+   ```sh
+   psql edb
+   ```
+
+   See [Managing Your Cluster > Connecting to Your Cluster], for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface.
+
+1. Then, assign a password to the database superuser `enterprisedb`:
+
+   ```sh
+   ALTER ROLE enterprisedb IDENTIFIED BY password;
+   ```
+
+## Creating a Database
+
+This section steps you through creating and adding data to a simple database.
+
+1. Create a database (named hr):
+
+   ```sh
+   CREATE DATABASE hr;
+   ```
+
+1. Connect to the new database and create a table (named dept):
+
+   ```sh
+   \c hr
+   CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+   PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+   varchar(13));
+   ```
+
+1. Add data to the table:
+
+   ```sh
+   INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+   INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+   ```
+
+1. You can use simple SQL commands to query the database and retrieve information about the data you have added to the table:
+
+   ```sh
+   SELECT * FROM dept;
+   deptno  |   dname    |   loc
+   --------+------------+----------
+   10      | ACCOUNTING | NEW YORK
+   20      | RESEARCH   | DALLAS
+   (2 rows)
+   ```
