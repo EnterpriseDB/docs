@@ -1,0 +1,152 @@
+---
+title: "Installing on RHEL 8/CentOS 8/OL 8 on x86_64"
+---
+
+You can set up the repository and install EDB Postgres Advanced Server and, optionally, other EDB products. To proceed, you must be logged in as superuser.
+
+To log in as a superuser:
+
+```sh
+sudo su -
+```
+
+## Setting up the Repository
+
+Perform this one-time setup to access the repository.
+
+1. To register with EDB to receive credentials for the EDB repository, see: [Repository Access Request](https://www.enterprisedb.com/repository-access-request).
+
+1. Set up the EDB repository:
+
+   ```sh
+   dnf -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
+   ```
+
+   This creates the `/etc/yum.repos.d/edb.repo` configuration file.
+
+1. Add your EDB credentials to the edb.repo file:  
+
+   ```sh
+   sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
+   ```
+
+  `USERNAME:PASSWORD` is the username and password available from your
+   [EDB account](https://www.enterprisedb.com/user).
+   
+1. Install the EPEL repository and refresh the cache:
+
+   ```sh
+   dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+   dnf makecache
+   ```
+
+1. The EPEL packages may depend on packages from other repositories. To download the packages, enable the platform-specific repositories:
+
+   - For RHEL:
+
+      ```sh
+      ARCH=$( /bin/arch )
+      subscription-manager repos --enable "codeready-builder-for-rhel-8-${ARCH}-rpms"
+      ```
+
+   - For CentOS:
+
+    ```sh
+   dnf config-manager --set-enabled powertools
+   ```
+
+1.  Disable the built-in PostgreSQL module:
+
+    ```sh
+    dnf -qy module disable postgresql
+    ```
+
+
+## Installing the Package
+
+```sh
+dnf -y install edb-as14-server <other_product>
+```
+
+`<other_products>` can be one or more of the product packages returned by the `dnf list available` command.
+
+Installing the EDB Postgres Advanced Server package creates an operating system user named enterprisedb. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as14`.
+
+## Initial Configuration
+
+
+1. Initialize the database cluster:
+
+   ```sh
+   PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
+   ```
+
+1. Start the database cluster:
+
+   ```sh
+   systemctl start edb-as-14
+   ```
+
+### Connecting to Your Database cluster
+
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+
+1. To work in your cluster, login as `enterprisedb` user:
+
+   ```sh
+   su - enterprisedb
+   ```
+
+1. Connect to the database server using psql command line client:
+
+   ```sh
+   psql edb
+   ```
+
+   See [Managing Your Cluster > Connecting to Your Cluster], for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface.
+
+1. Then, assign a password to the database superuser `enterprisedb`:
+
+   ```sh
+   ALTER ROLE enterprisedb IDENTIFIED BY password;
+   ```
+
+### Creating a Database
+
+This section steps you through creating and adding data to a simple database.
+
+1. Create a database (named hr):
+
+   ```sh
+   CREATE DATABASE hr;
+   ```
+
+1. Connect to the new database and create a table (named dept):
+
+   ```sh
+   \c hr
+   CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+   PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+   varchar(13));
+   ```
+
+1. Add data to the table:
+
+   ```sh
+   INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+   INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+   ```
+
+1. You can use simple SQL commands to query the database and retrieve information about the data you have added to the table:
+
+   ```sh
+   SELECT * FROM dept;
+   deptno  |   dname    |   loc
+   --------+------------+----------
+   10      | ACCOUNTING | NEW YORK
+   20      | RESEARCH   | DALLAS
+   (2 rows)
+   ```
+
+
+
