@@ -14,139 +14,93 @@ sudo su -
 
 Perform this one-time setup to access the repository.
 
-1. To register with EDB to receive credentials for the EDB repository, see: [Repository Access Request](https://www.enterprisedb.com/repository-access-request).
+```sh
 
-1. Set up the EDB repository:
+# To register with EDB to receive credentials for the EDB repository, go to https://www.enterprisedb.com/repository-access-request.
 
-   ```sh
-   dnf -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
-   ```
+# Set up the EDB repository to create the `/etc/yum.repos.d/edb.repo` configuration file:
 
-   This creates the `/etc/yum.repos.d/edb.repo` configuration file.
+dnf -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
 
-1. Add your EDB credentials to the edb.repo file:  
+# Add your EDB credentials to the edb.repo file by replacing USERNAME:PASSWORD with the username and password for your EDB account. See https://www.enterprisedb.com/user. 
 
-   ```sh
-   sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
-   ```
+sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
 
-  `USERNAME:PASSWORD` is the username and password available from your
-   [EDB account](https://www.enterprisedb.com/user).
-   
-1. Install the EPEL repository and refresh the cache:
+# Install the EPEL repository and refresh the cache:
 
-   ```sh
-   dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-   dnf makecache
-   ```
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+dnf makecache
 
-1. The EPEL packages may depend on packages from other repositories. To download the packages, enable the platform-specific repositories:
+# The EPEL packages may depend on packages from other repositories. To download the packages, enable the repositories:
 
-   - For RHEL:
+ARCH=$( /bin/arch )
+subscription-manager repos --enable "codeready-builder-for-rhel-8-${ARCH}-rpms"
 
-      ```sh
-      ARCH=$( /bin/arch )
-      subscription-manager repos --enable "codeready-builder-for-rhel-8-${ARCH}-rpms"
-      ```
+# Disable the built-in PostgreSQL module:
 
-   - For CentOS:
-
-    ```sh
-   dnf config-manager --set-enabled powertools
-   ```
-
-1.  Disable the built-in PostgreSQL module:
-
-    ```sh
-    dnf -qy module disable postgresql
-    ```
-
+dnf -qy module disable postgresql   
+```
 
 ## Installing the Package
 
-```sh
-dnf -y install edb-as14-server <other_product>
-```
+To install other products at the same time add one or more additional product package names separated by a space. You can get a list of package names using the `dnf list available` command.
 
-`<other_products>` can be one or more of the product packages returned by the `dnf list available` command.
+```sh
+dnf -y install edb-as14-server 
+```
 
 Installing the EDB Postgres Advanced Server package creates an operating system user named enterprisedb. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as14`.
 
 ## Initial Configuration
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password. See [Managing Your Cluster > Connecting to Your Cluster](), for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface instead of the command line option given below.
+
+```text
+# Initialize the database cluster:
+
+PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
+   
+# Start the database cluster:
+
+systemctl start edb-as-14
 
 
-1. Initialize the database cluster:
+# Connecting to Your Database cluster
 
-   ```sh
-   PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
-   ```
+# To work in your cluster, login as `enterprisedb` user:
 
-1. Start the database cluster:
+su - enterprisedb
 
-   ```sh
-   systemctl start edb-as-14
-   ```
+# Connect to the database server using psql command line client:
 
-### Connecting to Your Database cluster
+psql edb
 
-This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+# Assign a password to the database superuser `enterprisedb`:
 
-1. To work in your cluster, login as `enterprisedb` user:
+ALTER ROLE enterprisedb IDENTIFIED BY password;
 
-   ```sh
-   su - enterprisedb
-   ```
+# Creating a database (named hr):
 
-1. Connect to the database server using psql command line client:
+CREATE DATABASE hr;
 
-   ```sh
-   psql edb
-   ```
+# Connect to the new database and create a table (named dept):
 
-   See [Managing Your Cluster > Connecting to Your Cluster], for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface.
+\c hr
+CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+varchar(13));
 
-1. Then, assign a password to the database superuser `enterprisedb`:
 
-   ```sh
-   ALTER ROLE enterprisedb IDENTIFIED BY password;
-   ```
+# Add data to the table:
 
-### Creating a Database
+INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+INSERT into dept VALUES (20,'RESEARCH','DALLAS');
 
-This section steps you through creating and adding data to a simple database.
+```
+You can use simple SQL commands to query the database and retrieve information about the data you have added to the table. For example,
 
-1. Create a database (named hr):
-
-   ```sh
-   CREATE DATABASE hr;
-   ```
-
-1. Connect to the new database and create a table (named dept):
-
-   ```sh
-   \c hr
-   CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
-   PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
-   varchar(13));
-   ```
-
-1. Add data to the table:
-
-   ```sh
-   INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
-   INSERT into dept VALUES (20,'RESEARCH','DALLAS');
-   ```
-
-1. You can use simple SQL commands to query the database and retrieve information about the data you have added to the table:
-
-   ```sh
+```
    SELECT * FROM dept;
-   deptno  |   dname    |   loc
-   --------+------------+----------
-   10      | ACCOUNTING | NEW YORK
-   20      | RESEARCH   | DALLAS
-   (2 rows)
-   ```
+```
 
 
 
