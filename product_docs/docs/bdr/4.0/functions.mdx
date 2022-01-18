@@ -47,7 +47,7 @@ connected to.  This allows an application to figure out what node it
 is connected to even behind a transparent proxy.
 
 It is also used in combination with CAMO, see the
-[Connection pools and proxies](camo.md#connection-pools-and-proxies)
+[CAMO.md#connection-pools-and-proxies]\(Connection pools and proxies)
 section.
 
 ### bdr.last_committed_lsn
@@ -63,8 +63,166 @@ becomes remotely visible.
 As soon as Postgres assigns a transaction id, this parameter is
 updated to show the transaction id just assigned, if CAMO is enabled.
 
-!!! Note
-    This is only available on EDB Postgres Extended.
+## Consensus Function
+
+### bdr.consensus_disable
+
+Disables the consensus worker on the local node until server restart or until
+it's re-enabled using `bdr.consensus_enable` (whichever happens first).
+
+!!! Warning
+    Disabling consensus will disable some features of BDR and eventually
+    will impact availability of the BDR cluster if left disabled for prolonged
+    periods of time. This function should only be used in coordination with
+    Technical Support.
+
+### bdr.consensus_enable
+
+Re-enabled disabled consensus worker on local node.
+
+### bdr.consensus_proto_version
+
+Returns currently used consensus protocol version by the local node.
+
+Needed by the BDR group reconfiguration internal mechanisms.
+
+### bdr.consensus_snapshot_export
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_export(version integer DEFAULT NULL)
+```
+
+Generate a new BDR consensus snapshot from the currently committed-and-applied
+state of the local node and return it as bytea.
+
+By default, a snapshot for the highest supported Raft version is
+exported. But that can be overridden by passing an explicit `version`
+number.
+
+The exporting node does not have to be the current Raft leader, nor does it
+need to be completely up to date with the latest state on the leader. However,
+such snapshot might not be accepted by `bdr.consensus_snapshot_import()`
+(see bellow).
+
+The new snapshot is not automatically stored to the local node's
+`bdr.local_consensus_snapshot` table. It's only returned to the caller.
+
+The generated snapshot may be passed to `bdr.consensus_snapshot_import()` on
+any other node(s) in the same BDR nodegroup that is behind the exporting node's
+raft log position.
+
+The local BDR consensus worker must be disabled for this function to work.
+Typical usage is:
+
+```
+ SELECT bdr.bdr_consensus_disable();
+ \copy (SELECT * FROM bdr.consensus_snapshot_export()) TO 'my_node_consensus_snapshot.data'
+ SELECT bdr.bdr_consensus_enable();
+```
+
+While the BDR consensus worker is disabled, DDL locking attempts on the node
+will fail or time out, galloc sequences will not get new values, Eager and CAMO
+transactions will pause or ERROR, and other functionality that needs the distributed
+consensus system will be disrupted. The required downtime is generally very brief.
+
+Depending on the use case, it may be practical to extract a snapshot that
+already exists from the `snapshot` field of the `bdr.local_consensus_snapshot`
+table and use that instead. Doing so does not require that the consensus worker
+be stopped.
+
+### bdr.consensus_snapshot_import
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_import(IN snapshot bytea)
+```
+
+Import a consensus snapshot which was exported by
+`bdr.consensus_snapshot_export()`, usually from another node in the same BDR
+nodegroup.
+
+It's also possible to use a snapshot extracted directly from the `snapshot`
+field of the `bdr.local_consensus_snapshot` table on another node.
+
+This function is useful for resetting a BDR node's catalog state to known good
+state in case of corruption or user mistake.
+
+The snapshot can be imported if the importing node's `apply_index` is less than
+or equal to the snapshot-exporting node's `commit_index` at the time the
+snapshot was generated. See `bdr.get_raft_status()`. A node that cannot accept
+the snapshot because its logs is already too far ahead will raise an `ERROR`
+and make no changes. The imported snapshot does not have to be completely
+up-to-date, as once the snapshot is imported the node will fetch the remaining
+changes from the current leader.
+
+The BDR consensus worker must be disabled on the importing node for this
+function to work. See notes on `bdr.consensus_snapshot_export()` for details.
+
+It's possible to use this to force the local node to generate a new Raft
+snapshot by running:
+
+```
+SELECT bdr.consensus_snapshot_import(bdr.consensus_snapshot_export());
+```
+
+This may also cause it to truncate its Raft logs up to the current
+applied log position.
+
+### bdr.consensus_snapshot_verify
+
+#### Synopsis
+
+```sql
+bdr.consensus_snapshot_verify(IN snapshot bytea)
+```
+
+Verify the given consensus snapshot which was exported by
+`bdr.consensus_snapshot_export()`. The snapshot header contains the
+version with which is was generated and the node will try to verify it
+against the same version.
+
+The snapshot may have been exported on the same node or any other node
+in the cluster. If the node verifying the snapshot does not support the
+version of the exported snapshot, then an error will be raised.
+
+### bdr.get_consensus_status
+
+Returns status information about the current consensus (Raft) worker.
+
+### bdr.get_raft_status
+
+Returns status information about the current consensus (Raft) worker.
+Alias for `bdr.get_consensus_status`.
+
+### bdr.raft_leadership_transfer
+
+#### Synopsis
+
+```sql
+bdr.raft_leadership_transfer(IN node_name text, IN wait_for_completion boolean)
+```
+
+Request the node identified by `node_name` to be the Raft leader. The
+request can be initiated from any of the BDR nodes and it will be
+internally forwarded to the current leader to transfer the leadership to
+the designated node. The designated node must be an ACTIVE BDR node and
+with full voting rights.
+
+If `wait_for_completion` is false, the request is served on
+best-efforts basis.  If the node can't become a leader within
+`bdr.raft_election_timeout` period, then some other capable node will
+become the leader again. Also, the leadership can change over the
+period of time per Raft protocol. A true return result only indicates
+the request had been submitted successfully.
+
+If `wait_for_completion` is `true` then the function will wait until
+the given node becomes the new leader and possibly wait infinitely if
+the requested node fails to become Raft leader (e.g. due to network
+issues). It is therefore recommended to always set a `statement_timeout`
+in combination with `wait_for_completion` to prevent an infinite loop.
 
 ## Utility Functions
 
