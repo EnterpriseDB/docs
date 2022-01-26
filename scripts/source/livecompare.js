@@ -1,4 +1,4 @@
-// run: node scripts/source/livecompare.js"
+// run: node scripts/source/livecompare.js source_path destination_path"
 // purpose:
 //  Import and convert the LiveCompare docs, rendering them in /product_docs/livecompare/<version>
 //
@@ -19,7 +19,9 @@ const { exec, execSync } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
-const basePath = path.resolve("source/docs/");
+const args = process.argv.slice(2);
+const basePath = path.resolve(args[1], 'docs');
+const destination = path.resolve(argv[2]);
 
 (async () => {
   const processor = unified()
@@ -47,7 +49,7 @@ const basePath = path.resolve("source/docs/");
 
   const markdownToProcess = mdIndex.nav; 
   const version = mdIndex.site_name.match(/LiveCompare (\d+\.\d+)/)[1];
-  const destPath = path.resolve("product_docs", "docs", "livecompare", version);
+  const destPath = path.resolve(destination, "product_docs", "docs", "livecompare", version);
   const indexFilename = "index.md";
 
   fileToMetadata[indexFilename] = {};

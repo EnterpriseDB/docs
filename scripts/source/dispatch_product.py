@@ -12,6 +12,7 @@ parser.add_argument("workspace",
 args = parser.parse_args()
 
 import os
+import sys
 
 commands = {'EnterpriseDB/cloud-native-postgresql':
             f'{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination',
@@ -19,10 +20,14 @@ commands = {'EnterpriseDB/cloud-native-postgresql':
             f'mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/',
             'EnterpriseDB/LiveCompare':
-            f'node {args.workspace}/destination/scripts/source/livecompare.js'
+            f'node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination'
             }
             
+if args.repo in commands:
+    cmd = commands[args.repo]
+    ret = os.system(cmd)
+else:
+    print(f'The workflow has not been configured for the {args.repo} repo', file=sys.stderr)
+    ret = 1
 
-cmd = commands[args.repo]
-
-ret = os.system(cmd) 
+sys.exit(ret)
