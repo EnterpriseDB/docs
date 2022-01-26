@@ -19,7 +19,7 @@ const { exec, execSync } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
-const basePath = path.resolve("temp_livecompare/docs/");
+const basePath = path.resolve("source/docs/");
 
 (async () => {
   const processor = unified()
