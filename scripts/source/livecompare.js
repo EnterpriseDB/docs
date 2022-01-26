@@ -20,8 +20,8 @@ const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
-const basePath = path.resolve(args[1], 'docs');
-const destination = path.resolve(argv[2]);
+const basePath = path.resolve(args[0], 'docs');
+const destination = path.resolve(args[1]);
 
 (async () => {
   const processor = unified()
