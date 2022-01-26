@@ -15,7 +15,6 @@ const yaml = require("js-yaml");
 const visit = require("unist-util-visit");
 const visitAncestors = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
-const { exec, execSync } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
@@ -34,7 +33,7 @@ const destination = path.resolve(args[1]);
 
   const process = async function (fileAbsolutePath, filename, destFilepath) {
     let file = await read(fileAbsolutePath);
-    stripEmptyComments(file);
+    file.contents = stripEmptyComments(file.contents.toString());
     file = await processor.process(file);
     file.path = destFilepath;
     try {
@@ -94,8 +93,8 @@ const destination = path.resolve(args[1]);
 
 // GPP leaves the files littered with these; they alter parsing by flipping sections to HTML context
 // remove them BEFORE parsing to avoid issues
-function stripEmptyComments(file) {
-  file.contents = file.contents.toString().replace(/<!--\s*-->/g, "");
+function stripEmptyComments(rawMarkdown) {
+  return rawMarkdown.replace(/<!--\s*-->/g, "");
 }
 
 // Transforms:
