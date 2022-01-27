@@ -26,6 +26,9 @@ commands = {'EnterpriseDB/cloud-native-postgresql':
 ret = os.system(f'cd {args.workspace}/scripts/source && \
                   npm install --production')
 
+if ret != 0:
+    print(f'npm install failed: {ret}', file=sys.stderr)
+
 if args.repo in commands:
     cmd = commands[args.repo]
     ret = os.system(cmd)
