@@ -467,18 +467,19 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 
   const originalRedirects = await readFile("public/_redirects");
 
-  // filter out legacyRedirects that are loaded via nginx, not netlify
-  let filteredRedirects = originalRedirects
+  // rewrite legacy redirects to exclude the /docs prefix
+  const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
+  let rewrittenRedirects = originalRedirects
     .split("\n")
-    .filter((line) => !line.startsWith(`${pathPrefix}/edb-docs/`))
+    .map((line) => line.replace(prefixRE, "/edb-docs/"))
     .join("\n");
 
-  if (filteredRedirects.length === originalRedirects.length) {
-    reporter.warn("no redirects were filtered out, did something change?");
+  if (rewrittenRedirects.length === originalRedirects.length) {
+    reporter.warn("no legacy redirects were rewritten, did something change?");
   }
 
   await writeFile(
     "public/_redirects",
-    `${filteredRedirects}\n\n# Netlify pathPrefix path rewrite\n${pathPrefix}/*  /:splat  200`,
+    `${rewrittenRedirects}\n\n# Netlify pathPrefix path rewrite\n${pathPrefix}/*  /:splat  200`,
   );
 };
