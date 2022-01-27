@@ -22,7 +22,10 @@ commands = {'EnterpriseDB/cloud-native-postgresql':
             'EnterpriseDB/LiveCompare':
             f'node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination'
             }
-            
+
+ret = os.system(f'cd {args.workspace}/scripts/source && \
+                  npm install --production')
+
 if args.repo in commands:
     cmd = commands[args.repo]
     ret = os.system(cmd)
