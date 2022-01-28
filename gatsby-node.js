@@ -494,7 +494,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/d/edb-postgres-migration-toolkit/*    /docs/migration_toolkit/latest/ 301
 /edb-docs/d/edb-postgres-migration-portal/*     /docs/migration_portal/latest/ 301
 /edb-docs/d/edb-postgres-hadoop-data-adapter/*  /docs/hadoop_data_adapter/latest/ 301
-/edb-docs/d/jdbc-connector/*                    /docs/hadoop_data_adapter/latest/ 301
+/edb-docs/d/jdbc-connector/*                    /docs/jdbc_connector/latest/ 301
 /edb-docs/d/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
 /edb-docs/d/edb-postgres-net-connector/*        /docs/net_connector/latest/ 301
 /edb-docs/d/edb-postgres-odbc-connector/*       /docs/odbc_connector/latest/ 301
