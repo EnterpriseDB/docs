@@ -486,6 +486,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/d/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
 /edb-docs/d/edb-postgres-enterprise-manager/*   /docs/pem/latest/ 301
 /edb-docs/d/edb-postgres-advanced-server/*      /docs/epas/latest/ 301
+/edb-docs/d/postgresql/*                        /docs/supported-open-source/postgresql/ 301
 /edb-docs/d/edb-postgres-failover-manager/*     /docs/efm/latest/ 301
 /edb-docs/d/edb-postgres-replication-server/*   /docs/eprs/latest/ 301
 /edb-docs/d/pgadmin-4/*                         /docs/supported-open-source/pgadmin/ 301
