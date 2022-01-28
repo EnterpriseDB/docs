@@ -9,20 +9,20 @@ parser.add_argument("workspace", help="GitHub workplace path", type=str)
 
 args = parser.parse_args()
 
-commands = {'EnterpriseDB/cloud-native-postgresql':
-            f'{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination',
-            'EnterpriseDB/fe':
-            f'mkdir -p {args.workspace}/destination/icons-pkg && \
-              cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/',
-            'EnterpriseDB/LiveCompare':
-            f'node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination'
-            }
+commands = {
+    "EnterpriseDB/cloud-native-postgresql": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
+              cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
+    "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination",
+}
 
-ret = os.system(f'cd {args.workspace}/scripts/source && \
-                  npm install --production')
+ret = os.system(
+    f"cd {args.workspace}/scripts/source && \
+                  npm install --production"
+)
 
 if ret != 0:
-    print(f'npm install failed: {ret}', file=sys.stderr)
+    print(f"npm install failed: {ret}", file=sys.stderr)
 
 if args.repo in commands:
     cmd = commands[args.repo]
