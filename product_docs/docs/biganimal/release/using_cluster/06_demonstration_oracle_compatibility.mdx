@@ -238,8 +238,70 @@ In both of the examples shown here, you probably would not use the functions and
 better, more familiar or at least more widely-available equivalents provided natively by PostgreSQL (and many other databases). But by supporting them, EDB Advanced Server gives you the ability to reuse existing logic with minimal modification, allowing
 you to focus your time and expertise on solving new problems.
 
+## Try it on your own cluster: export and import
+
+If you'd like to try the examples above on your own BigAnimal cluster, you can follow the instructions below to import the example database.
+
+1. [Connect to your EDB Postgres Advanced Server cluster as edb_admin](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/02_connecting_your_cluster/) using psql.
+
+2. Create a new database and role:
+
+    ```sql
+    CREATE DATABASE chinook;
+    \c chinook
+    CREATE USER demo WITH PASSWORD 'password';
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO demo;
+    ```
+
+    ([Details on managing access in BigAnimal databases](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/01_postgres_access/))
+
+3. Quit psql (`\q`).
+
+4. To export and import, you'll need compatible versions of pg_dump and pg_restore. If you aren't already running EDB Postgres Advanced Server, you can use the container image used by Big Animal to ensure compatibility.
+
+    ```shell
+    docker pull quay.io/enterprisedb/edb-postgres-advanced
+    ```
+
+5. Export the Chinook sample database using run pg_dump:
+
+    ```shell
+    docker run --rm quay.io/enterprisedb/edb-postgres-advanced:latest \
+        pg_dump --format custom \
+        "postgres://demo:password@p-xj6qj8i1hx.qsbilba3hlgp1vqr.biganimal.io:5432/chinook?sslmode=require" \
+        > chinook.dump
+    ```
+
+    (if you're not using the Docker container, you can omit the first `docker run` line)
+
+6. Now grab the host name of your cluster from the Connect tab on the BigAnimal portal and use it in place of `<YOUR CLUSTER HOSTNAME>` to invoke pg_restore:
+	
+    ```shell
+    docker run --rm -it -v "${PWD}:/tmp/dump" -w /tmp/dump quay.io/enterprisedb/edb-postgres-advanced:latest \
+        pg_restore --no-owner \
+        -d "postgres://edb_admin@<YOUR CLUSTER HOSTNAME>:5432/chinook?sslmode=require" \
+        /tmp/dump/chinook.dump
+    ```
+
+    (again, omit the first line if you're using locally-installed tools)
+
+    !!! Note 
+        You may see an error about pg_stat_statements - you can safely ignore this error.
+        pg_stat_statements is a very useful extension
+        and is installed by default on BigAnimal clusters, but since we're connecting as
+        the admin user and *not* a superuser, we can't modify it.
+        The rest of the schema and data has been restored however.)
+	
+7. Finally, connect to this database:
+
+    ```shell
+    psql -W "postgres://edb_admin@<YOUR CLUSTER HOSTNAME>:5432/chinook?sslmode=require"
+    ```
+
+...and try some queries on your own cluster!
+
 ### Next steps
 
 -   Read more on Oracle compatibility features in EDB Postgres Advanced Server: [EDB Advanced Server documentation](https://www.enterprisedb.com/docs/epas/latest/).
 
--   Learn about [migrating existing Oracle databases to BigAnimal](/biganimal/latest/migration/#migrating-from-oracle)
+-   Learn about [migrating existing databases to BigAnimal](/biganimal/latest/migration/)
