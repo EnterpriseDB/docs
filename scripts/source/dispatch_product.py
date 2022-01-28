@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-
 import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("repo",
-                    help="Product repository",
-                    type=str)
-parser.add_argument("workspace",
-                    help="GitHub workplace path",
-                    type=str)
-
-args = parser.parse_args()
-
 import os
 import sys
+
+parser = argparse.ArgumentParser()
+parser.add_argument("repo", help="Product repository", type=str)
+parser.add_argument("workspace", help="GitHub workplace path", type=str)
+
+args = parser.parse_args()
 
 commands = {'EnterpriseDB/cloud-native-postgresql':
             f'{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination',
@@ -33,7 +28,10 @@ if args.repo in commands:
     cmd = commands[args.repo]
     ret = os.system(cmd)
 else:
-    print(f'The workflow has not been configured for the {args.repo} repo', file=sys.stderr)
+    print(
+        f"The workflow has not been configured for the {args.repo} repo",
+        file=sys.stderr,
+    )
     ret = 1
 
 sys.exit(ret)
