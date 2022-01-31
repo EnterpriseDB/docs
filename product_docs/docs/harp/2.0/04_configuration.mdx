@@ -82,11 +82,11 @@ supplementary entries that will be described here.
   
   ```yaml
   dcs:
-  # either URI or DSN format is supported
+  # only DSN format is supported
     endpoints:
-      - "postgres://postgres@host1:5432/bdrdb"
-      - "postgres://postgres@host2:5432/bdrdb"
-      - "postgres://postgres@host3:5432/bdrdb"
+      - "host=host1 port=5432 dbname=bdrdb user=postgres"
+      - "host=host2 port=5432 dbname=bdrdb user=postgres"
+      - "host=host3 port=5432 dbname=bdrdb user=postgres"
   ```
 Currently, `bdr` consensus layer requires the first endpoint to point to the local postgres instance.  
 
@@ -96,6 +96,9 @@ Currently, `bdr` consensus layer requires the first endpoint to point to the loc
   to be logged as an error or retried, depending on the nature of the request.
   Default: 250.
 
+The following DCS SSL settings only apply when ```driver: etcd``` is set in the 
+configuration file.
+ 
 - **`ssl`**: Either `on` or `off` to enable SSL communication with the DCS.
   Default: `off`
 
@@ -183,8 +186,8 @@ Proxy-based settings may be specified under a `proxy` heading, and include:
   Each Proxy node is named to ensure any associated statistics or operating
   state are available in status checks and other interactive events.
 
-- **`type`**: Specifies whether pgbouncer or the experimental simple passthrough proxy will be used.  All proxies must use the same proxy type.  It is recommended to only experiment with the simple proxy in combination with the experimental BDR DCS.
-  May be `pgbouncer` or `simpleproxy`.
+- **`type`**: Specifies whether pgbouncer or the experimental built-in passthrough proxy will be used.  All proxies must use the same proxy type.  It is recommended to only experiment with the simple proxy in combination with the experimental BDR DCS.
+  May be `pgbouncer` or `builtin`.
   
   * Default: `pgbouncer`
 
@@ -343,12 +346,8 @@ modified with a `harpctl set node` command.
   default. The assumption is that the appropriate binaries are in the 
   environment's `PATH` variable otherwise.
 
-- **`priority`**: Any numeric value greater than or equal to 0.
-  In the case two nodes have an equal amount of lag and other qualified 
-  criteria to take the Lead Master lease, this acts as an additional ranking 
-  value to prioritize one node over another. Any node where this option is set 
-  to 0 will be unable to take the Lead Master role, even when attempting to 
-  explicitly set the Lead Master using `harpctl`.
+- **`priority`**: Any numeric value.
+  Any node where this option is set to -1 will be unable to take the Lead Master role, even when attempting to explicitly set the Lead Master using `harpctl`.
 
   * Default: 100
 
@@ -372,6 +371,11 @@ modified with a `harpctl set node` command.
   is 1000ms.
 
   * Default: 250
+
+- **`use_unix_socket`**: Specifies that HARP Manager should prefer to use 
+  unix sockets to connect to the database.
+
+  * Default: False
 
 All of these run-time directives can be modified via `harpctl`. Consider if we
 wished to decrease the `lease_refresh_interval` to 100ms on `node1`:
@@ -463,12 +467,12 @@ modified with a `harpctl set proxy` command.
   * Default `extra_float_digits`
 
 - **`listen_address`**: IP address(es) where Proxy should listen for
-  connections. This is a PgBouncer setting.
+  connections. Used by pgbouncer and builtin proxy.
 
   * Default 0.0.0.0
 
-- **`listen_port`**: System Port where Proxy should listen for connections.
-  This is a PgBouncer setting.
+- **`listen_port`**: System Port where Proxy should listen for connections. 
+     Used by pgbouncer and builtin proxy.
 
   * Default 6432
 
@@ -509,6 +513,17 @@ modified with a `harpctl set proxy` command.
 - **`server_transfer_timeout`**: The number of seconds Harp proxy will wait before giving up on a PAUSE and issuing a KILL command.
   
   * Default 30
+
+The following two options only apply when using the built-in proxy.  
+
+- **`keepalive`**: The number of seconds the built-in proxy will wait before sending a keepalive message to an idle leader connection.
+  
+  * Default 5
+
+
+- **`timeout`**: The number of seconds the built-in proxy will wait before giving up on connecting to the leader.
+  
+  * Default 1
 
 When using `harpctl` to change any of these settings for all proxies, use the 
 `global` keyword in place of the proxy name. Example:
