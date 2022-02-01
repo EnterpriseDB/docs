@@ -467,18 +467,62 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 
   const originalRedirects = await readFile("public/_redirects");
 
-  // filter out legacyRedirects that are loaded via nginx, not netlify
-  let filteredRedirects = originalRedirects
+  // rewrite legacy redirects to exclude the /docs prefix
+  const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
+  let rewrittenRedirects = originalRedirects
     .split("\n")
-    .filter((line) => !line.startsWith(`${pathPrefix}/edb-docs/`))
+    .map((line) => line.replace(prefixRE, "/edb-docs/"))
     .join("\n");
 
-  if (filteredRedirects.length === originalRedirects.length) {
-    reporter.warn("no redirects were filtered out, did something change?");
+  if (rewrittenRedirects.length === originalRedirects.length) {
+    reporter.warn("no legacy redirects were rewritten, did something change?");
   }
 
   await writeFile(
     "public/_redirects",
-    `${filteredRedirects}\n\n# Netlify pathPrefix path rewrite\n${pathPrefix}/*  /:splat  200`,
+    `${rewrittenRedirects}
+
+# Catch-all legacy redirects
+/edb-docs/d/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
+/edb-docs/d/edb-postgres-enterprise-manager/*   /docs/pem/latest/ 301
+/edb-docs/d/edb-postgres-advanced-server/*      /docs/epas/latest/ 301
+/edb-docs/d/postgresql/*                        /docs/supported-open-source/postgresql/ 301
+/edb-docs/d/edb-postgres-failover-manager/*     /docs/efm/latest/ 301
+/edb-docs/d/edb-postgres-replication-server/*   /docs/eprs/latest/ 301
+/edb-docs/d/pgadmin-4/*                         /docs/supported-open-source/pgadmin/ 301
+/edb-docs/d/edb-postgres-language-pack/*        /docs/epas/latest/language_pack/  301
+/edb-docs/d/edb-postgres-migration-toolkit/*    /docs/migration_toolkit/latest/ 301
+/edb-docs/d/edb-postgres-migration-portal/*     /docs/migration_portal/latest/ 301
+/edb-docs/d/edb-postgres-hadoop-data-adapter/*  /docs/hadoop_data_adapter/latest/ 301
+/edb-docs/d/jdbc-connector/*                    /docs/jdbc_connector/latest/ 301
+/edb-docs/d/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
+/edb-docs/d/edb-postgres-net-connector/*        /docs/net_connector/latest/ 301
+/edb-docs/d/edb-postgres-odbc-connector/*       /docs/odbc_connector/latest/ 301
+/edb-docs/p/edb-postgres-advanced-server/*      /docs/epas/latest/ 301
+/edb-docs/p/postgresql/*                        /docs/supported-open-source/postgresql/ 301
+/edb-docs/p/edb-postgres-replication-server/*   /docs/eprs/latest/ 301
+/edb-docs/p/edb-postgres-failover-manager/*     /docs/efm/latest/ 301
+/edb-docs/p/pgadmin-4/*                         /docs/supported-open-source/pgadmin/ 301
+/edb-docs/p/edb-postgres-migration-toolkit/*    /docs/migration_toolkit/latest/ 301
+/edb-docs/p/edb-postgres-hadoop-data-adapter/*  /docs/hadoop_data_adapter/latest/ 301
+/edb-docs/p/edb-postgres-language-pack/*        /docs/epas/latest/language_pack/  301
+/edb-docs/p/jdbc-connector/*                    /docs/jdbc_connector/latest/ 301
+/edb-docs/p/edb-postgres-net-connector/*        /docs/net_connector/latest/ 301
+/edb-docs/p/edb-postgres-slony-replication/*    /docs/slony/latest/ 301
+/edb-docs/p/pgpool-ii/*                         /docs/pgpool/latest/ 301
+/edb-docs/p/edb-postgres-mysql-data-adapter/*   /docs/mysql_data_adapter/latest/ 301
+/edb-docs/p/edb-postgres-postgis/*              /docs/postgis/latest/ 301
+/edb-docs/p/pgbouncer/*                         /docs/pgbouncer/latest/ 301
+/edb-docs/p/edb-postgres-mongodb-data-adapter/* /docs/mongo_data_adapter/latest/ 301
+/edb-docs/p/edb-postgres-migration-portal/*     /docs/migration_portal/latest/ 301
+/edb-docs/p/edb-postgres-enterprise-manager/*   /docs/pem/latest/ 301
+/edb-docs/p/edbplus/*                           /docs/epas/latest/edb_plus/ 301
+/edb-docs/p/edb-postgres-odbc-connector/*       /docs/odbc_connector/latest/ 301
+/edb-docs/p/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
+/edb-docs/p/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
+/edb-docs/*                                     /docs/ 301
+
+# Netlify pathPrefix path rewrite
+${pathPrefix}/*  /:splat  200`,
   );
 };
