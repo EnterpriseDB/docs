@@ -155,7 +155,6 @@ full list includes:
 * `leader` - Returns the current or specified location leader
 * `location` - Returns current or specified location information
 * `locations` -  Returns list of all locations
-* `logs` - Returns important events logged in the DCS
 * `node` - Returns the specified Postgres node
 * `nodes` - Returns list of all Postgres nodes
 * `proxy` - Returns current or specified proxy information
@@ -220,23 +219,6 @@ mycluster dc1      mynode   mynode                        <nil>
 mycluster dc2      thatnode thatnode                      <nil>          
 ```
 
-### `harpctl get logs`
-
-Fetches all significant events logged directly to the DCS.
-
-Example:
-
-```bash
-> harpctl get logs
-
-Cluster   Time                                    Id  Source  Message                                                   
--------   ----                                    --  ------  -------                                                   
-mycluster 2021-09-29 21:02:17.934711738 +0000 UTC 500 Manager mynode: manager started                                   
-mycluster 2021-09-29 21:05:19.869309853 +0000 UTC 500 Manager mynode: manager started                                   
-mycluster 2021-09-29 21:05:24.842886355 +0000 UTC 508 Manager mynode: attempting to start database                      
-mycluster 2021-09-29 21:05:26.185850583 +0000 UTC 503 Manager mynode: setting as location leader with routing status ok 
-```
-
 ### `harpctl get node`
 
 Fetches node information stored in the DCS for the specified node.
@@ -245,10 +227,10 @@ Example:
 
 ```bash
 > harpctl get node mynode
-
-Cluster   Name   Ready Role    Type Location Fenced Lock Duration 
--------   ----   ----- ----    ---- -------- ------ ------------- 
-mycluster mynode true  primary bdr  dc1      false  30            
+Cluster    Name   Location Ready Fenced Allow Routing Routing Status Role    Type Lock Duration 
+-------    ----   -------- ----- ------ ------------- -------------- ----    ---- ------------- 
+mycluster  mynode dc1      true  false  true                         primary bdr  30            
+          
 ```
 
 ### `harpctl get nodes`
@@ -260,10 +242,11 @@ Example:
 ```bash
 > harpctl get nodes
 
-Cluster   Name     Ready Role    Type Location Fenced Lock Duration 
--------   ----     ----- ----    ---- -------- ------ ------------- 
-mycluster mynode   true  primary bdr  dc1      false  30            
-mycluster thatnode true  primary bdr  dc2      false  30            
+Cluster    Name     Location Ready Fenced Allow Routing Routing Status Role    Type Lock Duration 
+-------    ----     -------- ----- ------ ------------- -------------- ----    ---- ------------- 
+mycluster  mynode   dc1      true  false  true                         primary bdr  30            
+       
+mycluster  thatnode dc1      true  false  false                        primary bdr  30            
 ```
 
 ### `harpctl get proxy`
@@ -319,8 +302,9 @@ harpctl manage cluster
 
 ## `harpctl promote`
 
-Promotes the local or specified node to Lead Master in the current Location. 
-Since this is a requested event, it invokes a smooth handover where:
+Promotes the next available node that meets leadership requirements to Lead 
+Master in the current Location. Since this is a requested event, it invokes a 
+smooth handover where:
 
 1. The existing Lead Master will release the Lead Master lease, provided:
     - If CAMO is enabled, the promoted node must be up to date and CAMO ready,
@@ -334,10 +318,12 @@ Since this is a requested event, it invokes a smooth handover where:
     - If CAMO is enabled, the promoted node will temporarily disable client
       traffic until the CAMO queue is fully applied, even though it holds the 
       Lead Master lease.
-3. HARP Proxy will `PAUSE` connections to allow ongoing transactions to 
-   complete. Once the Lead Master lease is claimed by the promoted node, it
+3. HARP Proxy, if using pgbouncer, will `PAUSE` connections to allow ongoing 
+   transactions to complete. Once the Lead Master lease is claimed by the promoted node, it
    will reconfigure PgBouncer for the new connection target and resume database
-   traffic.
+   traffic.  If HARP Proxy is using the builtin proxy it will terminate existing 
+   connections and create new connections to the Lead Master as new connections are
+   requested from the client.
 
 A `promote` command should be executed like this:
 
@@ -348,7 +334,8 @@ harpctl promote (<node-name>)
 The `--force` option can be provided to forcibly set a node to Lead Master, 
 even if it does not meet the criteria for becoming lead master. This will 
 circumvent any verification of CAMO status or replication lag and cause an 
-immediate transition to the promoted node.
+immediate transition to the promoted node.  This is the only way to specify
+an exact node for promotion.
 
 Note that the node must be online and operational for this to succeed. This 
 option should be used with care.

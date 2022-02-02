@@ -271,14 +271,6 @@ module.exports = {
       },
     },
     {
-      resolve: "gatsby-plugin-nginx-redirect",
-      options: {
-        inputConfigFile: `${__dirname}/static/nginx_redirects.template`,
-        outputConfigFile: `${__dirname}/static/nginx_redirects.generated`,
-        whereToIncludeRedirects: "", // defaults to: "server"
-      },
-    },
-    {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
       resolve: `gatsby-plugin-algolia`,
       options: {

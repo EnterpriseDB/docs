@@ -9,9 +9,14 @@ identity of the current Lead Master node and directs traffic to that location.
 In the event of a planned switchover or unplanned failover, it will 
 automatically redirect to the new Lead Master node as dictated by the DCS.
 
-This HARP component is currently an interface layer between the DCS and 
-PgBouncer. As such, PgBouncer is a prerequisite and should be installed in addition, in order for HARP Proxy to fully manage its activity.
+You may select between pgbouncer or builtin for HARP Proxy.  When using pgbouncer, 
+HARP Proxy is an interface layer between the DCS and PgBouncer. As such, PgBouncer 
+is a prerequisite and should be installed in addition, in order for HARP Proxy to 
+fully manage its activity.
 
+The builtin proxy does not require any additional software.  When using builtin, 
+HARP Proxy functions as a level 4 pass-through proxy.
+# PgBouncer
 ## How it Works
 
 Upon starting, HARP Proxy will launch PgBouncer if it is not already running, 
@@ -168,4 +173,55 @@ harpctl set proxy global auth_user=pgb_auth
     This means the `postgres` or `enterprisedb` OS user that launches HARP
     Proxy will need a `.pgpass` file so that `auth_user` can authenticate 
     against Postgres.
+
+# Builtin Proxy
+## How it Works
+
+Upon starting, HARP Proxy will listen for incoming connections on the listening 
+address and listening port specified in the bootstrap file per proxy instance.  
+All application client traffic will then pass through Builtin Proxy into the 
+current Lead Master node for the Location where this proxy is operating.
+
+In the event the Lead Master lease is not set, HARP Proxy will disconnect all 
+connection traffic until a new Lead Master is established. This also applies
+to circumstances when `harpctl promote` is used to invoke a planned transition
+to a new Lead Master. The disconnect is immediate.
+
+## Configuration
+
+HARP Proxy expects the `dcs`, `cluster`, and `proxy` configuration stanzas. The 
+following is a functional example:
+
+```yaml
+cluster:
+  name: mycluster
+
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+
+proxy:
+  name: proxy1
+```
+Each proxy will connect to the DCS to retrieve what hosts and ports to listen on for connections.
+
+## Usage
+
+This is the basic usage for HARP Proxy:
+
+```bash
+Usage of ./harp_proxy:
+  -f string
+    	Optional path to config file (shorthand)
+  --config string
+    	Optional path to config file
+```
+
+Note that there are no arguments to launch `harp_proxy` as a forked daemon. 
+This software is designed to be launched through systemd or within a container 
+as a top-level process. This also means output is directed to STDOUT and STDERR
+for capture and access through journald or an attached container terminal.
 
