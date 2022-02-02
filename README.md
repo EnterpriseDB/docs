@@ -279,7 +279,7 @@ Netlify is the hosting service we use for Docs. Netlify-specific redirects can b
 
 ### Docs 1.0 to Docs 2.0 redirects
 
-This app builds a list of nginx style redirects that are loaded into a separate server. These redirects direct users from links to the old docs site, to the appropriate page on the new docs site.
+This app builds a list of server-side redirects that reference the Docs 1.0 path (`/edb-docs/`). These redirects direct users from links to the old docs site, to the appropriate page on the new docs site.
 
 #### `legacyRedirectsGenerated`
 
