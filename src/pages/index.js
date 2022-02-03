@@ -185,7 +185,7 @@ const Page = () => (
               pgAdmin
             </IndexCardLink>
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
-            <IndexCardLink to="/edb_plus/latest">EDB\*Plus</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
