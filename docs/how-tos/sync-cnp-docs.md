@@ -6,7 +6,7 @@ Documentation from [cloud-native-postgresql][cnp]("CNP") should be synced over a
 1. Run the processor script
 
    **note:** replace `path/to/cnp/checkout` below to the actual path of your CNP checkout. If you are not running the script from this project's root, you will need to update `.` below to be the path to this project's checkout.
-   ```sh
+   ```shell
    scripts/source/process-cnp-docs.sh path/to/cnp/checkout .
    ```
 1. The script will handle updating and moving the files from the [CNP][] repo into place.
