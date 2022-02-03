@@ -1,0 +1,140 @@
+name: Build and Deploy
+on:
+  workflow_call:
+    inputs:
+      app_env:
+        required: true
+        type: string
+      environment_main_branch:
+        required: true
+        type: string
+      algolia_index_name:
+        required: false
+        type: string
+      gtm_id:
+        required: false
+        type: string
+    secrets:
+      NETLIFY_AUTH_TOKEN:
+        required: true
+      NETLIFY_SITE_ID:
+        required: true
+
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup disk
+        uses: curoky/cleanup-disk-action@v2.0
+
+      # https://stackoverflow.com/questions/58033366/how-to-get-the-current-branch-within-github-actions/58035262#58035262
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]${GITHUB_REF#refs/heads/}"
+        id: extract_branch
+
+      - uses: actions/checkout@v2
+        with:
+          ref: github.ref
+          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
+          lfs: true
+
+      - name: Adjust file watchers limit
+        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "::set-output name=dir::$(npm config get cache)"
+      - uses: actions/cache@v2
+        id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: update npm
+        run: npm install -g npm@7
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+
+      - name: npm install
+        run: |
+          npm run presetup
+          npm ci
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+      - uses: r-lib/actions/setup-pandoc@v1
+        with:
+          pandoc-version: "2.14.1"
+      - name: Install wkhtmltopdf
+        run: |
+          curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb > wkhtmltopdf.deb
+          sudo apt-get install ./wkhtmltopdf.deb
+
+      # no-op on drafts
+      - name: Build all pdfs
+        run: |
+          if [[ "${{ inputs.environment_main_branch }}" == "${{ steps.extract_branch.outputs.branch }}" ]] 
+          then
+            npm run pdf:build-all-ci
+          fi
+
+      - name: Checking Gatsby cache
+        id: gatsby-cache-build
+        uses: actions/cache@v2
+        with:
+          path: |
+            public
+            .cache
+          key: ${{ runner.os }}-gatsby-build-${{ github.head_ref }}
+          restore-keys: |
+            ${{ runner.os }}-gatsby-build-
+
+      - name: Fix mtimes
+        run: npm run fix-mtimes --force
+
+      - name: Gatsby build
+        run: npm run build
+        env:
+          APP_ENV: ${{ inputs.app_env }}
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NODE_OPTIONS: --max-old-space-size=4096
+          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_INDEX_NAME: ${{ inputs.algolia_index_name }}
+          GTM_ID: ${{ inputs.gtm_id }}
+          INDEX_ON_BUILD: ${{ inputs.algolia_index_name != '' }}
+
+      - name: Deploy to Netlify
+        id: netlify-deploy
+        uses: nwtgck/actions-netlify@v1.2.3
+        with:
+          publish-dir: "./public"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          enable-commit-comment: false
+          enable-pull-request-comment: ${{ github.event_name == 'pull_request' }}
+          deploy-message: ${{ github.event_name == 'pull_request' && github.event.pull_request.title || github.event.head_commit.message }}
+          alias: deploy-preview-${{ github.event.number }}
+          production-branch: ${{ inputs.environment_main_branch }}
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        
+      - uses: act10ns/slack@v1
+        with:
+          status: ${{ job.status }}
+        if: inputs.app_env == "production" || (inputs.environment_main_branch == steps.extract_branch.outputs.branch && failure())
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

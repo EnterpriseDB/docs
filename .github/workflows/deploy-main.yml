@@ -11,88 +11,12 @@ concurrency:
 
 jobs:
   build-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cleanup disk
-        uses: curoky/cleanup-disk-action@v2.0
-
-      - uses: actions/checkout@v2
-        with:
-          ref: main
-          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
-          lfs: true
-
-      - name: Adjust file watchers limit
-        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
-
-      - uses: actions/setup-node@v2
-        with:
-          node-version: "14.x"
-      - name: update npm
-        run: npm install -g npm@7
-        env:
-          NODE_ENV: ${{ secrets.NODE_ENV }}
-      - name: npm install
-        run: |
-          npm run presetup
-          npm ci
-        env:
-          NODE_ENV: ${{ secrets.NODE_ENV }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - uses: actions/setup-python@v2
-        with:
-          python-version: "3.x"
-      - uses: r-lib/actions/setup-pandoc@v1
-        with:
-          pandoc-version: "2.14.1"
-      - name: Install wkhtmltopdf
-        run: |
-          curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb > wkhtmltopdf.deb
-          sudo apt-get install ./wkhtmltopdf.deb
-
-      - name: Build all pdfs
-        run: npm run pdf:build-all-ci
-
-      - name: Checking Gatsby cache
-        id: gatsby-cache-build
-        uses: actions/cache@v2
-        with:
-          path: |
-            public
-            .cache
-          key: ${{ runner.os }}-gatsby-build-main-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-gatsby-build-main-
-
-      - name: Fix mtimes
-        run: npm run fix-mtimes --force
-      - name: Gatsby build
-        run: npm run build
-        env:
-          APP_ENV: production
-          NODE_ENV: ${{ secrets.NODE_ENV }}
-          NODE_OPTIONS: --max-old-space-size=4096
-          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
-          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
-          ALGOLIA_INDEX_NAME: edb-docs
-          GTM_ID: GTM-5W8M67
-          INDEX_ON_BUILD: true
-
-      - name: Netlify deploy
-        run: |
-          # Pin netlify-cli due to install errors with 8.1.4, possibly related
-          # to <https://github.com/netlify/cli/issues/3840>. Try again when
-          # 8.1.5 is released.
-          sudo npm install -g netlify-cli@8.1.3
-          netlify deploy --dir=public --prod
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_MAIN_SITE_ID }}
-
-      - uses: act10ns/slack@v1
-        with:
-          status: ${{ job.status }}
-        if: always()
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    uses: ./.github/workflows/build-deploy.yml
+    with:
+      app_env: production
+      environment_main_branch: main
+      algolia_index_name: edb-docs
+      gtm_id: GTM-5W8M67
+    secrets:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
