@@ -19,8 +19,8 @@ const sourceToPluginConfig = {
   ark: { name: "ark", path: "product_docs/docs/ark" },
   bart: { name: "bart", path: "product_docs/docs/bart" },
   bdr: { name: "bdr", path: "product_docs/docs/bdr" },
-  harp: { name: "harp", path: "product_docs/docs/harp" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
+  edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
@@ -28,6 +28,7 @@ const sourceToPluginConfig = {
     name: "hadoop_data_adapter",
     path: "product_docs/docs/hadoop_data_adapter",
   },
+  harp: { name: "harp", path: "product_docs/docs/harp" },
   jdbc_connector: {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
