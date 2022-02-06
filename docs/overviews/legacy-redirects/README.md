@@ -1,6 +1,6 @@
 # Legacy Redirects Overview
 
-"Legacy redirects" are the redirects set up from the Docs 1.0 site (/edb-docs), to the Docs 2.0 site (/docs). While our system handles creating the redirect mapping, the actual redirects ultimately get served by the nginx server that hosts Docs 1.0.
+"Legacy redirects" are the redirects set up from the Docs 1.0 site (/edb-docs), to the Docs 2.0 site (/docs). 
 
 Our legacy redirects system consists of three different pieces.
 
@@ -30,8 +30,8 @@ Example of an "old" style url (EPAS 12) - `/edb-docs/d/edb-postgres-advanced-ser
 
 The biggest difference is most urls in the "old" style do not contain the name of the file in the url, making them much more challenging to map. My initial work uses headers to attempt to make matches.
 
-## `npm run build-legacy-redirects-nginx`
+## During the build
 
-The final piece is actually generating the nginx configuration to handle these redirects. This is done with the `npm run build-legacy-redirects-nginx` script. All this is doing is a clean build of the site, then running `scripts/legacy_redirects/clean_up_output.py` to remove non-legacy redirects from the output file. The file generation is handled by the `gatsby-plugin-nginx-redirect` plugin, which you can see in `gatsby-config.js`.
+The final piece is actually generating the server-side redirects. During the build, the redirects generated above are passed to Gatsby and written to the Netlify redirects file (`_redirects`); as a post-build step, that file is rewritten to ensure that these redirects do not begin with any prefix configured for Gatsby (normally `/docs` for production builds).
 
-Once this process completes, the new nginx configuration file should be at `static/nginx_redirects.generated`. This file should be inspected, and then handed to Mark Yeatman on the IT team to add to the server configuration.
+Once this process is completed, the redirects file is ready for deployment on Netlify.
