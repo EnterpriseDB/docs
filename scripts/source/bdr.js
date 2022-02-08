@@ -1,4 +1,4 @@
-// run: node scripts/source/bdr.js"
+// run: node scripts/source/bdr.js source_path destination_path"
 // purpose:
 //  Import and convert the BDR docs, rendering them in /product_docs/bdr/<version>
 //
@@ -19,8 +19,10 @@ const { exec } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
-const basePath = path.resolve("temp_bdr/docs/docs2/");
-const imgPath = path.resolve("temp_bdr/docs/img/");
+const args = process.argv.slice(2);
+const basePath = path.resolve(args[0], "docs/docs2/");
+const imgPath = path.resolve(args[0], "docs/img/");
+const destination = path.resolve(args[1]);
 
 (async () => {
   const processor = unified()
@@ -52,12 +54,18 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
   };
 
   const mdIndex = yaml.load(
-    await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), "utf8"),
+      await fs.readFile(path.resolve(args[0], 'docs', "bdr-pub.yml"), "utf8"),
   );
 
   const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
   version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
-  const destPath = path.resolve("product_docs", "docs", "bdr", version);
+  const destPath = path.resolve(
+    destination,
+    "product_docs",
+    "docs",
+    "bdr",
+    version,
+  );
   const indexFilename = "index.md";
 
   fileToMetadata[indexFilename] = {};
