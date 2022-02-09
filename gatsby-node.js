@@ -161,6 +161,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   processFileNodes(result.data.allFile.nodes, actions);
 
+  // this is critical to avoiding excessive Netlify deploy times: it ensures the pages are ordered consistently from build to build
+  result.data.allMdx.nodes = result.data.allMdx.nodes.sort((a, b) =>
+    a.fields.path.localeCompare(b.fields.path),
+  );
+
   const { nodes } = result.data.allMdx;
 
   const productVersions = buildProductVersions(nodes);

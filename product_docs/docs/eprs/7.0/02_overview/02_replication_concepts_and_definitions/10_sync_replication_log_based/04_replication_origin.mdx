@@ -1,58 +1,51 @@
 ---
-title: "Replication Origin"
+title: "Replication origin"
 ---
 
 <div id="replication_origin" class="registered_link"></div>
 
-Starting with Postgres version 9.5, a feature called replication origin has been introduced to the logical decoding framework. Replication origin allows an application to identify, label, and mark certain aspects of a logical decoding session.
+Starting with Postgres version 9.5, replication origin was introduced to the logical decoding framework. Replication origin allows an application to identify, label, and mark certain aspects of a logical decoding session.
 
-For information on replication origin see the *PostgreSQL Core Documentation* located at:
+For information on replication origin, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/replication-origins.html).
 
-> <https://www.postgresql.org/docs/current/static/replication-origins.html>
+For the log-based method of synchronization replication, replication origin provides performance improvement if the primary nodes are running under Postgres version 9.5 or later.
 
-For the log-based method of synchronization replication, this provides performance improvement provided that the primary nodes are running under Postgres version 9.5 or later.
+The log-based method uses the `WAL` files to obtain the changes applied to the publication tables. After the changes are retrieved through the `walsender` interface, the publication server applies the set of changes to the other primary nodes using transaction sets consisting of JDBC batches of SQL statements. When these changes are applied to the tables in the other target primary nodes, the same changes are also recorded in the `WAL` files of each database server hosting the target primary nodes.
 
-As previously described, the log-based method uses the WAL files to obtain the changes applied to the publication tables. After the changes are retrieved through the walsender interface, the publication server applies the set of changes to the other primary nodes using transaction sets consisting of JDBC batches of SQL statements. When these changes are applied to the tables in the other target primary nodes, the same changes are also recorded in the WAL files of each database server hosting the target primary nodes.
+These redundant or *replayed* changes are included in the changeset stream received by the publication server. Ignore and don't apply these replayed changes since they are duplicates of all changes that were already applied to the target tables through the JDBC batches.
 
-These redundant or `replayed` changes are included in the changeset stream received by the publication server. These replayed changes must be ignored and not applied since they are duplicates of all changes that have already been applied to the target tables through the JDBC batches.
+The replayed changes result in performance overhead, as all such changes are transmitted over the network from the database server to the publication server. Then the publication server must discard such redundant changes.
 
-The replayed changes result in performance overhead as all such changes are transmitted over the network from the database server to the publication server, and then the publication server must discard such redundant changes.
-
-With the replication origin feature, the publication server is able to set up the logical decoding sessions so that these replayed changes are not included in the changeset stream transmitted over the network to the publication server thus eliminating this performance overhead.
+With replication origin, the publication server can set up the logical decoding sessions so that these replayed changes aren't included in the changeset stream transmitted over the network to the publication server. This configuration eliminates the performance overhead.
 
 The following are the conditions under which replication origin is used:
 
 -   Replication origin applies to multi-master replication systems only, not to single-master replication systems.
--   Replication origin eliminates streaming of replayed changes only from Postgres versions 9.5 or later. Replayed changes are still included in the changeset stream from Postgres version 9.4, but are discarded by the publication server. Thus multi-master replication systems consisting of both Postgres versions 9.4 and 9.5 utilize the replication origin advantage on the 9.5 database servers.
--   The `max_replication_slots` configuration parameter must be set at a certain minimal level to ensure that the publication server can create the additional replication slots for replication origin.
+-   Replication origin eliminates streaming of replayed changes only from Postgres versions 9.5 or later. Replayed changes are still included in the changeset stream from Postgres version 9.4 but are discarded by the publication server. Thus, multi-master replication systems consisting of both Postgres versions 9.4 and 9.5 use the replication origin advantage on the 9.5 database servers.
+-   You must set the `max_replication_slots` configuration parameter at a certain minimal level to ensure that the publication server can create the additional replication slots for replication origin.
 
-For each primary node database, in addition to the replication slot used for the changeset stream, an additional number of replication slots is required – one additional slot corresponding to every other primary node to support the replication origin usage. Thus, for each primary node, the total number of replication slots required is equal to the total number of primary nodes in the entire MMR system.
+For each primary node database, in addition to the replication slot used for the changeset stream, more replication slots are required. One added slot corresponds to every other primary node to support the replication origin use. Thus, for each primary node, the total number of replication slots required is equal to the total number of primary nodes in the entire MMR system.
 
-Therefore, for a given database server (that is, a Postgres database cluster containing primary node databases), the total number of replication slots required is equal to the total number of primary nodes in the entire MMR system multiplied by the number of primary node databases residing within the given database cluster.
+Therefore, for a given database server (that is, a Postgres database cluster containing primary node databases), the total number of replication slots required is equal to the total number of primary nodes in the entire MMR system multiplied by the number of primary node databases residing in the given database cluster.
 
-For example, assume the usage of a 6-node multi-master replication system using three database clusters as follows:
+For example, assume the use of a six-node multi-master replication system using three database clusters as follows:
 
--   Database cluster #1 contains 3 primary node databases.
--   Database cluster #2 contains 2 primary node databases.
--   Database cluster #3 contains 1 primary node database.
+-   Database cluster #1 contains three primary node databases.
+-   Database cluster #2 contains two primary node databases.
+-   Database cluster #3 contains one primary node database.
 
 The total number of primary nodes is six. Multiply the number of primary node databases in each database cluster by six to give the required minimum setting for `max_replication_slots` for that database cluster.
 
-The following table shows the required, minimum settings for `max_replication_slots` as well as `max_wal_senders`.
+The following table shows the required minimum settings for `max_replication_slots` as well as `max_wal_senders`.
 
-**Table 2-1: Replication Origin Configuration Parameter Settings**
-
-|                                                            |                     |                                  |
+| Postgres database server                               | max_wal_senders | max_replication_slots        |
 | ---------------------------------------------------------- | ------------------- | -------------------------------- |
-| **Postgres Database Server**                               | **max_wal_senders** | **max_replication_slots**        |
-| <br /><br /><br />Cluster #1 (3 primary nodes)<br /><br /> | 3                   | <br /><br /><br />18<br /><br /> |
-| <br /><br /><br />Cluster #2 (2 primary nodes)<br /><br /> | 2                   | <br /><br /><br />12<br /><br /> |
-| <br /><br /><br />Cluster #3 (1 primary node)<br /><br />  | 1                   | <br /><br /><br />6<br /><br />  |
+| Cluster #1 (3 primary nodes) | 3                   | 18 |
+| Cluster #2 (2 primary nodes)| 2                   | 12 |
+| Cluster #3 (1 primary node) | 1                   | 6 |
 
 
-
-
-If the `max_replication_slots` parameter is not set to a high enough value, synchronization replication still succeeds, but without the replication origin performance advantage.
+If the `max_replication_slots` parameter isn't set to a high enough value, synchronization replication still succeeds but without the replication origin performance advantage.
 
 The publication server log file contains the following warning in such cases:
 
@@ -61,7 +54,7 @@ WARNING: Failed to setup replication origin ``xdb_MMRnode_c_emp_pub_6``. Reason:
   Hint: Increase max_replication_slots and try again.
 ```
 
-The following example shows some of the replication slot information for a 3-primary node system running on a single database cluster.
+The following example shows some of the replication slot information for a three-primary node system running on a single database cluster.
 
 The following shows the maximum allowable number of replication slots:
 
@@ -74,7 +67,7 @@ max_replication_slots
 (1 row)
 ```
 
-The number should be sufficiently greater than the number of replication slots and replication origins currently allocated.
+Use a number greater than the number of replication slots and replication origins currently allocated.
 
 The following displays the replication slots:
 
@@ -105,10 +98,10 @@ SELECT * FROM pg_replication_origin ORDER BY 2;
 (6 rows)
 ```
 
-The replication origin name is assigned in the format `xdb_srcdbname_pubname_remotedbid` where `srcdbname` is the source database name, `pubname` is the publication name, and `remotedbid` is the publication database ID of a remote database.
+The replication origin name is assigned in the format `xdb_<srcdbname>_<pubname>_<remotedbid>`, where `<srcdbname>` is the source database name, `<pubname>` is the publication name, and `<remotedbid>` is the publication database ID of a remote database.
 
 The replication slots are in the active state when the publication server is running. The replication slots are deactivated when the publication server is shut down.
 
 The replication slots and replication origin sessions are deleted from the database cluster when their corresponding primary nodes are removed from the multi-master replication system using the Replication Server Console or the Replication Server CLI.
 
-Should some situation occur where the replication slots are not properly deleted when required, see [Dropping Replication Slots for Log-Based Synchronization Replication](../../../10_appendix/03_resolving_problems/04_troubleshooting_areas/#drop_replication_slots_for_log_based) for instructions on manually deleting them.
+If the replication slots aren't properly deleted when required, see [Dropping replication slots for log-based synchronization replication](../../../10_appendix/03_resolving_problems/04_troubleshooting_areas/#drop_replication_slots_for_log_based) to learn how to delete them manually.

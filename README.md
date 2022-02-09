@@ -89,20 +89,20 @@ If you are still experiencing errors or other issues with the site, try the foll
 
 You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
 
-```sh
+```shell
 brew install --cask docker
 ```
 
 If you get a message saying that you already have Docker installed, check which version is installed using these commands:
 
-```sh
+```shell
 brew ls --formula docker
 brew ls --cask docker
 ```
 
 If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
 
-```sh
+```shell
 brew uninstall -f docker && brew install --cask docker
 ```
 
@@ -165,19 +165,19 @@ To build PDFs locally, you'll need to use a Docker container.
 
 1. Create the Docker image (optional):
 
-   ```sh
+   ```shell
    npm run pdf:rebuild-docker-image
    ```
 
 1. Run the following command inside the docs project to create a PDF:
 
-   ```sh
+   ```shell
    npm run pdf:build product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
-   ```sh
+   ```shell
    npm run pdf:build product_docs/docs/epas/13
    ```
 

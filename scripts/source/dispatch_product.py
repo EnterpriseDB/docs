@@ -14,10 +14,11 @@ commands = {
     "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
     "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/bdr": f"node {args.workspace}/destination/scripts/source/bdr.js {args.workspace}/source {args.workspace }/destination",
 }
 
 ret = os.system(
-    f"cd {args.workspace}/scripts/source && \
+    f"cd {args.workspace}/destination/scripts/source && \
                   npm install --production"
 )
 
