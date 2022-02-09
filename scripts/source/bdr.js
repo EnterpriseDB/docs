@@ -20,7 +20,7 @@ const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
-const basePath = path.resolve(args[0], "docs/docs2/");
+const basePath = path.resolve(args[0], "docs/");
 const imgPath = path.resolve(args[0], "docs/img/");
 const destination = path.resolve(args[1]);
 
@@ -54,10 +54,10 @@ const destination = path.resolve(args[1]);
   };
 
   const mdIndex = yaml.load(
-      await fs.readFile(path.resolve(args[0], 'docs', "bdr-pub.yml"), "utf8"),
+    await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), "utf8"),
   );
 
-  const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
+  const markdownToProcess = mdIndex.nav;
   version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
   const destPath = path.resolve(
     destination,
