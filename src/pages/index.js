@@ -285,6 +285,9 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <IndexCardLink to="/partner_docs/DBeaverGuide">
+              DBeaver
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
@@ -296,6 +299,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VeritasGuide">
+              Veritas NetBackup for PostgreSQL
             </IndexCardLink>
           </IndexCard>
         </div>
