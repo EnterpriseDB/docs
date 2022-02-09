@@ -20,7 +20,7 @@ const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
-const basePath = path.resolve(args[0], "docs/");
+const basePath = path.resolve(args[0], "docs/docs2/");
 const imgPath = path.resolve(args[0], "docs/img/");
 const destination = path.resolve(args[1]);
 
