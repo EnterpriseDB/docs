@@ -1,0 +1,148 @@
+# Installing EDB Postgres Advanced Server 10 on RHEL 7 ppc64le
+
+There are three steps to completing an installation:
+
+- Setting up the repository(#setting-up-the-repository)
+- Installing the package(#installing-the-package)
+- Performing the initial configuration(#initial-config)
+
+For each step, you must be logged in as superuser.
+
+```shell
+# To log in as a superuser:
+sudo su -
+```
+
+Before setting up the repository, you need to register with EDB. To receive credentials for the EDB repository, visit: [Repository Access Request](https://www.enterprisedb.com/repository-access-request).
+
+## Setting up the Repository
+
+# Install Advance Toolchain
+
+```shell
+rpm --import https://public.dhe.ibm.com/software/server/POWER/Linux/toolchain/at/redhat/RHEL7/gpg-pubkey-6976a827-5164221b
+
+cat > /etc/yum.repos.d/advance-toolchain.repo <<EOF
+# Begin of configuration file
+[advance-toolchain]
+name=Advance Toolchain IBM FTP
+baseurl=https://public.dhe.ibm.com/software/server/POWER/Linux/toolchain/at/redhat/RHEL7
+failovermethod=priority
+enabled=1
+gpgcheck=1
+gpgkey=ftp://public.dhe.ibm.com/software/server/POWER/Linux/toolchain/at/redhat/RHELX/gpg-pubkey-6976a827-5164221b
+# End of configuration file
+EOF
+```
+
+```shell
+# Set up the EDB repository:
+yum -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
+
+# This creates the /etc/yum.repos.d/edb.repo configuration file.
+
+#  Replace `'USERNAME:PASSWORD'` below with your username and password available from your
+[EDB account](https://www.enterprisedb.com/user) in the edb.repo file:
+sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
+
+#  Install EPEL repository and refresh the cache:
+yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+yum makecache
+```
+
+````shell
+#  Enable the optional, extras, and HA repositories since EPEL packages may depend on packages from these repositories:
+subscription-manager repos --enable "rhel-*-optional-rpms" --enable "rhel-*-extras-rpms"  --enable "rhel-ha-for-rhel-*-server-rpms"
+
+
+
+## Installing the Package
+
+
+
+
+```shell
+yum -y install edb-as10-server
+````
+
+!!! Note
+Once the edb repository is set up, you can install any of the EDB products by using the relevant package name at this step. You can use `yum list available` command to check the available packages.
+
+Installing the server package creates an operating system user named `enterprisedb`. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as10`.
+
+## Initial Configuration
+
+1. Initialize the database cluster:
+
+   ```sh
+   PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as10/bin/edb-as-10-setup initdb
+   ```
+
+1. Start the database cluster:
+
+   ```sh
+   systemctl start edb-as-10
+   ```
+
+## Connecting to Your Database cluster
+
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+
+1. To work in your cluster, login as `enterprisedb` user:
+
+   ```sh
+   su - enterprisedb
+   ```
+
+   See [Managing Your Cluster > Managing Services], for more information.
+
+1. Connect to the database server using psql command line client:
+
+   ```sh
+   psql edb
+   ```
+
+   See [Managing Your Cluster > Connecting to Your Cluster], for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface.
+
+1. Then, assign a password to the database superuser `enterprisedb`:
+
+   ```sh
+   ALTER ROLE enterprisedb IDENTIFIED BY password;
+   ```
+
+## Creating a Database
+
+This section steps you through creating and adding data to a simple database.
+
+1. Create a database (named hr):
+
+   ```sh
+   CREATE DATABASE hr;
+   ```
+
+1. Connect to the new database and create a table (named dept):
+
+   ```sh
+   \c hr
+   CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+   PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+   varchar(13));
+   ```
+
+1. Add data to the table:
+
+   ```sh
+   INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+   INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+   ```
+
+1. You can use simple SQL commands to query the database and retrieve information about the data you have added to the table:
+
+   ```sh
+   SELECT * FROM dept;
+   deptno  |   dname    |   loc
+   --------+------------+----------
+   10      | ACCOUNTING | NEW YORK
+   20      | RESEARCH   | DALLAS
+   (2 rows)
+   ```
