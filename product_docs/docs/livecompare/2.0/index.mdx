@@ -1,0 +1,120 @@
+---
+navigation:
+  - index
+  - release_notes
+  - requirements
+  - supported_technologies
+  - command_line_usage
+  - advanced_usage
+  - bdr_support
+  - oracle_support
+  - settings
+  - licenses
+title: LiveCompare
+originalFilePath: index.md
+
+---
+
+© Copyright EnterpriseDB UK Limited 2019-2021 - All rights reserved.
+
+# Introduction
+
+LiveCompare is designed to compare any number of databases to verify they are
+identical. The tool compares any number databases and generates a comparison
+report, a list of differences and handy DML scripts so the user can optionally
+apply the DML and fix the inconsistencies in any of the databases.
+
+By default, the comparison set will include all tables in the database.
+LiveCompare allows checking of multiple tables concurrently (multiple worker
+processes) and is highly configurable to allow checking just a few tables or
+just a section of rows within a table.
+
+Each database comparison is called a "comparison session". When the program
+starts for the first time, it will start a new session and start comparing table
+by table. In standalone mode, once all tables are compared, the program stops
+and generates all reports. LiveCompare can be stopped and started without losing
+context information, so it can be run at convenient times.
+
+Each table comparison operation is called a "comparison round". If the table is
+too big, LiveCompare will split the table into multiple comparison rounds that
+will also be executed in parallel, alongside with other tables that are being
+carried on by other workers at the same time.
+
+In standalone mode, the initial comparison round for a table starts from the
+beginning of the table (oldest existing PK) to the end of the table (newest
+existing PK). New rows inserted after the round started are ignored. LiveCompare
+will sort the PK columns in order to get min and max PK from each table. For each
+PK column which is unsortable, LiveCompare will cast it's content to `string`. In
+PostgreSQL that's achieved by using `::text` and in Oracle by using `to_char`.
+
+When executing the comparison algorithm, each worker requires N+1 database
+connections, being N the number of databases being compared. The extra required
+connection is to an output/reporting database, where the program cache is kept
+too, so the user is able to stop/resume a comparison session.
+
+Any differences found by the comparison algorithm can be manually re-checked by
+the user at a later convenient time. This is recommended to be done to allow a
+replication consistency check. Upon the difference re-check, maybe replication
+caught up on that specific row and the difference does not exist anymore, so the
+difference is removed, otherwise it is marked as permanent.
+
+At the end of the execution the program generates a DML script so the user can
+review it, and fix differences one by one, or simply apply the entire DML script
+so all permanent differences are fixed.
+
+LiveCompare can be potentially used to ensure logical data integrity at
+row-level; for example, for these scenarios:
+
+-   Database technology migration (Oracle x Postgres);
+-   Server migration or upgrade (old server x new server);
+-   Physical replication (primary x standby);
+-   After failover incidents, for example to compare the new primary data against
+    the old, isolated primary data;
+-   In case of an unexpected split-brain situation after a failover. If the old
+    primary was not properly fenced and the application wrote data into it, it is
+    possible to use LiveCompare to know exactly which data is present in the old
+    primary and is not present in the new primary. If desired, the DBA can use the
+    DML script that LiveCompare generates to apply those data into the new primary;
+-   Logical replication. Three kind of logical replication technologies are
+    supported: Postgres native logical replication, pglogical and BDR.
+
+## Comparison Performance
+
+LiveCompare has been optimized for use on production systems and has various
+parameters for tuning, described later. Comparison rounds are read-only
+workloads. An example use case compared 43,109,165 rows in 6 tables in 9m 17s
+with 4 connections and 4 workers, giving comparison performance of approximately
+77k rows per second, or 1 billion rows in &lt;4 hours.
+
+The use case above can be considered a general use case. For low-load, testing,
+migration and other specific scenarios, it might be possible to improve speed by
+changing the `data_fetch_mode` setting to use server-side cursors. Each kind of
+server side cursors, in our experiments, provides an increase in performance on
+use cases involving either small or large tables.
+
+## Security Considerations for the User
+
+For PostgreSQL 13 and older, LiveCompare requires an user that is able to read
+all data being compared. PostgreSQL 14 introduced a new role `pg_read_all_data`,
+which can be used for LiveCompare.
+
+When `logical_replication_mode = bdr`, LiveCompare requires a user that has been
+granted the `bdr_superuser` role. When `logical_replication_mode = pglogical`,
+LiveCompare requires a user that has been granted the `pglogical_superuser`
+role.
+
+To apply the DML scripts in BDR, then all divergent connections (potentially all
+data connections) require a user that has been granted the `bdr_superuser` in
+order to disable `bdr.xact_replication`.
+
+If BDR is being used, LiveCompare will associate all fixed rows with a
+replication origin called `bdr_local_only_origin`. LiveCompare will also apply
+the DML with the transaction datetime far in the past, so if there are any BDR
+conflicts with real DML being executed on the database, LiveCompare DML always
+loses the conflict.
+
+With the default setting of `difference_fix_start_query`, the transaction in
+apply scripts will change role to the owner of the table in order to prevent
+database users from gaining access to the role applying fixes by writing
+malicious triggers. As a result the user for the divergent connection needs to
+have ability to switch role to the table owner.
