@@ -297,6 +297,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VeritasGuide">
+              Veritas NetBackup for PostgreSQL
+            </IndexCardLink>
           </IndexCard>
         </div>
 
