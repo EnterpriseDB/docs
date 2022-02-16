@@ -1,0 +1,522 @@
+---
+title: Release Notes
+originalFilePath: release_notes.md
+
+---
+
+## 2.0.0
+
+#### Breaking changes
+
+-   Package has been renamed to `edb-livecompare` from `2ndq-livecompare`.
+-   Executable has been renamed to `livecompare` from `2ndq-livecompare`.
+
+#### New features
+
+-   New section in setting called `Comparison Key` allows users to define a custom comparison key (list of columns) per table. This can be useful for tables without primary keys or unique indexes (LIV-5).
+-   If the table has no user-defined comparison key or primary key, LiveCompare now tries to use the unique indexes from the table. As tables can have multiple unique indexes, LiveCompare prefers to use the index which columns are not nullable. If not possible, then LiveCompare tries to use the first unique index that has less columns. If there is no unique indexes, then LiveCompare will try to use all columns from the table as a comparison key. Please note that LiveCompare does not try to ignore nullable columns from unique indexes (LIV-39).
+-   When using all columns from the table as a comparison key, LiveCompare now ignores the nullable columns to avoid false positives when considering all columns. This behavior can be disabled by setting `ignore_nullable = false` (LIV-96).
+-   When using an user-defined comparison key or all columns from the table as a comparison key, LiveCompare now checks if they would enforce uniqueness. If when using the column set there is any duplicate values, then LiveCompare aborts the comparison on the table. This behavior can be disabled by setting `check_uniqueness_enforcement = false` (LIV-119). 
+
+#### Performance improvements
+
+-   On Oracle 12c and newer, LiveCompare is already able to use a common hash to allow `comparison_algorithm = block_hash` and `comparison_algorithm = row_hash`, which are faster and allow table splitting among multiple worker processes. This is done on Oracle side using the `standard_hash()` function, which was introduced on Oracle 12c. Now LiveCompare also allows `comparison_algorithm = block_hash` and `comparison_algorithm = row_hash` on Oracle 11g, by using the equivalent function `sys.dbms_crypto.hash()`, provided that the user has `EXECUTE` privileges on the `sys.dbms_crypto` Oracle system package (LIV-79).
+
+#### Other improvements
+
+-   Added support to Oracle 21c (LIV-47).
+-   LiveCompare schema can now be added to a replication-enabled (BDR, pglogical or native logical replication) database (LIV-42).
+-   LiveCompare can use the new `pg_read_all_data` role in PostgreSQL 14 (LIV-73).
+-   Abort with a proper message if any database version is not supported.
+
+#### Bug fixes
+
+-   Properly quote the unicode sequence `\u0000` to avoid an error when generating DML (LIV-98).
+-   Fixed an issue where the number of total rows was displayed incorrectly when the table was split into multiple round parts (LIV-14).
+-   Fixed an issue where empty `BLOB` on Oracle when compared against an empty `bytea` on Postgres was generating a false positive (LIV-103).
+-   Fixed an issue where connectivity issues were causing exceptions aborting the whole comparison session. Now LiveCompare is able to re-connect and continue the comparison if possible (LIV-84).
+-   Fixed an unhandled exception on the recheck mode if there are any divergences (LIV-107).
+-   Fixed an issue where the table comparison was not being aborted if the table didn't exist on a connection and `logical_replication_mode` was disabled (LIV-108).
+-   Fixed an issue where fields of `timestamp` data type were always generating a mismatching hash between Oracle and Postgres.
+-   Fixed an issue where ignored columns were still being considered in the common hash.
+
+#### Deprecation notice
+
+-   Dropped support to Oracle 10g (LIV-47).
+
+## 1.18.1 (2021-12-14)
+
+#### Bug fix
+
+-   Fixed an issue where the internal round part column name setting was not being considered in asynchronous connections (LIV-95).
+
+## 1.18.0 (2021-12-01)
+
+#### Performance Improvements
+
+-   Implemented a new QueryBlock data fetch method for Oracle. The algorithm keeps fetching rows from the same socket, which is more efficient as Oracle doesn't allow inequality operators involving Row Value Expressions, which were previously required to fetch rows past the last processed multi-column PK value. This significantly improves performance on Oracle versus Postgres comparisons. As PostgreSQL allows inequality operators involving Row Value Expressions, LiveCompare uses the same algorithm using prepared statements to not cause an impact in terms of bloat and holding back the `xmin` horizon. So Postgres versus Postgres performance is not affected by this implementation (LIV-83, RT75644, RT75675, RT75332).
+-   Removed the need to reset the buffers when using `comparison_algorithm = block_hash`. Now when a block with mismatching hashes is found, LiveCompare correctly switches to `comparison_algorithm = row_hash` until all rows within the mismatching block (already fetched) are compared individually, and then switches back to `comparison_algorithm = block_hash` to fetch the next buffer. This improves performance on Oracle versus Postgres and also Postgres versus Postgres comparisons (LIV-85, LIV-86, RT75644, RT75675, RT75332).
+-   Now LiveCompare is able to split large tables even on Oracle versus Postgres comparisons, if `comparison_algorithm` is set to `block_hash` or `row_hash` (currently requires Oracle 12 and newer). Previously it was possible only on Postgres versus Postgres, because the hashing is done on the database side. As Oracle and Postgres don't share a common hashing function, we converted the common row hash that's based on MD5 into an integer hash to be able to split table data into multiple workers. On Oracle, due to performance reasons it was not possible to do on the database side, so we calculate this hash on the Python side. The cost of parallelism for Oracle versus Postgres table splitting is still not the same as on Postgres versus Postgres, so on Oracle versus Postgres we recommend to set `parallel_chunk_rows` higher than the default of 10 Million. For example, set to 100 Million or even higher, so the algorithm will split only really large tables (LIV-87).
+
+#### Other Improvements
+
+-   Support for EDB Extended PostgreSQL 14 and EDB Advanced PostgreSQL 14 (LIV-71, LIV-72).
+-   Collecting the Oracle `rowid` which can be helpful to inspect divergences (LIV-90, RT75644, RT75675).
+-   Improved logging for the LiveRound comparison algorithm, which can be helpful to inspect divergences (LIV-91, RT75644, RT75675).
+
+#### Bug fixes
+
+-   Fixed the issue where `oracle_fetch_fk_metadata` was not being honoured (LIV-92).
+-   Fixed an issue where, if when using `log_level = debug` on log-heavy use cases, LiveCompare could die with an unhandled exception because the logging queue was full. On Unix systems, the maximum size of any queue is 32676. The problem happened because the base Python implementation asynchronously enqueued the logging records. The solution was to override the Python implementation to synchronously enqueue the logging records, which can have a performance impact when `log_level = debug` and log-heavy use cases (LIV-93).
+
+## 1.17.0 (2021-10-01)
+
+#### Improvements
+
+-   Added support to PostgreSQL 14 (LIV-66).
+-   Added support to Debian 11 (LIV-70).
+
+#### Bug fixes
+
+-   Now `--recheck` will always require a session ID (LIV-76).
+-   Minor fixes to the documentation (LIV-26, LIV-68, LIV-80).
+
+## 1.16.0 (2021-08-04)
+
+#### Performance Improvements
+
+-   Now Oracle versus Postgres comparison sessions can use a common row hash based on MD5 that improves performance for the general use case. Previously, Oracle versus Postgres comparison was limited to `comparison_algorithm = full_row`, but now `comparison_algorithm = row_hash` or even `comparison_algorithm = block_hash` can be used. By default, it's set to `comparison_algoritm = block_hash`. Due to Oracle limitations, using the Common Hash, BLOB and CLOB fields are limited to 2000 characters, and the entire row can not be wider than 4000 characters. Tables not meeting the requirements for the Common Hash can be compared separately using `comparison_algorithm = full_row`. Please check the documentation for additional details (RT72038, LIV-61).
+-   Increased the default value for `buffer_size` from 256 rows to 4096 rows.
+-   Increased the default value for `parallel_chunk_rows` from 1 million rows to 10 million rows.
+
+## 1.15.0 (2021-06-06)
+
+#### Improvements
+
+-   Introduced conflicts filtering for `--conflicts` execution mode (LIV-40)
+-   LiveCompare will assume `force_collate = C` in mixed technologies comparison (like Oracle vs PostgreSQL) if no collation is specified (LIV-44).
+-   Besides support to EPAS 13, which was already added, added support to EPAS 11 and 12 (LIV-48).
+
+#### Bug fixes
+
+-   LiveCompare is not getting stuck anymore in Oracle vs PostgreSQL comparisons (RT71243 / LIV-43)
+-   Fixed a bug where it was not possible to run `--recheck` on a comparison session that was created with `--conflicts` (LIV-50)
+
+## 1.14.0 (2021-05-14)
+
+#### New features
+
+-   New `--conflicts` execution mode, specific for BDR 3 clusters. For BDR 3.6, table `bdr.apply_log` is checked, and for BDR 3.7, table `bdr.conflict_history` is checked. LiveCompare is able to extract the PK values from the conflict logged rows (`key_tuple`, `local_tuple`, `remote_tuple` and `apply_tuple`) and perform an automatic cluster-wide comparison only on the affected table, already filtering by the PK values. The comparison will then check the current row version in all nodes in the cluster. By checking only the BDR conflicts, the comparison is much faster than `--compare` mode, so it's feasible and recommended to be executed often to ensure cluster consistency (LIV-28).
+
+#### Improvements
+
+-   LiveCompare is now able to ignore BDR nodes where a specific table does not exist, or the table does not receive any replicated data according to replication set configuration. Previously the comparison was performed on all connections, now the comparison consensus is able to automatically filter out nodes per table as needed. Consensus majority is still achieved among the nodes where the table exists, and where the table is associated with a replication set the node is subscribed to. This allows for comparison on BDR cluster that have different architectures defined by replication sets, including properly ignoring BDR Witness nodes (LIV-29).
+-   Improved message for `--help` showing a small description for all execution modes (LIV-28).
+-   Information about if the column is nullable or not is now also gathered in table metadata (LIV-28).
+-   Clarified in docs that unsortable data types are converted to `string` if the columns are part of the primary key (LIV-4).
+-   Clarified in docs that `oracle_ignore_unsortable` ignores unsortable columns which are not part of the PK in Oracle (LIV-26).
+-   Clarified in docs that `parallel_data_fetch` can be enabled (it is by default) when `data_fetch_mode` is set to `prepared_statements` (default) or `server_side_cursors_with_hold` (LIV-26).
+-   Clarified in docs that `max_parallel_workers` default value is 2 (LIV-26).
+
+#### Bug fixes
+
+-   LiveCompare is now handling types as schema qualified names. Types out of `search_path` could not be found by LiveCompare before this fix (LIV-35).
+
+#### Deprecation
+
+-   Removed usage of `bdr.difference_fix*` functions that are deprecated on BDR 3.7. Those functions are still included in the generated DML scripts for BDR 3.6, as they require a `bdr_superuser` rather than a PostgreSQL superuser. This is clarified in documentation (LIV-1,LIV-31).
+
+## 1.13.1 (2021-04-14)
+
+#### Bug fixes
+
+-   Fixed issues in support for Oracle data types `RAW` and `ROWID` (RT69656).
+-   Fixed an unhandled exception when a binary object field from Oracle was NULL (RT69656).
+-   Fixed an issue on Oracle x Postgres comparison support involving dollar-quoted strings (RT69656).
+-   Fixed a corner case where columns named as a particular PostgreSQL reserved key word were being quoted and not being considered in the comparison (RT69656).
+
+## 1.13.0 (2021-02-25)
+
+#### Performance improvements
+
+-   Implemented new setting `data_fetch_mode`, which applies only for PostgreSQL connections. It can assume one of the following values:
+    -   `prepared_statements`: Default behavior in this and previous versions, using prepared statements to fetch data. Smaller footprint on the database, good performance for the general use case. It's stronly recommended for production databases.
+    -   `server_side_cursors_with_hold`: Uses a server-side cursor `WITH HOLD` to fetch data, which can hold back `xmin` and increase memory and temp file usage on the database, as each chunk of data is materialized in temp files before being sent to LiveCompare. As a result it can be faster for multiple small tables, and is recommended for testing and migration scenarios.
+    -   `server_side_cursors_without_hold`: Uses a server-side cursor `WITHOUT HOLD` to fetch data, which can hold back `xmin`, but memory and temp file usage on the database is lower than `WITH HOLD`. It can be faster for large tables and is recommended for low load databases.
+
+#### Other improvements
+
+-   Implemented new setting `abort_on_setup_error`, when enabled tells LiveCompare to abort the whole comparison session if there is any error when setting up a comparison round for any table. Disabled by default, which means that LiveCompare will log and ignore any tables where the setup phase failed for any reason.
+-   Because of new setting `abort_on_setup_error`, settings `setup_max_attempts` and `setup_min_interval_between_attempts` are now obsolete.
+
+## 1.12.0 (2021-02-11)
+
+#### New Features
+
+-   Implemented new setting `session_replication_role`. If enabled will set `session_replication_role` to `replica` in beginning of apply scripts (RM20247, RT69742).
+-   Implemented new setting `split_updates`. If enabled will split `UPDATE` statements into corresponding `DELETE` and `INSERT` statements (RM20355, RT69742).
+-   New connection setting `fetch_fk_metadata`, which tells if metadata about foreign keys should be fetched on the specific connection. Enabled by default.
+-   New general setting `oracle_fetch_fk_metadata`, which overrides the value of `fetch_fk_metadata` for the Oracle connection. Disabled by default (RM20244, RT69656).
+-   New general setting `float_point_round`, which when tells LiveCompare to round by the specified decimal digits when comparing float point values. Disabled by default (RT69381).
+
+#### Removed features
+
+-   Removed `--fix` execution mode. User are encouraged to review the DML script LiveCompare generates.
+
+#### Improvements
+
+-   Apply scripts generated by LiveCompare now contain also `difference_fix_start_query` at the beginning and sets tables owner before applying DML.
+-   Now `comparison_algorithm = full_row` honors `parallel_chunk_rows` and splits the table into multiple workers if technology being compared in all connections is PostgreSQL. To disable table splitting, set `parallel_chunk_rows = 0`.
+-   Filtering out tables in system schema `sys` when comparing EPAS (RM20392).
+-   Increased default value of `max_parallel_workers` from 2 to 4.
+
+#### Bug fixes
+
+-   Fixed a performance degradation when `comparison_algorithm = block_hash` and there were divergences in the data chunk a parallel worker was processing.
+-   Fixed an issue where the default randomly generated string for `custom_dollar_quoting_delimiter` was causing LiveCompare to crash on FIPS-enabled operating systems (RT70032, RM20378).
+-   Fixed an issue where `oracle_ignore_unsortable` or `column_intersection` could remove all columns, and LiveCompare would still try to perform a comparison. Now LiveCompare aborts comparison on those tables and logs a proper message (RT69656).
+-   Fixed a corner case where LiveCompare was not using the `custom_dollar_quoting_delimiter` to represent PK values (RT69656).
+-   Fixed a bug where running LiveCompare on `--recheck` mode could hurt a constraint on its output schema due to difference ordering.
+
+## 1.11.0 (2021-01-19)
+
+#### Improvements
+
+-   New setting `difference_statement_order` for the order of the DML commands generated by LiveCompare, by default set to `delete_update_insert` (RT69742, RM20245).
+-   Support for EnterpriseDB PostgreSQL Advanced Server - EPAS 13.
+-   Packaging for PostgreSQL 13 on CentOS and RHEL systems.
+
+#### Bug fixes
+
+-   Fixed a bug where if a cursor was not initialized yet because its minimum PK value was higher than the maximum PK value of a cursor that has already reached end of data, the former cursor would be initialized but its data would not be read until the end (RT69742, RM20249).
+-   Fixed a bug where LiveCompare was not allowing `Initial Connection` and `node_name` when `logical_replication_mode = pglogical` (RM19795).
+-   Fixed a bug where LiveCompare was forcing the need of `oracle_user_tables_only = on` when `schema_qualified_table_names = on` instead of forcing it when `schema_qualified_table_names = off` (RT69656).
+-   Fixed a bug where strings were not properly quoted if `comparison_algorithm = full_row` (RM20251).
+-   Fixed a bug where strings were not properly quoted in the generated DML.
+
+## 1.10.1 (2020-10-29)
+
+#### Bug fixes
+
+-   Improved performance for fetching minimum and maximum primary key values for each table, which is done in the initial metadata fetch phase (RM19681, RT69088).
+-   Now comparison sessions can be resumed and execution modes `--fix` and `--recheck` can be executed against previously created comparison sessions in a different LiveCompare version, if it is on the same major version. For example: if a session was created on 1.10.0, customer upgrades LiveCompare to 1.10.1, and then runs `--fix`, LiveCompare will allow the `--fix` mode to execute, because the session was created in the same major version (RM19686, RT69088).
+-   Fixed a single quote issue when saving `Row Filter` in LiveCompare metadata (RM19682, RT69088).
+-   LiveCompare default dollar quoting delimiter (when `custom_dollar_quoting_delimiter` is not set) is now a fixed hash string to tackle an issue where resuming a comparison session was not working because the random setting value changed between executions (RM19684, RT69091).
+-   Setting `custom_dollar_quoting_delimiter` can now be explicitly disabled with `off`, which means LiveCompare will use the default hash string as a delimiter. (RM19685, RT69091).
+
+## 1.10.0 (2020-10-02)
+
+#### Improvements
+
+-   New general setting `custom_dollar_quoting_delimiter`, to tell LiveCompare how strings should be quoted when generating Postgres DML commands. When not set (default), LiveCompare generates a random string to use as dollar quoting delimiter (RT68950, RM19159).
+-   LiveCompare now checks that neither settings nor connections attributes were changed between the first execution of a session (session creation) and following ones (`resume`, `--recheck` or `--fix`) (RM17639).
+-   LiveCompare now can be softly stopped when running in background or in a different shell window (RM18564).
+
+#### Bug fixes
+
+-   LiveCompare was not updating number of differences correctly while running in `--recheck` mode after user had applied fixes manually using the `apply_on_the_<node>.sql` file (RM19158).
+-   If LiveCompare was executed multiple times in `--recheck` mode, it would show replicated entries in `apply_on_the_<node>.sql` files and also in the summaries a replicated count of differences/fixes (RM19176).
+-   A large number of divergences would cause an `integer out of range` error in summary views (RM18705).
+
+## 1.9.1 (2020-08-13)
+
+### Bug fixes
+
+-   We are now handling POSIX constants that may not exist on a given platform (RM18197).
+-   When dealing with partitioned tables, if the user set a table filter to remove any of the partitions, LiveCompare would compare both master table and all other children except for the filtered. That is now fixed. (RM16912).
+
+## 1.9.0 (2020-08-06)
+
+### New features
+
+-   Setting `full_comparison_mode = on|off` was deprecated and replaced with a new setting `comparison_algorithm` which allows the new `block_hash` algorithm setting - this showed 50% performance gain in basic tests. Full list of supported algorithms are these:
+    -   `full_row` (same as old `full_comparison_mode = on`): Disables row comparison using hashes. It also disables table splitting, because it relies on a hash, so the setting `parallel_chunk_rows` is ignored and not tables are split. Full comparison, in this case, is performed by comparing the row column by column. If any data connections are not PostgreSQL, then LiveCompare automatically sets `comparison_algorithm = full_row`.    
+    -   `row_hash` (same as old `full_comparison_mode = off`): Enables row comparison using hashes and enables table splitting. Tables are split so each worker compares a maximum of `parallel_chunk_rows` per table. Data row is hashed in PostgreSQL, so the comparison is faster than `full_row`. However, if for a specific row the hash does not match, then for that specific row, LiveCompare will fallback to `full_row` algorithm (i.e., compare row by row). This setting is allowed only if all data connections are PostgreSQL.    
+    -   `block_hash` (new implemented comparison algorithm): Works the same as `row_hash`, but instead of comparing row by row, LiveCompare builds a "block hash", i.e., a hash of the hashes of all rows in the data buffer that was just fetched (maximum of `buffer_size` rows). Conceptually it works like a 2-level Merkle Tree. If the block hash matches, then LiveCompare advances the whole block (this is why this comparison algorithm is faster than `row_hash`). If block hash does not match, then LiveCompare falls back to `row_hash` and performs comparison row by row in the buffer to find the divergent rows. This setting is allowed only if all data connections are PostgreSQL. This is the default value (RM14146).
+-   LiveCompare now is able to do a few attempts on each table setup before exiting with an error. Two new settings were added to configure this behavior: `setup_max_attempts` (defaults to 3) and `setup_min_interval_between_attempts` (defaults to 30 seconds) (RM17518).
+
+### Improvements
+
+-   LiveCompare output is now printed in the output file while using `>` to redirect output and also displayed while executing LiveCompare through `ssh` (RM17372).
+-   Consensus was re-factored for improved logging and debugging (RM17107).
+-   At the end of the comparison session, LiveCompare now shows counter for issues that were found, depending on the log level (RM18196).
+-   DML is now being generated for all nodes in case of a Tie (RM16656).
+-   LiveCompare is now showing the maximum number of ignored columns on the table summary, if any divergences are found on a given table (RM16581).
+-   LiveCompare is now aborting with proper message in case `Output` or `Initial` (if specified). connections are not reachable. Also aborting with proper message if less than 2 data connections were reachable. If 2 or more are reachable, will compare just that ones (RM14030).
+-   Debian and Ubuntu packages now require `python3-setuptools` (RM17232).
+-   Clarified in docs about minimum Python version and Linux distributions supported (RM17232).
+-   When dealing with partitioned tables, LiveCompare will prefer scanning each partition instead of using the master table. This way we achieve a better estimation of row count and also better split of job between workers (RM16912).
+-   Using POSIX standard return codes instead of difference count (RM18197).
+-   Added a sample `config.yml` example in docs showing how to install LiveCompare using TPAexec (RM15312).
+-   Improved logging for `--recheck` and `--fix` modes (RM15768).
+-   If any exception happens, Python stack trace is included in logs (RM17158).
+-   Included in the docs some considerations about LiveCompare connecting to PostgreSQL through PgBouncer (RM18019).
+-   Added `round_id` and `round_part` fields to the `vw_running_processes` view, which helps checking comparison progress when LiveCompare execution is scheduled as a cron job (RM16910).
+
+### Bug fixes
+
+-   Fixed a racing condition in Consensus that caused a `tuple concurrently updated` in the `Output Connection` (RM17107).
+-   Fixed an issue where `num_processed_rows` was reported higher than the real value (RM17373).
+-   LiveCompare is not reporting `successfully executed` anymore if any kind of problems were found during execution (RM17289).
+-   Enforced having at least one worker in order to avoid hanging if the user set `max_parallel_workers` &lt;= 0 (RM17374).
+-   Fixed number format for large integers on printed tables. LiveCompare is now displaying the entire number instead of using scientific notation (RM16683).
+-   Fixed an issue where `--recheck` mode was reporting incorrect difference statuses after `--fix` mode was executed (RM15953).
+-   Fixed an issue where the list of ignored columns was being incorrectly reported in table metadata (RM17663).
+-   Fixed an issue where re-running LiveCompare with a different source of truth or tie breakers would cause divergences being incorrectly reported as ties (RM17909).
+
+## 1.8.0 (2020-06-15)
+
+### New features
+
+-   New setting `difference_sources_of_truth`, used to tell which connections should always win consensus. Requires that `consensus_mode` is set to `source_of_truth` (RM15952).
+-   New setting `work_directory`, which indicates where the session folder will be created. Useful to run LiveCompare scheduled as a cron job (RM16476).
+
+### Improvements
+
+-   Order of DML commands written to the difference fix DML script now takes foreign keys into account. Same order is also used by the `--fix` execution mode (RM15766).
+-   LiveCompare now checks `difference_tie_breakers` and `difference_sources_of_truth` against the list of known connection IDs. If an unknown connection ID is specified, an error will be shown to the user and the comparison will be aborted (RM16622).
+-   Added support for CentOS 8 and Ubuntu 20.04 (RM14480, RM14619, RM14974).
+-   When printing regular tables, it would print an empty cell when data is null. Now prints `[null]` instead (RM16686).
+
+### Bug fixes
+
+-   Fix minor issues detected by Coverity scanner (RM16623).
+-   Now deals correctly when the main script is invoked with only three parameters, making the correct distinction whether it is a session ID or an execution mode.
+-   When printing tabular data in transposed format, if data was null then the whole field would be omitted. This issue is now fixed (RM16686).
+
+## 1.7.0 (2020-05-18)
+
+### Breaking changes
+
+-   Implemented LiveCompare execution modes:
+    -   `--compare`: default execution mode. Only performs comparison, there is no difference re-check/fix thread executing in parallel anymore. During comparison, each difference found is stored in the `difference_log` table for later re-check and optional automatic fix.
+    -   `--recheck`: Can be executed against a session that was already created by the `compare` mode any number of times. Re-checks differences one by one and updates the `difference_log` table.
+    -   `--fix`: Can be executed against a session that was already created by the `compare` mode. Re-checks differences one by one and tries to automatically fix them, updating the `difference_log` table.
+-   In compare mode, the view that holds the list of divergences is `vw_open_differences`, while for re-check and fix modes, the view is `vw_differences`.
+-   In automatic fix mode, for BDR >= 3.6.18, LiveCompare uses the new pre-created replication origin called `bdr_local_only_origin` (RM14699).
+-   Removed settings `difference_mode`, `min_time_between_difference_checks`, `max_difference_check_attempts` and `difference_check_nap_time`.
+-   Removed settings `live_mode`, `min_time_between_rounds` and `max_tail_rounds_before_full_round`.
+-   If setting `show_progress_bars` is enabled (it is by default) and Python module `tqdm` is &lt; 4.16.0, LiveCompare aborts explaining how to upgrade.
+
+### New features
+
+-   Implemented new general setting `column_intersection`, disabled by default. When this setting is enabled, LiveCompare allows comparison of tables containing different set of columns, as long as PK columns are the same. The set of columns considered in the comparison is the intersection of columns existing on the table on all connections (RM14147, RT67064).
+-   Implemented new section `Column Filter`, where for each table it is possible to define a comma-separated list of columns that should be ignored in the comparison. Columns that are part of the PK can't be ignored. The format of this section is one table per line, similarly to the `Row Filter` section (RM14629, RT67064).
+-   Implemented new general setting `oracle_ignore_unsortable`, disabled by default. When enabled, tells LiveCompare to ignore columns with Oracle unsortable data types (BLOB, CLOB, NCLOB, BFILE) if table has no PK. If enabling this setting, it is recommended to also enable `column_intersection` (RT67064).
+-   Implemented new general setting `oracle_user_tables_only`, disabled by default. When enabled, tells LiveCompare to fetch table metadata only from the Oracle logged in user, which is faster. Also, `Table Filter -> tables` can be filtered by table name without schema name (RT67064).
+-   Implemented new general setting `schema_qualified_table_names`, enabled by default. Disabling it allows comparison of tables without using schema-qualified table names: on Oracle x Postgres comparisons, it requires also enabling `oracle_user_tables_only`, while on Postgres x Postgres, it allows for comparisons of tables that are under different schemas, even in the same database. Also, when `schema_qualified_table_names` is enabled, `Table Filter -> tables`, `Row Filter` and `Column Filter` allow table name without the schema name. (RM14901, RT67042).
+-   When `schema_qualified_table_names` is enabled and `start_query` is not set (default), then LiveCompare uses `start_query` to clear `search_path` in order to protect from CVE-2018-1058 (RM15391).
+-   Implemented new general setting `force_collate`, by default set to `off`, which means that a collation will not be forced in PostgreSQL. When set to a valid collation name, it is useful to compare Postgres databases that have different collation or Oracle versus Postgres databases if Postgres has a collation other than `C` (in this case users should set `force_collate = C`) (RM15016, RT67064).
+-   Implemented new general setting `fetch_row_origin`, disabled by default. When this setting is enabled, LiveCompare fetches the BDR/pglogical origin name for each divergent row (RM14487).
+-   If an exception is found during a comparison, now LiveCompare aborts the comparison round for the specific table writing the error in new column `rounds.round_error`, putting the failed worker back into the pool (RT67064).
+-   LiveCompare general progress bar now shows the number of tables aborted due to errors during the comparison.
+
+### Improvements
+
+-   Opening connections at the beginning and re-using database connections (RT67042).
+-   Clarified error message when user does not have permissions to read the configuration file (RT67064).
+-   Clarified in the docs that `Table Filter` and `Row Filter` require schema-qualified table names unless the general setting `schema_qualified_table_names` is disabled, and provided configuration examples (RM15311, RT67669).
+-   Aborting with error message if an unrecognized setting is found in the configuration file.
+-   Clarified in the docs about the number of connections required.
+-   Clarified in the docs about the dependency on the EPEL repository for CentOS/RHEL.
+-   Clarified in the docs on how to install the `cx_Oracle` Python module for the `postgres` operating system user.
+-   Added a `lc_` prefix to session directory and log file.
+-   If in any connection `technology = oracle` and Python module `cx_Oracle` is not found, LiveCompare aborts explaining how to install latest `cx_Oracle` for the current user.
+-   Automatically generated DML `*.sql` scripts now include a `SET LOCAL bdr.xact_replication = off;` clause for BDR.
+
+### Bug fixes
+
+-   Fixed an issue where an Oracle versus Postgres table comparison was being aborted due to a column name mismatch being incorrectly assessed because the column name is a reserved word in Postgres (RT67064).
+-   Oracle: Fixed an issue where a PK with a text column might generate an `ORA-00920: invalid relational operator` error (RT67064).
+-   Fixed an issue in Oracle and Postgres where a column of an unsortable data type was not being properly handled in `ORDER BY` clauses (RT67064).
+-   Fixed an issue in the DML generator where an `UPDATE` was not setting a column to `NULL`, because the setting `difference_allow_null_updates` was being misinterpreted.
+-   Fixed a corner case where the comparison cursor was not properly advancing.
+-   Fixed error message for when user tries to resume a comparison session that is already finished.
+
+## 1.6.0 (2020-04-03)
+
+-   If PostgreSQL >= 11, using built-in function `hashtextextended` instead of `hashtext` to split data among the comparison workers (RT67167, RM13664).
+-   Fixed an issue where the list of Oracle PK column names was having duplicate column names, resulting in an error and comparison being aborted (RT67064, RTM14145).
+-   If can't initially connect to data connections, now LiveCompare aborts the whole comparison session (RT67042).
+-   Fixed an issue where the round state was being saved too frequently and not honoring `min_time_between_round_saves`. Improves performance.
+-   Improved logging of connection and query issues.
+
+## 1.5.0 (2020-03-13)
+
+-   Setting `parallel_data_fetch` is automatically disabled if one of the connections is Oracle, as Oracle does not support `parallel_data_fetch` (RM13714, RT67042 and RT67064).
+-   Increased maximum number of rounds that can be performed, rows that can be processed and differences that can be found in a single comparison session (data type from `integer` to `bigint`) (RM13664 and RT67167).
+-   Changed progress bars from ASCII to Unicode.
+-   Updating global progress bar time elapsed every 5 seconds.
+-   Removed rate and estimated time from global progress bar, and added number of connections.
+-   If Python module TQDM >= 4.16 is available, the global progress bar shows additional stats (number of differences found and automatic fixes applied).
+-   Fixed an issue where the maximum number of processes was limited by the number of tables scheduled to be compared, even if the table was split.
+-   Reduced log verbosity from INFO to DEBUG when getting table metadata.
+-   Including in log cases where a manual (Ctrl-C) or automatic interruption (`stop_after_time`) happens.
+
+## 1.4.0 (2020-02-13)
+
+-   Implemented parallel data fetch to improve performance of multi-way comparison. Parallel data fetch is enabled by default but can be disabled by setting `parallel_data_fetch = off`.
+-   Fixed an issue where the row was local, i.e., its `xmin` was not associated to any replication origin (RT66906).
+
+## 1.3.0 (2020-01-30)
+
+-   Multi-way comparison: LiveCompare is now able to compare any number of connections. Comparison is done by fetching data from all nodes at the same time. This allows determination of data inconsistencies based on consensus (both quorum-based or simple majority are supported) and an optional list of tie breaker connections. It is possible to see details on how LiveCompare worked using the new view `vw_consensus`.
+-   Added new general setting `all_bdr_nodes`, which when enabled allows the user to specify only the `Initial Connection` section that should point to any BDR node, and then LiveCompare will build the list of connections considering all active nodes in the BDR cluster. Please note that it requires that LiveCompare is able to connect to all BDR nodes using the node DSN as it can be seen in `bdr.node_summary` view.
+-   Added new general setting `consensus_mode`, which determines which connections (or BDR nodes) are considered correct when data comparison finds a divergence. Can be `simple_majority` or `quorum_based`. If `consensus_mode = quorum_based`, then the new setting `difference_required_quorum` (values between 0.0 and 1.0, default 0.5) is considered. Default is `consensus_mode = simple_majority`.
+-   Added new setting `difference_tie_breakers`, to help in cases where consensus can not determine correct connections or nodes in case of data divergence. Must be a comma-separated list of connection names, for example: `difference_tie_breakers = node1,node2`. In this example, either the sections `node1 Connection` and `node2 Connections` should be defined in the .ini file or `bdr_all_nodes = on` and only the `Initial Connection` is defined, while `node1` and `node2` should be valid BDR node names. Default is to not consider any connection as tie breaker.
+-   Multi-way comparison also allows connection names other than "Left" and "Right" in the connection section name. Backward compatibility is kept so users can still define `Left Connection` and `Right Connection`, but now only 2 connections require definition of `difference_tie_breakers` as explained above. Previously the "Left" connection was always considered as tie breaker, i.e., as correct when automatic difference fix was enabled.
+-   Multi-way comparison requires that only one of the connections is different than PostgreSQL, if any.
+-   Implemented new setting `stop_after_time` to allow LiveCompare to be manually interrupted after a number of seconds. By default `stop_after_time = 0` which means that LiveCompare will not automatically stop (only by manual Ctrl-c). LiveCompare can be manually stopped with Ctrl-c in all cases. Regardless of whether LiveCompare was manually or automatically interrupted, it can be resumed by passing the session ID as argument in the command line.
+-   New table `difference_fix` stores the exact DML LiveCompare executed (or tried to execute) on each data connection, the time and the error (if any). Scripts `applied_*.sql` now contain the same applied DML too.
+-   LiveCompare now stores table owner in table metadata.
+-   Changed difference fix transaction timestamp from 2000-01-01 to 2010-01-01. This is valid only for BDR &lt; 3.6.11, because starting from 3.6.11 the built-in function `bdr.difference_fix_xact_set_avoid_conflict` is used instead.
+-   Fixed an issue where the `bdr_livecompare` replication origin was being unnecessarily created in BDR databases if automatic fix was disabled.
+-   Fixed an issue where a comparison worker process might not finish cleanly.
+-   CI: LiveCompare packages are now also built for Ubuntu 18.04 LTS.
+
+## 1.2.0 (2020-01-03)
+
+-   LiveCompare now supports BLOB fields on Oracle versus Postgres comparison.
+-   Ignored divergences: Users can stop difference re-check of certain differences by manually calling the function `<livecompare_schema_name>.accept_divergence(session_id, table_name, difference_pk)` in the Output PostgreSQL connection (RM8939).
+-   Volatile divergences: If upon a difference re-check `xmin` has changed on an inconsistent row, then LiveCompare stops re-checking and marks the difference as Volatile (RM10964).
+-   Overwritten divergences: After the automatic fix was applied, if upon a re-check `xmin` has changed, it means that the row was changed after we have fixed it. LiveCompare marks the divergence as Overwritten (RM10964).
+-   Unfixable divergences: After the automatic fix was successfully applied, if upon a re-check `xmin` has not changed yet the divergence still remains, LiveCompare marks the divergence as Unfixable (RM10964).
+-   LiveCompare now returns code = 0 when there are no divergences and return code > 0 when there are divergences.
+-   Table Filter and Row Filter are now saved in table `<livecompare_schema_name>.settings`, alongside all General Settings.
+-   New general setting `difference_check_nap_time`, to control how many seconds the difference check worker will sleep before starting a new difference check sprint. Default: 5 seconds.
+-   When building the table list for BDR 3, LiveCompare now does not consider declarative partitions (RT66502).
+-   LiveCompare now generates a DML script only for PostgreSQL connections.
+-   When automatic fix is enabled (`difference_mode = live_fix` or `difference_mode = offline_fix`), it is required that the Right Connection is PostgreSQL.
+-   Fixed security issue: table/column names and all literals are now properly quoted (RM12530).
+-   Fixed issue when reserved words were used as column names (RM12530).
+-   Fixed issue in column names in view `vw_differences` (RM12529).
+-   Fixed an issue where table was being split unnecessarily in hash compare.
+
+## 1.1.0 (2019-12-18)
+
+-   When building the table list for BDR 3, LiveCompare now considers only the intersection of replication sets that are associated with both BDR nodes from Left Connection and Right Connection (RT66502).
+-   Fixed issue in building table list when partitioned tables or partitions were being considered (RT66499).
+-   Improved log verbosity for initial steps of connection validation and building table list.
+-   Fixed issues with encoding and string handling for Oracle.
+
+## 1.0.0 (2019-12-03)
+
+-   LiveCompare is able to create and use a replication origin in BDR. If BDR version is 3.6.11 or higher, LiveCompare requires an user with `bdr_superuser` permissions or a PostgreSQL superuser to perform replication origin management using BDR functions `bdr.difference_fix_origin_create(text)`, `bdr.difference_fix_session_setup(text)`, `bdr.difference_fix_session_reset()` and `bdr.difference_fix_xact_set_avoid_conflict()`. If BDR version is 3.6.10 or lower, LiveCompare requires a PostgreSQL superuser to perform replication origin management using PostgreSQL functions. Otherwise LiveCompare does not try to manage replication origins. (RT66192 and RM11000).
+-   LiveCompare is able to fetch replication origin information from each inconsistent row in BDR/pglogical. If BDR version is 3.6.11 or higher, LiveCompare requires an user with `bdr_superuser` permissions or a PostgreSQL superuser to fetch replication origin information from each row. If BDR version is 3.6.10 or lower or pglogical 3 is being used, LiveCompare requires an user with `pglogical_superuser` permissions or a PostgreSQL superuser to fetch replication origin information from each row. Otherwise LiveCompare does not try to fetch replication origin information (RM11971).
+-   Remove partition from table list if parent table is already on table list (RT65920 and RM10994).
+-   Always consider replication set tables when building table list for pglogical and BDR (RT65920).
+-   Fixed issue when handling empty strings (RT65918 and RT65988).
+-   Fixed issue in upgrading from 0.11.0 to 0.12.0 (RT65918 and RT65988).
+-   Fixed issue in min PK and max PK value determination.
+
+## 0.12.0 (2019-11-01)
+
+-   Changed default value of setting `difference_fix_start_query` to change role to the owner of the table, in the automatic fix transaction. This is done in order to prevent database users from gaining access to the privileged role used by LiveCompare by writing malicious triggers. As a result the user for the Right Connection needs to have ability to switch role to the table owner (RM11000).
+-   Handled cases when a table is dropped or receive breaking schema changes after LiveCompare has built the table list and before LiveCompare has started the comparison round on the table. Now LiveCompare checks and updates metadata about the table before the comparison round (RT65918).
+-   Fixed issue when executing `pg_replication_origin_session_setup` (RT65988).
+-   Fixed issue in max PK value determination (RM11340).
+-   Fixed performance issue when fetching metadata from tables, when there is a large number of tables in the database.
+
+## 0.11.0 (2019-10-10)
+
+-   Each difference check is now logged in table `difference_log`, which provides useful information for analysis of each difference as it evolves over time. Each difference can pass through one of the following statuses:
+    -   **Detected (D)**: The difference was just detected. If `difference_mode = live_nofix` or `difference_mode = live_fix`, then LiveCompare will re-check the difference multiple times until it comes to a conclusion (see other statuses below), or at maximum N times (configurable via setting `max_difference_check_attempts`), waiting X seconds between each re-check (also configurable via setting `min_time_between_difference_checks`). If `difference_mode = offline_nofix` or `difference_mode = offline_fix`, then each difference found is immediately considered **Permanent**.
+    -   **Permanent (P)**: After having re-checked the difference for `max_difference_check_attempts` times, LiveCompare stops re-checking and marks the difference as **Permanent**. If `difference_mode = offline_nofix` or `difference_mode = `offline_fix\`, then all differences are marked as permanent at the moment they are detected, because there is no re-check.
+    -   **Absent (A)**: If before having reached `max_difference_check_attempts`, LiveCompare finds that the difference does not exist anymore (the row is now consistent between both databases), then LiveCompare stops re-checking and marks the difference as **Absent** (in previous versions, LiveCompare would remove the register from the difference table).
+    -   **Not Allowed (N)**: The difference was detected, but LiveCompare is forbidden to automatically fix this difference because user has limited the types of differences that can be automatically fixed (via settings `difference_statements` and/or `difference_allow_null_updates`).
+    -   **Fixed (F)**: The difference was automatically fixed by LiveCompare in the `Right Connection`, by applying the DML from field `difference_dml_right`.
+    -   **Error (E)**: LiveCompare tried to fix the difference by applying the DML from field `difference_dml_right` against the `Right Connection`, but got an error. Error message is logged in field `difference_dml_error`.
+-   Automatic schema changes for Output Connection: if user is pointing `Output Connection` to a database which was used in previous LiveCompare versions, LiveCompare will automatically handle the schema changes. For 0.11.0, LiveCompare re-creates the schema, but starting from 0.12.0, the implementation will only apply schema changes, keeping user data.
+-   Created tables `connections` and `settings` to store session values coming from `.ini` file.
+-   Improved row representation for each difference: whole row is now stored as JSON.
+-   Storing `xmin` on extended columns of each different row.
+-   Extended columns (`ctid`, `xmin` and `origin`) of each different row are now also stored as JSON.
+-   Improved DML for text columns with multi-line values, columns with binary data and array columns.
+-   Fixed an unhandled exception when table had no PK and columns with multi-line strings, null values or of type `bytea`. Or if table had a PK, but if PK had one of the mentioned situations.
+
+## 0.10 (2019-09-24)
+
+-   Added new setting `difference_mode` which can be:
+    -   `offline_nofix`: Tables being compared are not under load, so differences are not re-checked. Differences are reported but not fixed;
+    -   `offline_fix`: Tables being compared are not under load, so differences are not re-checked. Differences are reported and fixed in the `Right Connection` when they are found;
+    -   `live_nofix` (default): LiveCompare assumes that tables being compared are under load, so LiveCompare will re-check them to see if they are gone due to eventual consistency. Permanent differences are reported but not fixed.
+    -   `live_fix`: LiveCompare assumes that tables being compared are under load, so LiveCompare will re-check them to see if they are gone due to eventual consistency. Differences are reported and fixed when they are marked as permanent.
+-   Setting `difference_recheck` merged into `difference_mode`. Behavior of `difference_recheck = off` mapped to `difference_mode = offline_nofix` and `difference_recheck = on` mapped to `difference_mode = live_fix`.
+-   Added new global setting `difference_statements`, which controls what kind of DML statements will be generated by LiveCompare in the DML scripts if `difference_mode = offline_nofix` or `difference_mode = live_nofix`, or automatically applied when `difference_mode = offline_fix` or `difference_mode = live_fix`. The value of `difference_statements` can be:
+    -   `all` (default)
+    -   `inserts`
+    -   `updates`
+    -   `deletes`
+    -   `inserts_updates`
+    -   `inserts_deletes`
+    -   `updates_deletes`
+-   Added new global setting `difference_allow_null_updates` (default `on`), which determines whether commands like `UPDATE SET col = NULL` will be allowed in difference report or automatic fix.
+-   Added new global setting `difference_fix_replication_origin`, automatically set by default to `bdr_livecompare` for pglogical 3 and/or BDR 3 comparisons if not manually set. LiveCompare will create the specific replication origin in the Right Connection if it doesn't exist, and apply all automatic DML fixes using this replication origin when `difference_mode = live_fix` or `difference_mode = offline_fix`. Note that the replication origin that LiveCompare creates is not dropped to allow verification after the comparison, but if needed the replication origin can then be dropped by using `SELECT pg_replication_origin_drop('<value of setting difference_fix_replication_origin>');`.
+-   Added new global setting `difference_fix_start_query`, which is executed at the beginning of each transaction to automatically fix differences on the Right Connection. For BDR 3.6.7 and above, if `difference_fix_start_query` is empty, LiveCompare automatically sets `difference_fix_start_query = SET LOCAL bdr.xact_replication = off;`. LiveCompare also automatically sets `difference_fix_start_query` to make the difference fix transaction use the replication origin specified in `difference_fix_replication_origin`.
+-   Added new Connection setting `start_query`, which can be used to execute any arbitrary query each time a connection is open.
+-   Added new global setting `show_progress_bars` (default `on`), which determines whether or not progress bars should be shown in the console output. Useful for batch executions.
+-   On Postgres comparisons, each difference found now also stores the `ctid` of the row. If BDR 3 or pglogical 3 is being used, then each difference found also stores the replication origin of the `xmin` of the row.
+-   Generated DML scripts will always put all DML inside a single transaction. If `difference_fix_start_query` is defined (either manually or automatically), then it is added at the beginning of the transaction.
+-   Fixed an issue with the global progress bar not being removed at the end of the execution.
+-   Fixed a bug where Output database existence was not being checked.
+
+## 0.9 (2019-08-30)
+
+-   Support to Oracle databases on Left or Right connections. Oracle Instant Client and Python module need to be installed separately, but are not required for Postgres databases. LiveCompare works without having connectivity to Oracle.
+-   Currently row hashes and table splitting hashes are only allowed in PostgreSQL versus PostgreSQL comparisons. A new setting `full_comparison_mode` will be automatically set to `on` if a technology other than PostgreSQL is used in any of the connections. If user wants to disable hash usage even on Postgres versus Postgres, `full_comparison_mode = on` can be explictly defined in the configuration file.
+-   Support to BDR 1 and 2. When `logical_replication_mode = bdr`, it is possible to define connections with `node_name` and filter tables with `replication_sets`.
+-   Row hash needs to be `md5()` for both `Left Connection` and `Right Connection` if any of those connections is on PostgreSQL &lt; 11. Otherwise, both connections use `hashtextextended()`. This allows for mixed PostgreSQL version comparison (9.4 versus 12, for example).
+-   Setting `logical_replication_mode` imposes a validation for PostgreSQL version and extension existence on `Initial Connection` and `Left Connection`. Note that table list is built from `Left Connection`. But on `Right Connection`, only connectivity is checked. This allows for mixed technology comparison (PostgreSQL versus Oracle, BDR versus PostgreSQL, BDR 2 versus BDR 3, etc).
+-   New setting `difference_recheck` (boolean, default `on`) that allow users to enable or disable difference re-checking.
+-   Table schema differences (column names and column data types) are logged into the reporting database (table `tables`) for later analysis.
+-   Left and Right connection information is being logged into the reporting database (table `sessions`) for later analysis.
+-   Fixed a bug in difference checking in a corner case where tables have some duplicate rows.
+-   Fixed a bug in difference reporting if a table have more rows in the Right Connection.
+-   Fixed a bug in difference reporting if there are any temporary differences.
+
+## 0.8 (2019-08-07)
+
+-   Fixed fetching of a single row (to check inconsistency) when table has PK with multiple fields.
+
+## 0.7 (2019-08-06)
+
+-   Fixed handling of tables without rows.
+-   Better handling of empty sections.
+
+## 0.6 (2019-06-17)
+
+-   Changed logging component.
+
+## 0.5 (2019-06-17)
+
+-   Bug fixes:
+    -   Support to sorting data types without ordering operator.
+    -   Using `md5()` as a record hash when `hashtextextended()` is not available (PG &lt;= 10).
+    -   When configuration file does not exist, show an appropriate message.
+
+## 0.4 (2019-06-12)
+
+-   Preparations for including into 2ndQuadrant CI pipeline.
+
+## 0.3 (2019-05-29)
+
+-   Support to DSN to specify a connection.
+-   Improved table and row filter.
+-   Support to different types of logical replication:
+    -   native logical replication
+    -   pglogical
+    -   bdr
+-   BDR support
+    -   Allow user to specify node names for connections.
+    -   Allow user to specify replication sets as table filters.
+-   Created different test scenarios.
+
+## 0.2 (2019-05-21)
+
+-   Improved hash: using `hashtext()` and `hashtextextended()` instead of `md5()`.
+-   Fetches are performed using prepared statements.
+
+## 0.1 (2019-05-17)
+
+-   Initial support for PostgreSQL.
+-   Initial implementation of the standalone mode.

@@ -43,12 +43,6 @@ complete faster, and also allow it to use less space due to the exclusion of
 unwanted databases. If only the target database is specified, then the excluded
 databases get cleaned up and removed on the new node.
 
-!!! Warning
-    Only one node at the time should join the BDR node group, or be
-    parted from it. If a new node is being joined while there is
-    another join or part operation in progress, the new node will
-    sometimes not have consistent data after the join has finished.
-
 When a new BDR node is joined to an existing BDR group or a node is subscribed
 to an upstream peer, before replication can begin, the system must copy the
 existing data from the peer node(s) to the local node. This copy must be
@@ -84,10 +78,12 @@ performs data sync doing `COPY` operations and will use multiple writers
 (parallel apply) if those are enabled.
 
 Node join can execute concurrently with other node joins for the majority of
-the time taken to join. Only one regular node at a time can be in either of
-the states PROMOTE or PROMOTING, which are typically fairly short.
-The subscriber-only nodes are an exception to this rule, and they can be
-cocurrently in PROMOTE and PROMOTING states as well.
+the time taken to join. However, only one regular node at a time can be in
+either of the states PROMOTE or PROMOTING, which are typically fairly short if
+all other nodes are up and running, otherwise the join will get serialized at
+this stage. The subscriber-only nodes are an exception to this rule, and they
+can be concurrently in PROMOTE and PROMOTING states as well, so their join
+process is fully concurrent.
 
 Note that the join process uses only one node as the source, so can be
 executed when nodes are down, if a majority of nodes are available.
@@ -492,9 +488,9 @@ since the WAL Sender process now spends more time on communication.
 
 `enable_wal_decoder` is an option for each BDR group, which is currently
 disabled by default. `bdr.alter_node_group_config()` can be used to enable or
-disable WAL decoder for a BDR group.
+disable the Decoding Worker for a BDR group.
 
-When WAL decoder is enabled, BDR stores `Logical Change Request` (LCR, in
+When the Decoding Worker is enabled, BDR stores `Logical Change Record` (LCR, in
 short) files to allow buffering of changes between decoding and when all
 subscribing nodes have received data. LCR files are stored under the
 `pg_logical` directory within each local node's data directory. The number and
@@ -507,21 +503,22 @@ disabled when `bdr.lcr_cleanup_interval` is zero.
 When disabled, logical decoding is performed by the WAL Sender process for each
 node subscribing to each node. In this case, no LCR files are written.
 
-Even though WAL decoder is enabled for a BDR group, following GUCs control the
-production and usage of LCR per node. By default these are `false`.  For
-production and usage of LCRs we need WAL decoder to be enabled for the BDR
-group and these GUCs to be set to `true` on each of the nodes in BDR group.
+Even though the Decoding Worker is enabled for a BDR group, following
+GUCs control the production and usage of LCR per node. By default
+these are `false`.  For production and usage of LCRs we need the
+Decoding Worker to be enabled for the BDR group and these GUCs to be
+set to `true` on each of the nodes in BDR group.
 
--   `bdr.enable_wal_decoder` - when turned `false` it stops WAL decoder, if
-    running, and any WAL Senders using LCRs are restarted to use WAL. When `true`
-    along with the BDR group config, a WAL decoder is run to produce LCR and WAL
-    Senders use LCR.
+-   `bdr.enable_wal_decoder` - when turned `false`, all WAL
+    Senders using LCRs are restarted to use WAL directly. When `true`
+    along with the BDR group config, a Decoding Worker process is
+    started to produce LCR and WAL Senders use LCR.
 -   `bdr.receive_lcr` - when `true` on the subscribing node, it requests WAL
     Sender on the publisher node to use LCRs if available.
 
 ### Notes
 
-As of now, a WAL decoder decodes changes corresponding to the node where it is
+As of now, a Decoding Worker decodes changes corresponding to the node where it is
 running. A Logical standby is sent changes from all the nodes in BDR group
 through a single source. Hence a WAL sender serving a Logical standby can not
 use LCRs right now.
@@ -991,9 +988,9 @@ bdr.alter_node_group_config(node_group_name text,
      this node group, -1 means the default (as specified by the
      GUC `bdr.writers_per_subscription`) will be used. Valid values
      are either -1 or a positive integer.
--   `enable_wal_decoder` - Enables/disables the WAL decoder process. Note that
-      the WAL decoder process cannot be enabled if `streaming_mode` is already
-      enabled.
+-   `enable_wal_decoder` - Enables/disables the Decoding Worker process. Note
+      that the Decoding Worker process cannot be enabled if `streaming_mode` is
+      already enabled.
 -   `streaming_mode` - Enables/disables streaming of large transactions.
      When set to `off`, streaming is disabled. When set to any other value,
      large transactions are decoded while they are still in progress and the
@@ -1007,7 +1004,7 @@ bdr.alter_node_group_config(node_group_name text,
      value is set to `auto`, BDR will try to intelligently pick between
      `file` and `writer` depending on the transaction property and available
      resources. Note that `streaming_mode` cannot be enabled if the WAL
-      decoder is already enabled.
+     decoder is already enabled.
 
      For more details, see[Transaction Streaming](transaction-streaming).
 
@@ -1142,15 +1139,11 @@ node is PARTED it can not *part* other nodes in the cluster.
 !!! Note
     If you are *parting* the local node you must set `wait_for_completion`
     to false, otherwise it will error.
-    you are *parting* the local node you must set `wait_for_completion`
-    false, otherwise it will error.
 
 !!! Warning
     This action is permanent. If you wish to temporarily halt replication
     to a node, see `bdr.alter_subscription_disable()`.
-    s action is permanent. If you wish to temporarily halt replication
-    a node, see `bdr.alter_subscription_disable()`.
-    
+
 #### Synopsis
 
 ```sql
