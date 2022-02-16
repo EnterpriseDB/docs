@@ -1,4 +1,4 @@
-// run: node scripts/source/pglogical.js"
+// run: node scripts/source/pglogical.js source_path destination_path"
 // purpose:
 //  Import and convert the pglogical docs, rendering them in /product_docs/pglogical/<version>
 //
@@ -18,7 +18,8 @@ const mdast2string = require("mdast-util-to-string");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
-const basePath = path.resolve("temp_pglogical3/docs/");
+const args = process.argv.slice(2);
+const basePath = path.resolve(args[0], "docs/");
 
 (async () => {
   const processor = unified()
