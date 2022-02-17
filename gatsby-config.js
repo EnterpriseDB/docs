@@ -226,6 +226,8 @@ module.exports = {
               noInlineHighlight: true,
               aliases: {
                 postgresql: "sql",
+                sh: "shell",
+                "c++": "cpp",
               },
             },
           },
