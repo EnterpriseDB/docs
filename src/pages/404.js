@@ -77,7 +77,10 @@ const SuggestedLinksSearch = ({ query }) => {
       <SuggestedLinks />
       <div>
         Not finding what you need?
-        <Link to={`/search?query=${query}`} className="ml-2">
+        <Link
+          to={`/search?query=${encodeURIComponent(query)}`}
+          className="ml-2"
+        >
           Try Search by Product
         </Link>
       </div>
