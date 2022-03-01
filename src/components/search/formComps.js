@@ -13,7 +13,10 @@ const Results = connectStateResults(
 const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
   <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
     {res && res.nbHits > 0 ? "Not finding what you need?" : "No results found."}
-    <Link to={`/search?query=${res.query}`} className="ml-2">
+    <Link
+      to={`/search?query=${encodeURIComponent(res.query)}`}
+      className="ml-2"
+    >
       Try Search by Product
     </Link>
   </div>
@@ -43,7 +46,9 @@ export const SearchPane = ({ arrowIndex }) => (
 
 export const AdvancedSearchTabLink = ({ query }) => (
   <div className="flex-grow-1 d-flex align-items-center justify-content-flex-end mr-4">
-    <Link to={`/search?query=${query}`}>Search by Product</Link>
+    <Link to={`/search?query=${encodeURIComponent(query)}`}>
+      Search by Product
+    </Link>
   </div>
 );
 
