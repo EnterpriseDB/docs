@@ -58,7 +58,7 @@ const Layout = ({
       ),
       table: (props) => (
         <div className="table-with-scroll">
-          <table {...props} className="table" />
+          <table {...props} className={(props.className || "") + " table"} />
         </div>
       ),
       pre: (props) => (
@@ -67,13 +67,22 @@ const Layout = ({
           codeLanguages={katacodaPanelData?.codelanguages}
         />
       ),
-      h2: (props) => <h2 {...props} className="mt-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-      h3: (props) => <h3 {...props} className="mt-4-5" />, // eslint-disable-line jsx-a11y/heading-has-content
-      img: (props) => <img {...props} className="mw-100" />, // eslint-disable-line jsx-a11y/alt-text
+      h2: (
+        props, // eslint-disable-next-line jsx-a11y/heading-has-content
+      ) => <h2 {...props} className={(props.className || "") + " mt-5"} />,
+      h3: (
+        props, // eslint-disable-next-line jsx-a11y/heading-has-content
+      ) => <h3 {...props} className={(props.className || "") + " mt-4-5"} />,
+      img: (
+        props, // eslint-disable-next-line jsx-a11y/alt-text
+      ) => <img {...props} className={(props.className || "") + " mw-100"} />,
       blockquote: (props) => (
         <blockquote
           {...props}
-          className="pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
+          className={
+            (props.className || "") +
+            " pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
+          }
         ></blockquote>
       ),
       KatacodaPanel: () => (
