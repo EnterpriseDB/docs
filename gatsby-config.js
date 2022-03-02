@@ -165,7 +165,54 @@ module.exports = {
         },
       },
     },
-    "gatsby-plugin-sitemap",
+    {
+      resolve: "gatsby-plugin-sitemap",
+      options: {
+        query: `
+        {
+          site {
+            siteMetadata {
+              siteUrl
+            }
+          }
+
+          allMdx {
+            nodes {
+              fields {
+                path
+                mtime
+              }
+            }
+          }
+
+          allSitePage {
+            nodes {
+              path
+            }
+          }
+        }`,
+
+        resolvePages: ({
+          allSitePage: { nodes: allPages },
+          allMdx: { nodes: allMdxNodes },
+        }) => {
+          const mapPathToTime = allMdxNodes.reduce((acc, node) => {
+            acc[node.fields.path] = { lastmod: node.fields.mtime };
+            return acc;
+          }, {});
+
+          return allPages.map((page) => {
+            return { ...page, ...mapPathToTime[page.path] };
+          });
+        },
+        serialize: ({ path, lastmod }) => {
+          return {
+            url: path,
+            lastmod,
+          };
+        },
+      }, // should produce 5968 <loc>s
+    },
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
