@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from subprocess import run
 from typing import List
+import frontmatter
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -121,8 +122,8 @@ def main(args):
 
 def setup(args):
     doc_path = args.doc_path
-    product = doc_path.parts[2]
-    version = doc_path.parts[3]
+    product = doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1] 
+    version = doc_path.parts[-1] if len(doc_path.parts) >= 4 else ''
 
     _file_prefix = f"{product}_v{version}_documentation"
 
@@ -140,8 +141,9 @@ def setup(args):
 def list_files(doc_path, chapter=None, is_root_dir=True):
     chapter = [1] if chapter is None else chapter
     all_files = []
+    nav_order = load_nav_index(doc_path)
     directory_contents = sorted(
-        filter(filter_path, doc_path.iterdir()), key=put_index_first
+        filter(filter_path, doc_path.iterdir()), key=lambda file: put_index_first(file, nav_order)
     )
 
     for i, entry in enumerate(directory_contents):
@@ -226,10 +228,20 @@ def parse_mdx(mdx_file):
     front_matter, _, content = mdx_file.read_text().partition("---")[2].partition("---")
     return front_matter.strip(), content.strip()
 
+def load_nav_index(path):
+    try:
+        index = frontmatter.load(path / "index.mdx")["navigation"]
+        return index
+    except (FileNotFoundError, KeyError):
+        return None
 
-def put_index_first(path):
-    filename = str(path)
-    return filename.replace("index.mdx", "00_index.mdx")
+def put_index_first(path, nav_order):
+    filename = path.name if path.suffix != ".mdx" else path.stem
+    nav_order = nav_order or [filename]
+    indice = 0
+    if path.name != "index.mdx":
+        indice = nav_order.index(filename)+1 if filename in nav_order else len(nav_order)
+    return f'{indice:03d}_{filename}'
 
 
 def get_title(doc_path):
