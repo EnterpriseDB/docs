@@ -57,7 +57,11 @@ const gitData = (() => {
 exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
 
-  if (node.internal.mediaType === "text/yaml") loadNodeContent(node);
+  if (node.internal.mediaType === "text/yaml") {
+    // See: https://github.com/gatsbyjs/gatsby/issues/34605
+    const content = await loadNodeContent(node);
+    createNodeField({ node, name: "content", value: content });
+  }
   if (node.internal.type !== "Mdx") return;
 
   const fileNode = getNode(node.parent);
