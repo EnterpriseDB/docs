@@ -33,7 +33,7 @@ specific to BigAnimal:
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | PostgresLogs_CL      | Logs of the Customer clusters databases (all postgres related logs)                                             |
 | PostgresAuditLogs_CL | Audit Logs of the Customer clusters databases, if enabled                                                       |
-| InsightsMetrics      | Metrics streams from BigAnimal Prometheus and Azure Monitor. BigAnimal metrics have `namespace == "prometheus"` |
+| DpMetrics_CL         | Metrics streams from BigAnimal Prometheus.                                                                      |
 
 You can use the KQL Query editor in the Log Workspace view to compose queries
 over these tables.
@@ -53,12 +53,12 @@ that originated the log message.
 ## Metrics overview
 
 BigAnimal collects a wide set of metrics about Postgres instances into the
-`InsightsMetrics` log analytics table. Most of these metrics are acquired
+`DpMetrics_CL` log analytics table. Most of these metrics are acquired
 directly from Postgres system tables, views, and functions. The Postgres
 documentation serves as the main reference for these metrics.
 
 You can use KQL to analyze time-series metrics, report latest samples of
-metrics, and so on by querying the `InsightsMetrics` table.
+metrics, and so on by querying the `DpMetrics_CL` table.
 
 Some data from Postgres monitoring system views, tables, and functions are
 transformed to be easier to consume in Prometheus metrics format. For example,
@@ -76,8 +76,8 @@ are mapped to Azure metrics
 Dimensions vary depending on the individual metric and are documented
 separately for each group of related metrics.
 
-The forwarded Prometheus metrics use structured JSON fields, particularly for
-the `Tags` field. Effective use of them requires use of the
+The forwarded Prometheus metrics use structured JSON fields, particularly the `Message` and `Message.labels` fields.
+Effective use of them requires the use of the
 [`todynamic()`](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/parsejsonfunction)
 function in queries.
 
@@ -86,44 +86,42 @@ removed or renamed. Where feasible, an effort will be made not to change the
 meaning or type of existing metrics without also changing the metric name.
 
 At time of writing, all metrics forwarded from Prometheus are in the
-`prometheus` namespace. This might change in a future release.
+`DpMetrics_CL` table. This might change in a future release.
 
 Effective use of the available metrics requires an understanding of Azure
 time-series data, metrics dimensions, and of the tagging conventions used in
 the metrics streams.
 
-### Metrics tags
+### Metrics labels
 
-All Postgres metrics share a common tagging scheme. Entries generally
-have at least the following tags:
+All Postgres metrics share a common labelling scheme. Entries generally
+have at least the following labels:
 
 | Name                         | Description                                                   |
 | ---------------------------- | ------------------------------------------------------------- |
-| address                      | IP address of the host the metric originated from             |
+| instance                     | IP address of the host the metric originated from             |
 | postgresql                   | BigAnimal postgres cluster identifier, e.g., `p-abcdef012345` |
 | role                         | Postgres instance role, "primary" or "replica"                |
 | datname                      | Postgres database name (where applicable)                     |
-| pod_name                     | k8s pod name                                                  |
-| hostName                     | AKS node host name                                            |
-| container.azm.ms/clusterName | AKS cluster name                                              |
+| pod                          | k8s pod name                                                  |
+| aks_cluster_name             | AKS cluster name                                              |
 
-When querying for tags, for best performance apply filters that don't
-require inspection of tags (for example, filters by metric name) before tag-based filters.
+When querying for labels, for best performance apply filters that don't
+require inspection of labels (for example, filters by metric name) before label-based filters.
 
-The `Tags` field of a metrics entry is a JSON-typed field that you can query
-for individual values with `todynamic(Tags).keyname` in KQL. Some uses of values
-might require explicit casts to another type, for example, `tostring(...)`.
+The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field.
+To query the field for individual values you JSON parse the `Message` field and dot
+reference (`m.labels`) the labels property. Some uses of values might require explicit casts
+to another type, for example, `tostring(...)`.
 
 Example usage:
 
 ```
-InsightsMetrics
-| where Namespace == "prometheus" and Name startswith "cnp_"
-| extend t = todynamic(Tags)
-| where t.role == "primary"
-| project postgres_cluster_id = tostring(t.postgresql), dbname = tostring(t.datname)
-| where not (dbname has_any("template0", "template1"))
-| distinct postgres_cluster_id, dbname
+DpMetrics_CL
+| where Message has "cnp_"
+| extend m = todynamic(Message)
+| where m.labels.role == "primary"
+| project postgres_cluster_id = tostring(m.labels.postgresql), metric_name = m.name, metric_value = m.value
 ```
 
 [comment1]: # "Generated content see upm-substrate repo config monitoring dir"
@@ -566,7 +564,7 @@ See also:
 
 -   [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/).
 
-The cloud platform can supply additional streams of metrics 
+The cloud platform can supply additional streams of metrics
 directly to your metrics, analytics, and dashboarding endpoint.
 
 ### Dive deeper
