@@ -15,11 +15,13 @@ const yaml = require("js-yaml");
 const visit = require("unist-util-visit");
 const visitAncestors = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
+const { exec } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
 const basePath = path.resolve(args[0], "docs/");
+const destination = path.resolve(args[1]);
 
 (async () => {
   const processor = unified()
@@ -101,7 +103,7 @@ const basePath = path.resolve(args[0], "docs/");
     file.path = destFilepath;
     try {
       await fs.mkdir(path.dirname(file.path), { recursive: true });
-    } catch {}
+    } catch { }
     await write(file);
   };
 
@@ -111,22 +113,25 @@ const basePath = path.resolve(args[0], "docs/");
 
   const markdownToProcess = mdIndex.nav;
   const version = mdIndex.site_name.match(/pglogical (\d+\.\d+)/)[1];
-  const destPath = path.resolve("product_docs", "docs", "pglogical", version);
+  const destPath = path.resolve(destination, "product_docs", "docs", "pglogical", version);
   const indexFilename = "index.md";
 
   fileToMetadata[indexFilename] = {};
 
   for (const dirEntry of markdownToProcess) {
     if (!dirEntry) continue;
-    await processEntry(dirEntry, destPath, indexFilename);
+    await processEntry(dirEntry, basePath, indexFilename);
   }
 
   // write out index w/ navigation tree
   await process(
     path.resolve(basePath, indexFilename),
     indexFilename,
-    path.resolve(destPath, "index.mdx"),
+    path.resolve(basePath, "index.mdx"),
   );
+
+  // copy select files, removing those that have been deleted
+  await exec(`rsync --archive --recursive --delete --include="*/" --include="*.mdx" --include="*.png" --include="*.jpg" --include="*.jpeg" --include="*.svg" --exclude="*" ${basePath}/ ${destPath}/`);
 })();
 
 // GPP leaves the files littered with these; they alter parsing by flipping sections to HTML context
@@ -191,7 +196,7 @@ function pglogicalTransformer() {
       if (node.value.trim())
         console.warn(
           `${file.path}:${node.position.start.line}:${node.position.start.column} Stripping HTML content:\n\t ` +
-            node.value,
+          node.value,
         );
 
       parent.children.splice(index, 1);
@@ -220,8 +225,8 @@ function pglogicalTransformer() {
       const blockTypes = ["root", "paragraph", "listItem", "blockquote"];
       for (
         let i = ancestors.length - 1,
-          parent = ancestors[ancestors.length - 1],
-          child = node;
+        parent = ancestors[ancestors.length - 1],
+        child = node;
         i >= 0;
         --i, child = parent, parent = ancestors[i]
       ) {

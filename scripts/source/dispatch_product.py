@@ -16,7 +16,7 @@ commands = {
     "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
     "EnterpriseDB/bdr": f"node {args.workspace}/destination/scripts/source/bdr.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
     "EnterpriseDB/pglogical": f"node {args.workspace}/destination/scripts/source/pglogical.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
-    "EnterpriseDB/harp": f"rsync -a --delete {args.workspace}/source/docs/user_guide/* {args.workspace}/destination/product_docs/docs/harp/2.0",
+    "EnterpriseDB/harp": f"rsync -a --delete {args.workspace}/source/docs/user_guide/ {args.workspace}/destination/product_docs/docs/harp/2.0/",
 }
 
 ret = os.system(
