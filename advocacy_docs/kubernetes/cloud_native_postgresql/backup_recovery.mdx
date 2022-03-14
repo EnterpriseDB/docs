@@ -8,10 +8,11 @@ The operator can orchestrate a continuous backup infrastructure
 that is based on the [Barman](https://pgbarman.org) tool. Instead
 of using the classical architecture with a Barman server, which
 backs up many PostgreSQL instances, the operator relies on the
-`barman-cloud-wal-archive`, `barman-cloud-backup`, `barman-cloud-backup-list`,
-and `barman-cloud-backup-delete` tools.
-As a result, base backups will be *tarballs*. Both base backups and WAL files
-can be compressed and encrypted.
+`barman-cloud-wal-archive`, `barman-cloud-check-wal-archive`, 
+`barman-cloud-backup`, `barman-cloud-backup-list`, and 
+`barman-cloud-backup-delete` tools. As a result, base backups will 
+be *tarballs*. Both base backups and WAL files can be compressed 
+and encrypted.
 
 For this, it is required an image with `barman-cli-cloud` installed.
 You can use the image `quay.io/enterprisedb/postgresql` for this scope,
@@ -179,42 +180,42 @@ Here is an example using AWS S3 as Cloud Object Storage:
 apiVersion: apps/v1
 kind: Deployment
 [...]
-    spec:
-      containers:
-      - name: minio
-        image: minio/minio:RELEASE.2020-06-03T22-13-49Z
-        args:
-        - gateway
-        - s3
-        env:
-        # MinIO access key and secret key
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-creds
-              key: MINIO_ACCESS_KEY
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-creds
-              key: MINIO_SECRET_KEY
-        # AWS credentials
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: aws-creds
-              key: ACCESS_KEY_ID
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aws-creds
-              key: ACCESS_SECRET_KEY
+spec:
+  containers:
+  - name: minio
+    image: minio/minio:RELEASE.2020-06-03T22-13-49Z
+    args:
+    - gateway
+    - s3
+    env:
+    # MinIO access key and secret key
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: minio-creds
+          key: MINIO_ACCESS_KEY
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: minio-creds
+          key: MINIO_SECRET_KEY
+    # AWS credentials
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: ACCESS_SECRET_KEY
 # Uncomment the below section if session token is required
-#        - name: AWS_SESSION_TOKEN
-#          valueFrom:
-#            secretKeyRef:
-#              name: aws-creds
-#              key: ACCESS_SESSION_TOKEN
+#   - name: AWS_SESSION_TOKEN
+#     valueFrom:
+#       secretKeyRef:
+#         name: aws-creds
+#         key: ACCESS_SESSION_TOKEN
         ports:
         - containerPort: 9000
 ```
@@ -280,16 +281,16 @@ spec:
       destinationPath: "<destination path here>"
       azureCredentials:
         connectionString:
-          name: azurite
+          name: azure-creds
           key: AZURE_CONNECTION_STRING
         storageAccount:
-          name: azurite
+          name: azure-creds
           key: AZURE_STORAGE_ACCOUNT
         storageKey:
-          name: azurite
+          name: azure-creds
           key: AZURE_STORAGE_KEY
         storageSasToken:
-          name: azurite
+          name: azure-creds
           key: AZURE_STORAGE_SAS_TOKEN
 ```
 
@@ -462,74 +463,72 @@ spec:
 You can configure the encryption directly in your bucket, and the operator
 will use it unless you override it in the cluster configuration.
 
-## Recovery
+PostgreSQL implements a sequential archiving scheme, where the
+`archive_command` will be executed sequentially for every WAL
+segment to be archived.
 
-Cluster restores are not performed "in-place" on an existing cluster.
-You can use the data uploaded to the object storage to bootstrap a
-new cluster from a backup. The operator will orchestrate the recovery
-process using the `barman-cloud-restore` tool.
-
-When a backup is completed, the corresponding Kubernetes resource will
-contain every information needed to restore it, just like in the
-following example:
-
-```text
-Name:         backup-example
-Namespace:    default
-Labels:       <none>
-Annotations:  API Version:  postgresql.k8s.enterprisedb.io/v1
-Kind:         Backup
-Metadata:
-  Creation Timestamp:  2020-10-26T13:57:40Z
-  Self Link:         /apis/postgresql.k8s.enterprisedb.io/v1/namespaces/default/backups/backup-example
-  UID:               ad5f855c-2ffd-454a-a157-900d5f1f6584
-Spec:
-  Cluster:
-    Name:  pg-backup
-Status:
-  Backup Id:         20201026T135740
-  Destination Path:  s3://backups/
-  Endpoint URL:      http://minio:9000
-  Phase:             completed
-  s3Credentials:
-    Access Key Id:
-      Key:   ACCESS_KEY_ID
-      Name:  minio
-    Secret Access Key:
-      Key:      ACCESS_SECRET_KEY
-      Name:     minio
-  Server Name:  pg-backup
-  Started At:   2020-10-26T13:57:40Z
-  Stopped At:   2020-10-26T13:57:44Z
-Events:         <none>
-```
-
-Given the following cluster definition:
+When the bandwidth between the PostgreSQL instance and the object
+store allows archiving more than one WAL file in parallel, you
+can use the parallel WAL archiving feature of the instance manager
+like in the following example:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
 kind: Cluster
-metadata:
-  name: cluster-restore
+[...]
 spec:
-  instances: 3
-
-  storage:
-    size: 5Gi
-
-  bootstrap:
-    recovery:
-      backup:
-        name: backup-example
+  backup:
+    barmanObjectStore:
+      [...]
+      wal:
+        compression: gzip
+        maxParallel: 8
+        encryption: AES256
 ```
 
-The operator will inject an init container in the first instance of the
-cluster and the init container will start recovering the backup from the
-object storage.
+In the previous example, the instance manager optimizes the WAL
+archiving process by archiving in parallel at most eight ready
+WALs, including the one requested by PostgreSQL.
 
-When the recovery process is completed, the operator will start the instance
-to allow it to recover the transaction log files needed for the
-consistency of the restored data directory.
+When PostgreSQL will request the archiving of a WAL that has
+already been archived by the instance manager as an optimization,
+that archival request will be just dismissed with a positive status.
+
+## Recovery
+
+Cluster restores are not performed "in-place" on an existing cluster.
+You can use the data uploaded to the object storage to *bootstrap* a
+new cluster from a previously taken backup.
+The operator will orchestrate the recovery process using the
+`barman-cloud-restore` tool (for the base backup) and the
+`barman-cloud-wal-restore` tool (for WAL files, including parallel support, if
+requested).
+
+For details and instructions on the `recovery` bootstrap method, please refer
+to the ["Bootstrap from a backup" section](bootstrap.md#bootstrap-from-a-backup-recovery).
+
+Under the hood, the operator will inject an init container in the first
+instance of the new cluster, and the init container will start recovering the
+backup from the object storage.
+
+!!! Important
+    The duration of the base backup copy in the new PVC depends on
+    the size of the backup, as well as the speed of both the network and the
+    storage.
+
+When the base backup recovery process is completed, the operator starts the
+Postgres instance in recovery mode: in this phase, PostgreSQL is up, albeit not
+being able to accept connections, and the pod is healthy, according to the
+liveness probe. Through the `restore_command`, PostgreSQL starts fetching WAL
+files from the archive (you can speed up this phase by setting the
+`maxParallel` option and enable the parallel WAL restore capability).
+
+This phase terminates when PostgreSQL reaches the target (either the end of the
+WAL or the required target in case of Point-In-Time-Recovery). Indeed, you can
+optionally specify a `recoveryTarget` to perform a point in time recovery. If
+left unspecified, the recovery will continue up to the latest available WAL on
+the default target timeline (`current` for PostgreSQL up to 11, `latest` for
+version 12 and above).
 
 Once the recovery is complete, the operator will set the required
 superuser password into the instance. The new primary instance will start
@@ -538,14 +537,10 @@ as usual, and the remaining instances will join the cluster as replicas.
 The process is transparent for the user and it is managed by the instance
 manager running in the Pods.
 
-You can optionally specify a `recoveryTarget` to perform a point in time
-recovery. If left unspecified, the recovery will continue up to the latest
-available WAL on the default target timeline (`current` for PostgreSQL up to
-11, `latest` for version 12 and above).
-
 ## Retention policies
 
-Cloud Native PostgreSQL can manage the automated deletion of backup files from the backup object store, using **retention policies** based on recovery window.
+Cloud Native PostgreSQL can manage the automated deletion of backup files from
+the backup object store, using **retention policies** based on recovery window.
 
 Internally, the retention policy feature uses `barman-cloud-backup-delete`
 with `--retention-policy “RECOVERY WINDOW OF {{ retention policy value }} {{ retention policy unit }}”`.
@@ -581,3 +576,67 @@ spec:
     file, starting from the first valid backup. Base backups that are older
     than the first valid backup will be marked as *obsolete* and permanently
     removed after the next backup is completed.
+
+## Compression algorithms
+
+Cloud Native PostgreSQL by default archives backups and WAL files in an
+uncompressed fashion. However, it also supports the following compression
+algorithms via `barman-cloud-backup` (for backups) and
+`barman-cloud-wal-archive` (for WAL files):
+
+-   bzip2
+-   gzip
+-   snappy
+
+The compression settings for backups and WALs are independent. See the
+[DataBackupConfiguration](api_reference.md#DataBackupConfiguration) and
+[WALBackupConfiguration](api_reference.md#WalBackupConfiguration) sections in
+the API reference.
+
+It is important to note that archival time, restore time, and size change
+between the algorithms, so the compression algorithm should be chosen according
+to your use case.
+
+The Barman team has performed an evaluation of the performance of the supported
+algorithms for Barman Cloud. The following table summarizes a scenario where a
+backup is taken on a local MinIO deployment. The Barman GitHub project includes
+a [deeper analysis](https://github.com/EnterpriseDB/barman/issues/344#issuecomment-992547396).
+
+| Compression | Backup Time (ms) | Restore Time (ms) | Uncompressed size (MB) | Compressed size (MB) | Approx ratio |
+| ----------- | ---------------- | ----------------- | ---------------------- | -------------------- | ------------ |
+| None        | 10927            | 7553              | 395                    | 395                  | 1:1          |
+| bzip2       | 25404            | 13886             | 395                    | 67                   | 5.9:1        |
+| gzip        | 116281           | 3077              | 395                    | 91                   | 4.3:1        |
+| snappy      | 8134             | 8341              | 395                    | 166                  | 2.4:1        |
+
+## Tagging of backup objects
+
+Barman 2.18 introduces support for tagging backup resources when saving them in
+object stores via `barman-cloud-backup` and `barman-cloud-wal-archive`. As a
+result, if your PostgreSQL container image includes Barman with version 2.18 or
+higher, Cloud Native PostgreSQL enables you to specify tags as key-value pairs
+for backup objects, namely base backups, WAL files and history files.
+
+You can use two properties in the `.spec.backup.barmanObjectStore` definition:
+
+-   `tags`: key-value pair tags to be added to backup objects and archived WAL
+    file in the backup object store
+-   `historyTags`: key-value pair tags to be added to archived history files in
+    the backup object store
+
+The excerpt of a YAML manifest below provides an example of usage of this
+feature:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      [...]
+      tags:
+        backupRetentionPolicy: "expire"
+      historyTags:
+        backupRetentionPolicy: "keep"
+```

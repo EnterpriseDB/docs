@@ -185,6 +185,7 @@ const Page = () => (
               pgAdmin
             </IndexCardLink>
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
@@ -218,7 +219,7 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
-              repmgr (Replication Manager)
+              Replication Manager (repmgr)
             </IndexCardLink>
 
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
@@ -296,6 +297,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VeritasGuide">
+              Veritas NetBackup for PostgreSQL
             </IndexCardLink>
           </IndexCard>
         </div>

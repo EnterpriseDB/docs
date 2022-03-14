@@ -1,9 +1,225 @@
 ---
-navTitle: 'Appendix A: Release Notes'
-title: 'Appendix A: Release Notes for BDR3'
+navTitle: Release Notes
+title: Release Notes for BDR3
 originalFilePath: release-notes.md
 
 ---
+
+## BDR 3.7.15
+
+This is a maintenance release for BDR 3.7 which includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.15 for resolved issues
+which affect BDR as well.
+
+### Improvements
+
+-   Performance of COPY replication including the initial COPY during join has
+    been greatly improved for partitioned tables (BDR-1479)  
+    For large tables this can improve the load times by order of magnitude or
+    more.
+
+-   Back-port `bdr.run_on_nodes()` and `bdr.run_on_group()` from BDR 4.0 (BDR-1433)  
+    These functions behave same as `bdr.run_on_all_nodes()` but allow running SQL
+    on specific group or set of nodes rather than all nodes.
+
+-   Add execute_locally option to bdr.replicate_ddl_command (RT73533)  
+    This allows optional queueing of ddl commands for replication to other groups
+    without executing it locally.
+
+-   Don't ERROR on consensus issue during JOIN  
+    The reporting of these transient errors was confusing as they are shown in
+    bdr.worker_errors. These are now changed to WARNINGs.
+
+### Resolved Issues
+
+-   WAL decoder confirms end LSN of the running transactions record (BDR-1264)  
+    Confirm end LSN of the running transactions record processed by WAL
+    decoder so that the WAL decoder slot remains up to date and WAL senders
+    get the candidate in timely manner.
+
+-   Improve handling of node name reuse during parallel join (RT74789)  
+    Nodes now have a generation number so that it's easier to identify the name
+    reuse even if the node record is received as part of a snapshot.
+
+-   Fix locking and snapshot use during node management in the BDR manager
+    process (RT74789)  
+    When processing multiple actions in the state machine, we make sure reacquire
+    the lock on the processed node and update the snapshot to make sure any updates
+    happening through consensus are taken into account.
+
+-   Improve cleanup of catalogs on local node drop  
+    Drop all groups, not only the primary one and drop all the node state
+    history info as well.
+
+-   Don't wait for autopartition tasks to complete on parting nodes (BDR-1867)  
+    When a node has started parting process, it makes no sense to wait for
+    autopartition tasks on such nodes to finish since it's not part of the group
+    anymore.
+
+-   Ensure loss of CAMO partner connectivity switches to Local Mode immediately  
+    This prevents disconnected partner from being reported as CAMO ready.
+
+-   Fix the cleanup of `bdr.node_pre_commit` for async CAMO configurations (BDR-1808)  
+    Previously, the periodic cleanup of commit decisions on the CAMO
+    partner checked the readiness of it's partner, rather than the
+    origin node.  This is the same node for symmetric CAMO
+    configurations, so those were not affected.  This release corrects
+    the check for asymmetric CAMO pairings.
+
+-   Improve error checking for join request in bdr_init_physical  
+    Previously bdr_init_physical would simply wait forever when there was any issue
+    with the consensus request, now we do same checking as the logical join does.
+
+-   Improve handling of various timeouts and sleeps in consensus  
+    This reduces amount of new consensus votes needed when processing many consensus
+    requests or time consuming consensus requests, for example during join of a
+    new node.
+
+## BDR 3.7.14
+
+This is a maintenance release for BDR 3.7 which includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+Check also release notes for pglogical 3.7.14 for resolved issues
+which affect BDR as well.
+
+### Improvements
+
+-   Reduce frequency of CAMO partner connection attempts (EE)  
+    In case of a failure to connect to a CAMO partner to verify its
+    configuration and check the status of transactions, do not retry
+    immediately (leading to a fully busy pglogical manager process), but
+    throttle down repeated attempts to reconnect and checks to once per
+    minute.
+
+-   Ensure CAMO configuration is checked again after a reconnect (EE)
+
+-   Add dummy CAMO configuration catalogs and Raft support (BDR-1676)  
+    This is just to ease rolling upgrades from BDR 3.7 to 4.0.x on CAMO enabled
+    installations.
+
+-   Avoid unnecessary LCR segment reads (BDR-1426)  
+    We'll now only attempt to read new LCR segments when there are some available.
+    This should reduce I/O load when decoding worker is enabled.
+
+### Resolved Issues
+
+-   Switch from CAMO to Local Mode only after timeouts (EE, RT74892)  
+    Do not use the `catchup_interval` estimate when switching from CAMO
+    protected to Local Mode, as that could induce inadvertent switching
+    due to load spikes.  Use the estimate only when switching from Local
+    Mode back to CAMO protected (to prevent toggling forth and back due
+    to lag on the CAMO partner).
+
+-   Prevent duplicate values generated locally by galloc sequence in high
+    concurrency situations when the new chunk is used (RT76528)  
+    The galloc sequence could have temporarily produce duplicate value when
+    switching which chunk is used locally (but not across nodes) if there were
+    multiple sessions waiting for the new value. This is now fixed.
+
+-   Ensure that the group slot is moved forward when there is only one node in
+    the BDR group  
+    This prevents disk exhaustion due to WAL accumulation when the group is left
+    running with just single BDR node for prolonged period of time. This is not
+    recommended setup but the WAL accumulation was not intentional.
+
+-   Advance Raft protocol version when there is only one node in the BDR group  
+    Single node clusters would otherwise always stay on oldest support protocol 
+    until another node was added. This could limit available feature set on that
+    single node.
+
+### Other Changes
+
+-   Add CAMO configuration infrastructure needed for upgrade to BDR4 (BDR-1676)  
+    Add dummy CAMO configuration infrastructure bdr.camo_pairs table
+    and bdr.add/remove_camo_pair() functions to be able to upgrade a
+    CAMO enabled cluster to BDR4
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+-   3.7.9 and higher
+-   3.6.29 and higher
+
+## BDR 3.7.13.1
+
+This is a hotfix release for BDR 3.7.13.
+
+### Resolved Issues
+
+-   Fix potential FATAL error when using global DML locking with CAMO (BDR-1675, BDR-1655)
+
+-   Fix lag calculation for CAMO local mode delay (BDR-1681)
+
+## BDR 3.7.13
+
+This is a maintenance release for BDR 3.7 which includes minor improvements
+as well as fixes for issues identified in previous versions.
+
+Check also release notes for pglogical 3.7.13 for resolved issues which affect
+BDR as well.
+
+### Improvements
+
+-   Use a separate replication origin for the BDR consensus process (BDR-1613)  
+    For Eager transactions that need to COMMIT PREPARED from the consensus
+    process, use a dedicated replication origin, this way
+    the consensus does not conflict with writer origins.
+
+-   Improve documentation of the backup/restore procedure (RT72503, BDR-1340)  
+    Recommend against dropping the extension with cascade because
+    it may drop user columns that are using CRDT types and break
+    the sequences. It's better to use `drop_node` function instead.
+
+-   Add function `bdr.get_decoding_worker_stat()` (BDR-1302)  
+    If the Decoding Worker is enabled, this function shows information
+    about the state of the Decoding Worker associated with the current
+    database. This also provides more granular information about
+    Decoding Worker progress than is available via `pg_replication_slots`.
+
+### Resolved Issues
+
+-   Fix a subscriber-side memory leak when bulk-inserting into a partitioned table (BDR-1473)  
+    This improves memory usage during node join when there are
+    partitioned tables present.
+
+-   Fix `bdr.alter_sequence_set_kind` to accept a bigint as a start value (RT74294)  
+    The function was casting the value to an `int` thus getting bogus values
+    when `bigint` was used.
+
+-   Fix memory leak from consensus worker of Raft leader (RT74769)  
+    The tracing context was leaked causing growing memory usage from the consensus,
+    on BDR groups with many nodes, this could cause memory exhaustion.
+
+-   Enable async conflict resolution for explicit 2PC (BDR-1666, RT71298)  
+    Continue applying the transaction using the async conflict resolution
+    for explicit two phase commit.
+
+-   Fix potential crash if `bdr.receive_lcr` is "false" (BDR-1620)  
+    Adust Single Decoding Worker feature to automatically disable
+    itself if the `bdr.receive_lcr` is "false". This prevents crash
+    situation when starting replication from a peer in the
+    cluster(on restart, or new join) with `bdr.receive_lcr` disabled
+    and `enable_wal_decoder` enabled.
+
+### Other Changes
+
+-   Add deprecation hint for `bdr.group_max_connections` (BDR-1596)  
+    Allow `bdr.group_max_connections` option, but make sure it's properly marked
+    as deprecated in favor of `bdr.raft_group_max_connections`. This GUC will
+    be removed in BDR 4.0.
+
+### Upgrades
+
+This release supports upgrading from following versions of BDR:
+
+-   3.7.9 and higher
+-   3.6.28
 
 ## BDR 3.7.12
 
@@ -27,10 +243,10 @@ BDR as well.
     information about the replication status of the local node with
     respect to all other BDR nodes in the cluster.
 
--   Add decoder monitoring parameters for wal sender  
-    Extend the WAL sender statistics to report whether it uses LCRs
-    emitted by a Decoding Worker as well as the exact LCR file being
-    read from at the moment, if applicable.
+-   Add function bdr.wal_sender_stats()
+    This provides information about whether the WAL sender is using LCRs emitted
+    by a Decoding Worker, and if so the name of the LCR file currently being read
+    from.
 
 -   Prevent CAMO to be used in combination with Decoding Worker (BDR-792)  
     These features cannot currently work in combination.  This release
@@ -362,8 +578,8 @@ Upgrades are supported from BDR 3.6.25 and 3.7.7 in this release.
     These are wholly joined nodes, but they don't ever send replication
     changes to other BDR nodes in the cluster. But they do receive changes
     from all nodes in the cluster (except, of course the other subscriber-only
-    nodes). They do not participate in the RAFT voting protocol, and hence
-    their presence (or absence) does not determine RAFT leader election.
+    nodes). They do not participate in the Raft voting protocol, and hence
+    their presence (or absence) does not determine Raft leader election.
     We don't need to create any replication slots on these nodes since they
     don't send replication changes. Similarly, we don't need to create any
     subscriptions for these nodes on other BDR nodes.
@@ -828,8 +1044,8 @@ Upgrades are supported from BDR 3.6.22 in this release.
     These are wholly joined nodes, but they don't ever send replication
     changes to other BDR nodes in the cluster. But they do receive changes
     from all nodes in the cluster (except, of course the other subscriber-only
-    nodes). They do not participate in the RAFT voting protocol, and hence
-    their presence (or absence) does not determine RAFT leader election.
+    nodes). They do not participate in the Raft voting protocol, and hence
+    their presence (or absence) does not determine Raft leader election.
     We don't need to create any replication slots on these nodes since they
     don't send replication changes. Similarly, we don't need to create any
     subscriptions for these nodes on other BDR nodes.
@@ -979,7 +1195,7 @@ Upgrades are supported from BDR 3.6.22 in this release.
     -   Large CACHE values were not handled properly
     -   MINVAL/MAXVAL not honored in some cases
         The crux of the issue was that large increments or cache calls would
-        need to make multiple RAFT fetch calls. This caused the loop retry code
+        need to make multiple Raft fetch calls. This caused the loop retry code
         to be invoked multiple times. The various variables to track the loops
         needed adjustment.
 

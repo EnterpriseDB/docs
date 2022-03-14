@@ -40,8 +40,8 @@ operator and a PostgreSQL cluster configuration.
 ### Operator deployment via declarative configuration
 
 The operator is installed in a declarative way using a Kubernetes manifest
-which defines 3 `CustomResourceDefinition` objects: `Cluster`, `Backup`,
-`ScheduledBackup`.
+which defines 4 major `CustomResourceDefinition` objects: `Cluster`, `Pooler`,
+`Backup`, and `ScheduledBackup`.
 
 ### PostgreSQL cluster deployment via declarative configuration
 
@@ -129,7 +129,7 @@ any container and enforces read only root filesystem to guarantee containers
 immutability for both the operator and the operand pods. It also explicitly
 sets the required security contexts.
 
-On RedHat OpenShift, Cloud Native PostgreSQL runs in [`restricted` security
+On Red Hat OpenShift, Cloud Native PostgreSQL runs in [`restricted` security
 context constraint
 (SCC)](https://www.openshift.com/blog/managing-sccs-in-openshift), the most
 restrictive one - with the goal to limit the execution of a pod to a namespace
@@ -224,7 +224,7 @@ The operator can be installed through a Kubernetes manifest via `kubectl
 apply`, to be used in a traditional Kubernetes installation in public
 and private cloud environments. Additionally, it can be deployed through
 the Operator Lifecycle Manager (OLM) from OperatorHub.io and the OpenShift
-Container Platform by RedHat. A Helm Chart for the operator is also available.
+Container Platform by Red Hat. A Helm Chart for the operator is also available.
 
 ### Convention over configuration
 
@@ -271,9 +271,9 @@ minutes based on the actual database workload.
 
 ### Display cluster availability status during upgrade
 
-At any time, convey the cluster's high availability status, for example, `OK`,
-`Failover in progress`, `Switchover in progress`, `Upgrade in progress`, or
-`Upgrade failed`.
+At any time, convey the cluster's high availability status, for example,
+`Setting up primary`, `Creating a new replica`, `Cluster in healthy state`,
+`Switchover in progress`, `Failing over`, `Upgrading cluster`, etc.
 
 ## Level 3 - Full Lifecycle
 
@@ -307,7 +307,11 @@ an AWS S3 bucket) and, optionally, a generic endpoint URL. WAL archiving,
 a prerequisite for continuous backup, does not require any further
 action from the user: the operator will automatically and transparently set
 the `archive_command` to rely on `barman-cloud-wal-archive` to ship WAL
-files to the defined endpoint. Users can decide the compression algorithm.
+files to the defined endpoint. Users can decide the compression algorithm,
+as well as the number of parallel jobs to concurrently upload WAL files
+in the archive. In addition to that `Instance Manager` automatically checks 
+the correctness of the archive destination, by performing `barman-cloud-check-wal-archive` 
+command before beginning to ship the very first set of WAL files.
 
 You can define base backups in two ways: on-demand (through the `Backup`
 custom resource definition) or scheduled (through the `ScheduledBackup`
@@ -327,6 +331,7 @@ initiates the instance in recovery mode and replays all available WAL files
 from the specified archive, exiting recovery and starting as a primary.
 Subsequently, the operator will clone the requested number of standby instances
 from the primary.
+Cloud Native PostgreSQL supports parallel WAL fetching from the archive.
 
 ### Point-In-Time Recovery (PITR) from a backup
 
@@ -373,9 +378,12 @@ native capabilities).
 The operator defines liveness and readiness probes for the Postgres
 Containers that are then invoked by the kubelet. They are mapped respectively
 to the `/healthz` and `/readyz` endpoints of the web server managed
-directly by the instance manager. They both use Go to connect to the cluster
-and issue a simple query (`;`) to verify that the server is ready to accept
-connections.
+directly by the instance manager.
+The liveness probe is based on the `pg_isready` executable, and the pod is
+considered healthy with exit codes 0  (server accepting connections normally)
+and 1 (server is rejecting connections, for example during startup).  The
+readiness probe issues a simple query (`;`) to verify that the server is
+ready to accept connections.
 
 ### Rolling deployments
 
@@ -455,6 +463,9 @@ and/or `Secret` objects using a syntax that is compatible with the
 [`postgres_exporter` for Prometheus](https://github.com/prometheus-community/postgres_exporter).
 Cloud Native PostgreSQL provides a set of basic monitoring queries for
 PostgreSQL that can be integrated and adapted to your context.
+The [cnp-sandbox project] is an open source Helm chart that demonstrates
+how to integrate Cloud Native PostgreSQL with Prometheus and Grafana, by providing
+some basic metrics and an example of dashboard.
 
 ### Standard output logging of PostgreSQL error messages in JSON format
 

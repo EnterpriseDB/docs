@@ -1,0 +1,172 @@
+---
+title: "Correction using new transactions"
+---
+
+<div id="correction_using_new_txn" class="registered_link"></div>
+
+You can bring all the publication tables to a consistent state by removing any changes caused by the conflicting transactions. Then issue new, corrected transactions at one primary node, which you allow the multi-master replication system to synchronize to all other primary nodes.
+
+Referring back to the uniqueness conflict on the dept table, instead of correcting the erroneous row and inserting the row into the primary node where it is missing as described in [Manual publication table correction](04_manual_publication_table_correction/#manual_publication_table_correction), you can delete the conflicting rows from all primary nodes and then insert the correct row in one primary node and let the multi-master replication system synchronize the correct row to all primary nodes.
+
+**Step 1:** Manually delete the inserted row from the publication tables in all primary nodes with `session_replication_role` set to `replica`.
+
+On `MMRnode_a`, delete the erroneous row:
+
+```text
+MMRnode_a=# SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ replica
+(1 row)
+
+
+  MMRnode_a=# SELECT * FROM dept;
+   deptno |   dname    |   loc
+  --------+------------+----------
+       10 | ACCOUNTING | NEW YORK
+       20 | RESEARCH   | DALLAS
+       30 | SALES      | CHICAGO
+       40 | OPERATIONS | BOSTON
+       50 | FINANCE    | CHICAGO
+  (5 rows)
+
+
+MMRnode_a=# DELETE FROM dept WHERE deptno = 50;
+DELETE 1
+MMRnode_a=# SELECT * FROM dept;
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+On `MMRnode_b`, delete the row even though the transaction created the correct result:
+
+```text
+MMRnode_b=# SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ replica
+(1 row)
+
+
+MMRnode_b=# SELECT * FROM dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+
+
+MMRnode_b=# DELETE FROM dept WHERE deptno = 50;
+DELETE 1
+MMRnode_b=# SELECT * FROM dept;
+deptno |   dname    |   loc
+--------+------------+----------
+   10 | ACCOUNTING | NEW YORK
+   20 | RESEARCH   | DALLAS
+   30 | SALES      | CHICAGO
+   40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+On `MMRnode_c`, no changes are required as the conflicting transaction didn't insert a new row into the table on this node:
+
+```text
+MMRnode_c=# SET search_path TO edb;
+SET
+MMRnode_c=# SELECT * FROM dept;
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+**Step 2:** Rerun the transaction on one primary node with the multi-master replication system running and with `session_replication_role` set to the default (`origin`).
+
+For this example, the correct `INSERT` statement is executed on `MMRnode_a`:
+
+```text
+MMRnode_a=# SHOW session_replication_role;
+ session_replication_role
+--------------------------
+ origin
+(1 row)
+
+
+MMRnode_a=# INSERT INTO dept VALUES (50, 'MARKETING', 'LOS ANGELES');
+INSERT 0 1
+MMRnode_a=# SELECT * FROM dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+**Step 3:** Perform synchronization replication.
+
+The same rows now appear in the publication table on all primary nodes. On `MMRnode_a`:
+
+```text
+MMRnode_a=# SELECT * FROM dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+On `MMRnode_b`:
+
+```text
+MMRnode_b=# SELECT * FROM dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+On `MMRnode_c`:
+
+```text
+MMRnode_c=# SELECT * FROM dept;
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | MARKETING  | LOS ANGELES
+(5 rows)
+```
+
+**Step 4:** Update the shadow table entries for the conflicting transactions in the primary nodes to indicate that the conflict was resolved as in Step 2 of [Manual publication table correction](04_manual_publication_table_correction/#manual_publication_table_correction).
+
+Change the `rrep_tx_conflict_status` column from `P` (pending) to `D` (discarded) on all primary nodes.
+
+!!! Note
+    The second entry for the accepted transaction you ran in Step 2, where `rrep_tx_conflict_status` is set to null, indicates there was no conflict.
+
+There's no shadow table entry in `MMRnode_c`, since an insert transaction wasn't performed in that primary node by the application.
+
+**Step 5:** In the control schema of the publication database currently designated as the controller database, modify the entries in the `xdb_conflicts` table to indicate the conflict was resolved as in Step 3 of [Manual publication table correction](04_manual_publication_table_correction/#manual_publication_table_correction).

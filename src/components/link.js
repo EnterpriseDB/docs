@@ -29,7 +29,10 @@ const isAbsoluteOrProtocolRelativeUrl = (url) => {
 };
 
 const hasNonMarkdownExtension = (url) => {
-  return url.match(/\.[a-zA-Z]+$/) && !url.match(/\.mdx?(?=$|\?|#)/);
+  url = new URL(url, "loc:/");
+  return (
+    url.pathname.match(/\.[a-zA-Z]+$/) && !url.pathname.match(/\.mdx?(?=$|\?)/)
+  );
 };
 
 const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {

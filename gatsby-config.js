@@ -19,8 +19,8 @@ const sourceToPluginConfig = {
   ark: { name: "ark", path: "product_docs/docs/ark" },
   bart: { name: "bart", path: "product_docs/docs/bart" },
   bdr: { name: "bdr", path: "product_docs/docs/bdr" },
-  harp: { name: "harp", path: "product_docs/docs/harp" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
+  edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
@@ -28,6 +28,7 @@ const sourceToPluginConfig = {
     name: "hadoop_data_adapter",
     path: "product_docs/docs/hadoop_data_adapter",
   },
+  harp: { name: "harp", path: "product_docs/docs/harp" },
   jdbc_connector: {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
@@ -164,7 +165,54 @@ module.exports = {
         },
       },
     },
-    "gatsby-plugin-sitemap",
+    {
+      resolve: "gatsby-plugin-sitemap",
+      options: {
+        query: `
+        {
+          site {
+            siteMetadata {
+              siteUrl
+            }
+          }
+
+          allMdx {
+            nodes {
+              fields {
+                path
+                mtime
+              }
+            }
+          }
+
+          allSitePage {
+            nodes {
+              path
+            }
+          }
+        }`,
+
+        resolvePages: ({
+          allSitePage: { nodes: allPages },
+          allMdx: { nodes: allMdxNodes },
+        }) => {
+          const mapPathToTime = allMdxNodes.reduce((acc, node) => {
+            acc[node.fields.path] = { lastmod: node.fields.mtime };
+            return acc;
+          }, {});
+
+          return allPages.map((page) => {
+            return { ...page, ...mapPathToTime[page.path] };
+          });
+        },
+        serialize: ({ path, lastmod }) => {
+          return {
+            url: path,
+            lastmod,
+          };
+        },
+      }, // should produce 5968 <loc>s
+    },
     {
       resolve: `gatsby-plugin-manifest`,
       options: {
@@ -224,6 +272,11 @@ module.exports = {
             resolve: "gatsby-remark-prismjs",
             options: {
               noInlineHighlight: true,
+              aliases: {
+                postgresql: "sql",
+                sh: "shell",
+                "c++": "cpp",
+              },
             },
           },
         ],
@@ -265,14 +318,6 @@ module.exports = {
       resolve: "gatsby-plugin-google-tagmanager",
       options: {
         id: process.env.GTM_ID,
-      },
-    },
-    {
-      resolve: "gatsby-plugin-nginx-redirect",
-      options: {
-        inputConfigFile: `${__dirname}/static/nginx_redirects.template`,
-        outputConfigFile: `${__dirname}/static/nginx_redirects.generated`,
-        whereToIncludeRedirects: "", // defaults to: "server"
       },
     },
     {

@@ -47,12 +47,6 @@ The `bdr_init_physical` utility replaces the functionality of the
 `bdr_init_copy` utility from BDR1 and BDR2. It is the BDR3 equivalent of the
 pglogical `pglogical_create_subscriber` utility.
 
-!!! Warning
-    Only one node at the time should join the BDR node group, or be
-    parted from it. If a new node is being joined while there is
-    another join or part operation in progress, the new node will
-    sometimes not have consistent data after the join has finished.
-
 When a new BDR node is joined to an existing BDR group or a node is subscribed
 to an upstream peer, before replication can begin, the system must copy the
 existing data from the peer node(s) to the local node. This copy must be
@@ -87,10 +81,12 @@ performs data sync doing `COPY` operations and will use multiple writers
 (parallel apply) if those are enabled.
 
 Node join can execute concurrently with other node joins for the majority of
-the time taken to join. Only one regular node at a time can be in either of
-the states PROMOTE or PROMOTING, which are typically fairly short.
-The subscriber-only nodes are an exception to this rule, and they can be
-cocurrently in PROMOTE and PROMOTING states as well.
+the time taken to join. However, only one regular node at a time can be in
+either of the states PROMOTE or PROMOTING, which are typically fairly short if
+all other nodes are up and running, otherwise the join will get serialized at
+this stage. The subscriber-only nodes are an exception to this rule, and they
+can be concurrently in PROMOTE and PROMOTING states as well, so their join
+process is fully concurrent.
 
 Note that the join process uses only one node as the source, so can be
 executed when nodes are down, if a majority of nodes are available.
@@ -871,43 +867,6 @@ as `STANDBY`.
 
 Only one node at a time can be in either of the states PROMOTE or PROMOTING.
 
-## Managing Shard Groups
-
-BDR clusters may contain an array of Shard Groups for the AutoScale feature.
-These are shown as a sub-node group that is composed of an array of
-sub-sub node groups known as Shard Groups.
-
-Operations that can be performed on the Shard Group are:
-
--   Create Shard Array
--   Drop Shard Array
--   Repair - add new nodes to replace failed nodes
--   Expand - add new Shard Groups
--   Re-Balance - re-distribute data across Shard Groups
-
-### Create/Drop
-
-### Expand
-
-e.g. expand from 4 Shard Groups to 8 Shard Groups
-
-This operation can occur without interfering with user operations.
-
-### Re-Balance
-
-e.g. move data from where it was in a 4-node array to how it would be ideally
-placed in an 8-node array.
-
-Some portion of the data is moved from one Shard Group to another,
-so this action can take an extended period, depending upon how
-much data is to be moved. The data is moved one partition at a
-time, so is restartable without too much wasted effort.
-
-Note that re-balancing is optional.
-
-This operation can occur without interfering with user operations,
-even when this includes write transactions.
-
 ## Node Management Interfaces
 
 Nodes can be added and removed dynamically using the SQL interfaces.
@@ -995,7 +954,7 @@ This function creates a BDR group with the local node as the only member of the 
 
 ```sql
 bdr.create_node_group(node_group_name text,
-                      parent_group_name text,
+                      parent_group_name text DEFAULT NULL,
                       join_node_group boolean DEFAULT true,
                       node_group_type text DEFAULT NULL)
 ```
@@ -1017,9 +976,8 @@ bdr.create_node_group(node_group_name text,
      changes to other nodes. See [Subscriber-Only Nodes] for more details.
      Datanode implies that the group represents a shard, whereas the other
      values imply that the group represents respective coordinators.
-     Except 'subscriber-only', the rest three values are reserved for use
-     with a separate extension called autoscale. NULL implies a normal
-     general purpose node group will be created.
+     Except 'subscriber-only', the rest three values are reserved for future use.
+     NULL implies a normal general purpose node group will be created.
 
 #### Notes
 
@@ -1204,12 +1162,12 @@ the node which is being removed. However, just to make it clear, once the
 node is PARTED it can not *part* other nodes in the cluster.
 
 !!! Note
-    you are *parting* the local node you must set `wait_for_completion`
-    false, otherwise it will error.
+    If you are *parting* the local node you must set `wait_for_completion`
+    to false, otherwise it will error.
 
 !!! Warning
-    s action is permanent. If you wish to temporarily halt replication
-    a node, see `bdr.alter_subscription_disable()`.
+    This action is permanent. If you wish to temporarily halt replication
+    to a node, see `bdr.alter_subscription_disable()`.
 
 #### Synopsis
 
@@ -1425,6 +1383,7 @@ bdr_init_physical [OPTION] ...
 
 -   `--hba-conf -path` to the new pg_hba.conf
 -   `--postgresql-conf` - path to the new postgresql.conf
+-   `--postgresql-auto-conf` - path to the new postgresql.auto.conf
 
 #### Notes
 

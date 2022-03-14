@@ -64,12 +64,12 @@ function _objectWithoutProperties(source, excluded) {
   return target;
 }
 
-var _excluded$1f = ["title", "titleId"];
+var _excluded$1o = ["title", "titleId"];
 
 var SvgAaa = function SvgAaa(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1f);
+      props = _objectWithoutProperties(_ref, _excluded$1o);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -89,12 +89,12 @@ SvgAaa.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$1e = ["title", "titleId"];
+var _excluded$1n = ["title", "titleId"];
 
 var SvgAbnAmro = function SvgAbnAmro(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1e);
+      props = _objectWithoutProperties(_ref, _excluded$1n);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -114,12 +114,12 @@ SvgAbnAmro.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$1d = ["title", "titleId"];
+var _excluded$1m = ["title", "titleId"];
 
 var SvgAngularjs = function SvgAngularjs(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1d);
+      props = _objectWithoutProperties(_ref, _excluded$1m);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -139,12 +139,37 @@ SvgAngularjs.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$1c = ["title", "titleId"];
+var _excluded$1l = ["title", "titleId"];
+
+var SvgApple = function SvgApple(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$1l);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgApple.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$1k = ["title", "titleId"];
 
 var SvgAws = function SvgAws(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1c);
+      props = _objectWithoutProperties(_ref, _excluded$1k);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -164,12 +189,12 @@ SvgAws.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$1b = ["title", "titleId"];
+var _excluded$1j = ["title", "titleId"];
 
 var SvgAzure = function SvgAzure(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1b);
+      props = _objectWithoutProperties(_ref, _excluded$1j);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -189,12 +214,12 @@ SvgAzure.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$1a = ["title", "titleId"];
+var _excluded$1i = ["title", "titleId"];
 
 var SvgBiganimalIconWhite = function SvgBiganimalIconWhite(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1a);
+      props = _objectWithoutProperties(_ref, _excluded$1i);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -214,12 +239,62 @@ SvgBiganimalIconWhite.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$19 = ["title", "titleId"];
+var _excluded$1h = ["title", "titleId"];
+
+var SvgBiganimalLockupWhite = function SvgBiganimalLockupWhite(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$1h);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgBiganimalLockupWhite.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$1g = ["title", "titleId"];
+
+var SvgBiganimalMagenta = function SvgBiganimalMagenta(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$1g);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgBiganimalMagenta.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$1f = ["title", "titleId"];
 
 var SvgBiganimalText = function SvgBiganimalText(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$19);
+      props = _objectWithoutProperties(_ref, _excluded$1f);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -239,12 +314,12 @@ SvgBiganimalText.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$18 = ["title", "titleId"];
+var _excluded$1e = ["title", "titleId"];
 
 var SvgBiganimal = function SvgBiganimal(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$18);
+      props = _objectWithoutProperties(_ref, _excluded$1e);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -264,12 +339,12 @@ SvgBiganimal.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$17 = ["title", "titleId"];
+var _excluded$1d = ["title", "titleId"];
 
 var SvgCPlusPlus = function SvgCPlusPlus(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$17);
+      props = _objectWithoutProperties(_ref, _excluded$1d);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -289,12 +364,12 @@ SvgCPlusPlus.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$16 = ["title", "titleId"];
+var _excluded$1c = ["title", "titleId"];
 
 var SvgCSharpMono = function SvgCSharpMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$16);
+      props = _objectWithoutProperties(_ref, _excluded$1c);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -314,12 +389,12 @@ SvgCSharpMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$15 = ["title", "titleId"];
+var _excluded$1b = ["title", "titleId"];
 
 var SvgCSharp = function SvgCSharp(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$15);
+      props = _objectWithoutProperties(_ref, _excluded$1b);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -339,12 +414,12 @@ SvgCSharp.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$14 = ["title", "titleId"];
+var _excluded$1a = ["title", "titleId"];
 
 var SvgC = function SvgC(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$14);
+      props = _objectWithoutProperties(_ref, _excluded$1a);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -364,12 +439,12 @@ SvgC.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$13 = ["title", "titleId"];
+var _excluded$19 = ["title", "titleId"];
 
 var SvgCentos = function SvgCentos(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$13);
+      props = _objectWithoutProperties(_ref, _excluded$19);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -389,12 +464,12 @@ SvgCentos.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$12 = ["title", "titleId"];
+var _excluded$18 = ["title", "titleId"];
 
 var SvgDebian = function SvgDebian(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$12);
+      props = _objectWithoutProperties(_ref, _excluded$18);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -414,12 +489,12 @@ SvgDebian.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$11 = ["title", "titleId"];
+var _excluded$17 = ["title", "titleId"];
 
 var SvgDellEmc = function SvgDellEmc(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$11);
+      props = _objectWithoutProperties(_ref, _excluded$17);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -439,12 +514,37 @@ SvgDellEmc.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$10 = ["title", "titleId"];
+var _excluded$16 = ["title", "titleId"];
+
+var SvgDjangoInitials = function SvgDjangoInitials(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$16);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgDjangoInitials.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$15 = ["title", "titleId"];
 
 var SvgDjango = function SvgDjango(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$10);
+      props = _objectWithoutProperties(_ref, _excluded$15);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -464,12 +564,12 @@ SvgDjango.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$$ = ["title", "titleId"];
+var _excluded$14 = ["title", "titleId"];
 
 var SvgDocker = function SvgDocker(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$$);
+      props = _objectWithoutProperties(_ref, _excluded$14);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -489,12 +589,37 @@ SvgDocker.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$_ = ["title", "titleId"];
+var _excluded$13 = ["title", "titleId"];
+
+var SvgDotNetIcon = function SvgDotNetIcon(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$13);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgDotNetIcon.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$12 = ["title", "titleId"];
 
 var SvgDotNet = function SvgDotNet(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$_);
+      props = _objectWithoutProperties(_ref, _excluded$12);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -514,12 +639,12 @@ SvgDotNet.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$Z = ["title", "titleId"];
+var _excluded$11 = ["title", "titleId"];
 
 var SvgEdbBadge = function SvgEdbBadge(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Z);
+      props = _objectWithoutProperties(_ref, _excluded$11);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -539,12 +664,12 @@ SvgEdbBadge.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$Y = ["title", "titleId"];
+var _excluded$10 = ["title", "titleId"];
 
 var SvgEdbDocsLogoDiscDark = function SvgEdbDocsLogoDiscDark(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Y);
+      props = _objectWithoutProperties(_ref, _excluded$10);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -564,12 +689,12 @@ SvgEdbDocsLogoDiscDark.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$X = ["title", "titleId"];
+var _excluded$$ = ["title", "titleId"];
 
 var SvgEdbLogoDiscDark = function SvgEdbLogoDiscDark(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$X);
+      props = _objectWithoutProperties(_ref, _excluded$$);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -589,12 +714,12 @@ SvgEdbLogoDiscDark.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$W = ["title", "titleId"];
+var _excluded$_ = ["title", "titleId"];
 
 var SvgEdbLogoSymbolBadge = function SvgEdbLogoSymbolBadge(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$W);
+      props = _objectWithoutProperties(_ref, _excluded$_);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -614,12 +739,12 @@ SvgEdbLogoSymbolBadge.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$V = ["title", "titleId"];
+var _excluded$Z = ["title", "titleId"];
 
 var SvgEricsson = function SvgEricsson(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$V);
+      props = _objectWithoutProperties(_ref, _excluded$Z);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -639,12 +764,37 @@ SvgEricsson.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$U = ["title", "titleId"];
+var _excluded$Y = ["title", "titleId"];
+
+var SvgExpress = function SvgExpress(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$Y);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgExpress.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$X = ["title", "titleId"];
 
 var SvgFacebook = function SvgFacebook(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$U);
+      props = _objectWithoutProperties(_ref, _excluded$X);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -664,12 +814,37 @@ SvgFacebook.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$T = ["title", "titleId"];
+var _excluded$W = ["title", "titleId"];
+
+var SvgFlask = function SvgFlask(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$W);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgFlask.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$V = ["title", "titleId"];
 
 var SvgGolang = function SvgGolang(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$T);
+      props = _objectWithoutProperties(_ref, _excluded$V);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -689,12 +864,12 @@ SvgGolang.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$S = ["title", "titleId"];
+var _excluded$U = ["title", "titleId"];
 
 var SvgGoogleCloud = function SvgGoogleCloud(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$S);
+      props = _objectWithoutProperties(_ref, _excluded$U);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -714,12 +889,12 @@ SvgGoogleCloud.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$R = ["title", "titleId"];
+var _excluded$T = ["title", "titleId"];
 
 var SvgHadoopMono = function SvgHadoopMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$R);
+      props = _objectWithoutProperties(_ref, _excluded$T);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -739,12 +914,12 @@ SvgHadoopMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$Q = ["title", "titleId"];
+var _excluded$S = ["title", "titleId"];
 
 var SvgHadoop = function SvgHadoop(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Q);
+      props = _objectWithoutProperties(_ref, _excluded$S);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -764,12 +939,12 @@ SvgHadoop.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$P = ["title", "titleId"];
+var _excluded$R = ["title", "titleId"];
 
 var SvgHaskell = function SvgHaskell(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$P);
+      props = _objectWithoutProperties(_ref, _excluded$R);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -789,12 +964,12 @@ SvgHaskell.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$O = ["title", "titleId"];
+var _excluded$Q = ["title", "titleId"];
 
 var SvgHtml = function SvgHtml(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$O);
+      props = _objectWithoutProperties(_ref, _excluded$Q);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -814,12 +989,12 @@ SvgHtml.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$N = ["title", "titleId"];
+var _excluded$P = ["title", "titleId"];
 
 var SvgIbmCloud = function SvgIbmCloud(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$N);
+      props = _objectWithoutProperties(_ref, _excluded$P);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -839,12 +1014,12 @@ SvgIbmCloud.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$M = ["title", "titleId"];
+var _excluded$O = ["title", "titleId"];
 
 var SvgIos = function SvgIos(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$M);
+      props = _objectWithoutProperties(_ref, _excluded$O);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -864,12 +1039,12 @@ SvgIos.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$L = ["title", "titleId"];
+var _excluded$N = ["title", "titleId"];
 
 var SvgJavaMono = function SvgJavaMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$L);
+      props = _objectWithoutProperties(_ref, _excluded$N);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -889,12 +1064,12 @@ SvgJavaMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$K = ["title", "titleId"];
+var _excluded$M = ["title", "titleId"];
 
 var SvgJava = function SvgJava(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$K);
+      props = _objectWithoutProperties(_ref, _excluded$M);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -914,12 +1089,12 @@ SvgJava.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$J = ["title", "titleId"];
+var _excluded$L = ["title", "titleId"];
 
 var SvgJavascript = function SvgJavascript(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$J);
+      props = _objectWithoutProperties(_ref, _excluded$L);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -939,12 +1114,12 @@ SvgJavascript.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$I = ["title", "titleId"];
+var _excluded$K = ["title", "titleId"];
 
 var SvgJquery = function SvgJquery(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$I);
+      props = _objectWithoutProperties(_ref, _excluded$K);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -964,12 +1139,12 @@ SvgJquery.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$H = ["title", "titleId"];
+var _excluded$J = ["title", "titleId"];
 
 var SvgKotlin = function SvgKotlin(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$H);
+      props = _objectWithoutProperties(_ref, _excluded$J);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -989,12 +1164,12 @@ SvgKotlin.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$G = ["title", "titleId"];
+var _excluded$I = ["title", "titleId"];
 
 var SvgKreditpartner = function SvgKreditpartner(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$G);
+      props = _objectWithoutProperties(_ref, _excluded$I);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1014,12 +1189,12 @@ SvgKreditpartner.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$F = ["title", "titleId"];
+var _excluded$H = ["title", "titleId"];
 
 var SvgKt = function SvgKt(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$F);
+      props = _objectWithoutProperties(_ref, _excluded$H);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1039,12 +1214,12 @@ SvgKt.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$E = ["title", "titleId"];
+var _excluded$G = ["title", "titleId"];
 
 var SvgKubernetesMono = function SvgKubernetesMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$E);
+      props = _objectWithoutProperties(_ref, _excluded$G);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1064,12 +1239,12 @@ SvgKubernetesMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$D = ["title", "titleId"];
+var _excluded$F = ["title", "titleId"];
 
 var SvgKubernetes = function SvgKubernetes(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$D);
+      props = _objectWithoutProperties(_ref, _excluded$F);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1089,12 +1264,12 @@ SvgKubernetes.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$C = ["title", "titleId"];
+var _excluded$E = ["title", "titleId"];
 
 var SvgKubernetes2 = function SvgKubernetes2(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$C);
+      props = _objectWithoutProperties(_ref, _excluded$E);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1114,12 +1289,12 @@ SvgKubernetes2.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$B = ["title", "titleId"];
+var _excluded$D = ["title", "titleId"];
 
 var SvgLaravelMono = function SvgLaravelMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$B);
+      props = _objectWithoutProperties(_ref, _excluded$D);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1139,12 +1314,12 @@ SvgLaravelMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$A = ["title", "titleId"];
+var _excluded$C = ["title", "titleId"];
 
 var SvgLaravel = function SvgLaravel(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$A);
+      props = _objectWithoutProperties(_ref, _excluded$C);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1164,12 +1339,12 @@ SvgLaravel.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$z = ["title", "titleId"];
+var _excluded$B = ["title", "titleId"];
 
 var SvgLinkedinMono = function SvgLinkedinMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$z);
+      props = _objectWithoutProperties(_ref, _excluded$B);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1189,12 +1364,12 @@ SvgLinkedinMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$y = ["title", "titleId"];
+var _excluded$A = ["title", "titleId"];
 
 var SvgLinkedin = function SvgLinkedin(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$y);
+      props = _objectWithoutProperties(_ref, _excluded$A);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1214,12 +1389,12 @@ SvgLinkedin.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$x = ["title", "titleId"];
+var _excluded$z = ["title", "titleId"];
 
 var SvgLinux = function SvgLinux(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$x);
+      props = _objectWithoutProperties(_ref, _excluded$z);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1239,12 +1414,12 @@ SvgLinux.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$w = ["title", "titleId"];
+var _excluded$y = ["title", "titleId"];
 
 var SvgMacos = function SvgMacos(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$w);
+      props = _objectWithoutProperties(_ref, _excluded$y);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1264,12 +1439,12 @@ SvgMacos.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$v = ["title", "titleId"];
+var _excluded$x = ["title", "titleId"];
 
 var SvgMastercard = function SvgMastercard(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$v);
+      props = _objectWithoutProperties(_ref, _excluded$x);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1289,12 +1464,12 @@ SvgMastercard.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$u = ["title", "titleId"];
+var _excluded$w = ["title", "titleId"];
 
 var SvgNielsen = function SvgNielsen(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$u);
+      props = _objectWithoutProperties(_ref, _excluded$w);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1314,12 +1489,12 @@ SvgNielsen.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$t = ["title", "titleId"];
+var _excluded$v = ["title", "titleId"];
 
 var SvgNodejsMono = function SvgNodejsMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$t);
+      props = _objectWithoutProperties(_ref, _excluded$v);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1339,12 +1514,12 @@ SvgNodejsMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$s = ["title", "titleId"];
+var _excluded$u = ["title", "titleId"];
 
 var SvgNodejs = function SvgNodejs(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$s);
+      props = _objectWithoutProperties(_ref, _excluded$u);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1364,12 +1539,12 @@ SvgNodejs.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$r = ["title", "titleId"];
+var _excluded$t = ["title", "titleId"];
 
 var SvgNokia = function SvgNokia(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$r);
+      props = _objectWithoutProperties(_ref, _excluded$t);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1389,12 +1564,12 @@ SvgNokia.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$q = ["title", "titleId"];
+var _excluded$s = ["title", "titleId"];
 
 var SvgPandas = function SvgPandas(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$q);
+      props = _objectWithoutProperties(_ref, _excluded$s);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1414,12 +1589,12 @@ SvgPandas.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$p = ["title", "titleId"];
+var _excluded$r = ["title", "titleId"];
 
 var SvgPerl = function SvgPerl(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$p);
+      props = _objectWithoutProperties(_ref, _excluded$r);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1439,12 +1614,12 @@ SvgPerl.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$o = ["title", "titleId"];
+var _excluded$q = ["title", "titleId"];
 
 var SvgPhpMono = function SvgPhpMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$o);
+      props = _objectWithoutProperties(_ref, _excluded$q);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1464,12 +1639,12 @@ SvgPhpMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$n = ["title", "titleId"];
+var _excluded$p = ["title", "titleId"];
 
 var SvgPhp = function SvgPhp(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$n);
+      props = _objectWithoutProperties(_ref, _excluded$p);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1489,12 +1664,12 @@ SvgPhp.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$m = ["title", "titleId"];
+var _excluded$o = ["title", "titleId"];
 
 var SvgPostgresSupport = function SvgPostgresSupport(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$m);
+      props = _objectWithoutProperties(_ref, _excluded$o);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1514,12 +1689,12 @@ SvgPostgresSupport.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$l = ["title", "titleId"];
+var _excluded$n = ["title", "titleId"];
 
 var SvgPostgresqlMono = function SvgPostgresqlMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$l);
+      props = _objectWithoutProperties(_ref, _excluded$n);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1539,12 +1714,12 @@ SvgPostgresqlMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$k = ["title", "titleId"];
+var _excluded$m = ["title", "titleId"];
 
 var SvgPostgresql = function SvgPostgresql(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$k);
+      props = _objectWithoutProperties(_ref, _excluded$m);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1564,12 +1739,12 @@ SvgPostgresql.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$j = ["title", "titleId"];
+var _excluded$l = ["title", "titleId"];
 
 var SvgPostgresql2 = function SvgPostgresql2(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$j);
+      props = _objectWithoutProperties(_ref, _excluded$l);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1589,12 +1764,12 @@ SvgPostgresql2.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$i = ["title", "titleId"];
+var _excluded$k = ["title", "titleId"];
 
 var SvgPythonMono = function SvgPythonMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$i);
+      props = _objectWithoutProperties(_ref, _excluded$k);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1614,12 +1789,12 @@ SvgPythonMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$h = ["title", "titleId"];
+var _excluded$j = ["title", "titleId"];
 
 var SvgPython = function SvgPython(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$h);
+      props = _objectWithoutProperties(_ref, _excluded$j);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1639,12 +1814,12 @@ SvgPython.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$g = ["title", "titleId"];
+var _excluded$i = ["title", "titleId"];
 
 var SvgReactNative = function SvgReactNative(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$g);
+      props = _objectWithoutProperties(_ref, _excluded$i);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1664,12 +1839,12 @@ SvgReactNative.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$f = ["title", "titleId"];
+var _excluded$h = ["title", "titleId"];
 
 var SvgRedhatMono = function SvgRedhatMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$f);
+      props = _objectWithoutProperties(_ref, _excluded$h);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1689,12 +1864,12 @@ SvgRedhatMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$e = ["title", "titleId"];
+var _excluded$g = ["title", "titleId"];
 
 var SvgRedhat = function SvgRedhat(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$e);
+      props = _objectWithoutProperties(_ref, _excluded$g);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1714,12 +1889,12 @@ SvgRedhat.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$d = ["title", "titleId"];
+var _excluded$f = ["title", "titleId"];
 
 var SvgRubyMono = function SvgRubyMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$d);
+      props = _objectWithoutProperties(_ref, _excluded$f);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1739,12 +1914,12 @@ SvgRubyMono.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$c = ["title", "titleId"];
+var _excluded$e = ["title", "titleId"];
 
 var SvgRuby = function SvgRuby(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$c);
+      props = _objectWithoutProperties(_ref, _excluded$e);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1764,12 +1939,12 @@ SvgRuby.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$b = ["title", "titleId"];
+var _excluded$d = ["title", "titleId"];
 
 var SvgSiemens = function SvgSiemens(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$b);
+      props = _objectWithoutProperties(_ref, _excluded$d);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1789,12 +1964,12 @@ SvgSiemens.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$a = ["title", "titleId"];
+var _excluded$c = ["title", "titleId"];
 
 var SvgSony = function SvgSony(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$a);
+      props = _objectWithoutProperties(_ref, _excluded$c);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1814,12 +1989,37 @@ SvgSony.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$9 = ["title", "titleId"];
+var _excluded$b = ["title", "titleId"];
+
+var SvgSpring = function SvgSpring(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$b);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgSpring.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$a = ["title", "titleId"];
 
 var SvgSuse = function SvgSuse(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$9);
+      props = _objectWithoutProperties(_ref, _excluded$a);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1839,12 +2039,12 @@ SvgSuse.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$8 = ["title", "titleId"];
+var _excluded$9 = ["title", "titleId"];
 
 var SvgSwift = function SvgSwift(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$8);
+      props = _objectWithoutProperties(_ref, _excluded$9);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1864,12 +2064,12 @@ SvgSwift.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$7 = ["title", "titleId"];
+var _excluded$8 = ["title", "titleId"];
 
 var SvgTransunion = function SvgTransunion(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$7);
+      props = _objectWithoutProperties(_ref, _excluded$8);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1889,12 +2089,12 @@ SvgTransunion.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$6 = ["title", "titleId"];
+var _excluded$7 = ["title", "titleId"];
 
 var SvgTwitter = function SvgTwitter(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$6);
+      props = _objectWithoutProperties(_ref, _excluded$7);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1914,12 +2114,12 @@ SvgTwitter.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$5 = ["title", "titleId"];
+var _excluded$6 = ["title", "titleId"];
 
 var SvgTypescript = function SvgTypescript(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$5);
+      props = _objectWithoutProperties(_ref, _excluded$6);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1939,12 +2139,12 @@ SvgTypescript.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$4 = ["title", "titleId"];
+var _excluded$5 = ["title", "titleId"];
 
 var SvgUbuntu = function SvgUbuntu(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$4);
+      props = _objectWithoutProperties(_ref, _excluded$5);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1964,12 +2164,12 @@ SvgUbuntu.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$3 = ["title", "titleId"];
+var _excluded$4 = ["title", "titleId"];
 
 var SvgUsCellular = function SvgUsCellular(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$3);
+      props = _objectWithoutProperties(_ref, _excluded$4);
 
   return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
     width: "1em",
@@ -1989,9 +2189,34 @@ SvgUsCellular.propTypes = {
   titleId: PropTypes__default['default'].string
 };
 
-var _excluded$2 = ["title", "titleId"];
+var _excluded$3 = ["title", "titleId"];
 
 var SvgVueJs = function SvgVueJs(_ref) {
+  var title = _ref.title,
+      titleId = _ref.titleId,
+      props = _objectWithoutProperties(_ref, _excluded$3);
+
+  return /*#__PURE__*/React__default['default'].createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React__default['default'].createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React__default['default'].createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+
+SvgVueJs.propTypes = {
+  title: PropTypes__default['default'].string,
+  titleId: PropTypes__default['default'].string
+};
+
+var _excluded$2 = ["title", "titleId"];
+
+var SvgWindowsMono = function SvgWindowsMono(_ref) {
   var title = _ref.title,
       titleId = _ref.titleId,
       props = _objectWithoutProperties(_ref, _excluded$2);
@@ -2009,7 +2234,7 @@ var SvgVueJs = function SvgVueJs(_ref) {
   }));
 };
 
-SvgVueJs.propTypes = {
+SvgWindowsMono.propTypes = {
   title: PropTypes__default['default'].string,
   titleId: PropTypes__default['default'].string
 };
@@ -2067,10 +2292,13 @@ SvgYoutube.propTypes = {
 exports.Aaa = SvgAaa;
 exports.AbnAmro = SvgAbnAmro;
 exports.Angularjs = SvgAngularjs;
+exports.Apple = SvgApple;
 exports.Aws = SvgAws;
 exports.Azure = SvgAzure;
 exports.Biganimal = SvgBiganimal;
 exports.BiganimalIconWhite = SvgBiganimalIconWhite;
+exports.BiganimalLockupWhite = SvgBiganimalLockupWhite;
+exports.BiganimalMagenta = SvgBiganimalMagenta;
 exports.BiganimalText = SvgBiganimalText;
 exports.C = SvgC;
 exports.CPlusPlus = SvgCPlusPlus;
@@ -2080,14 +2308,18 @@ exports.Centos = SvgCentos;
 exports.Debian = SvgDebian;
 exports.DellEmc = SvgDellEmc;
 exports.Django = SvgDjango;
+exports.DjangoInitials = SvgDjangoInitials;
 exports.Docker = SvgDocker;
 exports.DotNet = SvgDotNet;
+exports.DotNetIcon = SvgDotNetIcon;
 exports.EdbBadge = SvgEdbBadge;
 exports.EdbDocsLogoDiscDark = SvgEdbDocsLogoDiscDark;
 exports.EdbLogoDiscDark = SvgEdbLogoDiscDark;
 exports.EdbLogoSymbolBadge = SvgEdbLogoSymbolBadge;
 exports.Ericsson = SvgEricsson;
+exports.Express = SvgExpress;
 exports.Facebook = SvgFacebook;
+exports.Flask = SvgFlask;
 exports.Golang = SvgGolang;
 exports.GoogleCloud = SvgGoogleCloud;
 exports.Hadoop = SvgHadoop;
@@ -2134,6 +2366,7 @@ exports.Ruby = SvgRuby;
 exports.RubyMono = SvgRubyMono;
 exports.Siemens = SvgSiemens;
 exports.Sony = SvgSony;
+exports.Spring = SvgSpring;
 exports.Suse = SvgSuse;
 exports.Swift = SvgSwift;
 exports.Transunion = SvgTransunion;
@@ -2143,4 +2376,5 @@ exports.Ubuntu = SvgUbuntu;
 exports.UsCellular = SvgUsCellular;
 exports.VueJs = SvgVueJs;
 exports.Windows = SvgWindows;
+exports.WindowsMono = SvgWindowsMono;
 exports.Youtube = SvgYoutube;

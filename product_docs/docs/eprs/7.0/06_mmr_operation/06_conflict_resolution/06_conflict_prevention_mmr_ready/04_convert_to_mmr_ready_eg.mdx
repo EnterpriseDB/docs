@@ -1,0 +1,430 @@
+---
+title: "Conversion to an MMR-ready sequence example"
+---
+
+<div id="convert_to_mmr_ready_eg" class="registered_link"></div>
+
+This example shows how you convert two tables with standard sequences used as primary keys and a parent-child relationship by a foreign key constraint to use the MMR-ready sequence, You can then use them in a multi-master replication system.
+
+The tables are defined as follows:
+
+```text
+CREATE TABLE MMR_seq_tbl (
+    id          SERIAL PRIMARY KEY,
+    field       VARCHAR2(20)
+);
+
+CREATE TABLE MMR_seq_child_tbl (
+    id          SERIAL PRIMARY KEY,
+    field       VARCHAR2(20),
+    parent_id   INTEGER CONSTRAINT MMR_seq_tbl_fk
+                REFERENCES MMR_seq_tbl(id)
+);
+```
+
+!!! Note
+    Observe the foreign key constraint between columns `MMR_seq_child_tbl.parent_id` and `MMR_seq_tbl.id`.
+
+The tables are populated with an initial set of rows:
+
+```text
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 1');
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 2');
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 3');
+
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 1-1', 1);
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 1-2', 1);
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 2-1', 2);
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 2-2', 2);
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 3-1', 3);
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 3-2', 3);
+```
+
+The resulting table content is the following:
+
+```text
+edb=# SELECT * FROM MMR_seq_tbl;
+ id |       field
+----+-------------------
+  1 | MMRnode_a - Row 1
+  2 | MMRnode_a - Row 2
+  3 | MMRnode_a - Row 3
+(3 rows)
+
+edb=# SELECT * FROM MMR_seq_child_tbl;
+ id |        field        | parent_id
+----+---------------------+-----------
+  1 | MMRnode_a - Row 1-1 |         1
+  2 | MMRnode_a - Row 1-2 |         1
+  3 | MMRnode_a - Row 2-1 |         2
+  4 | MMRnode_a - Row 2-2 |         2
+  5 | MMRnode_a - Row 3-1 |         3
+  6 | MMRnode_a - Row 3-2 |         3
+(6 rows)
+```
+
+Prior to performing the conversion, obtain the current, maximum sequence value of the sequence to convert to an MMR-ready sequence. In this example, the value is `6`, as seen in the `id` column of table `MMR_seq_child_tbl`.
+
+This value is needed to set a newly created sequence to use for the MMR-ready sequence.  This value must be a large enough starting value to avoid auniqu eness conflict with the converted sequence values of the existing rows.
+
+## Converting existing standard sequence values
+
+To convert the existing sequence values in columns `MMR_seq_tbl.id`, `MMR_seq_child_tbl.id`, and `MMR_seq_child_tbl.parent_id`:
+
+Permit deferred updates to the foreign key constraint.
+
+```text
+ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk DEFERRABLE INITIALLY DEFERRED;
+```
+
+Create the function to perform the sequence conversion.
+
+```text
+CREATE OR REPLACE FUNCTION MMR_sequence_convert (
+    old_seq_value   bigint
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint + $1;
+$function$;
+```
+
+Change the sequence columns to data type `BIGINT` so they are large enough for the MMR-ready sequence.
+
+```text
+ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
+ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
+ALTER TABLE MMR_seq_child_tbl ALTER COLUMN parent_id SET DATA TYPE BIGINT;
+```
+
+Set the unique database identifier used by the MMR-ready sequence.
+
+```text
+ALTER DATABASE MMRnode_a SET cluster.unique_db_id TO 1;
+SET cluster.unique_db_id TO 1;
+```
+
+Update the primary key and foreign key values with the `MMR_sequence_convert` function. Perform the updates affecting the foreign key constraint in the same transaction to avoid a foreign key violation error.
+
+```text
+BEGIN TRANSACTION;
+    UPDATE MMR_seq_tbl SET id = MMR_sequence_convert (id);
+    UPDATE MMR_seq_child_tbl SET parent_id = MMR_sequence_convert (parent_id);
+    UPDATE MMR_seq_child_tbl SET id = MMR_sequence_convert (id);
+COMMIT;
+```
+
+Reset the foreign key constraint back to its original setting. For example:
+
+```text
+ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk NOT DEFERRABLE;
+```
+
+After the conversion to the MMR-ready sequence, the table content is as follows:
+
+```text
+edb=# SELECT * FROM MMR_seq_tbl;
+        id        |       field
+------------------+-------------------
+ 4503599627370497 | MMRnode_a - Row 1
+ 4503599627370498 | MMRnode_a - Row 2
+ 4503599627370499 | MMRnode_a - Row 3
+(3 rows)
+
+edb=# SELECT * FROM MMR_seq_child_tbl;
+        id        |        field        |    parent_id
+------------------+---------------------+------------------
+ 4503599627370497 | MMRnode_a - Row 1-1 | 4503599627370497
+ 4503599627370498 | MMRnode_a - Row 1-2 | 4503599627370497
+ 4503599627370499 | MMRnode_a - Row 2-1 | 4503599627370498
+ 4503599627370500 | MMRnode_a - Row 2-2 | 4503599627370498
+ 4503599627370501 | MMRnode_a - Row 3-1 | 4503599627370499
+ 4503599627370502 | MMRnode_a - Row 3-2 | 4503599627370499
+(6 rows)
+```
+
+The parent-child foreign key relationship between columns `MMR_seq_child_tbl.parent_id` and `MMR_seq_tbl.id` is maintained.
+
+The primary key id values incorporate the old sequence values but are increased by the addition of the 52-bit shifted, database identifier value.
+
+## Setting up the MMR-ready sequence
+
+Perform the steps described in [Creating an MMR-ready sequence](01_create_mmr_ready_sequence/#create_mmr_ready_sequence) on the databases to use as primary nodes. For database `MMRnode_a` that contains the converted tables, create a new sequence with a starting value of `7` to avoid a primary key uniqueness conflict with the existing rows. In the original tables, the maximum used sequence value was 6. When a sequence number is transformed to an MMR-ready sequence value, the same result is returned if the same database identifier is used with the same original number.
+
+```text
+CREATE SEQUENCE MMR_seq START WITH 7 INCREMENT BY 1 NO CYCLE;
+```
+
+Create the function to return the MMR-ready sequence value.
+
+```text
+CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
+    seq_id          VARCHAR
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint +
+  nextval($1::regclass);
+$function$;
+```
+
+Modify the primary key columns to use the function to return the default value.
+
+```text
+ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
+ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
+```
+
+Repeat the MMR-ready sequence setup process for the other primary nodes.
+
+```text
+ALTER DATABASE MMRnode_b SET cluster.unique_db_id TO 2;
+SET cluster.unique_db_id TO 2;
+
+CREATE SEQUENCE MMR_seq START WITH 1 INCREMENT BY 1 NO CYCLE;
+
+CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
+  seq_id          VARCHAR
+  )
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint +
+  nextval($1::regclass);
+$function$;
+```
+
+Repeat the process for `MMRnode_c`.
+
+```text
+ALTER DATABASE MMRnode_c SET cluster.unique_db_id TO 3;
+SET cluster.unique_db_id TO 3;
+
+CREATE SEQUENCE MMR_seq START WITH 1 INCREMENT BY 1 NO CYCLE;
+
+CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
+    seq_id          VARCHAR
+)
+RETURNS bigint
+LANGUAGE sql
+AS
+$function$
+SELECT (
+ (SELECT current_setting('cluster.unique_db_id'))::bigint
+  << 52)::bigint +
+  nextval($1::regclass);
+$function$;
+```
+
+## Tables after initial multi-master replication system creation
+
+Create the multi-master replication system using databases `MMRnode_a`, `MMRnode_b`, and `MMRnode_c` in a similar manner as described in [MMR-ready sequence example](02_mmr_ready_example/#mmr_ready_example).
+
+After you create the system with the initial snapshot, `MMRnode_a`, `MMRnode_b`, and `MMRnode_c` all contain identical content. The following is the table content:
+
+```text
+MMRnode_a=# SELECT * FROM MMR_seq_tbl;
+        id        |       field
+------------------+-------------------
+ 4503599627370497 | MMRnode_a - Row 1
+ 4503599627370498 | MMRnode_a - Row 2
+ 4503599627370499 | MMRnode_a - Row 3
+(3 rows)
+
+MMRnode_a=# SELECT * FROM MMR_seq_child_tbl;
+        id        |        field        |    parent_id
+------------------+---------------------+------------------
+ 4503599627370497 | MMRnode_a - Row 1-1 | 4503599627370497
+ 4503599627370498 | MMRnode_a - Row 1-2 | 4503599627370497
+ 4503599627370499 | MMRnode_a - Row 2-1 | 4503599627370498
+ 4503599627370500 | MMRnode_a - Row 2-2 | 4503599627370498
+ 4503599627370501 | MMRnode_a - Row 3-1 | 4503599627370499
+ 4503599627370502 | MMRnode_a - Row 3-2 | 4503599627370499
+(6 rows)
+```
+
+## Subsequent row insertions and synchronization
+
+The following rows are inserted on `MMRnode_a`:
+
+```text
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 4');
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 4-1', 4503599627370503);
+
+MMRnode_a=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id        |       field
+------------------+-------------------
+ 4503599627370497 | MMRnode_a - Row 1
+ 4503599627370498 | MMRnode_a - Row 2
+ 4503599627370499 | MMRnode_a - Row 3
+ 4503599627370503 | MMRnode_a - Row 4
+(4 rows)
+
+MMRnode_a=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id        |        field        |    parent_id
+------------------+---------------------+------------------
+ 4503599627370497 | MMRnode_a - Row 1-1 | 4503599627370497
+ 4503599627370498 | MMRnode_a - Row 1-2 | 4503599627370497
+ 4503599627370499 | MMRnode_a - Row 2-1 | 4503599627370498
+ 4503599627370500 | MMRnode_a - Row 2-2 | 4503599627370498
+ 4503599627370501 | MMRnode_a - Row 3-1 | 4503599627370499
+ 4503599627370502 | MMRnode_a - Row 3-2 | 4503599627370499
+ 4503599627370504 | MMRnode_a - Row 4-1 | 4503599627370503
+(7 rows)
+```
+
+The following rows are inserted on `MMRnode_b`:
+
+```text
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_b - Row 1');
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_b - Row 1-1', 9007199254740993);
+
+MMRnode_b=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id        |       field
+------------------+-------------------
+ 4503599627370497 | MMRnode_a - Row 1
+ 4503599627370498 | MMRnode_a - Row 2
+ 4503599627370499 | MMRnode_a - Row 3
+ 9007199254740993 | MMRnode_b - Row 1
+(4 rows)
+
+MMRnode_b=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id        |        field        |    parent_id
+------------------+---------------------+------------------
+ 4503599627370497 | MMRnode_a - Row 1-1 | 4503599627370497
+ 4503599627370498 | MMRnode_a - Row 1-2 | 4503599627370497
+ 4503599627370499 | MMRnode_a - Row 2-1 | 4503599627370498
+ 4503599627370500 | MMRnode_a - Row 2-2 | 4503599627370498
+ 4503599627370501 | MMRnode_a - Row 3-1 | 4503599627370499
+ 4503599627370502 | MMRnode_a - Row 3-2 | 4503599627370499
+ 9007199254740994 | MMRnode_b - Row 1-1 | 9007199254740993
+(7 rows)
+```
+
+The following rows are inserted on `MMRnode_c`:
+
+```text
+INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_c - Row 1');
+INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_c - Row 1-1', 13510798882111489);
+
+MMRnode_c=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id         |       field
+-------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1
+  4503599627370498 | MMRnode_a - Row 2
+  4503599627370499 | MMRnode_a - Row 3
+ 13510798882111489 | MMRnode_c - Row 1
+(4 rows)
+
+MMRnode_c=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id         |        field        |     parent_id
+-------------------+---------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1-1 |  4503599627370497
+  4503599627370498 | MMRnode_a - Row 1-2 |  4503599627370497
+  4503599627370499 | MMRnode_a - Row 2-1 |  4503599627370498
+  4503599627370500 | MMRnode_a - Row 2-2 |  4503599627370498
+  4503599627370501 | MMRnode_a - Row 3-1 |  4503599627370499
+  4503599627370502 | MMRnode_a - Row 3-2 |  4503599627370499
+ 13510798882111490 | MMRnode_c - Row 1-1 | 13510798882111489
+(7 rows)
+```
+
+After you perform a synchronization replication, there are no uniqueness conflicts. The following shows the synchronized, consistent tables in the primary nodes:
+
+Content of `MMRnode_a` after synchronization:
+
+```text
+MMRnode_a=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id         |       field
+-------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1
+  4503599627370498 | MMRnode_a - Row 2
+  4503599627370499 | MMRnode_a - Row 3
+  4503599627370503 | MMRnode_a - Row 4
+  9007199254740993 | MMRnode_b - Row 1
+ 13510798882111489 | MMRnode_c - Row 1
+(6 rows)
+
+MMRnode_a=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id         |        field        |     parent_id
+-------------------+---------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1-1 |  4503599627370497
+  4503599627370498 | MMRnode_a - Row 1-2 |  4503599627370497
+  4503599627370499 | MMRnode_a - Row 2-1 |  4503599627370498
+  4503599627370500 | MMRnode_a - Row 2-2 |  4503599627370498
+  4503599627370501 | MMRnode_a - Row 3-1 |  4503599627370499
+  4503599627370502 | MMRnode_a - Row 3-2 |  4503599627370499
+  4503599627370504 | MMRnode_a - Row 4-1 |  4503599627370503
+  9007199254740994 | MMRnode_b - Row 1-1 |  9007199254740993
+ 13510798882111490 | MMRnode_c - Row 1-1 | 13510798882111489
+(9 rows)
+```
+
+Content of `MMRnode_b` after synchronization:
+
+```text
+MMRnode_b=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id         |       field
+-------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1
+  4503599627370498 | MMRnode_a - Row 2
+  4503599627370499 | MMRnode_a - Row 3
+  4503599627370503 | MMRnode_a - Row 4
+  9007199254740993 | MMRnode_b - Row 1
+ 13510798882111489 | MMRnode_c - Row 1
+(6 rows)
+
+MMRnode_b=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id         |        field        |     parent_id
+-------------------+---------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1-1 |  4503599627370497
+  4503599627370498 | MMRnode_a - Row 1-2 |  4503599627370497
+  4503599627370499 | MMRnode_a - Row 2-1 |  4503599627370498
+  4503599627370500 | MMRnode_a - Row 2-2 |  4503599627370498
+  4503599627370501 | MMRnode_a - Row 3-1 |  4503599627370499
+  4503599627370502 | MMRnode_a - Row 3-2 |  4503599627370499
+  4503599627370504 | MMRnode_a - Row 4-1 |  4503599627370503
+  9007199254740994 | MMRnode_b - Row 1-1 |  9007199254740993
+ 13510798882111490 | MMRnode_c - Row 1-1 | 13510798882111489
+(9 rows)
+```
+
+Content of `MMRnode_c` after synchronization:
+
+```text
+MMRnode_c=# SELECT * FROM MMR_seq_tbl ORDER BY id;
+        id         |       field
+-------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1
+  4503599627370498 | MMRnode_a - Row 2
+  4503599627370499 | MMRnode_a - Row 3
+  4503599627370503 | MMRnode_a - Row 4
+  9007199254740993 | MMRnode_b - Row 1
+ 13510798882111489 | MMRnode_c - Row 1
+(6 rows)
+
+MMRnode_c=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
+        id         |        field        |     parent_id
+-------------------+---------------------+-------------------
+  4503599627370497 | MMRnode_a - Row 1-1 |  4503599627370497
+  4503599627370498 | MMRnode_a - Row 1-2 |  4503599627370497
+  4503599627370499 | MMRnode_a - Row 2-1 |  4503599627370498
+  4503599627370500 | MMRnode_a - Row 2-2 |  4503599627370498
+  4503599627370501 | MMRnode_a - Row 3-1 |  4503599627370499
+  4503599627370502 | MMRnode_a - Row 3-2 |  4503599627370499
+  4503599627370504 | MMRnode_a - Row 4-1 |  4503599627370503
+  9007199254740994 | MMRnode_b - Row 1-1 |  9007199254740993
+ 13510798882111490 | MMRnode_c - Row 1-1 | 13510798882111489
+(9 rows)
+```

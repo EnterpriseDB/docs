@@ -1,0 +1,355 @@
+---
+navTitle: Upgrades
+title: Application Schema Upgrades
+originalFilePath: upgrades.md
+
+---
+
+In this chapter we discuss upgrading software on a BDR cluster and how
+to minimize downtime for applications during the upgrade.
+
+## Overview
+
+BDR cluster has two sets of software, the underlying PostgreSQL software
+or some flavor of it and the PGLogical/BDR software. We will discuss
+upgrading either or both of these softwares versions to their supported
+major releases.
+
+To upgrade a BDR cluster, the following steps need to be performed on
+each node:
+
+-   plan the upgrade
+-   prepare for the upgrade
+-   upgrade the server software
+-   restart Postgres
+-   check and validate the upgrade
+
+## Upgrade Planning
+
+While the BDR 3.7 release supports PostgreSQL 11 - 13, BDR 4.0 supports
+PostgreSQL versions 12 - 14. Please refer to (product-matrix.md)
+page for the full list compatible software. Since BDR 4.0 supports newer
+PostgreSQL releases, while upgrading from BDR 3.7 to BDR 4.0, it's also
+recommended to upgrade to a newer PostgreSQL release.
+
+There are broadly two ways to upgrade the BDR version.
+
+-   Upgrading one node at a time to the newer BDR version.
+-   Joining a new node running a newer version of the BDR software and
+    then optionally drop one of the old nodes.
+
+If you are only interested in upgrading the BDR software, any of the two
+methods can be used. But if you also want to upgrade the PostgreSQL
+version, then the second method must be used.
+
+!!! Warning
+    At this point in time, both of these two methods still have their
+    issues and need to be considered beta.  We do not recommend to
+    upgrade from BDR 3.7 to BDR 4.0 just yet.  This restriction will
+    be lifted in future versions of BDR 4.
+
+### Rolling Server Software Upgrades
+
+A rolling upgrade is the process where the below [Server
+Software Upgrade](#Server-Software-Upgrade) is performed on each node in the
+BDR Group one after another, while keeping the replication working.
+
+An upgrade to 4.0 is only supported from 3.7 in beta testing mode,
+using a specific minimum
+maintenance release (e.g. 3.7.15). Please consult the Release Notes
+for the actual required minimum version.  So if a node
+is running with an older 3.7 release, it must first be upgraded to
+the minimum required version and can only then be upgraded to 4.0.
+
+Just as with a single-node database, it's possible to stop all nodes,
+perform the upgrade on all nodes and only then restart the entire
+cluster.  This strategy of upgrading all nodes at the same time avoids
+running with mixed BDR versions and therefore is the simplest, but
+obviously incurs some downtime.
+
+During the upgrade process, the application can be switched over to a node
+which is currently not being upgraded to provide continuous availability of
+the BDR group for applications.
+
+While the cluster is going through a rolling upgrade, replication happens
+between mixed versions of BDR. For example, nodeA will have BDR 3.7.11, while
+nodeB and nodeC will have 4.0.0. In this state, the replication and group
+management will use the protocol and features from the oldest version (3.7.11
+in case of this example), so any new features provided by the newer version
+which require changes in the protocol will be disabled. Once all nodes are
+upgraded to the same version, the new features are automatically enabled.
+
+A BDR cluster is designed to be easily upgradeable. Most BDR releases
+support rolling upgrades, which means running part of the cluster on one
+release level and the remaining part of the cluster on a second, compatible,
+release level.
+
+A rolling upgrade starts with a cluster with all nodes at a prior release,
+then proceeds by upgrading one node at a time to the newer release, until
+all nodes are at the newer release. Should problems occur, do not attempt
+to downgrade without contacting Technical Support to discuss and provide
+options.
+
+An upgrade process may take an extended period of time when the user decides
+caution is required to reduce business risk, though this should not take any
+longer than 30 days without discussion and explicit agreement from Technical
+Support to extend the period of coexistence of two release levels.
+
+In case of problems during upgrade, do not initiate a second upgrade to a
+newer/different release level. Two upgrades should never occur concurrently
+in normal usage. Nodes should never be upgraded to a third release without
+specific and explicit instructions from Technical Support. A case where
+that might occur is if an upgrade failed for some reason and a Hot Fix was
+required to continue the current cluster upgrade process to successful
+conclusion. BDR has been designed and tested with more than 2 release
+levels, but this cannot be relied upon for production usage except in
+specific cases.
+
+### Rolling Upgrade Using Node Join
+
+The other method of upgrading BDR software, along with or without upgrading
+the underlying PostgreSQL major version, is to join a new node
+to the cluster and later drop one of the existing nodes running
+the older version of the software. Even with this method, some features
+that are available only in the newer version of the software may remain
+unavailable until all nodes are finally upgraded to the newer versions.
+
+A new node running this release of BDR 4.0 can join a 3.7 cluster,
+where each node in the cluster is running the latest 3.7.x version of
+BDR. The joining node may run any of the supported PostgreSQL versions
+12-14 but mixing of PostgreSQL, EDB Postgres Extended and EDB Postgres Advanced
+is currently not supported.
+
+Care must be taken to not use features that are available only in
+the newer PostgreSQL versions, until all nodes are upgraded to the
+newer and same release of PostgreSQL. This is especially true for any
+new DDL syntax that may have been added to newer release of PostgreSQL.
+
+Note that `bdr_init_physical` makes a byte-by-byte of the source node.
+So it cannot be used while upgrading from one major PostgreSQL version
+to another. In fact, currently `bdr_init_physical` requires that even
+BDR version of the source and the joining node is exactly the same. So
+it cannot be used for rolling upgrades via joining a new node method. In
+all such cases, a logical join must be used.
+
+### Upgrading a CAMO-Enabled cluster
+
+CAMO protection requires at least one of the nodes of a CAMO pair to
+be operational.  For upgrades, we recommend to ensure that no CAMO
+protected transactions are running concurrent to the upgrade, or to
+use a rolling upgrade strategy, giving the nodes enough time to
+reconcile in between the upgrades and the corresponding node downtime
+due to the upgrade.
+
+Configuration of CAMO pairs has changed significantly compared to BDR
+3.7: instead of GUCs in postgresql.conf, the pairing is now stored in
+BDR system catalog `bdr.camo_pairs`.  To upgrade a BDR cluster with
+CAMO pairs from 3.7 to 4.0, the following steps need to be performed:
+
+-   Add new upgraded nodes to the cluster in a rolling upgrade fashion.
+-   Configure the new CAMO pairs with the `bdr.add_camo_pair()` function.
+-   Switch the application to the new nodes.
+-   Drop the old nodes.
+
+!!!Note
+  `bdr.camo_partner_of` and `bdr.camo_origin_for`  configurations are no
+  longer needed in BDR 4.0.
+
+## Upgrade Preparation
+
+Each major release of BDR contains several changes that may affect
+compatibility with
+previous releases.  These may affect the Postgres configuration,
+deployment scripts as well as applications using BDR.  We recommend to
+consider and possibly adjust in advance of the upgrade.
+
+### pglogical
+
+There is no pglogical4 and BDR4 will not work if any version of pglogical is
+loaded via `shared_preload_libraries` to the same instance of Postgres.
+
+### Node Management
+
+The `bdr.create_node_group()` function has seen a number of changes:
+
+-   It is now possible to create sub-groups, resulting in a tree-of-groups
+    structure of the whole BDR cluster. Monitoring views were updated
+    accordingly.
+-   The deprecated parameters `insert_to_update`, `update_to_insert`,
+    `ignore_redundant_updates`, `check_full_tuple` and `apply_delay` were
+    removed.  
+    Use `bdr.alter_node_set_conflict_resolver()` instead of `insert_to_update`,
+    `update_to_insert`. The `check_full_tuple` is no longer needed as it is
+    handled automatically based on table conflict detection configuration.
+
+### Conflicts
+
+The configuration of conflict resolution and logging is now copied from
+join source node to the newly joining node, rather than using defaults on the
+new node.
+
+The default conflict resolution for some of the conflict types was changed.
+See (conflicts.md#default-conflict-resolvers) for the new defaults.
+
+The conflict logging interfaces have changed from `bdr.alter_node_add_log_config`
+and `bdr.alter_node_remove_log_config` to `bdr.alter_node_set_log_config`.
+
+The default conflict logging table is now named `bdr.conflict_history` and the
+old `bdr.apply_log` no longer exists. The new table is partitioned using the
+Autopartition feature of BDR.
+
+All conflicts are now logged by default to both log file and the conflict
+table.
+
+Deprecated functions `bdr.row_version_tracking_enable()` and
+`bdr.row_version_tracking_disable()` were removed. Use
+`bdr.alter_table_conflict_detection()` instead.
+
+Some of the configuration for conflict handling is no longer stored in
+`pglogical` schema. Any diagnostic queries that were using the `pglogical`
+tables directly will have to switch to appropriate tables in `bdr` schema.
+Queries using `bdr.node_group`, `bdr.local_node_summary`,
+`bdr.local_node_summary` or
+`bdr.node_local_info` will need to use the new columns `sub_repsets` and
+`pub_repsets` instead of `replication_sets`.
+
+### Removed Or Renamed Settings (GUCs)
+
+All the `pglogical.` prefixed configuration variables were renamed to use `bdr.`
+prefix instead.
+
+## Server Software Upgrade
+
+The upgrade of BDR software on individual nodes happens in-place. There is no
+need for backup and restore when upgrading the BDR extension.
+!!!
+
+!!! Warning
+    This method cannot be currently used for upgrading BDR 3.7 to 4.0. Only
+    way to upgrade 3.7 to 4.0 is to join 4.0 nodes into BDR 3.7 cluster as
+    described in [Rolling Upgrade Using Node Join](#rolling_upgrade_using_node_join)
+    section. This restriction may be lifted in future versions of BDR 4.
+
+The first step in the upgrade is to install the new version of the BDR packages, which
+will install both the new binary and the extension SQL script. This step depends
+on the operating system used
+
+### Restart Postgres
+
+Upgrading the binary and extension scripts by itself does not upgrade BDR
+in the running instance of PostgreSQL. To do that, the PostgreSQL instance
+needs to be restarted so that the new BDR binary can be loaded (the BDR binary
+is loaded at the start of the PostgreSQL server). After that, the node is
+upgraded. The extension SQL upgrade scripts are executed automatically as
+needed.
+
+!!! Warning
+    It's important to never run the `ALTER EXTENSION ... UPDATE` command before the
+    PostgreSQL instance is restarted, as that will only upgrade the SQL-visible
+    extension but keep the old binary, which can cause unpredictable behaviour or
+    even crashes. The `ALTER EXTENSION ... UPDATE` command should never be needed;
+    BDR4 maintains the SQL-visible extension automatically as needed.
+
+### Upgrade Check and Validation
+
+After this procedure, your BDR node is upgraded. You can verify the current
+version of BDR4 binary like this:
+
+```sql
+SELECT bdr.bdr_version();
+```
+
+Always check the [monitoring](monitoring) after upgrade
+of a node to confirm that the upgraded node is working as expected.
+
+## Database Encoding
+
+We recommend using `UTF-8` encoding in all replicated databases.
+BDR does not support replication between databases with different
+encoding. There is currently no supported path to upgrade/alter encoding.
+
+Similar to the upgrade of BDR itself, there are two approaches to
+upgrading the application schema.  The simpler option is to stop all
+applications affected, preform the schema upgrade and restart the
+application upgraded to use the new schema variant.  Again, this
+imposes some downtime.
+
+To eliminate this downtime, BDR offers ways to perform a rolling
+application schema upgrade as documented in the following section.
+
+## Rolling Application Schema Upgrades
+
+By default, DDL will automatically be sent to all nodes. This can be
+controlled manually, as described in [DDL Replication](ddl), which
+could be used to create differences between database schemas across nodes.
+BDR is designed to allow replication to continue even while minor
+differences exist between nodes. These features are designed to allow
+application schema migration without downtime, or to allow logical
+standby nodes for reporting or testing.
+
+!!! Warning
+    Application Schema Upgrades are managed by the user, not by BDR.
+    Careful scripting will be required to make this work correctly
+    on production clusters. Extensive testing is advised.
+
+Details of this are covered here
+[Replicating between nodes with differences](appusage).
+
+When one node runs DDL that adds a new table, nodes that have not
+yet received the latest DDL will need to cope with the extra table.
+In view of this, the appropriate setting for rolling schema upgrades
+is to configure all nodes to apply the `skip` resolver in case of a
+`target_table_missing` conflict. This must be performed before any
+node has additional tables added, and is intended to be a permanent
+setting.
+
+This is done with the following query, that must be **executed
+separately on each node**, after replacing `node1` with the actual
+node name:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('node1',
+		'target_table_missing', 'skip');
+```
+
+When one node runs DDL that adds a column to a table, nodes that have not
+yet received the latest DDL will need to cope with the extra columns.
+In view of this, the appropriate setting for rolling schema
+upgrades is to configure all nodes to apply the `ignore` resolver in
+case of a `target_column_missing` conflict. This must be performed
+before one node has additional columns added and is intended to be a
+permanent setting.
+
+This is done with the following query, that must be **executed
+separately on each node**, after replacing `node1` with the actual
+node name:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('node1',
+		'target_column_missing', 'ignore');
+```
+
+When one node runs DDL that removes a column from a table, nodes that
+have not yet received the latest DDL will need to cope with the missing column.
+This situation will cause a `source_column_missing` conflict, which uses
+the `use_default_value` resolver. Thus, columns that neither
+accept NULLs nor have a DEFAULT value will require a two step process:
+
+1.  Remove NOT NULL constraint or add a DEFAULT value for a column
+    on all nodes.
+2.  Remove the column.
+
+Constraints can be removed in a rolling manner.
+There is currently no supported way for coping with adding table
+constraints in a rolling manner, one node at a time.
+
+When one node runs a DDL that changes the type of an existing column,
+depending on the existence of binary coercibility between the current
+type and the target type, the operation may not rewrite the underlying
+table data. In that case, it will be only a metadata update of the
+underlying column type. Rewrite of a table is normally restricted.
+However, in controlled DBA environments, it is possible to change
+the type of a column to an automatically castable one by adopting
+a rolling upgrade for the type of this column in a non-replicated
+environment on all the nodes, one by one. More details are provided in the
+[ALTER TABLE](ddl) section.

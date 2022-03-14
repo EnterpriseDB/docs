@@ -1,0 +1,83 @@
+---
+title: "Automatic conflict-resolution example"
+---
+
+<div id="auto_conflict_resolution_eg" class="registered_link"></div>
+
+This example shows a scenario where a transaction change originating from the first primary node is successfully applied to the second primary node but conflicts with the third primary node. The conflict is resolved automatically.
+
+The conflict resolution option is set to latest timestamp.
+
+
+ |  Timestamp        | Action                                                                                                                                                                                                                    |                                             |                                             |                                             |
+ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
+ | `t0`               |                                                                                                                                                                                                                     | id = 2, address = 'ADDR'                    | id = 2, address = 'ADDR'                    | id = 2, address = 'ADDR'
+ | `t1`               | **Node A:** UPDATE addrbook SET address = 'ADDR A' WHERE id = 2;                                                                                                                                                    | id = 2, address = **'ADDR A'**              | id = 2, address = 'ADDR'                    | id = 2, address = 'ADDR'                    |
+ | `t2`               | **Node C:** UPDATE addrbook SET address = 'ADDR C' WHERE id = 2;                                                                                                                                                    | id = 2, address = 'ADDR A'                  | id = 2, address = 'ADDR'                    | id = 2, address = **'ADDR C'**              |
+ | `t3`               | Synchronization pushes Node A changes to Node B. Changes successfully applied.                                                                                                                                      | id = 2, address = 'ADDR A'                  | id = 2, address = **'ADDR A'**              | id = 2, address = 'ADDR C'                  |
+ | `t4`               | Synchronization pushes Node A changes to Node C. Current address on Node C`<>` old value on Node A (``'ADDR C' <> 'ADDR'``) hence conflict detected. Latest change on Node C accepted and Node A change discarded. | id = 2, address = 'ADDR A'                  | id = 2, address = 'ADDR A'                  | id = 2, address = **'ADDR C'**              |
+ | `t5`               | No changes on Node B. Node C changes pushed to Node A that is successfully applied (Node A change already marked as discarded and hence is overwritten.)                                                            | id = 2, address = **'ADDR C'**              | id = 2, address = 'ADDR A'                  | id = 2, address = 'ADDR C'                  |
+ | `t6`               | Node C changes pushed to Node B that is successfully applied. All nodes are in sync and have consistent state.                                                                                                      | id = 2, address = 'ADDR C'                  | id = 2, address = **'ADDR C'**              | id = 2, address = 'ADDR C'                  |
+
+In a few situations, an update/update conflict might not be properly resolved according to the selected resolution options. 
+
+## Update/update conflict on column where new value is identical to original value
+
+Suppose there's an update to a publication table where the updated column value is the same as the original column value and then an update/update conflict occurs involving that column. It's possible that the final value of this column isn't set according to the chosen conflict resolution option in one of the conflicting primary nodes. This is a known limitation.
+
+For example, consider the following row in the dept table:
+
+```text
+deptno |   dname    |  loc
+--------+------------+--------
+     40 | OPERATIONS | BOSTON
+First, the following UPDATE statement is given in the primary definition node:
+edb=# UPDATE dept SET dname = 'OPERATIONS', loc = 'BEDFORD' WHERE deptno = 40;
+UPDATE 1
+edb=# SELECT * FROM dept WHERE deptno = 40;
+ deptno |   dname    |   loc
+--------+------------+---------
+     40 | OPERATIONS | BEDFORD
+(1 row)
+```
+
+!!! Note
+    The original value, `OPERATIONS`, of column `dname` is the same as the value to which it is changed in the `UPDATE` statement.
+
+The following `UPDATE` statement is then given in a second primary node:
+
+```text
+MMRnode=# UPDATE dept SET dname = 'LOGISTICS', loc = 'CAMBRIDGE' WHERE deptno = 40;
+UPDATE 1
+MMRnode=# SELECT * FROM dept WHERE deptno = 40;
+ deptno |   dname   |    loc
+--------+-----------+-----------
+     40 | LOGISTICS | CAMBRIDGE
+(1 row)
+```
+
+After a synchronization replication using the earliest timestamp conflict-resolution option, the row in the primary definition node retains the update performed on it as expected since the update on the primary definition node occurred first.
+
+```text
+edb=# SELECT * FROM dept WHERE deptno = 40;
+ deptno |   dname    |   loc
+--------+------------+---------
+     40 | OPERATIONS | BEDFORD
+(1 row)
+```
+
+However, the value of column `dname` in the second primary node remains set to `LOGISTICS`. It didn't revert to the value `OPERATIONS` from the primary definition node as would normally be expected on a conflicting column. However, as expected, the value in column `loc` revertes from `CAMBRIDGE` to the primary definition node value of `BEDFORD`.
+
+```text
+MMRnode=# SELECT * FROM dept WHERE deptno = 40;
+ deptno |   dname   |   loc
+--------+-----------+---------
+     40 | LOGISTICS | BEDFORD
+(1 row)
+```
+
+## Update/update conflict on primary key columns
+
+An update/update conflict on the primary key column might not resolve consistently resolved according to the selected resolution option. That is, the column values might differ for the same row across multiple primary nodes after the synchronization replication.
+
+In addition, this conflict might not appear under the **Conflict History** tab in the Replication Server console. Even if a conflict resolution entry does appear under the **Conflict History** tab, the actual primary key values might not be consistent across the nodes as implied by the conflict resolution.

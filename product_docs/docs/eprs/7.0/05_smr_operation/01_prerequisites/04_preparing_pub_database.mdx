@@ -1,0 +1,439 @@
+---
+title: "Preparing the publication database"
+---
+
+<div id="preparing_pub_database" class="registered_link"></div>
+
+Prepare the database that contains tables and views that will become members of publications.
+
+The tables and views to use for any given publication must all reside in the same database. This database becomes the publication database of that publication. You need a publication database user name with the following characteristics:
+
+-   The publication database user can connect to the publication database.
+-   The publication database user has the privileges to create control schema objects to store metadata used for controlling and tracking the replication process.
+-   The publication database user can read the tables and views that will become members of publications.
+-   For publications that use synchronization replication with the trigger-based method, the publication database user can create triggers on the publication tables. (For Oracle, the publication database user must have trigger creation privilege even for snapshot-only publications, although triggers are created only for publications using synchronization replication.)
+
+The examples used are based on the following:
+
+-   The publication database user name is pubuser.
+-   The tables and view used in publications reside in a schema named `edb`.
+-   Three tables named `dept`, `emp`, and `jobhist` are members of schema `edb`.
+-   One view named `salesemp` is a member of schema `edb`. This view is a `SELECT` statement over the `emp` table.
+-   The Oracle system identifier (SID) of the publication database is `xe`. The SQL Server publication database name is `edb`. The Postgres publication database name is `edb`. (The cases of Oracle as the publication database, SQL Server as the publication database, and Postgres as the publication database are presented with examples in this section.)
+
+<div id="oracle_pub_database" class="registered_link"></div>
+
+## Oracle publication database
+
+!!! Note
+    (For Oracle 12c): The Oracle 12c multitenant architecture introduces the concept of the container database (CDB), which can contain multiple pluggable databases (PDBs). You can use a pluggable database as a publication database or a subscription database in a single-master replication system.
+
+Oracle 12c still supports the use of a single database referred to as a non-container database (non-CDB) that is compatible with Oracle versions prior to 12c. You can also use an Oracle 12c non-container database as a publication database or a subscription database in a single-master replication system.
+
+The setup instructions for using an Oracle 12c publication database or subscription database are the same as for previous Oracle versions. Any special distinctions are indicated by a note in the instructions.
+
+**Step 1:** Create a database user name for the publication database user. The publication database user name must have a password, and it must be able to create a database session. The publication database user becomes the owner of the control schema objects that are created in the publication database to track, control, and record the replication process and history.
+
+!!! Note
+    For Oracle 12c pluggable database: The publication database user can be an Oracle local user or a common user. The local user exists in and has access to only a single, user-created pluggable database (PDB) to use as the publication database. Common user names typically begin with `C##` or `c##` and can access multiple pluggable databases.
+
+!!! Note
+    For Oracle 12c pluggable database: You must create and grant privileges for a local user while connected to the pluggable database to use as the publication database. Create a common user in the Oracle 12c root container `CDB$ROOT`. Grant privileges to the common user while connected to the pluggable database to  use as the publication database.
+
+!!! Note
+    For Oracle 12c non-container database: Create and grant privileges to the publication database user in the same manner as for Oracle versions prior to 12c.
+
+When creating the publication database definition, enter the publication database user name in the Publication Service – Add Database dialog box (see [Adding a publication database](../02_creating_publication/02_adding_pub_database/#adding_pub_database)).
+
+```text
+CREATE USER pubuser IDENTIFIED BY password;
+GRANT CONNECT TO pubuser;
+```
+
+**Step 2:** Grant the privileges needed to create the control schema objects. The control schema objects are created in the schema owned by, and with the same name as, the publication database user. That is, the publication database user’s schema is the control schema for an Oracle publication database.
+
+```text
+GRANT RESOURCE TO pubuser;
+```
+
+**Step 3:** Grant the privileges required to create triggers on the publication tables. Grant the `CREATE ANY TRIGGER` privilege to the publication database user.
+
+```text
+GRANT CREATE ANY TRIGGER TO pubuser;
+```
+
+**Step 4:** Grant the privileges required to lock publication tables when creating triggers. Grant the `LOCK ANY TABLE` privilege to the publication database user.
+
+```text
+GRANT LOCK ANY TABLE TO pubuser;
+```
+
+**Step 5 (For Oracle 12c onward):** Grant the privileges required to access tablespaces. Grant the `GRANT UNLIMITED TABLESPACE` privilege to the publication database user. This requirement applies to both a pluggable database and a non-container database.
+
+```text
+GRANT UNLIMITED TABLESPACE TO pubuser;
+```
+**Step 6 (For Oracle 19c onward):** The `CREATE JOB` privilege is needed for the publication database user to schedule a job.
+
+This requirement applies to both pluggable and non-container databases.
+
+```text
+GRANT CREATE JOB TO pubuser;
+```
+
+**Step 7:** The publication database user must be able to read the tables and views to include in publications.
+
+```text
+GRANT SELECT ON edb.dept TO pubuser;
+GRANT SELECT ON edb.emp TO pubuser;
+GRANT SELECT ON edb.jobhist TO pubuser;
+GRANT SELECT ON edb.salesemp TO pubuser;
+```
+
+**Step 8 (Optional):** Create one or more `group` roles containing the required privileges to access the tables and views of the publications needed by application users.
+
+Using roles is convenient if you want to add new application users who need privileges to select, insert, update, or delete from any of the publication tables. A role containing the required privileges can then be granted to the new users instead of granting each privilege to each user.
+
+The following example shows creating the role and granting the privileges on the publication tables to the role:
+
+```text
+CREATE ROLE appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.salesemp TO appgroup;
+```
+
+The following example shows creating a new user and granting the new role to the user:
+
+```text
+CREATE USER appuser IDENTIFIED BY password;
+GRANT CREATE SESSION TO appuser;
+GRANT appgroup TO appuser;
+```
+
+<div id="sql_server_pub_db" class="registered_link"></div>
+
+## SQL Server publication database
+
+In SQL Server, an application gains access to the database server by supplying a SQL Server login and its associated password.
+
+When an application connects to a particular database, the application assumes the identity and privileges of a database user that was defined in that database. The database users in any given database are independent of database users in other databases with respect to their properties such as their role memberships and privileges. In fact, you can define the same database user name in more than one database, each with its own distinct properties.
+
+In each database, you can map a database user to a SQL Server login. When an application connects to a database using a SQL Server login to which a database user is mapped, the application assumes the identity and privileges of that database user.
+
+When using a SQL Server database as the publication database, you must define a number of database users and map them to a SQL Server login according to the following rules:
+
+-   A SQL Server login must exist for the publication server to use to connect to SQL Server. You specify the SQL Server login and password when creating the publication database definition.
+-   In the publication database, a database user must exist who is the creator and owner of the control schema objects. Map this database user to the SQL Server login used by the publication server.
+-   A schema must exist to contain certain control schema objects. The database user described in the preceding bullet point must either own this schema or have certain privileges on it so that they can create and update the control schema objects in this schema. This schema is one physical schema component of the overall control schema, and you must also define it as the default schema of that database user. The other physical schemas comprising the overall control schema are always created by the publication server as `_edb_replicator_pub`, `_edb_replicator_sub`, and `_edb_scheduler`.
+-   The SQL Server database users that update the data in the application tables to replicate must have certain privileges on the control schema objects. When an update on a replicated table occurs, a trigger activates that accesses and updates certain control schema objects. Grant the appropriate privileges to SQL Server database users who require update access to the application tables.
+-   A database user must exist in the `msdb` database that is mapped to the SQL Server login used by the publication server. This database user must have certain privileges to execute jobs in the dbo schema of the `msdb` database. (SQL Server Agent uses the `msdb` database to schedule alerts and jobs. SQL Server Agent runs as a Windows service.)
+
+This example uses the following SQL Server login, database users, and mappings to comply with these rules:
+
+-   The publication tables reside in database `edb`.
+-   The database user owning the schema containing the publication tables and the publication tables, themselves, is edb.
+-   The SQL Server login used by the publication server to connect to SQL Server is pubuser.
+-   The database user owning the control schema objects and mapped to SQL Server login pubuser in database `edb` is pubuser.
+-   The control schema used to contain certain control schema objects created by the publication server is pubuser. Other control schema objects are always created in `_edb_replicator_pub`, `_edb_replicator_sub`, and `_edb_scheduler`.
+-   The database user mapped to SQL Server login pubuser in database `msdb` is pubuser_msdb.
+
+!!! Note
+    The `sqlcmd` utility program is used to execute the SQL statements in these examples. The `USE` command establishes the database to which to apply the subsequent statements. The `GO` command executes the preceding SQL statements as a batch. Placement of the `GO` command in a stream of SQL statements is sometimes important, depending on the SQL statements.
+
+**Step 1:** Create a SQL Server login for the Replication Server publication database user. The login must have a password. 
+
+When creating the publication database definition, enter the SQL Server login in the Publication Service – Add Database dialog box (see [Adding a publication database](../02_creating_publication/02_adding_pub_database/#adding_pub_database).
+
+```text
+USE primary;
+GO
+CREATE LOGIN pubuser WITH PASSWORD = 'password';
+GO
+```
+
+**Step 2:** Create the database user and its required privileges for job scheduling in database `msdb`:
+
+```text
+USE msdb;
+GO
+CREATE USER pubuser_msdb FOR LOGIN pubuser;
+GO
+GRANT EXECUTE ON SCHEMA :: dbo TO pubuser_msdb;
+GRANT SELECT ON SCHEMA :: dbo TO pubuser_msdb;
+GO
+```
+
+**Step 3:** Create the database user for the control schema object creation and ownership. Create the control schema objects in the publication database to track, control, and record the replication process and history. This example assumes some of the control schema objects are created in the schema named `pubuser`.
+
+!!! Note
+    The schema name you specify in the `WITH DEFAULT_SCHEMA` clause must be the schema you choose in Step 5. This schema doesn't have to exist before you use it in the `CREATE USER FOR LOGIN WITH DEFAULT_SCHEMA` statement.
+
+```text
+USE edb;
+GO
+CREATE USER pubuser FOR LOGIN pubuser WITH DEFAULT_SCHEMA = pubuser;
+GO
+```
+
+!!! Note
+    The remaining steps assume that the commands are given in the publication database (that is, the `USE edb` command was previously given to establish the publication database `edb` as the current database.)
+
+**Step 4:** Grant the database level privileges needed by the publication database user to create the control schema objects.
+
+```text
+GRANT CREATE TABLE TO pubuser;
+GRANT CREATE PROCEDURE TO pubuser;
+GRANT CREATE FUNCTION TO pubuser;
+GRANT CREATE SCHEMA TO pubuser;
+GO
+```
+
+**Step 5:** Choose the control schema for some of the control schema objects.
+
+To create the control schema objects in a new schema owned by the publication database user and created exclusively for this purpose (recommended approach) use the following command:
+
+```text
+CREATE SCHEMA pubuser AUTHORIZATION pubuser;
+GO
+```
+
+Alternatively, to create the control schema objects in an existing schema, such as in the same schema containing the publication tables (schema `edb` in this example), use the following commands:
+
+```text
+GRANT ALTER   ON SCHEMA :: edb TO pubuser;
+GRANT EXECUTE ON SCHEMA :: edb TO pubuser;
+GRANT SELECT  ON SCHEMA :: edb TO pubuser;
+GRANT INSERT  ON SCHEMA :: edb TO pubuser;
+GRANT UPDATE  ON SCHEMA :: edb TO pubuser;
+GRANT DELETE  ON SCHEMA :: edb TO pubuser;
+GO
+```
+
+**Step 6:** Grant the privileges required to create triggers on the publication tables. The publication database user must have the ALTER privilege on the publication tables.
+
+```text
+GRANT ALTER ON edb.dept TO pubuser;
+GRANT ALTER ON edb.emp TO pubuser;
+GRANT ALTER ON edb.jobhist TO pubuser;
+GO
+```
+
+**Step 7:** The publication database user must be able to read the tables and views to include in publications.
+
+```text
+GRANT SELECT ON edb.dept TO pubuser;
+GRANT SELECT ON edb.emp TO pubuser;
+GRANT SELECT ON edb.jobhist TO pubuser;
+GRANT SELECT ON edb.salesemp TO pubuser;
+GO
+```
+
+**Step 8 (Optional):** Create one or more `group` roles containing the required privileges to access the tables and views of the publications needed by application users.
+
+!!! Note
+    You can create these roles only after creating the SQL Server publication database definition using the Replication Server console or CLI. For example, see [Adding a publication database](../02_creating_publication/03_adding_publication/#adding_publication) for how to use the Replication Server console.
+
+Using roles is convenient if you want to add new application users who need privileges to select, insert, update, or delete from any of the publication tables. You can then grant a role containing the required privileges to the new users instead of granting each privilege to each user.
+
+In addition to privileges on the publication tables, any user performing an insert, update, or delete operation on any of the publication tables requires privileges to certain control schema objects of the publication.
+
+The following example shows creating the role `appgroup` and granting privileges on the publication tables to the role. The example assumes that, in Step 5, schema pubuser was chosen as the control schema to store some of the control schema objects.
+
+```text
+CREATE ROLE appgroup AUTHORIZATION edb;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.salesemp TO appgroup;
+GRANT EXECUTE ON SCHEMA :: _edb_replicator_pub TO appgroup;
+GRANT SELECT  ON SCHEMA :: _edb_replicator_pub TO appgroup;
+GRANT INSERT  ON SCHEMA :: _edb_replicator_pub TO appgroup;
+GRANT UPDATE  ON SCHEMA :: _edb_replicator_pub TO appgroup;
+GRANT INSERT  ON SCHEMA :: pubuser TO appgroup;
+GO
+```
+
+The following example shows creating a new login and database user and adding the database user as a member of the role to inherit its privileges:
+
+```text
+CREATE LOGIN applogin WITH PASSWORD = 'password', DEFAULT_DATABASE = edb;
+CREATE USER appuser FOR LOGIN applogin WITH DEFAULT_SCHEMA = edb;
+EXEC sp_addrolemember @rolename = 'appgroup', @membername = 'appuser';
+GO
+```
+
+!!! Note
+    Granting privileges to individual users: As previously described, each application database user that modifies the data in any of the publication tables needs certain privileges on the publication tables and the control schema objects. Using a group role for this purpose as described earlier in this step helps simplify this process.
+
+You can grant individual database users the privileges to access the publication tables and the controls schema objects in a similar fashion.
+
+The following example shows creating a new login and database user and granting the privileges on the publication tables and the control schema objects to the user:
+
+```text
+CREATE LOGIN newlogin WITH PASSWORD = 'password', DEFAULT_DATABASE = edb;
+CREATE USER newuser FOR LOGIN newlogin WITH DEFAULT_SCHEMA = edb;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.salesemp TO newuser;
+GRANT EXECUTE ON SCHEMA :: _edb_replicator_pub TO newuser;
+GRANT SELECT  ON SCHEMA :: _edb_replicator_pub TO newuser;
+GRANT INSERT  ON SCHEMA :: _edb_replicator_pub TO newuser;
+GRANT UPDATE  ON SCHEMA :: _edb_replicator_pub TO newuser;
+GRANT INSERT  ON SCHEMA :: pubuser TO newuser;
+GO
+```
+
+!!! Note
+    Instead of using the preceding statements, which grant privileges at the schema level, you can issue a more granular level of privileges at the database object level using the following statements:
+
+```text
+CREATE LOGIN newlogin WITH PASSWORD = 'password', DEFAULT_DATABASE = edb;
+CREATE USER newuser FOR LOGIN newlogin WITH DEFAULT_SCHEMA = edb;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.salesemp TO newuser;
+GRANT INSERT  ON pubuser.rrst_edb_dept TO newuser;
+GRANT INSERT  ON pubuser.rrst_edb_emp TO newuser;
+GRANT INSERT  ON pubuser.rrst_edb_jobhist TO newuser;
+GO
+```
+
+In addition, depending on the version of SQL Server, grant the following privileges. Using this approach, however, requires you to issue additional privileges for each application table that is later added to the publication.
+
+**For SQL Server 2008:** 
+
+```text
+GRANT EXECUTE ON _edb_replicator_pub.nextval TO newuser;
+GRANT SELECT  ON _edb_replicator_pub.rrep_tx_seq TO newuser;
+GRANT INSERT  ON _edb_replicator_pub.rrep_tx_seq TO newuser;
+GO
+```
+
+**For SQL Server 2012, 2014:** 
+
+```text
+GRANT UPDATE ON _edb_replicator_pub.rrep_tx_seq TO newuser;
+GRANT UPDATE ON _edb_replicator_pub.rrep_txset_seq TO newuser;
+GRANT UPDATE ON _edb_replicator_pub.rrep_common_seq TO newuser;
+GO
+```
+
+
+<div id="postgres_pub_db" class="registered_link"></div>
+
+## Postgres publication database
+
+When creating the publication database definition, you must specify a database user name that has the following characteristics:
+
+-   The database user can connect to the publication database.
+-   The database user has superuser privileges. Superuser privileges are required because the database configuration parameter `session_replication_role` is altered by the database user to replica for snapshot operations involving replication of the control schema from one publication database to another.
+-   The database user must have the ability to modify the system catalog tables to disable foreign key constraints on the control schema tables for snapshot operations involving replication of the control schema from one publication database to another. See [Disabling foreign key constraints for snapshot replications](../../10_appendix/04_miscellaneous_xdb_processing_topics/04_disable_foreign_key_constraints_for_snapshot_replication/#disable_foreign_key_constraints_for_snapshot_replication) for more information on this requirement.
+
+**Step 1:** Create a database superuser for the publication database user. The publication database user name must have a password, and it must have the ability to create a database session. The publication database user becomes the owner of the control schema objects created in the publication database to track, control, and record the replication process and history.
+
+When creating the publication database definition, enter the publication database user name in the Publication Service – Add Database dialog box. See [Adding a publication database](../02_creating_publication/02_adding_pub_database/#adding_pub_database).
+
+```text
+CREATE ROLE pubuser WITH LOGIN SUPERUSER PASSWORD 'password';
+```
+
+**Step 2 (Optional):** Create one or more `group` roles containing the required privileges to access the tables and views of the publications needed by application users.
+
+!!! Note
+    The process described in this step applies to Postgres publications in both single-master and multi-master replication systems.
+
+Using roles is convenient if you want to add new application users who need privileges to select, insert, update, or delete from any of the publication tables. You can then grant a role containing the required privileges to the new users instead of granting each privilege to each user.
+
+Any user performing an insert, update, or delete operation on any of the publication tables requires privileges on the publication tables and its schema as well as to certain control schema objects of the publication. These control schema objects reside under schema `_edb_replicator_pub`.
+
+The following example shows creating the role `appgroup` and granting privileges on the publication tables to the role.
+
+```text
+CREATE ROLE appgroup;
+GRANT USAGE ON SCHEMA edb TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO appgroup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.salesemp TO appgroup;
+```
+
+In addition, for the log-based method of synchronization replication, if the `TRUNCATE` command is permitted on the publication tables, grant the following privileges:
+
+```text
+GRANT TRUNCATE ON edb.dept TO appgroup;
+GRANT TRUNCATE ON edb.emp TO appgroup;
+GRANT TRUNCATE ON edb.jobhist TO appgroup;
+```
+
+Also, for the log-based method of synchronization replication for use of the `TRUNCATE` command, grant the following privileges after creating the publication database definition. See [Adding a publication database](../02_creating_publication/03_adding_publication/#adding_publication) for information on creating the publication database definition for a single-master replication system. For a multi-master replication system, see [Adding the primary definition node](../../06_mmr_operation/02_creating_publication_mmr/#adding_pdn).
+
+```text
+GRANT USAGE ON SCHEMA _edb_replicator_pub TO appgroup;
+GRANT INSERT ON _edb_replicator_pub.rrep_wal_events_queue TO appgroup;
+```
+
+Finally, grant the group role to the desired database users. The following example shows creating a new user and granting the role to the user:
+
+```text
+CREATE ROLE appuser WITH LOGIN PASSWORD 'password';
+GRANT appgroup TO appuser;
+```
+
+!!! Note
+    Granting privileges to roles after creating a publication: Create roles for containing publication table privileges before you create the publication. See [Adding a publication](../02_creating_publication/03_adding_publication/#adding_publication) for information on creating a publication for a single-master replication system. For a multi-master replication system, see [Adding a publication](../../06_mmr_operation/02_creating_publication_mmr/#add_pub_mmr).)
+
+When you create the publication, the privileges that are granted on the publication tables to roles that exist at the time are applied to the control schema objects for those roles. So for the preceding example, the privileges required on the control schema objects for any publication created using `edb.dept`, `edb.emp`, `edb.jobhist`, or `edb.salesemp` are granted to role `appgroup` when you create that publication.
+
+If, however, you create a role after the publication is created, you must explicitly grant the needed privileges on the publication tables and control schema objects to the new role.
+
+When using the trigger-based method of synchronization replication, grant a role the following privileges on the control schema objects:
+
+-   `USAGE` privilege on schema `_edb_replicator_pub`.
+-   `USAGE` privilege on sequence `rrep_tx_seq`.
+-   `INSERT` privileges on the shadow tables corresponding to publication tables in which the role will be inserting, updating, or deleting rows. Shadow tables follow the naming convention `rrst_schema_table`. Shadow tables exist only when using the trigger-based method of synchronization.
+
+The following example shows creating a new role and granting the privileges on the publication tables and the control schema objects to the role for the trigger-based method of synchronization replication:
+
+```text
+CREATE ROLE newuser WITH LOGIN PASSWORD 'password';
+GRANT USAGE ON SCHEMA edb TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO newuser;
+GRANT USAGE ON SCHEMA _edb_replicator_pub TO newuser;
+GRANT USAGE ON SEQUENCE _edb_replicator_pub.rrep_tx_seq TO newuser;
+GRANT INSERT ON _edb_replicator_pub.rrst_edb_dept TO newuser;
+GRANT INSERT ON _edb_replicator_pub.rrst_edb_emp TO newuser;
+GRANT INSERT ON _edb_replicator_pub.rrst_edb_jobhist TO newuser;
+```
+
+When using the log-based method, a role needs access to the publication tables and to certain control schema objects as well under certain circumstances.
+
+When using the log-based method of synchronization replication, you must grant a role the following privileges on the control schema objects if the role is permitted to use the TRUNCATE command on the publication tables:
+
+-   `USAGE privilege on schema _edb_replicator_pub`
+-   `INSERT` privilege on table `_edb_replicator_pub.rrep_wal_events_queue`
+
+The following example shows creating a new role and granting the privileges on the publication tables to the role for the log-based method of synchronization replication:
+
+```text
+CREATE ROLE newuser WITH LOGIN PASSWORD 'password';
+GRANT USAGE ON SCHEMA edb TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.dept TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.emp TO newuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON edb.jobhist TO newuser;
+```
+
+In addition, if the `TRUNCATE` command is permitted on the publication tables, grant the following privileges:
+
+```text
+GRANT TRUNCATE ON edb.dept TO newuser;
+GRANT TRUNCATE ON edb.emp TO newuser;
+GRANT TRUNCATE ON edb.jobhist TO newuser;
+GRANT USAGE ON SCHEMA _edb_replicator_pub TO newuser;
+GRANT INSERT ON _edb_replicator_pub.rrep_wal_events_queue TO newuser;
+```
