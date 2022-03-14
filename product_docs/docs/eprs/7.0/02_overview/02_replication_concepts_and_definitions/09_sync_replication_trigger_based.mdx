@@ -1,0 +1,39 @@
+---
+title: "Synchronization replication with the trigger-based method"
+---
+
+<div id="sync_replication_trigger_based" class="registered_link"></div>
+
+If a publication in a single-master replication system is created for use in synchronization replications with the trigger-based method, the publication server installs an insert trigger, an update trigger, and a delete trigger on each publication table. In a multi-master replication system, each replicated table in each primary node using the trigger-based method has an insert trigger, an update trigger, and a delete trigger.
+
+The publication server also creates a shadow table for each source table on which triggers were created. A shadow table is a table used by Replication Server to record the changes (inserts, updates, and deletions) made to a given source table. A shadow table records three types of record images: 
+
+- For each row inserted into the source table, the shadow table records the image of the inserted row. 
+
+- For each existing row that is updated in the source table, the shadow table records the after image of the updated row. 
+
+- For each row deleted from the source table, the shadow table records the identity columns (primary key or unique columns) value of the deleted row. 
+
+
+!!! Note
+    In a multi-master replication system, the before image of an updated row is also stored in the shadow table to perform update conflict detection. See [Conflict resolution](../../06_mmr_operation/06_conflict_resolution/#conflict_resolution) for information on conflict detection in a multi-master replication system.
+
+After each change on the source table, one of the insert, update, or delete triggers executes. These are row triggers, so for each row affected by the change, the trigger executes. Each execution of the trigger records a row of the appropriate type (insert, update, or deletion) in the shadow table of the corresponding source table.
+
+Though changes made to the source tables since the last replication occurred are applied to the target tables using `SQL INSERT` `UPDATE`, and `DELETE` statements, the actual SQL statements run against the target tables aren't the same SQL statements that were run against the source tables.
+
+When synchronization replication occurs, the publication server executes JDBC batches of SQL statements (also referred to as transaction sets) against the target tables. The batches contain:
+
+-  An `INSERT` statement for each shadow table row recording an insert operation 
+-  An `UPDATE` statement for each shadow table row recording an update operation
+-  A `DELETE` statement for each shadow table row recording a delete operation. 
+
+Each batch is executed in one transaction.
+
+You can view shadow table rows that were applied to target tables as shadow table history in the Replication Server console (see [Shadow table history](../../07_common_operations/04_view_replication_history/#shadow_table_history)).
+
+!!! Note
+    A single SQL statement executed against a source table can result in many rows recorded in a shadow table and, therefore, many SQL statements executed against the target table. For example, if a single `UPDATE` statement affects 10 rows in the source table, 10 rows are inserted into the shadow table, one for each row in the source table that was updated. When the publication server applies the changes to the target table, 10 `UPDATE` statements execute.
+
+!!! Note
+    For greater efficiency, when changes to the source tables consist of SQL statements that each affect a large number of rows, the publication server can use prepared SQL statements. See [Optimizing synchronization replication](../../05_smr_operation/08_optimizing_performance/02_optimize_sync_replication/#optimize_sync_replication) for directions on how to control the use of prepared SQL statements as well as information on various other configuration options to optimize synchronization replication.

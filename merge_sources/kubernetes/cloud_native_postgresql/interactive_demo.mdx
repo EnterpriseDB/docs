@@ -38,26 +38,25 @@ k3d cluster create
 __OUTPUT__
 INFO[0000] Prep: Network                                
 INFO[0000] Created network 'k3d-k3s-default'            
-INFO[0000] Created volume 'k3d-k3s-default-images'      
+INFO[0000] Created image volume k3d-k3s-default-images  
 INFO[0000] Starting new tools node...                   
-INFO[0000] Pulling image 'docker.io/rancher/k3d-tools:5.1.0' 
+INFO[0001] Pulling image 'docker.io/rancher/k3d-tools:5.3.0' 
 INFO[0001] Creating node 'k3d-k3s-default-server-0'     
-INFO[0001] Pulling image 'docker.io/rancher/k3s:v1.21.5-k3s2' 
-INFO[0002] Starting Node 'k3d-k3s-default-tools'        
-INFO[0006] Creating LoadBalancer 'k3d-k3s-default-serverlb' 
-INFO[0007] Pulling image 'docker.io/rancher/k3d-proxy:5.1.0' 
-INFO[0011] Using the k3d-tools node to gather environment information 
-INFO[0011] HostIP: using network gateway...             
-INFO[0011] Starting cluster 'k3s-default'               
-INFO[0011] Starting servers...                          
-INFO[0011] Starting Node 'k3d-k3s-default-server-0'     
-INFO[0018] Starting agents...                           
-INFO[0018] Starting helpers...                          
-INFO[0018] Starting Node 'k3d-k3s-default-serverlb'     
-INFO[0024] Injecting '172.19.0.1 host.k3d.internal' into /etc/hosts of all nodes... 
-INFO[0024] Injecting records for host.k3d.internal and for 2 network members into CoreDNS configmap... 
-INFO[0025] Cluster 'k3s-default' created successfully!  
-INFO[0025] You can now use it like this:                
+INFO[0002] Pulling image 'docker.io/rancher/k3s:v1.22.6-k3s1' 
+INFO[0017] Creating LoadBalancer 'k3d-k3s-default-serverlb' 
+INFO[0018] Pulling image 'docker.io/rancher/k3d-proxy:5.3.0' 
+INFO[0028] Using the k3d-tools node to gather environment information 
+INFO[0082] Starting Node 'k3d-k3s-default-tools'        
+INFO[0083] HostIP: using network gateway 172.19.0.1 address 
+INFO[0083] Starting cluster 'k3s-default'               
+INFO[0083] Starting servers...                          
+INFO[0083] Starting Node 'k3d-k3s-default-server-0'     
+INFO[0091] All agents already running.                  
+INFO[0091] Starting helpers...                          
+INFO[0091] Starting Node 'k3d-k3s-default-serverlb'     
+INFO[0098] Injecting records for hostAliases (incl. host.k3d.internal) and for 2 network members into CoreDNS configmap... 
+INFO[0100] Cluster 'k3s-default' created successfully!  
+INFO[0101] You can now use it like this:
 kubectl cluster-info
 ```
 
@@ -68,7 +67,7 @@ Verify that it works with the following command:
 kubectl get nodes
 __OUTPUT__
 NAME                       STATUS   ROLES                  AGE   VERSION
-k3d-k3s-default-server-0   Ready    control-plane,master   16s   v1.21.5+k3s2
+k3d-k3s-default-server-0   Ready    control-plane,master   59s   v1.22.6+k3s1
 ```
 
 You will see one node called `k3d-k3s-default-server-0`. If the status isn't yet "Ready", wait for a few seconds and run the command above again.
@@ -78,7 +77,7 @@ You will see one node called `k3d-k3s-default-server-0`. If the status isn't yet
 Now that the Kubernetes cluster is running, you can proceed with Cloud Native PostgreSQL installation as described in the ["Installation and upgrades"](installation_upgrade.md) section:
 
 ```shell
-kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.10.0.yaml
+kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.13.0.yaml
 __OUTPUT__
 namespace/postgresql-operator-system created
 customresourcedefinition.apiextensions.k8s.io/backups.postgresql.k8s.enterprisedb.io created
@@ -88,6 +87,7 @@ customresourcedefinition.apiextensions.k8s.io/scheduledbackups.postgresql.k8s.en
 serviceaccount/postgresql-operator-manager created
 clusterrole.rbac.authorization.k8s.io/postgresql-operator-manager created
 clusterrolebinding.rbac.authorization.k8s.io/postgresql-operator-manager-rolebinding created
+configmap/postgresql-operator-default-monitoring created
 service/postgresql-operator-webhook-service created
 deployment.apps/postgresql-operator-controller-manager created
 mutatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-mutating-webhook-configuration created
@@ -153,8 +153,8 @@ immediately after applying the cluster configuration you'll see the status as `I
 ```shell
 kubectl get pods
 __OUTPUT__
-NAME                             READY   STATUS            RESTARTS   AGE
-cluster-example-1-initdb-kq2vw   0/1     PodInitializing   0          18s
+NAME                             READY   STATUS    RESTARTS   AGE
+cluster-example-1-initdb-ftcsq   0/1     Pending   0          5s
 ```
 
 ...give it a minute, and then check on it again:
@@ -180,12 +180,12 @@ metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
       {"apiVersion":"postgresql.k8s.enterprisedb.io/v1","kind":"Cluster","metadata":{"annotations":{},"name":"cluster-example","namespace":"default"},"spec":{"instances":3,"primaryUpdateStrategy":"unsupervised","storage":{"size":"1Gi"}}}
-  creationTimestamp: "2021-11-12T05:56:37Z"
+  creationTimestamp: "2022-02-17T18:40:51Z"
   generation: 1
   name: cluster-example
   namespace: default
-  resourceVersion: "2005"
-  uid: 621d46bc-8a3b-4039-a9f3-6f21ab4ef68d
+  resourceVersion: "2004"
+  uid: a069be02-7fe7-43db-8fb8-bdd888e7e413
 spec:
   affinity:
     podAntiAffinityType: preferred
@@ -204,10 +204,18 @@ spec:
   logLevel: info
   maxSyncReplicas: 0
   minSyncReplicas: 0
+  monitoring:
+    customQueriesConfigMap:
+    - key: queries
+      name: postgresql-operator-default-monitoring
+    disableDefaultQueries: false
+    enablePodMonitor: false
   postgresGID: 26
   postgresUID: 26
   postgresql:
     parameters:
+      archive_mode: "on"
+      dynamic_shared_memory_type: posix
       log_destination: csvlog
       log_directory: /controller/log
       log_filename: postgres
@@ -218,8 +226,11 @@ spec:
       max_parallel_workers: "32"
       max_replication_slots: "32"
       max_worker_processes: "32"
+      shared_memory_type: mmap
       shared_preload_libraries: ""
       wal_keep_size: 512MB
+      wal_receiver_timeout: 5s
+      wal_sender_timeout: 5s
   primaryUpdateStrategy: unsupervised
   resources: {}
   startDelay: 30
@@ -227,13 +238,14 @@ spec:
   storage:
     resizeInUseVolumes: true
     size: 1Gi
+  switchoverDelay: 40000000
 status:
   certificates:
     clientCASecret: cluster-example-ca
     expirations:
-      cluster-example-ca: 2022-02-10 05:51:37 +0000 UTC
-      cluster-example-replication: 2022-02-10 05:51:37 +0000 UTC
-      cluster-example-server: 2022-02-10 05:51:37 +0000 UTC
+      cluster-example-ca: 2022-05-18 18:35:52 +0000 UTC
+      cluster-example-replication: 2022-05-18 18:35:52 +0000 UTC
+      cluster-example-server: 2022-05-18 18:35:52 +0000 UTC
     replicationTLSSecret: cluster-example-replication
     serverAltDNSNames:
     - cluster-example-rw
@@ -247,11 +259,13 @@ status:
     - cluster-example-ro.default.svc
     serverCASecret: cluster-example-ca
     serverTLSSecret: cluster-example-server
-  cloudNativePostgresqlCommitHash: f616a0d
-  cloudNativePostgresqlOperatorHash: 02abbad9215f5118906c0c91d61bfbdb33278939861d2e8ea21978ce48f37421
-  configMapResourceVersion: {}
+  cloudNativePostgresqlCommitHash: b1f8f808
+  cloudNativePostgresqlOperatorHash: c32c7516c519718e892658688ebdeeb2bf0b1859bdf3a3e95d28dbb2f6b16455
+  configMapResourceVersion:
+    metrics:
+      postgresql-operator-default-monitoring: "987"
   currentPrimary: cluster-example-1
-  currentPrimaryTimestamp: "2021-11-12T05:57:15Z"
+  currentPrimaryTimestamp: "2022-02-17T18:41:34Z"
   healthyPVC:
   - cluster-example-1
   - cluster-example-2
@@ -266,7 +280,7 @@ status:
   licenseStatus:
     isImplicit: true
     isTrial: true
-    licenseExpiration: "2021-12-12T05:56:37Z"
+    licenseExpiration: "2022-03-19T18:40:51Z"
     licenseStatus: Implicit trial license
     repositoryAccess: false
     valid: true
@@ -277,14 +291,14 @@ status:
   readService: cluster-example-r
   readyInstances: 3
   secretsResourceVersion:
-    applicationSecretVersion: "934"
-    clientCaSecretVersion: "930"
-    replicationSecretVersion: "932"
-    serverCaSecretVersion: "930"
-    serverSecretVersion: "931"
-    superuserSecretVersion: "933"
+    applicationSecretVersion: "953"
+    clientCaSecretVersion: "949"
+    replicationSecretVersion: "951"
+    serverCaSecretVersion: "949"
+    serverSecretVersion: "950"
+    superuserSecretVersion: "952"
   targetPrimary: cluster-example-1
-  targetPrimaryTimestamp: "2021-11-12T05:56:38Z"
+  targetPrimaryTimestamp: "2022-02-17T18:40:52Z"
   writeService: cluster-example-rw
 ```
 
@@ -311,7 +325,7 @@ curl -sSfL \
   sudo sh -s -- -b /usr/local/bin
 __OUTPUT__
 EnterpriseDB/kubectl-cnp info checking GitHub for latest tag
-EnterpriseDB/kubectl-cnp info found version: 1.10.0 for v1.10.0/linux/x86_64
+EnterpriseDB/kubectl-cnp info found version: 1.13.0 for v1.13.0/linux/x86_64
 EnterpriseDB/kubectl-cnp info installed /usr/local/bin/kubectl-cnp
 ```
 
@@ -320,25 +334,39 @@ The `cnp` command is now available in kubectl:
 ```shell
 kubectl cnp status cluster-example
 __OUTPUT__
-Cluster in healthy state   
-Name:              cluster-example
-Namespace:         default
-PostgreSQL Image:  quay.io/enterprisedb/postgresql:14.1
-Primary instance:  cluster-example-1
-Instances:         3
-Ready instances:   3
-Current Timeline:  1
-Current WAL file:  000000010000000000000005
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7065750725565378578
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.1
+Primary instance:   cluster-example-1
+Status:             Cluster in healthy state 
+Instances:          3
+Ready instances:    3
+Current Write LSN:  0/5000060 (Timeline: 1 - WAL File: 000000010000000000000005)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-ca           2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-replication  2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-server       2022-05-18 18:35:52 +0000 UTC  89.99
 
 Continuous Backup status
 Not configured
 
+Streaming Replication status
+Name               Sent LSN   Write LSN  Flush LSN  Replay LSN  Write Lag  Flush Lag  Replay Lag  State      Sync State  Sync Priority
+----               --------   ---------  ---------  ----------  ---------  ---------  ----------  -----      ----------  -------------
+cluster-example-2  0/5000060  0/5000060  0/5000060  0/5000060   00:00:00   00:00:00   00:00:00    streaming  async       0
+cluster-example-3  0/5000060  0/5000060  0/5000060  0/5000060   00:00:00   00:00:00   00:00:00    streaming  async       0
+
 Instances status
-Manager Version  Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
----------------  --------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
-1.10.0           cluster-example-1  0/5000060                              7029558504442904594  ✓        ✗            ✗              ✗                OK
-1.10.0           cluster-example-2               0/5000060     0/5000060   7029558504442904594  ✗        ✓            ✗              ✗                OK
-1.10.0           cluster-example-3               0/5000060     0/5000060   7029558504442904594  ✗        ✓            ✗              ✗                OK
+Name               Database Size  Current LSN  Replication role  Status  QoS         Manager Version
+----               -------------  -----------  ----------------  ------  ---         ---------------
+cluster-example-1  33 MB          0/5000060    Primary           OK      BestEffort  1.13.0
+cluster-example-2  33 MB          0/5000060    Standby (async)   OK      BestEffort  1.13.0
+cluster-example-3  33 MB          0/5000060    Standby (async)   OK      BestEffort  1.13.0
 ```
 
 !!! Note "There's more"
@@ -360,25 +388,38 @@ Now if we check the status...
 ```shell
 kubectl cnp status cluster-example
 __OUTPUT__
-Failing over   Failing over to cluster-example-2
-Name:              cluster-example
-Namespace:         default
-PostgreSQL Image:  quay.io/enterprisedb/postgresql:14.1
-Primary instance:  cluster-example-2
-Instances:         3
-Ready instances:   2
-Current Timeline:  2
-Current WAL file:  000000020000000000000006
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7065750725565378578
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.1
+Primary instance:   cluster-example-2
+Status:             Failing over Failing over from cluster-example-1 to cluster-example-2
+Instances:          3
+Ready instances:    2
+Current Write LSN:  0/6004CA0 (Timeline: 2 - WAL File: 000000020000000000000006)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-ca           2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-replication  2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-server       2022-05-18 18:35:52 +0000 UTC  89.99
 
 Continuous Backup status
 Not configured
 
+Streaming Replication status
+Name               Sent LSN   Write LSN  Flush LSN  Replay LSN  Write Lag        Flush Lag        Replay Lag       State    Sync State  Sync Priority
+----               --------   ---------  ---------  ----------  ---------        ---------        ----------       -----    ----------  -------------
+cluster-example-1  0/60000A0  0/60000A0  0/60000A0  0/60000A0   00:00:00.007924  00:00:00.007924  00:00:00.007924  startup  async       0
+
 Instances status
-Manager Version  Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
----------------  --------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
-1.10.0           cluster-example-3               0/60000A0     0/60000A0   7029558504442904594  ✗        ✗            ✗              ✗                OK
-45               cluster-example-1  -            -             -           -                    -        -            -              -                pod not available
-1.10.0           cluster-example-2  0/6000F58                              7029558504442904594  ✓        ✗            ✗              ✗                OK
+Name               Database Size  Current LSN  Replication role      Status  QoS         Manager Version
+----               -------------  -----------  ----------------      ------  ---         ---------------
+cluster-example-3  33 MB          0/60000A0    Standby (file based)  OK      BestEffort  1.13.0
+cluster-example-2  33 MB          0/6004CA0    Primary               OK      BestEffort  1.13.0
+cluster-example-1  33 MB          0/6004CA0    Unknown               OK      BestEffort  1.13.0
 ```
 
 ...the failover process has begun, with the second pod promoted to primary. Once the failed pod has restarted, it will become a replica of the new primary:
@@ -386,25 +427,39 @@ Manager Version  Pod name           Current LSN  Received LSN  Replay LSN  Syste
 ```shell
 kubectl cnp status cluster-example
 __OUTPUT__
-Cluster in healthy state   
-Name:              cluster-example
-Namespace:         default
-PostgreSQL Image:  quay.io/enterprisedb/postgresql:14.1
-Primary instance:  cluster-example-2
-Instances:         3
-Ready instances:   3
-Current Timeline:  2
-Current WAL file:  000000020000000000000006
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7065750725565378578
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.1
+Primary instance:   cluster-example-2
+Status:             Cluster in healthy state 
+Instances:          3
+Ready instances:    3
+Current Write LSN:  0/6004CD8 (Timeline: 2 - WAL File: 000000020000000000000006)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-ca           2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-replication  2022-05-18 18:35:52 +0000 UTC  89.99
+cluster-example-server       2022-05-18 18:35:52 +0000 UTC  89.99
 
 Continuous Backup status
 Not configured
 
+Streaming Replication status
+Name               Sent LSN   Write LSN  Flush LSN  Replay LSN  Write Lag  Flush Lag  Replay Lag  State      Sync State  Sync Priority
+----               --------   ---------  ---------  ----------  ---------  ---------  ----------  -----      ----------  -------------
+cluster-example-1  0/6004CD8  0/6004CD8  0/6004CD8  0/6004CD8   00:00:00   00:00:00   00:00:00    streaming  async       0
+cluster-example-3  0/6004CD8  0/6004CD8  0/6004CD8  0/6004CD8   00:00:00   00:00:00   00:00:00    streaming  async       0
+
 Instances status
-Manager Version  Pod name           Current LSN  Received LSN  Replay LSN  System ID            Primary  Replicating  Replay paused  Pending restart  Status
----------------  --------           -----------  ------------  ----------  ---------            -------  -----------  -------------  ---------------  ------
-1.10.0           cluster-example-3               0/60000A0     0/60000A0   7029558504442904594  ✗        ✗            ✗              ✗                OK
-1.10.0           cluster-example-2  0/6004CA0                              7029558504442904594  ✓        ✗            ✗              ✗                OK
-1.10.0           cluster-example-1               0/6004CA0     0/6004CA0   7029558504442904594  ✗        ✓            ✗              ✗                OK
+Name               Database Size  Current LSN  Replication role  Status  QoS         Manager Version
+----               -------------  -----------  ----------------  ------  ---         ---------------
+cluster-example-3  33 MB          0/6004CD8    Standby (async)   OK      BestEffort  1.13.0
+cluster-example-2  33 MB          0/6004CD8    Primary           OK      BestEffort  1.13.0
+cluster-example-1  33 MB          0/6004CD8    Standby (async)   OK      BestEffort  1.13.0
 ```
 
 

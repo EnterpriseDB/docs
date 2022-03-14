@@ -1,0 +1,58 @@
+---
+title: "Replicating the SQL Server SQL_VARIANT Data Type"
+---
+
+<div id="replicating_sql_server_sql_variant_data_type" class="registered_link"></div>
+
+This section discusses how to replicate a table containing the SQL Server `SQL_VARIANT` data type.
+
+The `SQL_VARIANT` data type defines a column so that the individual values in that column may be of different data types. For example, the same `SQL_VARIANT` column can store values that have been explicitly cast as character, integer, numeric, and date/time.
+
+However, if a table containing a `SQL_VARIANT` column is to be replicated to a Postgres database, the usage of the column in Postgres is restricted to a single data type to which all the values in the `SQL_VARIANT` column are implicitly convertible (that is, without the use of explicit casting). For example, an integer value is implicitly convertible to a `FLOAT` data type, but a floating point value is not implicitly convertible to an `INTEGER` data type.
+
+The following restrictions apply in order to use replication on tables with the `SQL_VARIANT` data type:
+
+-   The values stored within the `SQL_VARIANT` columns of the table to be replicated must be implicitly convertible to the same data type in Postgres.
+-   If there is more than one table with `SQL_VARIANT` columns to be replicated to the same Postgres database, then all such `SQL_VARIANT` columns must contain values that are implicitly convertible to the same data type in Postgres.
+
+In the Postgres subscription database, you define a domain named `sql_variant` that maps to an underlying data type to which all values in the `SQL_VARIANT` columns are implicitly convertible.
+
+The following example shows how to set up replication for a table containing a `SQL_VARIANT` data type used to store numeric values, but of different data types. The SQL Server table definition is the following:
+
+```text
+CREATE TABLE variant_tbl (
+    f1              INTEGER PRIMARY KEY,
+    f2              SQL_VARIANT
+);
+
+INSERT INTO variant_tbl VALUES (1, CAST(1423.23 AS NUMERIC(6,2)));
+INSERT INTO variant_tbl VALUES (2, CAST(8001 AS INTEGER));
+INSERT INTO variant_tbl VALUES (3, CAST('4321' AS CHAR(4)));
+GO
+```
+
+The following query uses a function named `SQL_VARIANT_PROPERTY` to show the values stored in column `f2` and their data types.
+
+```text
+1> SELECT *,
+2>     SQL_VARIANT_PROPERTY(f2,'BaseType') AS basetype,
+3>     SQL_VARIANT_PROPERTY(f2,'Precision') AS precision,
+4>     SQL_VARIANT_PROPERTY(f2,'Scale') AS scale
+5> FROM variant_tbl;
+6> GO
+f1          f2         basetype   precision  scale
+----------- ---------- ---------- ---------- ----------
+          1 1423.23    numeric    6          2
+          2 8001       int        10         0
+          3 4321       char       0          0
+
+(3 rows affected)
+```
+
+In the Postgres subscription database, create a domain named `sql_variant` with an underlying data type that is compatible with the values that are stored in the SQL Server `SQL_VARIANT` column:
+
+```text
+CREATE DOMAIN sql_variant AS NUMERIC(6, 2);
+```
+
+After replication occurs, the subscription table is created using the `sql_variant` domain in place of the `SQL_VARIANT` data type of the publication table.

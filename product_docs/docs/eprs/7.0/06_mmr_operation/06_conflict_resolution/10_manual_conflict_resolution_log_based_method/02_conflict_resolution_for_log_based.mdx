@@ -1,0 +1,26 @@
+---
+title: "Conflict resolution concept for the log-based method"
+---
+
+<div id="conflict_resolution_for_log_based" class="registered_link"></div>
+
+Manual conflict resolution typically requires modifying rows in one or more publication tables to correct erroneous entries. You can perform these changes using a utility such as `PSQL` or `pgAdmin` (Postgres Enterprise Manager Client in Advanced Server).
+
+Usually, manual publication table corrections are isolated. Limit modifications to the publication tables you're directly changing. Don't replicate them to the other primary nodes as normally occurs in the multi-master replication system.
+
+To prevent Replication Server from replicating changes to one or more publication tables during a synchronization operation, make the changes to the publication tables in a transaction block that includes a reference to an Replication Server control schema table. This reference causes Replication Server to skip the transaction block when performing a synchronization replication.
+
+Not every Replication Server control schema table prevents this replication of a transaction block. Include the SQL `UPDATE` statement shown in the following transaction block to prevent replication of other publication table changes from appearing in the same transaction block:
+
+```text
+BEGIN;
+UPDATE _edb_replicator_pub.rrep_properties SET value = current_timestamp WHERE key = 'last_mcr_timestamp';
+
+One or more SQL statements to correct publication tables
+
+END;
+```
+
+When you execute such a transaction block in a primary node, inserting, updating, or deleting rows of any publication table in the transaction block aren't replicated to any other primary node at the next synchronization replication.
+
+You can run as many such transaction blocks on any primary node as needed to change the publication table rows to resolve the conflicts. The resulting changes are isolated to the primary node on which the transaction block is run. Thus you can correct each primary node independently.

@@ -89,7 +89,26 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/<NAME_OF_PEM_DB_FILE>.keytab
 
     -   `DATA_DIRECTORY_OF_POSTGRES` is the path of the data directory of the installed postgres (PostgreSQL/EDB Postgres Advanced Server.
 
--   Restart the database server to have the effect of changes
+-   Edit the krb5.conf file
+
+    ```text
+    $ sudo vim /etc/krb5.conf
+    [libdefaults]
+    default_realm = EDBPEM.ORG
+    Forwardable = True
+
+    [domain_realm]
+    .edbpem.org = EDBPEM.ORG
+    edbpem.org = EDBPEM.ORG
+
+    [realms]
+    EDBPEM.ORG = {
+       kdc = krb5server.edbpem.org
+       admin_server = krb5server.edbpem.org
+    }
+    ```
+
+-   Restart the database server to reflect the changes
 
     ```text
     systemctl restart <POSTGRES_SERVICE_NAME>
@@ -97,9 +116,28 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/<NAME_OF_PEM_DB_FILE>.keytab
 
      Where,
 
-    -   `POSTGRES_SERVICE_NAME` is the service name of Postgres (PostgreSQL/EDB Postgres Advanced Server) database. For eg: postgresql-13 for PostgreSQL 13 database on CentOS or RHEL platforms.
+    -   `POSTGRES_SERVICE_NAME` is the service name of Postgres (PostgreSQL/EDB Postgres Advanced Server) database. For eg: postgresql-13 for PostgreSQL 13 database on CentOS or RHEL or Rocky Linux platforms.
 
-## 5. Configure the PEM Server
+## 5. Obtain and view the initial ticket
+
+-   The `kinit` utility obtains and caches Kerberos tickets. This utility is typically used to obtain the ticket-granting ticket, using a password entered by the user to decrypt the credential from the key distribution center (KDC). The ticket-granting ticket is then stored in the user's credential cache.
+
+-   You can view the details of the ticket using `klist` utility.
+
+!!! Note
+    The `Kerberos Client` must be installed on the PEM Server and the Client machine to use `kinit` and `klist`.
+
+```text
+$ kinit <USERNAME@REALM>
+$ klist 
+```
+
+It will display the principal along with the Kerberos ticket.
+
+!!! Note
+    The `USERNAME@REALM` specified here must be a database user having the `pem_admin` role and `CONNECT` privilege on `pem` database.
+
+## 6. Configure the PEM Server
 
 -   Run the PEM configure script on the PEM Server to use Kerberos Authentication
 
@@ -145,29 +183,11 @@ chown enterprisedb <DATA_DIRECTORY_OF_POSTGRES>/<NAME_OF_PEM_DB_FILE>.keytab
 
     Where,
 
--   `POSTGRES_SERVICE_NAME` is the service name of Postgres (PostgreSQL/EDB Postgres Advanced Server) database. For eg: postgresql-13 for PostgreSQL 13 database on CentOS or RHEL platforms.
+-   `POSTGRES_SERVICE_NAME` is the service name of Postgres (PostgreSQL/EDB Postgres Advanced Server) database. For eg: postgresql-13 for PostgreSQL 13 database on CentOS or RHEL or Rocky Linux platforms.
 
 !!! Note
     If you are using PostgreSQL OR EDB Postgres Advanced Server 12 or later then you can specify connection type as `hostgssenc` to allow only gss encrypted connection.
 
-## 6. Obtain and view the initial ticket
-
--   The `kinit` utility obtains and caches Kerberos tickets. This utility is typically used to obtain the ticket-granting ticket, using a password entered by the user to decrypt the credential from the key distribution center (KDC). The ticket-granting ticket is then stored in the user's credential cache.
-
--   You can view the details of the ticket using `klist` utility.
-
-!!! Note
-    The `Kerberos Client` must be installed on the PEM Server and the Client machine to use `kinit` and `klist`.
-
-```text
-$ kinit <USERNAME@REALM>
-$ klist 
-```
-
-It will display the principal along with the kerberos ticket.
-
-!!! Note
-    The `USERNAME@REALM` specified here must be the database user having the `pem_admin` role and `CONNECT` privilege on `pem` database.
 
 ## 7. Browser Settings
 
@@ -195,3 +215,12 @@ Configure the Browser on the Client machine to access the PEM Web Client to use 
     ```text
     https://<ip_address_of_PEM_server>:8443/pem
     ```
+
+!!! Note
+    If you run into the following error while connecting to your Postgres cluster:
+
+    `psql -h hostname template1`
+    `psql: GSSAPI continuation error: Unspecified GSS failure. Minor code may provide more information`
+    `GSSAPI continuation error: Key version is not available`
+
+    The resolution is to add the additional encryption types to the keytab using `ktutil` or recreating the Postgres keytab with all crypto systems from AD. 

@@ -1,0 +1,698 @@
+---
+title: Stream Triggers
+originalFilePath: striggers.md
+
+---
+
+BDR introduces new types of triggers which can be used for additional
+data processing on the downstream/target node.
+
+-   Conflict Triggers
+-   Transform Triggers
+
+Together, these types of triggers are known as Stream Triggers.
+
+Stream Triggers are designed to be trigger-like in syntax, they leverage the
+PostgreSQL BEFORE trigger architecture, and are likely to have similar
+performance characteristics as PostgreSQL BEFORE Triggers.
+
+One trigger function can be used by multiple trigger definitions, just as with
+normal PostgreSQL triggers.
+A trigger function is simply a program defined in this form:
+`CREATE FUNCTION ... RETURNS TRIGGER`. Creating the actual trigger does not
+require use of the CREATE TRIGGER command. Instead, stream triggers
+are created using the special BDR functions
+`bdr.create_conflict_trigger()` and `bdr.create_transform_trigger()`.
+
+Once created, the trigger will be visible in the catalog table `pg_trigger`.
+The stream triggers will be marked as `tgisinternal = true` and
+`tgenabled = 'D'` and will have name suffix '\_bdrc' or '\_bdrt'. The view
+`bdr.triggers` provides information on the triggers in relation to the table,
+the name of the procedure that is being executed, the event that triggers it,
+and the trigger type.
+
+Note that stream triggers are NOT therefore enabled for normal SQL processing.
+Because of this the `ALTER TABLE ... ENABLE TRIGGER` is blocked for stream
+triggers in both its specific name variant and the ALL variant, to prevent
+the trigger from executing as a normal SQL trigger.
+
+Note that these triggers execute on the downstream or target node. There is no
+option for them to execute on the origin node, though one may wish to consider
+the use of `row_filter` expressions on the origin.
+
+Also, any DML which is applied during the execution of a stream
+trigger will not be replicated to other BDR nodes, and will not
+trigger the execution of standard local triggers. This is intentional,
+and can be used for instance to log changes or conflicts captured by a
+stream trigger into a table that is crash-safe and specific of that
+node; a working example is provided at the end of this chapter.
+
+## Trigger execution during Apply
+
+Transform triggers execute first, once for each incoming change in the
+triggering table. These triggers fire before we have even attempted to locate a
+matching target row, allowing a very wide range of transforms to be applied
+efficiently and consistently.
+
+Next, for UPDATE and DELETE changes we locate the target row. If there is no 
+target row, then there is no further processing for those change types.
+
+We then execute any normal triggers that previously have been explicitly enabled
+as replica triggers at table-level:
+
+```sql
+ALTER TABLE tablename
+ENABLE REPLICA TRIGGER trigger_name;
+```
+
+We then decide whether a potential conflict exists and if so, we then call any
+conflict trigger that exists for that table.
+
+### Missing Column Conflict Resolution
+
+Before transform triggers are executed, PostgreSQL tries to match the
+incoming tuple against the rowtype of the target table.
+
+Any column that exists on the input row but not on the target table
+will trigger a conflict of type `target_column_missing`; conversely, a
+column existing on the target table but not in the incoming row
+triggers a `source_column_missing` conflict. The default resolutions
+for those two conflict types are respectively `ignore_if_null` and
+`use_default_value`.
+
+This is relevant in the context of rolling schema upgrades; for
+instance, if the new version of the schema introduces a new
+column. When replicating from an old version of the schema to a new
+one, the source column is missing, and the `use_default_value`
+strategy is appropriate, as it populates the newly introduced column
+with the default value.
+
+However, when replicating from a node having the new schema version to
+a node having the old one, the column is missing from the target
+table, and the `ignore_if_null` resolver is not appropriate for a
+rolling upgrade, because it will break replication as soon as the user
+inserts, in any of the upgraded nodes, a tuple with a non-NULL value
+in the new column.
+
+In view of this example, the appropriate setting for rolling schema
+upgrades is to configure each node to apply the `ignore` resolver in
+case of a `target_column_missing` conflict.
+
+This is done with the following query, that must be **executed
+separately on each node**, after replacing `node1` with the actual
+node name:
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('node1',
+    'target_column_missing', 'ignore');
+```
+
+#### Data Loss and Divergence Risk
+
+In this section, we show how setting the conflict resolver to `ignore`
+can lead to data loss and cluster divergence.
+
+Consider the following example: table `t` exists on nodes 1 and 2, but
+its column `col` only exists on node 1.
+
+If the conflict resolver is set to `ignore`, then there can be rows on
+node 1 where `c` is not null, e.g. `(pk=1, col=100)`. That row will be
+replicated to node 2, and the value in column `c` will be discarded,
+e.g. `(pk=1)`.
+
+If column `c` is then added to the table on node 2, it will initially
+be set to NULL on all existing rows, and the row considered above
+becomes `(pk=1, col=NULL)`: the row having `pk=1` is no longer
+identical on all nodes, and the cluster is therefore divergent.
+
+Note that the default `ignore_if_null` resolver is not affected by
+this risk, because any row that is replicated to node 2 will have
+`col=NULL`.
+
+Based on this example, we recommend running LiveCompare against the
+whole cluster at the end of a rolling schema upgrade where the
+`ignore` resolver was used, to make sure that any divergence is
+detected and fixed.
+
+## Terminology of row-types
+
+This document uses these row-types:
+
+-   `SOURCE_OLD` is the row before update, i.e. the key.
+-   `SOURCE_NEW` is the new row coming from another node.
+-   `TARGET` is row that exists on the node already, i.e. conflicting row.
+
+## Conflict Triggers
+
+Conflict triggers are executed when a conflict is detected by BDR, and
+are used to decide what happens when the conflict has occurred.
+
+-   If the trigger function returns a row, the action will be applied to the target.
+-   If the trigger function returns NULL row, the action will be skipped.
+
+To clarify, if the trigger is called for a `DELETE`, the trigger should
+return NULL if it wants to skip the `DELETE`. If you wish the DELETE to proceed,
+then return a row value - either `SOURCE_OLD` or `TARGET` will work.
+When the conflicting operation is either `INSERT` or `UPDATE`, and the
+chosen resolution is the deletion of the conflicting row, the trigger
+must explicitly perform the deletion and return NULL.
+The trigger function may perform other SQL actions as it chooses, but
+those actions will only be applied locally, not replicated.
+
+When a real data conflict occurs between two or more nodes, there will be
+two or more concurrent changes occurring. When we apply those changes, the
+conflict resolution occurs independently on each node. This means the conflict
+resolution will occur once on each node, and can occur with a
+significant time difference between then. As a result, there is no
+possibility of communication between the multiple executions of the conflict
+trigger. It is the responsibility of the author of the conflict trigger to
+ensure that the trigger gives exactly the same result for all related events,
+otherwise data divergence will occur. Technical Support recommends that all conflict
+triggers are formally tested using the isolationtester tool supplied with
+BDR.
+
+!!! Warning
+    -   Multiple conflict triggers can be specified on a single table, but
+        they should match distinct event, i.e. each conflict should only
+        match a single conflict trigger.  
+    -   Multiple triggers matching the same event on the same table are
+        not recommended; they might result in inconsistent behaviour, and
+        will be forbidden in a future release.  
+
+If the same conflict trigger matches more than one event, the `TG_OP`
+variable can be used within the trigger to identify the operation that
+produced the conflict.
+
+By default, BDR detects conflicts by observing a change of replication origin
+for a row, hence it is possible for a conflict trigger to be called even
+when there is only one change occurring. Since in this case there is no
+real conflict, we say that this conflict detection mechanism can generate
+false positive conflicts. The conflict trigger must handle all of those
+identically, as mentioned above.
+
+Note that in some cases, timestamp conflict detection will not detect a
+conflict at all. For example, in a concurrent UPDATE/DELETE where the
+DELETE occurs just after the UPDATE, any nodes that see first the UPDATE
+and then the DELETE will not see any conflict. If no conflict is seen,
+the conflict trigger will never be called. The same situation, but using
+row version conflict detection, *will* see a conflict, which can then be
+handled by a conflict trigger.
+
+The trigger function has access to additional state information as well as
+the data row involved in the conflict, depending upon the operation type:
+
+-   On `INSERT`, conflict triggers would be able to access `SOURCE_NEW` row from
+    source and `TARGET` row
+-   On `UPDATE`, conflict triggers would be able to access `SOURCE_OLD` and
+    `SOURCE_NEW` row from source and `TARGET` row
+-   On `DELETE`, conflict triggers would be able to access `SOURCE_OLD` row from
+    source and `TARGET` row
+
+The function `bdr.trigger_get_row()` can be used to retrieve `SOURCE_OLD`, `SOURCE_NEW`
+or `TARGET` rows, if a value exists for that operation.
+
+Changes to conflict triggers happen transactionally and are protected by
+Global DML Locks during replication of the configuration change, similarly
+to how some variants of `ALTER TABLE` are handled.
+
+If primary keys are updated inside a conflict trigger, it can
+sometimes leads to unique constraint violations error due to a difference
+in timing of execution.
+Hence, users should avoid updating primary keys within conflict triggers.
+
+## Transform Triggers
+
+These triggers are similar to the Conflict Triggers, except they are executed
+for every row on the data stream against the specific table. The behaviour of
+return values and the exposed variables are similar, but transform triggers
+execute before a target row is identified, so there is no `TARGET` row.
+
+Specify multiple Transform Triggers on each table in BDR, if desired.
+Transform triggers execute in alphabetical order.
+
+A transform trigger can filter away rows, and it can do additional operations
+as needed. It can alter the values of any column, or set them to `NULL`. The
+return value decides what further action is taken:
+
+-   If the trigger function returns a row, it will be applied to the target.
+-   If the trigger function returns a `NULL` row, there is no further action to be
+    performed and as-yet unexecuted triggers will never execute.
+-   The trigger function may perform other actions as it chooses.
+
+The trigger function has access to additional state information as well as
+rows involved in the conflict:
+
+-   On `INSERT`, transform triggers would be able to access `SOURCE_NEW` row from source.
+-   On `UPDATE`, transform triggers would be able to access `SOURCE_OLD` and `SOURCE_NEW` row from source.
+-   On `DELETE`, transform triggers would be able to access `SOURCE_OLD` row from source.
+
+The function `bdr.trigger_get_row()` can be used to retrieve `SOURCE_OLD` or `SOURCE_NEW`
+rows; `TARGET` row is not available, since this type of trigger executes before such
+a target row is identified, if any.
+
+Transform Triggers look very similar to normal BEFORE row triggers, but have these
+important differences:
+
+-   Transform trigger gets called for every incoming change.
+    BEFORE triggers will not be called at all for UPDATE and DELETE changes
+    if we don't find a matching row in a table.
+
+-   Transform triggers are called before partition table routing occurs.
+
+-   Transform triggers have access to the lookup key via SOURCE_OLD,
+    which is not available to normal SQL triggers.
+
+## Stream Triggers Variables
+
+Both Conflict Trigger and Transform Triggers have access to information about
+rows and metadata via the predefined variables provided by trigger API and
+additional information functions provided by BDR.
+
+In PL/pgSQL, the following predefined variables exist:
+
+### TG_NAME
+
+Data type name; variable that contains the name of the trigger actually fired.
+Note that the actual trigger name has a '\_bdrt' or '\_bdrc' suffix
+(depending on trigger type) compared to the name provided during trigger creation.
+
+### TG_WHEN
+
+Data type text; this will say `BEFORE` for both Conflict and Transform triggers.
+The stream trigger type can be obtained by calling the `bdr.trigger_get_type()`
+information function (see below).
+
+### TG_LEVEL
+
+Data type text; a string of `ROW`.
+
+### TG_OP
+
+Data type text; a string of `INSERT`, `UPDATE` or `DELETE`
+ telling for which operation the trigger was fired.
+
+### TG_RELID
+
+Data type oid; the object ID of the table that caused the trigger invocation.
+
+### TG_TABLE_NAME
+
+Data type name; the name of the table that caused the trigger invocation.
+
+### TG_TABLE_SCHEMA
+
+Data type name; the name of the schema of the table that caused the trigger
+invocation. For partitioned tables, this is the name of the root table.
+
+### TG_NARGS
+
+Data type integer; the number of arguments given to the trigger function in
+the `bdr.create_conflict_trigger()` or  `bdr.create_transform_trigger()`
+statement.
+
+### TG_ARGV\[]
+
+Data type array of text; the arguments from the `bdr.create_conflict_trigger()`
+or `bdr.create_transform_trigger()` statement. The index counts from 0.
+Invalid indexes (less than 0 or greater than or equal to `TG_NARGS`) result in
+a `NULL` value.
+
+## Information functions
+
+### bdr.trigger_get_row
+
+This function returns the contents of a trigger row specified by an identifier
+as a `RECORD`. This function returns NULL if called inappropriately, i.e.
+called with SOURCE_NEW when the operation type (TG_OP) is DELETE.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_row(row_id text)
+```
+
+#### Parameters
+
+-   `row_id` - identifier of the row; can be any of SOURCE_NEW, SOURCE_OLD and
+    TARGET, depending on the trigger type and operation (see documentation of
+    individual trigger types).
+
+### bdr.trigger_get_committs
+
+This function returns the commit timestamp of a trigger row specified by an
+identifier. If not available because a row is frozen or row is not available,
+this will return NULL. Always returns NULL for row identifier SOURCE_OLD.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_committs(row_id text)
+```
+
+#### Parameters
+
+-   `row_id` - identifier of the row; can be any of SOURCE_NEW, SOURCE_OLD and
+    TARGET, depending on trigger type and operation (see documentation of
+    individual trigger types).
+
+### bdr.trigger_get_xid
+
+This function returns the local transaction id of a TARGET row specified by an
+identifier. If not available because a row is frozen or row is not available,
+this will return NULL. Always returns NULL for SOURCE_OLD and SOURCE_NEW row
+identifiers.
+
+This is only available for conflict triggers.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_xid(row_id text)
+```
+
+#### Parameters
+
+-   `row_id` - identifier of the row; can be any of SOURCE_NEW, SOURCE_OLD and
+    TARGET, depending on trigger type and operation (see documentation of
+    individual trigger types).
+
+### bdr.trigger_get_type
+
+This function returns the current trigger type, which can be either `CONFLICT`
+or `TRANSFORM`. Returns null if called outside a Stream Trigger.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_type()
+```
+
+### bdr.trigger_get_conflict_type
+
+This function returns the current conflict type if called inside a conflict
+trigger, or `NULL` otherwise.
+
+See [Conflict Types]\(conflicts.md#List of Conflict Types)
+for possible return values of this function.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_conflict_type()
+```
+
+### bdr.trigger_get_origin_node_id
+
+This function returns the node id corresponding to the origin for the trigger
+row_id passed in as argument. If the origin is not valid (which means the row
+has originated locally), return the node id of the source or target node,
+depending on the trigger row argument. Always returns NULL for row identifier
+SOURCE_OLD. This can be used to define conflict triggers to always favour a
+trusted source node. See the example given below.
+
+#### Synopsis
+
+```sql
+bdr.trigger_get_origin_node_id(row_id text)
+```
+
+#### Parameters
+
+-   `row_id` - identifier of the row; can be any of SOURCE_NEW, SOURCE_OLD and
+    TARGET, depending on trigger type and operation (see documentation of
+    individual trigger types).
+
+### bdr.ri_fkey_on_del_trigger
+
+When called as a BEFORE trigger, this function will use FOREIGN KEY information
+to avoid FK anomalies.
+
+#### Synopsis
+
+```sql
+bdr.ri_fkey_on_del_trigger()
+```
+
+## Row Contents
+
+The SOURCE_NEW, SOURCE_OLD and TARGET contents depend on the operation, REPLICA
+IDENTITY setting of a table, and the contents of the target table.
+
+The TARGET row is only available in conflict triggers. The TARGET row only
+contains data if a row was found when applying UPDATE or DELETE in the target
+table; if the row is not found, the TARGET will be NULL.
+
+## Triggers Notes
+
+Execution order for triggers:
+
+-   Transform triggers - execute once for each incoming row on the target
+-   Normal triggers - execute once per row
+-   Conflict triggers - execute once per row where a conflict exists
+
+## Stream Triggers Manipulation Interfaces
+
+Stream Triggers are managed using SQL interfaces provided as part of
+bdr-enterprise extension.
+
+Stream Triggers can only be created on tables with `REPLICA IDENTITY FULL`
+or tables without any `TOAST`able columns.
+
+### bdr.create_conflict_trigger
+
+This function creates a new conflict trigger.
+
+#### Synopsis
+
+```sql
+bdr.create_conflict_trigger(trigger_name text,
+                            events text[],
+                            relation regclass,
+                            function regprocedure,
+                            args text[] DEFAULT '{}')
+```
+
+#### Parameters
+
+-   `trigger_name` - name of the new trigger
+-   `events` - array of events on which to fire this trigger; valid values are
+     '`INSERT`', '`UPDATE`' and '`DELETE`'
+-   `relation` - for which relation to fire this trigger
+-   `function` - which function to execute
+-   `args` - optional; specifies the array of parameters the trigger function will
+     receive upon execution (contents of `TG_ARGV` variable)
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This
+means that the replication is affected by the
+[ddl filters](repsets#ddl-replication-filtering) configuration.
+
+The function will take a global DML lock on the relation on which the trigger
+is being created.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+Similarly to normal PostgreSQL triggers, the `bdr.create_conflict_trigger`
+function requires `TRIGGER` privilege on the `relation` and `EXECUTE`
+privilege on the function. This applies with a
+`bdr.backwards_compatibility` of 30619 or above. Additional
+security rules apply in BDR to all triggers including conflict
+triggers; see the [security chapter on triggers](security#triggers).
+
+### bdr.create_transform_trigger
+
+This function creates a new transform trigger.
+
+#### Synopsis
+
+```sql
+bdr.create_transform_trigger(trigger_name text,
+                             events text[],
+                             relation regclass,
+                             function regprocedure,
+                             args text[] DEFAULT '{}')
+```
+
+#### Parameters
+
+-   `trigger_name` - name of the new trigger
+-   `events` - array of events on which to fire this trigger, valid values are
+     '`INSERT`', '`UPDATE`' and '`DELETE`'
+-   `relation` - for which relation to fire this trigger
+-   `function` - which function to execute
+-   `args` - optional, specify array of parameters the trigger function will
+     receive upon execution (contents of `TG_ARGV` variable)
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This
+means that the replication is affected by the
+[ddl filters](repsets#ddl-replication-filtering) configuration.
+
+The function will take a global DML lock on the relation on which the trigger
+is being created.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+Similarly to normal PostgreSQL triggers, the `bdr.create_transform_trigger`
+function requires the `TRIGGER` privilege on the `relation` and `EXECUTE`
+privilege on the function. Additional security rules apply in BDR to all
+triggers including transform triggers; see the
+[security chapter on triggers](security#triggers).
+
+### bdr.drop_trigger
+
+This function removes an existing stream trigger (both conflict and transform).
+
+#### Synopsis
+
+```sql
+bdr.drop_trigger(trigger_name text,
+                 relation regclass,
+                 ifexists boolean DEFAULT false)
+```
+
+#### Parameters
+
+-   `trigger_name` - name of an existing trigger
+-   `relation` - which relation is the trigger defined for
+-   `ifexists` - when set to true `true`, this command will ignore missing
+     triggers
+
+#### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This
+means that the replication is affected by the
+[ddl filters](repsets#ddl-replication-filtering) configuration.
+
+The function will take a global DML lock on the relation on which the trigger
+is being created.
+
+This function is transactional - the effects can be rolled back with the
+`ROLLBACK` of the transaction, and the changes are visible to the current
+transaction.
+
+The `bdr.drop_trigger` function can be only executed by the owner of
+the `relation`.
+
+## Stream Triggers Examples
+
+A conflict trigger which provides similar behaviour as the update_if_newer
+conflict resolver:
+
+```sql
+CREATE OR REPLACE FUNCTION update_if_newer_trig_func
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF (bdr.trigger_get_committs('TARGET') >
+        bdr.trigger_get_committs('SOURCE_NEW')) THEN
+    RETURN TARGET;
+    ELSIF
+        RETURN SOURCE;
+    END IF;
+END;
+$$;
+```
+
+A conflict trigger which applies a delta change on a counter column and uses
+SOURCE_NEW for all other columns:
+
+```sql
+CREATE OR REPLACE FUNCTION delta_count_trg_func
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    DELTA bigint;
+    SOURCE_OLD record;
+    SOURCE_NEW record;
+    TARGET record;
+BEGIN
+    SOURCE_OLD := bdr.trigger_get_row('SOURCE_OLD');
+    SOURCE_NEW := bdr.trigger_get_row('SOURCE_NEW');
+    TARGET := bdr.trigger_get_row('TARGET');
+
+    DELTA := SOURCE_NEW.counter - SOURCE_OLD.counter;
+    SOURCE_NEW.counter = TARGET.counter + DELTA;
+
+    RETURN SOURCE_NEW;
+END;
+$$;
+```
+
+A transform trigger which logs all changes to a log table instead of applying them:
+
+```sql
+CREATE OR REPLACE FUNCTION log_change
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    SOURCE_NEW record;
+    SOURCE_OLD record;
+    COMMITTS timestamptz;
+BEGIN
+    SOURCE_NEW := bdr.trigger_get_row('SOURCE_NEW');
+    SOURCE_OLD := bdr.trigger_get_row('SOURCE_OLD');
+    COMMITTS := bdr.trigger_get_committs('SOURCE_NEW');
+
+    IF (TG_OP = 'INSERT') THEN
+        INSERT INTO log SELECT 'I', COMMITTS, row_to_json(SOURCE_NEW);
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO log SELECT 'U', COMMITTS, row_to_json(SOURCE_NEW);
+    ELSIF (TG_OP = 'DELETE') THEN
+        INSERT INTO log SELECT 'D', COMMITTS, row_to_json(SOURCE_OLD);
+    END IF;
+
+    RETURN NULL; -- do not apply the change
+END;
+$$;
+```
+
+The example below shows a conflict trigger that implements Trusted Source
+conflict detection, also known as trusted site, preferred node or Always Wins
+resolution. This uses the bdr.trigger_get_origin_node_id() function to provide
+a solution that works with 3 or more nodes.
+
+```sql
+CREATE OR REPLACE FUNCTION test_conflict_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+	SOURCE	record;
+	TARGET	record;
+
+	TRUSTED_NODE	bigint;
+	SOURCE_NODE		bigint;
+	TARGET_NODE		bigint;
+BEGIN
+	TARGET := bdr.trigger_get_row('TARGET');
+	IF (TG_OP = 'DELETE')
+		SOURCE := bdr.trigger_get_row('SOURCE_OLD');
+	ELSE
+		SOURCE := bdr.trigger_get_row('SOURCE_NEW');
+	END IF;
+
+	TRUSTED_NODE := current_setting('customer.trusted_node_id');
+
+	SOURCE_NODE := bdr.trigger_get_origin_node_id('SOURCE_NEW');
+	TARGET_NODE := bdr.trigger_get_origin_node_id('TARGET');
+
+	IF (TRUSTED_NODE = SOURCE_NODE) THEN
+		RETURN SOURCE;
+	ELSIF (TRUSTED_NODE = TARGET_NODE) THEN
+		RETURN TARGET;
+	ELSE
+		RETURN NULL; -- do not apply the change
+	END IF;
+END;
+$$;
+```

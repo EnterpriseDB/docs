@@ -43,7 +43,7 @@ spec:
   pgbouncer:
     poolMode: session
     parameters:
-      max_client_connections: "1000"
+      max_client_conn: "1000"
       default_pool_size: "10"
 ```
 
@@ -130,6 +130,72 @@ section](api_reference.md#PoolerSpec) in the API reference.
 Through templates you can configure pods as you like, including fine
 control over affinity and anti-affinity rules for pods and nodes.
 By default, containers use images from `quay.io/enterprisedb/pgbouncer`.
+
+Here an example of Pooler specifying PodAntiAffinity:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Pooler
+metadata:
+  name: pooler-example-rw
+spec:
+  cluster:
+    name: cluster-example
+  instances: 3
+  type: rw
+
+  template:
+    metadata:
+      labels:
+        app: pooler
+    spec:
+      containers: []
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - pooler
+            topologyKey: "kubernetes.io/hostname"
+```
+
+!!! Note
+    `.spec.template.spec.containers` has to be explicitly set to `[]` when not modified, as it's a required field for a `PodSpec`.
+    If `.spec.template.spec.containers` is not set the kubernetes api-server will return the following error when trying to apply the manifest:
+    `error validating "pooler.yaml": error validating data: ValidationError(Pooler.spec.template.spec): missing required field "containers"`
+
+Here an example setting resources and changing the used image:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Pooler
+metadata:
+  name: pooler-example-rw
+spec:
+  cluster:
+    name: cluster-example
+  instances: 3
+  type: rw
+
+  template:
+    metadata:
+      labels:
+        app: pooler
+    spec:
+      containers:
+        - name: pgbouncer
+          image: my-pgbouncer:latest
+          resources:
+            requests:
+              cpu: 0.1
+              memory: 100Mi
+            limits:
+              cpu: 0.5
+              memory: 500Mi
+```
 
 ## High Availability (HA)
 
@@ -220,12 +286,12 @@ metrics having the `cnp_pgbouncer_` prefix, by running:
 -   `SHOW STATS` (prefix: `cnp_pgbouncer_stats`)
 
 Similarly to the Cloud Native PostgreSQL instance, the exporter runs on port
-`9187` of each pod running PgBouncer, and also provides metrics related to the
+`9127` of each pod running PgBouncer, and also provides metrics related to the
 Go runtime (with prefix `go_*`). You can debug the exporter on a pod running
 PgBouncer through the following command:
 
 ```console
-kubectl exec -ti <PGBOUNCER_POD> -- curl 127.0.0.1:9187/metrics
+kubectl exec -ti <PGBOUNCER_POD> -- curl 127.0.0.1:9127/metrics
 ```
 
 An example of the output for `cnp_pgbouncer` metrics:
@@ -390,6 +456,22 @@ cnp_pgbouncer_stats_total_xact_count{database="pgbouncer"} 3
 # HELP cnp_pgbouncer_stats_total_xact_time Total number of microseconds spent by pgbouncer when connected to PostgreSQL in a transaction, either idle in transaction or executing queries.
 # TYPE cnp_pgbouncer_stats_total_xact_time gauge
 cnp_pgbouncer_stats_total_xact_time{database="pgbouncer"} 0
+```
+
+Like for `Clusters`, if you are using the [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator)
+you can configure it to scrape a specific Pooler by defining the following [PodMonitor](https://github.com/prometheus-operator/prometheus-operator/blob/v0.47.1/Documentation/api.md#podmonitor):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: <POOLER_NAME>
+spec:
+  selector:
+    matchLabels:
+      k8s.enterprisedb.io/poolerName: <POOLER_NAME>
+  podMetricsEndpoints:
+  - port: metrics
 ```
 
 ## Logging

@@ -18,7 +18,10 @@ We recommend using MacOS to work with the EDB Docs application.
 
 1. Install [Homebrew](https://brew.sh/), if it's not already installed. (Use `brew -v` to check.)
 
-1. Install Git as well as Git-LFS using Homebrew with `brew install git git-lfs`, if they're not already installed. (Use `git --version` and `git-lfs --version` to check.)
+1. Install NodeJS, Git and Git-LFS using Homebrew with `brew install node git git-lfs`
+   (Some or all of these may already be installed - check using `node --version`, `git --version` and `git-lfs --version`)
+
+1. Initialize Git-LFS (if newly installed) using `git lfs install`
 
 1. Set up an SSH key in GitHub, if you haven't done so already. (Go to [GitHub's SSH Keys page](https://github.com/settings/keys) to check.) If you don't have an SSH Key set up yet, you'll need to set one up to authenticate you to GitHub. See [GitHub's SSH docs](https://docs.github.com/en/github-ae@latest/github/authenticating-to-github/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent) for more information.
 
@@ -86,20 +89,20 @@ If you are still experiencing errors or other issues with the site, try the foll
 
 You will need to follow these instructions if you want to build PDFs locally, or get started quickly with Docker.
 
-```sh
+```shell
 brew install --cask docker
 ```
 
 If you get a message saying that you already have Docker installed, check which version is installed using these commands:
 
-```sh
+```shell
 brew ls --formula docker
 brew ls --cask docker
 ```
 
 If the first command yields results, enter the following command to uninstall the formula version and to install the cask version:
 
-```sh
+```shell
 brew uninstall -f docker && brew install --cask docker
 ```
 
@@ -162,19 +165,19 @@ To build PDFs locally, you'll need to use a Docker container.
 
 1. Create the Docker image (optional):
 
-   ```sh
+   ```shell
    npm run pdf:rebuild-docker-image
    ```
 
 1. Run the following command inside the docs project to create a PDF:
 
-   ```sh
+   ```shell
    npm run pdf:build product_docs/docs/<product_folder>/<version>
    ```
 
    For example, to build a PDF for the EPAS 13 documentation:
 
-   ```sh
+   ```shell
    npm run pdf:build product_docs/docs/epas/13
    ```
 
@@ -276,7 +279,7 @@ Netlify is the hosting service we use for Docs. Netlify-specific redirects can b
 
 ### Docs 1.0 to Docs 2.0 redirects
 
-This app builds a list of nginx style redirects that are loaded into a separate server. These redirects direct users from links to the old docs site, to the appropriate page on the new docs site.
+This app builds a list of server-side redirects that reference the Docs 1.0 path (`/edb-docs/`). These redirects direct users from links to the old docs site, to the appropriate page on the new docs site.
 
 #### `legacyRedirectsGenerated`
 

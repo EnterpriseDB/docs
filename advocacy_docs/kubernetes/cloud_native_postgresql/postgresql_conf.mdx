@@ -69,6 +69,7 @@ operator by applying the following sections in this order:
 The **global default parameters** are:
 
 ```text
+dynamic_shared_memory_type = 'posix'
 logging_collector = 'on'
 log_destination = 'csvlog'
 log_directory = '/controller/log'
@@ -79,23 +80,16 @@ log_truncate_on_rotation = 'false'
 max_parallel_workers = '32'
 max_replication_slots = '32'
 max_worker_processes = '32'
-```
-
-The **default parameters for PostgreSQL 13 or higher** are:
-
-```text
-wal_keep_size = '512MB'
-```
-
-The **default parameters for PostgreSQL 10 to 12** are:
-
-```text
-wal_keep_segments = '32'
+shared_memory_type = 'mmap' # for PostgreSQL >= 12 only
+wal_keep_size = '512MB' # for PostgreSQL >= 13 only
+wal_keep_segments = '32' # for PostgreSQL <= 12 only
+wal_sender_timeout = '5s'
+wal_receiver_timeout = '5s'
 ```
 
 !!! Warning
     It is your duty to plan for WAL segments retention in your PostgreSQL
-    cluster and properly configure either `wal_keep_segments` or `wal_keep_size`,
+    cluster and properly configure either `wal_keep_size` or `wal_keep_segments`,
     depending on the server version, based on the expected and observed workloads.
     Until Cloud Native PostgreSQL supports replication slots, and if you don't have
     continuous backup in place, this is the only way at the moment that protects
@@ -114,6 +108,7 @@ full_page_writes = 'on'
 hot_standby = 'true'
 listen_addresses = '*'
 port = '5432'
+restart_after_crash = 'false'
 ssl = 'on'
 ssl_ca_file = '/controller/certificates/client-ca.crt'
 ssl_cert_file = '/controller/certificates/server.crt'
@@ -223,7 +218,7 @@ that starts with `pg_stat_statements.` as in the following example excerpt:
   # ...
   postgresql:
     parameters:
-      pg_stat_statements.max: 10000
+      pg_stat_statements.max: "10000"
       pg_stat_statements.track: all
   # ...
 ```
@@ -249,7 +244,7 @@ to complete):
   # ...
   postgresql:
     parameters:
-      auto_explain.log_min_duration: '10s'
+      auto_explain.log_min_duration: "10s"
   # ...
 ```
 
@@ -313,6 +308,73 @@ configuration to apply the changes.
 If the change involves a parameter requiring a restart, the operator will
 perform a rolling upgrade.
 
+## Dynamic Shared Memory settings
+
+PostgreSQL supports a few implementations for dynamic shared memory
+management through the
+[`dynamic_shared_memory_type`](https://www.postgresql.org/docs/current/runtime-config-resource.html#GUC-DYNAMIC-SHARED-MEMORY-TYPE)
+configuration option. In Cloud Native PostgreSQL we recommend to limit ourselves to
+any of the following two values:
+
+-   `posix`: which relies on POSIX shared memory allocated using `shm_open` (default setting)
+-   `sysv`: which is based on System V shared memory allocated via `shmget`
+
+In PostgreSQL, this setting is particularly important for memory allocation in parallel queries.
+For details, please refer to this
+[thread from the `pgsql-general` mailing list](https://www.postgresql.org/message-id/CA%2BhUKGJOj7qzDLxeFPVvto8YEWop6FSQoTYPO9Z6Ee%3Di-nPS_Q%40mail.gmail.com).
+
+### POSIX shared memory
+
+The default setting of `posix` should be enough in most cases, considering that
+the operator automatically mounts a *memory-bound `EmptyDir` volume* called `shm`
+under `/dev/shm`. You can verify the size of such volume inside the running
+Postgres container with:
+
+```sh
+mount | grep shm
+```
+
+You should get something similar to the following output:
+
+```console
+shm on /dev/shm type tmpfs (rw,nosuid,nodev,noexec,relatime,size=******)
+```
+
+### System V shared memory
+
+In case your Kubernetes cluster has a high enough value for the `SHMMAX`
+and `SHMALL` parameters, you can also set:
+
+```yaml
+dynamic_shared_memory_type: "sysv"
+```
+
+You can check the `SHMMAX`/`SHMALL` from inside a PostgreSQL container, by running:
+
+```sh
+ipcs -lm
+```
+
+For example:
+
+```console
+------ Shared Memory Limits --------
+max number of segments = 4096
+max seg size (kbytes) = 18014398509465599
+max total shared memory (kbytes) = 18014398509481980
+min seg size (bytes) = 1
+```
+
+As you can see, the very high number of `max total shared memory` recommends
+setting `dynamic_shared_memory_type` to `sysv`.
+
+An alternate method is to run:
+
+```sh
+cat /proc/sys/kernel/shmall
+cat /proc/sys/kernel/shmmax
+```
+
 ## Fixed parameters
 
 Some PostgreSQL configuration parameters should be managed exclusively by the
@@ -332,7 +394,6 @@ Users are not allowed to set the following configuration parameters in the
 -   `config_file`
 -   `data_directory`
 -   `data_sync_retry`
--   `dynamic_shared_memory_type`
 -   `edb_audit`
 -   `edb_audit_destination`
 -   `edb_audit_directory`
@@ -375,7 +436,6 @@ Users are not allowed to set the following configuration parameters in the
 -   `recovery_target_xid`
 -   `restart_after_crash`
 -   `restore_command`
--   `shared_memory_type`
 -   `shared_preload_libraries`
 -   `ssl`
 -   `ssl_ca_file`

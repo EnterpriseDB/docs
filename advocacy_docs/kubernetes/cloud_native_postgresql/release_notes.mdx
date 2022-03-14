@@ -6,6 +6,186 @@ product: 'Cloud Native Operator'
 
 History of user-visible changes for Cloud Native PostgreSQL.
 
+## Version 1.13.0
+
+**Release date:** 17 February 2022
+
+Features:
+
+-   Support for Snappy compression. Snappy is a fast compression option for backups that increase
+    the speed of uploads to the object store using a lower compression ratio
+-   Support for tagging files uploaded to the Barman object store. This feature requires
+    Barman 2.18 in the operand image.
+    of backups after Cluster deletion
+-   Extension of the status of a Cluster with `status.conditions`. The condition `ContinuousArchiving`
+    indicates that the Cluster has started to archive WAL files
+-   Improve the status command of the `cnp` plugin for `kubectl` with additional information:
+    add a `Cluster Summary` section showing the status of the Cluster and a `Certificates Status`
+    section including the status of the certificates used in the Cluster along
+    with the time left to expire
+-   Support the new `barman-cloud-check-wal-archive` command to detect a non-empty backup destination
+    when creating a new cluster
+-   Add support for using a `Secret` to add default monitoring queries through
+    `MONITORING_QUERIES_SECRET` configuration variable.
+-   Allow the user to restrict container’s permissions using AppArmor (on Kubernetes clusters deployed
+    with AppArmor support)
+-   Add Windows platform support to `cnp` plugin for `kubectl`, now the plugin is available
+    on Windows x86 and ARM
+-   Drop support for Kubernetes 1.18 and deprecated API versions
+
+Container Images:
+
+-   PostgreSQL containers include Barman 2.18
+
+Security Fix:
+
+-   Add coherence check of username field inside owner and superuser secrets;
+    previously, a malicious user could have used the secrets to change the password
+    of any PostgreSQL user
+
+Fixes:
+
+-   Fix a memory leak in code fetching status from Postgres pods
+-   Disable PostgreSQL self-restart after a crash. The instance controller handles
+    the lifecycle of the PostgreSQL instance
+-   Prevent modification of `spec.postgresUID` and `spec.postgresGID` fields
+    in validation webhook. Changing these fields after Cluster creation makes PostgreSQL unable to start
+-   Reduce the log verbosity from the backup and WAL archiving handling code
+-   Correct a bug resulting in a Cluster being marked as `Healthy` when not initialized yet
+-   Allows standby servers in clusters with a very high WAL production rate to switch to streaming
+    once they are aligned
+-   Fix a race condition during the startup of a PostgreSQL pod that could seldom lead to a crash
+-   Fix a race condition that could lead to a failure initializing the first PVC in a Cluster
+-   Remove an extra restart of a just demoted primary Pod before joining the Cluster as a replica
+-   Correctly handle replication-sensitive PostgreSQL configuration parameters when recovering
+    from a backup
+-   Fix missing validation of PostgreSQL configurations during Cluster creation
+
+## Version 1.12.0
+
+**Release date:** 11 January 2022
+
+Features:
+
+-   Add Kubernetes 1.23 to the list of supported Kubernetes distributions and remove end-to-end tests for 1.17,  
+    which ended support by the Kubernetes project in Dec 2020
+-   Improve the responsiveness of pod status checks in case of network issues
+    by adding a connection timeout of 2 seconds and a communication timeout
+    of 30 seconds. This change sets a limit on the time the operator waits for
+    a pod to report its status before declaring it as failed, enhancing
+    the robustness and predictability of a failover operation
+-   Introduce the `.spec.inheritedMetadata` field to the Cluster allowing the user
+    to specify labels and annotations that will apply to all objects generated
+    by the Cluster
+-   Reduce the number of queries executed when calculating the status
+    of an instance
+-   Add a readiness probe for PgBouncer
+-   Add support for custom Certification Authority of the endpoint of Barman’s
+    backup object store when using Azure protocol
+
+Fixes:
+
+-   During a failover, wait to select a new primary until all the WAL streaming
+    connections are closed. The operator now sets by default `wal_sender_timeout`
+    and `wal_receiver_timeout` to 5 seconds to make sure standby nodes will
+    quickly notice if the primary has network issues
+-   Change WAL archiving strategy in replica clusters to fix rolling updates
+    by setting "archive_mode" to "always" for any PostgreSQL instance in
+    a replica cluster. We then restrict the upload of the WAL only from
+    the current and target designated primary. A WAL may be uploaded twice
+    during switchovers, which is not an issue
+-   Fix support for custom Certification Authority of the endpoint of Barman’s
+    backup object store in replica clusters source
+-   Use a fixed name for default monitoring config map in the cluster namespace
+-   If the defaulting webhook is not working for any reason, the operator now
+    updates the Cluster with the defaults also during the reconciliation cycle
+-   Fix the comparison of resource requests and limits to fix a rare issue
+    leading to an update of all the pods on every reconciliation cycle
+-   Improve log messages from webhooks to also include the object namespace
+-   Stop logging a “default” message at the start of every reconciliation loop
+-   Stop logging a PodMonitor deletion on every reconciliation cycle
+    if `enablePodMonitor` is false
+-   Do not complain about possible architecture mismatch if a pod is not
+    reachable
+
+## Version 1.11.0
+
+**Release date:** 15 December 2021
+
+Features:
+
+-   **Parallel WAL archiving and restore:** allow the database to keep up with WAL
+    generation on high write systems by introducing the
+    `backupObjectStore.maxParallel` option to set the maximum number of parallel
+    jobs to be executed during both WAL archiving (by PostgreSQL’s
+    `archive_command`) and WAL restore (by `restore_command`). Using parallel
+    restore option can allow newly promoted Standbys to get to a ready state faster
+    by fetching needed WAL files to replay in parallel rather than sequentially
+-   **Default set of metrics for monitoring:** a new `ConfigMap` called
+    `default-monitoring` is automatically deployed in the same namespace of the
+    operator and, by default, added to any existing Postgres cluster. Such behavior
+    can be changed globally by setting the `MONITORING_QUERIES_CONFIGMAP` parameter
+    in the operator’s configuration, or at cluster level through the
+    `.spec.monitoring.disableDefaultQueries` option (by default set to `false`)
+-   Introduce the `enablePodMonitor` option in the monitoring section of a
+    cluster to automatically manage a `PodMonitor` resource and seamlessly
+    integrate with Prometheus
+-   Improve the PostgreSQL shutdown procedure by trying to execute a smart
+    shutdown for the first half of the desired `stopDelay` time, and a fast
+    shutdown for the remaining half, before the pod is killed by Kubernetes
+-   Add the `switchoverDelay` option to control the time given to the former
+    primary to shut down gracefully and archive all the WAL files before
+    promoting the new primary (by default, Cloud Native PostgreSQL waits
+    indefinitely to privilege data durability)
+-   Handle changes to resource requests and limits for a PostgreSQL `Cluster` by
+    issuing a rolling update
+-   Improve the `status` command of the `cnp` plugin for `kubectl` with
+    additional information: streaming replication status, total size of the
+    database, role of an instance in the cluster
+-   Enhance support of workloads with many parallel workers by enabling
+    configuration of the `dynamic_shared_memory_type` and `shared_memory_type`
+    parameters for PostgreSQL’s management of shared memory
+-   Propagate labels and annotations defined at cluster level to the
+    associated resources, including pods (deletions are not supported)
+-   Automatically remove pods that have been evicted by the Kubelet
+-   Manage automated resizing of persistent volumes in Azure through the
+    `ENABLE_AZURE_PVC_UPDATES` operator configuration option, by issuing a
+    rolling update of the cluster if needed (disabled by default)
+-   Introduce the`k8s.enterprisedb.io/reconciliationLoop` annotation that, when
+    set to `disabled` on a given Postgres cluster, prevents the reconciliation
+    loop from running
+-   Introduce the `postInitApplicationSQL` option as part of the `initdb`
+    bootstrap method to specify a list of SQL queries to be executed on the main
+    application database as a superuser immediately after the cluster has been
+    created
+-   Support for EDB Postgres Advanced 14.1
+
+Fixes:
+
+-   Liveness probe now correctly handles the startup process of a PostgreSQL
+    server. This fixes an issue reported by a few customers and affects a
+    restarted standby server that needs to recover WAL files to reach a consistent
+    state, but it was not able to do it before the timeout of liveness probe would
+    kick in, leaving the pods in `CrashLoopBackOff` status.
+-   Liveness probe now correctly handles the case of a former primary that needs
+    to use `pg_rewind` to re-align with the current primary after a timeline
+    diversion. This fixes the pod of the new standby from repeatedly being killed
+    by Kubernetes.
+-   Reduce client-side throttling from Postgres pods (e.g. `Waited for
+    1.182388649s due to client-side throttling, not priority and fairness,
+    request: GET`)
+-   Disable Public Key Infrastructure (PKI) initialization on OpenShift and OLM
+    installations, by using the provided one
+-   When changing configuration parameters that require a restart, always leave
+    the primary as last
+-   Mark a PVC to be ready only after a job has been completed successfully,
+    preventing a race condition in PVC initialization
+-   Use the correct public key when renewing the expired webhook TLS secret.
+-   Fix an overflow when parsing an LSN
+-   Remove stale PID files at startup
+-   Let the `Pooler` resource inherit the `imagePullSecret` defined in the
+    operator, if exists
+
 ## Version 1.10.0
 
 **Release date:** 11 November 2021
@@ -409,7 +589,7 @@ Features:
 
 Security Enhancements:
 
--   Support for restricted security context constraint on RedHat OpenShift to
+-   Support for restricted security context constraint on Red Hat OpenShift to
     limit pod execution to a namespace allocated UID and SELinux context
 -   Pod security contexts explicitly defined by the operator to run as
     non-root, non-privileged and without privilege escalation

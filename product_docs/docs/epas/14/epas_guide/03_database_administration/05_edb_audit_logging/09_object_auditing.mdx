@@ -1,0 +1,246 @@
+---
+title: "Object Auditing"
+---
+
+<div id="object_auditing" class="registered_link"></div>
+
+The object-level auditing allows selective auditing of objects for specific Data Manipulation Language Statements, such as `SELECT`, `UPDATE`, `DELETE`, and `INSERT` on a given table. The object-level auditing also lets you include or exclude specific groups by specifying `(@)` or `(-)` with the `edb_audit_statement` parameter. For more information about Data Manipulation Language Statements, see [Selecting SQL Statements to Audit](02_selecting_sql_statements_to_audit/#selecting_sql_statements_to_audit).
+
+Use the following syntax to specify an `edb_audit_statement` parameter value for `SELECT`, `UPDATE`, `DELETE`, or `INSERT` statements:
+
+```text
+{ select | update | delete | insert }@groupname
+```
+
+**Example**
+
+The following is an example where `edb_audit_connect` and `edb_audit_statement` are set with the following non-default values:
+
+```text
+logging_collector = 'on'
+edb_audit_connect = 'all'
+edb_audit = 'csv'
+edb_audit_statement = 'select, insert, update, delete'
+```
+
+The SQL statements invoked by the `SELECT`, `INSERT`, `UPDATE`, and `DELETE` commands are audited.
+
+The database session that occurs is the following:
+
+```text
+$ psql edb enterprisedb
+Password for user enterprisedb:
+psql.bin (14.0.0)
+Type "help" for help.
+
+edb=# SHOW edb_audit_connect;
+ edb_audit_connect 
+-------------------
+ all
+(1 row)
+
+edb=# SHOW edb_audit_statement;
+      edb_audit_statement       
+--------------------------------
+ select, insert, update, delete
+(1 row)
+
+edb=# CREATE TABLE emp
+edb-#        (empno NUMBER(4) NOT NULL,
+edb(#         ename VARCHAR2(10),
+edb(#         job VARCHAR2(9),
+edb(#         mgr NUMBER(4),
+edb(#         hiredate DATE,
+edb(#         sal NUMBER(7, 2),
+edb(#         comm NUMBER(7, 2),
+edb(#         deptno NUMBER(2));
+CREATE TABLE
+
+edb=# ALTER TABLE emp SET (edb_audit_group = 'low_security');
+ALTER TABLE
+
+edb=# CREATE TABLE dept
+edb-#         (deptno NUMBER(2),
+edb(#          dname VARCHAR2(14),
+edb(#          loc VARCHAR2(13) ) with (edb_audit_group = 'low_security');
+CREATE TABLE
+
+edb=# CREATE TABLE bonus
+edb-#         (ename VARCHAR2(10),
+edb(#          job   VARCHAR2(9),
+edb(#          sal   NUMBER,
+edb(#          comm  NUMBER) with (edb_audit_group = 'high_security'); 
+CREATE TABLE
+
+edb=# CREATE TABLE sal
+edb-#         (grade NUMBER,
+edb(#          losal NUMBER,
+edb(#          hisal NUMBER) with (edb_audit_group = 'high_security');  
+CREATE TABLE
+    
+edb=# SET edb_audit_statement = 'select@low_security@high_security, insert@high_security-low_security, update-low_security@high_security, delete@low_security-high_security';
+SET
+
+edb=# SELECT reloptions FROM pg_class WHERE relname IN('emp', 'dept', 'bonus', 'sal');
+           reloptions            
+---------------------------------
+ {edb_audit_group=low_security}
+ {edb_audit_group=low_security}
+ {edb_audit_group=high_security}
+ {edb_audit_group=high_security}
+(4 rows)
+
+edb=# SELECT setting FROM pg_settings WHERE name = 'edb_audit_statement';
+                                                                  setting                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------
+ select@low_security@high_security, insert@high_security-low_security, update-low_security@high_security, delete@low_security-high_security
+(1 row)
+
+edb=# SELECT * FROM emp;
+ empno | ename | job | mgr | hiredate | sal | comm | deptno 
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+
+edb=# SELECT * FROM dept;
+ deptno | dname | loc 
+--------+-------+-----
+(0 rows)
+
+edb=# SELECT * FROM bonus;
+ ename | job | sal | comm 
+-------+-----+-----+------
+(0 rows)
+
+edb=# SELECT * FROM sal;
+ grade | losal | hisal 
+-------+-------+-------
+(0 rows)
+
+edb=# INSERT INTO emp VALUES (7369, 'SMITH', 'CLERK', 7902, TO_DATE('17-DEC-1980', 'DD-MON-YYYY'), 800, NULL, 10);
+INSERT 0 1
+edb=# INSERT INTO emp VALUES (7788, 'SCOTT', 'ANALYST', 7566, TO_DATE('09-DEC-1982', 'DD-MON-YYYY'), 3000, NULL, 20);
+INSERT 0 1
+edb=# INSERT INTO emp VALUES (7566, 'JONES', 'MANAGER', 7839, TO_DATE('2-APR-1981', 'DD-MON-YYYY'), 2975, NULL, 30);
+INSERT 0 1
+
+edb=# INSERT INTO dept VALUES (10, 'ACCOUNTING', 'NEW YORK');
+INSERT 0 1
+edb=# INSERT INTO dept VALUES (20, 'RESEARCH', 'DALLAS');
+INSERT 0 1
+edb=# INSERT INTO dept VALUES (30, 'SALES', 'CHICAGO');
+INSERT 0 1
+edb=# INSERT INTO dept VALUES (40, 'OPERATIONS', 'BOSTON');
+INSERT 0 1
+
+edb=# INSERT INTO bonus VALUES ('SMITH', 'CLERK', 800, NULL);
+INSERT 0 1
+edb=# INSERT INTO bonus VALUES ('SCOTT', 'ANALYST', 3000, NULL);
+INSERT 0 1
+edb=# INSERT INTO bonus VALUES ('JONES', 'MANAGER', 2975, 300);
+INSERT 0 1
+
+edb=# INSERT INTO sal VALUES (3, 800, 1500);
+INSERT 0 1
+edb=# INSERT INTO sal VALUES (2, 2975, 4000);
+INSERT 0 1
+edb=# INSERT INTO sal VALUES (1, 3000, 5000);
+INSERT 0 1
+
+edb=# UPDATE emp SET sal = '5500' WHERE deptno = 10;
+UPDATE 1
+edb=# UPDATE dept SET loc = 'BEDFORD' WHERE deptno = 20;
+UPDATE 1
+edb=# UPDATE bonus SET sal = '4000' WHERE ename = 'SMITH';
+UPDATE 1
+edb=# UPDATE sal SET losal = '5000';
+UPDATE 3
+
+edb=# DELETE FROM emp WHERE deptno = 10;
+DELETE 1
+edb=# DELETE FROM dept WHERE deptno = 20;
+DELETE 1
+edb=# DELETE FROM bonus WHERE sal = 4000;
+DELETE 1
+edb=# DELETE FROM sal WHERE losal = 5000;
+DELETE 3
+```
+
+Setting the `edb_audit_statement` parameter to `'select@low_security@high_security, insert@high_security-low_security, update-low_security@high_security, delete@low_security-high_security'` for the `enterprisedb` user and `edb` database allows to audit `SELECT`, `INSERT`, `UPDATE` or `DELETE` statements including `(@)` and excluding `(-)` for a group in the audit log file. 
+
+The `select@low_security@high_security` audits `SELECT` statements of the `low_security` and `high_security` audit groups, `insert@high_security-low_security` audits `INSERT` statements of `high_security` and exclude the insert statements of `low_security` audit group, `update-low_security@high_security` audits `UPDATE` statements of `high_security` and exclude the update statements of the `low_security` audit group, `delete@low_security-high_security` audits `DELETE` statements of `low_security` and exclude the delete statements of `high_security` audit group for a table in the log file.
+
+The resulting audit log file contains the following.
+
+Each audit log entry has been split and displayed across multiple lines, and a blank line has been inserted between the audit log entries for more clarity in the appearance of the results.
+
+```text
+2021-07-20 01:45:27.077 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,1,"authentication",2021-07-20 01:45:27 IST,5/1,0,AUDIT,00000,"connection authorized: user=enterprisedb 
+database=edb",,,,,,,,,"","client backend",,"","","connect"
+
+2021-07-20 01:50:40.125 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,2,"SELECT",2021-07-20 01:45:27 IST,5/13,0,AUDIT,00000,"statement: SELECT * FROM emp;",,,,,,,,,
+"psql","client backend",,"SELECT","","select"
+
+2021-07-20 01:50:53.778 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,3,"SELECT",2021-07-20 01:45:27 IST,5/14,0,AUDIT,00000,"statement: SELECT * FROM dept;",,,,,,,,,
+"psql","client backend",,"SELECT","","select"
+
+2021-07-20 01:51:05.306 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,4,"SELECT",2021-07-20 01:45:27 IST,5/15,0,AUDIT,00000,"statement: SELECT * FROM bonus;",,,,,,,,,
+"psql","client backend",,"SELECT","","select"
+
+2021-07-20 01:51:14.874 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,5,"SELECT",2021-07-20 01:45:27 IST,5/16,0,AUDIT,00000,"statement: SELECT * FROM sal;",,,,,,,,,
+"psql","client backend",,"SELECT","","select"
+
+2021-07-20 01:52:53.413 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,6,"INSERT",2021-07-20 01:45:27 IST,5/24,0,AUDIT,00000,"statement: INSERT INTO bonus VALUES ('SMITH', 'CLERK', 800, NULL);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:53:02.945 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,7,"INSERT",2021-07-20 01:45:27 IST,5/25,0,AUDIT,00000,"statement: INSERT INTO bonus VALUES ('SCOTT', 'ANALYST', 3000, NULL);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:53:12.064 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,8,"INSERT",2021-07-20 01:45:27 IST,5/26,0,AUDIT,00000,"statement: INSERT INTO bonus VALUES ('JONES', 'MANAGER', 2975, 300);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:53:23.836 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,9,"INSERT",2021-07-20 01:45:27 IST,5/27,0,AUDIT,00000,"statement: INSERT INTO sal VALUES (3, 800, 1500);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:53:33.280 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,10,"INSERT",2021-07-20 01:45:27 IST,5/28,0,AUDIT,00000,"statement: INSERT INTO sal VALUES (2, 2975, 4000);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:53:42.388 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,11,"INSERT",2021-07-20 01:45:27 IST,5/29,0,AUDIT,00000,"statement: INSERT INTO sal VALUES (1, 3000, 5000);
+",,,,,,,,,"psql","client backend",,"INSERT","","insert"
+
+2021-07-20 01:54:17.126 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,12,"UPDATE",2021-07-20 01:45:27 IST,5/32,0,AUDIT,00000,"statement: UPDATE bonus SET sal = '4000' WHERE ename = 'SMITH';
+",,,,,,,,,"psql","client backend",,"UPDATE","","update"
+
+2021-07-20 01:54:34.344 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,13,"UPDATE",2021-07-20 01:45:27 IST,5/33,0,AUDIT,00000,"statement: UPDATE sal SET losal = '5000';
+",,,,,,,,,"psql","client backend",,"UPDATE","","update"
+
+2021-07-20 01:54:45.887 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,14,"DELETE",2021-07-20 01:45:27 IST,5/34,0,AUDIT,00000,"statement: DELETE FROM emp WHERE deptno = 10;
+",,,,,,,,,"psql","client backend",,"DELETE","","delete"
+
+2021-07-20 01:54:54.513 IST,"enterprisedb","edb",87490,"[local]",60f662f7.
+155c2,15,"DELETE",2021-07-20 01:45:27 IST,5/35,0,AUDIT,00000,"statement: DELETE FROM dept WHERE deptno = 20;
+",,,,,,,,,"psql","client backend",,"DELETE","","delete"
+```
+
+
+
+
+
+
+
+
+
+
