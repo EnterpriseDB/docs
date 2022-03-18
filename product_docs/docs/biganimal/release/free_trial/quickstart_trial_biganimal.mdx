@@ -1,0 +1,110 @@
+---
+title: "Quickstart with the BigAnimal Free Trial"
+navTitle: "Quickstart" 
+indexCards: none
+---
+
+This page shows you how to create a PostgreSQL or EDB Postgres Advanced Server cluster using BigAnimal (free for 14 days), connect to the cluster, import sample data, and run some queries.
+
+## Step 1. Create a free trial cluster
+
+We will create an [EDB Postgres Advanced Server](/docs/epas/latest/) (EPAS) cluster based on the latest PostgreSQL release. It will be hosted on [ideally AWS, but for the moment I'm using] Azure.
+
+1. If you haven't done so already, [create your EDB account](https://62312143bb9e32503f5ac560--edb-docs-staging.netlify.app/docs/biganimal/latest/free_trial/01_create_account/).
+
+2. Sign up for a free trial of BigAnimal.
+
+3. Navigate to the [Create Cluster](https://portal.biganimal.com/create-cluster) page.
+
+4. Enter a name for your cluster in the **Cluster Name** field.
+
+5. Pick a secure **Password** for your cluster.
+
+6. Select `EnterpriseDB PostgreSQL Advanced Server (EPAS)` as your **Database Type**.
+
+7. For **Postgres Version**, use `14` for the most advanced features.
+
+8. Select [AWS, whe that's possible, but for now] `Microsoft Azure` for the **Provider**.
+
+9. Pick the **Region** nearest you.
+
+10. Under **Instance Series** pick [whatever makes sense for AWS or] `Standard DSv3 Family vCPUs`.
+
+11. Use [AWS option or] `D2s v3 (2vCPU, 8GB RAM)` for the **Size**.
+
+12. Select [whatever AWS needs or] `P1 (4 Gi, 120 Provisioned IOPS, 25 Provisioned MB/s)` for the cluster's **Volume Properies**.
+
+13. Push the **Create Cluster** button to create your cluster.
+
+It takes about 5 minutes for the cluster to be spun up. While you are waiting, watch [a video about setting up a connection].
+
+## Step 2. Connect to your cluster
+
+[Index of the top N ways to connect to a cluster.]
+
+* Command line using `psql`
+* pgAdmin
+* VSCode
+* DBeaver
+* Other?
+
+[Maybe stop here?]
+
+## Step 3. Create a new database (optional)
+
+We're going to create some sample math data, so we're going to create a database called `math`. We _could_ use the default `edb_admin` database, but best practice is to isolate data.
+
+[For each of the ways to connect, link to the documentation about how to create a new database.]
+
+## Step 4. Populate sample data
+
+We're going to use temporary tables to calculate prime numbers usings a Sieve of Eratosthenes. First we need to create a table of primes.
+
+
+```sql
+CREATE TABLE primes (
+  num INTEGER,
+  PRIMARY KEY (num)
+);
+```
+
+[Turns out to be kinda a lot of complicated SQL. Probably better to use a simplier example. I wanted to import data, but that very much depends on the way the user connects. pgAdmin can't use the COPY command without jumping through some hoops, for instance.]
+
+```sql
+-- Based on https://wiki.postgresql.org/wiki/Sieve_of_Eratosthenes
+
+WITH RECURSIVE
+t0(m) AS (
+    VALUES(1000)
+),
+t1(n) AS (
+    VALUES(2)
+UNION ALL
+    SELECT n+1 FROM t1 WHERE n < (SELECT m FROM t0)
+),
+t2 (n, i) AS (
+    SELECT 2*n, 2
+    FROM t1 WHERE 2*n <= (SELECT m FROM t0)
+UNION ALL
+    (
+        WITH t3(k) AS (
+            SELECT max(i) OVER () + 1 FROM t2
+        ),
+        t4(k) AS (
+            SELECT DISTINCT k FROM t3
+        )
+        SELECT k*n, k
+        FROM
+            t1
+        CROSS JOIN
+            t4
+        WHERE k*k <= (SELECT m FROM t0)
+    )
+)
+INSERT INTO primes (
+  SELECT n FROM t1 EXCEPT
+  SELECT n FROM t2
+  ORDER BY 1
+);
+```
+
