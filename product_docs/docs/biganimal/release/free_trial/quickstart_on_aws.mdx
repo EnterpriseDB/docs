@@ -10,19 +10,156 @@ tags:
 
 ## Step 1: create an account and sign into the portal
 
- (link to portal)
+If you haven't done so already, you'll need to [create your EDB account](create_an_account). 
+
+Then, use your account to access the [BigAnimal portal](https://portal.biganimal.com/).
 
 ## Step 2: create an AWS cluster 
 
+1. Click the Clusters link on the left to navigate to the [Clusters](https://portal.biganimal.com/clusters) page
+
+2. Click the Create New Cluster button
+
+    You should now find yourself at <https://portal.biganimal.com/create-cluster>
+
+3. Enter "AWS PostgreSQL cluster" in the **Cluster Name** field
+4. Enter a strong, memorable password in the **Password** field
+   This is the admin password for the cluster.
+5. Choose "PostgreSQL" for **Database Type**
+   This gives you an official build of PostgreSQL
+6. Choose "14" for **Postgres Version**
+4. Select AWS for **Provider**
+5. Select "US East 1" for **Region**
+6. For **Instance Type** and **Storage**, only one set of options are available in the trial - select them.
+7. Click "Create Cluster"
+
 ### Provisioning, active clusters and deletion
+
+Click create cluster and you'll be brought back to the clusters page with your newly-configured cluster now populating the list.
+
+Initially, the new cluster is being provisioned. This usually takes a minute or two, but can take up to an hour. A progress bar is shown near the right.
+
+Once your first cluster is fully provisioned, your 14 day free trial officially starts, and a countdown will appear telling you how many days are left in your trial.
 
 ## Step 3: Connecting to your new cluster
 
-## Step 4: Create a database
 
-## Step 5: Populate data
+1. Click on your cluster to get an overview of how it has been configured. Select the **Connect** tab to see more information about how to connect to your cluster.
+2. Select the **Overview** tab and copy the **Quick Connect** command. Paste it into a terminal where `psql` is installed. It will prompt for your password and put you on a SQL command line.
 
-## Step 6: Query
+   ```
+   $ psql -W "postgres://edb_admin@[HOST]:5432/edb_admin?sslmode=require"
+   Password:
+   psql (13.5 (Ubuntu 13.5-2.pgdg20.04+1), server 14.2.1 (Debian 14.2.1-1+deb10))
+   WARNING: psql major version 13, server major version 14.
+            Some psql features might not work.
+   SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+   Type "help" for help.
+
+   edb_admin=>
+   ```
+
+!!! Note
+  While psql is a good all-around option for working with Postgres databases, you can use the client of your choice - see [Connect to a cluster](connect_to_a_cluster) for more ideas.
+
+
+## Step 4: Create a new database (optional)
+
+We're going to create some sample math data, so we're going to create a database called `math`. We _could_ use the default `edb_admin` database, but best practice is to isolate data.
+
+1. Create a new role called `math`.
+
+   ```
+   create user math with password 'math_password';
+   ```
+
+2. Grant the `math` role to `edb_admin`.
+
+   ```
+   grant math to edb_admin;
+   ```
+
+3. Create a new `math` database.
+
+   ```
+   create database math with owner math;
+   ```
+
+4. Connect to the `math` database.
+
+   ```
+   create database math with owner math;
+   ```
+
+## Step 5: Populate data & query it
+
+
+We're going to use temporary tables to calculate prime numbers using a Sieve of Eratosthenes.
+
+1. Create a table for storing prime numbers called `primes`.
+
+   ```sql
+   CREATE TABLE primes (
+     num INTEGER,
+     PRIMARY KEY (num)
+   );
+   ```
+
+2. Populate the table with all prime numbers up to 1000. (This code is based on [code from David Fetter](https://wiki.postgresql.org/wiki/Sieve_of_Eratosthenes).)
+
+   ```sql
+   -- Based on https://wiki.postgresql.org/wiki/Sieve_of_Eratosthenes
+   
+   WITH RECURSIVE
+   t0(m) AS (
+       VALUES(1000)
+   ),
+   t1(n) AS (
+       VALUES(2)
+   UNION ALL
+       SELECT n+1 FROM t1 WHERE n < (SELECT m FROM t0)
+   ),
+   t2 (n, i) AS (
+       SELECT 2*n, 2
+       FROM t1 WHERE 2*n <= (SELECT m FROM t0)
+   UNION ALL
+       (
+           WITH t3(k) AS (
+               SELECT max(i) OVER () + 1 FROM t2
+           ),
+           t4(k) AS (
+               SELECT DISTINCT k FROM t3
+           )
+           SELECT k*n, k
+           FROM
+               t1
+           CROSS JOIN
+               t4
+           WHERE k*k <= (SELECT m FROM t0)
+       )
+   )
+   INSERT INTO primes (
+     SELECT n FROM t1 EXCEPT
+     SELECT n FROM t2
+     ORDER BY 1
+   );
+   ```
+
+3. Select the largest prime number less than 1000.
+
+   ```
+   SELECT max(num)
+   FROM primes
+   WHERE num < 1000;
+   ```
+
+You've successfully created a BigAnimal free trial cluster. If you want to explore other configurations, feel free to delete your cluster and create a new one. During the free trial, all clusters are automatically backed-up and can be restored any time before the end of the trial period.
 
 ## Further reading
 
+Now that you've got the basics out of the way, see what else BigAnimal offers:
+
+- [Backup and restore](experiment/backup_and_restore)
+- [Import data](experiment/import_data)
+- [CLI reference](../reference/cli)
+- [API reference](../reference/api)
