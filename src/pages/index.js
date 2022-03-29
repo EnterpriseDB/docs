@@ -196,7 +196,7 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/migrating/oracle">
-              Migration Handbook
+              Oracle to EDB Postgres Advanced Server Migration Handbook
             </IndexCardLink>
           </IndexCard>
 
