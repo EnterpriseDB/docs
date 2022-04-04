@@ -145,6 +145,12 @@ const Page = () => (
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
             <IndexCardLink
+              to="/biganimal/latest/free_trial/"
+              className="nested-link"
+            >
+              Free Trial
+            </IndexCardLink>
+            <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
             >

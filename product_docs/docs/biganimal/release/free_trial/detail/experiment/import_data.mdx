@@ -1,0 +1,77 @@
+---
+title: "Import data from external sources"
+navTitle: "Import data" 
+---
+
+PostgreSQL includes a variety of ways to import data. Here, we'll show how to import a CSV file from the internet.
+
+!!! Caution 
+    Be careful when loading your own data in the Trial version and avoid storing sensitive information; trial clusters
+    are hosted in a shared environment.
+
+    For a more comprehensive evaluation that runs under your own cloud account, [contact our Sales team](https://www.enterprisedb.com/contact).
+
+For this demonstration, we're just going to import batter data from the [Baseball Databank](https://github.com/chadwickbureau/baseballdatabank), which is in CSV form. While it's easy to import the data using [PostgreSQL's COPY command](https://www.postgresql.org/docs/current/sql-copy.html), we'll need to first define a table to put that data into. 
+
+We're going to [add a database](/biganimal/latest/using_cluster/01_postgres_access/#one-database-with-one-application) called "baseball," which we'll populate with some Major League Baseball statistics.
+
+```sql
+create user baseball with password 'baseball_pwd';
+grant baseball to edb_admin;
+create database baseball with owner baseball;
+```
+
+Now you can switch to your new (and empty) baseball database.
+
+```sql
+\c baseball
+```
+
+You can just copy and paste this command into your terminal.
+
+```sql
+CREATE TABLE batters (
+                      id SERIAL,
+                      playerid VARCHAR(9),
+                      yearid INTEGER,
+                      stint INTEGER,
+                      teamid VARCHAR(3),
+                      lgid VARCHAR(2),
+                      g INTEGER,
+                      ab INTEGER,
+                      r INTEGER,
+                      h INTEGER,
+                      "2b" INTEGER,
+                      "3b" INTEGER,
+                      hr INTEGER,
+                      rbi INTEGER,
+                      sb INTEGER,
+                      cs INTEGER,
+                      bb INTEGER,
+                      so INTEGER,
+                      ibb INTEGER,
+                      hbp INTEGER,
+                      sh INTEGER,
+                      sf INTEGER,
+                      gidp INTEGER,
+                      PRIMARY KEY (id)
+);
+```
+
+Now we can populate the table from the internet using the most recent data.
+
+```sql
+\COPY batters(playerid,yearid,stint,teamid,lgid,g,ab,r,h,"2b","3b",hr,rbi,sb,cs,bb,so,ibb,hbp,sh,sf,gidp) FROM PROGRAM 'curl "https://raw.githubusercontent.com/chadwickbureau/baseballdatabank/master/core/Batting.csv"' DELIMITER ',' CSV HEADER
+```
+
+Just to prove there's data loaded, let's look at the home run leaders for the 1998 season.
+
+```sql
+SELECT playerid, yearid, teamid,
+       rank() OVER (PARTITION BY yearid ORDER BY hr desc) hr_rank,
+       hr
+FROM batters
+WHERE yearid = 1998
+ORDER BY hr_rank LIMIT 5;
+```
+
