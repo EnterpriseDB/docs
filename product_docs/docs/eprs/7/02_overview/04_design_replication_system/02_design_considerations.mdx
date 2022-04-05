@@ -1,0 +1,59 @@
+---
+title: "Design considerations"
+---
+
+<div id="design_considerations" class="registered_link"></div>
+
+Keep the following points in mind when designing a replication system:
+
+-   Multi-master replication is supported only on PostgreSQL databases. In addition, EDB Postgres Advanced Server databases must run in the same compatibility mode&mdash;either all Oracle or all PostgreSQL.
+-   An Oracle table can be a member of at most one publication if all publications are subordinate to one publication database definition. However, an Oracle table can be a member of multiple publications if each publication is subordinate to a different publication database definition.
+-   A Postgres table can be a member of at most one publication.
+-   Each non-PostgreSQL/EDB Postgres Advanced Server database table used in a publication must have a primary key, with the exception of tables in snapshot-only publications. These tables don't require a primary key. 
+-   Each PostgreSQL/EDB Postgres Advanced Server database table used in a publication must have identity columns (primary key or unique columns), with the exception of tables in snapshot-only publications. These tables don't require identity columns. For example:
+
+```text
+CREATE TABLE dept_pk (
+	deptno NUMERIC(2) PRIMARY KEY,
+	dname VARCHAR(14)
+	loc VARCHAR(13)
+);
+```
+
+If a table doesn't have a primary key, then it should have a column with `UNIQUE NOT NULL` constraints. For example:
+
+```text
+CREATE TABLE dept_uk2 (
+	deptno NUMERIC(2),
+	dname VARCHAR(14) NOT NULL,
+	loc VARCHAR(13) NOT NULL,
+	CONSTRAINT dept_uk2_dname_loc_key UNIQUE (dname, loc)
+);
+```
+
+-   Make sure table definitions are well established before creating publications. Unless you use the DDL change replication feature, as described in [Replicating DDL changes](../../07_common_operations/08_replicating_ddl_changes/#replicating_ddl_changes), if a table definition changes, you must delete and re-create any publication containing the table along with its associated subscription. Otherwise replication might fail. The same applies for the table definitions in a primary definition node and its associated primary nodes. You can see replication failures in the replication history.
+-   Views can be members of snapshot-only publications. In the subscription database, a view is replicated as a table.
+-   A publication can have multiple subscriptions.
+-   A subscription can be associated with at most one publication.
+-   A database can contain both publications and subscriptions.
+-   A given publication server can support only one multi-master replication system. All primary nodes created subordinate to a given publication server are assumed to be part of the same multi-master replication system.
+-   You can use a table that is created as a result of a subscription in another publication. Thus, a publication can replicate data to a subscription which, in turn, you can use in a publication to replicate to another subscription. This scenario creates a cascaded replication architecture.
+-   For restrictions on the combinations and configurations of database servers that you can use for a publication and its subscription, see [EDB Postgres Advanced Server compatibility configuration modes](../../10_appendix/01_permitted_conf_and_permutations/#adv_server_compatibility_conf_modes).
+-   All replication system components must be running for replication to occur or before you configure, operate, or modify the replication system. Use the Replication Server console to configure and modify a replication system. The console doesn't need to be running for replication to occur.
+-   In general, the order of creating a replication system is as follows: 
+    1.  Create the required physical databases, database user names, tables, and views to use in the replication system. 
+    1.  Define the replication system logical components using the Replication Server console or CLI. 
+    1.  Perform replication.
+-   In general, the order of removing a single-master replication system is as follows: 
+    1.  Remove the replication system logical components using the Replication Server console or CLI, starting with the subscriptions (Subscription nodes) and then their parent components (Subscription Database nodes). 
+    1.  Unregister the subscription server if you no longer need it. 
+    1.  Repeat the same process for the publications. 
+    1.  After all replication system logical components are removed (except for possibly the publication server and subscription server) you can drop any of the physical database objects in Oracle, SQL Server, or Postgres. Don't drop the control schema objects manually, for example by using an SQL command line utility. Doing so can cause the Replication Server console and CLI to stop working. See [Deleting the control schema and control schema objects](../../10_appendix/03_resolving_problems/04_troubleshooting_areas/#del_control_schema_and%20objects) if this problem occurs. Deleting the replication system logical components using the Replication Server console or CLI drops the control schema objects from the physical database.
+-   The order of removing a multi-master replication system is as follows: 
+    1.  Remove the replication system logical components using the Replication Server console or CLI starting with the publication database definitions of the non-MDN nodes. 
+    1.  Remove the publication from under the primary definition node. 
+    1.  Remove the publication database definition of the primary definition node. 
+     After all replication system logical components are removed (except for possibly the publication server) you can drop any of the physical database objects in Postgres. Don't drop the control schema objects manually, for example by using an SQL command line utility. Doing so can cause the Replication Server console and  CLI to stop working.
+
+!!! Note
+    For partition tables, replication is supported only when all the partition tables have a primary key.

@@ -1,0 +1,508 @@
+---
+title: "Configuring the MySQL Foreign Data Wrapper"
+---
+
+<div id="configuring_the_mysql_data_adapter" class="registered_link"></div>
+
+Before using the MySQL Foreign Data Wrapper:
+
+ 1.  Use the [CREATE EXTENSION](#create-extension) command to create the MySQL Foreign Data Wrapper extension on the Postgres host.
+ 2.  Use the [CREATE SERVER](#create-server) command to define a connection to the MySQL server.
+ 3.  Use the [CREATE USER MAPPING](#create-user-mapping) command to define a mapping that associates a Postgres role with the server.
+ 4.  Use the [CREATE FOREIGN TABLE](#create-foreign-table) command to define a single table in the Postgres database that corresponds to a table that resides on the MySQL server, or use the [IMPORT FOREIGN SCHEMA](#import-foreign-schema) command to import multiple remote tables in the local schema.
+
+<div id="create_extension" class="registered_link"></div>
+
+## CREATE EXTENSION
+
+Use the `CREATE EXTENSION` command to create the `mysql_fdw` extension. To invoke the command, use your client of choice (for example, psql) to connect to the Postgres database from which you're querying the MySQL server, and invoke the command:
+
+```text
+CREATE EXTENSION [IF NOT EXISTS] mysql_fdw [WITH] [SCHEMA schema_name];
+```
+
+### Parameters
+
+`IF NOT EXISTS`
+
+ Include the `IF NOT EXISTS` clause to instruct the server to issue a notice instead of returning an error if an extension with the same name already exists.
+
+`schema_name`
+
+ Optionally specify the name of the schema in which to install the extension's objects.
+
+### Example
+
+The following command installs the MySQL foreign data wrapper:
+
+ `CREATE EXTENSION mysql_fdw;`
+
+For more information about using the foreign data wrapper `CREATE EXTENSION` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createextension.html).
+
+<div id="create_server" class="registered_link"></div>
+
+## CREATE SERVER
+
+Use the `CREATE SERVER` command to define a connection to a foreign server. The syntax is:
+
+```text
+CREATE SERVER server_name FOREIGN DATA WRAPPER mysql_fdw
+    [OPTIONS (option 'value' [, ...])]
+```
+
+The role that defines the server is the owner of the server. Use the `ALTER SERVER` command to reassign ownership of a foreign server. To create a foreign server, you must have `USAGE` privilege on the foreign data wrapper specified in the `CREATE SERVER` command.
+
+### Parameters
+
+`server_name`
+
+ Use `server_name` to specify a name for the foreign server. The server name must be unique in the database.
+
+`FOREIGN_DATA_WRAPPER`
+
+ Include the `FOREIGN_DATA_WRAPPER` clause to specify for the server to use the `mysql_fdw` foreign data wrapper when connecting to the cluster.
+
+`OPTIONS`
+
+ Use the `OPTIONS` clause of the `CREATE SERVER` command to specify connection information for the foreign server. You can include these options.
+
+| Option              | Description                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| host                | The address or hostname of the MySQL server. The default value is `127.0.0.1`.                                                                                                  |
+| port                | The port number of the MySQL Server. The default is `3306`.                                                                                                                     |
+| secure_auth         | Use to enable or disable secure authentication. The default is `true`.                                                                                                    |
+| init_command        | The SQL statement to execute when connecting to the MySQL server.                                                                                                               |
+| ssl_key             | The path name of the client private key file.                                                                                                                                   |
+| ssl_cert            | The path name of the client public key certificate file.                                                                                                                        |
+| ssl_ca              | The path name of the Certificate Authority (CA) certificate file. This option, if used, must specify the same certificate used by the server.                                   |
+| ssl_capath          | The path name of the directory that contains trusted SSL CA certificate files.                                                                                                  |
+| ssl_cipher          | The list of permissible ciphers for SSL encryption.                                                                                                                             |
+| use_remote_estimate | Include `use_remote_estimate` to instruct the server to use `EXPLAIN` commands on the remote server when estimating processing costs. By default, `use_remote_estimate` is `false`. |
+
+### Example
+
+The following command creates a foreign server named `mysql_server` that uses the `mysql_fdw` foreign data wrapper to connect to a host with an IP address of `127.0.0.1`:
+
+```text
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '127.0.0.1', port '3306');
+```
+
+The foreign server uses the default port (`3306`) for the connection to the client on the MySQL cluster.
+
+For more information about using the `CREATE SERVER` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createserver.html).
+
+<div id="create_user_mapping" class="registered_link"></div>
+
+## CREATE USER MAPPING
+
+Use the `CREATE USER MAPPING` command to define a mapping that associates a Postgres role with a foreign server:
+
+```text
+CREATE USER MAPPING FOR role_name SERVER server_name
+       [OPTIONS (option 'value' [, ...])];
+```
+
+You must be the owner of the foreign server to create a user mapping for that server.
+
+### Parameters
+
+`role_name`
+
+ Use `role_name` to specify the role to associate with the foreign server.
+
+`server_name`
+
+ Use `server_name` to specify the name of the server that defines a connection to the MySQL cluster.
+
+`OPTIONS`
+
+ Use the `OPTIONS` clause to specify connection information for the foreign server.
+
+ `username` is the name of the user on the MySQL server.
+
+ `password` is the password associated with the username.
+
+### Example
+
+The following command creates a user mapping for a role named `enterprisedb`. The mapping is associated with a server named `mysql_server`.
+
+ `CREATE USER MAPPING FOR enterprisedb SERVER mysql_server;`
+
+If the database host uses secure authentication, provide connection credentials when creating the user mapping:
+
+```text
+CREATE USER MAPPING FOR public SERVER mysql_server OPTIONS (username 'foo', password 'bar');
+```
+
+The command creates a user mapping for a role named `public` that's associated with a server named `mysql_server`. When connecting to the MySQL server, the server authenticates as `foo` and provides a password of `bar`.
+
+For detailed information about the `CREATE USER MAPPING` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createusermapping.html).
+
+<div id="create_foreign_table" class="registered_link"></div>
+
+## CREATE FOREIGN TABLE
+
+A foreign table is a pointer to a table that resides on the MySQL host. Before creating a foreign table definition on the Postgres server, connect to the MySQL server and create a table. The columns in the table  map to columns in a table on the Postgres server. Then, use the `CREATE FOREIGN TABLE` command to define a table on the Postgres server with columns that correspond to the table that resides on the MySQL host. The syntax is:
+
+```text
+CREATE FOREIGN TABLE [ IF NOT EXISTS ] table_name ( [
+  { column_name data_type [ OPTIONS ( option 'value' [, ... ] ) ] [ COLLATE collation ] [ column_constraint [ ... ] ]
+    | table_constraint }
+    [, ... ]
+] )
+[ INHERITS ( parent_table [, ... ] ) ]
+  SERVER server_name [ OPTIONS ( option 'value' [, ... ] ) ]
+```
+
+`column_constraint` is:
+
+```text
+[ CONSTRAINT constraint_name ]
+{ NOT NULL | NULL | CHECK (expr) [ NO INHERIT ] | DEFAULT default_expr }
+```
+
+`table_constraint` is:
+
+```text
+[ CONSTRAINT constraint_name ] CHECK (expr) [ NO INHERIT ]
+```
+
+### Parameters
+
+`table_name`
+
+ Specifies the name of the foreign table. Include a schema name to specify the schema in which the foreign table resides.
+
+`IF NOT EXISTS`
+
+ Include the `IF NOT EXISTS` clause to instruct the server to not return an error if a table with the same name already exists. If a table with the same name exists, the server issues a notice.
+
+`column_name`
+
+ Specifies the name of a column in the new table. Each column must correspond to a column described on the MySQL server.
+
+`data_type`
+
+ Specifies the data type of the column. When possible, specify the same data type for each column on the Postgres server and the MySQL server. If a data type with the same name isn't available, the Postgres server attempts to cast the data type to a type compatible with the MySQL server. If the server can't identify a compatible data type, it returns an error.
+
+`COLLATE collation`
+
+ Include the `COLLATE` clause to assign a collation to the column. If not specified, the column data type's default collation is used.
+
+`INHERITS (parent_table [, ... ])`
+
+ Include the `INHERITS` clause to specify a list of tables from which the new foreign table inherits all columns. Parent tables can be plain tables or foreign tables.
+
+`CONSTRAINT constraint_name`
+
+ Specify an optional name for a column or table constraint. If not specified, the server generates a constraint name.
+
+`NOT NULL`
+
+ Include the `NOT NULL` keywords to indicate that the column isn't allowed to contain null values.
+
+`NULL`
+
+ Include the `NULL` keywords to indicate that the column is allowed to contain null values. This is the default.
+
+`CHECK (expr) [NO INHERIT]`
+
+ Use the `CHECK` clause to specify an expression that produces a Boolean result that each row in the table must satisfy. A check constraint specified as a column constraint references that column's value only, while an expression appearing in a table constraint can reference multiple columns.
+
+ A `CHECK` expression can't contain subqueries or refer to variables other than columns of the current row.
+
+ Include the `NO INHERIT` keywords to specify that a constraint must not propagate to child tables.
+
+`DEFAULT default_expr`
+
+ Include the `DEFAULT` clause to specify a default data value for the column whose column definition it appears in. The data type of the default expression must match the data type of the column.
+
+`SERVER server_name [OPTIONS (option 'value' [, ... ] ) ]`
+
+ To create a foreign table that allows you to query a table that resides on a MySQL file system, include the `SERVER` clause and specify `server_name` for the foreign server that uses the MySQL data adapter.
+
+ Use the `OPTIONS` clause to specify the following options and their corresponding values:
+
+| Option        | Value                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| dbname        | The name of the database on the MySQL server. The database name is required.             |
+| table_name    | The name of the table on the MySQL server. The default is the name of the foreign table. |
+| max_blob_size | The maximum BLOB size to read without truncation.                                        |
+
+### Example
+
+To use data that's stored on a MySQL server, you must create a table on the Postgres host that maps the columns of a MySQL table to the columns of a Postgres table. For example, for a MySQL table with the following definition:
+
+```text
+CREATE TABLE warehouse (
+ warehouse_id      INT PRIMARY KEY,
+ warehouse_name    TEXT,
+ warehouse_created TIMESTAMP);
+```
+
+Execute a command on the Postgres server that creates a comparable table on the Postgres server:
+
+```text
+CREATE FOREIGN TABLE warehouse
+(
+ warehouse_id      INT,
+ warehouse_name    TEXT,
+ warehouse_created TIMESTAMP
+)
+SERVER mysql_server
+         OPTIONS (dbname 'db', table_name 'warehouse');
+```
+
+Include the `SERVER` clause to specify the name of the database stored on the MySQL server and the name of the table (`warehouse`) that corresponds to the table on the Postgres server.
+
+For more information about using the `CREATE FOREIGN TABLE` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-createforeigntable.html).
+
+!!! Note
+    MySQL foreign data wrapper supports the write capability feature.
+
+<div id="data_type_mappings" class="registered_link"></div>
+
+### Data type mappings
+
+When using the foreign data wrapper, you must create a table on the Postgres server that mirrors the table that resides on the MySQL server. The MySQL data wrapper converts the following MySQL data types to the target Postgres type:
+
+| MySQL       | Postgres                     |
+| ----------- | ---------------------------- |
+| BIGINT      | BIGINT/INT8                  |
+| BOOLEAN     | SMALLINT                     |
+| BLOB        | BYTEA                        |
+| CHAR        | CHAR                         |
+| DATE        | DATE                         |
+| DOUBLE      | DOUBLE PRECISION/FLOAT8      |
+| FLOAT       | FLOAT/FLOAT4                 |
+| INT/INTEGER | INT/INTEGER/INT4             |
+| LONGTEXT    | TEXT                         |
+| SMALLINT    | SMALLINT/INT2                |
+| TIMESTAMP   | TIMESTAMP                    |
+| VARCHAR()   | VARCHAR()/CHARCTER VARYING() |
+
+!!! Note
+    For `ENUM` data type:
+
+    MySQL accepts an `enum` value in string form. You must create exactly the same `enum` listing on EDB Postgres Advanced Server as is present on the MySQL server. Any sort of inconsistency causes an error while fetching rows with values not known on the local server.
+
+    Also, when the given `enum` value isn't present at the MySQL side but is present at the EDB Postgres Advanced Server side, an empty string (`''`) is inserted as a value at the MySQL side for the `enum` column. To select from a table having the `enum` value as `''`, create an `enum` type at the Postgres side with all valid values and `''`.
+
+<div id="import_foreign_schema" class="registered_link"></div>
+
+## IMPORT FOREIGN SCHEMA
+
+Use the `IMPORT FOREIGN SCHEMA` command to import table definitions on the Postgres server from the MySQL server. The new foreign tables are created with the same column definitions as that of remote tables in the existing local schema. The syntax is:
+
+```text
+IMPORT FOREIGN SCHEMA remote_schema
+    [ { LIMIT TO | EXCEPT } ( table_name [, ...] ) ]
+    FROM SERVER server_name
+    INTO local_schema
+    [ OPTIONS ( option 'value' [, ... ] ) ]
+```
+
+### Parameters
+
+`remote_schema`
+
+ Specifies the remote schema (MySQL database) to import from.
+
+`LIMIT TO ( table_name [, ...] )`
+
+ By default, all views and tables existing in a particular database on the MySQL host are imported. Using this option, you can limit the list of tables to a specified subset.
+
+`EXCEPT ( table_name [, ...] )`
+
+ By default, all views and tables existing in a particular database on the MySQL host are imported. Using this option, you can exclude specified foreign tables from the import.
+
+`SERVER server_name`
+
+ Specify the name of server to import foreign tables from.
+
+`local_schema`
+
+ Specify the name of local schema where you want to creat the imported foreign tables.
+
+`OPTIONS`
+
+ Use the `OPTIONS` clause to specify the following options and their corresponding values:
+
+ | Option      | Description                                                                                                                                         |
+ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+ | import_default  | Controls whether column `DEFAULT` expressions are included in the definitions of foreign tables imported from a foreign server. The default is `false`. |
+ | import_not_null | Controls whether column `NOT NULL` constraints are included in the definitions of foreign tables imported from a foreign server. The default is `true`. |
+
+### Example
+
+For a MySQL table created in the edb database with the following definition:
+
+```text
+CREATE TABLE color(cid INT PRIMARY KEY, cname TEXT);
+INSERT INTO color VALUES (1, 'Red');
+INSERT INTO color VALUES (2, 'Green');
+INSERT INTO color VALUES (3, 'Orange');
+
+CREATE TABLE fruit(fid INT PRIMARY KEY, fname TEXT);
+INSERT INTO fruit VALUES (1, 'Orange');
+INSERT INTO fruit VALUES (2, 'Mango');
+```
+
+Execute a command on the Postgres server that imports a comparable table on the Postgres server:
+
+```text
+IMPORT FOREIGN SCHEMA edb FROM SERVER mysql_server INTO public;
+
+SELECT * FROM color;
+
+ cid | cname
+ -----+--------
+   1 | Red
+   2 | Green
+   3 | Orange
+ (3 rows)
+
+SELECT * FROM fruit;
+
+ fid | fname
+ -----+--------
+   1 | Orange
+   2 | Mango
+ (2 rows)
+```
+
+The command imports table definitions from a remote schema `edb` on server `mysql_server` and then creates the foreign tables in local schema `public`.
+
+For more information about using the `IMPORT FOREIGN SCHEMA` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-importforeignschema.html).
+
+## DROP EXTENSION
+
+Use the `DROP EXTENSION` command to remove an extension. To invoke the command, use your client of choice (for example, psql) to connect to the Postgres database from which you're dropping the MySQL server, and run the command:
+
+```text
+DROP EXTENSION [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ];
+```
+
+### Parameters
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of returning an error if an extension with the specified name doesn't exist.
+
+`name`
+
+ Optionally, specify the name of the installed extension.
+
+ `CASCADE`
+
+ Drop objects that depend on the extension. It drops all the other dependent objects too.
+
+ `RESTRICT`
+
+ Don't allow to drop extension if any objects, other than its member objects and extensions listed in the same `DROP` command, depend on it.
+
+### Example
+
+The following command removes the extension from the existing database:
+
+ `DROP EXTENSION mysql_fdw;`
+
+For more information about using the foreign data wrapper `DROP EXTENSION` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropextension.html).
+
+## DROP SERVER
+
+Use the `DROP SERVER` command to remove a connection to a foreign server. The syntax is:
+
+```text
+DROP SERVER [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ]
+```
+
+The role that drops the server is the owner of the server. Use the `ALTER SERVER` command to reassign ownership of a foreign server. To drop a foreign server, you must have `USAGE` privilege on the foreign data wrapper specified in the `DROP SERVER` command.
+
+### Parameters
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of returning an error if a server with the specified name doesn't exists.
+
+`name`
+
+ Optionally, specify the name of the installed server.
+
+ `CASCADE`
+
+ Drop objects that depend on the server. Drop all the other dependent objects too.
+
+ `RESTRICT`
+
+ Don't allow to drop the server if any objects depend on it.
+
+### Example
+
+The following command removes a foreign server named `mysql_server`:
+
+ `DROP SERVER mysql_server;`
+
+For more information about using the `DROP SERVER` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropserver.html).
+
+Use the `DROP USER MAPPING` command to remove a mapping that associates a Postgres role with a foreign server. You must be the owner of the foreign server to remove a user mapping for that server.
+
+```text
+DROP USER MAPPING [ IF EXISTS ] FOR { user_name | USER | CURRENT_USER | PUBLIC } SERVER server_name;
+```
+
+### Parameters
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of throwing an error if the user mapping doesn't exist.
+
+`user_name`
+
+ Specify the user name of the mapping.
+
+`server_name`
+
+ Specify the name of the server that defines a connection to the MySQL cluster.
+
+### Example
+
+The following command drops a user mapping for a role named `enterprisedb`. The mapping is associated with a server named `mysql_server`.
+
+ `DROP USER MAPPING FOR enterprisedb SERVER mysql_server;`
+
+For detailed information about the `DROP USER MAPPING` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/sql-dropusermapping.html).
+
+## DROP FOREIGN TABLE
+
+A foreign table is a pointer to a table that resides on the MySQL host. Use the `DROP FOREIGN TABLE` command to remove a foreign table. Only the owner of the foreign table can drop it.
+
+```text
+DROP FOREIGN TABLE [ IF EXISTS ] name [, ...] [ CASCADE | RESTRICT ]
+```
+
+### Parameters
+
+`IF EXISTS`
+
+ Include the `IF EXISTS` clause to instruct the server to issue a notice instead of returning an error if the foreign table with the specified name doesn't exist.
+
+`name`
+
+ Specify the name of the foreign table.
+
+`CASCADE`
+
+  Drop objects that depend on the foreign table. Drop all the other dependent objects too.
+
+`RESTRICT`
+
+ Don't allow to drop foreign table if any objects depend on it.
+
+### Example
+
+```text
+DROP FOREIGN TABLE warehouse;
+```
+
+For more information about using the `DROP FOREIGN TABLE` command, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-dropforeigntable.html).

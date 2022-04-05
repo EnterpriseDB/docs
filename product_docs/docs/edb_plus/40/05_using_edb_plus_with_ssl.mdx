@@ -1,0 +1,314 @@
+---
+title: "Using an SSL connection"
+---
+
+<div id="using_edb_plus_with_ssl" class="registered_link"></div>
+
+<div id="using_ssl_connection" class="registered_link"></div>
+
+EDB\*Plus can connect to the EDB Postgres Advanced Server database using secure sockets layer (SSL) connectivity.
+
+Using SSL requires various prerequisite configuration steps performed on the database server involved with the SSL connection as well as creating the Java truststore and keystore on the host that runs EDB\*Plus.
+
+The Java *truststore* is the file containing the certificate authority (CA) certificates. The Java client (EDB\*Plus) uses the certificate to verify the authenticity of the server to which it is initiating an SSL connection.
+
+The Java *keystore* is the file containing private and public keys and their corresponding certificates. The keystore is required for client authentication to the server, which is used for the EDB\*Plus connection.
+
+Refer to this material for guidance in setting up the SSL connections:
+
+-   For information on setting up SSL connectivity to the EDB Postges Advanced Server database, see [Secure TCP/IP Connections with SSL](https://www.postgresql.org/docs/current/ssl-tcp.html) in the PostgreSQL core documentation.
+
+-   For information on JDBC client connectivity using SSL, see [Configuring the Client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) in the PostgreSQL JDBC Interface documentation.
+
+## Configuring SSL on EDB Postgres Advanced Server
+
+This example configures SSL on a database server to show the use of SSL with EDB\*Plus. A self-signed certificate is used for this purpose.
+
+**Step 1:** Create the certificate signing request (CSR).
+
+In the following example, the generated certificate signing request file is `server.csr`. The private key is generated as file `server.key`.
+
+```text
+$ openssl req -new -nodes -text -out server.csr \
+> -keyout server.key -subj "/CN=enterprisedb"
+Generating a 2048 bit RSA private key
+.............................+++
+....................................................................+++
+writing new private key to 'server.key'
+-----
+```
+
+!!! Note
+    When creating the certificate, the value specified for the common name field (`CN=enterprisedb` in this example) must be the database user name that is specified when connecting to EDB\*Plus.
+
+In addition, you can use user name maps as defined in the `pg_ident.conf` file to permit more flexibility for the common name and database user name, described in later steps. 
+
+**Step 2:** Generate the self-signed certificate.
+
+The following generates a self-signed certificate to file `server.crt` using the certificate signing request file, `server.csr`, and the private key, `server.key`, as input.
+
+```text
+$ openssl x509 -req -days 365 -in server.csr -signkey server.key \
+> -out server.crt
+Signature ok
+subject=/CN=enterprisedb
+Getting Private key
+```
+
+**Step 3:** Make a copy of the server certificate (`server.crt`) to use as the root certificate authority (CA) file (`root.crt`).
+
+```text
+$ cp server.crt root.crt
+```
+
+**Step 4:** Delete the now redundant certificate signing request (`server.csr`).
+
+```text
+$ rm -f server.csr
+```
+
+**Step 5:** Move or copy the certificate and private key files to the EDB Postgres Advanced Server data directory (for example, `/opt/edb/as14/data`).
+
+```text
+$ mv root.crt /opt/edb/as14/data
+$ mv server.crt /opt/edb/as14/data
+$ mv server.key /opt/edb/as14/data
+```
+
+**Step 6:** Set the file ownership and permissions on the certificate files and private key file.
+
+Set the ownership to the operating system account that owns the data subdirectory of the database server. Set the permissions so that no groups or accounts other than the owner can access these files.
+
+```text
+$ chown enterprisedb root.crt server.crt server.key
+$ chgrp enterprisedb root.crt server.crt server.key
+$ chmod 600 root.crt server.crt server.key
+$ ls -l
+total 152
+        .
+        .
+        .
+-rw------- 1 enterprisedb enterprisedb 985 Aug 22 11:00 root.crt
+-rw------- 1 enterprisedb enterprisedb 985 Aug 22 10:59 server.crt
+-rw------- 1 enterprisedb enterprisedb 1704 Aug 22 10:58 server.key
+```
+
+**Step 7:** In the `postgresql.conf` file, make the following changes.
+
+```text
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file = 'server.key'
+ssl_ca_file = 'root.crt'
+```
+
+**Step 8:** Modify the `pg_hba.conf` file to enable SSL use on the database to which you want EDB\*Plus to make the SSL connection.
+
+In the `pg_hba.conf` file, the `hostssl` type indicates the entry is used to validate SSL connection attempts from the client (EDB\*Plus).
+
+The authentication method is set to `cert` with the option `clientcert=1`. This setting requires an SSL certificate from the client against which authentication is performed using the common name of the certificate (`enterprisedb` in this example).
+
+The `map=sslusers` option specifies to use a mapping named `sslusers` defined in the `pg_ident.conf` file for authentication. This mapping allows a connection to the database if the common name from the certificate and the database user name attempting the connection match the `SYSTEM-USERNAME/PG-USERNAME` pair listed in the `pg_ident.conf` file.
+
+The following is an example of the settings in the `pg_hba.conf` file if the database (`edb`) must use SSL connections.
+
+```text
+# TYPE  DATABASE      USER          ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all           all                                   md5
+# IPv4 local connections:
+hostssl   edb         all  192.168.2.0/24   cert clientcert=1 map=sslusers
+```
+
+**Step 9:** The following shows the username maps in the `pg_ident.conf` file related to the `pg_hba.conf` file by the `map=sslusers` option. These username maps permit you to specify database user names `edbuser`, `postgres`, or `enterprisedb` when connecting with EDB\*Plus.
+
+```text
+# MAPNAME   SYSTEM-USERNAME   PG-USERNAME
+ sslusers   enterprisedb      edbuser
+ sslusers   enterprisedb      postgres
+ sslusers   enterprisedb      enterprisedb
+```
+
+**Step 10:** Restart the database server.
+
+## Configuring SSL for the EDB\*Plus client
+
+After you configure SSL on the database server, this example shows how to generate certificate and keystore files for EDB\*Plus (the JDBC client).
+
+**Step 1:** Using files `server.crt` and `server.key` located under the database server data subdirectory, create copies of these files and move them to the host for EDB\*Plus.
+
+Store these files in the directory to contain the trusted certificate and keystore files you generate. The suggested location is to create a `.postgresql` subdirectory under the home user account that invokes EDB\*Plus. Thus, these files are under the `~/.postgresql` directory of the user account that runs EDB\*Plus.
+
+For this example, assume file `edb.crt` is a copy of `server.crt` and `edb.key` is a copy of `server.key`.
+
+**Step 2:** Create an additional copy of `edb.crt`.
+
+```text
+$ cp edb.crt edb_root.crt
+$ ls -l
+total 12
+-rw-r--r-- 1 user user  985   Aug 22 14:17  edb.crt
+-rw-r--r-- 1 user user  1704  Aug 22 14:18  edb.key
+-rw-r--r-- 1 user user  985   Aug 22 14:19  edb_root.crt
+```
+
+**Step 3:** Create a distinguished encoding rules (DER) format of file `edb_root.crt`. The generated DER format of this file is `edb_root.crt.der`. The DER format of the file is required for the `keytool` program used next.
+
+```text
+$ openssl x509 -in edb_root.crt -out edb_root.crt.der -outform der
+$ ls -l
+total 16
+-rw-r--r-- 1 user user  985  Aug 22 14:17  edb.crt
+-rw-r--r-- 1 user user  1704 Aug 22 14:18  edb.key
+-rw-r--r-- 1 user user  985  Aug 22 14:19  edb_root.crt
+-rw-rw-r-- 1 user user  686  Aug 22 14:21  edb_root.crt.der
+```
+
+**Step 4:** Use the `keytool` program to create a keystore file `(postgresql.keystore)` using `edb_root.crt.der` as the input. This process adds the certificate of the Postgres database server to the keystore file.
+
+!!! Note
+    The file name `postgresql.keystore` is recommended so that you can access it in its default location `~/.postgresql postgresql.keystore`, which is under the home directory of the user account invoking EDB\*Plus. The file name suffix can be `.jks` instead of `.keystore` (that is, `postgresql.jks`). In these examples, the file name `postgresql.keystore` is used.
+
+**For Windows only:** The path is `%APPDATA%\.postgresql\postgresql.keystore`
+
+The `keytool` program can be found under the `bin` subdirectory of the Java Runtime Environment installation.
+
+You are prompted for a new password. Save this password as you must specify it with the `PGSSLCERTPASS` environment variable.
+
+```text
+$ /usr/java/jdk1.8.0_131/jre/bin/keytool -keystore postgresql.keystore \
+> -alias postgresqlstore -import -file edb_root.crt.der
+Enter keystore password:
+Re-enter new password:
+Owner: CN=enterprisedb
+Issuer: CN=enterprisedb
+Serial number: c60f40256b0e8d53
+Valid from: Tue Aug 22 10:59:25 EDT 2017 until: Wed Aug 22 10:59:25 EDT 2018
+Certificate fingerprints:
+      MD5:  85:0B:E9:A7:6E:4F:7C:B0:9B:D6:3A:44:55:E2:E9:8E
+      SHA1: DD:A6:71:24:0B:6C:F8:BC:7A:4C:89:9B:DC:22:6A:6C:B0:F5:3F:7C
+      SHA256:
+DC:02:64:E2:B0:E9:6F:1C:FC:4F:AE:E6:18:85:0B:79:57:43:C3:C5:AE:43:0D:37
+:49:53:6D:11:69:06:46:48
+      Signature algorithm name: SHA1withRSA
+      Version: 1
+Trust this certificate? [no]:  yes
+Certificate was added to keystore
+```
+
+**Step 5:** Create a `PKCS #12` format of the keystore file `(postgresql.p12)` using files `edb.crt` and `edb.key` as input.
+
+!!! Note
+    The file name `postgresql.p12` is recommended so that you can access it in its default location `~/.postgresql/postgresql.p12`, which is under the home directory of the user account invoking EDB\*Plus.
+
+**For Windows only:** The path is `%APPDATA%\.postgresql\postgresql.p12`
+
+You're prompted for a new password. Save this password as you must specify it with the `PGSSLKEYPASS` environment variable.
+
+```text
+$ openssl pkcs12 -export -in edb.crt -inkey edb.key -out postgresql.p12
+Enter Export Password:
+Verifying - Enter Export Password:
+$ ls –l
+total 24
+-rw-rw-r-- 1 user user  985 Aug 24 12:18 edb.crt
+-rw-rw-r-- 1 user user 1704 Aug 24 12:18 edb.key
+-rw-rw-r-- 1 user user  985 Aug 24 12:20 edb_root.crt
+-rw-rw-r-- 1 user user  686 Aug 24 12:20 edb_root.crt.der
+-rw-rw-r-- 1 user user  758 Aug 24 12:26 postgresql.keystore
+-rw-rw-r-- 1 user user 2285 Aug 24 12:28 postgresql.p12
+```
+
+**Step 6:** If the `postgresql.keystore` and `postgresql.p12` files aren't already in the `~/.postgresql` directory, move or copy them to that location.
+
+**For Windows only:** The directory is `%APPDATA%\.postgresql`
+
+**Step 7:** If the default location `~/.postgresql` isn't used, then you must set the full path (including the file name) to the `postgresql.keystore` file with the `PGSSLCERT` environment variable. You must also set the full path (including the file name) to file `postgresql.p12` with the `PGSSLKEY` environment variable before invoking EDB\*Plus.
+
+In addition, if the generated file from Step 4 wasn't named `postgresql.keystore` or `postgresql.jks`, then use the `PGSSLCERT` environment variable to set the file name and its location. Similarly, if the generated file from Step 5 wasn't named `postgresql.p12`, then use the `PGSSLKEY` environment variable to set the file name and its location.
+
+## Requesting an SSL connection between EDB\*Plus and the EDB Postgres Advanced Server database
+
+To perform an SSL connection, be sure to address the following:
+
+-   The trusted certificate and keystore files were generated for both the database server and the client host invoking EDB\*Plus.
+-   The `postgresql.conf` file for the database server contains the updated configuration parameters.
+-   The `pg_hba.conf` file for the database server contains the required entry for permitting the SSL connection.
+-   For the client host, either the client’s certificate and keystore files were placed in the user account’s `~/.postgresql` directory or the environment variables `PGSSLCERT` and `PGSSLKEY` were set before invoking EDB\*Plus.
+-   The `PGSSLCERTPASS` environment variable is set with a password.
+-   The `PGSSLKEYPASS` environment variable is set with a password
+
+When invoking EDB\*Plus, include the `?ssl=true` parameter in the database connection string as shown for the `connectstring` option in [Using EDB\*Plus](04_using_edb_plus/#using_edb_plus).
+
+The following is an example in which EDB\*Plus is invoked from a host that's remote to the database server.
+
+The `postgresql.conf` file of the database server contains the following modified parameters:
+
+```text
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file = 'server.key'
+ssl_ca_file = 'root.crt'
+```
+
+The `pg_hba.conf` file of the database server contains the following entry for connecting from EDB\*Plus on the remote host:
+
+```text
+# TYPE  DATABASE        USER          ADDRESS                 METHOD
+
+# "local" is for Unix domain socket connections only
+local   all             all                                   md5
+# IPv4 local connections:
+hostssl   edb           all           192.168.2.24/32 cert clientcert=1
+```
+
+On the remote host where EDB\*Plus is invoked, the Linux user account named `user` contains the certificate and keystore files in its `~/.postgresql` directory:
+
+```text
+[user@localhost ~]$ whoami
+user
+[user@localhost ~]$ cd .postgresql
+[user@localhost .postgresql]$ pwd
+/home/user/.postgresql
+[user@localhost .postgresql]$ ls -l
+total 8
+-rw-rw-r-- 1 user user  758 Aug 24 12:37 postgresql.keystore
+-rw-rw-r-- 1 user user 2285 Aug 24 12:37 postgresql.p12
+```
+
+Logged into Linux with the account named `user`, EDB\*Plus is successfully invoked with the `ssl=true` parameter:
+
+```text
+$ export PGSSLCERTPASS=keypass
+$ export PGSSLKEYPASS=exppass
+$ cd /opt/edb/as14/edbplus
+$ ./edbplus.sh enterprisedb/password@192.168.2.22:5444/edb?ssl=true
+Connected to EnterpriseDB 14.0.0 (192.168.2.22:5444/edb) AS enterprisedb
+
+EDB*Plus: Release 14 (Build 40.0.1)
+Copyright (c) 2008-2021, EnterpriseDB Corporation. All rights reserved.
+
+SQL>
+```
+
+Alternatively, without placing the certificate and keystore files in `~/.postgresql` but in a different directory, you can invoke EDB\*Plus in the following manner:
+
+```text
+$ export PGSSLCERT=/home/user/ssl/postgresql.keystore
+$ export PGSSLKEY=/home/user/ssl/postgresql.p12
+$ export PGSSLCERTPASS=keypass
+$ export PGSSLKEYPASS=exppass
+$ cd /opt/edb/as14/edbplus
+$ ./edbplus.sh enterprisedb/password@192.168.2.22:5444/edb?ssl=true
+Connected to EnterpriseDB 14.0.0 (192.168.2.22:5444/edb) AS enterprisedb
+
+EDB*Plus: Release 14 (Build 40.0.1)
+Copyright (c) 2008-2021, EnterpriseDB Corporation. All rights reserved.
+
+SQL>
+```
+
+In both cases the database user name used to log into EDB\*Plus is `enterprisedb`, as this is the user specified for the common name field when creating the certificate in Step 1 of [Configuring SSL on EDB Postgres Advanced Server](#using_ssl_connection).
+
+You can use other database user names if the `pg_hba.conf` file with the `map` option and the `pg_ident.conf` file are used as described in Steps 8 and 9 of [Configuring SSL on EDB Postgres Advanced Server](#using_ssl_connection).

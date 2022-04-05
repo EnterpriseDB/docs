@@ -1,0 +1,159 @@
+---
+
+title: "Support for GSSAPI-encrypted connection"
+
+---
+
+<div id="support_for_gssapi_encrypted_connection" class="registered_link"></div>
+
+!!! Tip "New Feature "
+    Support for GSSAPI-ecncrypted connections is available in EDB JDBC Connector release 42.2.19.1 and later.
+
+The EDB JDBC driver supports GSSAPI-encrypted connections for EDB Postgres Advanced Server 12 onwards.  
+
+The `gssEncMode` parameter controls GSSAPI-encrypted connection. The parameter can have any of these values:
+
+- `Disable`. Disables any attempt to connect using GSS-encrypted mode.
+
+- `Allow`. Attempts to connect in plain text. Then, if the server requests it, it switches to encrypted mode.
+
+- `Prefer`. Attempts to connect in encrypted mode and falls back to plain text if it fails to acquire an encrypted connection.
+
+- `Require`. Attempts to connect in encrypted mode and fails to connect if that isn't possible.
+
+## GSSAPI/SSPI authentication
+
+The default behavior of GSSAPI/SSPI authentication on Windows and Linux platforms is as following:
+
+- On Windows, the EDB JDBC driver tries to connect using SSPI.
+- On Linux, the EDB JDBC driver tries to connect using GSSAPI.
+
+This default behavior is controlled using the `gsslib` connection parameter that takes one of the following values: 
+
+- `auto`. The driver attempts for SSPI authentication when the server requests it, the EDB JDBC client is running on Windows, and the waffle libraries required for SSPI are on the CLASSPATH. Otherwise it opts for Kerberos/GSSAPI authentication via JSSE. Unlike libpq, the EDB JDBC driver doesn't use the Windows SSPI libraries for Kerberos (GSSAPI) requests.
+
+- `gssapi`. This option forces JSSE's GSSAPI authentication even when SSPI is available.
+
+- `sspi`. This option forces SSPI authentication. This authentication fails on Linux or where SSPI is unavailable.
+
+## Using SSPI (Windows-only environment)
+
+When the EDB Postgres Advanced Server and JDBC client both are on Windows, the JDBC driver connects with SSPI authentication using one of the following connection strings:
+
+```text
+Class.forName("com.edb.Driver"); 
+con = DriverManager.getConnection("jdbc:edb://localhost:5444/edb");
+OR
+con = DriverManager.getConnection("jdbc:edb://localhost:5444/edb?gsslib=sspi"); 
+```
+
+!!! Note 
+
+    - `gsslib=sspi` is optional because the server requires SSPI authentication. 
+    - There is no need to specify username and password. The logged-in user credentials are used to authenticate the user.
+
+### Example
+
+The example assumes that SSPI authentication is configured on a Windows machine. Suppose the `edb-jdbc18.jar` path is `<PATH_DRIVER>` and the waffle libraries path is `<PATH_WAFFLE>`. Here's how to set `CLASSPATH` and run the JEdb sample:
+
+```text 
+set CLASSPATH=<PATH_DRIVER>\edb-jdbc18.jar;<PATH_WAFFLE>\*;
+javac JEdb.java
+java JEdb
+```
+
+## Using GSSAPI (Linux-only environment)
+
+When the EDB Postgres Advanced Server and JDBC client both are on Linux, the JDBC driver connects with GSSAPI authentication using the following connection string:
+
+```text 
+Class.forName("com.edb.Driver");
+Properties connectionProps = new Properties();
+connectionProps.setProperty("user", "postgres/myrealm.example@MYREALM.EXAMPLE");
+String databaseUrl = "jdbc:edb://myrealm.example:5444/edb";
+con = DriverManager.getConnection(databaseUrl, connectionProps);
+```
+
+!!! Note
+
+    `gsslib=gssapi` is optional because the server requires GSSAPI authentication. 
+
+### Example
+
+This example assumes that GSS authentication is configured on a Linux machine.
+
+Create a file named `pgjdbc.conf` with the following contents.
+
+```text 
+pgjdbc {
+com.sun.security.auth.module.Krb5LoginModule required
+doNotPrompt=true
+useTicketCache=true
+renewTGT=true
+debug=true;
+};
+```
+
+Suppose `pgjdbc.conf` is placed at `/etc/pgjdbc.conf`. Here's how to run JEdb sample:
+
+```text 
+javac JEdb.java
+java -Djava.security.auth.login.config=/etc/pgjdbc.conf -cp .:edb-jdbc18.jar JEdb
+```
+
+## Using SSPI/GSSAPI (Windows and Linux environment)
+
+When the EDB Postgres Advanced Server is on Linux with authentication configured as GSSAPI, and the JDBC client is on Windows, the EDB JDBC connects either using SSPI or GSSAPI authentication.
+
+For `gsslib=gssapi` or `gsslib=auto`, EDB JDBC uses SSPI. For `gsslib=gssapi` it uses GSSAPI authentication.
+
+### Example
+
+This example assumes that GSS authentication is configured between Windows Active Directory and a Linux machine.
+
+**SSPI**
+
+In this scenario, JDBC is using SSPI authentication. Create the connection using the following code: 
+
+```text  
+Class.forName("com.edb.Driver");   	
+Properties connectionProps = new Properties();
+connectionProps.setProperty("user", "david@MYREALM.EXAMPLE");
+String databaseUrl = "jdbc:edb://pg.myrealm.example:5444/edb?gsslib=sspi";
+con = DriverManager.getConnection(databaseUrl, connectionProps);
+```
+Running an EDB JDBC-based app in this case is the same as described in [Using SSPI (Windows-only environment)](#using_sspi_windows_only_environment).
+
+**GSSAPI**
+
+In this scenario, JDBC is using GSSAPI authentication. Create the connection using the following code: 
+
+```text  
+Class.forName("com.edb.Driver"); 		
+Properties connectionProps = new Properties();
+connectionProps.setProperty("user", "david@MYREALM.EXAMPLE");
+String databaseUrl = "jdbc:edb://pg.myrealm.example:5444/edb?gsslib=gssapi";
+con = DriverManager.getConnection(databaseUrl, connectionProps);
+```
+
+Set up the Kerberos credential cache file and obtain a ticket.
+
+Create a new directory, say `c:\temp`, and a system environment variable `KRB5CCNAME`. In the variable value field, enter `c:\temp\krb5cache`.
+
+!!! Note
+
+    `krb5cache` is a file that's managed by the Kerberos software.
+
+Obtain a ticket for a Kerberos principal either using MIT Kerberos Ticket Manager or using a `keytab` file using the `ktpass` utility.
+
+Create the `pgjdbc.conf` file with the same contents described in [Using GSSAPI (Linux-only environment)](#using_gssapi_linux_only_environment).
+
+Suppose `pgjdbc.conf` is placed at `c:\pgjdbc.conf`. Here's how to run JEdb sample:
+
+```text 
+set CLASSPATH=C:\Program Files\edb\jdbc\edb-jdbc18.jar;
+java -Djava.security.auth.login.config=c:\pgjdbc.conf JEdb
+```
+
+
+

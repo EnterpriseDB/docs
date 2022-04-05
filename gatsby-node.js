@@ -57,7 +57,11 @@ const gitData = (() => {
 exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   const { createNodeField } = actions;
 
-  if (node.internal.mediaType === "text/yaml") loadNodeContent(node);
+  if (node.internal.mediaType === "text/yaml") {
+    // See: https://github.com/gatsbyjs/gatsby/issues/34605
+    const content = await loadNodeContent(node);
+    createNodeField({ node, name: "content", value: content });
+  }
   if (node.internal.type !== "Mdx") return;
 
   const fileNode = getNode(node.parent);
@@ -521,7 +525,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/p/edb-postgres-mongodb-data-adapter/* /docs/mongo_data_adapter/latest/ 301
 /edb-docs/p/edb-postgres-migration-portal/*     /docs/migration_portal/latest/ 301
 /edb-docs/p/edb-postgres-enterprise-manager/*   /docs/pem/latest/ 301
-/edb-docs/p/edbplus/*                           /docs/epas/latest/edb_plus/ 301
+/edb-docs/p/edbplus/*                           /docs/edb_plus/latest/ 301
 /edb-docs/p/edb-postgres-odbc-connector/*       /docs/odbc_connector/latest/ 301
 /edb-docs/p/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
 /edb-docs/p/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301

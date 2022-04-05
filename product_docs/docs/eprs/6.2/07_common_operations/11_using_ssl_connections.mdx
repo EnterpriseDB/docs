@@ -16,8 +16,8 @@ For a single-master replication system, the following connections can be made to
 
 For a multi-master replication system, the following connections can be made to Postgres databases enabled with SSL:
 
--   Publication server connection to the primary definition node and the non-PDN nodes.
--   Migration Toolkit connection to the primary definition node and the non-PDN nodes.
+-   Publication server connection to the primary definition node and the non-MDN nodes.
+-   Migration Toolkit connection to the primary definition node and the non-MDN nodes.
 
 !!! Note
     SSL connections are not used from the xDB Replication Console or the xDB Replication Server Command Line Interface. The xDB user interfaces communicate with the publication server and subscription server, which in turn connect to the publication/subscription databases or primary nodes.
@@ -168,6 +168,34 @@ sslusers        enterprisedb            enterprisedb
 
 After you have configured SSL on the Postgres database server, the following steps provide an example of generating a certificate and keystore file for the publication server and subscription server (the JDBC clients).
 
+Before you begin, configure the client for SSL with trigger mode.
+
+- If you are using PostgreSQL, on the SSL-enabled Postgres database server:
+
+  Make the following client/cert files available on the publication/subscription database using an SSL connection:
+  - `postgresql.crt`
+  - `postgresql.pk8`
+  - `root.crt`
+
+  In our example, we use the copy of this self-signed certificate and key generated for the database server on the client side.
+
+  The default location of these files is `{user.home}/.postgresql(e.g/var/lib/pgsql/.postgresql/)`. The file location can be overridden using SSL connection parameters or Postgres SSL environmental variables, see [Setting Non-default Paths using Environment Variables](setting-non-default-paths-using-environment-variables) for more information.
+
+  Copy and rename the files:
+  ```
+  $ cd /var/lib/pgsql/.postgresql/
+  $ cp /var/lib/pgsql/11/data/server.crt postgresql.crt
+  $ cp /var/lib/pgsql/11/data/root.crt .
+  $ cp /var/lib/pgsql/11/data/server.key postgresql.key
+  $ openssl pkcs8 -topk8 -inform PEM -in postgresql.key -outform DER -out postgresql.pk8 -v1 PBE-MD5-DES -nocrypt
+  ```
+
+- If you are using EDB Postgres Advanced Server, on the SSL-enabled Postgres database server:
+
+  Make the following client/cert files available on the publication/subscription database using an SSL connection:
+  - `xdb.keystore`
+  - `xdb_pkcs.p12`
+
 **Step 1:** Using files `server.crt` and server.key located under the Postgres database server data subdirectory, create copies of these files and move them to the host where the publication server and subscription server are running.
 
 For this example, assume file `xdb.crt` is a copy of `server.crt` and `xdb.key` is a copy of `server.key`.
@@ -202,7 +230,7 @@ The keytool program can be found under the bin subdirectory of the Java Runtime 
 You will be prompted for a new password. Save this password for the next step.
 
 ```text
-$ /usr/lib/jvm/java-1.7.0-openjdk-1.7.0.45.x86_64/jre/bin/keytool -keystore xdb.keystore -alias xdbstore -import -file xdb_root.crt.der
+$ /usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin/keytool -keystore xdb.keystore -alias xdbstore -import -file xdb_root.crt.der
 Enter keystore password:
 Re-enter new password:
 Owner: CN=enterprisedb, EMAILADDRESS=support@enterprisedb.com, OU=XDB, O=EnterpriseDB, L=Bedford, ST=Massachusetts, C=US
@@ -233,7 +261,7 @@ The encrypted password must be specified with the `sslTrustStorePassword` config
 Encrypt the password using the xDB Replication Server CLI encrypt command. The following example shows this process encrypting the password contained in file infile.
 
 ```text
-$ export PATH=/usr/lib/jvm/java-1.7.0-openjdk-1.7.0.45.x86_64/jre/bin:$PATH
+$ export PATH=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin:$PATH
 $ cd /opt/PostgreSQL/EnterpriseDB-xDBReplicationServer/bin
 $ java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile
 $ cat ~/pwdfile
@@ -265,7 +293,7 @@ The encrypted password must be specified with the sslKeyStorePassword configurat
 Encrypt the password using the xDB Replication Server CLI encrypt command.
 
 ```text
-$ export PATH=/usr/lib/jvm/java-1.7.0-openjdk-1.7.0.45.x86_64/jre/bin:$PATH
+$ export PATH=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/bin:$PATH
 $ cd /opt/PostgreSQL/EnterpriseDB-xDBReplicationServer/bin
 $ java -jar edb-repcli.jar -encrypt -input ~/infile -output ~/pwdfile
 $ cat ~/pwdfile
@@ -297,7 +325,7 @@ Section [Summary of SSL Configuration Options](#summary_ssl_conf_options) contai
 
 In the case of WAL stream changeset logging, while adding a publication or a subscription database that accepts only ssl connection, xDB validates if the database server is configured for logical replication using `libpq` connection.
 
-For ssl connection, libpq must have the certificates and key as given in the following table. The default directory is `${user.home}/.postgresql`:
+For the SSL connection, `libpq` must have the certificates and key as given in the following table along with the client certs and key you set up for trigger mode. The default directory is `${user.home}/.postgresql`.
 
 **Table 7-1: libpq/Client SSL File Usage**
 
@@ -310,15 +338,15 @@ For ssl connection, libpq must have the certificates and key as given in the fol
 
 Make sure that the name of the certificates and key is same as given in the above table.
 
-!!! Note
-    You need to execute the following commands to change the permission of the certificates in `${user.home}/.postgresql`:
+Execute the following commands to change the permission of the certificates in `${user.home}/.postgresql`.
 
 ```text
 chmod 0644 root.crt postgresql.crt
+chmod 0600 postgresql.key
 chown postgres postgresql.key
 ```
 
-To setup different source and target databaseb types (for example, source database `=POSTGRESQL` and target database `=enterprisedb`) follow the steps below:
+To setup different source and target database types (for example, source database `=POSTGRESQL` and target database `=enterprisedb`) follow the steps below:
 
 1.  Generate the certificate for `POSTGRESQL` database and follow the table 7-1 for placing certificate files in the default directory.
 2.  Copy these certificates in EDB Postgres Advanced Server data directory.
@@ -348,20 +376,45 @@ The SSL URL option informs Java to use SSL when the publication server or subscr
 The configuration steps where these options are specified are as follows:
 
 -   For using SSL connections in a single-master replication system, the URL options must be specified as shown in Section [Adding a Publication Database](../05_smr_operation/02_creating_publication/02_adding_pub_database/#adding_pub_database) for the publication database and in Section [Adding a Subscription Database](../05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database) for the subscription databases.
--   For using SSL connections in a multi-master replication system, the URL options must be specified as shown in Section [Adding the Primary definition node](../06_mmr_operation/02_creating_publication_mmr/#adding_pdn) for the primary definition node and in Section [Creating Additional Primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) for the non-PDN nodes.
+-   For using SSL connections in a multi-master replication system, the URL options must be specified as shown in Section [Adding the Primary definition node](../06_mmr_operation/02_creating_publication_mmr/#adding_pdn) for the primary definition node and in Section [Creating Additional Primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes) for the non-MDN nodes.
+
+Earlier we created self-signed certificates for the database server by specifying the value of the CN field as the database user name (for example, postgres or enterprisedb, and so on). In this case, we use the “verify-ca” value for sslmode parameter to indicate the server certificate is validated against the CA. We do this because the hostname given in the command Add Database or Update Database could not be verified against CN value present certificate, which is the database user name.
 
 For publication, subscription, and primary node databases, in the URL Options field of the Add Database or Update Database dialog box, enter the following:
 
-`ssl=true`
+`ssl=true&sslmode=verify-ca`
 
-The following is an example of the Add Database dialog box with the `ssl=true` URL option.
+!!! note
+    When a server certificate is created with the hostname as the CN value there is no need to specify `sslmode=verify-ca`.
 
-![Add Database with SSL URL option](../images/image290.png)
-
-**Figure 7-112: Add Database with SSL URL option**
+You can specify the the `ssl=true&sslmode=verify-ca` URL option on the Add Database dialog box.
 
 !!! Note
     If you no longer wish to use an SSL connection to an xDB Replication Server database, you must completely delete the `ssl=true` text from the URL Options field of the Add Database or Update Database dialog box. Simply changing true to false does not have the effect of disabling the SSL option.
+
+## Setting Non-default Paths using Environment Variables
+You can override the default paths of certificates and keys by setting the non-default paths in a terminal using the environment variables PGSSLKEY, PGSSLCERT, and PGSSLROOTCERT. You then need to export the paths in a terminal before running any Replication Server CLI command or launching the EPRS Replication Console. For example:
+
+```
+$ export PGSSLKEY=/home/postgresql.pk8
+$ export PGSSLCERT=/home/postgresql.crt
+$ export PGSSLROOTCERT=/home/root.crt
+```
+
+After setting and exporting the environment variables, from the same terminal, you may either run the Replication Server CLI  command or launch the EPRS Replication Console.
+
+## Setting Non-default Paths using SSL Connection Parameters
+
+Non-default paths of certificates and keys can be overridden using SSL connection parameters sslrootcert, sslcert, and sslkey.
+You need to specify these parameter values in urlOptions:
+
+```
+-urloptions "ssl=true&sslmode=verify-ca&sslcert=/home/postgresql.crt&sslkey=/home/postgresql.pk8&sslrootcert=/home/root.crt"
+```
+
+You set urlOptions using either the:
+- Replication Server CLI using the addpubdb/addsubdb command
+- EPRS Replication Console while adding the publication and subscription database 
 
 <div id="summary_ssl_conf_options" class="registered_link"></div>
 
@@ -372,15 +425,15 @@ The following is a summary of the publication server and subscription server con
 
 `sslTrustStoreType`
 
-> The sslTrustStoreType option specifies the truststore format. Set this option to the Java truststore format of the client.
+The sslTrustStoreType option specifies the truststore format. Set this option to the Java truststore format of the client.
 
 `sslTrustStoreType=truststore_format`
 
-> The default value for truststore_format is jks for the JKS truststore file format.
+The default value for truststore_format is jks for the JKS truststore file format.
 
 `sslTrustStore`
 
-> The xDB Replication Server uses the default Java truststore for SSL connectivity.
+The xDB Replication Server uses the default Java truststore for SSL connectivity.
 
 The typical default location of the truststore is in directory `JAVA_HOME/jre/lib/security` or `JAVA_HOME/lib/security` in a file named `cacerts`. (`JAVA_HOME` is the Java installation directory.)
 
@@ -388,26 +441,26 @@ Specify the full directory path to the truststore file with this option. `sslTru
 
 `sslTrustStorePassword`
 
-> Encrypt the password for the Java system truststore using the xDB Replication Server CLI encrypt command (see [Encrypting Passwords](../08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/#encrypt_password)) and specify the encrypted password with the `sslTrustStorePassword` option.
->
-> `sslTrustStorePassword=encrypted_password`
+Encrypt the password for the Java system truststore using the xDB Replication Server CLI encrypt command (see [Encrypting Passwords](../08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/#encrypt_password)) and specify the encrypted password with the `sslTrustStorePassword` option.
+
+`sslTrustStorePassword=encrypted_password`
 
 `sslKeyStoreType`
 
-> The `sslKeyStoreType` option specifies the keystore format. Set this option to the Java keystore format of the client.
+The `sslKeyStoreType` option specifies the keystore format. Set this option to the Java keystore format of the client.
 
 `sslKeyStoreType=keystore_format`
 
-> The default value for keystore_format is pkcs12 for the PKCS #12 keystore file format.
+The default value for keystore_format is pkcs12 for the PKCS #12 keystore file format.
 
 `sslKeyStore`
 
-> Specify the full directory path to the keystore file with this option.
->
-> `sslKeyStore=keystore_file`
+Specify the full directory path to the keystore file with this option.
+
+`sslKeyStore=keystore_file`
 
 `sslKeyStorePassword`
 
 Encrypt the password for the Java system keystore using the xDB Replication Server CLI encrypt command (see [Encrypting Passwords](../08_xdb_cli/03_xdb_cli_commands/04_encrypt_password/#encrypt_password)) and specify the encrypted password with the sslKeyStorePassword option.
 
-> `sslKeyStorePassword=encrypted_password`
+`sslKeyStorePassword=encrypted_password`

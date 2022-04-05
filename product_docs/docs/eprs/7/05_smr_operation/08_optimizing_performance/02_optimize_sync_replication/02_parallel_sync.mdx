@@ -1,0 +1,53 @@
+---
+title: "Parallel synchronization"
+---
+
+<div id="parallel_sync" class="registered_link"></div>
+
+Parallel synchronization takes advantage of multi-CPUs or cores in the system architecture by using multiple threads to apply transaction sets in parallel. Parallel synchronization is applied in two ways:
+
+-   Multiple threads are used to load data for multiple tables in parallel from the source database. Each thread opens a separate connection. Therefore, you see multiple connections with the source database. The pooling framework caches the connections. After the threads are finished with the data load, the idle connections are returned to the pool and remain there for a period of three minutes before being removed from the pool (as long as these aren't reused).
+-   Changes are applied to multiple target databases in parallel. A transaction set from the source database is loaded only once. The target databases are updated in parallel from this loaded transaction set. When this transaction set has been applied to all targets (either successfully or with failures on some targets), the next transaction set is loaded and applied in parallel. This aspect of parallel synchronization is particularly relevant to multi-master replication systems.
+
+The following configuration options affect the use of parallel synchronization.
+
+`syncLoadThreadLimit`
+
+The `syncLoadThreadLimit` option controls the maximum number of threads used to load data from source publication tables during parallel synchronization. The default count is 4. However, depending on the target system architecture (specifically, multi-CPUs/cores), you can choose to specify a custom count, normally equal to the CPU/core count, to fully utilize the system resources.
+
+`syncLoadThreadLimit=n`
+
+The default value is 4.
+
+`dataSyncThreadCount`
+
+The `dataSyncThreadCount` option controls the maximum number of threads used to apply incremental changes during synchronization replication to the target secondary databases (for single-master replication systems) or to the target primary nodes (for multi-master replication systems) in parallel mode. The default behavior (when `dataSyncThreadCount` is set to 0) is to use as many threads as there are target nodes.
+
+However, depending on the target system architecture (specifically, multi-CPUs/cores) you can choose to specify a custom count, normally equal to the CPU/core count, to fully utilize the system resources.
+
+`dataSyncThreadCount=n`
+
+The default value is 0.
+
+`targetDBQueryTimeout`
+
+The `targetDBQueryTimeout` option controls the timeout interval (in milliseconds) before an attempt by the publication server to apply a transaction set on a target database is aborted by the database server. This condition is due to a lock acquired by another application on one or more of the target tables).
+
+The `targetDBQueryTimeout` option sets the default lock timeout value to 10 minutes. Change the 10-minute default value to a higher value if you want to allow a longer wait time before the transaction is aborted. Change the value to 0 if you want to turn off use of the `targetDBQueryTimeout` option. In this case, the timeout interval is controlled by setting the Postgres database server `statement_timeout` configuration parameter.
+
+A higher value of `targetDBQueryTimeout` delays processing of subsequent transaction sets on other target databases. If a transaction set is blocked, the next transaction set can't load until either:
+
+-  The lock is released and the blocked transaction set can then be applied to completion.
+-  The targetDBQueryTimeout interval is exceeded.
+
+If a timeout occurs, the waiting transaction set is marked as aborted for the particular blocked target database. The remaining pending transaction sets in this synchronization session are skipped for this target database but are applied to all other target databases once the timeout interval is exceeded. The aborted and skipped transaction sets are tried again when the next synchronization replication event occurs.
+
+So, for example, in a three-node cluster with 10 pending transaction sets, assume transaction set 1 is loaded and begins replicating to nodes 2 and node 3. Now, another application acquires a lock on one or more tables in node 2, putting the updates to these tables in a wait state. Replication of transaction set 1 can run to completion on node 3. However, if the wait time exceeds the `targetDBQueryTimeout` interval, the database server cancels transaction set 1 on node 2. Replication of this transaction set to node 2 is marked as aborted in the Replication Server metadata.
+
+Transaction set 2 can now be loaded and run against node 3. Executing transaction set 2 against node 2 is skipped since transaction sets must be applied in order and transaction set 1 was not successfully applied to node 2. Transaction sets 3 through 10 are loaded and applied in order against node 3 but skipped for node 2.
+
+In the next synchronization replication, transaction set 2 is tried again on node 2. If the lock was released and the transaction set is applied successfully, the remaining transaction sets 3 through 10 are applied to node 2. Finally, synchronization replication continues with any new transaction sets.
+
+`targetDBQueryTimeout=n`
+
+The default value is 600000.

@@ -8,10 +8,11 @@ The operator can orchestrate a continuous backup infrastructure
 that is based on the [Barman](https://pgbarman.org) tool. Instead
 of using the classical architecture with a Barman server, which
 backs up many PostgreSQL instances, the operator relies on the
-`barman-cloud-wal-archive`, `barman-cloud-backup`, `barman-cloud-backup-list`,
-and `barman-cloud-backup-delete` tools.
-As a result, base backups will be *tarballs*. Both base backups and WAL files
-can be compressed and encrypted.
+`barman-cloud-wal-archive`, `barman-cloud-check-wal-archive`, 
+`barman-cloud-backup`, `barman-cloud-backup-list`, and 
+`barman-cloud-backup-delete` tools. As a result, base backups will 
+be *tarballs*. Both base backups and WAL files can be compressed 
+and encrypted.
 
 For this, it is required an image with `barman-cli-cloud` installed.
 You can use the image `quay.io/enterprisedb/postgresql` for this scope,
@@ -34,7 +35,8 @@ You can archive the backup files in any service that is supported
 by the Barman Cloud infrastructure. That is:
 
 -   [AWS S3](https://aws.amazon.com/s3/)
--   [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/services/storage/blobs/).
+-   [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/services/storage/blobs/)
+-   [Google Cloud Storage](https://cloud.google.com/storage/)
 
 You can also use any compatible implementation of the
 supported services.
@@ -57,7 +59,7 @@ The access key used must have permission to upload files in
 the bucket. Given that, you must create a k8s secret with the
 credentials, and you can do that with the following command:
 
-```shell
+```sh
 kubectl create secret generic aws-creds \
   --from-literal=ACCESS_KEY_ID=<access key here> \
   --from-literal=ACCESS_SECRET_KEY=<secret key here>
@@ -135,7 +137,7 @@ MinIO Gateway as an endpoint, using previously created credentials and service.
 MinIO secrets will be used by both the PostgreSQL cluster and the MinIO instance.
 Therefore you must create them in the same namespace:
 
-```shell
+```sh
 kubectl create secret generic minio-creds \
   --from-literal=MINIO_ACCESS_KEY=<minio access key here> \
   --from-literal=MINIO_SECRET_KEY=<minio secret key here>
@@ -179,42 +181,42 @@ Here is an example using AWS S3 as Cloud Object Storage:
 apiVersion: apps/v1
 kind: Deployment
 [...]
-    spec:
-      containers:
-      - name: minio
-        image: minio/minio:RELEASE.2020-06-03T22-13-49Z
-        args:
-        - gateway
-        - s3
-        env:
-        # MinIO access key and secret key
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-creds
-              key: MINIO_ACCESS_KEY
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-creds
-              key: MINIO_SECRET_KEY
-        # AWS credentials
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: aws-creds
-              key: ACCESS_KEY_ID
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aws-creds
-              key: ACCESS_SECRET_KEY
+spec:
+  containers:
+  - name: minio
+    image: minio/minio:RELEASE.2020-06-03T22-13-49Z
+    args:
+    - gateway
+    - s3
+    env:
+    # MinIO access key and secret key
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: minio-creds
+          key: MINIO_ACCESS_KEY
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: minio-creds
+          key: MINIO_SECRET_KEY
+    # AWS credentials
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: aws-creds
+          key: ACCESS_SECRET_KEY
 # Uncomment the below section if session token is required
-#        - name: AWS_SESSION_TOKEN
-#          valueFrom:
-#            secretKeyRef:
-#              name: aws-creds
-#              key: ACCESS_SESSION_TOKEN
+#   - name: AWS_SESSION_TOKEN
+#     valueFrom:
+#       secretKeyRef:
+#         name: aws-creds
+#         key: ACCESS_SESSION_TOKEN
         ports:
         - containerPort: 9000
 ```
@@ -316,6 +318,71 @@ In that case, `<account-name>` is the first component of the path.
 
 This is required if you are testing the Azure support via the Azure Storage
 Emulator or [Azurite](https://github.com/Azure/Azurite).
+
+### Google Cloud Storage
+
+Currently, the operator supports two authentication methods for Google Cloud Storage,
+one assumes the pod is running inside a Google Kubernetes Engine cluster, the other one leverages
+the environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
+
+#### Running inside Google Kubernetes Engine
+
+This could be one of the easiest way to create a backup, and only requires
+the following configuration:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      destinationPath: "gs://<destination path here>"
+      googleCredentials:
+        gkeEnvironment: true
+```
+
+This, will tell the operator that the cluster is running inside a Google Kubernetes
+Engine meaning that no credentials are needed to upload the files
+
+!!! Important
+    This method will require carefully defined permissions for cluster
+    and pods, which have to be defined by a cluster administrator.
+
+#### Using authentication
+
+Following the [instruction from Google](https://cloud.google.com/docs/authentication/getting-started)
+you will get a JSON file that contains all the required information to authenticate.
+
+The content of the JSON file must be provided using a `Secret` that can be created
+with the following command:
+
+```shell
+kubectl create secret generic backup-creds --from-file=gcsCredentials=gcs_credentials_file.json
+```
+
+This will create the `Secret` with the name `backup-creds` to be used in the yaml file like this:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      destinationPath: "gs://<destination path here>"
+      googleCredentials:
+        applicationCredentials:
+          name: backup-creds
+          key: gcsCredentials
+```
+
+Now the operator will use the credentials to authenticate against Google Cloud Storage.
+
+!!! Important
+    This way of authentication will create a JSON file inside the container with all the needed
+    information to access your Google Cloud Storage bucket, meaning that if someone gets access to the pod
+    will also have write permissions to the bucket.
 
 ## On-demand backups
 
@@ -575,3 +642,67 @@ spec:
     file, starting from the first valid backup. Base backups that are older
     than the first valid backup will be marked as *obsolete* and permanently
     removed after the next backup is completed.
+
+## Compression algorithms
+
+Cloud Native PostgreSQL by default archives backups and WAL files in an
+uncompressed fashion. However, it also supports the following compression
+algorithms via `barman-cloud-backup` (for backups) and
+`barman-cloud-wal-archive` (for WAL files):
+
+-   bzip2
+-   gzip
+-   snappy
+
+The compression settings for backups and WALs are independent. See the
+[DataBackupConfiguration](api_reference.md#DataBackupConfiguration) and
+[WALBackupConfiguration](api_reference.md#WalBackupConfiguration) sections in
+the API reference.
+
+It is important to note that archival time, restore time, and size change
+between the algorithms, so the compression algorithm should be chosen according
+to your use case.
+
+The Barman team has performed an evaluation of the performance of the supported
+algorithms for Barman Cloud. The following table summarizes a scenario where a
+backup is taken on a local MinIO deployment. The Barman GitHub project includes
+a [deeper analysis](https://github.com/EnterpriseDB/barman/issues/344#issuecomment-992547396).
+
+| Compression | Backup Time (ms) | Restore Time (ms) | Uncompressed size (MB) | Compressed size (MB) | Approx ratio |
+| ----------- | ---------------- | ----------------- | ---------------------- | -------------------- | ------------ |
+| None        | 10927            | 7553              | 395                    | 395                  | 1:1          |
+| bzip2       | 25404            | 13886             | 395                    | 67                   | 5.9:1        |
+| gzip        | 116281           | 3077              | 395                    | 91                   | 4.3:1        |
+| snappy      | 8134             | 8341              | 395                    | 166                  | 2.4:1        |
+
+## Tagging of backup objects
+
+Barman 2.18 introduces support for tagging backup resources when saving them in
+object stores via `barman-cloud-backup` and `barman-cloud-wal-archive`. As a
+result, if your PostgreSQL container image includes Barman with version 2.18 or
+higher, Cloud Native PostgreSQL enables you to specify tags as key-value pairs
+for backup objects, namely base backups, WAL files and history files.
+
+You can use two properties in the `.spec.backup.barmanObjectStore` definition:
+
+-   `tags`: key-value pair tags to be added to backup objects and archived WAL
+    file in the backup object store
+-   `historyTags`: key-value pair tags to be added to archived history files in
+    the backup object store
+
+The excerpt of a YAML manifest below provides an example of usage of this
+feature:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      [...]
+      tags:
+        backupRetentionPolicy: "expire"
+      historyTags:
+        backupRetentionPolicy: "keep"
+```

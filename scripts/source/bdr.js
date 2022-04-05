@@ -1,4 +1,4 @@
-// run: node scripts/source/bdr.js"
+// run: node scripts/source/bdr.js source_path destination_path"
 // purpose:
 //  Import and convert the BDR docs, rendering them in /product_docs/bdr/<version>
 //
@@ -19,8 +19,10 @@ const { exec } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
 
 const fileToMetadata = {};
-const basePath = path.resolve("temp_bdr/docs/docs2/");
-const imgPath = path.resolve("temp_bdr/docs/img/");
+const args = process.argv.slice(2);
+const basePath = path.resolve(args[0], "docs/docs2/");
+const imgPath = path.resolve(args[0], "docs/img/");
+const destination = path.resolve(args[1]);
 
 (async () => {
   const processor = unified()
@@ -47,7 +49,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
     file.path = destFilepath;
     try {
       await fs.mkdir(path.dirname(file.path));
-    } catch {}
+    } catch { }
     await write(file);
   };
 
@@ -55,9 +57,15 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
     await fs.readFile(path.resolve(basePath, "bdr-pub.yml"), "utf8"),
   );
 
-  const markdownToProcess = mdIndex.nav; //await glob("temp_bdr/**/*.md");
+  const markdownToProcess = mdIndex.nav;
   version = mdIndex.site_name.match(/BDR (\d+\.\d+)/)[1];
-  const destPath = path.resolve("product_docs", "docs", "bdr", version);
+  const destPath = path.resolve(
+    destination,
+    "product_docs",
+    "docs",
+    "bdr",
+    version,
+  );
   const indexFilename = "index.md";
 
   fileToMetadata[indexFilename] = {};
@@ -68,7 +76,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
       const fileAbsolutePath = path.resolve(basePath, dirEntry[navTitle]);
       const filename = path.relative(basePath, fileAbsolutePath);
       const destFilepath = path.resolve(
-        destPath,
+        basePath,
         filename.replace(/\//g, "_") + "x",
       );
 
@@ -82,7 +90,7 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
       );
 
       if (filename === indexFilename) continue;
-      process(fileAbsolutePath, filename, destFilepath);
+      await process(fileAbsolutePath, filename, destFilepath);
     }
   }
 
@@ -94,14 +102,19 @@ const imgPath = path.resolve("temp_bdr/docs/img/");
     description:
       "BDR (Bi-Directional Replication) is a ground-breaking multi-master replication capability for PostgreSQL clusters that has been in full production status since 2014.",
   };
-  process(
+  await process(
     path.resolve(basePath, indexFilename),
     indexFilename,
-    path.resolve(destPath, indexFilename + "x"),
+    path.resolve(basePath, indexFilename + "x"),
   );
 
   // copy images
-  exec(`rsync -a --delete ${imgPath} ${destPath}`);
+  await exec(`rsync -am --delete --include="*/" --include="*.png" --include="*.jpg" --include="*.jpeg" --include="*.svg" --exclude="*" ${imgPath} ${destPath}`);
+
+  // copy select files, removing those that have been deleted
+  await exec(`rsync --archive --recursive --delete --include="*/" --include="*.mdx" --exclude="*" ${basePath}/ ${destPath}/`);
+  // uncomment this if BDR ever includes images in the normal place
+  //await exec(`rsync --archive --recursive --delete --include="*/" --include="*.mdx" --include="*/" --include="*.png" --include="*.jpg" --include="*.jpeg" --include="*.svg" --exclude="*" ${basePath}/ ${destPath}/`);
 })();
 
 // GPP leaves the files littered with these; they alter parsing by flipping sections to HTML context
@@ -178,7 +191,7 @@ function bdrTransformer() {
       if (node.value.trim())
         console.warn(
           `${file.path}:${node.position.start.line}:${node.position.start.column} Stripping HTML content:\n\t ` +
-            node.value,
+          node.value,
         );
 
       parent.children.splice(index, 1);
@@ -207,8 +220,8 @@ function bdrTransformer() {
       const blockTypes = ["root", "paragraph", "listItem", "blockquote"];
       for (
         let i = ancestors.length - 1,
-          parent = ancestors[ancestors.length - 1],
-          child = node;
+        parent = ancestors[ancestors.length - 1],
+        child = node;
         i >= 0;
         --i, child = parent, parent = ancestors[i]
       ) {

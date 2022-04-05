@@ -13,11 +13,14 @@ commands = {
     "EnterpriseDB/cloud-native-postgresql": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
     "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
-    "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
+    "EnterpriseDB/bdr": f"node {args.workspace}/destination/scripts/source/bdr.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
+    "EnterpriseDB/pglogical": f"node {args.workspace}/destination/scripts/source/pglogical.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
+    "EnterpriseDB/harp": f"rsync -a --delete {args.workspace}/source/docs/user_guide/ {args.workspace}/destination/product_docs/docs/harp/2.0/",
 }
 
 ret = os.system(
-    f"cd {args.workspace}/scripts/source && \
+    f"cd {args.workspace}/destination/scripts/source && \
                   npm install --production"
 )
 

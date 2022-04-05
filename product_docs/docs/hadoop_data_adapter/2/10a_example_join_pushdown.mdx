@@ -1,0 +1,115 @@
+---
+title: "Example: Join pushdown"
+---
+
+This example shows join pushdown between the foreign tables of the same remote HIVE/SPARK server to that remote HIVE/SPARK server:
+
+Tables on HIVE/SPARK server:
+
+```text
+0: jdbc:hive2://localhost:10000> describe emp;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| empno     | int        | NULL     |
+| ename     | string     | NULL     |
+| job       | string     | NULL     |
+| mgr       | int        | NULL     |
+| hiredate  | date       | NULL     |
+| sal       | int        | NULL     |
+| comm      | int        | NULL     |
+| deptno    | int        | NULL     |
++-----------+------------+----------+--+
+8 rows selected (0.747 seconds)
+0: jdbc:hive2://localhost:10000> describe dept;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| deptno    | int        | NULL     |
+| dname     | string     | NULL     |
+| loc       | string     | NULL     |
++-----------+------------+----------+--+
+3 rows selected (0.067 seconds)
+
+```
+
+Tables on Postgres server:
+
+```text
+CREATE EXTENSION hdfs_fdw;
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost', port '10000', client_type 'spark', auth_type 'LDAP');
+CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
+
+CREATE FOREIGN TABLE dept (
+    deptno          INTEGER,
+    dname           VARCHAR(14),
+    loc             VARCHAR(13)
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'dept');
+
+CREATE FOREIGN TABLE emp (
+    empno           INTEGER,
+    ename           VARCHAR(10),
+    job             VARCHAR(9),
+    mgr             INTEGER,
+    hiredate        DATE,
+    sal             INTEGER,
+    comm            INTEGER,
+    deptno          INTEGER
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
+```
+
+Queries with join pushdown:
+
+```text
+--inner join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 INNER JOIN dept t2 ON ( t1.deptno = t2.deptno );
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) INNER JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 INNER JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+
+--left join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 LEFT JOIN dept t2 ON ( t1.deptno = t2.deptno );
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) LEFT JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 LEFT JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+
+--right join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 RIGHT JOIN dept t2 ON ( t1.deptno = t2.deptno );
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.dept t2) LEFT JOIN (fdw_db.emp t1)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`dept` r2 LEFT JOIN `fdw_db`.`emp` r1 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+
+--full join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 FULL JOIN dept t2 ON ( t1.deptno = t2.deptno );
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=5000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) FULL JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 FULL JOIN `fdw_db`.`dept` r2 ON (((r1.`deptno` = r2.`deptno`))))
+(4 rows)
+
+--cross join
+edb=# EXPLAIN VERBOSE SELECT t1.ename, t2.dname FROM emp t1 CROSS JOIN dept t2;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..35.00 rows=1000000 width=84)
+   Output: t1.ename, t2.dname
+   Relations: (fdw_db.emp t1) INNER JOIN (fdw_db.dept t2)
+   Remote SQL: SELECT r1.`ename`, r2.`dname` FROM (`fdw_db`.`emp` r1 INNER JOIN `fdw_db`.`dept` r2 ON (TRUE))
+(4 rows)
+```
