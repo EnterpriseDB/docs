@@ -69,7 +69,7 @@ connection and another 1 to the output database.
         materialize the query (workers may hang for a few seconds waiting for the
         data to be materialized), so the whole table data consumes RAM and can be
         stored on Postgres side disk as temporary files. All that impact can be
-        decreased by using `parallel_chunk_rows` (disabled by default), and
+        decreased by using `parallel_chunk_rows` (set to 10000000 by default), and
         speed can be improved by increasing `buffer_size` a little. Allows
         asynchronous data fetch (defined by `parallel_data_fetch`). For the general
         use case, this fetch method doesn't provide any benefits when compared to
@@ -120,21 +120,8 @@ ignored, and data will always be fetch from Oracle using direct queries with
     table into multiple chunks for parallel comparison. A hash is used to fetch
     data, so workers don't clash with each other. Each table chunk will have no more
     than `parallel_chunk_rows` rows. Setting it to any value &lt; 1 disables table
-    splitting. Default: 0 (disabled).
-
-**Important**:  While table splitting can help a large table to be compared in
-parallel by multiple workers, performance for each worker can be impacted by
-the hash condition being applied to all rows. Depending on the Postgres
-configuration (specially with the default of `random_page_cost = 4`, which can
-be considered too conservative for modern hard drives), the Postgres query
-planner can incorrectly prefer Bitmap Heap Scans, and if the database is
-running on SSD, disabling Bitmap Heap Scan on LiveCompare can significantly
-improve the comparison performance. This can be done per connection with the
-`start_query` setting:
-
-```ini
-start_query = set enable_bitmapscan = off
-```
+    splitting. If any connections are not PostgreSQL, then table splitting is
+    disabled automatically by LiveCompare. Default: 10000000.
 
 -   `parallel_data_fetch`: If data fetch should be performed in parallel (i.e.,
     using async connections to the databases). Improves performance of multi-way
@@ -172,27 +159,14 @@ start_query = set enable_bitmapscan = off
     by row in the buffer to find the divergent rows. This is the default value.
     ```
 
--   `min_time_between_heart_beats`: Time in seconds to wait before logging a
-    "Heart Beat" message to the log. Each worker tracks it separately per round
-    part being compared. Default: 30 seconds.
-
 -   `min_time_between_round_saves`: Time in seconds to wait before updating each
-    round state when the comparison algorithm is in progress. A round save can only
-    happen during a heart beat, so `min_time_between_round_saves` should be greater
-    than or equal `min_time_between_heart_beats`. Note that when the round
-    finishes, LiveCompare always updates the round state for that table.
+    round state when the comparison algorithm is in progress. Note that when the
+    round finishes, LiveCompare always updates the round state for that table.
     Default: 60 seconds.
 
 **Important**: If the user cancels execution of LiveCompare by hitting `Ctrl-c`
 and starts it again, then LiveCompare will resume the round for that table,
 starting from the point where the round state was saved.
-
--   `comparison_cost_limit`: if > 0, corresponds to a number of rows each worker
-    will process before taking a nap of `comparison_cost_delay` seconds. Defaults
-    to 0, meaning that each worker will process rows without taking a nap.
-
--   `comparison_cost_delay`: if `comparison_cost_limit > 0`, then this setting
-    specifies how long each worker should sleep. Defaults to `0.0`.
 
 -   `stop_after_time`: Time in seconds after which LiveCompare will automatically
     stop itself as if the user had hit `Ctrl-c`. The comparison session that was
@@ -319,18 +293,6 @@ this replication origin.
 
 **Important**: If table has PK, then the PK columns are not allowed to be
 different, even if `column_intersection = on`.
-
--   `ignore_nullable`: If for a specific table comparison, LiveCompare is using a
-    Comparison Key different than the Primary Key, then LiveCompare requires all
-    columns to be `NOT NULL` if `ignore_nullable` is enabled (default). It's
-    possible to override that behavior by setting `ignore_nullable = off`, which will
-    allow LiveCompare to consider null-able columns in the comparison, which in some
-    corner cases can produce false positives.
-
--   `check_uniqueness_enforcement`: If LiveCompare is using an user-defined
-    Comparison Key or using all columns in the table as a Comparison Key, then
-    LiveCompare checks for table uniqueness on the Comparison Key if setting
-    `check_uniqueness_enforcement` is enabled (default).
 
 -   `oracle_ignore_unsortable`: When enabled, tells LiveCompare to ignore columns
     with Oracle unsortable data types (BLOB, CLOB, NCLOB, BFILE) if column is not
@@ -686,40 +648,18 @@ table2 = column1, column5
 ```
 
 If absent column names are given in the column filter, that is, column doesn't
-exist in the given table, then LiveCompare will log a message about the columns
+exist in  the given table, then LiveCompare will log a message about the columns
 that could not be found and ignore them, using just the valid ones, if any.
 
 If a table is listed in the `Column Filter` section, but somehow got filtered
-out by the `Table Filter`, then the column filter for this table will be
-silently ignored.
+out  by the `Table Filter`, then the column filter for this table will be
+silently  ignored.
 
 **IMPORTANT**: Please note that if a column specified in a `Column Filter` is
-part of the table PK, then it won't be ignored in the comparison. LiveCompare
-will log that and ignore the filter of such column.
+part of  the table PK, then it won't be ignored in the comparison. LiveCompare
+will log that and  ignore the filter of such column.
 
 **IMPORTANT**: please note that `conflicts` mode doesn't make use of column filter.
-
-## Comparison Key
-
-Similarly to the `Column Filter`, in this section you can also specify a list
-of columns per table. These columns will be considered as a Comparison Key for
-the specific table, even if the table has a Primary Key or `UNIQUE` constraint.
-
-For example:
-
-```ini
-[Comparison Key]
-public.table1 = col_a, col_b
-public.table2 = c1, c2
-```
-
-In the example above, for table `public.table1`, the Comparison Key will be
-columns `col_a` and `col_b`. For table `public.table2`, columns `c1` and `c2` will
-considered as a Comparison Key.
-
-The same behavior about missing columns or filtered out or missing tables that
-are explained in the `Column Filter` section above, also apply to the `Comparison
-Key`. Similarly, the `Comparison Key` section is ignored in Conflicts Mode.
 
 ## Conflicts Filter
 
