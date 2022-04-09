@@ -14,6 +14,7 @@ import {
 import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
+import { products } from "../../constants/products";
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -34,12 +35,15 @@ const useClickOutside = (ref, handler, events) => {
   });
 };
 
-const SearchForm = ({ currentRefinement, refine, query }) => {
+const SearchForm = ({ currentRefinement, refine, query, searchProduct }) => {
   const searchBarRef = createRef();
   const [focus, setFocus] = useState(false);
   const inputRef = createRef();
   const searchContentRef = useRef(null);
   const [arrowIndex, setArrowIndex] = useState(0);
+  const context = searchProduct
+    ? " " + (products[searchProduct]?.name || searchProduct)
+    : "";
 
   const close = useCallback(() => {
     setFocus(false);
@@ -141,7 +145,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
           className="form-control form-control-lg border-0 pl-3"
           type="text"
           aria-label="search"
-          placeholder="Search"
+          placeholder={"Search" + context}
           value={currentRefinement}
           onChange={(e) => refine(e.currentTarget.value)}
           onFocus={() => setFocus(true)}
@@ -173,11 +177,13 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
 };
 const Search = connectSearchBox(SearchForm);
 
-const SearchBar = () => {
+const SearchBar = ({ searchProduct }) => {
   const ref = createRef();
   const [query, setQuery] = useState(``);
 
   const { algoliaIndex } = useSiteMetadata();
+  const searchConfig = { hitsPerPage: 30 };
+  if (searchProduct) searchConfig.filters = `product:${searchProduct}`;
 
   return (
     <div className="global-search w-100 position-relative" ref={ref}>
@@ -187,8 +193,8 @@ const SearchBar = () => {
         onSearchStateChange={({ query }) => setQuery(query)}
         className="dropdown"
       >
-        <Configure hitsPerPage={30} />
-        <Search query={query} />
+        <Configure {...searchConfig} />
+        <Search query={query} searchProduct={searchProduct} />
       </InstantSearch>
     </div>
   );
