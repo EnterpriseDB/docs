@@ -1,0 +1,207 @@
+---
+title: "Customizing Azure policy definitions"
+description: "Customize default Azure policies to match BigAnimal's resource configurations"
+---
+
+Azure Policies help you monitor, identify, and remediate non-compliant resources. Azure automatically assigns a default set of policies to each subscription. If required by your organization, you can further customize these default Azure policies to match BigAnimal's resource configurations. 
+
+!!! Note
+    BigAnimal does not customize your Azure policies to prevent conflicts with external workloads.
+
+### Customize default policy definitions in Azure
+
+In each of your BigAnimal-enabled Azure subscriptions, manually perform the following steps:
+
+!!! Note
+    You require Microsoft.Authorizations/PolicyAssignments/write permissions to be able to update policy initiatives (sets of policies) in Azure.
+
+
+1. In the Azure portal, enter **Policy** in the search box at the top and open the Policy service.
+
+1. Select **Compliance** on the left side of the Policy page. 
+
+1. On the Compliance page, set the Scope by selecting the ellipsis and then selecting all subscriptions. Click the **Select** button at the bottom of the Scope page to add your selection.
+
+1. You can see a list of all the policy initiatives (sets of policies) automatically assigned by Azure's onboarding process. The policy initiative for each subscription is labeled as *ASC Default (subscription: <Subscription_ID>)*
+
+1. Select a policy initiative in the list and click **Edit assignment**.  
+
+1. On the Edit Initiative Assignment page, click the **Parameters** tab.
+
+1. Clear the **Only show parameters that need input or review** check box.
+
+1. Configure your default ASC policy parameters to only allow BigAnimal's specific configurations. Use the parameter values specified in [Customizable policy definition parameters](#customizable-policy-definition-parameters) to update the parameters.
+
+1. Select the **Review + create** tab at the top of the wizard.
+
+1. Review your selections, then select **Create** at the bottom of the page.
+
+You're now ready to monitor, identify, and remediate non-compliant resources to improve the compliance state of the resources in your subscription.
+
+#### Customizable policy definition parameters
+
+While customizing Azure policies, refer to the following list of recommended parameters and values that are based on BigAnimal's resource configurations. 
+
+Use the values below each parameter while configuring the default ASC policy of a subscription. 
+
+!!! Note
+    
+    JSON values are provided wherever applicable.
+
+
+- **Allowed service ports list in Kubernetes cluster**:
+
+BigAnimal runs services on several ports in Kubernetes clusters in your cloud account in order to provide the BigAnimal services. The following ports must be allowed:
+
+ ```js
+ ["5432",  "9402",  "443", "8080",
+   "9090",  "3000",  "8443",  "9443",  "9100", "9201", "8088"]
+ ```
+
+
+- **Allowed AppArmor profiles**:
+
+BigAnimal requires the `runtime/default` AppArmor security profile to properly function:
+
+ ```js
+ ["runtime/default"]
+ ```
+ 
+
+- **Allowed capabilities**: 
+
+Restrict the capabilities to reduce the attack surface of containers in a Kubernetes cluster. 
+BigAnimal generally runs containers with very limited capability to limit the attack surface of Kubernetes clusters, but requires some capabilities to function:
+
+ ```js
+ ["FOWNER"]
+ ```
+
+- **Allowed host paths for pod in Kubernetes cluster**:
+
+BigAnimal requires the following `HostPath` mounts to function properly: 
+
+ ```js
+ {
+  "paths": [
+    {
+      "pathPrefix": "/var/log",
+      "readOnly": false
+    },
+    {
+      "pathPrefix": "/var/lib/docker/containers",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/sys",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/proc",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/var/run/docker.sock",
+      "readOnly": false
+    },
+    {
+      "pathPrefix": "/run/containerd/containerd.sock",
+      "readOnly": false
+    },
+    {
+      "pathPrefix": "/dev",
+      "readOnly": false
+    },
+    {
+      "pathPrefix": "/boot",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/lib/modules",
+      "readOnly": false
+    },
+    {
+      "pathPrefix": "/usr",
+      "readOnly": true
+    },
+    {
+      "pathPrefix": "/etc",
+      "readOnly": true
+    }
+  ]
+ }
+ 
+ ```
+
+### Other recommendations from Microsoft Defender for Cloud 
+
+Microsoft Defender for Cloud (which now includes Azure Secure Center and Azure Defender) analyzes the configurations of your Azure resources to identify potential vulnerabilities.
+
+You might still see recommendations from Microsoft Defender for Cloud even after customizing your policies and remediating non-compliant resources. See the following sections to understand why Microsoft raises the following recommendations.  
+
+#### Restrict unauthorized network access
+
+- **Usage of host networking and ports should be restricted**
+
+ BigAnimal runs containers that use the node network namespace to monitor network traffic statistics of Kubernetes cluster worker nodes. To prevent traffic sniffing and configuration changes to the worker node system, BigAnimal has removed all security capabilities for those containers. 
+
+- **Virtual networks should be protected by Azure Firewall**
+
+ BigAnimal does not enable the Azure Firewall. Instead, BigAnimal uses Azure Network Security Group allowlists to specify permissible inbound and outbound traffic.
+
+ If your organization requires an Azure Firewall for compliance purposes, contact [support@biganimal.com](mailto:support@biganimal.com).
+
+#### Manage access and permissions
+
+- **Privileged containers should be avoided**
+
+ Running containers as root user should be avoided, but to achieve some management functionality like securing and monitoring the application, it is necessary for BigAnimal to run some containers in privileged mode.
+
+- **Immutable (read-only) root filesystem should be enforced for containers**
+
+ Running containers with a read-only root filesystem should be avoided, but for BigAnimal to achieve some control plane functionality, it is necessary. For example, for BigAnimal to use system calls to secure and monitor the BigAnimal application it is necessary to run containers with a read-only root filesystem.
+
+- **Running containers as root user should be avoided**
+
+ BigAnimal must run some containers as the root user to provide some aspects of control plane functionality, such as logging. BigAnimal tightly restricts the use of the root user, and no containers running as root expose network connectivity.
+
+- **Containers sharing sensitive host namespaces should be avoided**
+
+ BigAnimal must run some containers that can share the host process ID namespace to monitor network traffic statistics for cluster worker nodes. To prevent traffic sniffing and configuration changes to the worker node system, BigAnimal has removed *all* security capabilities for those containers.
+
+- **Container with privilege escalation should be avoided**
+
+ To enable some monitoring capabilities for Kubernetes, BigAnimal must run some containers that may allow privilege escalation. 
+
+#### Implement security best practices
+
+- **Kubernetes clusters should disable automounting API credentials**
+
+ Microsoft recommends disabling automounting API credentials to prevent a potentially compromised pod from running API commands against a Kubernetes cluster. 
+
+ BigAnimal creates service accounts and roles with the least privileges for Kubernetes operators and operands to prevent this scenario.
+
+#### Enable auditing and logging
+
+Microsoft recommends enabling diagnostic logs in Kubernetes services, Key Vault, and Virtual Machine Scale Sets.
+
+BigAnimal does not enable diagnostic logs for Kubernetes services and Key Vault, but it does enable diagnostic logs for Virtual Machine Scale Sets. Resources managed by BigAnimal are logged in Virtual Machine Scale Sets logs. If you must enable other logs for compliance purposes, contact [support@biganimal.com](mailto:support@biganimal.com).
+
+#### Enable enhanced security features
+
+Microsoft Defender for Cloud now includes the capabilities of Microsoft Defender for open-source relational databases. 
+
+BigAnimal does not enable any of the following capabilities:
+- Microsoft Defender for servers
+- Microsoft Defender for Storage
+- Microsoft Defender for Key Vault
+- Microsoft Defender for Containers
+- Microsoft Defender for Kubernetes Service clusters
+- Microsoft Defender for Resources Manager
+- Microsoft Defender for DNS 
+
+If you have questions about enabling any of those capabilities for BigAnimal, contact [support@biganimal.com](mailto:support@biganimal.com).
