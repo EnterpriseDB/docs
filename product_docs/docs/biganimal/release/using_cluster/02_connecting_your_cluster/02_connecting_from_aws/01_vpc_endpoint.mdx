@@ -18,7 +18,7 @@ Assume that your cluster is on a account called `development` and is being acces
 -   Linux client VM called `vm-client`:
     -   AWS account: `test`
     -   Resource group: `rg-client`
-    -   VPC: `vnet-client`
+    -   VPC: `vpc-client`
     -   VPC subnet: `snet-client`
 
 ## Prerequisites
@@ -41,8 +41,6 @@ To walk through an example in your own environment, you need:
 
 In this example, you create an AWS PrivateLink service in your cluster's resource group. Perform this procedure for every cluster that you want to connect to in AWS.
 
-Get the resource group details from the AWS CloudShell in the AWS Console and note the resource group. For example, if the cluster's VPC is vnet-japaneast, use the following command:
-
 1. Open the Amazon VPC console at https://console.aws.amazon.com/vpc/. Ensure that the correct region, where your cluster is deployed, is selected in the upper-right corner of the console.   
 
 1. Select **Endpoint Services** under Virtual Private Cloud from the navigation pane on the left and then select **Create endpoint service**.
@@ -51,22 +49,24 @@ Get the resource group details from the AWS CloudShell in the AWS Console and no
 
 1. Select **Network** for the Load balancer type.
 
-1. Under **Available load balancers**, select the network load balancer of the cluster you want to connect.
+1. Under **Available load balancers**, select the network load balancer of the cluster to which you want to connect.
  [How does the user know which NLB corresponds to which cluster?]()
  
 1. Leave all the other fields with their default values and select **Create**. Note the **Service name** of the created AWS PrivateLink, because you will require it while creating a VPC endpoint.
 
 1. In the navigation pane, select **Endpoint Services**.
 
-1. Select your endpoint service and from the Actions dropdown select **Allow principals**.
- Specify the ARN for the principal to add the AWS account from which you want to use the private link. The ARN must be in this format
+1. Select your endpoint service and from the Actions dropdown and select **Allow principals**.
+ 
+1. Add the AWS account that will connect to the PrivateLink by specifying the ARN for the principal. The ARN must be in this format:
+
  arn:aws:iam::&lt;AWS ACCOUNT ID&gt;:root
 
 1. Alternatively, you can specify * to allow all principals in all AWS accounts to create an endpoint to your endpoint service.
 [Do we recommend this? What are the security implications]()
 
 
-## Step 2: Create a VPC endpoint in each cluster's VPC
+## Step 2: Create a VPC endpoint in the client's VPC
 
 Now that your PrivateLink service is created, you can connect it to the cluster VPC using a VPC endpoint.
 
@@ -80,9 +80,9 @@ Now that your PrivateLink service is created, you can connect it to the cluster 
 
 1. Under Service category, select **Other endpoint services**.
 
-1. Under Service Name, enter the name of the PrivateLink service that you created earlier (for example, com.amazonaws.vpce.us-east-1.vpce-svc-0e123abc123198abc). Verify whether you successfully allowed access the endpoint by selecting **Verify service**.
+1. Under Service Name, enter the name of the PrivateLink service that you created earlier (for example, com.amazonaws.vpce.us-east-1.vpce-svc-0e123abc123198abc). Verify whether you successfully allowed access to the endpoint by selecting **Verify service**.
 
-1. Under VPC, select the VPC in which to create the endpoint. 
+1. Under VPC, select the client's VPC in which to create the endpoint. 
 
 1. Under Subnets, select the subnets (availability zones) in which to create the endpoint network interfaces. We recommend:
  -  Enabling the endpoint in all availability zones used by your application. 
@@ -90,14 +90,38 @@ Now that your PrivateLink service is created, you can connect it to the cluster 
 
 1. Select **Create endpoint**
 
-## Step 3: Create an Azure Private DNS Zone for the private endpoint
+## Step 3: Accept the connection in BigAnimal
 
-go back to your BigAnimal AWS Account onto VPC -> Endpoint services. Select the one you created previously and accept the connection.
+Go back to your BigAnimal AWS Account onto VPC -> Endpoint services. Select the one you created previously and accept the connection.
 [Do we have the UI/figma for this?]()
 
-After a few minutes, you can successfully connect to your cluster.
+You can now successfully connect to your cluster.
 
-You can find the private endpoint DNS endpoint in the details section in your application AWS Account under “DNS names”
+In your application's AWS account select **DNS names**. Use the DNS for the VPC endpoint in the details section and access your cluster with this private domain name.
+
+    ```
+    $ dig +short p-c4iabjleig40jngmac40.brcxzr08qr7rbei1.biganimal.io 
+    10.240.1.123 
+          
+    $ psql -h p-c4iabjleig40jngmac40.brcxzr08qr7rbei1.biganimal.io -U edb_admin      
+    Password for user edb_admin: 
+
+    psql (13.4 (Ubuntu 13.4-1.pgdg28.84+1), server 13.4.8 (Debian 13.4.8-1+deb10)) 
+    WARNING : psql major version 13, server major version 13. Some psql features might not work. 
+    SSL connection (protocol : TLSV1.3cipherTLS_AES_256_GCM_SHA384, bits : 256, compression : off) Type "help" for help. 
+
+    edb_admin=>
+
+    ```
+    
+[Do we need to update these commands here?]()
+
+    !!! Tip
+        You might need to flush your local DNS cache to resolve your domain name to the new private IP address after adding the VPC endpoint. For example, on Ubuntu, run the following command:
+
+        ```
+        $ sudo systemd-resolve --flush-caches
+        ```
 
 
 
