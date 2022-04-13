@@ -200,24 +200,29 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability"
+            headingText="High Availability (HA)"
           >
-            <span className="font-weight-bold text-muted text-uppercase small">
-              Replication
-            </span>
-            <IndexCardLink to="/bdr/latest">
+            <IndexCardLink to="/epd/latest">
+              EDB Postgres Distributed
+            </IndexCardLink>
+            <IndexCardLink to="/bdr/latest/" className="nested-link">
               BDR (Bi-Directional Replication)
             </IndexCardLink>
+            <IndexCardLink to="/harp/latest" className="nested-link">
+              HA Routing for Postgres (HARP)
+            </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Replication
+            </span>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
-
+ 
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Cluster Management
             </span>
-            <IndexCardLink to="/harp/latest">
-              High Availability Routing for Postgres (HARP)
-            </IndexCardLink>
+
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)

@@ -23,6 +23,7 @@ const sourceToPluginConfig = {
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
+  epas: { name: "epd", path: "product_docs/docs/epd" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
     name: "hadoop_data_adapter",
