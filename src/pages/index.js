@@ -262,16 +262,10 @@ const Page = () => (
             <IndexCardLink to="/migrating/oracle">
               Migration Overview
             </IndexCardLink>
-            <IndexCardLink
-              to="/migration_portal/latest"
-              className="nested-link"
-            >
+            <IndexCardLink to="/migration_portal/latest">
               Migration Portal
             </IndexCardLink>
-            <IndexCardLink
-              to="/migration_toolkit/latest"
-              className="nested-link"
-            >
+            <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
           </IndexCard>
