@@ -66,3 +66,43 @@ After a template file is found, no rules are enforced on how that template shoul
 - This template will choose a `platformBase` template to inherit from based on the value of `platformBaseTemplate`, which must be set by a child template.
 - the `packageName` macro used by the `platformBase` templates can be found in this template
 - a `postinstall` block containing copy shared by all of the EPAS docs can be found here. That said, this block is extended by some child templates.
+
+### Template techniques
+
+Nunjucks offers many tools that we can use to minimize repetition and increase the readability of templates. Which to use depends on circumstances.
+
+#### Placeholder blocks
+
+[Template inheritance](https://mozilla.github.io/nunjucks/templating.html#template-inheritance) is our primary method to structure templates. If we know that a bit of text only appears in a certain subset of rendered documentation, we can use an empty placeholder block to define where that text goes. Then in the appropriate child template, we can override the placeholder block.
+
+Note that the definition should be filled in at the most general template possible. So if a block is specific to, say, BDR, we should include the definition in the BDR product template. Or, if the block is specific to a single version of RHEL, it would be defined in that version's template. It's also possible, to redefine a placeholder block again if there is an exception to the exception. You can even revert back to an empty block, if needed.
+
+Placeholder blocks are convenient and self-documenting, but they do depend on having the right inheritance structure in place. It's sometimes necessary to add a level of inheritance to create the appropriate abstraction layers. If you find yourself repeating the same block customization, you should evaluate whether the inheritance structure is right. Alternatively, you might need to use another technique.
+
+#### Include other templates
+
+When there are pieces of text that need to be repeated, but don't have a place in the existing structure, consider using [the `include` tag](https://mozilla.github.io/nunjucks/templating.html#include). For instance, we might want to includes a disclaimer for platforms nearing the end of our support cycle. Rather than repeat that warning in each affected template, we could put the text in a new template that we include when needed.
+
+In Nunjucks, `include` doesn't work like a pre-processor (inserting code before rendering). Instead, included templates are rendered and the results are inserted. That means you can't use `include` to override a block in the calling template and blocks defined in the calling template aren't visible to the included template. Included templates should be considered self-contained snippets.
+
+#### Macros
+
+Sometimes a chunk of text varies only by a few discrete variables. In that case, a [macro](https://mozilla.github.io/nunjucks/templating.html#macro) might be in order. We currently have two macros in `/templates/platformBase/_shared.njk`:
+
+1. `centosRepositoryConfiguration(packageManager, epelRepo)`
+2. `centosInstallCommand(packageManager, packageName)`
+
+When that file is [imported](https://mozilla.github.io/nunjucks/templating.html#import) (not included) in another template, those macros can be used to insert the proper instructions for configuring the repository and installing the package. By using a few variables (`packageManager`, `epelRepo` and `packageName`), we can generate many different combinations of instructions from a single source. 
+
+Macros can be self-documenting and avoid [action-at-a-distance problems](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)). If you call a macro, it's easier to know what you are going to get in the render.
+
+#### Conditionals
+
+We also use global variables to trigger conditionals:
+
+1. `templates/platformBase/centos-7.njk` uses the value of `includePPC` to determine whether to install [Advance Toolchain](https://github.com/advancetoolchain/advance-toolchain).
+2. `templates/platformBase/rhel-7-or-ol-7.njk` uses the value of `includeLOCAL` to trigger an option to create a local repository.
+
+For small template systems, this system works well enough. But as the number of templates increases, this becomes harder to understand. In this case, we need to search through the template files to find out where the variables are being used. Fortunately, they are used just once, but it's not hard to imagine multiple (and exclusive) conditionals that are hard to read, modify and debug.
+
+It's almost always better to use one of the other techniques than fall back on conditionals triggered by global variables.
