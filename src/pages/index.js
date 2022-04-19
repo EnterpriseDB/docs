@@ -145,6 +145,12 @@ const Page = () => (
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
             <IndexCardLink
+              to="/biganimal/latest/free_trial/"
+              className="nested-link"
+            >
+              Free Trial
+            </IndexCardLink>
+            <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
             >
@@ -176,7 +182,7 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin Tools"
+            headingText="Monitoring & Admin"
           >
             <IndexCardLink to="/pem/latest">
               Postgres Enterprise Manager
@@ -188,18 +194,21 @@ const Page = () => (
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
             <IndexCardLink to="/migration_portal/latest">
               Migration Portal
             </IndexCardLink>
             <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
+            <IndexCardLink to="/migrating/oracle">
+              Oracle to EDB Postgres Advanced Server Migration Handbook
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability Tools"
+            headingText="High Availability"
           >
             <span className="font-weight-bold text-muted text-uppercase small">
               Replication
@@ -231,7 +240,7 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.DRIVES}
-            headingText="Backup & Recovery Tools"
+            headingText="Backup & Recovery"
           >
             <IndexCardLink to="/supported-open-source/barman/">
               Barman

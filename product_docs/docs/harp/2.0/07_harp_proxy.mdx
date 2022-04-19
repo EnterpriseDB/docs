@@ -9,42 +9,15 @@ identity of the current Lead Master node and directs traffic to that location.
 In the event of a planned switchover or unplanned failover, it will 
 automatically redirect to the new Lead Master node as dictated by the DCS.
 
-You may select between pgbouncer or builtin for HARP Proxy.  If you do not specify 
-which proxy type; the default is `builtin`. When using pgbouncer, HARP Proxy is 
-an interface layer between the DCS and PgBouncer. As such, PgBouncer is a 
-prerequisite and should be installed in addition, in order for HARP Proxy to 
+You may select between pgbouncer or builtin for HARP Proxy.  When using pgbouncer, 
+HARP Proxy is an interface layer between the DCS and PgBouncer. As such, PgBouncer 
+is a prerequisite and should be installed in addition, in order for HARP Proxy to 
 fully manage its activity.
 
 The builtin proxy does not require any additional software.  When using builtin, 
 HARP Proxy functions as a level 4 pass-through proxy.
-
-# Builtin Proxy
-## How it Works
-
-Upon starting, HARP Proxy will listen for incoming connections on the listening 
-address and listening port specified in the bootstrap file per proxy instance.  
-All application client traffic will then pass through Builtin Proxy into the 
-current Lead Master node for the Location where this proxy is operating.
-
-In the event the Lead Master lease is not set, HARP Proxy will disconnect all 
-connection traffic until a new Lead Master is established. This also applies
-to circumstances when `harpctl promote` is used to invoke a planned transition
-to a new Lead Master. The disconnect is immediate.
-
-## Configuration
-
-The built-in proxy is chosen by setting the proxy type to `builtin`.  The only 
-other option applicable to the built-in proxy is `max_client_conn` which 
-specifies the maximum allowed client connections.  If `max_client_conn` is
-higher than what the system can handle-- it will be lowered to a setting
-that is within the capability of the system that the proxy is on.
-
 # PgBouncer
 ## How it Works
-
-!!! Note
-    If greater configurability of pgbouncer than what harp proxy provides is needed,
-    the recommended setup is to use built-in proxy and have pgbouncer point to it.
 
 Upon starting, HARP Proxy will launch PgBouncer if it is not already running, 
 and leave client connections in a paused state. Afterwards, it will contact the 
@@ -65,11 +38,49 @@ to a new Lead Master. It uses a PgBouncer `PAUSE` command for this, so existing
 sessions are allowed to complete any pending transactions before they are held
 in stasis.
 
+## Configuration
+
+HARP Proxy expects the `dcs`, `cluster`, and `proxy` configuration stanzas. The 
+following is a functional example:
+
+```yaml
+cluster:
+  name: mycluster
+
+dcs:
+  driver: etcd
+  endpoints:
+    - host1:2379
+    - host2:2379
+    - host3:2379
+
+proxy:
+  name: proxy1
+```
+
+## Usage
+
+This is the basic usage for HARP Proxy:
+
+```bash
+Usage of ./harp-proxy:
+  -f string
+    	Optional path to config file (shorthand)
+  --config string
+    	Optional path to config file
+```
+
+Note that there are no arguments to launch `harp-proxy` as a forked daemon. 
+This software is designed to be launched through systemd or within a container 
+as a top-level process. This also means output is directed to STDOUT and STDERR
+for capture and access through journald or an attached container terminal.
+
 ## PgBouncer Configuration File
 
-When HARP Proxy utilizes PgBouncer for connection management and redirection, 
-a `pgbouncer.ini` file must exist. HARP Manager builds this file based on various
-run-time directives as defined in the [Proxy Directives](04_configuration) documentation.
+Since HARP Proxy currently utilizes PgBouncer for connection management and
+redirection, a `pgbouncer.ini` file must exist. HARP Manager builds this file
+based on various run-time directives as defined in the 
+[Proxy Directives](04_configuration) documentation.
 
 This file will be located in the same folder as the `config.yml` used by HARP
 Proxy. Any PgBouncer process launched by HARP Proxy will use this configuration
@@ -97,12 +108,12 @@ Proxy node management is enabled by default.
 
 ## Passthrough User Authentication
 
-With pgbouncer we strongly recommend configuring HARP Proxy to use the `auth_user` and 
+We strongly recommend configuring HARP Proxy to use the `auth_user` and 
 `auth_query` run-time directives. If these are not set, the PgBouncer 
 `userlist.txt` file must include username and password hash combinations for 
 every user PgBouncer needs to authenticate on Postgres' behalf.
 
-This should *not* be the `pgbouncer` user itself, as this is utilized by HARP 
+this should *not* be the `pgbouncer` user itself, as this is utilized by HARP 
 Proxy as an admin-level user in order to operate the underlying PgBouncer 
 service.
 
@@ -145,7 +156,6 @@ proxies:
   default_pool_size: 20
   max_client_conn: 1000
   auth_user: pgb_auth
-  type: pgbouncer
   auth_query: "SELECT * FROM pg_catalog.pgbouncer_get_auth($1)"
   database_name: bdrdb
   instances:
@@ -163,6 +173,19 @@ harpctl set proxy global auth_user=pgb_auth
     This means the `postgres` or `enterprisedb` OS user that launches HARP
     Proxy will need a `.pgpass` file so that `auth_user` can authenticate 
     against Postgres.
+
+# Builtin Proxy
+## How it Works
+
+Upon starting, HARP Proxy will listen for incoming connections on the listening 
+address and listening port specified in the bootstrap file per proxy instance.  
+All application client traffic will then pass through Builtin Proxy into the 
+current Lead Master node for the Location where this proxy is operating.
+
+In the event the Lead Master lease is not set, HARP Proxy will disconnect all 
+connection traffic until a new Lead Master is established. This also applies
+to circumstances when `harpctl promote` is used to invoke a planned transition
+to a new Lead Master. The disconnect is immediate.
 
 ## Configuration
 
