@@ -137,6 +137,10 @@ const Page = () => (
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
             </IndexCardLink>
+            <IndexCardLink to="/postgis/latest" className="nested-link">
+              PostGIS
+            </IndexCardLink>
+
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
@@ -192,18 +196,6 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-            <IndexCardLink to="/migrating/oracle">
-              Oracle to EDB Postgres Advanced Server Migration Handbook
-            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -266,6 +258,18 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -285,10 +289,6 @@ const Page = () => (
             <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
             <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
             <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
-            <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
           </IndexCard>
 
           <IndexCard
