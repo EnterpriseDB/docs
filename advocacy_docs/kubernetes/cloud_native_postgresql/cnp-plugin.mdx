@@ -19,7 +19,8 @@ curl -sSfL \
 
 ### Supported Architectures
 
-Cloud Native PostgreSQL Plugin is currently build for the following operating system and architectures:
+Cloud Native PostgreSQL Plugin is currently build for the following
+operating system and architectures:
 
 -   Linux
     -   amd64
@@ -110,7 +111,8 @@ sandbox-2  302 GB         3AF/EAFA6168  Primary           OK      Guaranteed  1.
 sandbox-3  302 GB         3AF/EBAD5D18  Standby (sync)    OK      Guaranteed  1.11.0
 ```
 
-You can also get a more verbose version of the status by adding `--verbose` or just `-v`
+You can also get a more verbose version of the status by adding
+`--verbose` or just `-v`
 
 ```shell
 kubectl cnp status sandbox --verbose
@@ -252,20 +254,32 @@ kubectl get secret cluster-cert -o json | jq -r '.data | map(@base64d) | .[]'
 
 ### Restart
 
-The `kubectl cnp restart` command requests the operator to orchestrate
-a rollout restart for a certain cluster. This is useful to apply
-configuration changes to cluster dependent objects, such as ConfigMaps
-containing custom monitoring queries.
+The `kubectl cnp restart` command can be used in two cases:
 
-The following command will restart a given cluster in a rollout fashion:
+-   requesting the operator to orchestrate a rollout restart
+    for a certain cluster. This is useful to apply
+    configuration changes to cluster dependent objects, such as ConfigMaps
+    containing custom monitoring queries.
+
+-   request a single instance restart, either in-place if the instance is
+    the cluster's primary or deleting and recreating the pod if
+    it is a replica.
 
 ```shell
-kubectl cnp restart [cluster_name]
+# this command will restart a whole cluster in a rollout fashion
+kubectl cnp restart [clusterName]
+
+# this command will restart a single instance, according to the policy above
+kubectl cnp restart [clusterName] [pod]
 ```
 
+If the in-place restart is requested but the change cannot be applied without
+a switchover, the switchover will take precedence over the in-place restart. A
+common case for this will be a minor upgrade of PostgreSQL image.
+
 !!! Note
-    If you want ConfigMaps and Secrets to be **automatically** reloaded by instances, you can
-    add a label with key `k8s.enterprisedb.io/reload` to it.
+    If you want ConfigMaps and Secrets to be **automatically** reloaded
+    by instances, you can add a label with key `k8s.enterprisedb.io/reload` to it.
 
 ### Reload
 
@@ -281,22 +295,24 @@ kubectl cnp reload [cluster_name]
 
 ### Maintenance
 
-The `kubectl cnp maintenance` command helps to modify one or more clusters across namespaces
-and set the maintenance window values, it will change the following fields:
+The `kubectl cnp maintenance` command helps to modify one or more clusters
+across namespaces and set the maintenance window values, it will change
+the following fields:
 
 -   .spec.nodeMaintenanceWindow.inProgress
 -   .spec.nodeMaintenanceWindow.reusePVC
 
-Accepts as argument `set` and `unset` using this to set the `inProgress` to `true` in case `set`
-and to `false` in case of `unset`.
+Accepts as argument `set` and `unset` using this to set the
+`inProgress` to `true` in case `set`and to `false` in case of `unset`.
 
 By default, `reusePVC` is always set to `false` unless the `--reusePVC` flag is passed.
 
-The plugin will ask for a confirmation with a list of the cluster to modify and their new values,
-if this is accepted this action will be applied to all the cluster in the list.
+The plugin will ask for a confirmation with a list of the cluster to modify
+and their new values, if this is accepted this action will be applied to
+all the cluster in the list.
 
-If you want to set in maintenance all the PostgreSQL in your Kubernetes cluster, just need to
-write the following command:
+If you want to set in maintenance all the PostgreSQL in your Kubernetes cluster,
+just need to write the following command:
 
 ```shell
 kubectl cnp maintenance set --all-namespaces
@@ -312,4 +328,208 @@ default    cluster-example  true         false
 default    pg-backup        true         false
 test       cluster-example  true         false
 Do you want to proceed? [y/n]: y
+```
+
+### Report
+
+The `kubectl cnp report` command bundles various pieces
+of information into a ZIP file.
+It aims to provide the needed context to debug problems
+with clusters in production.
+
+It has two sub-commands: `operator` and `cluster`.
+
+#### report Operator
+
+The `operator` sub-command requests the operator to provide information
+regarding the operator deployment, configuration and events.
+
+!!! Important
+    All confidential information in Secrets and ConfigMaps is REDACTED.
+    The Data map will show the **keys** but the values will be empty.
+    The flag `-S` / `--stopRedaction` will defeat the redaction and show the
+    values. Use only at your own risk, this will share private data.
+
+!!! Note
+    By default, operator logs are not collected, but you can enable operator
+    log collection with the `--logs` flag
+
+-   **deployment information**: the operator Deployment and operator Pod
+-   **configuration**: the Secrets and ConfigMaps in the operator namespace
+-   **events**: the Events in the operator namespace
+-   **webhook configuration**: the mutating and validating webhook configurations
+-   **webhook service**: the webhook service
+-   **logs**: logs for the operator Pod (optional, off by default) in JSON-lines format
+
+The command will generate a ZIP file containing various manifest in YAML format
+(by default, but settable to JSON with the `-o` flag).
+Use the `-f` flag to name a result file explicitly. If the `-f` flag is not used, a
+default time-stamped filename is created for the zip file.
+
+```shell
+kubectl cnp report operator
+```
+
+results in
+
+```shell
+Successfully written report to "report_operator_<TIMESTAMP>.zip" (format: "yaml")
+```
+
+With the `-f` flag set:
+
+```shell
+kubectl cnp report operator -f reportRedacted.zip
+```
+
+Unzipping the file will produce a time-stamped top-level folder to keep the
+directory tidy:
+
+```shell
+unzip reportRedacted.zip
+```
+
+will result in:
+
+```shell
+Archive:  reportRedacted.zip
+   creating: report_operator_<TIMESTAMP>/
+   creating: report_operator_<TIMESTAMP>/manifests/
+  inflating: report_operator_<TIMESTAMP>/manifests/deployment.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/operator-pod.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/events.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/validating-webhook-configuration.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/mutating-webhook-configuration.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/webhook-service.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/postgresql-operator-ca-secret.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/postgresql-operator-webhook-cert.yaml
+```
+
+You can verify that the confidential information is REDACTED:
+
+```shell
+cd report_operator_<TIMESTAMP>/manifests/
+head postgresql-operator-ca-secret.yaml
+```
+
+```yaml
+data:
+  ca.crt: ""
+  ca.key: ""
+metadata:
+  creationTimestamp: "2022-03-22T10:42:28Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+```
+
+With the `-S` (`--stopRedaction`) option activated, secrets are shown:
+
+```shell
+kubectl cnp report operator -f reportNonRedacted.zip -S
+```
+
+You'll get a reminder that you're about to view confidential information:
+
+```shell
+WARNING: secret Redaction is OFF. Use it with caution
+Successfully written report to "reportNonRedacted.zip" (format: "yaml")
+```
+
+```shell
+unzip reportNonRedacted.zip
+head postgresql-operator-ca-secret.yaml
+```
+
+```yaml
+data:
+  ca.crt: LS0tLS1CRUdJTiBD…
+  ca.key: LS0tLS1CRUdJTiBF…
+metadata:
+  creationTimestamp: "2022-03-22T10:42:28Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+```
+
+#### report Cluster
+
+The `cluster` sub-command gathers the following:
+
+-   **cluster resources**: the cluster information, same as `kubectl get cluster -o yaml`
+-   **cluster pods**: pods in the cluster namespace matching the cluster name
+-   **cluster jobs**: jobs, if any, in the cluster namespace matching the cluster name
+-   **events**: events in the cluster namespace
+-   **pod logs**: logs for the cluster Pods (optional, off by default) in JSON-lines format
+-   **job logs**: logs for the Pods created by jobs (optional, off by default) in JSON-lines format
+
+The `cluster` sub-command accepts the `-f` and `-o` flags, as the `operator` does.
+If the `-f` flag is not used, a default timestamped report name will be used.
+Note that the cluster information does not contain configuration Secrets / ConfigMaps,
+so the `-S` is disabled.
+
+!!! Note
+    By default, cluster logs are not collected, but you can enable cluster
+    log collection with the `--logs` flag
+
+Usage:
+
+```shell
+kubectl-cnp report cluster [clusterName] -f <filename.zip> [flags]
+```
+
+Note that, unlike the `operator` sub-command, for the `cluster` sub-command you
+need to provide the cluster name, and very likely the namespace, unless the cluster
+is in the default one.
+
+```shell
+kubectl cnp report cluster cluster-example-full -f report.zip -n example2
+```
+
+and then:
+
+```shell
+unzip report.zip
+```
+
+```shell
+Archive:  report.zip
+   creating: report_cluster_<TIMESTAMP>/
+   creating: report_cluster_<TIMESTAMP>/manifests/
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster-pods.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster-jobs.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/events.yaml
+```
+
+Remember that you can use the `--logs` flag to add the pod and job logs to the ZIP.
+
+```shell
+kubectl cnp report cluster cluster-example-full -n example2 --logs
+```
+
+will result in:
+
+```shell
+Successfully written report to "report_cluster_<TIMESTAMP>.zip" (format: "yaml")
+```
+
+```shell
+unzip report_cluster_<TIMESTAMP>.zip
+```
+
+```shell
+Archive:  report_cluster_<TIMESTAMP>.zip
+   creating: report_cluster_<TIMESTAMP>/
+   creating: report_cluster_<TIMESTAMP>/manifests/
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster-pods.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/cluster-jobs.yaml  
+  inflating: report_cluster_<TIMESTAMP>/manifests/events.yaml  
+   creating: report_cluster_<TIMESTAMP>/logs/
+  inflating: report_cluster_<TIMESTAMP>/logs/cluster-example-full-1.jsonl  
+   creating: report_cluster_<TIMESTAMP>/job-logs/
+  inflating: report_cluster_<TIMESTAMP>/job-logs/cluster-example-full-1-initdb-qnnvw.jsonl  
+  inflating: report_cluster_<TIMESTAMP>/job-logs/cluster-example-full-2-join-tvj8r.jsonl 
 ```

@@ -50,6 +50,9 @@ Below you will find a description of the defined resources:
 -   [ExternalCluster](#ExternalCluster)
 -   [GoogleCredentials](#GoogleCredentials)
 -   [InstanceID](#InstanceID)
+-   [LDAPBindAsAuth](#LDAPBindAsAuth)
+-   [LDAPBindSearchAuth](#LDAPBindSearchAuth)
+-   [LDAPConfig](#LDAPConfig)
 -   [LocalObjectReference](#LocalObjectReference)
 -   [MonitoringConfiguration](#MonitoringConfiguration)
 -   [NodeMaintenanceWindow](#NodeMaintenanceWindow)
@@ -361,6 +364,7 @@ ClusterSpec defines the desired state of Cluster
 | `affinity             ` | Affinity/Anti-affinity rules for Pods                                                                                                                                                                                                                                                                                                                                                                                                 | [AffinityConfiguration](#AffinityConfiguration)                                                                                  |
 | `resources            ` | Resources requirements of every generated Pod. Please refer to <https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/> for more information.                                                                                                                                                                                                                                                                 | [corev1.ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#resourcerequirements-v1-core) |
 | `primaryUpdateStrategy` | Strategy to follow to upgrade the primary server during a rolling update procedure, after all replicas have been successfully updated: it can be automated (`unsupervised` - default) or manual (`supervised`)                                                                                                                                                                                                                        | PrimaryUpdateStrategy                                                                                                            |
+| `primaryUpdateMethod  ` | Method to follow to upgrade the primary server during a rolling update procedure, after all replicas have been successfully updated: it can be with a switchover (`switchover` - default) or in-place (`restart`)                                                                                                                                                                                                                     | PrimaryUpdateMethod                                                                                                              |
 | `backup               ` | The configuration to be used for backups                                                                                                                                                                                                                                                                                                                                                                                              | [\*BackupConfiguration](#BackupConfiguration)                                                                                    |
 | `nodeMaintenanceWindow` | Define a maintenance window for the Kubernetes nodes                                                                                                                                                                                                                                                                                                                                                                                  | [\*NodeMaintenanceWindow](#NodeMaintenanceWindow)                                                                                |
 | `licenseKey           ` | The license key of the cluster. When empty, the cluster operates in trial mode and after the expiry date (default 30 days) the operator will cease any reconciliation attempt. For details, please refer to the license agreement that comes with the operator.                                                                                                                                                                       | string                                                                                                                           |
@@ -498,6 +502,46 @@ InstanceID contains the information to identify an instance
 | ------------- | ---------------- | ------ |
 | `podName    ` | The pod name     | string |
 | `ContainerID` | The container ID | string |
+
+<a id='LDAPBindAsAuth'></a>
+
+## LDAPBindAsAuth
+
+LDAPBindAsAuth provides the required fields to use the bind authentication for LDAP
+
+| Name     | Description                               | Type   |
+| -------- | ----------------------------------------- | ------ |
+| `prefix` | Prefix for the bind authentication option | string |
+| `suffix` | Suffix for the bind authentication option | string |
+
+<a id='LDAPBindSearchAuth'></a>
+
+## LDAPBindSearchAuth
+
+LDAPBindSearchAuth provides the required fields to use the bind+search LDAP authentication process
+
+| Name              | Description                                                    | Type                                                                                                                         |
+| ----------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `baseDN         ` | Root DN to begin the user search                               | string                                                                                                                       |
+| `bindDN         ` | DN of the user to bind to the directory                        | string                                                                                                                       |
+| `bindPassword   ` | Secret with the password for the user to bind to the directory | [\*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core) |
+| `searchAttribute` | Attribute to match against the username                        | string                                                                                                                       |
+| `searchFilter   ` | Search filter to use when doing the search+bind authentication | string                                                                                                                       |
+
+<a id='LDAPConfig'></a>
+
+## LDAPConfig
+
+LDAPConfig contains the parameters needed for LDAP authentication
+
+| Name             | Description                                                     | Type                                        |
+| ---------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| `server        ` | LDAP hostname or IP address                                     | string                                      |
+| `port          ` | LDAP server port                                                | int                                         |
+| `scheme        ` | LDAP schema to be used, possible options are `ldap` and `ldaps` | LDAPScheme                                  |
+| `tls           ` | Set to 1 to enable LDAP over TLS                                | bool                                        |
+| `bindAsAuth    ` | Bind as authentication configuration                            | [\*LDAPBindAsAuth](#LDAPBindAsAuth)         |
+| `bindSearchAuth` | Bind+Search authentication configuration                        | [\*LDAPBindSearchAuth](#LDAPBindSearchAuth) |
 
 <a id='LocalObjectReference'></a>
 
@@ -679,6 +723,7 @@ PostgresConfiguration defines the PostgreSQL configuration
 | `epas                    ` | EDB Postgres Advanced Server specific configurations                                                                                                                                           | [\*EPASConfiguration](#EPASConfiguration) |
 | `promotionTimeout        ` | Specifies the maximum number of seconds to wait when promoting an instance to primary. Default value is 40000000, greater than one year in seconds, big enough to simulate an infinite timeout | int32                                     |
 | `shared_preload_libraries` | Lists of shared preload libraries to add to the default ones                                                                                                                                   | \[]string                                 |
+| `ldap                    ` | Options to specify LDAP configuration                                                                                                                                                          | [\*LDAPConfig](#LDAPConfig)               |
 
 <a id='RecoveryTarget'></a>
 
@@ -688,7 +733,7 @@ RecoveryTarget allows to configure the moment where the recovery process will st
 
 | Name              | Description                                                               | Type   |
 | ----------------- | ------------------------------------------------------------------------- | ------ |
-| `targetTLI      ` | The target timeline ("latest", "current" or a positive integer)           | string |
+| `targetTLI      ` | The target timeline ("latest" or a positive integer)                      | string |
 | `targetXID      ` | The target transaction ID                                                 | string |
 | `targetName     ` | The target name (to be previously created with `pg_create_restore_point`) | string |
 | `targetLSN      ` | The target LSN (Log Sequence Number)                                      | string |
@@ -702,10 +747,10 @@ RecoveryTarget allows to configure the moment where the recovery process will st
 
 ReplicaClusterConfiguration encapsulates the configuration of a replica cluster
 
-| Name      | Description                                                                                                                                                                   | Type   |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `enabled` | If replica mode is enabled, this cluster will be a replica of an existing cluster. A cluster of such type can be created only using bootstrap via pg_basebackup - *mandatory* | bool   |
-| `source ` | The name of the external cluster which is the replication origin                                                                                                - *mandatory* | string |
+| Name      | Description                                                                                                                                                                                                                                                                   | Type   |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `enabled` | If replica mode is enabled, this cluster will be a replica of an existing cluster. Replica cluster can be created from a recovery object store or via streaming through pg_basebackup. Refer to the Replication page of the documentation for more information. - *mandatory* | bool   |
+| `source ` | The name of the external cluster which is the replication origin                                                                                                                                                                                                - *mandatory* | string |
 
 <a id='RollingUpdateStatus'></a>
 
@@ -732,6 +777,7 @@ S3Credentials is the type for the credentials to be used to upload files to S3. 
 | -------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `accessKeyId       ` | The reference to the access key id                                                     | [\*SecretKeySelector](#SecretKeySelector) |
 | `secretAccessKey   ` | The reference to the secret access key                                                 | [\*SecretKeySelector](#SecretKeySelector) |
+| `sessionToken      ` | The references to the session key                                                      | [\*SecretKeySelector](#SecretKeySelector) |
 | `inheritFromIAMRole` | Use the role based authentication without providing explicitly the keys. - *mandatory* | bool                                      |
 
 <a id='ScheduledBackup'></a>
@@ -763,12 +809,12 @@ ScheduledBackupList contains a list of ScheduledBackup
 
 ScheduledBackupSpec defines the desired state of ScheduledBackup
 
-| Name        | Description                                                                           | Type                                          |
-| ----------- | ------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `suspend  ` | If this backup is suspended or not                                                    | \*bool                                        |
-| `immediate` | If the first backup has to be immediately start after creation or not                 | \*bool                                        |
-| `schedule ` | The schedule in Cron format, see <https://en.wikipedia.org/wiki/Cron>.  - *mandatory* | string                                        |
-| `cluster  ` | The cluster to backup                                                                 | [LocalObjectReference](#LocalObjectReference) |
+| Name        | Description                                                                                                                                                | Type                                          |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `suspend  ` | If this backup is suspended or not                                                                                                                         | \*bool                                        |
+| `immediate` | If the first backup has to be immediately start after creation or not                                                                                      | \*bool                                        |
+| `schedule ` | The schedule follows the same format used in Kubernetes CronJobs, see <https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format> - *mandatory* | string                                        |
+| `cluster  ` | The cluster to backup                                                                                                                                      | [LocalObjectReference](#LocalObjectReference) |
 
 <a id='ScheduledBackupStatus'></a>
 
