@@ -226,7 +226,7 @@ const Page = () => (
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Connection Poolers
             </span>
-            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
