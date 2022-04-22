@@ -1,0 +1,264 @@
+---
+title: 'Securing Postgres backup API'
+description: 'Instructions for enabling secure remote access to Postgres backup API'
+tags:
+    - barman
+    - backup
+    - recovery
+    - postgresql
+    - pg-backup-api
+---
+
+### Overview
+
+This guide covers the steps necessary to enable secure remote access to Postgres backup API.
+This is achieved by installing Apache HTTP Server and configuring it to proxy traffic to Postgres backup API.
+Apache HTTP Server will also handle the following:
+
+* TLS termination, so that all connections between the Barman server and the outside world are encrypted.
+* Certificate authentication, so that only clients with authorized keys and certificates can access Postgres backup API.
+
+Once completed you will be able to use a client key and certificate to authenticate to Postgres backup API over an encrypted TLS connection.
+
+### Prerequisites
+
+You must already have installed [Barman](https://docs.pgbarman.org/#installation) and [Postgres backup API](01-installation) via your system package manager.
+
+### Installing Apache HTTP Server
+
+The first step is to install Apache HTTP Server on the server where Barman and Postgres backup API are installed.
+
+#### Debian/Ubuntu
+
+```bash
+sudo apt-get install apache2
+```
+
+#### RHEL
+
+```bash
+sudo yum install httpd mod_ssl
+```
+
+#### SLES
+
+```bash
+sudo zypper install apache2
+```
+
+### Initial Apache HTTP Server configuration
+
+Once installed you should stop Apache HTTP Server from listening on port 80 and carry out platform-specific configuration tasks.
+
+#### Debian/Ubuntu
+
+Stop Apache HTTP Server from listening on port 80:
+
+```bash
+sudo sed -i 's/^Listen 80$/#Listen 80/' /etc/apache2/ports.conf
+```
+
+Enable the ssl, proxy and proxy_http modules in the correct order and restart Apache HTTP Server:
+
+```bash
+sudo a2enmod ssl
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo systemctl restart apache2
+```
+
+#### RHEL
+
+Stop Apache HTTP Server from listening on port 80:
+
+```bash
+sudo sed -i 's/^Listen 80$/#Listen 80/' /etc/httpd/conf/httpd.conf
+```
+
+Reload the configuration:
+
+```bash
+sudo systemctl reload httpd
+```
+
+#### SLES
+
+Stop Apache HTTP Server from listening on port 80 and start listening on 443 instead:
+
+```bash
+sudo sed -i 's/^Listen 80$/Listen 443/' /etc/apache2/listen.conf
+```
+
+Enable the proxy and proxy_http modules in the correct order:
+
+```bash
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+```
+
+Restart Apache HTTP Server:
+
+```bash
+sudo systemctl restart apache2
+```
+
+### Obtaining server and client certificates
+
+In order to configure Apache HTTP Server for TLS encryption you will need a private key and a certificate signed by a trusted certificate authority (CA).
+You will also need a client certificate which has been signed by the same CA which signed the server certificate.
+
+!!! Note
+    You are of course free to use certificates obtained via other means and configure them however you like.
+    For example your organization may have an internal CA you can use, or you may wish to use a third party CA.
+    Such configurations are not covered by this guide.
+
+In the following steps a number of placeholder variables are used:
+
+* `$ORGANIZATION_NAME`: The organization name for your certificates.
+* `$SERVER_FQDN`: The fully qualified domain name of the Barman server.
+* `$ADMIN_EMAIL_ADDRESS`: The e-mail address used in the `emailAddress` x509 attribute.
+* `$CLIENT_CN`: The x509 common name for the client application / host.
+
+!!! Note
+    On Ubuntu 18.04 only you will need to comment out `RANDFILE` in `/etc/ssl/openssl.cnf` to avoid errors relating to the use of a `$HOME/.rnd` file.
+    This can be achieved with `sudo sed -i -e s/^RANDFILE/#RANDFILE/ /etc/ssl/openssl.cnf`.
+
+Firstly, generate a self-signed CA as follows:
+
+```bash
+sudo openssl req -nodes -new -x509 -days 999 \
+  -keyout /root/ca.key -out /root/ca.cert \
+  -subj "/O=$ORGANIZATION_NAME/CN=root.$SERVER_FQDN/emailAddress=$ADMIN_EMAIL_ADDRESS"
+```
+
+This will generate a CA key and self-signed certificate which will be stored in the `/root` directory on the Barman server.
+
+Now you can create a server key and use it to obtain a certificate signed by the CA you just created.
+Firstly create the key:
+
+```bash
+sudo openssl genrsa -out /root/server.key 2048
+```
+
+Create a certificate signing request using the newly generated key:
+
+```bash
+sudo openssl req -new \
+  -key /root/server.key -out /root/server.csr \
+  -subj "/O=$ORGANIZATION_NAME/CN=$SERVER_FQDN/emailAddress=$ADMIN_EMAIL_ADDRESS"
+```
+
+Create the server certificate from the certificate request using the CA:
+
+```bash
+sudo openssl x509 -req \
+  -in /root/server.csr -CA /root/ca.cert -CAkey /root/ca.key \
+  -CAcreateserial -out /root/server.cert -days 999 -sha256
+```
+
+Now we repeat the process to generate the client key and certificate:
+
+```bash
+sudo openssl genrsa -out /root/client.key 2048
+sudo openssl req -new \
+  -key /root/client.key -out /root/client.csr \
+  -subj "/O=$ORGANIZATION_NAME/CN=$CLIENT_CN/emailAddress=$ADMIN_EMAIL_ADDRESS"
+sudo openssl x509 -req \
+  -in /root/client.csr -CA /root/ca.cert -CAkey /root/ca.key \
+  -CAcreateserial -out /root/client.cert -days 999 -sha256
+```
+
+!!! Note
+    The certificates in this guide, including the self-signed CA, are all configured with a lifetime of 999 days.
+    If necessary this can be changed by replacing the `-days 999` argument above.
+
+Finally, move the CA certificate, the server key and server certificate to a location accessible by the Apache HTTP Server user and ensure correct permissions on the server key:
+
+```bash
+sudo mkdir -p /usr/lib/pgbapi
+sudo mv /root/ca.cert /root/server.key /root/server.cert /usr/lib/pgbapi
+sudo chmod 600 /usr/lib/pgapi/server.key
+```
+
+Setting ownership differs by platform because each Linux distribution flavor runs Apache HTTP Server under a different account.
+
+#### Debian/Ubuntu
+
+```bash
+sudo chown -R www-data /usr/lib/pgbapi
+```
+
+#### RHEL
+
+```bash
+sudo chown -R apache:apache /usr/lib/pgbapi
+```
+
+#### SLES
+
+```bash
+sudo chown -R wwwrun /usr/lib/pgbapi
+```
+
+### Adding a VirtualHost definition for Postgres backup API
+
+Add a file called `pgbapi.conf` to the Apache HTTP configuration directory which defines the `VirtualHost` which will act as a proxy.
+The exact location of the file for the target system is given in the following table:
+
+| OS            | Apache HTTP configuration dir |
+|---------------|-------------------------------|
+| Debian/Ubuntu |  /etc/apache2/sites-enabled/  |
+| RHEL          |  /etc/httpd/conf.d/           |
+| SLES          |  /etc/apache2/conf.d/         |
+
+The contents of `pgbapi.conf` should be as follows:
+
+```text
+<VirtualHost *:443>
+    ServerName $SERVER_FQDN
+    SSLEngine on
+
+    SSLCertificateFile /usr/lib/pgbapi/server.cert
+    SSLCertificateKeyFile /usr/lib/pgbapi/server.key
+    SSLCACertificateFile /usr/lib/pgbapi/ca.cert
+
+    SSLVerifyClient require
+    SSLVerifyDepth 1
+
+    ProxyPass "/" "http://localhost:7480/"
+    ProxyPassReverse "/" "http://localhost:7480/"
+</VirtualHost>
+```
+Note that the CA certificate, server certificate and server key are expected to be available in `/usr/lib/pgabi`.
+If your key and certificates are located elsewhere then update the SSL certificate paths as required.
+Be sure to change `$SERVER_FQDN` to its actual value.
+
+Finally, reload the Apache HTTP Server config.
+
+#### Debian/Ubuntu and SLES
+
+```bash
+sudo systemctl reload apache2
+```
+
+#### RHEL
+
+```bash
+sudo systemctl reload httpd
+```
+
+### Client configuration
+
+Postgres backup API is now configured for secure remote access.
+
+The CA certificate, client certificate and client key created earlier will all be required by the client application so that it can connect and authenticate.
+The files `/root/ca.cert`, `/root/client.key` and `/root/client.cert` should therefore be copied securely to the client so that the client can be configured to use them.
+
+As an example, curl can be configured to authenticate with a Postgres backup API instance running at `pgbapi.example.com` as follows:
+
+```bash
+curl --cacert /usr/lib/pgbapi/ca.cert \
+     --cert /root/client.cert \
+     --key /root/client.key \
+     https://pgbapi.example.com/status
+```
