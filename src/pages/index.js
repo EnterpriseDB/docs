@@ -137,6 +137,10 @@ const Page = () => (
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
             </IndexCardLink>
+            <IndexCardLink to="/postgis/latest" className="nested-link">
+              PostGIS
+            </IndexCardLink>
+
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
@@ -144,6 +148,12 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink
+              to="/biganimal/latest/free_trial/"
+              className="nested-link"
+            >
+              Free Trial
+            </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
@@ -176,7 +186,7 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin Tools"
+            headingText="Monitoring & Admin"
           >
             <IndexCardLink to="/pem/latest">
               Postgres Enterprise Manager
@@ -188,18 +198,9 @@ const Page = () => (
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability Tools"
+            headingText="High Availability"
           >
             <span className="font-weight-bold text-muted text-uppercase small">
               Replication
@@ -225,13 +226,13 @@ const Page = () => (
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Connection Poolers
             </span>
-            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.DRIVES}
-            headingText="Backup & Recovery Tools"
+            headingText="Backup & Recovery"
           >
             <IndexCardLink to="/supported-open-source/barman/">
               Barman
@@ -257,6 +258,18 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -276,10 +289,6 @@ const Page = () => (
             <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
             <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
             <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
-            <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
           </IndexCard>
 
           <IndexCard

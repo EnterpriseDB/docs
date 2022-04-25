@@ -183,7 +183,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
           <hr />
           <p>
-            Could this page could be better?{" "}
+            Could this page be better?{" "}
             <a
               href={
                 githubIssuesLink + "&template=problem-with-topic.md&labels=bug"
