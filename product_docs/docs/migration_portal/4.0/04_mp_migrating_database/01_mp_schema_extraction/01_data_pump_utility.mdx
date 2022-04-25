@@ -1,0 +1,113 @@
+---
+title: "Extracting schemas using data pump utility
+"
+
+---
+
+Migration Portal only requires the metadata in the SQL dump file to assess the extracted schemas.
+
+#### Prerequisites
+
+* If you plan on exporting schemas that are not your own, ensure that you are assigned the `DATAPUMP_IMP_FULL_DATABASE` role. Otherwise, you can only export your own schema.
+
+* Ensure that you have sufficient tablespace quota to create objects in the tablespace.
+
+* In SQL*Plus, create a directory object that points to a directory on your server file system. For example:
+ 
+ **On Linux**:
+
+ `SQL> create directory DMPDIR as '/sample/file/path';`
+ 
+ **On Windows**:
+
+ `SQL> create directory DMPDIR as 'c:\sample\file\path\';`
+
+* In SQL*Plus, grant read, write permissions to the user running the Data Pump utility.
+
+ `SQL> grant read,write on directory DMPDIR to <Username>;`
+
+Perform either of the following procedures:
+
+* [To extract one or more schemas in a database](#to-extract-one-or-more-schemas-in-a-database)
+
+* [To extract all schemas in a database](#to-extract-all-schemas-in-a-database)
+
+### To extract one or more schemas in a database
+
+1. Before running the `expdp` command, create a file with a `.par` extension (for example, export.par) on your server. Add attributes and values to the file, as follows: 
+
+   ```
+   CONTENT=metadata_only
+
+   INCLUDE=SYNONYM,SEQUENCE,TYPE,TABLE,CONSTRAINT,PROCEDURE,FUNCTION,PACKAGE,INDEX,MATERIALIZED_VIEW,VIEW,TRIGGER,DB_LINK	
+   ```
+ 
+  The attributes and values in the above command specify the following options:  
+    + `CONTENT=metadata_only` extracts only the metadata of the schemas.  
+    + `INCLUDE=` specifies which database object types to include in the extraction. Append a comma-separated list of the [Supported object types](../01_mp_schema_extraction/#supported-object-types) to only extract database object types that are supported by Migration Portal. 
+
+
+2. From the command line, run the export command to generate a **schemas_metadata.dump** file. For example, to extract metadata information for `<Schema_1>`, `<Schema_2>`, `<Schema_3>`, and so on, run:
+ 
+   ```shell
+   expdp <Username>@<ConnectIdentifier> DIRECTORY=DMPDIR SCHEMAS=<Schema_1>,<Schema_2>,<Schema_3> DUMPFILE=schemas_metadata.dump parfile=export.par
+   ```
+
+3. To generate a SQL file from the dump file, run the import command. 
+
+   For example, to generate **YourSchemas.SQL** file from the schemas_metadata.dump file, enter:
+ 
+   ```shell
+    impdp <Username>@<ConnectIdentifier> DIRECTORY=DMPDIR TRANSFORM=OID:n SQLFILE=YourSchemas.sql DUMPFILE=schemas_metadata.dump
+   ```
+See an important [note](../01_mp_schema_extraction/#a-note-about-file-encoding) about the file encoding format expected by the Migration Portal.  
+
+### To extract all schemas in a database
+
+!!! Note
+    Do not perform the following procedure from a user account that belongs to the excluded schemas list, see [Unsupported schemas](../01_mp_schema_extraction/#unsupported-schemas). The impdp command fails if the user account running the command is in the excluded list of schemas.
+
+
+1. Before running the expdp command, create a file with a `.par` extension (for example, export.par) on your server. Add attributes and values to the file, as follows: 
+
+   ```
+   CONTENT=metadata_only
+
+   FULL=Y
+
+   INCLUDE=SYNONYM,SEQUENCE,TYPE,TABLE,CONSTRAINT,PROCEDURE,FUNCTION,PACKAGE,INDEX,MATERIALIZED_VIEW,VIEW,TRIGGER,DB_LINK	
+   ```
+ The attributes and values in the above command specify the following options:  
+   + `CONTENT=metadata_only` extracts only the metadata of the schemas.  
+   + `INCLUDE=` specifies which database object types to include in the extraction. Append a comma-separated list of the [Supported object types](../01_mp_schema_extraction/#supported-object-types) to only extract database object types that are supported by Migration Portal.
+   + `FULL=Y` extracts all schemas in the database.
+
+
+2. From the command line, run the export command to generate a **schemas_metadata.dump** file, as follows:
+ 
+    ```shell
+    expdp <Username>@<ConnectIdentifier> DIRECTORY=DMPDIR DUMPFILE=schemas_metadata.dump parfile=export.par
+    ```
+
+3. Before running the impdp command, create a parameter file with a `.par` extension (for example, import.par) on your server. Add attributes and values to the file, as follows:
+   
+   ```
+   EXCLUDE=SCHEMA:"IN(select username as schema_name from sys.dba_users where LOWER(username) LIKE 'pg_%' OR username IN
+   ('ANONYMOUS','APEX_PUBLIC_USER','APEX_030200','APEX_040000','APEX_040200','APPQOSSYS','AUDSYS','CTXSYS','DMSYS','DBSNMP',
+   'DBSFWUSER','DEMO','DIP','DMSYS', 'DVF','DVSYS','EXFSYS','FLOWS_FILES','FLOWS_020100', 'FRANCK','GGSYS','GSMADMIN_INTERNAL',
+   'GSMCATUSER','GSMROOTUSER','GSMUSER','LBACSYS','MDDATA','MDSYS','MGMT_VIEW','OJVMSYS','OLAPSYS','ORDPLUGINS','ORDSYS',
+   'ORDDATA','OUTLN','ORACLE_OCM','OWBSYS','OWBYSS_AUDIT','PDBADMIN','RMAN','REMOTE_SCHEDULER_AGENT','SI_INFORMTN_SCHEMA',
+   'SPATIAL_CSW_ADMIN_USR','SPATIAL_WFS_ADMIN_USR','SQLTXADMIN','SQLTXPLAIN','SYS$UMF','SYS','SYSBACKUP','SYSDG','SYSKM',
+   'SYSRAC','SYSTEM','SYSMAN','TSMSYS','WKPROXY','WKSYS','WK_TEST','WMSYS','XDB','XS$NULL'))"
+   ```
+   The attributes and values in the above command specify the following options:
+   + `EXCLUDE` specifies which schemas to exclude. Append a list of the [Unsupported schemas](../01_mp_schema_extraction/#unsupported-schemas) to ensure that the Data Pump utility *does not* extract any system schemas (including schemas beginning with **pg_**).
+
+4. To generate a SQL file from the dump file, run the import command. 
+
+   For example, to generate **YourSchemas.SQL** file from the schemas_metadata.dump file, enter:
+ 
+   ```shell
+    impdp <Username>@<ConnectIdentifier> DIRECTORY=DMPDIR TRANSFORM=OID:n SQLFILE=YourSchemas.sql DUMPFILE=schemas_metadata.dump parfile=import.par
+   ```
+See an important [note](../01_mp_schema_extraction/#a-note-about-file-encoding) about the file encoding format expected by the Migration Portal.  
