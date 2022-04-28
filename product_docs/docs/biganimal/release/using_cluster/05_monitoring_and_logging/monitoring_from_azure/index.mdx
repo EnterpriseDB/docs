@@ -4,9 +4,9 @@ redirects:
  - ../05_monitoring_and_logging
 ---
 
-
-
 BigAnimal sends all metrics and logs from PostgreSQL clusters to Azure. You can view metrics and logs directly from Azure. The following describes the metrics and logs that are sent and how to view them.
+
+## Logs
 
 ### Azure log analytics
 
@@ -29,12 +29,18 @@ All logs from your PostgreSQL clusters are stored in the *Customer Log Analytics
 
 6.  Close the dashboard with prebuilt queries. This brings you to the KQL Editor.
 
-The following tables are available in the *Customer Log Analytic workspace*.
+The following tables containing BigAnimal logs are available in the *Customer Log Analytic workspace*.
 
 | Table name           | Description                                                         | Logger                          |
 | -------------------- | ------------------------------------------------------------------- | ------------------------------- |
 | PostgresLogs_CL      | Logs of the Customer clusters databases (all postgres related logs) | `logger = postgres`             |
 | PostgresAuditLogs_CL | Audit Logs of the Customer clusters databases                       | `logger = pgaudit or edb_audit` |
+
+Logs are split into structured fields matching those of the Postgres
+[csvlog format](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG)
+with a `record_` prefix and a type-suffix. For example, the `application_name`
+is in the `record_application_name_s` log field. The `pg_cluster_id_s` field identifies the specific Postgres cluster
+that originated the log message.
 
 You can use the KQL Query editor to compose your queries over these tables. For example,
 
@@ -54,6 +60,73 @@ PostgresAuditLogs_CL
 | sort by record_log_time_s desc
 ```
 
+## Metrics
+
+BigAnimal collects a wide set of metrics about Postgres instances into the
+`DpMetrics_CL` log analytics table. Most of these metrics are acquired
+directly from Postgres system tables, views, and functions. The Postgres
+documentation serves as the main reference for these metrics.
+
+### Available metrics
+
+The following tables in the Customer Log Analytic workspace contain metrics
+specific to BigAnimal:
+
+| Table name           | Description                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| DpMetrics_CL         | Metrics streams from BigAnimal Prometheus.                                                                      |
+
+You can use the KQL Query editor in the Log Workspace view to compose queries
+over these tables.
+
+The forwarded Prometheus metrics use structured JSON fields, particularly the `Message` and `Message.labels` fields.
+Effective use of them requires the use of the
+[`todynamic()`](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/parsejsonfunction)
+function in queries.
+
+At time of writing, all metrics forwarded from Prometheus are in the
+`DpMetrics_CL` table. This might change in a future release.
+
+The available set of metrics is subject to change. Metrics might be added,
+removed or renamed. Where feasible, an effort will be made not to change the
+meaning or type of existing metrics without also changing the metric name.
+
+### Metrics labels
+
+All Postgres metrics share a common labelling scheme. Entries generally
+have at least the following labels:
+
+| Name                         | Description                                                   |
+| ---------------------------- | ------------------------------------------------------------- |
+| instance                     | IP address of the host the metric originated from             |
+| postgresql                   | BigAnimal postgres cluster identifier, e.g., `p-abcdef012345` |
+| role                         | Postgres instance role, "primary" or "replica"                |
+| datname                      | Postgres database name (where applicable)                     |
+| pod                          | k8s pod name                                                  |
+| aks_cluster_name             | AKS cluster name                                              |
+
+When querying for labels, for best performance apply filters that don't
+require inspection of labels (for example, filters by metric name) before label-based filters.
+
+The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field.
+To query the field for individual values you JSON parse the `Message` field and dot
+reference (`m.labels`) the labels property. Some uses of values might require explicit casts
+to another type, for example, `tostring(...)`.
+
+Example usage:
+
+```
+DpMetrics_CL
+| where Message has "cnp_"
+| extend m = todynamic(Message)
+| where m.labels.role == "primary"
+| project postgres_cluster_id = tostring(m.labels.postgresql), metric_name = m.name, metric_value = m.value
+```
+
+A detailed list of available metrics are found at [metrics](../metrics).
+
+## Workbooks
+
 ### Use Azure Workbooks to view PostgreSQL cluster logs and metrics
 
 You can view logs from your PostgreSQL clusters using Azure Workbooks. See [Azure Monitor Workbooks](https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview) for information on using Azure Workbooks.
@@ -62,12 +135,10 @@ To access Azure Workbooks:
 
 1.  Sign in to the [Azure portal](https://portal.azure.com).
 
-2.  Search for "workbooks". 
+2.  Search for "workbooks".
 
 3.  Filter the search results, as needed. For example, you may need to filter by subscription if your account has more than one and the location that corresponds with region where you deployed your cluster. You can either use the filter controls or search to narrow the search results.
 
-4.  Select the workbook link in the **Name** column to open the workbook details. Names have the format `${GUID} (xxx-rg-${region}-management-xxx-customer)`. For example `62b6d449-e0e5-480a-9809-cae2ff6510e9 (123-rg-australiaeast-management-abcd-customer)`. 
+4.  Select the workbook link in the **Name** column to open the workbook details. Names have the format `${GUID} (xxx-rg-${region}-management-xxx-customer)`. For example `62b6d449-e0e5-480a-9809-cae2ff6510e9 (123-rg-australiaeast-management-abcd-customer)`.
 
 5.  Select **Open Workbook** in the workbook details to launch an interactive workbook with various metrics for your deployed clusters.
-
-See [Metrics details](06_metrics) for more information.
