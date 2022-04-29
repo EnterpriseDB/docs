@@ -4,38 +4,54 @@ navTitle: Connecting your own cloud
 description: "Use BigAnimal with your own cloud account" 
 ---
 
+You can connect your own cloud provider account to BigAnimal as data planes, BigAnimal will manage your account after the initial setup and deploy clusters on your own account. Currently, we support connect to Azure subscription and AWS account. Biganimal need to create some resources in your cloud account to let BigAnimal does necessary operations to do followup management. Additonally, your cloud account must have suffice resource quota for deploying BigAnimal data plane resource, otherwise you need to request your cloud provider to increase your quota limit. Thereof, to properly set up your cloud provider the cloud login user which you are using to do the BigAnimal connection must have following permissions:
 
-EDB provides a CLI command that checks whether requirements and resource limits are met in your cloud before connecting to BigAnimal. An account owner or contributor can run this command.
-
-!!! Note
-    
-    To run CLI commands for your AWS account, you must have the following AWS managed policies assigned (or an equivalent custom policy granting full access to resources):
+	```
+    For your AWS account, you must have the following AWS managed policies assigned (or an equivalent custom policy granting full access to resources):
     
     - `arn:aws:iam::aws:policy/IAMFullAccess`
     - `arn:aws:iam::aws:policy/ServiceQuotasFullAccess`
     
-    To run CLI commands for your Azure account, you must have one of the following roles in Azure AD:
+    For your Azure account, you must have one of the following roles in Azure AD:
 
     -   Global Administrator
     -   Privileged Role Administrator
 
     Alternatively, you need the cooperation of a user with one of those roles in your organization.
+	```
 
 ## Setting up your cloud service provider
 
-1. Log in to BigAnimal.
+EDB provides CLI commands that can help you easily do cloud permissions and resource quota limit preflight-check, cloud account setup and connect your cloud account to BigAnimal. Following steps below to do your cloud provider account setup.
 
-1. On the Cloud Providers page in BigAnimal, select **Download BigAnimal CLI**. For more information, see [Using the CLI](../../reference/cli).
 
-1. Run the following command:
+1. CLI cloud provider setup comamnds only support running under Linux bash shell version 4.0 or above. And following dependent tools are required.
 
+   - [jq](https://stedolan.github.io/jq/) json parser.
+   - [AWS CLI](https://aws.amazon.com/cli/) for AWS account setup.
+   - [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/) for Azure subscription setup.
+
+	Before start, you must login to your cloud CLI with user account which have above required permissions in accordance. An alternative solution is to do the setup from your cloud provider's cloud shell, e.g. [AWS cloud shell](https://aws.amazon.com/cloudshell/) or [Azure cloud shell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview), the bash environment of these cloud shells meet all above requirements by default.
+
+3. Download BigAnimal CLI version 1.4 or above.
+   On the Cloud Providers page in BigAnimal, select **Download BigAnimal CLI**. For more information, see [Using the CLI](../../reference/cli).
+
+4. Login to BigAnimal with following comman, the login user must have BigAnimal platform `owner` or `contributor` role.
    ```
-  setup-csp --provider 
-          {--account-id | --subscription-id}
-          --region
-          [--instance-type --high-availability --networking | --skip-preflight]
-          [--run]
-          [--credential]
+   biganimal create-credential --name <your-cred-name> --address portal.biganimal.com --port 443
    ```
 
-1. Input your cloud provider and account ID (if using AWS) or subscription ID (if using Azure). The CLI sets up the boundary policy, designates the BigAnimal role and access to your cloud provider, and checks and raises account limits as needed.
+4. Setup your cloud provider with following command. Take Azure subscription setup as instance, following command will run preflight check automatically and print the check results on screen. If everything passes the check, command will continue to setup your Azure subscription. Command will generate a `ba-passport.json` package under your current working directly after a successful run, you can check the content of generated package before proceeding.
+   ```
+   biganimal setup-csp --provider azure --subscription-id abc12345-1234-1234-abcd-12345678901 --region eastus --instance-type azure:Standard_E4s_v3 --high-availability --networking private --run
+   ```
+   Read more detailed usage guides of this sub-command including the AWS account setup, read the usage with  `biganimal setup-csp --help`. 
+   If you are not sure about above flags value, you can enable CLI interactive mode by `biganimal config set interactive_mode on` then run `biganimal setup-csp`, then CLI will prompt you options to select step by step.
+
+!!! Note
+	To make sure you have full control on the setup process, `setup-csp` command also provide you a manual mode, by running command without the `--run` option, CLI will generate 2 bash scripts `ba-csp-preflighgt` and `ba-csp-setup` under you current work directly, you can then check the content of these scripts, and run them according to the assembled commands prompted by CLI. It has idential effectiveness with auto-run mode.
+	
+5. Connect your cloud account to BigAnimal with following command, take Azure as an example.
+   ```
+   biganimal connect-csp --provider azure
+   ```
