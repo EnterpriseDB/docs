@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { existsSync as fileExists } from "fs";
+import { existsSync as fileExists, mkdirSync as mkdir } from "fs";
 import path from "path";
 import nunjucks from "nunjucks";
 import prettier from "prettier";
@@ -131,15 +131,15 @@ const findTemplate = (
  * @returns a string formatted for file names
  */
 const formatStringForFile = (string) => {
-  return string.toLowerCase().replace(/ /g, "-");
+  return string.toLowerCase().replace(/ /g, "_");
 };
 
 /**
  * Creates a filename based on the filenameParts passed in, and appends to to a base path
- * @param basePath A file path formatted string which will be used as a prefix to the generated filename. e.g "products/product-name/"
- * @param filenameParts An array of strings to combine into a template name. e.g. ["first-part", "second", "last-part"]
+ * @param basePath A file path formatted string which will be used as a prefix to the generated filename. e.g "products/product_name/"
+ * @param filenameParts An array of strings to combine into a template name. e.g. ["first_part", "second", "last_part"]
  * @returns A file path which refers to the expected location of a nunjucks template, with each filename part seperated by an underscore.
- *          e.g. "products/product-name/first-part_second_last-part.njk"
+ *          e.g. "products/product_name/first_part_second_last_part.njk"
  */
 const constructTemplatePath = (basePath, filenameParts) => {
   return path.join(basePath, filenameParts.join("_") + ".njk");
@@ -174,17 +174,48 @@ const writeDoc = (template, context) => {
   const render = prettier.format(nunjucks.render(template, context), {
     parser: "mdx",
   });
+
+  const prefix = {
+    "rhel_8_x86": "01",
+    other_linux8_x86: "02",
+    "rhel_7_x86": "03",
+    "centos_7_x86": "04",
+    "sles_15_x86_64": "05",
+    "sles_12_x86_64": "06",
+    "ubuntu_20_deb10_x86": "07",
+    "ubuntu_18_deb9_x86": "08",
+    "rhel_8_ppcle": "09",
+    "rhel_7_ppcle": "10",
+    "sles_15_ppcle": "11",
+    "sles_12_ppcle": "12",
+  };
+
+  const plat = [
+    formatStringForFile(context.platform.name),
+    context.platform.arch,
+  ].join("_");
+
+  const dirpath = [
+    "renders",
+    formatStringForFile(context.product.name),
+    context.product.version,
+  ].join("/");
+
   const filename =
     [
+      prefix[plat],
       formatStringForFile(context.product.name),
-      context.product.version,
       formatStringForFile(context.platform.name),
       context.platform.arch,
     ].join("_") + ".mdx";
 
-  console.log(`  writing ${filename}`);
+  const filepath = `${dirpath}/${filename}`;
 
-  fs.writeFile(`renders/${filename}`, render);
+  console.log(`  writing ${filepath}`);
+
+  mkdir(dirpath, { recursive: true });
+
+  fs.writeFile(filepath, render);
 };
 
 run();
