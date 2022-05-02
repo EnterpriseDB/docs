@@ -1,64 +1,12 @@
 ---
 title: "Metrics details"
+redirects:
+- /biganimal/latest/using_cluster/05_monitoring_and_logging/06_metrics
 ---
 
-The BigAnimal instances collects a variety of metrics and makes them available
-to your Azure subscription for dashboarding, alerting, querying, and
-other analytics.
-
-See [Monitoring and logging](../05_monitoring_and_logging) for an introduction to
-the available monitoring capabilities.
-
-You can find and interpret the available metrics and logs.
-
-## Understanding BigAnimal logs and metrics
-
-You can see example queries over these metrics by editing the predefined
-dashboard panels in the default shared dashboard. Some predefined queries
-and functions might also be available in the Log Analytics queries panel.
-The Azure Monitor Metrics Explorer provides a useful entry point for
-discovering the available metrics.
-
-For details on querying these metrics, refer to the Azure Log Analytics and Azure Monitor
-documentation and to the documentation on the Kusto query language used by
-Azure Monitor. A wide variety of analytics capabilities are available, including
-time-series functions, seasonally adjusted statistics, and alert generation.
-
-## Available logs and metrics
-
-The following tables in the Customer Log Analytic workspace contain entries
-specific to BigAnimal:
-
-| Table name           | Description                                                                                                     |
-| -------------------- | --------------------------------------------------------------------------------------------------------------- |
-| PostgresLogs_CL      | Logs of the Customer clusters databases (all postgres related logs)                                             |
-| PostgresAuditLogs_CL | Audit Logs of the Customer clusters databases, if enabled                                                       |
-| DpMetrics_CL         | Metrics streams from BigAnimal Prometheus.                                                                      |
-
-You can use the KQL Query editor in the Log Workspace view to compose queries
-over these tables.
-
-## Logs
-
-Postgres logs are added to the `PostgresLogs_CL` table.
-
-Logs are split into structured fields matching those of the Postgres
-[csvlog format](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG)
-with a `record_` prefix and a type-suffix. For example, the `application_name`
-is in the `record_application_name_s` log field.
-
-The `pg_cluster_id_s` field identifies the specific Postgres cluster
-that originated the log message.
-
-## Metrics overview
-
-BigAnimal collects a wide set of metrics about Postgres instances into the
-`DpMetrics_CL` log analytics table. Most of these metrics are acquired
-directly from Postgres system tables, views, and functions. The Postgres
-documentation serves as the main reference for these metrics.
-
-You can use KQL to analyze time-series metrics, report latest samples of
-metrics, and so on by querying the `DpMetrics_CL` table.
+BigAnimal collects a wide set of metrics about Postgres instances and makes them available
+in your Cloud Provider. Most of these metrics are acquired directly from Postgres system tables,
+views, and functions. The Postgres documentation serves as the main reference for these metrics.
 
 Some data from Postgres monitoring system views, tables, and functions are
 transformed to be easier to consume in Prometheus metrics format. For example,
@@ -71,58 +19,14 @@ statistics are aggregated by database, user, `application_name`, and backend
 state.
 
 Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels)
-are mapped to Azure metrics
-[dimensions](https://docs.microsoft.com/en-us/azure/azure-monitor/essentials/data-platform-metrics#multi-dimensional-metrics).
+are included in the $.Message.labels JSON object.
 Dimensions vary depending on the individual metric and are documented
 separately for each group of related metrics.
-
-The forwarded Prometheus metrics use structured JSON fields, particularly the `Message` and `Message.labels` fields.
-Effective use of them requires the use of the
-[`todynamic()`](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/parsejsonfunction)
-function in queries.
 
 The available set of metrics is subject to change. Metrics might be added,
 removed or renamed. Where feasible, an effort will be made not to change the
 meaning or type of existing metrics without also changing the metric name.
 
-At time of writing, all metrics forwarded from Prometheus are in the
-`DpMetrics_CL` table. This might change in a future release.
-
-Effective use of the available metrics requires an understanding of Azure
-time-series data, metrics dimensions, and of the tagging conventions used in
-the metrics streams.
-
-### Metrics labels
-
-All Postgres metrics share a common labelling scheme. Entries generally
-have at least the following labels:
-
-| Name                         | Description                                                   |
-| ---------------------------- | ------------------------------------------------------------- |
-| instance                     | IP address of the host the metric originated from             |
-| postgresql                   | BigAnimal postgres cluster identifier, e.g., `p-abcdef012345` |
-| role                         | Postgres instance role, "primary" or "replica"                |
-| datname                      | Postgres database name (where applicable)                     |
-| pod                          | k8s pod name                                                  |
-| aks_cluster_name             | AKS cluster name                                              |
-
-When querying for labels, for best performance apply filters that don't
-require inspection of labels (for example, filters by metric name) before label-based filters.
-
-The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field.
-To query the field for individual values you JSON parse the `Message` field and dot
-reference (`m.labels`) the labels property. Some uses of values might require explicit casts
-to another type, for example, `tostring(...)`.
-
-Example usage:
-
-```
-DpMetrics_CL
-| where Message has "cnp_"
-| extend m = todynamic(Message)
-| where m.labels.role == "primary"
-| project postgres_cluster_id = tostring(m.labels.postgresql), metric_name = m.name, metric_value = m.value
-```
 
 [comment1]: # "Generated content see upm-substrate repo config monitoring dir"
 
@@ -143,8 +47,7 @@ Derived from the `pg_stat_activity` view.
 
 ##### Labels
 
-The metrics in this group can have these labels, represented
-as dimensions in Azure Monitor:
+The metrics in this group can have these labels:
 
 | Label              | Description             |
 | ------------------ | ----------------------- |
@@ -186,8 +89,7 @@ See also `cnp_pg_stat_database`.
 
 ##### Labels
 
-The metrics in this group can have these labels, represented
-as dimensions in Azure Monitor:
+The metrics in this group can have these labels:
 
 | Label     | Description          |
 | --------- | -------------------- |
@@ -246,8 +148,7 @@ See also `cnp_pg_stat_replication`, `cnp_pg_replication`.
 
 ##### Labels
 
-The metrics in this group can have these labels, represented
-as dimensions in Azure Monitor:
+The metrics in this group can have these labels:
 
 | Label       | Description                  |
 | ----------- | ---------------------------- |
@@ -339,7 +240,7 @@ See also `cnp_pg_database`.
 | `cnp_pg_stat_database_xact_commit`    | COUNTER | Number of transactions in this database that were committed                                                                                                                                                 |
 | `cnp_pg_stat_database_xact_rollback`  | COUNTER | Number of transactions in this database that were rolled back                                                                                                                                               |
 | `cnp_pg_stat_database_blks_read`      | COUNTER | Number of disk blocks read in this database                                                                                                                                                                 |
-| `cnp_pg_stat_database_blks_hit`       | COUNTER | Number of times disk blocks were found already in the buffer cache, so that a read was not necessary (this only includes hits in the PostgreSQL buffer cache, not the operating system's file system cache) |
+| `cnp_pg_stat_database_blks_hit`       | COUNTER | Number of times disk blocks were found already in the buffer cache, so that a read was not necessary (this only includes hits in the Postgres buffer cache, not the operating system's file system cache) |
 | `cnp_pg_stat_database_tup_returned`   | COUNTER | Number of rows returned by queries in this database                                                                                                                                                         |
 | `cnp_pg_stat_database_tup_fetched`    | COUNTER | Number of rows fetched by queries in this database                                                                                                                                                          |
 | `cnp_pg_stat_database_tup_inserted`   | COUNTER | Number of rows inserted by queries in this database                                                                                                                                                         |
@@ -354,8 +255,7 @@ See also `cnp_pg_database`.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label     | Description           |
 | --------- | --------------------- |
@@ -390,8 +290,7 @@ Derived from the `pg_stat_database_conflicts` view.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label     | Description          |
 | --------- | -------------------- |
@@ -434,8 +333,7 @@ See also `cnp_pg_statio_user_tables`.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label        | Description                              |
 | ------------ | ---------------------------------------- |
@@ -472,8 +370,7 @@ See also `cnp_pg_replication_slots`, `cnp_pg_replication`.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label              | Description                  |
 | ------------------ | ---------------------------- |
@@ -507,8 +404,7 @@ See also `cnp_pg_stat_user_tables`.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label        | Description                              |
 | ------------ | ---------------------------------------- |
@@ -539,8 +435,7 @@ Derived from the `pg_settings` view.
 
 ##### Labels
 
-This group of metrics can have these labels, represented
-as dimensions in Azure Monitor:
+This group of metrics can have these labels:
 
 | Label  | Description         |
 | ------ | ------------------- |
@@ -548,11 +443,12 @@ as dimensions in Azure Monitor:
 
 [comment2]: # "End generated content"
 
+
 ### Other metrics streams
 
 In addition to postgres metrics from the Cloud Native PostgreSQL operator that
 manages databases in BigAnimal, you can stream additional metrics about Kubernetes cluster
-state and other details to the Log Workspace. Any such metrics
+state and other details to your Cloud Platform. Any such metrics
 are generally well-known metrics from widely used tools, documented by the
 upstream vendor of the component.
 
@@ -566,17 +462,3 @@ See also:
 
 The cloud platform can supply additional streams of metrics
 directly to your metrics, analytics, and dashboarding endpoint.
-
-### Dive deeper
-
-Other capabilities available in the Azure portal, outside the scope of this documentation, include the ability to:
-
--   Discover metrics in the Azure Monitor Metrics Explorer (**Monitor > Metrics**)
--   Query logs and metrics from the Azure Monitor Logs view (**Monitor > Logs**)
--   Create dashboards backed by metrics queries in the Portal
--   Define alerting rules to trigger notifications based on queries
--   Use AI-assisted analytics assistant capabilities ("Metrics Advisers") to find
-    patterns in metrics
--   Apply complex analytic tools for time-series data in Application Insights,
-    including seasonally adjusted statistics to discover patterns, anomalies, and
-    trends.
