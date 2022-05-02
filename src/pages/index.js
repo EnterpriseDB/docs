@@ -170,11 +170,11 @@ const Page = () => (
               CloudNativePG
             </IndexCardLink>
 
-            <span className="font-weight-bold text-muted text-uppercase small">
+            <IndexCardLink to="/epk/latest/">
               EDB Postgres for Kubernetes
-            </span>
+            </IndexCardLink>
 
-            <IndexCardLink to="/edb_cpn/latest/">
+            <IndexCardLink to="/edb_cpn/latest/" className="nested-link">
               EDB Cloud Native Postgres
             </IndexCardLink>
           </IndexCard>
