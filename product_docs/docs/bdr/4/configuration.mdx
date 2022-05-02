@@ -1,7 +1,7 @@
 ---
 navTitle: Configuration
 title: PostgreSQL Configuration for BDR
-originalFilePath: configuration.md
+
 
 ---
 
@@ -81,7 +81,10 @@ Unless noted otherwise, values may be set by any user at any time.
 
 ### Global Sequence Parameters
 
--   `bdr.default_sequence_kind` - Sets the default [sequence kind](sequences).
+-   `bdr.default_sequence_kind` - Sets the default [sequence kind](sequences.md).
+    The default value is `distributed` which means `snowflakeid` will be used
+    for `int8` sequences (i.e. `bigserial`) and `galloc` sequence for `int4`
+    (i.e. `serial`) and `int2` sequences.
 
 ### DDL Handling
 
@@ -154,7 +157,7 @@ Unless noted otherwise, values may be set by any user at any time.
     this setting. It is normal for some statements to result in two `WARNING`s,
     one for skipping the DML lock and one for skipping the DDL lock.
 
--   `bdr.truncate_locking` - False by default, this configuration option sets the 
+-   `bdr.truncate_locking` - False by default, this configuration option sets the
     TRUNCATE command's locking behavior. Determines whether (when true) TRUNCATE
     obeys the bdr.ddl_locking setting.
 
@@ -171,6 +174,13 @@ Unless noted otherwise, values may be set by any user at any time.
 -   `bdr.global_lock_idle_timeout` - Sets the maximum allowed duration of
     idle time in transaction holding a global lock (default 10 minutes).
     A value of zero disables this timeout.
+-   `bdr.predictive_checks` - Log level for predictive checks (currently only used
+    by global locks). Can be DEBUG, LOG, WARNING (default) or ERROR. Predictive checks
+    are early validations for expected cluster state when doing certain operations
+    and can be used for those operations for fail early rather than wait for
+    timeouts. In global lock terms BDR will check that there is enough nodes
+    connected and withing reasonable lag limit for getting quorum needed by the
+    global lock.
 
 ### Node Management
 
@@ -258,6 +268,11 @@ Unless noted otherwise, values may be set by any user at any time.
     -   `WAIT` - Wait for as long as the current local timestamp is no longer older than
         remote commit timestamp minus the `bdr.maximum_clock_skew`.
 
+-   `bdr.accept_connections` - Option to enable or disable connections to BDR.
+    Defaults to `on`.
+
+    Requires `bdr_superuser` or PostgreSQL superuser.
+
 ### `bdr.standby_slot_names`
 
 This option is typically used in failover configurations to ensure that the
@@ -289,7 +304,7 @@ the failover candidate hadn't received it yet:
 
 and/or
 
--   For 2+ subscribers, at the time of failover, not all subscribers have applied 
+-   For 2+ subscribers, at the time of failover, not all subscribers have applied
     the change.The subscribers now have inconsistent and irreconcilable states
     because the subscribers that didn't receive the commit have no way to get it
     now.
@@ -329,16 +344,19 @@ kB.
 
 Rate limit BDR background worker launches by preventing a given worker
 from being relaunched more often than every
-`bdr.min_worker_backoff_delay` milliseconds. Time-unit suffixes are supported.
+`bdr.min_worker_backoff_delay` milliseconds. On repeated errors, the back-off
+increases exponentially with added jitter up to maximum of
+`bdr.max_worker_backoff_delay`.
+
+Time-unit suffixes are supported.
 
 !!! Note
     This setting currently only affects receiver worker, which means it
     primarily affects how fast a subscription will try to reconnect on error
     or connection failure.
 
-The default is 1s. The delay is a time limit applied from launch-to-launch,
-so the default value of `1s` limits of workers to at most once (re)launches
-per second.
+The default for `bdr.min_worker_backoff_delay` 1 second, for
+`bdr.max_worker_backoff_delay` it is 1 minute.
 
 If the backoff delay setting is changed and the PostgreSQL configuration is
 reloaded then all current backoff waits will be reset. Additionally, the
