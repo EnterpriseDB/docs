@@ -166,16 +166,16 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
-              CloudNativePG
-            </IndexCardLink>
-
             <IndexCardLink to="/epk/latest/">
               EDB Postgres for Kubernetes
             </IndexCardLink>
 
             <IndexCardLink to="/edb_cpn/latest/" className="nested-link">
               EDB Cloud Native Postgres
+            </IndexCardLink>
+
+            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
+              CloudNativePG
             </IndexCardLink>
           </IndexCard>
 
