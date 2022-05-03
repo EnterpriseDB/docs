@@ -1,0 +1,182 @@
+---
+title: Lag Control
+---
+
+Data throughput of database applications on a BDR origin node can
+exceed the rate at which committed data can be safely replicated to
+downstream peer nodes. If this disparity persists beyond a period of
+time, or chronically, in high availability applications then
+organizational objectives related to disaster recovery or business
+continuity plans may not be satisfied.
+
+The Replication Lag Control (RLC) feature is designed to regulate this
+imbalance using a dynamic rate limiting device so that data flow between
+BDR group nodes complies with these organizational objectives. It does so
+by controlling the extent of replication lag between BDR nodes.
+
+Some of these objectives include the following:
+
+1) Recovery Point Objective (RPC) specifies the maximum tolerated
+   amount of data that can be lost due to unplanned events usually
+   expressed as an amount of time. In non-replicated systems, RPC
+   is used to set backup intervals to limit the risk of lost committed
+   data due to failure. For replicated systems, RPC determines the
+   acceptable amount of committed data that has not been safely applied
+   to one or more peer nodes.
+
+2) Resource Constraint Objective (RCO) acknowledges that there are finite
+   storage constraints. This storage includes database files, WAL and
+   temporary or intermediate files necessary for continued operation.
+   For replicated systems, as lag increases the demands on these storage
+   resources also increase.
+
+3) Group Elasticity Objective (GEO) insures that any node is not
+   originating new data at a clip that cannot be acceptably saved to
+   its peer nodes. When that is the case then the detection of that
+   condition may be used as one metric in the decision to expand the
+   number of database nodes. Similarly, when that condition abates then
+   it may influence the decision to contract the number of database nodes.
+
+Lag Control manages replication lag by controlling the rate at which client
+connections may commit READ WRITE transactions. Replication lag is
+measured either as lag time or lag size depending on the objectives
+to be met. Transaction commit rate is regulated using a configured
+BDR commit delay time.
+
+## Requirements
+
+To get started using Lag Control take the following steps:
+
+1) Determine the maximum acceptable commit delay time
+   `bdr.lag_control_max_commit_delay` that can be tolerated for all
+   database applications.
+
+2) Decide which lag measure is to be used. Either lag size
+   `bdr.lag_control_max_lag_size` or lag time `bdr.lag_control_max_lag_time`
+   must be chosen.
+
+3) Decide on the number of BDR nodes in the group
+   `bdr.lag_control_min_conforming_nodes` that must satisfy the lag
+   measure chosen in step 2) as the minimal acceptable number of nodes.
+
+## Configuration
+
+Lag Control is configured on each BDR node in the group using `postgresql.conf`
+configuration parameters. For Lag Control to be enabled,
+`bdr.lag_control_max_commit_delay` and either `bdr.lag_control_max_lag_size` or
+`bdr.lag_control_max_lag_time` must be set to positive non-zero values.
+
+`bdr.lag_control_max_commit_delay` allows, and encourages, a specification
+of milliseconds with a fractional part including a sub-millisecond
+setting if appropriate.
+
+By default, `bdr.lag_control_min_conforming_nodes` is set to one (1).
+For a complete list, see [Lag Control](configuration.md)
+
+## Overview
+
+Lag Control is a dynamic TPS rate limiting mechanism that operates at the client
+connection level. It is designed to be as unobtrusive as possible while
+satisfying configured lag control constraints. This means that if enough
+BDR nodes can replicate changes fast enough to remain below configured
+lag measure thresholds then the BDR runtime commit delay will stay fixed
+at 0 milliseconds.
+
+If this is not the case, the BDR runtime commit delay will be minimally
+adjusted as high as necessary, but no higher, until the number of
+conforming nodes is returned to the minimum threshold.
+
+Even after the minimum node threshold is reached, Lag Control continues to attempt
+to drive the BDR runtime commit delay back to zero. The BDR commit delay
+may rise and fall around an equilibrium level most of the time, but if
+data throughput or lag apply rates improve then the commit delay will
+decrease over time.
+
+The BDR commit delay is a post commit delay. It occurs after the transaction
+has committed and after all Postgres resources locked or acquired by the
+transaction have been released. Therefore, the delay does not prevent
+concurrent active transactions from observing or modifying its values nor
+acquiring its resources. The same guarantee cannot be made for external
+resources managed by Postgres extensions. Notwithstanding extension
+dependencies, the same guarantee can be made if the BDR extension is listed
+before extension-based resource managers in `postgresql.conf`.
+
+Strictly speaking, the BDR commit delay is not a per transaction delay.
+It is the mean value of commit delays over a stream of transactions for a
+particular client connection. This technique allows the commit delay and
+fine-grained adjustments of the value to escape the coarse granularity of
+OS schedulers, clock interrupts and variation due to system load. It also
+allows the BDR runtime commit delay to settle within microseconds of the
+lowest duration possible to maintain a lag measure threshold.
+
+Finally, the BDR commit delay should not be conflated with the Postgres
+commit delay; they are unrelated, perform different functions and should
+not be substituted for each other.
+
+## Transaction Application
+
+The BDR commit delay is applied to all READ WRITE transactions that
+modify data for user applications. This implies that any transaction
+that does not modify data, including declared READ WRITE transactions,
+is exempt from the commit delay.
+
+Asynchronous transaction commit also executes a BDR commit delay. This
+may appear counterintuitive, but asynchronous commit, by virtue of its
+performance, can be one of the greatest sources of replication lag.
+
+Postgres and BDR auxillary processes do not delay at transaction commit.
+Most notably, BDR writers do not execute a commit delay when applying
+remote transactions on the local node. This is by design as BDR writers
+contribute nothing to outgoing replication lag and can reduce incoming
+replication lag the most by not having their transaction commits throttled
+by a delay.
+
+## Limitations
+
+The maximum commit delay `bdr.lag_control_max_commit_delay` is a ceiling
+value representing a hard limit. This means that under no circumstance
+does a commit delay ever exceed the configured value. Conversely, the
+maximum lag measures `bdr.lag_control_max_lag_size` and
+`bdr.lag_control_max_lag_time` are soft limits that can be exceeded.
+When the maximum commit delay is reached, there exists no additional
+back-pressure on the lag measures to prevent their continued increase.
+
+There is no way to exempt origin transactions that do not modify BDR
+replication sets from the commit delay. For these transactions, it
+may be useful to SET LOCAL the maximum transaction delay to zero (0).
+
+## Caveats
+
+Application TPS is one of many factors that can affect replication lag.
+Other factors include the average size of transactions for which BDR commit
+delay can be less efficacious. In particular, bulk load operations can
+cause replication lag to rise, which can trigger a concomitant rise in
+the BDR runtime commit delay beyond the level reasonably expected by normal
+applications although still under the maximum allowed delay.
+
+Similarly, an application with a very high OLTP requirement and modest
+data changes could be unduly restrained by the acceptable BDR commit delay
+setting.
+
+In these cases, it may be useful to use `SET [SESSION|LOCAL]` command to
+custom configure Lag Control settings for those applications or modify
+those applications. For example, bulk load operations are sometimes split
+into multiple, smaller transactions to limit transaction snapshot duration
+and WAL retention size or establish a restart point if the bulk load fails.
+In a bow to lag control, those transaction commits can also schedule very
+long BDR commit delays to allow digestion of the lag contributed by the
+prior partial bulk load.
+
+## Meeting Organizational Objectives
+
+In the example objectives list earlier:
+
+-   RPO can be met by setting an appropriate maximum lag time;
+-   RCO can be met by setting an appropriate maximum lag size;
+-   GEO can be met by monitoring the BDR runtime commit delay
+    and the BDR runtime lag measures.
+
+    As mentioned, when the maximum BDR runtime commit delay is
+    pegged at the BDR configured commit delay limit and the lag
+    measures consistency exceed their BDR configured maximum
+    levels, it can be a marker for BDR group expansion.
