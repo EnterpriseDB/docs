@@ -1,0 +1,143 @@
+---
+title: pgd show-replslots
+---
+
+Shows the status of BDR replication slots
+
+### Synopsis
+
+
+Shows the status of BDR replication slots. Output with verbose flag gives
+details like is slot active, replication state (disconnected, streaming,
+catchup), approximate lag etc.
+
+	Symbol		Meaning
+	-------		--------
+	*		ok
+	~		warning (lag > 10M)
+	!		critical (lag > 100M OR slot is 'inactive' OR 'disconnected')
+	x		down / unreachable
+	-		n/a
+
+	In matrix view, sometimes byte lag is shown in parentheses. It is a
+	maxOf(WriteLag, FlushLag, ReplayLag, SentLag).
+
+
+```
+pgd show-replslots [flags]
+```
+
+### Examples
+
+```
+
+  Example 1 (3 node cluster, bdr-a1 and bdr-c1 are up, bdr-b1 is down)
+
+  $ pgd show-replslots
+
+  Node   bdr-a1 bdr-b1  bdr-c1
+  ----   ------ ------  ------
+  bdr-a1 *      !(6.6G) *
+  bdr-b1 x      *       x
+  bdr-c1 *      !(6.9G) *
+
+
+  $ pgd show-replslots --verbose
+
+  Origin Node Target Node Status (active/state) Write Lag (bytes/duration)    Flush Lag (bytes/duration)    Replay Lag (bytes/duration)   Sent Lag (bytes)
+  ----------- ----------- --------------------- --------------------------    --------------------------    ---------------------------   ----------------
+  bdr-a1      bdr-b1      f / disconnected      6.6G / 8 days 02:58:36.243723 6.6G / 8 days 02:58:36.243723 6.6G / 8 days 02:58:36.243723 6.6G
+  bdr-a1      bdr-c1      t / streaming         0B / 00:00:00                 0B / 00:00:00                 0B / 00:00:00                 0B
+  bdr-c1      bdr-a1      t / streaming         0B / 00:00:00.000812          0B / 00:00:00.000812          0B / 00:00:00.000812          0B
+  bdr-c1      bdr-b1      f / disconnected      6.9G / 8 days 02:58:36.004415 6.9G / 8 days 02:58:36.004415 6.9G / 8 days 02:58:36.004415 6.9G
+
+
+  Example 2 (3 node cluster, bdr-b1 was down and it has just been restarted)
+
+  $ pgd show-replslots
+
+  Node   bdr-a1 bdr-b1  bdr-c1
+  ----   ------ ------  ------
+  bdr-a1 *      !(6.9G) *
+  bdr-b1 *      *       *
+  bdr-c1 *      !(5.8G) *
+
+
+  $ pgd show-replslots --verbose
+
+  Origin Node Target Node Status (active/state) Write Lag (bytes/duration) Flush Lag (bytes/duration) Replay Lag (bytes/duration) Sent Lag (bytes)
+  ----------- ----------- --------------------- -------------------------- -------------------------- --------------------------- ----------------
+  bdr-a1      bdr-b1      t / catchup           6.9G / 00:00:00.000778     6.9G / 00:00:00.000778     6.9G / 00:00:00.000778      6.9G
+  bdr-a1      bdr-c1      t / streaming         0B / 00:00:00.104121       0B / 00:00:00.104133       0B / 00:00:00.104133        0B
+  bdr-b1      bdr-a1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-b1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-c1      bdr-a1      t / streaming         6.8K / 00:00:00            6.8K / 00:00:00            6.8K / 00:00:00             6.8K
+  bdr-c1      bdr-b1      t / catchup           5.5G / 00:00:00.008257     5.5G / 00:00:00.008257     5.5G / 00:00:00.008257      5.5G
+
+
+  Example 3 (3 node cluster, all nodes are up and in 'streaming' state)
+
+  $ pgd show-replslots
+
+  Node   bdr-a1 bdr-b1 bdr-c1
+  ----   ------ ------ ------
+  bdr-a1 *      *      *
+  bdr-b1 *      *      *
+  bdr-c1 *      *      *
+
+
+  $ pgd show-replslots --verbose
+
+  Origin Node Target Node Status (active/state) Write Lag (bytes/duration) Flush Lag (bytes/duration) Replay Lag (bytes/duration) Sent Lag (bytes)
+  ----------- ----------- --------------------- -------------------------- -------------------------- --------------------------- ----------------
+  bdr-a1      bdr-b1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-a1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-b1      bdr-a1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-b1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+  bdr-c1      bdr-a1      t / streaming         0B / 00:00:00              528B / 00:00:00            528B / 00:00:00             0B
+  bdr-c1      bdr-b1      t / streaming         528B / 00:00:00            528B / 00:00:00            528B / 00:00:00             0B
+
+
+  Example 4 (cluster with witness, logical standby and subscriber-only nodes;
+  upstream for logical-standby-a1 is bdr-a1 and for logical-standby-b1 it is bdr-b1)
+  Note:
+  1. A logical standby is sent data only by one source node, but no other
+  nodes receive replication changes from it
+  2. Subscriber-only node subscribes to replication changes from other nodes
+  in the cluster, but no other nodes receive replication changes from it
+
+  $ pgd show-replslots
+
+  Node               bdr-a1 bdr-b1 logical-standby-a1 logical-standby-b1 subscriber-only-c1 witness-c1
+  ----               ------ ------ ------------------ ------------------ ------------------ ----------
+  bdr-a1             *      *      *                  -                  *                  *
+  bdr-b1             *      *      -                  *                  *                  *
+  logical-standby-a1 -      -      *                  -                  -                  -
+  logical-standby-b1 -      -      -                  *                  -                  -
+  subscriber-only-c1 -      -      -                  -                  *                  -
+  witness-c1         *      *      -                  -                  *                  *
+
+```
+
+### Options
+
+```
+  -h, --help      help for show-replslots
+  -v, --verbose   verbose output (default true)
+```
+
+### Options inherited from parent commands
+
+```
+  -f, --config-file string   config file; ignored if
+                             --dsn flag is present (default "/etc/edb/pgd-config.yml")
+      --dsn string           database connection string
+                             e.g."host=bdr-a1 port=5432 dbname=bdrdb user=postgres "
+  -L, --log-level string     logging level: debug, info, warn, error (default "error")
+  -o, --output string        output format: json, yaml
+```
+
+### SEE ALSO
+
+* [pgd](pgd.md)	 - 'pgd' is a command-line interface (CLI) for 'EDB Postgres Distributed'
+
