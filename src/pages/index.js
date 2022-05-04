@@ -202,7 +202,7 @@ const Page = () => (
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability (HA)"
           >
-            <IndexCardLink to="/epd/latest">
+            <IndexCardLink to="/pgd/latest">
               EDB Postgres Distributed
             </IndexCardLink>
             <IndexCardLink to="/bdr/latest/" className="nested-link">
