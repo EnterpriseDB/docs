@@ -199,6 +199,7 @@ const writeDoc = (template, context) => {
     "renders",
     formatStringForFile(context.product.name),
     context.product.version,
+    "99_installation_guides",
   ].join("/");
 
   const filename =
