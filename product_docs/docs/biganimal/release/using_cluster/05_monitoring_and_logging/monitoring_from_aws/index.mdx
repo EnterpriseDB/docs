@@ -1,0 +1,128 @@
+---
+title: "Viewing metrics and logs from AWS"
+---
+
+BigAnimal sends all metrics and logs from Postgres clusters to AWS. You can view metrics and logs directly from AWS using AWS CloudWatch. The following describes how these logs and metrics can be accessed.
+
+## Logs
+
+### AWS CloudWatch
+
+When BigAnimal deploys workloads on AWS, the logs from the Postgres clusters are forwarded to AWS CloudWatch [Log groups as Log streams](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html#ViewingLogData).
+To query BigAnimal logs, you can use [filter and patterns syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html) or the CloudWatch Logs Insights section:
+
+### Query Postgres cluster logs
+
+All logs from your Postgres clusters are presented as *Log Streams* in *CloudWatch Log Groups*. To find the *CloudWatch Log Groups*:
+
+1.  Sign in to the [AWS Console](https://aws.amazon.com/console/).
+
+2.  Select **CloudWatch** from Services.
+
+3.  Select the **Region** corresponding to the region where you choose to deploy your BigAnimal cluster.
+
+4.  Select **Log groups** in the menu on the left, under the Logs section.
+
+The following log groups and log streams are available in the *Customer CloudWatch* space.
+
+| Log group name              | Log stream name                         | Description                                                         | Logger                          |
+| ----------------------------| ----------------------------------------|---------------------------------------------------------------------| ------------------------------- |
+| /biganimal/PostgresLogs     | from-pg_cluster_logs_for_customer       | Logs of the Customer clusters databases (all postgres related logs) | `logger = postgres`             |
+| /biganimal/PostgresAuditLogs| from-pg_cluster_audit_logs_for_customer | Audit Logs of the Customer clusters databases                       | `logger = pgaudit or edb_audit` |
+
+You can use the [CloudWatch Logs Insights query syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html) to compose your queries over these log streams.
+
+Logs are split into structured fields matching those of the Postgres
+[csvlog format](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG)
+with a `record.` prefix. For example, the `sql_state_code` is in the `record.sql_state_code` log field. The `pg_cluster_id` field identifies the specific Postgres cluster that originated the log message.
+
+For example,
+
+With the `/biganimal/PostgresLogs` Log group selected in CloudWatch Logs Insights, we can view all log entries with the following CloudWatch Logs Insights query:
+```
+fields record.log_time, record.error_severity, record.message
+| sort record.log_time desc
+```
+
+With the `/biganimal/PostgresAuditLogsog` Log group selected, the pgaudit and edb_audit logs can be viewed with:
+```
+fields record.log_time, record.error_severity, record.audit.statement
+| filter logger == "pgaudit"
+| sort record.log_time desc
+
+fields record.log_time, record.error_severity, record.message
+| filter logger == "edb_audit"
+| sort record.log_time desc
+```
+
+## Metrics
+
+The BigAnimal instances collects a variety of metrics and makes them available
+to your AWS subscription for dashboarding, alerting, querying, and
+other analytics. Most of these metrics are acquired
+directly from Postgres system tables, views, and functions. The Postgres
+documentation serves as the main reference for these metrics.
+
+### Available metrics
+
+The following log group in AWS CloudWatch contains metrics specific to BigAnimal:
+
+| Log group name               | Log stream name  | Description                                                                                                     |
+| ---------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| /biganimal/Telemetry         | from-http.0      | Metrics streams from BigAnimal Prometheus.                                                                      |
+
+You can use the [CloudWatch Logs Insights query language](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html) to compose
+queries that analyze time-series metrics over these log groups, report latest samples of metrics by querying the `from-http.0` log stream
+in the `/biganimal/Telemetry` Log group.
+
+The available set of metrics is subject to change. Metrics might be added,
+removed or renamed. Where feasible, an effort will be made not to change the
+meaning or type of existing metrics without also changing the metric name.
+
+At time of writing, all metrics forwarded from Prometheus are in the
+`/biganimal/Telemetry` Log group. This might change in a future release.
+
+### Metrics labels
+
+All Postgres metrics share a common labelling scheme. Entries generally
+have at least the following labels:
+
+| Name                         | Description                                                   |
+| ---------------------------- | ------------------------------------------------------------- |
+| instance                     | IP address of the host the metric originated from             |
+| postgresql                   | BigAnimal postgres cluster identifier, e.g., `p-abcdef012345` |
+| role                         | Postgres instance role, "primary" or "replica"                |
+| datname                      | Postgres database name (where applicable)                     |
+| pod                          | k8s pod name                                                  |
+| aks_cluster_name             | AKS cluster name                                              |
+
+The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field.
+To query the field for individual values you dot reference (`Message.labels`) the labels object.
+
+Example usage:
+
+With `/biganimal/Telemetry` Log group selected:
+```
+fields Message.labels.postgresql,Message.name, Message.value
+| filter strcontains (Message.name, 'cnp') and Message.labels.role == 'primary'
+| sort @timestamp desc
+```
+
+See [Metrics](../metrics) for a detailed list of available metrics.
+
+
+## Dashboards
+
+You can view logs and metrics from your Postgres clusters using [AWS CloudWatch Dashboards](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Dashboards.html).
+
+To access AWS CloudWatch Dashboards:
+
+1.  Sign in to the [AWS Console](https://aws.amazon.com/console/).
+
+2.  Select **CloudWatch** from Services.
+
+3.  Select the **Region** corresponding to the region where you choose to deploy your BigAnimal cluster.
+
+4.  Select **Dashboards**  in the menu on the CloudWatch menu on the left.
+
+5.  Select the **Telemetry Dashboard** to launch a CloudWatch Dashboard for your deployed clusters.
