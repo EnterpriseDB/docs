@@ -176,18 +176,28 @@ const writeDoc = (template, context) => {
   });
 
   const prefix = {
-    "rhel_8_x86": "01",
+    rhel_8_x86: "01",
     other_linux8_x86: "02",
-    "rhel_7_x86": "03",
-    "centos_7_x86": "04",
-    "sles_15_x86_64": "05",
-    "sles_12_x86_64": "06",
-    "ubuntu_20_deb10_x86": "07",
-    "ubuntu_18_deb9_x86": "08",
-    "rhel_8_ppcle": "09",
-    "rhel_7_ppcle": "10",
-    "sles_15_ppcle": "11",
-    "sles_12_ppcle": "12",
+    rhel_7_x86: "03",
+    centos_7_x86: "04",
+    sles_15_x86_64: "05",
+    sles_12_x86_64: "06",
+    ubuntu_20_deb10_x86: "07",
+    ubuntu_18_deb9_x86: "08",
+    rhel_8_ppcle: "09",
+    rhel_7_ppcle: "10",
+    sles_15_ppcle: "11",
+    sles_12_ppcle: "12",
+  };
+
+  const abrev_product = {
+    failover_manager: "efm",
+    migration_toolkit: "mtk",
+  };
+
+  const expand_arch = {
+    ppcle: "ibm_power_ppc64le",
+    x86: "x86_amd64",
   };
 
   const plat = [
@@ -199,13 +209,18 @@ const writeDoc = (template, context) => {
     "renders",
     formatStringForFile(context.product.name),
     context.product.version,
-    "99_installation_guides",
+    [
+      "05_installing",
+      abrev_product[formatStringForFile(context.product.name)],
+    ].join("_"),
+    "install_on_linux",
+    expand_arch[context.platform.arch],
   ].join("/");
 
   const filename =
     [
       prefix[plat],
-      formatStringForFile(context.product.name),
+      abrev_product[formatStringForFile(context.product.name)],
       formatStringForFile(context.platform.name),
       context.platform.arch,
     ].join("_") + ".mdx";
