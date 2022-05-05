@@ -207,7 +207,7 @@ const writeDoc = (template, context) => {
 
   const dirpath = [
     "renders",
-    formatStringForFile(context.product.name),
+    abrev_product[formatStringForFile(context.product.name)],
     context.product.version,
     [
       "05_installing",
