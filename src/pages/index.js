@@ -294,6 +294,19 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+          
+            <IndexCardLink to="/partner_docs/DBeaverGuide">
+              DBeaver
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ToadEdgeGuide">
+              Quest Toad Edge
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/NutanixGuide">
+              Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/NutanixGuide">
+              Nutanix AHV
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
