@@ -47,9 +47,9 @@ const sourceToPluginConfig = {
     name: "migration_portal",
     path: "product_docs/docs/migration_portal",
   },
-  migration_toolkit: {
-    name: "migration_toolkit",
-    path: "product_docs/docs/migration_toolkit",
+  mtk: {
+    name: "mtk",
+    path: "product_docs/docs/mtk",
   },
   mysql_data_adapter: {
     name: "mysql_data_adapter",
