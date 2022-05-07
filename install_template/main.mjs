@@ -210,7 +210,7 @@ const writeDoc = (template, context) => {
     abrev_product[formatStringForFile(context.product.name)],
     context.product.version,
     [
-      "05_installing",
+      "installing",
       abrev_product[formatStringForFile(context.product.name)],
     ].join("_"),
     "install_on_linux",
