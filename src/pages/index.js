@@ -170,13 +170,6 @@ const Page = () => (
               EDB Postgres for Kubernetes
             </IndexCardLink>
 
-            <IndexCardLink
-              to="/cloud_native_postgres/latest/"
-              className="nested-link"
-            >
-              EDB Cloud Native Postgres
-            </IndexCardLink>
-
             <IndexCardLink to="/supported-open-source/cloud_native_pg/">
               CloudNativePG
             </IndexCardLink>
