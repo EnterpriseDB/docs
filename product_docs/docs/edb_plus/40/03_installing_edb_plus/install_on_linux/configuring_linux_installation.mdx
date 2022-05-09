@@ -1,0 +1,76 @@
+---
+title: "Configuring a Linux installation"
+---
+
+After performing a Linux installation of EDB\*Plus, you must set the values of environment variables that allow EDB\*Plus to locate your Java installation. Use the following commands to set variable values:
+
+```text
+export JAVA_HOME=<path_to_java>
+export PATH=<path_to_java>/bin:$PATH
+```
+
+By default, the `pg_hba.conf` file for the RPM installer enforces `IDENT` authentication. Before invoking EDB\*Plus, you must either modify the `pg_hba.conf` file, changing the authentication method to a form other than `IDENT` (and restarting the server), or perform the following steps to ensure that an `IDENT` server is accessible:
+
+You must confirm that an `identd` server is installed and running. You can use the `yum` package manager to install an `identd` server by invoking the command:
+
+-   On RHEL or CentOS 7:
+
+    ```text
+    yum -y install xinetd authd
+    ```
+
+-   On RHEL/Rocky Linux/AlmaLinux 8:
+
+    ```text
+    dnf -y install xinetd authd
+    ```
+
+The command should create a file named `/etc/xinetd.d/auth` that contains:
+
+```text
+service auth
+{
+     disable = yes
+     socket_type = stream
+wait =no
+user = ident
+cps = 4096 10
+instances = UNLIMITED
+server = /usr/sbin/in.authd server_args = -t60 --xerror –os
+}
+```
+
+!!! Note
+    If the file includes a `-E` argument at the end of the server arguments, please erase `-E`.
+
+Then, to start the `identd` server, invoke the following commands:
+
+```text
+systemctl enable xinetd
+systemctl start xinetd
+```
+
+Open the `pg_ident.conf` file and create a user mapping:
+
+```text
+# map_name    system_username     postgres_username
+  edbas         enterprisedb        enterprisedb
+```
+
+Where:
+
+-   The name specified in the `map_name` column is a user-defined name that will identify the mapping in the `pg_hba.conf` file.
+-   The name specified in the `system_username` column is `enterprisedb`.
+-   The name specified in the `postgres_username` column is `enterprisedb`.
+
+Then, open the `pg_hba.conf` file and modify the `IDENT` entries:
+
+-   If you are using an IPv4 local connection, modify the file entry to read:
+
+     `host all all 127.0.0.0/0 ident map=edbas`
+
+-   If you are using an IPv6 local connection, modify the file entry to read:
+
+     `host all all ::1/128 ident map=edbas`
+
+You must restart the Advanced Server service before invoking EDB\*Plus. For detailed information about controlling the Advanced Server service, see the online documentation for [EDB Postgres Advanced Server](/epas/latest/).
