@@ -20,10 +20,6 @@ const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
   bdr: { name: "bdr", path: "product_docs/docs/bdr" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
-  cloud_native_postgres: {
-    name: "cloud_native_postgres",
-    path: "product_docs/docs/cloud_native_postgres",
-  },
   postgres_for_kubernetes: {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
