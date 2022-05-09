@@ -263,6 +263,16 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/mtk/latest">Migration Toolkit</IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
