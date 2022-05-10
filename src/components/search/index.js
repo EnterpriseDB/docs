@@ -1,4 +1,5 @@
 import React, {
+  useMemo,
   useState,
   useEffect,
   useCallback,
@@ -15,6 +16,7 @@ import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
 import { products } from "../../constants/products";
+import { Dropdown, DropdownButton } from "react-bootstrap";
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -35,7 +37,13 @@ const useClickOutside = (ref, handler, events) => {
   });
 };
 
-const SearchForm = ({ currentRefinement, refine, query, searchProduct }) => {
+const SearchForm = ({
+  currentRefinement,
+  refine,
+  query,
+  searchProduct,
+  onSearchProductChange,
+}) => {
   const searchBarRef = createRef();
   const [focus, setFocus] = useState(false);
   const inputRef = createRef();
@@ -134,6 +142,25 @@ const SearchForm = ({ currentRefinement, refine, query, searchProduct }) => {
           queryLength > 0 && focus && "open"
         }`}
       >
+        <DropdownButton
+          title={
+            products[searchProduct]?.name || searchProduct || "All products"
+          }
+          aria-label="Search in"
+          role="menu"
+          size="lg"
+          onSelect={(key) => onSearchProductChange(key)}
+        >
+          <Dropdown.Item as="button" type="button" eventKey="">
+            All products
+          </Dropdown.Item>
+          <Dropdown.Divider />
+          {Object.entries(products).map(([id, { name }]) => (
+            <Dropdown.Item as="button" type="button" eventKey={id}>
+              {name}
+            </Dropdown.Item>
+          ))}
+        </DropdownButton>
         <Icon
           iconName={iconNames.SEARCH}
           className="fill-black ml-3 opacity-5 flex-shrink-0"
@@ -180,10 +207,15 @@ const Search = connectSearchBox(SearchForm);
 const SearchBar = ({ searchProduct }) => {
   const ref = createRef();
   const [query, setQuery] = useState(``);
+  const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
-  const searchConfig = { hitsPerPage: 30 };
-  if (searchProduct) searchConfig.filters = `product:${searchProduct}`;
+  const searchConfig = useMemo(() => {
+    return {
+      hitsPerPage: 30,
+      filters: currentProduct ? `product:${currentProduct}` : "",
+    };
+  }, [currentProduct]);
 
   return (
     <div className="global-search w-100 position-relative" ref={ref}>
@@ -194,7 +226,11 @@ const SearchBar = ({ searchProduct }) => {
         className="dropdown"
       >
         <Configure {...searchConfig} />
-        <Search query={query} searchProduct={searchProduct} />
+        <Search
+          query={query}
+          searchProduct={currentProduct}
+          onSearchProductChange={(product) => setCurrentProduct(product)}
+        />
       </InstantSearch>
     </div>
   );
