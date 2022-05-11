@@ -180,8 +180,8 @@ const writeDoc = (template, context) => {
     other_linux8_x86: "02",
     rhel_7_x86: "03",
     centos_7_x86: "04",
-    sles_15_x86_64: "05",
-    sles_12_x86_64: "06",
+    sles_15_x86: "05",
+    sles_12_x86: "06",
     ubuntu_20_deb10_x86: "07",
     ubuntu_18_deb9_x86: "08",
     rhel_8_ppcle: "09",
@@ -190,11 +190,21 @@ const writeDoc = (template, context) => {
     sles_12_ppcle: "12",
   };
 
-  const abrev_product = {
-    failover_manager: "efm",
-    migration_toolkit: "mtk",
+    const abrev_product = {
+        failover_manager: "efm",
+        migration_toolkit: "mtk",
+        hadoop_foreign_data_wrapper: "hadoop",
+        mongodb_foreign_data_wrapper: "mongo",
+        mysql_foreign_data_wrapper: "mysql",
+      
   };
 
+    if (abrev_product[formatStringForFile(context.product.name)] == null){
+    console.error(
+        `[ERROR] product abbreviation missing\n` +
+            formatStringForFile(context.product.name));
+}
+    
   const expand_arch = {
     ppcle: "ibm_power_ppc64le",
     x86: "x86_amd64",
