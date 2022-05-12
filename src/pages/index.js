@@ -166,21 +166,12 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
-              Cloud Native PostgreSQL Operator
+            <IndexCardLink to="/postgres_for_kubernetes/latest/">
+              EDB Postgres for Kubernetes
             </IndexCardLink>
 
-            <IndexCardLink
-              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
-              className="nested-link"
-            >
-              Install, Configure, Deploy
-              <span
-                className="new-thing"
-                title="Walk through an interactive demo in Katacoda"
-              >
-                Demo
-              </span>
+            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
+              CloudNativePG
             </IndexCardLink>
           </IndexCard>
 
@@ -196,6 +187,18 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -222,12 +225,6 @@ const Page = () => (
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Connection Poolers
-            </span>
-            <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
-            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -258,30 +255,10 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
-            <span className="font-weight-bold text-muted text-uppercase small">
-              Foreign Data Wrappers
-            </span>
-            <IndexCardLink to="/hadoop_data_adapter/latest">
-              Hadoop
-            </IndexCardLink>
-            <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
-            <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Connectors
             </span>
@@ -289,6 +266,20 @@ const Page = () => (
             <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
             <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
             <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Connection Poolers
+            </span>
+            <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Foreign Data Wrappers
+            </span>
+            <IndexCardLink to="/hadoop_data_adapter/latest">
+              Hadoop
+            </IndexCardLink>
+            <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
+            <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
           </IndexCard>
 
           <IndexCard
