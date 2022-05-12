@@ -327,6 +327,28 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       ), // the latest version number path (may not exist!), needed for query
     },
   });
+
+  (doc.frontmatter.katacodaPages || []).forEach((katacodaPage) => {
+    if (!katacodaPage.scenario || !katacodaPage.account) {
+      throw new Error(
+        `katacoda scenario or account missing for ${doc.fields.path}`,
+      );
+    }
+
+    const path = `${doc.fields.path}${katacodaPage.scenario}`;
+    actions.createPage({
+      path: path,
+      component: require.resolve("./src/templates/katacoda-page.js"),
+      context: {
+        ...katacodaPage,
+        pagePath: path,
+        learn: {
+          title: doc.frontmatter.title,
+          description: doc.frontmatter.description,
+        },
+      },
+    });
+  });
 };
 
 const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
