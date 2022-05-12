@@ -103,9 +103,9 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
-                  Want to see what it takes to get the Cloud Native PostgreSQL
-                  Operator up and running? Try in the browser now, no downloads
-                  required.
+                  Want to see what it takes to get the EDB Postgres for
+                  Kubernetes Operator up and running? Try in the browser now, no
+                  downloads required.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
