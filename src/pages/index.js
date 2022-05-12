@@ -96,7 +96,7 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                    to="/postgres_for_kubernetes/latest/interactive_demo/"
                   >
                     Install, Configure and Deploy PostgreSQL <br />
                     with Kubernetes
@@ -111,7 +111,7 @@ const Page = () => (
                   <p>
                     <Link
                       className="btn btn-info btn-sm"
-                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+                      to="/postgres_for_kubernetes/latest/interactive_demo/"
                     >
                       Try it now
                     </Link>
@@ -119,7 +119,7 @@ const Page = () => (
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/kubernetes/cloud_native_postgresql/"
+                      to="/postgres_for_kubernetes/latest/"
                     >
                       Find out more &rarr;
                     </Link>
