@@ -154,6 +154,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         nodes {
           id
           relativePath
+          sourceInstanceName
         }
       }
     }
@@ -163,16 +164,15 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     reporter.panic("createPages graphql query has errors!", result.errors);
   }
 
-  processFileNodes(result.data.allFile.nodes, actions);
-
   // this is critical to avoiding excessive Netlify deploy times: it ensures the pages are ordered consistently from build to build
   result.data.allMdx.nodes = result.data.allMdx.nodes.sort((a, b) =>
     a.fields.path.localeCompare(b.fields.path),
   );
 
   const { nodes } = result.data.allMdx;
-
   const productVersions = buildProductVersions(nodes);
+
+  processFileNodes(result.data.allFile.nodes, productVersions, actions);
 
   // it should be possible to remove these in the future,
   // they are only used for navLinks generation
@@ -426,10 +426,29 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   });
 };
 
-const processFileNodes = (fileNodes, actions) => {
+const processFileNodes = (fileNodes, productVersions, actions) => {
   fileNodes.forEach((node) => {
+    const product =
+      node.sourceInstanceName === "advocacy_docs"
+        ? ""
+        : node.sourceInstanceName;
+    const version = node.relativePath.split(path.sep)[0];
+    const isLatest = product ? productVersions[product][0] === version : false;
+    let urlPath = path.join(path.sep, product, node.relativePath);
+    if (isLatest) {
+      const latestPath = replacePathVersion(urlPath);
+      actions.createRedirect({
+        fromPath: urlPath,
+        toPath: latestPath,
+        redirectInBrowser: true,
+        isPermanent: false,
+        force: true,
+      });
+      urlPath = latestPath;
+    }
+
     actions.createPage({
-      path: node.relativePath,
+      path: urlPath,
       component: require.resolve("./src/templates/file.js"),
       context: {
         nodeId: node.id,
