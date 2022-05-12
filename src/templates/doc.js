@@ -223,7 +223,7 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
 
-  const { iconName, description, indexCards } = frontmatter;
+  const { iconName, description, katacodaPanel, indexCards } = frontmatter;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
@@ -250,9 +250,13 @@ const DocTemplate = ({ data, pageContext }) => {
   };
 
   const showToc = !!tableOfContents.items;
+  const showInteractiveBadge =
+    frontmatter.showInteractiveBadge != null
+      ? frontmatter.showInteractiveBadge
+      : !!katacodaPanel;
 
   return (
-    <Layout pageMeta={pageMeta}>
+    <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex bg-white">
         <SideNavigation>
           <LeftNav
@@ -265,6 +269,11 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent>
+          {showInteractiveBadge && (
+            <div className="new-thing-header" aria-roledescription="badge">
+              <span className="badge-text">Interactive Demo</span>
+            </div>
+          )}
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
