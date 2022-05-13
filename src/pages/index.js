@@ -287,7 +287,7 @@ const Page = () => (
             headingText="Third Party Integrations"
           >
             <IndexCardLink to="/partner_docs/CommVaultGuide/">
-            Commvault Express
+            Commvault Backup & Recovery
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
