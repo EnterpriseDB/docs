@@ -14,9 +14,9 @@ consistency.
 
 ## List of Issues
 
-In the remaining part of this section we list a number of known issues
-that are tracked in BDR's ticketing system, each marked with an
-unique identifier.
+In this section we list a number of known issues that are tracked in BDR's
+ticketing system, that are expected to be re-solved in one of the future
+releases.
 
 -   If the resolver for the `update_origin_change` conflict
     is set to `skip`, and `synchronous_commit=remote_apply` is used, and
@@ -32,6 +32,67 @@ unique identifier.
     conflict resolver, please note the issue with the use of the
     `remote_apply` mode.
 
+-   Decoding Worker feature does not work with CAMO/EAGER/Group Commit.
+    Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder`
+    disabled.
+
+-   Decoding Worker works only with the default replication sets
+
+-   Lag Control does not adjust commit delay in any way on a fully
+    isolated node, i.e. in case all other nodes are unreachable or not
+    operational. As soon as at least one node is connected, Replication
+    Lag Control will pick up its work and adjust the BDR commit delay,
+    again.
+
+-   For time based Lag Control, BDR currently uses the lag time (measured
+    by commit timestamps) rather than the estimated catchup time that is
+    based on historic apply rate.
+
+-   Changing the CAMO partners in a CAMO pair is not currently possible.
+    It's only possible to add or remove a pair.
+    Adding or removing a pair does not need a restart of Postgres or even a
+    reload of the configuration.
+
+-   Group Commit cannot be combined with [CAMO](camo) or [Eager All Node
+    replication](eager). Eager Replication currently only works by using the
+    "global" BDR commit scope.
+
+-   Neither Eager replication nor Group Commit support
+   `synchronous_replication_availability = 'async'`.
+
+-   Group Commit does not support support for a timeout of the
+    commit after `bdr.global_commit_timeout`.
+
+-   Transactions using Eager Replication cannot yet execute DDL,
+    nor do they support explicit two-phase commit.
+    Note that the TRUNCATE command is allowed.
+
+-   Not all DDL can be run when either CAMO or Group Commit is used.
+
+-   Parallel apply is not currently supported in combination with Group
+    Commit, please make sure to disable it when using Group Commit by
+    either setting `num_writers` to 1 for the node group (using
+    [`bdr.alter_node_group_config`](nodes#bdralter_node_group_config)) or
+    via the GUC `bdr.writers_per_subscription` (see
+    [Configuration of Generic Replication](configuration#generic-replication)).
+
+-   There currently is no protection against altering or removing a commit
+    scope. Running transactions in a commit scope that is concurrently
+    being altered or removed may lead to the transaction blocking or
+    replication stalling completely due to an error on the downstream node
+    attempting to apply the transaction. Please ensure that any transactions
+    using a specific commit scope have finished before altering or removing it.
+
+## List of Limitations
+
+This section contains a (non-comprehensive) list of design limitations that are
+expected and are by design, and hence are not expected to be resolved in the
+future.
+
+-   Replacing a node with it's physical standby does not work for nodes that
+    use CAMO/Eager/Group commit. Combining physical standbys and BDR is in
+    general not recommended, even if otherwise possible.
+
 -   A `galloc` sequence might skip some chunks if the
     sequence is created in a rolled back transaction and then created
     again with the same name, or if it is created and dropped when DDL
@@ -43,15 +104,9 @@ unique identifier.
     starting value for the sequence as an argument to the
     `bdr.alter_sequence_set_kind()` function.
 
--   Upgrades from BDR 3.7 are only supported by adding new nodes,
-    and **not** through in-place upgrade of the same data directory.
-    This is planned to be resolved in a future 4.0 minor release.
-
--   The `bdr.monitor_local_replslots()` function may return CRITICAL result
-    saying "There is at least 1 BDR replication slot which is missing" even if
-    all slots exists in presence of logical standbys or subscribe-only node
-    groups.
-
--   Decoding Worker feature does not work with CAMO/EAGER
-
--   Decoding Worker works only with the default replication sets
+-   Legacy BDR synchronous replication uses a mechanism for transaction
+    confirmation different from the one used by CAMO, Eager and Group Commit .
+    The two are not compatible and must not be used together. Therefore, nodes
+    that appear in `synchronous_standby_names` must not be part of CAMO, Eager
+    or Group Commit configuration. Using synchronous replication to other nodes,
+    including both logical and physical standby is possible.
