@@ -20,6 +20,10 @@ const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
   bdr: { name: "bdr", path: "product_docs/docs/bdr" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
+  postgres_for_kubernetes: {
+    name: "postgres_for_kubernetes",
+    path: "product_docs/docs/postgres_for_kubernetes",
+  },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
