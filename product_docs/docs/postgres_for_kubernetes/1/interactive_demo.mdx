@@ -1,0 +1,471 @@
+---
+title: "Installation, Configuration and Deployment Demo"
+description: "Walk through the process of installing, configuring and deploying the EDB Postgres for Kubernetes Operator via a browser-hosted Kubernetes environment"
+navTitle: Install, Configure, Deploy
+platform: ubuntu
+tags:
+    - postgresql
+    - cloud-native-postgresql-operator
+    - kubernetes
+    - k3d
+    - live-demo
+katacodaPanel:
+  scenario: ubuntu:2004
+  initializeCommand: clear; echo -e \\\\033[1mPreparing k3d and kubectl...\\\\n\\\\033[0m; snap install kubectl --classic; wget -q -O - https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash; clear; echo -e \\\\033[2mk3d is ready\\ - enjoy Kubernetes\\!\\\\033[0m;
+  codelanguages: shell, yaml
+showInteractiveBadge: true
+---
+
+Want to see what it takes to get the EDB Postgres for Kubernetes Operator up and running? This section will demonstrate the following:
+
+1. Installing the EDB Postgres for Kubernetes Operator
+2. Deploying a three-node PostgreSQL cluster
+3. Installing and using the kubectl-cnp plugin
+4. Testing failover to verify the resilience of the cluster
+
+It will take roughly 5-10 minutes to work through.
+
+!!!interactive This demo is interactive
+    You can follow along right in your browser by clicking the button below. Once the environment initializes, you'll see a terminal open at the bottom of the screen.
+
+<KatacodaPanel />
+
+Once [k3d](https://k3d.io/) is ready, we need to start a cluster:
+
+```shell
+k3d cluster create
+__OUTPUT__
+INFO[0000] Prep: Network                                
+INFO[0000] Created network 'k3d-k3s-default'            
+INFO[0000] Created image volume k3d-k3s-default-images  
+INFO[0000] Starting new tools node...                   
+INFO[0001] Pulling image 'ghcr.io/k3d-io/k3d-tools:5.4.1' 
+INFO[0001] Creating node 'k3d-k3s-default-server-0'     
+INFO[0002] Pulling image 'docker.io/rancher/k3s:v1.22.7-k3s1' 
+INFO[0003] Starting Node 'k3d-k3s-default-tools'        
+INFO[0007] Creating LoadBalancer 'k3d-k3s-default-serverlb' 
+INFO[0008] Pulling image 'ghcr.io/k3d-io/k3d-proxy:5.4.1' 
+INFO[0011] Using the k3d-tools node to gather environment information 
+INFO[0011] HostIP: using network gateway 172.17.0.1 address 
+INFO[0011] Starting cluster 'k3s-default'               
+INFO[0011] Starting servers...                          
+INFO[0011] Starting Node 'k3d-k3s-default-server-0'     
+INFO[0016] All agents already running.                  
+INFO[0016] Starting helpers...                          
+INFO[0017] Starting Node 'k3d-k3s-default-serverlb'     
+INFO[0024] Injecting records for hostAliases (incl. host.k3d.internal) and for 2 network members into CoreDNS configmap... 
+INFO[0026] Cluster 'k3s-default' created successfully!  
+INFO[0026] You can now use it like this:                
+kubectl cluster-info
+```
+
+This will create the Kubernetes cluster, and you will be ready to use it.
+Verify that it works with the following command:
+
+```shell
+kubectl get nodes
+__OUTPUT__
+NAME                       STATUS   ROLES                  AGE   VERSION
+k3d-k3s-default-server-0   Ready    control-plane,master   35s   v1.22.7+k3s1
+```
+
+You will see one node called `k3d-k3s-default-server-0`. If the status isn't yet "Ready", wait for a few seconds and run the command above again.
+
+## Install EDB Postgres for Kubernetes
+
+Now that the Kubernetes cluster is running, you can proceed with EDB Postgres for Kubernetes installation as described in the ["Installation and upgrades"](installation_upgrade.md) section:
+
+```shell
+kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.15.0.yaml
+__OUTPUT__
+namespace/postgresql-operator-system created
+customresourcedefinition.apiextensions.k8s.io/backups.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/clusters.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/poolers.postgresql.k8s.enterprisedb.io created
+customresourcedefinition.apiextensions.k8s.io/scheduledbackups.postgresql.k8s.enterprisedb.io created
+serviceaccount/postgresql-operator-manager created
+clusterrole.rbac.authorization.k8s.io/postgresql-operator-manager created
+clusterrolebinding.rbac.authorization.k8s.io/postgresql-operator-manager-rolebinding created
+configmap/postgresql-operator-default-monitoring created
+service/postgresql-operator-webhook-service created
+deployment.apps/postgresql-operator-controller-manager created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-mutating-webhook-configuration created
+validatingwebhookconfiguration.admissionregistration.k8s.io/postgresql-operator-validating-webhook-configuration created
+```
+
+And then verify that it was successfully installed:
+
+```shell
+kubectl get deploy -n postgresql-operator-system postgresql-operator-controller-manager
+__OUTPUT__
+NAME                                     READY   UP-TO-DATE   AVAILABLE   AGE
+postgresql-operator-controller-manager   1/1     1            1           52s
+```
+
+## Deploy a PostgreSQL cluster
+
+As with any other deployment in Kubernetes, to deploy a PostgreSQL cluster
+you need to apply a configuration file that defines your desired `Cluster`.
+
+The [`cluster-example.yaml`](../samples/cluster-example.yaml) sample file
+defines a simple `Cluster` using the default storage class to allocate
+disk space:
+
+```yaml
+cat <<EOF > cluster-example.yaml
+# Example of PostgreSQL cluster
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+
+  # Example of rolling update strategy:
+  # - unsupervised: automated update of the primary once all
+  #                 replicas have been upgraded (default)
+  # - supervised: requires manual supervision to perform
+  #               the switchover of the primary
+  primaryUpdateStrategy: unsupervised
+
+  # Require 1Gi of space
+  storage:
+    size: 1Gi
+EOF
+```
+
+!!! Note "There's more"
+    For more detailed information about the available options, please refer
+    to the ["API Reference" section](api_reference.md).
+
+In order to create the 3-node PostgreSQL cluster, you need to run the following command:
+
+```shell
+kubectl apply -f cluster-example.yaml
+__OUTPUT__
+cluster.postgresql.k8s.enterprisedb.io/cluster-example created
+```
+
+You can check that the pods are being created with the `get pods` command. It'll take a bit to initialize, so if you run that
+immediately after applying the cluster configuration you'll see the status as `Init:` or `PodInitializing`:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                                READY   STATUS    RESTARTS   AGE
+cluster-example-1-initdb--1-2cqfw   0/1     Pending   0          3s
+```
+
+...give it a minute, and then check on it again:
+
+```shell
+kubectl get pods
+__OUTPUT__
+NAME                READY   STATUS    RESTARTS   AGE
+cluster-example-1   1/1     Running   0          56s
+cluster-example-2   1/1     Running   0          35s
+cluster-example-3   1/1     Running   0          19s
+```
+
+Now we can check the status of the cluster:
+
+
+```shell
+kubectl get cluster cluster-example -o yaml
+__OUTPUT__
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"postgresql.k8s.enterprisedb.io/v1","kind":"Cluster","metadata":{"annotations":{},"name":"cluster-example","namespace":"default"},"spec":{"instances":3,"primaryUpdateStrategy":"unsupervised","storage":{"size":"1Gi"}}}
+  creationTimestamp: "2022-04-21T18:33:12Z"
+  generation: 1
+  name: cluster-example
+  namespace: default
+  resourceVersion: "1868"
+  uid: bf85fdbf-4404-46a0-a16a-63676a377d90
+spec:
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: ""
+  bootstrap:
+    initdb:
+      database: app
+      encoding: UTF8
+      localeCType: C
+      localeCollate: C
+      owner: app
+  enableSuperuserAccess: true
+  imageName: quay.io/enterprisedb/postgresql:14.2
+  instances: 3
+  logLevel: info
+  maxSyncReplicas: 0
+  minSyncReplicas: 0
+  monitoring:
+    customQueriesConfigMap:
+    - key: queries
+      name: postgresql-operator-default-monitoring
+    disableDefaultQueries: false
+    enablePodMonitor: false
+  postgresGID: 26
+  postgresUID: 26
+  postgresql:
+    parameters:
+      archive_mode: "on"
+      dynamic_shared_memory_type: posix
+      log_destination: csvlog
+      log_directory: /controller/log
+      log_filename: postgres
+      log_rotation_age: "0"
+      log_rotation_size: "0"
+      log_truncate_on_rotation: "false"
+      logging_collector: "on"
+      max_parallel_workers: "32"
+      max_replication_slots: "32"
+      max_worker_processes: "32"
+      shared_memory_type: mmap
+      shared_preload_libraries: ""
+      wal_keep_size: 512MB
+      wal_receiver_timeout: 5s
+      wal_sender_timeout: 5s
+  primaryUpdateMethod: switchover
+  primaryUpdateStrategy: unsupervised
+  resources: {}
+  startDelay: 30
+  stopDelay: 30
+  storage:
+    resizeInUseVolumes: true
+    size: 1Gi
+  switchoverDelay: 40000000
+status:
+  certificates:
+    clientCASecret: cluster-example-ca
+    expirations:
+      cluster-example-ca: 2022-07-20 18:28:12 +0000 UTC
+      cluster-example-replication: 2022-07-20 18:28:12 +0000 UTC
+      cluster-example-server: 2022-07-20 18:28:12 +0000 UTC
+    replicationTLSSecret: cluster-example-replication
+    serverAltDNSNames:
+    - cluster-example-rw
+    - cluster-example-rw.default
+    - cluster-example-rw.default.svc
+    - cluster-example-r
+    - cluster-example-r.default
+    - cluster-example-r.default.svc
+    - cluster-example-ro
+    - cluster-example-ro.default
+    - cluster-example-ro.default.svc
+    serverCASecret: cluster-example-ca
+    serverTLSSecret: cluster-example-server
+  cloudNativePostgresqlCommitHash: 0531b739
+  cloudNativePostgresqlOperatorHash: 1dd0fcb2f3fa9e7293fa5696f0cd7dd560923cc9f7d714b75c10d282072fcf2d
+  configMapResourceVersion:
+    metrics:
+      postgresql-operator-default-monitoring: "848"
+  currentPrimary: cluster-example-1
+  currentPrimaryTimestamp: "2022-04-21T18:33:49Z"
+  healthyPVC:
+  - cluster-example-1
+  - cluster-example-2
+  - cluster-example-3
+  instances: 3
+  instancesStatus:
+    healthy:
+    - cluster-example-1
+    - cluster-example-2
+    - cluster-example-3
+  latestGeneratedNode: 3
+  licenseStatus:
+    isImplicit: true
+    isTrial: true
+    licenseExpiration: "2022-05-21T18:33:12Z"
+    licenseStatus: Implicit trial license
+    repositoryAccess: false
+    valid: true
+  phase: Cluster in healthy state
+  poolerIntegrations:
+    pgBouncerIntegration: {}
+  pvcCount: 3
+  readService: cluster-example-r
+  readyInstances: 3
+  secretsResourceVersion:
+    applicationSecretVersion: "813"
+    clientCaSecretVersion: "809"
+    replicationSecretVersion: "811"
+    serverCaSecretVersion: "809"
+    serverSecretVersion: "810"
+    superuserSecretVersion: "812"
+  targetPrimary: cluster-example-1
+  targetPrimaryTimestamp: "2022-04-21T18:33:13Z"
+  writeService: cluster-example-rw
+```
+
+!!! Note
+    By default, the operator will install the latest available minor version
+    of the latest major version of PostgreSQL when the operator was released.
+    You can override this by setting [the `imageName` key in the `spec` section of
+    the `Cluster` definition](api_reference/#clusterspec).
+
+!!! Important
+    The immutable infrastructure paradigm requires that you always
+    point to a specific version of the container image.
+    Never use tags like `latest` or `13` in a production environment
+    as it might lead to unpredictable scenarios in terms of update
+    policies and version consistency in the cluster.
+
+## Install the kubectl-cnp plugin
+
+EDB Postgres for Kubernetes provides [a plugin for kubectl](cnp-plugin) to manage a cluster in Kubernetes, along with a script to install it:
+
+```shell
+curl -sSfL \
+  https://github.com/EnterpriseDB/kubectl-cnp/raw/main/install.sh | \
+  sudo sh -s -- -b /usr/local/bin
+__OUTPUT__
+EnterpriseDB/kubectl-cnp info checking GitHub for latest tag
+EnterpriseDB/kubectl-cnp info found version: 1.15.0 for v1.15.0/linux/x86_64
+EnterpriseDB/kubectl-cnp info installed /usr/local/bin/kubectl-cnp
+```
+
+The `cnp` command is now available in kubectl:
+
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7089127092443762706
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.2
+Primary instance:   cluster-example-1
+Status:             Cluster in healthy state 
+Instances:          3
+Ready instances:    3
+Current Write LSN:  0/4000060 (Timeline: 1 - WAL File: 000000010000000000000004)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-replication  2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-server       2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-ca           2022-07-20 18:28:12 +0000 UTC  89.99
+
+Continuous Backup status
+Not configured
+
+Streaming Replication status
+Name               Sent LSN   Write LSN  Flush LSN  Replay LSN  Write Lag  Flush Lag  Replay Lag  State      Sync State  Sync Priority
+----               --------   ---------  ---------  ----------  ---------  ---------  ----------  -----      ----------  -------------
+cluster-example-2  0/4000060  0/4000060  0/4000060  0/4000060   00:00:00   00:00:00   00:00:00    streaming  async       0
+cluster-example-3  0/4000060  0/4000060  0/4000060  0/4000060   00:00:00   00:00:00   00:00:00    streaming  async       0
+
+Instances status
+Name               Database Size  Current LSN  Replication role  Status  QoS         Manager Version
+----               -------------  -----------  ----------------  ------  ---         ---------------
+cluster-example-1  33 MB          0/4000060    Primary           OK      BestEffort  1.15.0
+cluster-example-2  33 MB          0/4000060    Standby (async)   OK      BestEffort  1.15.0
+cluster-example-3  33 MB          0/4000060    Standby (async)   OK      BestEffort  1.15.0
+```
+
+!!! Note "There's more"
+    See [the Cloud Native PostgreSQL Plugin page](cnp-plugin/) for more commands and options.
+
+## Testing failover
+
+As our status checks show, we're running two replicas - if something happens to the primary instance of PostgreSQL, the cluster will fail over to one of them. Let's demonstrate this by killing the primary pod:
+
+```shell
+kubectl delete pod --wait=false cluster-example-1
+__OUTPUT__
+pod "cluster-example-1" deleted
+```
+
+This simulates a hard shutdown of the server - a scenario where something has gone wrong. 
+
+Now if we check the status...
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7089127092443762706
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.2
+Primary instance:   cluster-example-2
+Status:             Failing over Failing over from cluster-example-1 to cluster-example-2
+Instances:          3
+Ready instances:    2
+Current Write LSN:  0/5000F58 (Timeline: 2 - WAL File: 000000020000000000000005)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-replication  2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-server       2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-ca           2022-07-20 18:28:12 +0000 UTC  89.99
+
+Continuous Backup status
+Not configured
+
+Streaming Replication status
+Not available yet
+
+Instances status
+Name               Database Size  Current LSN  Replication role      Status             QoS         Manager Version
+----               -------------  -----------  ----------------      ------             ---         ---------------
+cluster-example-3  33 MB          0/50000A0    Standby (file based)  OK                 BestEffort  1.15.0
+cluster-example-2  33 MB          0/5000F58    Primary               OK                 BestEffort  1.15.0
+cluster-example-1  -              -            -                     pod not available  BestEffort  -
+```
+
+...the failover process has begun, with the second pod promoted to primary. Once the failed pod has restarted, it will become a replica of the new primary:
+
+```shell
+kubectl cnp status cluster-example
+__OUTPUT__
+Cluster Summary
+Name:               cluster-example
+Namespace:          default
+System ID:          7089127092443762706
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.2
+Primary instance:   cluster-example-2
+Status:             Cluster in healthy state 
+Instances:          3
+Ready instances:    3
+Current Write LSN:  0/5004CD8 (Timeline: 2 - WAL File: 000000020000000000000005)
+
+Certificates Status
+Certificate Name             Expiration Date                Days Left Until Expiration
+----------------             ---------------                --------------------------
+cluster-example-ca           2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-replication  2022-07-20 18:28:12 +0000 UTC  89.99
+cluster-example-server       2022-07-20 18:28:12 +0000 UTC  89.99
+
+Continuous Backup status
+Not configured
+
+Streaming Replication status
+Name               Sent LSN   Write LSN  Flush LSN  Replay LSN  Write Lag  Flush Lag  Replay Lag  State      Sync State  Sync Priority
+----               --------   ---------  ---------  ----------  ---------  ---------  ----------  -----      ----------  -------------
+cluster-example-1  0/5004CD8  0/5004CD8  0/5004CD8  0/5004CD8   00:00:00   00:00:00   00:00:00    streaming  async       0
+cluster-example-3  0/5004CD8  0/5004CD8  0/5004CD8  0/5004CD8   00:00:00   00:00:00   00:00:00    streaming  async       0
+
+Instances status
+Name               Database Size  Current LSN  Replication role  Status  QoS         Manager Version
+----               -------------  -----------  ----------------  ------  ---         ---------------
+cluster-example-3  33 MB          0/5004CD8    Standby (async)   OK      BestEffort  1.15.0
+cluster-example-2  33 MB          0/5004CD8    Primary           OK      BestEffort  1.15.0
+cluster-example-1  33 MB          0/5004CD8    Standby (async)   OK      BestEffort  1.15.0
+```
+
+
+### Further reading
+
+This is all it takes to get a PostgreSQL cluster up and running, but of course there's a lot more possible - and certainly much more that is prudent before you should ever deploy in a production environment!
+
+- Design goals and possibilities offered by the CloudNativePG Operator: check out the [Architecture](https://cloudnative-pg.io/documentation/1.15.0/architecture/) and [Use cases](https://cloudnative-pg.io/documentation/1.15.0/use_cases/) sections.
+
+- Configuring a secure and reliable system: read through the [Security](https://cloudnative-pg.io/documentation/1.15.0/security/), [Failure Modes](https://cloudnative-pg.io/documentation/1.15.0/failure_modes/) and [Backup and Recovery](https://cloudnative-pg.io/documentation/1.15.0/backup_recovery/) sections.
+
+
