@@ -1,0 +1,162 @@
+---
+title: Eager Replication
+---
+
+To prevent conflicts after a commit, set the `bdr.commit_scope`
+parameter to `global`.  The default setting of `local` disables eager
+replication, so BDR will apply changes and resolve potential conflicts
+post-commit, as described in the [Conflicts chapter](conflicts.md).
+
+In this mode, BDR uses two-phase commit (2PC) internally to detect and
+resolve conflicts prior to the local commit.  It turns a normal
+`COMMIT` of the application into an implicit two-phase commit,
+requiring all peer nodes to prepare the transaction, before the origin
+node continues to commit it.  If at least one node is down or
+unreachable during the prepare phase, the commit will time out after
+`bdr.global_commit_timeout`, leading to an abort of the
+transaction. Note that there is no restriction on the use of
+temporary tables, as exists in explicit 2PC in PostgreSQL.
+
+Once prepared, Eager All-Node Replication employs Raft to reach a
+commit decision.  In case of failures, this allows a remaining
+majority of nodes to reach a congruent commit or abort decision so
+they can finish the transaction.  This unblocks the objects and
+resources locked by the transaction and allows the cluster to proceed.
+
+In case all nodes remain operational, the origin will confirm the
+commit to the client only after all nodes have committed, to ensure that the
+transaction is immediately visible on all nodes after the commit.
+
+## Requirements
+
+Eager All-Node Replication uses prepared transactions internally;
+therefore all replica nodes need to have a `max_prepared_transactions`
+configured high enough to be able to handle all incoming transactions
+(possibly in addition to local two-phase commit and CAMO transactions;
+see [Configuration: Max Prepared Transactions](configuration.md#max-prepared-transactions)).
+We recommend to configure it the same on all nodes, and high enough to
+cover the maximum number of concurrent transactions across the cluster
+for which CAMO or Eager All-Node Replication is used.  Other than
+that, no special configuration is required, and every BDR cluster can
+run Eager All-Node transactions.
+
+## Usage
+
+To enable Eager All-Node Replication, the client needs to switch to
+global commit scope at session level, or for individual transactions
+as shown here:
+
+```sql
+BEGIN;
+
+... other commands possible...
+
+SET LOCAL bdr.commit_scope = 'global';
+
+... other commands possible...
+```
+
+The client can continue to simply issue a `COMMIT` at the end of the
+transaction and let BDR manage the two phases:
+
+```sql
+COMMIT;
+```
+
+## Error handling
+
+Given that BDR manages the transaction, the client only needs to check the
+result of the `COMMIT` (as is advisable in any case, including single-node
+Postgres).
+
+In case of an origin node failure, the remaining nodes will eventually
+(after at least `bdr.global_commit_timeout`) decide to rollback the
+globally prepared transaction.  Raft prevents inconsistent commit vs.
+rollback decisions.  This, however, requires a majority of connected
+nodes.  Disconnected nodes keep the transactions prepared to be able
+to eventually commit them (or rollback) as needed to reconcile with the
+majority of nodes that may have decided and made further progress.
+
+### Eager All-Node Replication with CAMO
+
+Eager All-Node Replication goes beyond CAMO and implies it; there is no
+need to additionally enable `bdr.enable_camo`, if `bdr.commit_scope`
+is set to `global`.  Nor does a CAMO pair need to be
+configured via `bdr.add_camo_pair()`.
+
+Any other active BDR node may be used in the role of a CAMO partner to
+query a transaction's status'.  However, this non-CAMO usage needs to
+be indicated to the `bdr.logical_transaction_status` function with a
+third argument of `require_camo_partner = false`.  Otherwise, it may
+complain about a missing CAMO configuration (which is not required for
+Eager transactions).
+
+Other than this difference in configuration and invocation of that
+function, the client needs to adhere to the protocol
+described for [CAMO](camo.md).  See the [reference client
+implementations](camo_clients.md).
+
+### Limitations
+
+Transactions using Eager Replication cannot yet execute DDL,
+nor do they support explicit two-phase commit.
+These may be allowed in later releases.
+Note that the TRUNCATE command is allowed.
+
+Replacing a crashed and unrecoverable BDR node with its physical
+standby is not currently supported in combination with Eager All Node
+transactions.
+
+BDR currently offers a global commit scope only; later releases
+will support Eager Replication with fewer nodes for increased
+availability.
+
+It is not possible for Eager All Node replication to be combined with
+`synchronous_replication_availability = 'async'`.  Trying to configure
+both will yield an error.
+
+The Decoding Worker feature is not currently supported in combination
+with Eager All Node transactions.  Installations using Eager must keep
+`enable_wal_decoder` disabled for the BDR node group using Eager All
+Node transactions.
+
+Synchronous replication uses a mechanism for transaction confirmation
+different from Eager.  The two are not compatible and must not be used
+together.  Therefore, whenever using Eager All Node transactions,
+please make sure none of the BDR nodes are configured in
+`synchronous_standby_names`.  Using synchronous replication to a
+non-BDR node acting as a physical standby is well possible.
+
+## Effects of Eager Replication in General
+
+#### Increased Commit Latency
+
+Adding a synchronization step means additional communication between
+the nodes, resulting in additional latency at commit time.  Eager All
+Node Replication adds roughly two network round trips (to the furthest
+peer node in the worst case).  Logical standby nodes and nodes still
+in the process of joining or catching up are not included, but will
+eventually receive changes.
+
+Before a peer node can confirm its local preparation of the
+transaction, it also needs to apply it locally.  This further adds to
+the commit latency, depending on the size of the transaction. Note
+that this is independent of the `synchronous_commit` setting and
+applies whenever `bdr.commit_scope` is set to `global`.
+
+#### Increased Abort Rate
+
+!!! Note
+    The performance of Eager Replication is currently known to be
+	unexpectedly slow (around 10 TPS only). This is expected to be
+	improved in the next release.
+
+With single-node Postgres, or even with BDR in its default asynchronous
+replication mode, errors at `COMMIT` time are rare.  The additional
+synchronization step adds a source of errors, so applications need to
+be prepared to properly handle such errors (usually by applying a
+retry loop).
+
+The rate of aborts depends solely on the workload.  Large transactions
+changing many rows are much more likely to conflict with other
+concurrent transactions.

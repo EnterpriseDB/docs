@@ -1,0 +1,35 @@
+---
+title: "BDR 4.0.1"
+---
+
+This is a maintenance release for BDR 4.0 which includes minor
+improvements as well as fixes for issues identified in previous
+versions.
+
+| Type | Category | Description |
+| ---- | -------- | ----------- |
+| Improvement | Reliability and operability | Reduce frequency of CAMO partner connection attempts. <p> In case of a failure to connect to a CAMO partner to verify its configuration and check the status of transactions, do not retry immediately (leading to a fully busy pglogical manager process), but throttle down repeated attempts to reconnect and checks to once per minute.</p>
+| Improvement | RPerformance and scalability |  Implement buffered read for LCR segment file (BDR-1422) <p> Implement LCR segment file buffering so that multiple LCR chunks can be read at a time. This should reduce  I/O and improve CPU usage of Wal Senders when using the Decoding Worker.</p>
+| Improvement | Performance and scalability | Avoid unnecessary LCR segment reads (BDR-1426) <p> BDR now attempts to only read new LCR segments when there is at least one available.  This reduces I/O load when Decoding Worker is enabled.</p>
+| Improvement | Performance and scalability | Performance of COPY replication including the initial COPY during join has been greatly improved for partitioned tables (BDR-1479) <p> For large tables this can improve the load times by order of magnitude or more.</p>
+| Bug fix | Performance and scalability | Fix the parallel apply worker selection (BDR-1761) <p> This makes parallel apply work again. In 4.0.0 parallel apply was never in effect due to this bug.</p>
+| Bug fix | Reliability and operability | Fix Raft snapshot handling of `bdr.camo_pairs` (BDR-1753) <p> The previous release would not correctly propagate changes to the CAMO pair configuration when they were received via Raft snapshot.</p>
+| Bug fix | Reliability and operability | Correctly handle Raft snapshots from BDR 3.7 after upgrades (BDR-1754)
+| Bug fix | Reliability and operability | Upgrading a CAMO configured cluster taking into account the `bdr.camo_pairs` in the snapshot while still excluding the ability to perform in place upgrade of a cluster (due to upgrade limitations unrelated to CAMO).
+| Bug fix | Reliability and operability |  Switch from CAMO to Local Mode only after timeouts (RT74892) <p> Do not use the `catchup_interval` estimate when switching from CAMO protected to Local Mode, as that could induce inadvertent switching due to load spikes.  Use the estimate only when switching from Local   Mode back to CAMO protected (to prevent toggling forth and back due to lag on the CAMO partner).</p>
+| Bug fix | Reliability and operability | Fix replication set cache invalidation when published replication set list have changed (BDR-1715) <p> In previous versions we could use stale information about which replication sets (and as a result which tables) should be published until the subscription has reconnected.</p>
+| Bug fix | Reliability and operability | Prevent duplicate values generated locally by galloc sequence in high concurrency situations when the new chunk is used (RT76528) <p> The galloc sequence could have temporarily produce duplicate value when switching which chunk is used locally (but not across nodes) if there were multiple sessions waiting for the new value. This is now fixed.</p>
+| Bug fix | Reliability and operability | Address memory leak on streaming transactions (BDR-1479) <p> For large transaction this reduces memory usage and I/O considerably when using the streaming transactions feature. This primarily improves performance of COPY replication.</p>
+| Bug fix | Reliability and operability | Don't leave slot behind after PART_CATCHUP phase of node parting when the catchup source has changed while the node was parting (BDR-1716) <p> When node is being removed (parted) from BDR group, we do so called catchup in order to forward any missing changes from that node between remaining nodes in order to keep the data on all nodes consistent. This requires an additional replication slot to be created temporarily. Normally this replication slot is removed at the end of the catchup phase, however in certain scenarios where we have to change the source node for the changes, this slot could have previously been left behind. From this version, this slot is always correctly removed.</p>
+| Bug fix | Reliability and operability | Ensure that the group slot is moved forward when there is only one node in the BDR group<p> This prevents disk exhaustion due to WAL accumulation when the group is left running with just single BDR node for a prolonged period of time. This is not recommended setup but the WAL accumulation was not intentional.</p>
+| Bug fix | Reliability and operability | Advance Raft protocol version when there is only one node in the BDR group <p> Single node clusters would otherwise always stay on oldest support protocol until another node was added. This could limit available feature set on that single node.</p>
+
+## Upgrades
+
+This release supports upgrading from the following versions of BDR:
+
+-   3.7.14
+-   4.0.0 and higher
+
+Please make sure you read and understand the process and limitations described
+in the [Upgrade Guide](upgrades) before upgrading.

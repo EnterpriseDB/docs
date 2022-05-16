@@ -1,0 +1,160 @@
+---
+navTitle: Transaction Streaming
+title: Transaction streaming
+
+
+---
+
+With logical replication, transactions are decoded concurrently on the publisher
+but are not sent to subscribers until the transaction is committed. If the
+changes exceed `logical_decoding_work_mem` (PostgreSQL 13 and later), they are
+spilled to disk. This means that particularly with large transactions, there
+will be some delay before they reach subscribers, and may entail additional I/O
+on the publisher.
+
+Beginning with PostgreSQL 14, transactions can optionally be decoded and sent to
+subscribers *before* they are committed on the publisher. The subscribers save
+the incoming changes to a staging file (or set of files) and apply them when
+the transaction commits (or discard them if the transaction aborts). This makes
+it possible to apply transactions on on subscribers as soon as the transaction
+commits.
+
+## BDR enhancements
+
+PostgreSQL's built-in transaction streaming, as described above, has the following
+limitations:
+
+-   while it's no longer necessary to spill changes to disk on the publisher, changes must
+    be written to disk on each subscriber
+-   if the transaction aborts, the work (changes received by each subscriber
+    and the associated storage I/O) will have been wasted
+
+However, from version 3.7, BDR supports Parallel Apply, enabling multiple writer
+processes on each subscriber, which is leveraged to provide the following enhancements:
+
+-   decoded transactions can be streamed directly to a writer on the subscriber
+-   decoded transactions do not need to be stored on-disk on subscribers
+-   no need to wait for the transaction to commit before starting to apply the
+    transaction on the subscriber
+
+### Caveats
+
+-   parallel apply must be enabled
+-   if the workload consists of many small and conflicting transactions, this can lead to
+    frequent deadlocks between writers
+
+!!! Note
+    Direct streaming to writer is still an experimental feature and must
+    be used with caution. For specifically, it may not work well with
+    conflict resolutions since the commit timestamp of the streaming may not
+    be available (as the transaction may not have yet committed on the
+    origin).
+
+## Configuration
+
+Transaction streaming is configured in two locations:
+
+-   at node level, via the GUC [bdr.default_streaming_mode](configuration#transaction-streaming)
+-   at group level, via the function [bdr.alter_node_group_config()](nodes#bdralter_node_group_config)
+
+### Node configuration using bdr.default_streaming_mode
+
+Permitted values are:
+
+-   `off`
+-   `writer`
+-   `file`
+-   `auto`
+
+Default value is `auto`.
+
+Note that to become effective, a change to this setting requires a restart of the
+pglogical receiver process for each subscription, which can be achieved with a server
+restart.
+
+If `bdr.default_streaming_mode` is set any other value than `off`, the
+subscriber will request transaction streaming from the publisher. How this will
+be provided may also depend on the group configuration setting; see section XXX
+below for details.
+
+### Group configuration using bdr.alter_node_group_config()
+
+The parameter `streaming_mode` in function [bdr.alter_node_group_config()](nodes#bdralter_node_group_config)
+can be used to set the group transaction streaming configuration.
+
+Permitted values are:
+
+-   `off`
+-   `writer`
+-   `file`
+-   `auto`
+-   `default`
+
+Default value is `default`.
+
+The value of the current setting is contained in the column `node_group_streaming_mode`
+from the view [bdr.node_group](catalogs#bdrnode_group). The value returned is
+a single char type and the possible values are `D` (`default`), `W` (`writer`),
+`F` (`file`), `A` (`auto`) and `O` (`off`).
+
+### Configuration setting effects
+
+Transaction streaming is controlled at subscriber level by the GUC
+`bdr.default_streaming_mode`. Unless set to `off` (which disables transaction
+streaming), the subscriber will request transaction streaming.
+
+If the publisher is capable of providing transaction streaming, it wil
+stream transactions whenever the transaction size exceeds the threshold set in
+`logical_decoding_work_mem`. The publisher usually has no control over whether
+the transactions will be streamed to a file or to a writer. Except for some
+situations (such as COPY), it might hint the subscriber to stream the
+transaction to a writer (if possible).
+
+The subscriber can stream transactions received from the publisher to
+either a writer or a file. The decision is based on several factors:
+
+-   if parallel apply is off (`num_writers` = 1), then it will be streamed to a file
+    (writer 0 is always reserved for non-streamed transactions)
+-   if parallel apply is on, but all writers are already busy handling streamed
+    transactions, then the new transaction will be streamed to a file. See
+    [bdr.writers]\(monitoring.md#Monitoring BDR Writers) to check BDR
+    writer status.
+
+If streaming to a writer is possible (i.e. a free writer is available), then the
+decision whether to stream the transaction to a writer or a file is based upon
+the combination of group and node settings as per the following table:
+
+| Group   | Node   | Streamed to |
+| ------- | ------ | ----------- |
+| off     | (any)  | (none)      |
+| (any)   | off    | (none)      |
+| writer  | file   | file        |
+| file    | writer | file        |
+| default | writer | writer      |
+| default | file   | file        |
+| default | auto   | writer      |
+| auto    | (any)  | writer      |
+
+Note that if the group configuration is set to `auto`, *or* the group
+configuration is `default` and the node configuration is `auto`,
+then the transaction is streamed to a writer if and only if the
+publisher has hinted that this should be done.
+
+Currently the publisher will hint for the subscriber to stream to writer
+for the following transaction types, which are known to be conflict free
+and can be safely handled by the writer in any case:
+
+-   `COPY`
+-   `CREATE INDEX CONCURRENTLY`
+
+## Monitoring
+
+Usage of transaction streaming can be monitored via the [bdr.stat_subscription](catalogs#bdrstat_subscription)
+function on the subscriber node.
+
+-   `nstream_writer` - number of transactions streamed to a writer
+-   `nstream_file` - number of transactions streamed to file
+-   `nstream_commit` - number of committed streamed transactions
+-   `nstream_abort` - number of aborted streamed transactions
+-   `nstream_start` - number of streamed transactions which were started
+-   `nstream_stop` -  number of streamed transactions which were fully received
