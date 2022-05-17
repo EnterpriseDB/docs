@@ -298,20 +298,14 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/DBeaverGuide">
               DBeaver
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ToadEdgeGuide">
-              Quest Toad Edge
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
-              Nutanix AHV
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
-              Nutanix AHV
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixGuide">
               Nutanix AHV
+            </IndexCardLink>
+             <IndexCardLink to="/partner_docs/ToadEdgeGuide">
+              Quest Toad Edge
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/RepostorGuide">
               Repostor Data Protector for PostgresSQL
