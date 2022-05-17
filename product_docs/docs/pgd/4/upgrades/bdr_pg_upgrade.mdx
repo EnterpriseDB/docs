@@ -1,0 +1,161 @@
+---
+title: In-place Postgres Major Version Upgrades
+---
+
+Upgrading a BDR Node to a newer major version of Postgres is possible using the
+command-line utility `bdr_pg_upgrade`.
+
+`bdr_pg_upgrade` internally uses the standard [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html)
+with BDR specific logic to ensure a smooth upgrade.
+
+## Terminology
+
+Various terminology is used in this documentation to describe the upgrade process and components involved.
+
+*old cluster* - The existing PostgreSQL cluster node to be upgraded, which data will be migrated from.
+
+*new cluster* - The new PostgreSQL cluster, which data will be migrated to. This cluster node must be one (1) major version ahead of the old cluster.
+
+## Precautions
+
+Standard Postgres major version upgrade precautions apply, including the fact
+that all the requirements for [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html#id-1.9.5.12.7)
+must be met by both clusters.
+
+Additionaly, `bdr_pg_upgrade` should not be used if there are other tools using
+replication slots and replication origins, only BDR slots and origins will be
+restored after the upgrade.
+
+There are several prerequisites for `bdr_pg_upgrade` that have to be met:
+
+-   Applications using the old cluster have been disconnected, it can for example,
+    be redirected to another node in the cluster
+-   Peer authentication is configured for both clusters, `bdr_pg_upgrade`
+    requires peer authentication
+-   BDR versions on both clusters must be exactly the same and must be version
+    4.1.0 or above
+-   The new cluster must be in a shutdown state
+-   BDR packages must be installed in the new cluster
+-   The new cluster must be already initialized and configured as needed to
+    match the old cluster configuration
+-   Databases, tables, and other objects must not exist in the new cluster
+
+It is also recommended to have the old cluster up prior to running `bdr_pg_upgrade`
+as the CLI will start the old cluster if it is shutdown.
+
+## Usage
+
+To upgrade to a newer major version of PostgreSQL, the new version must first
+be installed.
+
+### bdr_pg_upgrade command-line
+
+`bdr_pg_upgrade` passes all parameters to `pg_upgrade`. Therefore, you can
+specify any parameters supported by [`pg_upgrade`](https://www.postgresql.org/docs/current/pgupgrade.html#id-1.9.5.12.6).
+
+#### Synopsis
+
+```shell
+bdr_pg_upgrade [OPTION] ...
+```
+
+#### Options
+
+In addition to the options for `pg_upgrade`, the following parameters are
+can be passed to `bdr_pg_upgrade`:
+
+-   `-b, --old-bindir` - old cluster bin directory (required)
+-   `-B, --new-bindir`- new cluster bin directory (required)
+-   `-d, --old-datadir` - old cluster data directory (required)
+-   `-D, --new-datadir` - `REQUIRED` new cluster data directory (required)
+-   `--database` - BDR database name (required)
+-   `-p, --old-port` - old cluster port number
+-   `-s, --socketdir` - directory to use for postmaster sockets during upgrade
+-   `--check`- only perform checks, do not modify clusters
+
+
+#### Environment Variables
+
+Environment variables can be used in place of command line parameters.
+
+-   `PGBINOLD` - old cluster bin directory
+-   `PGBINNEW` - new cluster bin directory
+-   `PGDATAOLD` - old cluster data directory
+-   `PGDATANEW` - new cluster data directory
+-   `PGPORTOLD` - old cluster port number
+-   `PGSOCKETDIR` - directory to use for postmaster sockets during upgrade
+
+
+### Example
+
+Given a scenario where:
+
+-   Old cluster bin directory is `/usr/lib/postgresql/13/bin`
+-   New cluster bin directory is `/usr/lib/postgresql/14/bin`
+-   Old cluster data directory is `/var/lib/postgresql/13/main`
+-   New cluster data directory is `/var/lib/postgresql/14/main`
+-   Database name is `bdrdb`
+
+
+The following command could be used to upgrade the cluster:
+
+```
+bdr_pg_upgrade \
+--old-bindir /usr/lib/postgresql/13/bin \
+--new-bindir /usr/lib/postgresql/14/bin \
+--old-datadir /var/lib/postgresql/13/main \
+--new-datadir /var/lib/postgresql/14/main \
+--database bdrdb
+```
+
+### Steps Performed
+
+Steps performed when running `bdr_pg_upgrade`.
+
+!!! Note
+    When `--check` is supplied as an argument to `bdr_pg_upgrade`, the CLI
+    will 1skip` steps that modify the database.
+
+#### BDR Postgres Checks
+
+| Steps                                           | `--check` supplied |
+| :-----------------------------------------------|:------------------:|
+| Collecting pre-upgrade new cluster control data | `run`              |
+| Checking new cluster state is shutdown          | `run`              |
+| Checking BDR versions                           | `run`              |
+| Starting old cluster (if shutdown)              | `skip`             |
+| Connecting to old cluster                       | `skip`             |
+| Checking if bdr schema exists                   | `skip`             |
+| Turning DDL replication off                     | `skip`             |
+| Terminating connections to database.            | `skip`             |
+| Disabling connections to database               | `skip`             |
+| Waiting for all slots to be flushed             | `skip`             |
+| Disconnecting from old cluster                  | `skip`             |
+| Stopping old cluster                            | `skip`             |
+| Starting old cluster with BDR disabled          | `skip`             |
+| Connecting to old cluster                       | `skip`             |
+| Collecting replication origins                  | `skip`             |
+| Collecting replication slots                    | `skip`             |
+| Disconnecting from old cluster                  | `skip`             |
+| Stopping old cluster                            | `skip`             |
+
+#### `pg_upgrade` Steps
+
+Standard `pg_upgrade` steps are performed
+
+!!! Note
+    `--check` is passed to pg_upgrade if supplied
+
+#### BDR Post-Upgrade Steps
+
+| Steps                                           | `--check` supplied |
+| :-----------------------------------------------|:------------------:|
+| Collecting old cluster control data             | `skip`             |
+| Collecting new cluster control data             | `skip`             |
+| Advancing LSN of new cluster                    | `skip`             |
+| Starting new cluster with BDR disabled          | `skip`             |
+| Connecting to new cluster                       | `skip`             |
+| Creating replication origin Repeated for each origin  | `skip`       |
+| Advancing replication origin Repeated for each origin | `skip`       |
+| Creating replication slot Repeated for each slot      | `skip`       |
+| Stopping new cluster                            | `skip`             |

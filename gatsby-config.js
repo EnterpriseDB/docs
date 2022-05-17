@@ -27,6 +27,8 @@ const sourceToPluginConfig = {
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
+  pgd: { name: "pgd", path: "product_docs/docs/pgd" },
+  pgd_cli: { name: "edb_pgd", path: "product_docs/docs/pgd_cli" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
     name: "hadoop_data_adapter",
@@ -71,6 +73,7 @@ const sourceToPluginConfig = {
   },
   pem: { name: "pem", path: "product_docs/docs/pem" },
   pgbouncer: { name: "pgbouncer", path: "product_docs/docs/pgbouncer" },
+  pgd_cli: { name: "pgd_cli", path: "product_docs/docs/pgd_cli" },
   pglogical: { name: "pglogical", path: "product_docs/docs/pglogical" },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },

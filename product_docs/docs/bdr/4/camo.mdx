@@ -1,0 +1,583 @@
+---
+navTitle: Commit At Most Once
+title: Commit At Most Once
+---
+
+The objective of the Commit At Most Once (CAMO) feature is to prevent
+the application from committing more than once.
+
+Without CAMO, when a client loses connection after a COMMIT is
+submitted, the application might not receive a reply from the server
+and is therefore unsure whether the transaction committed.
+
+The application can't easily decide between the two options of:
+
+-  Retrying the transaction with the same data, since this can in some cases cause the data to be entered twice
+
+-  Not retrying the transaction and risk that the data doesn't get
+   processed at all
+
+Either of those is a critical error with high-value data.
+
+One way to avoid this situation is to make sure that the transaction
+includes at least one `INSERT` into a table with a unique index, but
+that depends on the application design and requires application-
+specific error-handling logic, so it isn't effective in all cases.
+
+The CAMO feature in BDR offers a more general solution and doesn't require an `INSERT`. When activated by
+`bdr.enable_camo` or `bdr.commit_scope`, the application
+receives a message containing the transaction identifier, if already
+assigned. Otherwise, the first write statement in a transaction
+sends that information to the client.
+If the application sends an explicit COMMIT, the protocol ensures that the application receives the notification
+of the transaction identifier before the COMMIT is sent.
+If the server doesn't reply to the COMMIT, the application can
+handle this error by using the transaction identifier to request
+the final status of the transaction from another BDR node.
+If the prior transaction status is known, then the application can safely
+decide whether to retry the transaction.
+
+CAMO works in one of two modes:
+
+- Pair mode
+- With Eager All Node Replication
+
+In pair mode, CAMO works by creating a pair of partner nodes that
+are two BDR master nodes from the same top-level BDR group. In this operation mode,
+each node in the pair knows the outcome of any recent transaction executed
+on the other peer and especially (for our need) knows the outcome of any
+transaction disconnected during COMMIT.
+The node that receives the transactions from
+the application might be referred to as "origin" and the node that confirms these transactions as "partner."
+However, there's no difference in the CAMO configuration for the nodes in the
+CAMO pair. The pair is symmetric.
+
+When combined with [Eager All-Node Replication](eager), CAMO
+enables every peer (that is, a full BDR master node) to act as a CAMO partner.
+No designated CAMO partner must be configured in this mode.
+
+!!! Warning
+    CAMO requires changes to the user's application
+    to take advantage of the advanced error handling. Enabling a parameter isn't enough to gain protection. Reference client implementations
+    are provided to customers upon request.
+
+## Requirements
+
+To use CAMO, an application must issue an explicit COMMIT message
+a separate request (not as part of a multi-statement request).
+CAMO can't provide status for transactions issued from procedures
+or from single-statement transactions that use implicit commits.
+
+## Configuration
+
+Assume an existing BDR cluster consists of the nodes `node1` and
+`node2`. Both notes are part of a BDR-enabled database called `bdrdemo`, and both part
+of the same node group `mygroup`. You can configure the nodes
+to be CAMO partners for each other.
+
+1.  Create the BDR cluster where nodes `node1` and `node2` are part of the
+`mygroup` node group.
+1. Run the function `bdr.add_camo_pair()` on one node:
+
+  ```sql
+  SELECT bdr.add_camo_pair('mygroup', 'node1', 'node2');
+  ```
+
+1. Adjust the application to use the COMMIT error handling that CAMO suggests.
+
+We don't recommend enabling CAMO at the server level, as this imposes
+higher latency for all transactions, even when not needed. Instead,
+selectively enable it for individual transactions
+by turning on CAMO at the session or transaction level.
+
+To enable at CAME at the session level:
+
+```sql
+SET bdr.enable_camo = 'remote_commit_flush';
+```
+
+To enable CAMO for individual transactions, after starting the
+transaction and before committing it:
+
+```sql
+SET LOCAL bdr.enable_camo = 'remote_commit_flush';
+```
+
+Valid values for `bdr.enable_camo` that enable CAMO are:
+
+* `off` (default)
+* `remote_write`
+* `remote_commit_async`
+* `remote_commit_flush` or `on`
+
+See the [Comparison](durability#Comparison) of synchronous replication
+modes for details about how each mode behaves.
+Setting `bdr.enable_camo = off` disables this feature, which is the default.
+
+### CAMO with Eager All-Node Replication
+
+To use CAMO with Eager All-Node Replication, no changes are required
+on either node. It is enough to enable the global commit
+scope after the start of the transaction. You don't need to set
+`bdr.enable_camo`.
+
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'global';
+...
+COMMIT;
+```
+
+The application still needs to be adjusted to use COMMIT error
+handling as specified but is free to connect to any available BDR
+node to query the transaction's status.
+
+## Failure scenarios
+
+Different failure scenarios occur in different
+configurations. 
+
+### Data persistence at receiver side
+
+By default, a PGL writer operates in
+`bdr.synchronous_commit = off` mode when applying transactions
+from remote nodes. This holds true for CAMO as well, meaning that
+transactions are confirmed to the origin node possibly before reaching
+the disk of the CAMO partner. In case of a crash or hardware failure,
+it is possible for a confirmed transaction to be unrecoverable on the
+CAMO partner by itself. This isn't an issue as long as the CAMO
+origin node remains operational, as it redistributes the
+transaction once the CAMO partner node recovers.
+
+This in turn means CAMO can protect against a single-node failure,
+which is correct for local mode as well as or even in combination
+with remote write.
+
+To cover an outage of both nodes of a CAMO pair, you can use
+`bdr.synchronous_commit = local` to enforce a flush prior to the
+pre-commit confirmation. This doesn't work in with
+either remote write or local mode and has a performance
+impact due to I/O requirements on the CAMO partner in the
+latency sensitive commit path.
+
+### Local mode
+
+When `synchronous_replication_availability = 'async'`, a node
+(i.e., master) detects whether its CAMO partner is
+ready. If not, it temporarily switches to local mode.
+When in local mode, a node commits transactions locally until
+switching back to CAMO mode.
+
+This doesn't allow COMMIT status to be retrieved, but it does
+let you choose availability over consistency. This mode
+can tolerate a single-node failure. In case both nodes of a CAMO pair
+fail, they might choose incongruent commit decisions to maintain
+availability, leading to data inconsistencies.
+
+For a CAMO partner to switch to ready, it needs to be connected, and
+the estimated catchup interval needs to drop below
+`bdr.global_commit_timeout`. The current readiness status of a CAMO
+partner can be checked with `bdr.is_camo_partner_ready`, while
+`bdr.node_replication_rates` provides the current estimate of the catchup
+time.
+
+The switch from CAMO protected to local mode is only ever triggered by
+an actual CAMO transaction either because the commit exceeds the
+`bdr.global_commit_timeout` or, in case the CAMO partner is already
+known, disconnected at the time of commit. This switch is independent
+of the estimated catchup interval. If the CAMO pair is configured to
+require Raft to switch to local mode, this switch requires a
+majority of nodes to be operational (see the `require_raft` flag for
+[bdr.add_camo_pair](camo#adding-a-camo-pair)). This can prevent a
+split brain situation due to an isolated node from switching to local
+mode. If `require_raft` isn't set for the CAMO pair, the origin node
+switches to local mode immediately.
+
+You can configure the detection on the sending node using PostgreSQL
+settings controlling keep-alives and timeouts on the TCP connection to
+the CAMO partner.
+The `wal_sender_timeout` is the time that a node waits
+for a CAMO partner until switching to local mode. Additionally,
+the `bdr.global_commit_timeout` setting puts a per-transaction
+limit on the maximum delay a COMMIT can incur due to the
+CAMO partner being unreachable. It might be lower than the
+`wal_sender_timeout`, which influences synchronous standbys as
+well, and for which a good compromise between responsiveness and
+stability must be found.
+
+The switch from local mode to CAMO mode depends on the CAMO partner
+node, which initiates the connection. The CAMO partner tries to
+reconnect at least every 30 seconds. After connectivity is
+reestablished, it might therefore take up to 30 seconds until the CAMO
+partner connects back to its origin node. Any lag that accumulated on
+the CAMO partner further delays the switch back to CAMO protected
+mode.
+
+Unlike during normal CAMO operation, in local mode there's no
+additional commit overhead. This can be problematic, as it allows the
+node to continuously process more transactions than the CAMO
+pair can normally process. Even if the CAMO partner eventually
+reconnects and applies transactions, its lag only ever increases
+in such a situation, preventing reestablishing the CAMO protection.
+To artificially throttle transactional throughput, BDR provides the
+`bdr.camo_local_mode_delay` setting, which allows you to delay a COMMIT in
+local mode by an arbitrary amount of time. We recommend measuring
+commit times in normal CAMO mode during expected workloads and
+configuring this delay accordingly. The default is 5 ms, which reflects
+a local network and a relatively quick CAMO partner response.
+
+Consider the choice of whether to allow local mode in view of
+the architecture and the availability requirements. The following examples provide some detail.
+
+### Example: Symmetric node pair
+
+This example considers a setup with two BDR nodes that are the
+CAMO partner of each other.
+This is the only possible configuration starting with BDR4.
+
+This configuration enables CAMO behavior on both nodes. It's
+therefore suitable for workload patterns where it is acceptable to
+write concurrently on more than one node, such as in cases that aren't
+likely to generate conflicts.
+
+#### With local mode
+
+If local mode is allowed, there's no single point of failure. When one node fails:
+
+- The other node can determine the status of all transactions that
+  were disconnected during COMMIT on the failed node.
+- New write transactions are allowed:
+	- If the second node also fails, then the outcome of those
+	  transactions that were being committed at that time is
+	  unknown.
+
+#### Without local mode
+
+If local mode isn't allowed, then each node requires the other node
+for committing transactions, that is, each node is a single point of
+failure. When one node fails:
+
+- The other node can determine the status of all transactions that
+  were disconnected during COMMIT on the failed node.
+- New write transactions are prevented until the node recovers.
+
+## Application use
+
+### Overview and requirements
+
+CAMO relies on a retry loop and specific error handling
+on the client side. There are three aspects to it:
+
+* The result of a transaction's COMMIT needs to be checked and, in
+  case of a temporary error, the client must retry the transaction.
+* Prior to COMMIT, the client must retrieve a global
+  identifier for the transaction, consisting of a node id and a
+  transaction id (both 32-bit integers).
+* If the current server fails while attempting a COMMIT of a transaction,
+  the application must connect to its CAMO partner, retrieve the status
+  of that transaction, and retry depending on the response.
+
+The application must store the global transaction
+identifier only for the purpose of verifying the transaction status in
+case of disconnection during COMMIT. In particular, the application
+doesn't need an additional persistence layer. If the application
+fails, it needs only the information in the database to restart.
+
+### Adding a CAMO pair
+
+The function `bdr.add_camo_pair()` configures an existing pair of BDR
+nodes to work as a symmetric CAMO pair.
+
+The `require_raft` option controls how and when to switch to local
+mode in case `synchronous_replication_availability` is set to `async`,
+allowing such a switch in general.
+
+#### Synopsis
+
+```sql
+bdr.add_camo_pair(node_group text, left_node text, right_node text,
+                  require_raft bool)
+```
+
+!!! Note
+    The names `left` and `right` have no special meaning.
+
+!!! Note
+    Since BDR version 4.0, only symmetric CAMO configurations are
+    supported, that is, both nodes of the pair act as a CAMO partner for
+    each other.
+
+### Changing the configuration of a CAMO pair
+
+The function `bdr.alter_camo_pair()` allows you to toggle the
+`require_raft` You can't currently change
+the nodes of a pairing. You must instead use `bdr.remove_camo_pair` followed by
+`bdr.add_camo_pair`.
+
+#### Synopsis
+
+```sql
+bdr.alter_camo_pair(node_group text, left_node text, right_node text,
+                    require_raft bool)
+```
+
+### Removing a CAMO pair
+
+The function `bdr.remove_camo_pair()` removes a CAMO pairing of two
+nodes and disallows future use of CAMO transactions by
+`bdr.enable_camo` on those two nodes.
+
+#### Synopsis
+
+```sql
+bdr.remove_camo_pair(node_group text, left_node text, right_node text)
+```
+
+!!! Note
+    The names `left` and `right` have no special meaning.
+
+### CAMO partner connection status
+
+The function `bdr.is_camo_partner_connected` allows checking the
+connection status of a CAMO partner node configured in pair mode.
+There currently is no equivalent for CAMO used with
+Eager Replication.
+
+#### Synopsis
+
+```sql
+bdr.is_camo_partner_connected()
+```
+
+#### Return value
+
+A Boolean value indicating whether the CAMO partner is currently
+connected to a WAL sender process on the local node and therefore can
+receive transactional data and send back confirmations.
+
+### CAMO partner readiness
+
+The function `bdr.is_camo_partner_ready` allows checking the readiness
+status of a CAMO partner node configured in pair mode. Underneath,
+this triggers the switch to and from local mode.
+
+#### Synopsis
+
+```sql
+bdr.is_camo_partner_ready()
+```
+
+#### Return value
+
+A Boolean value indicating whether the CAMO partner can reasonably be
+expected to confirm transactions originating from the local node in a
+timely manner (before `bdr.global_commit_timeout` expires).
+
+!!! Note
+    This function queries the past or current state. A
+    positive return value doesn't indicate whether the CAMO partner can
+    confirm future transactions.
+
+### Fetch the CAMO partner
+
+This function shows the local node's CAMO partner (configured by pair
+mode).
+
+```sql
+bdr.get_configured_camo_partner()
+```
+
+### Wait for consumption of the apply queue from the CAMO partner
+
+The function `bdr.wait_for_camo_partner_queue` is a wrapper of
+`bdr.wait_for_apply_queue` defaulting to query the CAMO partner node.
+It yields an error if the local node isn't part of a CAMO pair.
+
+#### Synopsis
+
+```sql
+bdr.wait_for_camo_partner_queue()
+```
+
+### Transaction status between CAMO nodes
+
+This function enables a wait for CAMO transactions to be fully resolved.
+
+```sql
+bdr.camo_transactions_resolved()
+```
+
+### Transaction status query function
+
+To check the status of a transaction that was being committed when the node
+failed, the application must use this function:
+
+```sql
+bdr.logical_transaction_status(node_id, xid, require_camo_partner)
+```
+
+With CAMO used in pair mode, use this function only on
+a node that's part of a CAMO pair. Along with Eager
+replication, you can use it on all nodes.
+
+In both cases, you must call the function within 15 minutes after
+the commit was issued. The CAMO partner must regularly purge
+such meta-information and therefore can't provide correct answers for
+older transactions.
+
+Before querying the status of a transaction, this function waits for
+the receive queue to be consumed and fully applied. This prevents
+early negative answers for transactions that were
+received but not yet applied.
+
+Despite its name, it's not always a read-only operation.
+If the status is unknown, the CAMO partner decides whether to
+commit or abort the transaction, storing that decision locally to
+ensure consistency going forward.
+
+The client must not call this function before
+attempting to commit on the origin. Otherwise the transaction might be
+forced to roll back.
+
+#### Synopsis
+
+```sql
+bdr.logical_transaction_status(node_id OID,
+                               xid     OID,
+                               require_camo_partner BOOL DEFAULT true)
+```
+
+#### Parameters
+
+- `node_id` &mdash; The node id of the BDR node the transaction originates
+  from, usually retrieved by the client before COMMIT from the PQ
+  parameter `bdr.local_node_id`.
+- `xid` &mdash; The transaction id on the origin node, usually retrieved by
+  the client before COMMIT from the PQ parameter `transaction_id`
+  (requires `enable_camo` to be set to `on`, `remote_write`,
+  `remote_commit_async`, or `remote_commit_flush`. See
+  [Commit At Most Once settings](configuration#commit-at-most-once))
+- `require_camo_partner` &mdash; Defaults to true and enables configuration
+  checks. Set to false to disable these checks and query the
+  status of a transaction that was protected by Eager All-Node
+  Replication.
+
+#### Return value
+
+The function returns one of these results:
+
+- `'committed'::TEXT` &mdash; The transaction was committed, is visible
+  on both nodes of the CAMO pair, and will eventually be replicated to
+  all other BDR nodes. No need for the client to retry it.
+
+- `'aborted'::TEXT` &mdash; The transaction was aborted and will not be
+  replicated to any other BDR node. The client needs to either
+  retry it or escalate the failure to commit the transaction.
+
+- `'in progress'::TEXT` &mdash; The transaction is still in progress on this
+  local node and wasn't committed or aborted yet. The transaction might be in the COMMIT phase, waiting for
+  the CAMO partner to confirm or deny the commit. The recommended
+  client reaction is to disconnect from the origin node and reconnect
+  to the CAMO partner to query that instead. With a load balancer or proxy
+  in between, where the client lacks control over which node gets
+  queried, the client can only poll repeatedly until the status
+  switches to either `'committed'` or `'aborted'`.
+
+  For Eager All-Node Replication, peer nodes yield this result for
+  transactions that aren't yet committed or aborted. This means that
+  even transactions not yet replicated (or not even started on the
+  origin node) might yield an `in progress` result on a peer BDR node in
+  this case. However, the client must not query the transaction
+  status prior to attempting to commit on the origin.
+
+- `'unknown'::TEXT` &mdash; The transaction specified is unknown, either
+  because it's in the future, not replicated to that specific node
+  yet, or too far in the past. The status of such a transaction is
+  not yet or no longer known. This return value is a sign of improper
+  use by the client.
+
+The client must be prepared to retry the function call on error.
+
+## Interaction with DDL and global locks
+
+Transactions protected by CAMO can contain DDL operations. However, DDL uses global locks, which already provide some
+synchronization among nodes. See
+[DDL locking details](ddl#ddl-locking-details) for more
+information.
+
+Combining CAMO with DDL imposes a higher latency and also
+increases the chance of global deadlocks. We therefore recommend using a
+relatively low `bdr.global_lock_timeout`, which aborts the DDL and
+therefore resolves a deadlock in a reasonable amount of time.
+
+### Nontransactional DDL
+
+The following DDL operations aren't allowed in a transaction
+block and therefore can't benefit from CAMO protection. For
+these, CAMO is automatically disabled internally:
+
+* all concurrent index operations (`CREATE`, `DROP`, and `REINDEX`)
+* `REINDEX DATABASE`, `REINDEX SCHEMA`, and `REINDEX SYSTEM`
+* `VACUUM`
+* `CLUSTER` without any parameter
+* `ALTER TABLE DETACH PARTITION CONCURRENTLY`
+* `ALTER TYPE [enum] ADD VALUE`
+* `ALTER SYSTEM`
+* `CREATE` and `DROP DATABASE`
+* `CREATE` and `DROP TABLESPACE`
+* `ALTER DATABASE [db] TABLESPACE`
+
+## CAMO limitations
+
+-  CAMO is designed to query the results of a recently failed COMMIT on
+the origin node, so in case of disconnection, code the application 
+to immediately request the transaction status from the CAMO partner.
+Have as little delay as possible after the failure before
+requesting the status. Applications must not rely on CAMO decisions
+being stored for longer than 15 minutes.
+
+-  If the application forgets the global identifier assigned, for example
+as a result of a restart, there's no easy way to recover
+it. Therefore, we recommend that applications wait for outstanding
+transactions to end before shutting down.
+
+-  For the client to apply proper checks, a transaction protected by CAMO
+can't be a single statement with implicit transaction control. You also can't
+use CAMO with a transaction-controlling procedure or
+in a `DO` block that tries to start or end transactions.
+
+- CAMO resolves commit status but doesn't yet resolve pending
+notifications on commit. CAMO and Eager replication options don't
+allow the `NOTIFY` SQL command or the `pg_notify()` function.
+They also don't allow `LISTEN` or `UNLISTEN`.
+
+- When replaying changes, CAMO transactions may detect conflicts just
+the same as other transactions. If timestamp conflict detection is used,
+the CAMO transaction uses the timestamp of the prepare on the origin
+node, which is before the transaction becomes visible on the origin
+node itself.
+
+## Performance implications
+
+CAMO extends the Postgres replication protocol by adding a
+message roundtrip at commit. Applications have a higher
+commit latency than with asynchronous replication, mostly determined
+by the roundtrip time between involved nodes. Increasing the number
+of concurrent sessions can help to increase parallelism to
+obtain reasonable transaction throughput.
+
+The CAMO partner confirming transactions must store transaction
+states. Compared to non-CAMO operation, this might require an
+additional seek for each transaction applied from the origin.
+
+## Client application testing
+
+Proper use of CAMO on the client side isn't trivial. We strongly
+recommend testing the application behavior with the BDR
+cluster against failure scenarios such as node crashes or network
+outages.
+
+## CAMO versus group commit
+
+CAMO doesn't currently work with
+[group commit](group_commit).
