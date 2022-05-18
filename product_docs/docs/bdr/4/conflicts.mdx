@@ -13,10 +13,10 @@ Resolution depends on the
 nature of the application and the meaning of the data, so it's important that
 BDR provides the application a range of choices as to how to resolve conflicts.
 
-By default, conflicts are resolved at row level. When changes from two
-nodes conflict, BDR picks either the local or remote tuple and discards the other
-one. For example, BDR might compare commit timestamps for the two conflicting
-changes and keep the newer one. This approach ensures that all nodes converge to the
+By default, conflicts are resolved at the row level. When changes from two
+nodes conflict, either the local or remote tuple is picked and the other
+is discarded. For example, the commit timestamps might be compared for the two conflicting
+changes and the newer one kept. This approach ensures that all nodes converge to the
 same result and establishes commit-order-like semantics on the whole cluster.
 
 Conflict handling is configurable, as described in [Conflict resolution](#conflict-resolution).
@@ -34,7 +34,7 @@ If you want to avoid conflicts, you can use these features in BDR.
 By default, all conflicts are logged to `bdr.conflict_history`. If conflicts
 are possible, then table owners must monitor for them and analyze how to
 avoid them or make plans to handle them regularly as an application task.
-The LiveCompare tool is also available to scan regularly for divergence.
+The [LiveCompare](/livecompare/latest) tool is also available to scan regularly for divergence.
 
 Some clustering systems use distributed lock mechanisms to prevent
 concurrent access to data. These can perform reasonably when servers are
@@ -66,7 +66,7 @@ the replay operation can fail if there's a conflict between a transaction
 being applied and a transaction that was committed on the receiving node.
 
 Most conflicts can't happen when all transactions run on a single
-node because PostgreSQL has inter-transaction communication mechanisms
+node because Postgres has inter-transaction communication mechanisms
 to prevent it such as `UNIQUE` indexes, `SEQUENCE` operations, row and relation locking, and
 `SERIALIZABLE` dependency tracking. All of these mechanisms are ways
 to communicate between ongoing transactions to prevent undesirable concurrency
@@ -106,7 +106,7 @@ different nodes create a tuple with the same `PRIMARY KEY` values (or if no
 `PRIMARY KEY` exists, the same values for a single `UNIQUE` constraint).
 
 BDR handles this situation by retaining the most recently inserted tuple of the two
-according to the originating host's timestamps, unless this behavior is overridden by a
+according to the originating node's timestamps, unless this behavior is overridden by a
 user-defined conflict handler.
 
 This conflict generates the `insert_exists` conflict type, which is by
@@ -167,8 +167,8 @@ key, but you must ensure that no conflict with existing values is possible.
 Conflicts on the update of the primary key are [Divergent conflicts](#divergent-conflicts) and
 require manual intervention.
 
-Updating a primary key is possible in PostgreSQL, but there are
-issues in both PostgreSQL and BDR.
+Updating a primary key is possible in Postgres, but there are
+issues in both Postgres and BDR.
 
 A simple schema provides an example that explains:
 
@@ -189,7 +189,7 @@ However, suppose there are multiple rows in the table:
 INSERT INTO pktest VALUES (3,3);
 ```
 
-Some UPDATE operations succeed:
+Some UPDATEs succeed:
 
 ```sql
 UPDATE pktest SET pk=4 WHERE pk=3;
@@ -202,7 +202,7 @@ SELECT * FROM pktest;
 (2 rows)
 ```
 
-Other UPDATE operations fail with constraint errors:
+Other UPDATEs fail with constraint errors:
 
 ```sql
 UPDATE pktest SET pk=4 WHERE pk=2;
@@ -210,10 +210,10 @@ ERROR:  duplicate key value violates unique constraint "pktest_pkey"
 DETAIL:  Key (pk)=(4) already exists
 ```
 
-So for PostgreSQL applications that update primary keys, be
+So for Postgres applications that update primary keys, be
 careful to avoid runtime errors, even without BDR.
 
-With BDR, the situation becomes more complex if UPDATE operations are
+With BDR, the situation becomes more complex if UPDATEs are
 allowed from multiple locations at same time.
 
 Executing these two changes concurrently works:
@@ -260,7 +260,7 @@ SELECT * FROM pktest;
 (2 rows)
 ```
 
-You can identify and resolve this situation using LiveCompare.
+You can identify and resolve this situation using [LiveCompare](/livecompare/latest).
 
 Concurrent conflicts present problems. Executing these two changes
 concurrently isn't easy to resolve:
@@ -418,7 +418,7 @@ cost of doing this penalizes the majority of users, so at this time
 it simply logs `delete_missing`.
 
 Later releases will automatically resolve `INSERT`/`DELETE` anomalies
-via rechecks using LiveCompare when `delete_missing` conflicts occur.
+via rechecks using [LiveCompare](/latest/livecompare) when `delete_missing` conflicts occur.
 These can be performed manually by applications by checking
 the `bdr.conflict_history_summary` view.
 
@@ -464,7 +464,7 @@ In an active/active environment, this can result in FK violations if deletes
 occur to the referenced table at the same time as inserts into the referencing
 table. This is similar to an `INSERT`/`DELETE` conflict.
 
-In single-master PostgreSQL, any `INSERT`/`UPDATE` that refers to a value in the
+In single-master Postgres, any `INSERT`/`UPDATE` that refers to a value in the
 referenced table must wait for `DELETE` operations to finish before they can gain
 a row-level lock. If a `DELETE` removes a referenced value, then the `INSERT`/`UPDATE` fails the FK check.
 
@@ -550,7 +550,7 @@ another DML is executed concurrently on other nodes to the `TRUNCATE`.
 You can take one of the following actions:
 
 -   Ensure `TRUNCATE` isn't executed alongside other concurrent DML.
-    Rely on LiveCompare to highlight any such inconsistency.
+    Rely on [LiveCompare](/livecompare/latest) to highlight any such inconsistency.
 
 -   Replace `TRUNCATE` with a `DELETE` statement with no `WHERE` clause.
     This approach is likely to have very poor performance on
@@ -583,7 +583,7 @@ transaction can be applied.
 
 ### Data conflicts for roles and tablespace differences
 
-Conflicts can also arise where nodes have global (PostgreSQL-system-wide)
+Conflicts can also arise where nodes have global (Postgres-system-wide)
 data, like roles, that differ. This can result in operations&mdash;mainly
 `DDL`&mdash;that can run successfully and commit on one node but then
 fail to apply to other nodes.
@@ -592,7 +592,7 @@ For example, node1 might have a user named fred, and that user wasn't
 created on node2. If fred on node1 creates a table, the table is
 replicated with its owner set to fred. When the DDL command is applied to
 node2, the DDL fails because there's no user named fred. This failure
-emits an error in the PostgreSQL logs.
+emits an error in the Postgres logs.
 
 Administrator intervention is required to resolve this conflict
 by creating the user fred in the database where BDR is running.
@@ -615,7 +615,7 @@ Relevant locking includes:
 A BDR writer process can deadlock with a user
 transaction, where the user transaction is waiting on a lock held
 by the writer process and vice versa. Two writer processes can also
-deadlock with each other. PostgreSQL's deadlock detector steps in and
+deadlock with each other. Postgres's deadlock detector steps in and
 terminates one of the problem transactions. If the BDR writer process is
 terminated, it retries and generally succeeds.
 
@@ -627,7 +627,7 @@ no different from a user holding a long lock that impacts another
 user session.
 
 Use of the [log_lock_waits](https://www.postgresql.org/docs/current/runtime-config-logging.html#GUC-LOG-LOCK-WAITS)
-facility in PostgreSQL can help identify locking related replay stalls.
+facility in Postgres can help identify locking related replay stalls.
 
 ### Divergent conflicts
 
@@ -652,7 +652,7 @@ these options can make things much worse and create a conflict that generic inst
 
 ### TOAST support details
 
-PostgreSQL uses out-of-line storage for larger columns called
+Postgres uses out-of-line storage for larger columns called
 [TOAST](https://www.postgresql.org/docs/current/storage-toast.html).
 
 The TOAST values handling in logical decoding (which BDR is built on top of)
@@ -698,7 +698,7 @@ as is normally the case with BDR AlwaysOn architecture.
 
 !!! Warning
     The additional WAL logging of TOAST is done using the `BEFORE UPDATE`
-    trigger on standard PostgreSQL. This trigger must be sorted alphabetically
+    trigger on standard Postgres. This trigger must be sorted alphabetically
     last (based on trigger name) among all `BEFORE UPDATE` triggers on the
     table. It's prefixed with `zzzz_bdr_` to make this easier, but make sure
     you don't create any trigger with a name that sorts after it. Otherwise
@@ -769,10 +769,8 @@ BDR provides these mechanisms for conflict detection:
 
 ### Origin conflict detection
 
-(Previously known as timestamp conflict detection.)
-
 Origin conflict detection uses and relies on commit timestamps as
-recorded on the host the transaction originates from. This
+recorded on the node the transaction originates from. This
 requires clocks to be in sync to work correctly or to be within a
 tolerance of the fastest message between two nodes. If this
 isn't the case, conflict resolution tends to favor the node that's
@@ -970,7 +968,7 @@ BDR recognizes the following conflict types, which can be used as the
 -   `source_column_missing` &mdash; The incoming row is missing one or more columns
     that are present in the target table.
 -   `target_table_missing` &mdash; The target table is missing.
--   `apply_error_ddl` &mdash; An error was thrown by PostgreSQL when applying a
+-   `apply_error_ddl` &mdash; An error was thrown by Postgres when applying a
     replicated DDL command.
 
 ## Conflict resolution
@@ -1248,4 +1246,4 @@ LiveCompare avoids overheads by comparing rows in useful-sized batches.
 If differences are found, they can be rechecked over a period,
 allowing for the delays of eventual consistency.
 
-Refer to the [LiveCompare](../../livecompare/latest/) documentation for further details.
+Refer to the [LiveCompare](/livecompare/latest/) documentation for further details.
