@@ -20,7 +20,7 @@ Recovery (DR), such as in the following situations:
 
 ## Backup
 
-### `pg_dump`
+### pg_dump
 
 `pg_dump`, sometimes referred to as "logical backup", can be used
 normally with BDR.
@@ -231,6 +231,54 @@ of a single BDR node, optionally plus WAL archives:
 -   Fully stop and restart the PostgreSQL instance.
 -   Add further BDR nodes with the standard procedure based on the
     `bdr.join_node_group()` function call.
+
+### pg_dump restore
+
+The restore procedure using pg_dump is somehow simpler (but not as consistent
+as phisycal backups because it only makes a snapshot of a given moment in time).
+The dump only takes personal data and not catalog data (BDR).
+
+Creating a new cluster from a dump needs only a new Postgresql instance where
+to restore normally the dump.
+The result is a plain postgres instance with all personal data.
+
+**No catalog changes are restored from the original BDR node.**
+You need to manually create the BDR cluster from ths instance.
+Create the BDR extension , create the node, create the bdr group, etc. and
+eventually join other nodes to this instance.
+
+There is only one caveat to keep in mind when restoring a BDR dump.
+BDR creates two policies on the `bdr.conflict_history table`. Postgresql normal
+behavior does not allow to tie policies to an extension so these will be dumped
+together with your data. These policies, unless removed from the dump, will drag
+also the BDR extension and grant some permissions.
+
+You need to manually remove those statements from the dump prior restoring it.
+
+The statements you need to delete from the dump are the following:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS bdr WITH SCHEMA pg_catalog;
+COMMENT ON EXTENSION bdr IS 'Bi-Directional Replication for PostgreSQL';
+CREATE POLICY conflict_filter ON bdr.conflict_history FOR SELECT USING (((( SELECT c.relowner
+            FROM pg_class c
+        WHERE (c.oid = conflict_history.reloid)) = ( SELECT pg_roles.oid
+            FROM pg_roles
+        WHERE (pg_roles.rolname = CURRENT_USER))) AND ( SELECT (NOT (c.relrowsecurity AND c.relforcerowsecurity))
+            FROM pg_class c
+        WHERE (c.oid = conflict_history.reloid))));
+ALTER TABLE bdr.conflict_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY conflict_read_all ON bdr.conflict_history FOR SELECT TO bdr_read_all_conflicts USING (true);
+REVOKE ALL ON TABLE bdr.conflict_history FROM postgres;
+REVOKE SELECT ON TABLE bdr.conflict_history FROM PUBLIC;
+GRANT ALL ON TABLE bdr.conflict_history TO bdr_superuser;
+GRANT SELECT ON TABLE bdr.conflict_history TO PUBLIC;
+```
+
+!!! Note
+    In the example, `postgres` is the initdb user, if you create the PostgreSQL
+    instance with a different user, then that user will be shown instead in the
+    dump, related to the `REVOKE` on `bdr.conflict_history` table.
 
 #### Cleanup BDR Metadata
 

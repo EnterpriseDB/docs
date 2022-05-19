@@ -104,6 +104,44 @@ pglogical internally to implement the basic replication.
 -   `pglogical.max_writers_per_subscription` - Maximum number of writers
     per subscription (sets upper limit for the setting above).
 
+### `pglogical.min_worker_backoff_delay` and `pglogical.max_worker_backoff_delay`
+
+Rate limit BDR background worker launches by preventing a given worker
+from being relaunched more often than every
+`pglogical.min_worker_backoff_delay` milliseconds. On repeated errors, the back-off
+increases exponentially with added jitter up to maximum of
+`pglogical.max_worker_backoff_delay`.
+
+Time-unit suffixes are supported.
+
+!!! Note
+    This setting currently only affects receiver worker, which means it
+    primarily affects how fast a subscription will try to reconnect on error
+    or connection failure.
+
+The default for `pglogical.min_worker_backoff_delay` 1 second, for
+`pglogical.max_worker_backoff_delay` it is 1 minute.
+
+If the backoff delay setting is changed and the PostgreSQL configuration is
+reloaded then all current backoff waits will be reset. Additionally, the
+`pglogical.worker_task_reset_backoff_all()` function is provided to allow the
+administrator to force all backoff intervals to immediately expire.
+
+A tracking table in shared memory is maintained to remember the last launch
+time of each type of worker. This tracking table is not persistent; it is
+cleared by PostgreSQL restarts, including soft-restarts during crash recovery
+after an unclean backend exit.
+
+The view `pglogical.worker_tasks` may be used to inspect this state so the
+administrator can see any backoff rate-limiting currently in effect.
+
+For rate limiting purposes, workers are classified by "task". This key consists
+of the worker role, database oid, subscription id, subscription writer id,
+extension library name and function name, extension-supplied worker name, and
+the remote relation id for sync writers. `NULL` is used where a given
+classifier does not apply, e.g. manager workers don't have a subscription ID
+and receivers don't have a writer id.
+
 ## BDR Specific Settings
 
 There are also BDR specific configuration settings that can be set.
