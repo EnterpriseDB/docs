@@ -10,7 +10,7 @@ confirm a transaction at COMMIT time.
 ## Requirements
 
 During normal operation, Group Commit is completely transparent to the
-application. Upon failover, the reconciliation phase must be
+application.  Upon failover, the reconciliation phase needs to be
 explicitly triggered or consolidated by either the application or a
 proxy in between. HARP provides native support for Group Commit and
 triggers the reconciliation phase, making this equally transparent
@@ -70,14 +70,19 @@ remote one.
 
 ```sql
 -- create sub-groups
-SELECT bdr.create_node_group(node_group_name := 'left_dc',
-                             parent_group_name := 'top_group',
-                             join_node_group := false);
-SELECT bdr.create_node_group(node_group_name := 'right_dc',
-                             parent_group_name := 'top_group',
-                             join_node_group := false);
+SELECT bdr.create_node_group(
+    node_group_name := 'left_dc',
+    parent_group_name := 'top_group',
+    join_node_group := false
+);
+SELECT bdr.create_node_group(
+    node_group_name := 'right_dc',
+    parent_group_name := 'top_group',
+    join_node_group := false
+);
 
--- create a commit scope with individual rules for each sub-group
+-- create a commit scope with individual rules
+-- for each sub-group
 SELECT bdr.add_commit_scope(
     commit_scope_name := 'example_scope',
     origin_node_group := 'left_dc',
@@ -110,27 +115,39 @@ these are:
 In rules for commit scopes, you can append these confirmation levels
 to the node group definition in parenthesis with `ON` as follows:
 
-* `ANY 1 (right_dc) ON remote_write`
-* `ALL (left_dc) ON remote_commit_flush` (default and may as well be
+* `ANY 2 (right_dc) ON replicated`
+* `ALL (left_dc) ON visible` (default and may as well be
   omitted)
-* `ALL (left_dc) ON remote_commit_async AND ANY 1 (right_dc) ON remote_write`
+* `ALL (left_dc) ON received AND ANY 1 (right_dc) ON durable`
 
 ## Reference
 
 ### Commit scope grammar
 
-For reference, the grammar for commit scopes is as follows:
+For reference, the grammar for commit scopes is composed as follows:
 
 ```
-commit_scope: confirmation
-              | confirmation AND commit_scope
+commit_scope:
+    confirmation [AND ...]
 
-confirmation: node_def (ON [received|replicated|durable|visible])
+confirmation:
+    node_def (ON [received|replicated|durable|visible])
 
-node_def:     ANY num (node_group [, ...])
-              | MAJORITY (node_group [, ...])
-              | ALL (node_group [, ...])
+node_def:
+    ANY num (node_group [, ...])
+    | MAJORITY (node_group [, ...])
+    | ALL (node_group [, ...])
 ```
+
+!!! Note
+    While the grammar for `synchronous_standby_names` and Commit
+    Scopes looks very similar, it is important to note that the former
+    does not account for the origin node, but the latter does.
+    Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'`
+    is equivalent to a Commit Scope of `ANY 2 (...)`.  This choice
+    makes reasoning about majority easier and reflects that the origin
+    node also contributes to the durability and visibility of the
+    transaction.
 
 ### Adding a commit scope rule
 
@@ -146,8 +163,10 @@ commit scopes that vary depending on the origin of the transaction.
 #### Synopsis
 
 ```sql
-bdr.add_commit_scope(commit_scope_name NAME, origin_node_group NAME,
-                     rule TEXT)
+bdr.add_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME,
+    rule TEXT)
 ```
 
 ### Changing a commit scope rule
@@ -158,8 +177,10 @@ commit scope, you can use the function `bdr.alter_commit_scope`.
 #### Synopsis
 
 ```sql
-bdr.alter_commit_scope(commit_scope_name NAME, origin_node_group NAME,
-                       rule TEXT)
+bdr.alter_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME,
+    rule TEXT)
 ```
 
 ### Removing a commit scope rule
@@ -172,5 +193,7 @@ commit scope.
 #### Synopsis
 
 ```sql
-bdr.remove_commit_scope(commit_scope_name NAME, origin_node_group NAME)
+bdr.remove_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME)
 ```
