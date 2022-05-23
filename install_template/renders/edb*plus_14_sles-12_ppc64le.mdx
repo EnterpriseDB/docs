@@ -1,0 +1,120 @@
+---
+navTitle: SLES 12 on ppc64le
+title: Installing EDB*Plus on SLES 12 ppc64le
+---
+
+Before you begin the installation process, log in as superuser.
+
+```shell
+# To log in as a superuser:
+sudo su -
+```
+
+## Set up the repository
+
+Setting up the repository is a one-time task. If you have already set up your repository, you do not need to perform this step. If you do need to set up the repository, you must register with EDB. To receive credentials for the EDB repository, visit: [Repository Access Request](https://www.enterprisedb.com/repository-access-request).
+
+```shell
+# Install the repository configuration and enter your EDB repository
+# credentials when prompted
+zypper addrepo https://zypp.enterprisedb.com/suse/edb-sles.repo
+
+# Install SUSEConnect to register the host with SUSE, allowing access
+# to SUSE repositories
+zypper install SUSEConnect
+
+# Register the host with SUSE, allowing access to SUSE repositories
+# Replace 'REGISTRATION_CODE' and 'EMAIL' with your SUSE
+# registration information
+SUSEConnect -r 'REGISTRATION_CODE' -e 'EMAIL'
+
+# Activate the required SUSE modules
+SUSEConnect -p PackageHub/12.5/ppc64le
+SUSEConnect -p sle-sdk/12.5/ppc64le
+
+# Refresh the metadata
+zypper refresh
+```
+
+## Install the package
+
+```shell
+zypper -n install edb-as14-edbplus
+```
+
+## Initial configuration
+
+After performing an RPM installation of EDB\*Plus, you must set the values of environment variables that allow EDB\*Plus to locate your Java installation. Use the following commands to set variable values:
+
+```text
+export JAVA_HOME=<path_to_java>
+export PATH=<path_to_java>/bin:$PATH
+```
+
+By default, the `pg_hba.conf` file for the RPM installer enforces `IDENT` authentication. Before invoking EDB\*Plus, you must either modify the `pg_hba.conf` file, changing the authentication method to a form other than `IDENT` (and restarting the server), or perform the following steps to ensure that an `IDENT` server is accessible:
+
+You must confirm that an `identd` server is installed and running. You can use the `yum` package manager to install an `identd` server by invoking the command:
+
+- On RHEL or CentOS 7:
+
+  ```text
+  yum -y install xinetd authd
+  ```
+
+- On RHEL/Rocky Linux/AlmaLinux 8:
+
+  ```text
+  dnf -y install xinetd authd
+  ```
+
+The command should create a file named `/etc/xinetd.d/auth` that contains:
+
+```text
+service auth
+{
+     disable = yes
+     socket_type = stream
+wait =no
+user = ident
+cps = 4096 10
+instances = UNLIMITED
+server = /usr/sbin/in.authd server_args = -t60 --xerror –os
+}
+```
+
+!!! Note
+If the file includes a `-E` argument at the end of the server arguments, please erase `-E`.
+
+Then, to start the `identd` server, invoke the following commands:
+
+```text
+systemctl enable xinetd
+systemctl start xinetd
+```
+
+Open the `pg_ident.conf` file and create a user mapping:
+
+```text
+# map_name    system_username     postgres_username
+  edbas         enterprisedb        enterprisedb
+```
+
+Where:
+
+- The name specified in the `map_name` column is a user-defined name that will identify the mapping in the `pg_hba.conf` file.
+- The name specified in the `system_username` column is `enterprisedb`.
+- The name specified in the `postgres_username` column is `enterprisedb`.
+
+Then, open the `pg_hba.conf` file and modify the `IDENT` entries:
+
+- If you are using an IPv4 local connection, modify the file entry to read:
+
+  `host all all 127.0.0.0/0 ident map=edbas`
+
+- If you are using an IPv6 local connection, modify the file entry to read:
+
+  `host all all ::1/128 ident map=edbas`
+
+You must restart the Advanced Server service before invoking EDB\*Plus. For detailed information about controlling the Advanced Server service, see the _EDB Postgres Advanced Server Installation Guide_, available at:
+
+[https://www.enterprisedb.com/docs](/epas/latest/)
