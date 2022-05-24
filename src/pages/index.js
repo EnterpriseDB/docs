@@ -303,6 +303,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/RepostorGuide">
               Repostor Data Protector for PostgresSQL
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/SIBVisionsGuide">
+              SIB Visions VisionX
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesGuide">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
