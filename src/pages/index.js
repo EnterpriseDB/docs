@@ -96,22 +96,22 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/postgres_for_kubernetes/latest/interactive_demo/"
+                    to="/kubernetes/cloud_native_postgresql/interactive_demo/"
                   >
                     Install, Configure and Deploy PostgreSQL <br />
                     with Kubernetes
                   </Link>
                 </h3>
                 <p>
-                  Want to see what it takes to get the EDB Postgres for
-                  Kubernetes Operator up and running? Try in the browser now, no
-                  downloads required.
+                  Want to see what it takes to get the Cloud Native PostgreSQL
+                  Operator up and running? Try in the browser now, no downloads
+                  required.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn btn-info btn-sm"
-                      to="/postgres_for_kubernetes/latest/interactive_demo/"
+                      to="/kubernetes/cloud_native_postgresql/interactive_demo/"
                     >
                       Try it now
                     </Link>
@@ -119,7 +119,7 @@ const Page = () => (
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/postgres_for_kubernetes/latest/"
+                      to="/kubernetes/cloud_native_postgresql/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -137,10 +137,6 @@ const Page = () => (
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
             </IndexCardLink>
-            <IndexCardLink to="/postgis/latest" className="nested-link">
-              PostGIS
-            </IndexCardLink>
-
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
@@ -148,12 +144,6 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
-            <IndexCardLink
-              to="/biganimal/latest/free_trial/"
-              className="nested-link"
-            >
-              Free Trial
-            </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
@@ -166,18 +156,27 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres for Kubernetes
+            <IndexCardLink to="/kubernetes/cloud_native_postgresql/">
+              Cloud Native PostgreSQL Operator
             </IndexCardLink>
 
-            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
-              CloudNativePG
+            <IndexCardLink
+              to="/kubernetes/cloud_native_postgresql/interactive_demo/"
+              className="nested-link"
+            >
+              Install, Configure, Deploy
+              <span
+                className="new-thing"
+                title="Walk through an interactive demo in Katacoda"
+              >
+                Demo
+              </span>
             </IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin"
+            headingText="Monitoring & Admin Tools"
           >
             <IndexCardLink to="/pem/latest">
               Postgres Enterprise Manager
@@ -189,10 +188,7 @@ const Page = () => (
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration Tools">
             <IndexCardLink to="/migration_portal/latest">
               Migration Portal
             </IndexCardLink>
@@ -203,24 +199,14 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability (HA)"
+            headingText="High Availability Tools"
           >
-            <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
-            </IndexCardLink>
-            <IndexCardLink to="/bdr/latest/" className="nested-link">
-              Bi-Directional Replication (BDR)
-            </IndexCardLink>
-            <IndexCardLink to="/harp/latest" className="nested-link">
-              HA Routing for Postgres (HARP)
-            </IndexCardLink>
-            <IndexCardLink to="/pgd_cli/latest" className="nested-link">
-              EDB Postgres Distributed CLI
-            </IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+            <span className="font-weight-bold text-muted text-uppercase small">
               Replication
             </span>
+            <IndexCardLink to="/bdr/latest">
+              BDR (Bi-Directional Replication)
+            </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
@@ -228,16 +214,24 @@ const Page = () => (
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Cluster Management
             </span>
-
+            <IndexCardLink to="/harp/latest">
+              High Availability Routing for Postgres (HARP)
+            </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Connection Poolers
+            </span>
+            <IndexCardLink to="/pgbouncer/latest">pgBouncer</IndexCardLink>
+            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.DRIVES}
-            headingText="Backup & Recovery"
+            headingText="Backup & Recovery Tools"
           >
             <IndexCardLink to="/supported-open-source/barman/">
               Barman
@@ -267,20 +261,7 @@ const Page = () => (
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
-            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Connectors
-            </span>
-            <IndexCardLink to="/jdbc_connector/latest">JDBC</IndexCardLink>
-            <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
-            <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
-            <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Connection Poolers
-            </span>
-            <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
-            <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+            <span className="font-weight-bold text-muted text-uppercase small">
               Foreign Data Wrappers
             </span>
             <IndexCardLink to="/hadoop_data_adapter/latest">
@@ -288,12 +269,26 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
             <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Connectors
+            </span>
+            <IndexCardLink to="/jdbc_connector/latest">JDBC</IndexCardLink>
+            <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
+            <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
+            <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.MODULE} headingText="Extensions">
+            <IndexCardLink to="/postgis/latest">PostGIS</IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <IndexCardLink to="/partner_docs/CommVaultGuide/">
+            Commvault Backup & Recovery
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
