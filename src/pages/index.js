@@ -296,7 +296,7 @@ const Page = () => (
           >
           
             <IndexCardLink to="/partner_docs/DBeaverGuide">
-              DBeaver
+              DBeaver PRO
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
