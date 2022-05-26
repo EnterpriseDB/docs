@@ -1,0 +1,89 @@
+---
+title: "Example: Aggregate pushdown "
+---
+
+This example shows aggregate pushdown between the foreign tables of the same remote HIVE/SPARK server to that remote HIVE/SPARK server:
+
+Tables on HIVE/SPARK server:
+
+```text
+0: jdbc:hive2://localhost:10000> describe emp;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| empno     | int        | NULL     |
+| ename     | string     | NULL     |
+| job       | string     | NULL     |
+| mgr       | int        | NULL     |
+| hiredate  | date       | NULL     |
+| sal       | int        | NULL     |
+| comm      | int        | NULL     |
+| deptno    | int        | NULL     |
++-----------+------------+----------+--+
+8 rows selected (0.747 seconds)
+0: jdbc:hive2://localhost:10000> describe dept;
++-----------+------------+----------+--+
+| col_name  | data_type  | comment  |
++-----------+------------+----------+--+
+| deptno    | int        | NULL     |
+| dname     | string     | NULL     |
+| loc       | string     | NULL     |
++-----------+------------+----------+--+
+3 rows selected (0.067 seconds)
+
+```
+
+Tables on Postgres server:
+
+```text
+-- load extension first time after install
+CREATE EXTENSION hdfs_fdw;
+
+-- create server object
+CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost', port '10000', client_type 'spark', auth_type 'LDAP');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
+
+-- create foreign table
+CREATE FOREIGN TABLE dept (
+    deptno          INTEGER,
+    dname           VARCHAR(14),
+    loc             VARCHAR(13)
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'dept');
+
+CREATE FOREIGN TABLE emp (
+    empno           INTEGER,
+    ename           VARCHAR(10),
+    job             VARCHAR(9),
+    mgr             INTEGER,
+    hiredate        DATE,
+    sal             INTEGER,
+    comm            INTEGER,
+    deptno          INTEGER
+)
+SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
+```
+
+Query with aggregate pushdown:
+
+```text
+-- aggregate functions
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT deptno, COUNT(*),SUM(sal),MAX(sal),MIN(sal),AVG(sal) FROM emp
+GROUP BY deptno
+HAVING deptno IN (10,20)
+ORDER BY deptno;
+
+QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: deptno, (count(*)), (sum(sal)), (max(sal)), (min(sal)), (avg(sal))
+   Sort Key: emp.deptno
+   ->  Foreign Scan
+         Output: deptno, (count(*)), (sum(sal)), (max(sal)), (min(sal)), (avg(sal))
+         Relations: Aggregate on (k_test.emp)
+         Remote SQL: SELECT `deptno`, count(*), sum(`sal`), max(`sal`), min(`sal`), avg(`sal`) FROM `k_test`.`emp` WHERE (`deptno`  IN (10,20)) GROUP BY `deptno`
+(7 rows)
+```

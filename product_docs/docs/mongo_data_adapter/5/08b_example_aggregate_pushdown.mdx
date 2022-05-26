@@ -1,0 +1,91 @@
+---
+title: "Example: Aggregate function pushdown"
+---
+
+MongoDB Foreign Data Wrapper supports pushdown for the following aggregate functions:
+
+- AVG - Calculates the average of a set of values.
+- COUNT - Counts rows in a specified table or view.
+- MIN - Gets the minimum value in a set of values.
+- MAX - Gets the maximum value in a set of values.
+- SUM - Calculates the sum of values.
+
+Postgres data set:
+
+```text
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 10);
+INSERT INTO emp VALUES (0, 110, 10);
+INSERT INTO emp VALUES (0, 120, 20);
+INSERT INTO emp VALUES (0, 130, 30);
+```
+
+The output:
+
+```text
+-- COUNT function
+edb# EXPLAIN VERBOSE SELECT COUNT(*) FROM emp;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (count(*))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+
+-- SUM function
+edb# EXPLAIN VERBOSE SELECT SUM(deptid) FROM emp;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=8)
+   Output: (sum(deptid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+
+-- AVG function
+edb# EXPLAIN VERBOSE SELECT AVG(deptid) FROM emp;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=32)
+   Output: (avg(deptid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+
+-- MAX function
+edb# EXPLAIN VERBOSE SELECT MAX(eid) FROM emp;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (max(eid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+
+-- MIN function
+edb# EXPLAIN VERBOSE SELECT MIN(eid) FROM emp;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=1 width=4)
+   Output: (min(eid))
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+
+-- MIN and SUM functions with GROUPBY
+edb# EXPLAIN VERBOSE SELECT MIN(deptid), SUM(eid) FROM emp GROUP BY deptid HAVING MAX(eid) > 120;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=200 width=16)
+   Output: (min(deptid)), (sum(eid)), deptid
+   Foreign Namespace: Aggregate on (db1.emp)
+(3 rows)
+```

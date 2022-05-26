@@ -1,0 +1,66 @@
+---
+title: "Example: LIMIT OFFSET pushdown"
+---
+
+This example shows LIMIT OFFSET pushdown on foreign table: `sales_records`.
+
+Table on MySQL server:
+
+```text
+CREATE TABLE sales_records(
+warehouse_id      INT PRIMARY KEY,
+qty           INT);
+```
+
+Table on Postgres server:
+
+```text
+-- load extension first time after install
+CREATE EXTENSION mysql_fdw;
+
+-- create server object
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '127.0.0.1', port '3306');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mysql_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE sales_records(
+warehouse_id      INT,
+qty    		  INT)
+SERVER mysql_server OPTIONS (dbname 'edb', table_name 'sales_records');
+
+-- insert into table
+INSERT INTO sales_records values (1, 100);
+INSERT INTO sales_records values (2, 75);
+INSERT INTO sales_records values (3, 200);
+```
+
+The output:
+
+```text
+-- LIMIT only
+edb@91975=#EXPLAIN VERBOSE SELECT * FROM sales_records WHERE qty > 80 ORDER BY warehouse_id LIMIT 5;
+                                                                         QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.sales_records  (cost=1.00..2.00 rows=1 width=8)
+   Output: warehouse_id, qty
+   Local server startup cost: 10
+   Remote query: SELECT `warehouse_id`, `qty` FROM `edb`.`sales_records` WHERE ((`qty` > 80)) ORDER BY `warehouse_id` IS NULL, `warehouse_id` ASC LIMIT 5
+(4 rows)
+
+-- LIMIT and OFFSET
+edb@91975=#EXPLAIN VERBOSE SELECT * FROM sales_records WHERE qty > 80 ORDER BY warehouse_id LIMIT 5 OFFSET 5;
+                                                                             QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.sales_records  (cost=1.00..2.00 rows=1 width=8)
+   Output: warehouse_id, qty
+   Local server startup cost: 10
+   Remote query: SELECT `warehouse_id`, `qty` FROM `edb`.`sales_records` WHERE ((`qty` > 80)) ORDER BY `warehouse_id` IS NULL, `warehouse_id` ASC LIMIT 5 OFFSET 5
+(4 rows)
+```
+
+
+
+
+
