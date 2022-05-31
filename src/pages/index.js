@@ -209,7 +209,7 @@ const Page = () => (
               EDB Postgres Distributed
             </IndexCardLink>
             <IndexCardLink to="/bdr/latest/" className="nested-link">
-              BDR (Bi-Directional Replication)
+              Bi-Directional Replication (BDR)
             </IndexCardLink>
             <IndexCardLink to="/harp/latest" className="nested-link">
               HA Routing for Postgres (HARP)
