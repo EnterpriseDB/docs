@@ -8,7 +8,7 @@ This example shows how you convert two tables with standard sequences used as pr
 
 The tables are defined as follows:
 
-```text
+```shell
 CREATE TABLE MMR_seq_tbl (
     id          SERIAL PRIMARY KEY,
     field       VARCHAR2(20)
@@ -27,7 +27,7 @@ CREATE TABLE MMR_seq_child_tbl (
 
 The tables are populated with an initial set of rows:
 
-```text
+```shell
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 1');
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 2');
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 3');
@@ -42,7 +42,7 @@ INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 3-2', 
 
 The resulting table content is the following:
 
-```text
+```shell
 edb=# SELECT * FROM MMR_seq_tbl;
  id |       field
 ----+-------------------
@@ -73,13 +73,13 @@ To convert the existing sequence values in columns `MMR_seq_tbl.id`, `MMR_seq_ch
 
 Permit deferred updates to the foreign key constraint.
 
-```text
+```shell
 ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk DEFERRABLE INITIALLY DEFERRED;
 ```
 
 Create the function to perform the sequence conversion.
 
-```text
+```shell
 CREATE OR REPLACE FUNCTION MMR_sequence_convert (
     old_seq_value   bigint
 )
@@ -95,7 +95,7 @@ $function$;
 
 Change the sequence columns to data type `BIGINT` so they are large enough for the MMR-ready sequence.
 
-```text
+```shell
 ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN parent_id SET DATA TYPE BIGINT;
@@ -103,14 +103,14 @@ ALTER TABLE MMR_seq_child_tbl ALTER COLUMN parent_id SET DATA TYPE BIGINT;
 
 Set the unique database identifier used by the MMR-ready sequence.
 
-```text
+```shell
 ALTER DATABASE MMRnode_a SET cluster.unique_db_id TO 1;
 SET cluster.unique_db_id TO 1;
 ```
 
 Update the primary key and foreign key values with the `MMR_sequence_convert` function. Perform the updates affecting the foreign key constraint in the same transaction to avoid a foreign key violation error.
 
-```text
+```shell
 BEGIN TRANSACTION;
     UPDATE MMR_seq_tbl SET id = MMR_sequence_convert (id);
     UPDATE MMR_seq_child_tbl SET parent_id = MMR_sequence_convert (parent_id);
@@ -120,13 +120,13 @@ COMMIT;
 
 Reset the foreign key constraint back to its original setting. For example:
 
-```text
+```shell
 ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk NOT DEFERRABLE;
 ```
 
 After the conversion to the MMR-ready sequence, the table content is as follows:
 
-```text
+```shell
 edb=# SELECT * FROM MMR_seq_tbl;
         id        |       field
 ------------------+-------------------
@@ -155,13 +155,13 @@ The primary key id values incorporate the old sequence values but are increased 
 
 Perform the steps described in [Creating an MMR-ready sequence](01_create_mmr_ready_sequence/#create_mmr_ready_sequence) on the databases to use as primary nodes. For database `MMRnode_a` that contains the converted tables, create a new sequence with a starting value of `7` to avoid a primary key uniqueness conflict with the existing rows. In the original tables, the maximum used sequence value was 6. When a sequence number is transformed to an MMR-ready sequence value, the same result is returned if the same database identifier is used with the same original number.
 
-```text
+```shell
 CREATE SEQUENCE MMR_seq START WITH 7 INCREMENT BY 1 NO CYCLE;
 ```
 
 Create the function to return the MMR-ready sequence value.
 
-```text
+```shell
 CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
     seq_id          VARCHAR
 )
@@ -178,14 +178,14 @@ $function$;
 
 Modify the primary key columns to use the function to return the default value.
 
-```text
+```shell
 ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
 ```
 
 Repeat the MMR-ready sequence setup process for the other primary nodes.
 
-```text
+```shell
 ALTER DATABASE MMRnode_b SET cluster.unique_db_id TO 2;
 SET cluster.unique_db_id TO 2;
 
@@ -207,7 +207,7 @@ $function$;
 
 Repeat the process for `MMRnode_c`.
 
-```text
+```shell
 ALTER DATABASE MMRnode_c SET cluster.unique_db_id TO 3;
 SET cluster.unique_db_id TO 3;
 
@@ -233,7 +233,7 @@ Create the multi-master replication system using databases `MMRnode_a`, `MMRnode
 
 After you create the system with the initial snapshot, `MMRnode_a`, `MMRnode_b`, and `MMRnode_c` all contain identical content. The following is the table content:
 
-```text
+```shell
 MMRnode_a=# SELECT * FROM MMR_seq_tbl;
         id        |       field
 ------------------+-------------------
@@ -258,7 +258,7 @@ MMRnode_a=# SELECT * FROM MMR_seq_child_tbl;
 
 The following rows are inserted on `MMRnode_a`:
 
-```text
+```shell
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 4');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 4-1', 4503599627370503);
 
@@ -286,7 +286,7 @@ MMRnode_a=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 The following rows are inserted on `MMRnode_b`:
 
-```text
+```shell
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_b - Row 1');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_b - Row 1-1', 9007199254740993);
 
@@ -314,7 +314,7 @@ MMRnode_b=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 The following rows are inserted on `MMRnode_c`:
 
-```text
+```shell
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_c - Row 1');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_c - Row 1-1', 13510798882111489);
 
@@ -344,7 +344,7 @@ After you perform a synchronization replication, there are no uniqueness conflic
 
 Content of `MMRnode_a` after synchronization:
 
-```text
+```shell
 MMRnode_a=# SELECT * FROM MMR_seq_tbl ORDER BY id;
         id         |       field
 -------------------+-------------------
@@ -373,7 +373,7 @@ MMRnode_a=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 Content of `MMRnode_b` after synchronization:
 
-```text
+```shell
 MMRnode_b=# SELECT * FROM MMR_seq_tbl ORDER BY id;
         id         |       field
 -------------------+-------------------
@@ -402,7 +402,7 @@ MMRnode_b=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 Content of `MMRnode_c` after synchronization:
 
-```text
+```shell
 MMRnode_c=# SELECT * FROM MMR_seq_tbl ORDER BY id;
         id         |       field
 -------------------+-------------------
