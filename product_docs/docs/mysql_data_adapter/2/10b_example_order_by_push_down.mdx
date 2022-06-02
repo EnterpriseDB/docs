@@ -1,0 +1,73 @@
+---
+title: "Example: ORDER BY pushdown"
+---
+
+This example shows ORDER BY pushdown on foreign table: `sales_records`.
+
+Table on MySQL server:
+
+```text
+CREATE TABLE sales_records(
+warehouse_id      INT PRIMARY KEY,
+qty           INT);
+```
+
+Table on Postgres server:
+
+```text
+-- load extension first time after install
+CREATE EXTENSION mysql_fdw;
+
+-- create server object
+CREATE SERVER mysql_server FOREIGN DATA WRAPPER mysql_fdw OPTIONS (host '127.0.0.1', port '3306');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mysql_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE sales_records(
+warehouse_id      INT,
+qty    		  INT)
+SERVER mysql_server OPTIONS (dbname 'edb', table_name 'sales_records');
+
+-- insert into table
+INSERT INTO sales_records values (1, 100);
+INSERT INTO sales_records values (2, 75);
+INSERT INTO sales_records values (3, 200);
+```
+
+The Output: 
+
+
+```text
+-- ORDER BY ASC
+edb=#EXPLAIN VERBOSE SELECT * FROM sales_records WHERE qty > 80 ORDER BY warehouse_id;
+                                                                     QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.sales_records  (cost=10.00..1010.00 rows=1000 width=8)
+   Output: warehouse_id, qty
+   Local server startup cost: 10
+   Remote query: SELECT `warehouse_id`, `qty` FROM `edb`.`sales_records` WHERE ((`qty` > 80)) ORDER BY `warehouse_id` IS NULL, `warehouse_id` ASC
+(4 rows)
+
+-- ORDER BY DESC
+edb=#EXPLAIN VERBOSE SELECT * FROM sales_records ORDER BY warehouse_id DESC;
+                                                             QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan on public.sales_records  (cost=10.00..1010.00 rows=1000 width=8)
+   Output: warehouse_id, qty
+   Local server startup cost: 10
+   Remote query: SELECT `warehouse_id`, `qty` FROM `edb`.`sales_records` ORDER BY `warehouse_id` IS NOT NULL, `warehouse_id` DESC
+(4 rows)
+
+-- ORDER BY with AGGREGATES
+edb@91975=#EXPLAIN VERBOSE SELECT count(warehouse_id) FROM sales_records WHERE qty > 80 group by warehouse_id ORDER BY warehouse_id;
+                                                                                  QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan  (cost=15.00..25.00 rows=10 width=12)
+   Output: (count(warehouse_id)), warehouse_id
+   Relations: Aggregate on (edb.sales_records)
+   Local server startup cost: 10
+   Remote query: SELECT count(`warehouse_id`), `warehouse_id` FROM `edb`.`sales_records` WHERE ((`qty` > 80)) GROUP BY 2 ORDER BY `warehouse_id` IS NULL, `warehouse_id` ASC
+(5 rows)
+```
