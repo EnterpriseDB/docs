@@ -41,9 +41,11 @@ const moveDoc = (product, platform, version) => {
     
   const context = generateContext(product, platform, version);
 
+  const product_stub = formatStringForFile(context.product.name)
+    
   const filename =
     [
-      formatStringForFile(context.product.name),
+      product_stub,
       context.product.version,
       formatStringForFile(context.platform.name),
       context.platform.arch,
@@ -76,7 +78,7 @@ const moveDoc = (product, platform, version) => {
         "edb-pgpoolii-extensions": "pgpool_extensions",
         "postgis": "postgis",
         "edb-jdbc-connector": "jdbc_connector",
-        "edb-oci-connector": "oci_connector",
+        "edb-oci-connector": "ocl_connector",
         "edb-odbc-connector": "odbc_connector",
       "edb-pgbouncer": "pgbouncer",
       
@@ -84,17 +86,17 @@ const moveDoc = (product, platform, version) => {
   };
 
 
-  if (abrev_product[formatStringForFile(context.product.name)] == null){
+  if (abrev_product[product_stub] == null){
     console.error(
         `[ERROR] product abbreviation missing\n` +
-            formatStringForFile(context.product.name));
+            product_stub);
   }
     
   const expand_arch = {
     ppcle: "ibm_power_ppc64le",
       x86: "x86_amd64",
       x86_64: "x86_amd64",
-      ppc64le: "ibm_power_pcc64le",
+      ppc64le: "ibm_power_ppc64le",
   };
 
   const plat = [
@@ -102,28 +104,190 @@ const moveDoc = (product, platform, version) => {
     context.platform.arch,
   ].join("_");
 
-    const dirpath = [
-      "..",
-      "product_docs",
-      "docs",
-      abrev_product[formatStringForFile(context.product.name)],
-      context.product.version.toString().replace(/\..*/, ""),
-      [
-          "03_installing",
-          abrev_product[formatStringForFile(context.product.name)],
-      ].join("_"),
-      expand_arch[context.platform.arch],
-  ].join("/");
+    const product_prefix = {
+        "failover-manager": "03",
+        "migration-toolkit": "05",
+        "hadoop-foreign-data-wrapper": "05",
+        "mongodb-foreign-data-wrapper": "04",
+        "mysql-foreign-data-wrapper": "04",
+        "edb-pgpoolii": "01",
+        "edb-pgpoolii-extensions": "pgpool_extensions",
+        "postgis": "01a",
+        "edb-jdbc-connector": "04",
+        "edb-oci-connector": "ocl_connector",
+        "edb-odbc-connector": "03",
+      "edb-pgbouncer": "01",
+      
+      
+    };
 
-    const file =
-    [
-      prefix[plat],
-      abrev_product[formatStringForFile(context.product.name)]+ context.product.version.toString().replace(/\..*/, ""),
-      context.platform.name.toLowerCase().replace(/ /g, ""),
-      context.platform.arch.replace(/_?64/g, ""),
-    ].join("_") + ".mdx";
+    var dirpath;
+    var file;
+
+
+    switch (product_stub) {
+        /* Products that don't have an install_on_linux layer */
+    case "failover-manager":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            abrev_product[product_stub],
+            context.product.version.toString().replace(/\..*/, ""),
+            [
+                product_prefix[product_stub],
+                "installing",
+                    abrev_product[product_stub],
+            ].join("_"),
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+        file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+        
+        /* Products that don't abreviate in the directory */ 
+    case "migration-toolkit":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            context.product.name.toLowerCase().replace(/ /g, '_'),
+            context.product.version.toString().replace(/\..*/, ""),
+            [
+                product_prefix[product_stub],
+                "installing",
+                abrev_product[product_stub],
+            ].join("_"),
+            "install_on_linux",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+        /* Data wrappers */
+    case "hadoop-foreign-data-wrapper":
+    case "mongodb-foreign-data-wrapper":
+    case "mysql-foreign-data-wrapper":
+        prefix["sles_12_x86"]="07";
+        prefix["sles_12_x86_64"]="07";
+        prefix["rhel_8_ppc64le"]="13";
+        prefix["rhel_7_ppc64le"]="15";
+        prefix["sles_12_ppc64le"]="19";
+        prefix["sles_15_ppc64le"]="17";
+
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",        
+            abrev_product[product_stub] + "_data_adapter",
+            context.product.version.toString().replace(/\..*/, ""),
+            [
+                product_prefix[product_stub],
+                "installing_the",
+                abrev_product[product_stub],
+                "data_adapter"
+            ].join("_"),
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+        file =
+            [
+                prefix[plat],
+                abrev_product[product_stub],
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+        
+    case "edb-pgpoolii":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            abrev_product[product_stub],
+            context.product.version,
+            [
+                product_prefix[product_stub],
+                "installing_and_configuring_the",
+                abrev_product[product_stub]+"-II",
+            ].join("_"),
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub],
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+    case "postgis":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            abrev_product[product_stub],
+            context.product.version,
+            [
+                product_prefix[product_stub],
+                "installing",
+                abrev_product[product_stub],
+            ].join("_"),
+            "installing_on_linux",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub],
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+    default:
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            abrev_product[product_stub],
+            context.product.version.toString().replace(/\..*/, ""),
+            [
+                product_prefix[product_stub],
+                "installing",
+                abrev_product[product_stub],
+            ].join("_"),
+            "install_on_linux",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+    }
     
-    console.log(`renders/${filename} ${dirpath}/${file}`);
+        console.log(`renders/${filename} ${dirpath}/${file}`);
 };
 
 
