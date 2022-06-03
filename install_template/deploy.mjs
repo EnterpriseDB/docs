@@ -77,9 +77,9 @@ const moveDoc = (product, platform, version) => {
         "edb-pgpoolii": "pgpool",
         "edb-pgpoolii-extensions": "pgpool_extensions",
         "postgis": "postgis",
-        "edb-jdbc-connector": "jdbc_connector",
-        "edb-oci-connector": "ocl_connector",
-        "edb-odbc-connector": "odbc_connector",
+        "edb-jdbc-connector": "jdbc",
+        "edb-ocl-connector": "ocl",
+        "edb-odbc-connector": "odbc",
       "edb-pgbouncer": "pgbouncer",
       
       
@@ -114,7 +114,7 @@ const moveDoc = (product, platform, version) => {
         "edb-pgpoolii-extensions": "pgpool_extensions",
         "postgis": "01a",
         "edb-jdbc-connector": "04",
-        "edb-oci-connector": "ocl_connector",
+        "edb-ocl-connector": "03",
         "edb-odbc-connector": "03",
       "edb-pgbouncer": "01",
       
@@ -211,6 +211,83 @@ const moveDoc = (product, platform, version) => {
                 context.platform.arch.replace(/_?64/g, ""),
             ].join("_") + ".mdx";
         break;
+
+    case "edb-jdbc-connector":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",        
+            abrev_product[product_stub] + "_connector",
+            context.product.version,
+            [
+                product_prefix[product_stub],
+                "installing_and_configuring_the",
+                abrev_product[product_stub],
+                "connector",
+            ].join("_"),
+            "01_installing_the_connector_with_an_rpm_package",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+        file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+    case "edb-odbc-connector":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",        
+            abrev_product[product_stub] + "_connector",
+            context.product.version.toString().replace(/\..*/, ""),
+            [
+                product_prefix[product_stub],
+                "installing_edb",
+                abrev_product[product_stub],
+            ].join("_"),
+            "01_installing_linux",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+        file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+    case "edb-ocl-connector":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",        
+            abrev_product[product_stub] + "_connector",
+            context.product.version,
+            [
+                product_prefix[product_stub],
+                "installing_edb",
+                abrev_product[product_stub],
+            ].join("_"),
+            "01_installing_linux",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+        file =
+            [
+                prefix[plat],
+                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+        
         
     case "edb-pgpoolii":
         dirpath = [
