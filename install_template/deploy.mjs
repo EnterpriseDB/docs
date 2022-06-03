@@ -75,7 +75,7 @@ const moveDoc = (product, platform, version) => {
         "mongodb-foreign-data-wrapper": "mongo",
         "mysql-foreign-data-wrapper": "mysql",
         "edb-pgpoolii": "pgpool",
-        "edb-pgpoolii-extensions": "pgpool_extensions",
+        "edb-pgpoolii-extensions": "pgpoolext",
         "postgis": "postgis",
         "edb-jdbc-connector": "jdbc",
         "edb-ocl-connector": "ocl",
@@ -111,10 +111,10 @@ const moveDoc = (product, platform, version) => {
         "mongodb-foreign-data-wrapper": "04",
         "mysql-foreign-data-wrapper": "04",
         "edb-pgpoolii": "01",
-        "edb-pgpoolii-extensions": "pgpool_extensions",
+        "edb-pgpoolii-extensions": "pgpoolext",
         "postgis": "01a",
         "edb-jdbc-connector": "04",
-        "edb-ocl-connector": "03",
+        "edb-ocl-connector": "04",
         "edb-odbc-connector": "03",
       "edb-pgbouncer": "01",
       
@@ -264,6 +264,10 @@ const moveDoc = (product, platform, version) => {
         break;
 
     case "edb-ocl-connector":
+        prefix["sles_15_x86_64"]="03";
+        prefix["sles_12_x86_64"]="04";
+        prefix["sles_15_ppc64le"]="09";
+        prefix["sles_12_ppc64le"]="10";
         dirpath = [
             "..",
             "product_docs",
@@ -272,20 +276,20 @@ const moveDoc = (product, platform, version) => {
             context.product.version,
             [
                 product_prefix[product_stub],
-                "installing_edb",
-                abrev_product[product_stub],
+                "open_client_library",
             ].join("_"),
-            "01_installing_linux",
+            "01_installing_and_configuring_the_ocl_connector",
+            "install_on_linux_using_edb_repo",
             expand_arch[context.platform.arch],
         ].join("/");
         
-        file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
+        file = [
+            prefix[plat],
+            abrev_product[product_stub],
+            "connector"+ context.product.version.toString().replace(/\..*/, ""),
+            context.platform.name.toLowerCase().replace(/ /g, ""),
+            context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
         break;
         
         
@@ -301,6 +305,51 @@ const moveDoc = (product, platform, version) => {
                 "installing_and_configuring_the",
                 abrev_product[product_stub]+"-II",
             ].join("_"),
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub],
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+
+    case "edb-pgpoolii-extensions":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            "pgpool",
+            context.product.version,
+            "02_extensions",
+            expand_arch[context.platform.arch],
+        ].join("/");
+        
+            file =
+            [
+                prefix[plat],
+                abrev_product[product_stub],
+                context.platform.name.toLowerCase().replace(/ /g, ""),
+                context.platform.arch.replace(/_?64/g, ""),
+            ].join("_") + ".mdx";
+        break;
+        
+    case "edb-pgbouncer":
+        dirpath = [
+            "..",
+            "product_docs",
+            "docs",
+            abrev_product[product_stub],
+            context.product.version,
+            [
+                product_prefix[product_stub],
+                "installation",
+            ].join("_"),
+            "install_on_linux",
+            
             expand_arch[context.platform.arch],
         ].join("/");
         
