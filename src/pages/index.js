@@ -295,6 +295,9 @@ const Page = () => (
             headingText="Third Party Integrations"
           >
           
+            <IndexCardLink to="/partner_docs/DigionGuide">
+              DigionXtreme
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/DBeaverGuide">
               DBeaver PRO
             </IndexCardLink>
