@@ -1,19 +1,19 @@
 ---
-title: "Supported architectures"
+title: "Supported cluster types"
 redirects:
   - 02_high_availibility
 ---
 
-BigAnimal supports three deployment architectures: 
+BigAnimal supports three cluster types: 
 - Single node
 - Standard high availability
 - Extreme high availability (beta)
 
 You choose which type of cluster you want on the [Create Cluster](https://portal.biganimal.com/create-cluster) page in the [BigAnimal](https://portal.biganimal.com) portal.  
 
-Postgres distribution type support varies by architecture.
+Postgres distribution and version support varies by cluster type.
 
-| Postgres distribution        | Versions     | Supported architectures                                       |
+| Postgres distribution        | Versions     | Cluster type                                       |
 | ---------------------------- | ------------ | ------------------------------------------------------------- |
 | PostgreSQL                   | 11–14        | Single node, high availability                                |
 | Oracle Compatible            | 11–14        | Single node, high availability, and extreme high availability |
@@ -21,7 +21,7 @@ Postgres distribution type support varies by architecture.
 
 ## Single node
 
-For nonproduction use cases where high availability is not a primary concern, a cluster deployment with high availability not enabled provides one primary with no standby servers for failover or read-only workloads. 
+For nonproduction use cases where high availability is not a primary concern, a cluster deployment with high availability not enabled provides one primary with no standby replicas for failover or read-only workloads. 
 
 In case of unrecoverable failure of the primary, a restore from a backup is required. 
 
@@ -29,26 +29,24 @@ In case of unrecoverable failure of the primary, a restore from a backup is requ
 
 ## Standard high availability
 
-The high availability option is provided to minimize downtime in cases of failures. High-availability clusters—one *primary* and two *replicas*—are configured automatically, with replicas staying up to date through physical streaming replication. In cloud regions with availability zones, clusters are provisioned across zones to provide fault tolerance in the face of a datacenter failure.
+The high availability option is provided to minimize downtime in cases of failures. High-availability clusters—one *primary* and two *standby replicas*—are configured automatically, with standby replicas staying up to date through physical streaming replication. In cloud regions with availability zones, clusters are provisioned across zones to provide fault tolerance in the face of a datacenter failure.
 
--   Replicas are usually called *standby servers*. 
--   In case of temporary or permanent unavailability of the primary, a standby replica becomes the primary.
+In case of temporary or permanent unavailability of the primary, a standby replica becomes the primary.
 
 ![*BigAnimal Cluster4*](images/HA-diagram-2x.png)
 
-Incoming client connections are always routed to the current primary. In case of failure of the primary, a standby replica is automatically promoted to primary, and new connections are routed to the new primary. When the old primary recovers, it rejoins the cluster as a replica.
+Incoming client connections are always routed to the current primary. In case of failure of the primary, a standby replica is automatically promoted to primary, and new connections are routed to the new primary. When the old primary recovers, it rejoins the cluster as a standby replica.
 
-By default, replication is synchronous to one replica and asynchronous to the other. That is, one replica must confirm that a transaction record was written to disk before the client receives acknowledgment of a successful commit. In PostgreSQL terms, `synchronous_commit` is set to `on` and `synchronous_standby_names` is set to `ANY 1 (replica-1, replica-2)`. You can modify this behavior on a per-transaction, per-session, per-user, or per-database basis with appropriate `SET` or `ALTER` commands.
+By default, replication is synchronous to one standby replica and asynchronous to the other. That is, one standby replica must confirm that a transaction record was written to disk before the client receives acknowledgment of a successful commit. In PostgreSQL terms, `synchronous_commit` is set to `on` and `synchronous_standby_names` is set to `ANY 1 (replica-1, replica-2)`. You can modify this behavior on a per-transaction, per-session, per-user, or per-database basis with appropriate `SET` or `ALTER` commands.
 
 ## Extreme high availability (beta)
 
 Extreme high availability clusters are powered by EDB Postgres Distributed, a logical replication platform that delivers more advanced cluster management compared to a physical replication based system. 
 
-Extreme high availability clusters can be deployed with either EDB Postgres Advanced Server or EDB Postgres Extended Server as the database type. EDB Postgres Extended Server is PostgreSQL compatible. 
+Extreme high availability clusters can be deployed with either PostgreSQL or Oracle compatibility. 
 
-Extreme High Availability clusters are deployed with nodes distributed among three availability zones (A, B, and C in the diagram below). The "BDR" nodes host customer data; one BDR node is designated the *leader* node (A.1 in the diagram). The EDB Distributed Postgres router (HARP) routes all application traffic to the leader node, which acts as the principal write target to reduce the potential for data conflicts. HARP leverages a distributed consensus model to determine availability of the BDR nodes in the cluster. On failure or unavailability of the leader, HARP elects a new leader and redirects application traffic. Together with the core capabilities of BDR, this mechanism of routing application traffic to the leader node enables fast failover and switchover without risk of data loss. 
+Extreme High Availability clusters deploy four data-hosting "BDR" nodes across two availability zones (A and B in the diagram below). One of these nodes will be the leader at any given time (A.1 in the diagram). The rest are typically referred to as "shadow" nodes. Any shadow node can be promoted to leadership at any time by the HARP router. The third availability zone (C) contains one node called the "witness". This node does not host data; it exists only for management purposes, to support operations that require consensus in case of an availability zone failure.
 
-Extreme High Availability clusters deploy four data-hosting "BDR" nodes across two availability zones. One of these nodes will be the leader at any given time. The rest are typically referred to as "shadow" nodes. Any shadow node can be promoted to leadership at any time by the HARP router. The third availability zone contains one node called the "witness". This node does not host data; it exists only for management purposes, to support operations that require consensus in case of an availability zone failure.
-
+The EDB Postgres Distributed router (HARP) routes all application traffic to the leader node, which acts as the principal write target to reduce the potential for data conflicts. HARP leverages a distributed consensus model to determine availability of the BDR nodes in the cluster. On failure or unavailability of the leader, HARP elects a new leader and redirects application traffic. Together with the core capabilities of BDR, this mechanism of routing application traffic to the leader node enables fast failover and switchover without risk of data loss. 
 
 ![*BigAnimal Cluster4*](images/Extreme-HA-Diagram-2x.png)
