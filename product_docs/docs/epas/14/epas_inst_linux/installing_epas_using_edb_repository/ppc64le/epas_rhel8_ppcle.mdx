@@ -1,0 +1,101 @@
+---
+title: "Installing EDB Postgres Advanced Server on RHEL 8 ppc64le"
+navTitle: "RHEL 8"
+---
+
+There are two steps to completing an installation:
+
+-   Setting up the repository
+-   Installing the package
+
+For each step, you must be logged in as superuser.
+
+To log in as a superuser:
+
+```shell
+sudo su -
+```
+
+## Setting up the repository
+
+1. To register with EDB to receive credentials for the EDB repository, visit: [Repository Access Request](https://www.enterprisedb.com/repository-access-request).
+
+1. Set up the EDB repository:
+
+   ```shell
+   dnf -y install https://yum.enterprisedb.com/edbrepos/edb-repo-latest.noarch.rpm
+   ```
+
+   This creates the /etc/yum.repos.d/edb.repo configuration file.
+
+1. Replace `'USERNAME:PASSWORD'` below with your username and password available from your
+   [EDB account](https://www.enterprisedb.com/user) in the edb.repo file:
+
+   ```shell
+   sed -i "s@<username>:<password>@USERNAME:PASSWORD@" /etc/yum.repos.d/edb.repo
+   ```
+
+1. Install EPEL repository and refresh the cache:
+
+   ```shell
+   dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+   dnf makecache
+   ```
+
+1. Enable the codeready-builder-for-rhel-8-\*-rpms repository since EPEL packages may depend on packages from it:
+
+   ```shell
+   ARCH=$( /bin/arch )
+   subscription-manager repos --enable "codeready-builder-for-rhel-8-${ARCH}-rpms"
+   ```
+
+1. Disable the built-in PostgreSQL module:
+   
+   ```shell
+   dnf -qy module disable postgresql
+   ```
+
+## Installing the package
+
+```shell
+dnf -y install edb-as14-server
+```
+Installing the server package creates an operating system user named `enterprisedb`. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as14`.
+
+To install an individual component:
+
+```shell
+dnf install package_name
+```
+
+Where `package_name` can be any of the available package from the [available package list](/epas/latest/epas_inst_linux/install_details/rpm_packages/).
+
+## Initial configuration
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password. See [Managing an EDB Postgres Advanced Server installation](/epas/latest/epas_inst_linux/managing_an_advanced_server_installation), for more information including how to use pgAdmin4 to connect to your cluster using its graphical interface instead of the command line option given below.
+
+```shell
+# Initialize the database cluster:
+PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
+   
+# Start the database cluster:
+systemctl start edb-as-14
+# To work in your cluster, login as `enterprisedb` user:
+su - enterprisedb
+# Connect to the database server using psql command line client:
+psql edb
+# Assign a password to the database superuser `enterprisedb`:
+ALTER ROLE enterprisedb IDENTIFIED BY password;
+# Creating a database (named hr):
+CREATE DATABASE hr;
+# Connect to the new database and create a table (named dept):
+\c hr
+CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk PRIMARY KEY, 
+dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc varchar(13));
+# Add data to the table:
+INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+# You can use simple SQL commands to query the database and retrieve 
+# information about the data you have added to the table. 
+SELECT * FROM dept;
+```
+
