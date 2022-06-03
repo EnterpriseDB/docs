@@ -294,7 +294,9 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-          
+            <IndexCardLink to="/partner_docs/CommVaultGuide/">
+            Commvault Backup & Recovery
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/DBeaverGuide">
               DBeaver PRO
             </IndexCardLink>
