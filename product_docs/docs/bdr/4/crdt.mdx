@@ -1,25 +1,24 @@
 ---
-navTitle: CRDT Data Types
-title: Conflict-free Replicated Data Types
+navTitle: CRDT data types
+title: Conflict-free replicated data types
 
 
 ---
 
 Conflict-free replicated data types (CRDT) support merging values
-from concurrently modified rows, instead of discarding one of the rows
-(which is what traditional conflict resolution does).
+from concurrently modified rows instead of discarding one of the rows as traditional resolution does.
 
-Each CRDT type is implemented as a separate PostgreSQL data type, with
+Each CRDT type is implemented as a separate PostgreSQL data type with
 an extra callback added to the `bdr.crdt_handlers` catalog. The merge
-process happens inside the BDR writer on the apply side; no additional user
-action is required.
+process happens inside the BDR writer on the apply side without any user
+action needed.
 
-CRDTs require the table to have column-level conflict resolution enabled
-as documented in the [CLCD](column-level-conflicts) chapter.
+CRDTs require the table to have column-level conflict resolution enabled,
+as documented in [CLCD](column-level-conflicts).
 
-The only action taken by the user is the use of a particular data type
-in CREATE/ALTER TABLE, rather than standard built-in data types such as
-integer; e.g. consider the following table with one regular integer
+The only action you need to take is to use a particular data type
+in CREATE/ALTER TABLE rather than standard built-in data types such as
+integer. For example, consider the following table with one regular integer
 counter and a single row:
 
 ```
@@ -31,7 +30,7 @@ CREATE TABLE non_crdt_example (
 INSERT INTO non_crdt_example (id) VALUES (1);
 ```
 
-If we issue the following SQL on two nodes at same time:
+Suppose you issue the following SQL on two nodes at same time:
 
 ```
 UPDATE non_crdt_example
@@ -39,8 +38,7 @@ UPDATE non_crdt_example
  WHERE id = 1;
 ```
 
-... the resulting values can be seen using this query, after both
-updates are applied:
+After both updates are applied, you can see the resulting values using this query:
 
 ```
 SELECT * FROM non_crdt_example WHERE id = 1;
@@ -50,9 +48,9 @@ SELECT * FROM non_crdt_example WHERE id = 1;
 (1 row)
 ```
 
-...showing that we've lost one of the increments, due to the update_if_newer
+This code shows that you lost one of the increments due to the `update_if_newer`
 conflict resolver. If you use the CRDT counter data type instead,
-you should observe something like this:
+the result looks like this:
 
 ```
 CREATE TABLE crdt_example (
@@ -68,8 +66,8 @@ SELECT bdr.alter_table_conflict_detection('crdt_example',
 INSERT INTO crdt_example (id) VALUES (1);
 ```
 
-Again we issue the following SQL on two nodes at same time,
-then wait for the changes to be applied:
+Again issue the following SQL on two nodes at same time,
+and then wait for the changes to be applied:
 
 ```
 UPDATE crdt_example
@@ -83,32 +81,32 @@ SELECT id, counter FROM crdt_example WHERE id = 1;
 (1 row)
 ```
 
-This shows that CRDTs correctly allow accumulator columns to work, even
+This example shows that CRDTs correctly allow accumulator columns to work, even
 in the face of asynchronous concurrent updates that otherwise conflict.
 
-The `crdt_gcounter` type is an example of state-based CRDT types, that
-work only with reflexive UPDATE SQL, such as `x = x + 1`, as shown above.
+The `crdt_gcounter` type is an example of state-based CRDT types that
+work only with reflexive UPDATE SQL, such as `x = x + 1`, as the example shows.
 
 The `bdr.crdt_raw_value` configuration option determines whether queries
 return the current value or the full internal state of the CRDT type. By
-default only the current numeric value is returned.  When set to `true`,
-queries return representation of the full state - the special hash operator
-(`#`) may be used to request only the current numeric value without using the
-special operator (this is the default behavior). If the full state is
-dumped using `bdr.crdt_raw_value = on` then the value would only be able
-to be reloaed with `bdr.crdt_raw_value = on`.
+default, only the current numeric value is returned. When set to `true`,
+queries return representation of the full state. You can use the special hash operator
+(`#`) to request only the current numeric value without using the
+special operator (the default behavior). If the full state is
+dumped using `bdr.crdt_raw_value = on`, then the value can 
+reload only with `bdr.crdt_raw_value = on`.
 
-Note: The `bdr.crdt_raw_value` applies only formatting of data returned
-to clients; i.e. simple column references in the select list.  Any column
-references in other parts of the query (e.g. `WHERE` clause or even
-expressions in the select list) may still require use of the `#` operator.
+!!! Note
+    The `bdr.crdt_raw_value` applies formatting only of data returned
+    to clients, that is, simple column references in the select list. Any column
+    references in other parts of the query (such as `WHERE` clause or even
+    expressions in the select list) might still require use of the `#` operator.
 
-Another class of CRDT data types exists, which we refer to as "delta CRDT"
-types (and are a special subclass of operation-based CRDTs, as explained
-later).
+Another class of CRDT data types is referred to *delta CRDT*
+types. These are a special subclass of operation-based CRDTs.
 
-With delta CRDTs, any update to a value is automatically compared to the
-previous value on the same node and then a change is applied as a delta
+With delta CRDTs, any update to a value is compared to the
+previous value on the same node. Then a change is applied as a delta
 on all other nodes.
 
 ```
@@ -125,7 +123,7 @@ SELECT bdr.alter_table_conflict_detection('crdt_delta_example',
 INSERT INTO crdt_delta_example (id) VALUES (1);
 ```
 
-If we issue the following SQL on two nodes at same time:
+Suppose you issue the following SQL on two nodes at same time:
 
 ```
 UPDATE crdt_delta_example
@@ -133,8 +131,7 @@ UPDATE crdt_delta_example
  WHERE id = 1;
 ```
 
-The resulting values can be seen using this query, after both updates
-are applied:
+After both updates are applied, you can see the resulting values using this query:
 
 ```
 SELECT id, counter FROM crdt_delta_example WHERE id = 1;
@@ -144,123 +141,124 @@ SELECT id, counter FROM crdt_delta_example WHERE id = 1;
 (1 row)
 ```
 
-With a regular `integer` column the result would be `2`, of course. But
-when we UPDATE the row with a delta CRDT counter, we start with the OLD
-row version, make a NEW row version and send both to the remote node,
-where we compare them with the version we find there (let's call that
+With a regular `integer` column, the result is `2`. But
+when you update the row with a delta CRDT counter, you start with the OLD
+row version, make a NEW row version, and send both to the remote node.
+There, compare them with the version found there (e.g.,
 the LOCAL version). Standard CRDTs merge the NEW and the LOCAL version,
 while delta CRDTs compare the OLD and NEW versions and apply the delta
 to the LOCAL version.
 
 The CRDT types are installed as part of `bdr` into the `bdr` schema.
-For convenience, the basic operators ( `+`, `#` and `!` ) and a number
-of  common aggregate functions (`min`, `max`, `sum` and `avg`) are
-created in `pg_catalog`, to make them available without having to tweak
+For convenience, the basic operators (`+`, `#` and `!`) and a number
+of common aggregate functions (`min`, `max`, `sum`, and `avg`) are
+created in `pg_catalog`. This makes them available without having to tweak
 `search_path`.
 
 An important question is how query planning and optimization works with these
-new data types. CRDT types are handled transparently - both `ANALYZE` and
-the optimizer work, so estimation and query planning works fine, without
+new data types. CRDT types are handled transparently. Both `ANALYZE` and
+the optimizer work, so estimation and query planning works fine without
 having to do anything else.
 
 ## State-based and operation-based CRDTs
 
-Following the notation from [1], we do implement both operation-based
-and state-based CRDTs.
+Following the notation from [1], both operation-based
+and state-based CRDTs are implemented.
 
-### Operation-based CRDT Types (CmCRDT)
+### Operation-based CRDT types (CmCRDT)
 
-The implementation of operation-based types is quite trivial, because
-the operation is not transferred explicitly but computed from the old
+The implementation of operation-based types is trivial because
+the operation isn't transferred explicitly but computed from the old
 and new row received from the remote node.
 
-Currently, we implement these operation-based CRDTs:
+Currently, these operation-based CRDTs are implemented:
 
--   `crdt_delta_counter` - `bigint` counter (increments/decrements)
--   `crdt_delta_sum` - `numeric` sum (increments/decrements)
+-   `crdt_delta_counter` &mdash; `bigint` counter (increments/decrements)
+-   `crdt_delta_sum` &mdash; `numeric` sum (increments/decrements)
 
-These types leverage existing data types (e.g. `crdt_delta_counter` is
-a domain on a `bigint`), with a little bit of code to compute the delta.
+These types leverage existing data types (for example, `crdt_delta_counter` is
+a domain on a `bigint`) with a little bit of code to compute the delta.
 
-This approach is possible only for types where we know how to compute
-the delta, but the result is very simple and cheap (both in terms of
-space and CPU), and has a couple of additional benefits (e.g. we can
-leverage operators / syntax for the under-lying data type).
+This approach is possible only for types for which the method for computing
+the delta is known, but the result is simple and cheap (both in terms of
+space and CPU) and has a couple of additional benefits. For example, it can
+leverage operators/syntax for the underlying data type.
 
-The main disadvantage is that it's not possible to reset this value reliably
+The main disadvantage is that you can't reset this value reliably
 in an asynchronous and concurrent environment.
 
-Note: We could also implement more complicated operation-based types by
-creating custom data types, storing the state and the last operation (we
-decode and transfer every individual change, so we don't need multiple
-operations). But at that point we lose the main benefits (simplicity,
-reuse of existing data types) without gaining any advantage compared to
-state-based types (still no capability to reset, ...), except for the
-space requirements (we don't need a per-node state).
+!!! Note
+    Implementing more complicated operation-based types by
+    creating custom data types is possible, storing the state and the last operation. 
+    (Every change is decoded and transferred, so multiple
+    operations aren't needed). But at that point, the main benefits (simplicity,
+    reuse of existing data types) are lost without gaining any advantage compared to
+    state-based types (for example, still no capability to reset) except for the
+    space requirements. (A per-node state isn't needed.)
 
-### State-based CRDT Types (CvCRDT)
+### State-based CRDT types (CvCRDT)
 
-State-based types require a more complex internal state, and so can't
+State-based types require a more complex internal state and so can't
 use the regular data types directly the way operation-based types do.
 
-Currently, we implement four state-based CRDTs:
+Currently, four state-based CRDTs are implemented:
 
--   `crdt_gcounter` - `bigint` counter (increment-only)
--   `crdt_gsum` - `numeric` sum/counter (increment-only)
--   `crdt_pncounter` - `bigint` counter (increments/decrements)
--   `crdt_pnsum` - `numeric` sum/counter (increments/decrements)
+-   `crdt_gcounter` &mdash; `bigint` counter (increment-only)
+-   `crdt_gsum` &mdash; `numeric` sum/counter (increment-only)
+-   `crdt_pncounter` &mdash; `bigint` counter (increments/decrements)
+-   `crdt_pnsum` &mdash; `numeric` sum/counter (increments/decrements)
 
 The internal state typically includes per-node information, increasing
-the on-disk size but allowing additional benefits. The need to implement
+the on-disk size but allowing added benefits. The need to implement
 custom data types implies more code (in/out functions and operators).
 
 The advantage is the ability to reliably reset the values, a somewhat
-self-healing nature in the presence of lost changes (which should not
-happen in properly-operated cluster), and the ability to receive changes
+self-healing nature in the presence of lost changes (which doesn't
+happen in a cluster that operates properly), and the ability to receive changes
 from other than source nodes.
 
-Consider for example that a value is modified on node A, and the change
-gets replicated to B, but not C (due to network issue between A and C).
-If B modifies the value, and this change gets replicated to C, it will
-include even the original change from A. With operation-based CRDTs the
-node C would not receive the change until the A-C network connection
+Consider, for example, that a value is modified on node A, and the change
+gets replicated to B but not C due to network issue between A and C.
+If B modifies the value and this change gets replicated to C, it
+includes even the original change from A. With operation-based CRDTs,
+node C doesn't receive the change until the A-C network connection
 starts working again.
 
-The main disadvantages of CvCRDTs are higher costs, both in terms of
-disk space - we need a bit of information for each node, including nodes
-that have been already removed from the cluster). The complex nature of
-the state (serialized into varlena types) means increased CPU usage.
+The main disadvantages of CvCRDTs are higher costs in terms of
+disk space and CPU usage. A bit of information for each node is needed, including nodes
+that were already removed from the cluster. The complex nature of
+the state (serialized into varlena types) means increased CPU use.
 
-## Disk-Space Requirements
+## Disk-space requirements
 
 An important consideration is the overhead associated with CRDT types,
 particularly the on-disk size.
 
-For operation-based types this is rather trivial, because the types
-are merely domains on top of other types, and so have the same disk
-space requirements (no matter how many nodes are there).
+For operation-based types, this is trivial, because the types
+are merely domains on top of other types and so have the same disk
+space requirements no matter how many nodes are there.
 
--   `crdt_delta_counter` - same as `bigint` (8 bytes)
--   `crdt_delta_sum` - same as `numeric` (variable, depending on precision
+-   `crdt_delta_counter` &mdash; Same as `bigint` (8 bytes)
+-   `crdt_delta_sum` &mdash; Same as `numeric` (variable, depending on precision
     and scale)
 
-There is no dependency on the number of nodes, because operation-based
-CRDT types do not store any per-node information.
+There's no dependency on the number of nodes because operation-based
+CRDT types don't store any per-node information.
 
-For state-based types the situation is more complicated. All the types
-are variable-length (stored essentially as a `bytea` column), and consist
+For state-based types, the situation is more complicated. All the types
+are variable-length (stored essentially as a `bytea` column) and consist
 of a header and a certain amount of per-node information for each node
-that *modified* the value.
+that modified the value.
 
-For the `bigint` variants, formulas computing approximate size are ( `N`
+For the `bigint` variants, formulas computing approximate size are (`N`
 denotes the number of nodes that modified this value):
 
--   `crdt_gcounter` - `32B (header) + N * 12B (per-node)`
--   `crdt_pncounter` - `48B (header) + N * 20B (per-node)`
+-   `crdt_gcounter` &mdash; `32B (header) + N * 12B (per-node)`
+-   `crdt_pncounter` -&mdash;`48B (header) + N * 20B (per-node)`
 
-For the `numeric` variants there is no exact formula, because both the
+For the `numeric` variants, there's no exact formula because both the
 header and per-node parts include `numeric` variable-length values. To
-give you an idea of how many such values we need to keep:
+give you an idea of how many such values you need to keep:
 
 -   `crdt_gsum`
     -   fixed: `20B (header) + N * 4B (per-node)`
@@ -269,33 +267,35 @@ give you an idea of how many such values we need to keep:
     -   fixed: `20B (header) + N * 4B (per-node)`
     -   variable: `(4 + 2 * N)` `numeric` values
 
-*Note*: It does not matter how many nodes are in the cluster, if the
-values are never updated on multiple nodes. It also does not matter if
-the updates were concurrent (causing a conflict) or not.
+!!! Note 
+    It doesn't matter how many nodes are in the cluster if the
+    values are never updated on multiple nodes. It also doesn't matter whether
+    the updates were concurrent (causing a conflict).
+    
+    In addition, it doesn't matter how many of those nodes were already
+    removed from the cluster. There's no way to compact the state yet.
 
-*Note*: It also does not matter how many of those nodes were already
-removed from the cluster. There is no way to compact the state yet.
+## CRDT types versus conflicts handling
 
-## CRDT Types vs Conflicts Handling
-
-As tables may contain both CRDT and non-CRDT columns (in fact, most
-columns are expected to be non-CRDT), we need to do both the regular
+As tables can contain both CRDT and non-CRDT columns (most
+columns are expected to be non-CRDT), you need to do both the regular
 conflict resolution and CRDT merge.
 
-The conflict resolution happens first, and is responsible for deciding
-which tuple to keep (applytuple) and which one to discard. The merge
+The conflict resolution happens first and is responsible for deciding
+the tuple to keep (applytuple) and the one to discard. The merge
 phase happens next, merging data for CRDT columns from the discarded
 tuple into the applytuple.
 
-*Note*: This makes CRDT types somewhat more expensive compared to plain
-conflict resolution, because the merge needs to happen every time, even
-when the conflict resolution can use one of the fast-paths (modified
-in the current transaction, etc.).
+!!! Note
+    This handling makes CRDT types somewhat more expensive compared to plain
+    conflict resolution because the merge needs to happen every time. This is the case even
+    when the conflict resolution can use one of the fast-paths (such as those modified
+    in the current transaction).
 
-## CRDT Types vs. Conflict Reporting
+## CRDT types versus conflict reporting
 
 By default, detected conflicts are individually reported. Without
-CRDT types this makes perfect sense, because the conflict resolution
+CRDT types, this makes sense because the conflict resolution
 essentially throws away one half of the available information (local or
 remote row, depending on configuration). This presents a data loss.
 
@@ -303,30 +303,30 @@ CRDT types allow both parts of the information to be combined
 without throwing anything away, eliminating the data loss issue. This makes
 the conflict reporting unnecessary.
 
-For this reason, we skip the conflict reporting when the conflict can be
-fully-resolved by CRDT merge, that is if each column meets at least one
+For this reason, conflict reporting is skipped when the conflict can be
+fully resolved by CRDT merge, that is, if each column meets at least one
 of these two conditions:
 
-1) the values in local and remote tuple are the same (NULL or equal)
+-  The values in local and remote tuple are the same (NULL or equal).
+-  It uses a CRDT data type and so can be merged.
 
-2) it uses a CRDT data type (and so can be merged)
+!!! Note
+    This means that the conflict reporting is also skipped when there are no
+    CRDT columns but all values in local/remote tuples are equal.
 
-*Note*: This means we also skip the conflict reporting when there are no
-CRDT columns, but all values in local/remote tuples are equal.
-
-## Resetting CRDT Values
+## Resetting CRDT values
 
 Resetting CRDT values is possible but requires special handling.
 The asynchronous nature of the
-cluster means that different nodes may see the reset operation (no
-matter how it's implemented) at different places in the change stream.
-Different nodes may also initiate a reset concurrently; i.e. before
+cluster means that different nodes might see the reset operation at different 
+places in the change stream no matter how it's implemented.
+Different nodes might also initiate a reset concurrently, that is, before
 observing the reset from the other node.
 
 In other words, to make the reset operation behave correctly, it needs to
 be commutative with respect to the regular operations. Many naive ways
-to reset a value (which may work perfectly well on a single-node) fail
-for exactly this reason.
+to reset a value that might work well on a single-node fail
+for this reason.
 
 For example, the simplest approach to resetting a value might be:
 
@@ -334,50 +334,53 @@ For example, the simplest approach to resetting a value might be:
 UPDATE crdt_table SET cnt = 0 WHERE id = 1;
 ```
 
-With state-based CRDTs this does not work - it throws away the state for the
-other nodes, but only locally. It will be added back by merge functions
-on remote nodes, causing diverging values, and eventually receiving it
+With state-based CRDTs this doesn't work. It throws away the state for the
+other nodes but only locally. It's added back by merge functions
+on remote nodes, causing diverging values and eventually receiving it
 back due to changes on the other nodes.
 
-With operation-based CRDTs, this may seem to work because the
-update is interpreted as a subtraction of `-cnt`. But it only works in the
+With operation-based CRDTs, this might seem to work because the
+update is interpreted as a subtraction of `-cnt`. But it works only in the
 absence of concurrent resets. Once two nodes attempt to do a reset at
-the same time, we'll end up applying the delta twice, getting a negative
-value (which is not what we expected from a reset).
+the same time, the delta is applied twice, getting a negative
+value (which isn't expected from a reset).
 
-It might also seem that `DELETE + INSERT` can be used as a reset, but this
-has a couple of weaknesses too. If the row is reinserted with the same
-key, it's not guaranteed that all nodes will see it at the same position in
-the stream of operations (with respect to changes from other nodes).
-BDR specifically discourages re-using the same Primary Key value since
+It might also seem that you can use `DELETE + INSERT` as a reset, but this approach
+has a couple of weaknesses, too. If the row is reinserted with the same
+key, it's not guaranteed that all nodes see it at the same position in
+the stream of operations with respect to changes from other nodes.
+BDR specifically discourages reusing the same primary key value since
 it can lead to data anomalies in concurrent cases.
 
-State-based CRDT types can reliably handle resets,
+State-based CRDT types can reliably handle resets
 using a special `!` operator like this:
 
 ```
 UPDATE tab SET counter = !counter WHERE ...;
 ```
 
-By "reliably" we mean the values do not have the two issues illustrated
-above - multiple concurrent resets and divergence.
+"Reliably" means the values don't have the two issues of multiple concurrent resets and divergence.
 
-Operation-based CRDT types can only be reset reliably using
+Operation-based CRDT types can be reset reliably only using
 [Eager Replication](eager), since this avoids multiple concurrent resets.
-Eager Replication can also be used to set either kind of CRDT to a specific
+You can also use Eager Replication to set either kind of CRDT to a specific
 value.
 
 ## Implemented CRDT data types
 
-Currently there are six CRDT data types implemented - grow-only counter
-and sum, positive-negative counter and sum, and delta counter and sum.
-The counters and sums behave mostly the same, except that the "counter" types
-are integer-based (`bigint`), while the "sum" types are decimal-based
+Currently, there are six CRDT data types implemented:
+
+-  Grow-only counter and sum
+-  Positive-negative counter and sum
+-  Delta counter and sum
+
+The counters and sums behave mostly the same, except that the counter types
+are integer-based (`bigint`), while the sum types are decimal-based
 (`numeric`).
 
-Additional CRDT types, described at [1], may be implemented later.
+Additional CRDT types, described at [1], might be implemented later.
 
-The currently implemented CRDT data types can be listed with the
+You can list the currently implemented CRDT data types with the
 following query:
 
 ```sql
@@ -389,20 +392,20 @@ JOIN (pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid)
 
 ### grow-only counter (`crdt_gcounter`)
 
--   supports only increments with non-negative values ( `value + int`
-    and `counter + bigint` operators)
+-   Supports only increments with nonnegative values (`value + int`
+    and `counter + bigint` operators).
 
--   current value of the counter can be obtained either using `#` operator
-    or by casting it to `bigint`
+-   You can obtain the current value of the counter either using `#` operator
+    or by casting it to `bigint`.
 
--   is not compatible with simple assignments like `counter = value`
+-   Isn't compatible with simple assignments like `counter = value`
     (which is common pattern when the new value is computed somewhere in
-    the application)
+    the application).
 
--   allows simple reset of the counter, using the `!` operator
-    ( `counter = !counter` )
+-   Allows simple reset of the counter using the `!` operator
+    ( `counter = !counter` ).
 
--   internal state can be inspected using `crdt_gcounter_to_text`
+-   You can inspect the internal state using `crdt_gcounter_to_text`.
 
 ```
 CREATE TABLE crdt_test (
@@ -440,18 +443,18 @@ SELECT id, bdr.crdt_gcounter_to_text(cnt) FROM crdt_test;
 
 ### grow-only sum (`crdt_gsum`)
 
--   supports only increments with non-negative values ( `sum + numeric` )
+-   Supports only increments with nonnegative values (`sum + numeric`).
 
--   current value of the sum can be obtained either by using `#` operator
-    or by casting it to `numeric`
+-   You can obtain the current value of the sum either by using the `#` operator
+    or by casting it to `numeric`.
 
--   is not compatible with simple assignments like `sum = value`
+-   Isn't compatible with simple assignments like `sum = value`
     (which is the common pattern when the new value is computed somewhere in
-    the application)
+    the application).
 
--   allows simple reset of the sum, using the `!` operator ( `sum = !sum` )
+-   Allows simple reset of the sum using the `!` operator (`sum = !sum`).
 
--   internal state can be inspected using `crdt_gsum_to_text`
+-   Can inspect internal state using `crdt_gsum_to_text`.
 
 ```
 CREATE TABLE crdt_test (
@@ -489,20 +492,20 @@ SELECT id, bdr.crdt_gsum_to_text(gsum) FROM crdt_test;
 
 ### positive-negative counter (`crdt_pncounter`)
 
--   supports increments with both positive and negative values (through
-    `counter + int` and `counter + bigint` operators)
+-   Supports increments with both positive and negative values (through
+    `counter + int` and `counter + bigint` operators).
 
--   current value of the counter can be obtained either by using `#` operator
-    or by casting to `bigint`
+-   You can obtain the current value of the counter either by using the `#` operator
+    or by casting to `bigint`.
 
--   is not compatible with simple assignments like `counter = value`
+-   Isn't compatible with simple assignments like `counter = value`
     (which is the common pattern when the new value is computed somewhere in
-    the application)
+    the application).
 
--   allows simple reset of the counter, using the `!` operator
-    ( `counter = !counter` )
+-   Allows simple reset of the counter using the `!` operator
+    (`counter = !counter`).
 
--   internal state can be inspected using `crdt_pncounter_to_text`
+-   You can inspect the internal state using `crdt_pncounter_to_text`.
 
 ```
 CREATE TABLE crdt_test (
@@ -543,19 +546,19 @@ SELECT id, cnt::bigint, cnt FROM crdt_test;
 
 ### positive-negative sum (`crdt_pnsum`)
 
--   supports increments with both positive and negative values (through
-    `sum + numeric` )
+-   Supports increments with both positive and negative values (through
+    `sum + numeric`).
 
--   current value of the sum can be obtained either by using `#` operator
-    or by casting to `numeric`
+-   You can obtain the current value of the sum either by using then `#` operator
+    or by casting to `numeric`.
 
--   is not compatible with simple assignments like `sum = value`
+-   Isn't compatible with simple assignments like `sum = value`
     (which is the common pattern when the new value is computed somewhere in
-    the application)
+    the application).
 
--   allows simple reset of the sum, using the `!` operator ( `sum = !sum` )
+-   Allows simple reset of the sum using the `!` operator (`sum = !sum`).
 
--   internal state can be inspected using `crdt_pnsum_to_text`
+-   You can inspect the internal state using `crdt_pnsum_to_text`.
 
 ```
 CREATE TABLE crdt_test (
@@ -596,14 +599,14 @@ SELECT id, pnsum::numeric, pnsum FROM crdt_test;
 
 ### delta counter (`crdt_delta_counter`)
 
--   is defined a `bigint` domain, so works exactly like a `bigint` column
+-   Is defined a `bigint` domain, so works exactly like a `bigint` column.
 
--   supports increments with both positive and negative values
+-   Supports increments with both positive and negative values.
 
--   is compatible with simple assignments like `counter = value`
-    (common when the new value is computed somewhere in the application)
+-   Is compatible with simple assignments like `counter = value`
+    (common when the new value is computed somewhere in the application).
 
--   no simple way to reset the value (reliably)
+-   There's no simple way to reset the value reliably.
 
 ```
 CREATE TABLE crdt_test (
@@ -635,14 +638,14 @@ SELECT id, cnt FROM crdt_test;
 
 ### delta sum (`crdt_delta_sum`)
 
--   is defined as a `numeric` domain, so works exactly like a `numeric` column
+-   Is defined as a `numeric` domain so works exactly like a `numeric` column.
 
--   supports increments with both positive and negative values
+-   Supports increments with both positive and negative values.
 
--   is compatible with simple assignments like `sum = value`
-    (common when the new value is computed somewhere in the application)
+-   Is compatible with simple assignments like `sum = value`
+    (common when the new value is computed somewhere in the application).
 
--   no simple way to reset the value (reliably)
+-   There's no simple way to reset the value reliably.
 
 ```
 CREATE TABLE crdt_test (
