@@ -313,6 +313,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/VeritasGuide">
               Veritas NetBackup for PostgreSQL
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VisionXGuide">
+              VisionX
+            </IndexCardLink>
           </IndexCard>
         </div>
 
