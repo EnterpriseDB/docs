@@ -14,14 +14,14 @@ nunjucks.configure("templates", { throwOnUndefined: true, autoescape: false });
 const run = async () => {
   const config = yaml.parse(await fs.readFile("config.yaml", "utf8"));
 
-  config.products.forEach((product) => {
-    product.platforms.forEach((platform) => {
-      platform["supported versions"].forEach((version) => {
-        moveDoc(product, platform, version);
-      });
-    });
-  });
-    
+  for (const product of config.products) {
+    for (const platform of product.platforms) {
+      for (const version of platform["supported versions"]) {
+        await moveDoc(product, platform, version);
+      }
+    }
+  }
+
   return;
 };
 
@@ -32,17 +32,17 @@ const run = async () => {
  * @param version The version of the product to generate docs for
  * @returns void
  */
-const moveDoc = (product, platform, version) => {
-/*
-  console.log(
-    `Copying install guide for ${product.name} ${version} on ${platform.name} ${platform.arch}`,
-  );
-*/
-    
+const moveDoc = async (product, platform, version) => {
+  /*
+      console.log(
+        `Copying install guide for ${product.name} ${version} on ${platform.name} ${platform.arch}`,
+      );
+    */
+
   const context = generateContext(product, platform, version);
 
-  const product_stub = formatStringForFile(context.product.name)
-    
+  const product_stub = formatStringForFile(context.product.name);
+
   const filename =
     [
       product_stub,
@@ -69,34 +69,29 @@ const moveDoc = (product, platform, version) => {
   };
 
   const abrev_product = {
-        "failover-manager": "efm",
-        "migration-toolkit": "mtk",
-        "hadoop-foreign-data-wrapper": "hadoop",
-        "mongodb-foreign-data-wrapper": "mongo",
-        "mysql-foreign-data-wrapper": "mysql",
-        "edb-pgpoolii": "pgpool",
-        "edb-pgpoolii-extensions": "pgpoolext",
-        "postgis": "postgis",
-        "edb-jdbc-connector": "jdbc",
-        "edb-ocl-connector": "ocl",
-        "edb-odbc-connector": "odbc",
-      "edb-pgbouncer": "pgbouncer",
-      
-      
+    "failover-manager": "efm",
+    "migration-toolkit": "mtk",
+    "hadoop-foreign-data-wrapper": "hadoop",
+    "mongodb-foreign-data-wrapper": "mongo",
+    "mysql-foreign-data-wrapper": "mysql",
+    "edb-pgpoolii": "pgpool",
+    "edb-pgpoolii-extensions": "pgpoolext",
+    postgis: "postgis",
+    "edb-jdbc-connector": "jdbc",
+    "edb-ocl-connector": "ocl",
+    "edb-odbc-connector": "odbc",
+    "edb-pgbouncer": "pgbouncer",
   };
 
-
-  if (abrev_product[product_stub] == null){
-    console.error(
-        `[ERROR] product abbreviation missing\n` +
-            product_stub);
+  if (abrev_product[product_stub] == null) {
+    console.error(`[ERROR] product abbreviation missing\n` + product_stub);
   }
-    
+
   const expand_arch = {
     ppcle: "ibm_power_ppc64le",
-      x86: "x86_amd64",
-      x86_64: "x86_amd64",
-      ppc64le: "ibm_power_ppc64le",
+    x86: "x86_amd64",
+    x86_64: "x86_amd64",
+    ppc64le: "ibm_power_ppc64le",
   };
 
   const plat = [
@@ -104,318 +99,325 @@ const moveDoc = (product, platform, version) => {
     context.platform.arch,
   ].join("_");
 
-    const product_prefix = {
-        "failover-manager": "03",
-        "migration-toolkit": "05",
-        "hadoop-foreign-data-wrapper": "05",
-        "mongodb-foreign-data-wrapper": "04",
-        "mysql-foreign-data-wrapper": "04",
-        "edb-pgpoolii": "01",
-        "edb-pgpoolii-extensions": "pgpoolext",
-        "postgis": "01a",
-        "edb-jdbc-connector": "04",
-        "edb-ocl-connector": "04",
-        "edb-odbc-connector": "03",
-      "edb-pgbouncer": "01",
-      
-      
-    };
+  const product_prefix = {
+    "failover-manager": "03",
+    "migration-toolkit": "05",
+    "hadoop-foreign-data-wrapper": "05",
+    "mongodb-foreign-data-wrapper": "04",
+    "mysql-foreign-data-wrapper": "04",
+    "edb-pgpoolii": "01",
+    "edb-pgpoolii-extensions": "pgpoolext",
+    postgis: "01a",
+    "edb-jdbc-connector": "04",
+    "edb-ocl-connector": "04",
+    "edb-odbc-connector": "03",
+    "edb-pgbouncer": "01",
+  };
 
-    var dirpath;
-    var file;
+  var dirpath;
+  var file;
 
-
-    switch (product_stub) {
-        /* Products that don't have an install_on_linux layer */
+  switch (product_stub) {
+    /* Products that don't have an install_on_linux layer */
     case "failover-manager":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            abrev_product[product_stub],
-            context.product.version.toString().replace(/\..*/, ""),
-            [
-                product_prefix[product_stub],
-                "installing",
-                    abrev_product[product_stub],
-            ].join("_"),
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-        file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
-        
-        /* Products that don't abreviate in the directory */ 
-    case "migration-toolkit":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            context.product.name.toLowerCase().replace(/ /g, '_'),
-            context.product.version.toString().replace(/\..*/, ""),
-            [
-                product_prefix[product_stub],
-                "installing",
-                abrev_product[product_stub],
-            ].join("_"),
-            "install_on_linux",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub],
+        context.product.version.toString().replace(/\..*/, ""),
+        [
+          product_prefix[product_stub],
+          "installing",
+          abrev_product[product_stub],
+        ].join("_"),
+        expand_arch[context.platform.arch],
+      ].join("/");
 
-        /* Data wrappers */
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub] +
+            context.product.version.toString().replace(/\..*/, ""),
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
+
+    /* Products that don't abreviate in the directory */
+    case "migration-toolkit":
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        context.product.name.toLowerCase().replace(/ /g, "_"),
+        context.product.version.toString().replace(/\..*/, ""),
+        [
+          product_prefix[product_stub],
+          "installing",
+          abrev_product[product_stub],
+        ].join("_"),
+        "install_on_linux",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub] +
+            context.product.version.toString().replace(/\..*/, ""),
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
+
+    /* Data wrappers */
     case "hadoop-foreign-data-wrapper":
     case "mongodb-foreign-data-wrapper":
     case "mysql-foreign-data-wrapper":
-        prefix["sles_12_x86"]="07";
-        prefix["sles_12_x86_64"]="07";
-        prefix["rhel_8_ppc64le"]="13";
-        prefix["rhel_7_ppc64le"]="15";
-        prefix["sles_12_ppc64le"]="19";
-        prefix["sles_15_ppc64le"]="17";
+      prefix["sles_12_x86"] = "07";
+      prefix["sles_12_x86_64"] = "07";
+      prefix["rhel_8_ppc64le"] = "13";
+      prefix["rhel_7_ppc64le"] = "15";
+      prefix["sles_12_ppc64le"] = "19";
+      prefix["sles_15_ppc64le"] = "17";
 
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",        
-            abrev_product[product_stub] + "_data_adapter",
-            context.product.version.toString().replace(/\..*/, ""),
-            [
-                product_prefix[product_stub],
-                "installing_the",
-                abrev_product[product_stub],
-                "data_adapter"
-            ].join("_"),
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-        file =
-            [
-                prefix[plat],
-                abrev_product[product_stub],
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub] + "_data_adapter",
+        context.product.version.toString().replace(/\..*/, ""),
+        [
+          product_prefix[product_stub],
+          "installing_the",
+          abrev_product[product_stub],
+          "data_adapter",
+        ].join("_"),
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     case "edb-jdbc-connector":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",        
-            abrev_product[product_stub] + "_connector",
-            context.product.version,
-            [
-                product_prefix[product_stub],
-                "installing_and_configuring_the",
-                abrev_product[product_stub],
-                "connector",
-            ].join("_"),
-            "01_installing_the_connector_with_an_rpm_package",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-        file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub] + "_connector",
+        context.product.version,
+        [
+          product_prefix[product_stub],
+          "installing_and_configuring_the",
+          abrev_product[product_stub],
+          "connector",
+        ].join("_"),
+        "01_installing_the_connector_with_an_rpm_package",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub] +
+            context.product.version.toString().replace(/\..*/, ""),
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     case "edb-odbc-connector":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",        
-            abrev_product[product_stub] + "_connector",
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub] + "_connector",
+        context.product.version.toString().replace(/\..*/, ""),
+        [
+          product_prefix[product_stub],
+          "installing_edb",
+          abrev_product[product_stub],
+        ].join("_"),
+        "01_installing_linux",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub] +
             context.product.version.toString().replace(/\..*/, ""),
-            [
-                product_prefix[product_stub],
-                "installing_edb",
-                abrev_product[product_stub],
-            ].join("_"),
-            "01_installing_linux",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-        file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     case "edb-ocl-connector":
-        prefix["sles_15_x86_64"]="03";
-        prefix["sles_12_x86_64"]="04";
-        prefix["sles_15_ppc64le"]="09";
-        prefix["sles_12_ppc64le"]="10";
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",        
-            abrev_product[product_stub] + "_connector",
-            context.product.version,
-            [
-                product_prefix[product_stub],
-                "open_client_library",
-            ].join("_"),
-            "01_installing_and_configuring_the_ocl_connector",
-            "install_on_linux_using_edb_repo",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-        file = [
-            prefix[plat],
-            abrev_product[product_stub],
-            "connector"+ context.product.version.toString().replace(/\..*/, ""),
-            context.platform.name.toLowerCase().replace(/ /g, ""),
-            context.platform.arch.replace(/_?64/g, ""),
+      prefix["sles_15_x86_64"] = "03";
+      prefix["sles_12_x86_64"] = "04";
+      prefix["sles_15_ppc64le"] = "09";
+      prefix["sles_12_ppc64le"] = "10";
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub] + "_connector",
+        context.product.version,
+        [product_prefix[product_stub], "open_client_library"].join("_"),
+        "01_installing_and_configuring_the_ocl_connector",
+        "install_on_linux_using_edb_repo",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          "connector" + context.product.version.toString().replace(/\..*/, ""),
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
         ].join("_") + ".mdx";
-        break;
-        
-        
+      break;
+
     case "edb-pgpoolii":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            abrev_product[product_stub],
-            context.product.version,
-            [
-                product_prefix[product_stub],
-                "installing_and_configuring_the",
-                abrev_product[product_stub]+"-II",
-            ].join("_"),
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub],
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub],
+        context.product.version,
+        [
+          product_prefix[product_stub],
+          "installing_and_configuring_the",
+          abrev_product[product_stub] + "-II",
+        ].join("_"),
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     case "edb-pgpoolii-extensions":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            "pgpool",
-            context.product.version,
-            "02_extensions",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub],
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
-        
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        "pgpool",
+        context.product.version,
+        "02_extensions",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
+
     case "edb-pgbouncer":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            abrev_product[product_stub],
-            context.product.version,
-            [
-                product_prefix[product_stub],
-                "installation",
-            ].join("_"),
-            "install_on_linux",
-            
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub],
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub],
+        context.product.version,
+        [product_prefix[product_stub], "installation"].join("_"),
+        "install_on_linux",
+
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     case "postgis":
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            abrev_product[product_stub],
-            context.product.version,
-            [
-                product_prefix[product_stub],
-                "installing",
-                abrev_product[product_stub],
-            ].join("_"),
-            "installing_on_linux",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub],
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub],
+        context.product.version,
+        [
+          product_prefix[product_stub],
+          "installing",
+          abrev_product[product_stub],
+        ].join("_"),
+        "installing_on_linux",
+        expand_arch[context.platform.arch],
+      ].join("/");
+
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub],
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
 
     default:
-        dirpath = [
-            "..",
-            "product_docs",
-            "docs",
-            abrev_product[product_stub],
-            context.product.version.toString().replace(/\..*/, ""),
-            [
-                product_prefix[product_stub],
-                "installing",
-                abrev_product[product_stub],
-            ].join("_"),
-            "install_on_linux",
-            expand_arch[context.platform.arch],
-        ].join("/");
-        
-            file =
-            [
-                prefix[plat],
-                abrev_product[product_stub]+ context.product.version.toString().replace(/\..*/, ""),
-                context.platform.name.toLowerCase().replace(/ /g, ""),
-                context.platform.arch.replace(/_?64/g, ""),
-            ].join("_") + ".mdx";
-        break;
-    }
-    
-        console.log(`renders/${filename} ${dirpath}/${file}`);
-};
+      dirpath = [
+        "..",
+        "product_docs",
+        "docs",
+        abrev_product[product_stub],
+        context.product.version.toString().replace(/\..*/, ""),
+        [
+          product_prefix[product_stub],
+          "installing",
+          abrev_product[product_stub],
+        ].join("_"),
+        "install_on_linux",
+        expand_arch[context.platform.arch],
+      ].join("/");
 
+      file =
+        [
+          prefix[plat],
+          abrev_product[product_stub] +
+            context.product.version.toString().replace(/\..*/, ""),
+          context.platform.name.toLowerCase().replace(/ /g, ""),
+          context.platform.arch.replace(/_?64/g, ""),
+        ].join("_") + ".mdx";
+      break;
+  }
+
+  const src = `renders/${filename}`;
+  const dest = `${dirpath}/${file}`;
+  try {
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.copyFile(src, dest);
+    console.log(`deployed ${src} to ${dest}`);
+  } catch (err) {
+    // print errors with full paths to aid in diagnosis
+    console.warn(err.toString(), {
+      src: path.resolve(src),
+      dest: path.resolve(dest),
+    });
+  }
+};
 
 /**
  * Format a string into the format expected when used in file or folder names.
@@ -457,6 +459,5 @@ const generateContext = (product, platform, version) => {
     },
   };
 };
-
 
 run();
