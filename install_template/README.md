@@ -7,7 +7,8 @@ This script allows the generation of product instalation docs for many different
 The following commands can be run from the Docs project directory.
 
 - `npm run install-docs:build` — Renders the templates and generates the final install doc files.
-- `npm run install-docs:rebuild-docker-container` — Rebuilds the docker container used to render templates.
+- `npm run install-docs:deploy` — Deploys the final install doc files to their final location.
+- `npm run install-docs:rebuild-docker-image` — Rebuilds the docker container used to render templates.
 
 ## Configuration
 
