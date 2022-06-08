@@ -1,18 +1,28 @@
 import fs from "fs/promises";
 import { existsSync as fileExists } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import nunjucks from "nunjucks";
 import prettier from "prettier";
 import yaml from "yaml";
 
 nunjucks.configure("templates", { throwOnUndefined: true, autoescape: false });
 
+// script takes one _optional_ parameter: the base directory to write output to.
+// if not specified, defaults to ../product_docs/docs
+// if relative (as is the default), this path is interpreted relative to the location of this script
+const args = process.argv.slice(2);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const destPath = path.resolve(__dirname, args[0] || "../product_docs/docs");
+
 /**
  * Loop through the config.yaml file and generate docs for every product/platform/supported version combination found.
  * @returns void
  */
 const run = async () => {
-  const config = yaml.parse(await fs.readFile("config.yaml", "utf8"));
+  const config = yaml.parse(
+    await fs.readFile(path.resolve(__dirname, "config.yaml"), "utf8"),
+  );
 
   for (const product of config.products) {
     for (const platform of product.platforms) {
@@ -121,9 +131,7 @@ const moveDoc = async (product, platform, version) => {
     /* Products that don't have an install_on_linux layer */
     case "failover-manager":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub],
         context.product.version.toString().replace(/\..*/, ""),
         [
@@ -147,9 +155,7 @@ const moveDoc = async (product, platform, version) => {
     /* Products that don't abreviate in the directory */
     case "migration-toolkit":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         context.product.name.toLowerCase().replace(/ /g, "_"),
         context.product.version.toString().replace(/\..*/, ""),
         [
@@ -183,9 +189,7 @@ const moveDoc = async (product, platform, version) => {
       prefix["sles_15_ppc64le"] = "17";
 
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub] + "_data_adapter",
         context.product.version.toString().replace(/\..*/, ""),
         [
@@ -208,9 +212,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "edb-jdbc-connector":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub] + "_connector",
         context.product.version,
         [
@@ -235,9 +237,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "edb-odbc-connector":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub] + "_connector",
         context.product.version.toString().replace(/\..*/, ""),
         [
@@ -265,9 +265,7 @@ const moveDoc = async (product, platform, version) => {
       prefix["sles_15_ppc64le"] = "09";
       prefix["sles_12_ppc64le"] = "10";
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub] + "_connector",
         context.product.version,
         [product_prefix[product_stub], "open_client_library"].join("_"),
@@ -288,9 +286,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "edb-pgpoolii":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub],
         context.product.version,
         [
@@ -312,9 +308,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "edb-pgpoolii-extensions":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         "pgpool",
         context.product.version,
         "02_extensions",
@@ -332,9 +326,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "edb-pgbouncer":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub],
         context.product.version,
         [product_prefix[product_stub], "installation"].join("_"),
@@ -354,9 +346,7 @@ const moveDoc = async (product, platform, version) => {
 
     case "postgis":
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub],
         context.product.version,
         [
@@ -379,9 +369,7 @@ const moveDoc = async (product, platform, version) => {
 
     default:
       dirpath = [
-        "..",
-        "product_docs",
-        "docs",
+        destPath,
         abrev_product[product_stub],
         context.product.version.toString().replace(/\..*/, ""),
         [
@@ -404,17 +392,16 @@ const moveDoc = async (product, platform, version) => {
       break;
   }
 
-  const src = `renders/${filename}`;
-  const dest = `${dirpath}/${file}`;
+  const src = path.resolve(__dirname, "renders", filename);
+  const dest = path.resolve(__dirname, dirpath, file);
   try {
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.copyFile(src, dest);
     console.log(`deployed ${src} to ${dest}`);
   } catch (err) {
-    // print errors with full paths to aid in diagnosis
     console.warn(err.toString(), {
-      src: path.resolve(src),
-      dest: path.resolve(dest),
+      src,
+      dest,
     });
   }
 };
