@@ -26,13 +26,13 @@ The example used to illustrate this method is based upon the following transacti
 
 In `MMRnode_b`, the following row is inserted:
 
-```shell
+```sql
 INSERT INTO emp (empno,ename,job,deptno) VALUES (9001,'SMITH','ANALYST',20);
 ```
 
 In `MMRnode_c`, the following row is inserted with the same primary key value 9001 in the `empno` column:
 
-```shell
+```sql
 INSERT INTO emp (empno,ename,job,deptno) VALUES (9001,'JONES','SALESMAN',30);
 In MMRnode_c, this is followed by a series of updates to the newly inserted row:
 UPDATE emp SET mgr = 7698 WHERE empno = 9001;
@@ -44,8 +44,9 @@ Synchronization replication is performed. The resulting content of the `emp` tab
 
 On `MMRnode_a` the conflicting row has not been replicated:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM emp;
+__OUTPUT__
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
   7369 | SMITH  | CLERK     | 7902 | 17-DEC-80 00:00:00 |  800.00 |         |     20
@@ -67,8 +68,9 @@ MMRnode_a=# SELECT * FROM emp;
 
 On `MMRnode_b` the conflicting row inserted on this node remains, but is updated with the transactions replicated from `MMRnode_c`:
 
-```shell
+```sql
 MMRnode_b=# SELECT * FROM emp;
+__OUTPUT__
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
   7369 | SMITH  | CLERK     | 7902 | 17-DEC-80 00:00:00 |  800.00 |         |     20
@@ -91,8 +93,9 @@ MMRnode_b=# SELECT * FROM emp;
 
 On `MMRnode_c` the conflicting row inserted on this node remains along with the updates performed on this node:
 
-```shell
+```shql
 MMRnode_c=# SELECT * FROM emp;
+__OUTPUT__
  empno | ename  |    job    | mgr  |      hiredate      |   sal   |  comm   | deptno
 -------+--------+-----------+------+--------------------+---------+---------+--------
   7369 | SMITH  | CLERK     | 7902 | 17-DEC-80 00:00:00 |  800.00 |         |     20
@@ -121,8 +124,9 @@ The following are the steps to reproduce the correct row, currently on `MMRnode_
 
 On `MMRnode_a`, this row does not exist:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
+__OUTPUT__
  empno | ename | job | mgr | hiredate | sal | comm | deptno
 -------+-------+-----+-----+----------+-----+------+--------
 (0 rows)
@@ -130,21 +134,24 @@ MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
 
 On `MMRnode_b`, delete the erroneous row:
 
-```shell
+```sql
 MMRnode_a=# SHOW session_replication_role;
+__OUTPUT__
  session_replication_role
 --------------------------
  replica
 (1 row)
-
+```
+```sql
 MMRnode_b=# DELETE FROM emp WHERE empno = 9001;
 DELETE 1
 ```
 
 On `MMRnode_c`, leave the correct, accepted row intact:
 
-```shell
+```sql
 MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
+__OUTPUT__
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
   9001 | JONES | SALESMAN | 7698 |          | 9500.00 | 5000.00 |     30
@@ -179,7 +186,7 @@ The resulting change for the `rrep_tx_conflict_status` column in the shadow tabl
 
 First, you must identify the `pub_id` and target `db_id` values to associate with the pending transactions. To do so, invoke the following query, substituting the `rrep_sync_id` values for `sync_id` in the query:
 
-```shell
+```sql
 SELECT pub_id, db_id AS target_db_id
   FROM _edb_replicator_pub.rrep_MMR_txset
   WHERE start_rrep_sync_id <= sync_id
@@ -190,37 +197,44 @@ In this example, there are four values to substitute for `sync_id`, which are `1
 
 The results are the following:
 
-```shell
+```sql
 MMRnode_c=# SELECT pub_id, db_id AS target_db_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset
 MMRnode_c-#   WHERE start_rrep_sync_id <= 1 AND end_rrep_sync_id >= 1;
+__OUTPUT__
  pub_id | target_db_id
 --------+--------------
       3 |            1
       3 |            4
 (2 rows)
-
+```
+```sql
 MMRnode_c=# SELECT pub_id, db_id AS target_db_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset
 MMRnode_c-#   WHERE start_rrep_sync_id <= 2 AND end_rrep_sync_id >= 2;
+__OUTPUT__
  pub_id | target_db_id
 --------+--------------
       3 |            1
       3 |            4
 (2 rows)
-
+```
+```sql 
 MMRnode_c=# SELECT pub_id, db_id AS target_db_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset
 MMRnode_c-#   WHERE start_rrep_sync_id <= 3 AND end_rrep_sync_id >= 3;
+__OUTPUT__
  pub_id | target_db_id
 --------+--------------
       3 |            1
       3 |            4
 (2 rows)
-
+```
+```sql
 MMRnode_c=# SELECT pub_id, db_id AS target_db_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset
 MMRnode_c-#   WHERE start_rrep_sync_id <= 4 AND end_rrep_sync_id >= 4;
+__OUTPUT__
  pub_id | target_db_id
 --------+--------------
       3 |            1
@@ -243,7 +257,7 @@ In this example, you can add a total of two entries to `_edb_replicator_pub.rrep
 
 The two `INSERT` statements invoked on `MMRnode_c` are the following:
 
-```shell
+```sql
 INSERT INTO _edb_replicator_pub.rrep_MMR_txset (set_id, pub_id, db_id, status, start_rrep_sync_id, end_rrep_sync_id)
   values (nextval('_edb_replicator_pub.rrep_txset_seq'),3,1,'P',1,4);
 
@@ -253,10 +267,11 @@ INSERT INTO _edb_replicator_pub.rrep_MMR_txset (set_id, pub_id, db_id, status, s
 
 A query of the \_edb_replicator_pub.rrep_MMR_txset metadata table displays the following:
 
-```shell
+```sql
 MMRnode_c=# SELECT set_id, pub_id, db_id AS target_db_id, status,
 MMRnode_c-#     start_rrep_sync_id, end_rrep_sync_id
 MMRnode_c-#   FROM _edb_replicator_pub.rrep_MMR_txset;
+__OUTPUT__
  set_id | pub_id | target_db_id | status | start_rrep_sync_id | end_rrep_sync_id
 --------+--------+--------------+--------+--------------------+------------------
       1 |      3 |            1 | C      |                  1 |                4
@@ -274,15 +289,19 @@ The two entries with completed status are from the synchronization attempt that 
 
 The insert and three update transactions recorded in the `rrst_edb_emp` shadow table on `MMRnode_c` are replicated to the other primary nodes.
 
-```shell
+```sql
 On MMRnode_a:
 MMRnode_a=# SELECT * FROM emp WHERE empno = 9001;
+__OUTPUT__
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
   9001 | JONES | SALESMAN | 7698 |          | 9500.00 | 5000.00 |     30
 (1 row)
+```
+```sql
 On MMRnode_b:
 MMRnode_b=# SELECT * FROM emp WHERE empno = 9001;
+__OUTPUT__
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
   9001 | JONES | SALESMAN | 7698 |          | 9500.00 | 5000.00 |     30
@@ -291,8 +310,9 @@ MMRnode_b=# SELECT * FROM emp WHERE empno = 9001;
 
 These rows now match the row created by the original transactions on `MMRnode_c`:
 
-```shell
+```sql
 MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
+__OUTPUT__
  empno | ename |   job    | mgr  | hiredate |   sal   |  comm   | deptno
 -------+-------+----------+------+----------+---------+---------+--------
   9001 | JONES | SALESMAN | 7698 |          | 9500.00 | 5000.00 |     30
@@ -303,11 +323,12 @@ MMRnode_c=# SELECT * FROM emp WHERE empno = 9001;
 
 For a uniqueness (insert/insert) conflict only, the following query on the `xdb_conflicts` table in the controller database can display the conflicts:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
 MMRnode_a-#   WHERE pk_value = 'empno=9001'
 MMRnode_a-#     AND conflict_type = 'II'
 MMRnode_a-#     AND resolution_status = 'P';
+__OUTPUT__
 -[ RECORD 1 ]-------+---------------------------------------------------------------
 src_db_id           | 4
 target_db_id        | 56
@@ -346,7 +367,7 @@ pk_value            | empno=9001
 
 The following SQL statement changes the value in column `resolution_status` from `P` (pending) to `C` (completed) to indicate this conflict was resolved. The value in `winning_db_id` changes to `56` to indicate primary node `MMRnode_c` contains the winning transaction. The value in `winning_rrep_sync_id` is changed to the value of `rrep_sync_id` for the shadow table entry of the `INSERT` transaction in `MMRnode_c`, since this is the correct one.
 
-```shell
+```sql
 UPDATE _edb_replicator_pub.xdb_conflicts SET
   resolution_status = 'C',
   win_db_id = 56,
