@@ -1,0 +1,127 @@
+---
+title: 'Cluster Management'
+description: "Cluster management with patronictl"
+---
+
+### Cluster information
+
+To get information about the cluster, use the `list` or `topology` endpoints:
+
+```bash
+$ patronictl -c /etc/patroni.yml list
++ Cluster: demo-cluster-1 (7106835957012965359) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | xxx.xxx.xxx.xxx | Leader  | running |  1 |           |
+| pg-patroni2 | xxx.xxx.xxx.xxx | Replica | running |  1 |         0 |
++-------------+-----------------+---------+---------+----+-----------+
+
+$ patronictl -c /etc/patroni.yml topology
++ Cluster: demo-cluster-1 (7106835957012965359) ------+----+-----------+
+| Member        | Host            | Role    | State   | TL | Lag in MB |
++---------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1   | xxx.xxx.xxx.xxx | Leader  | running |  1 |           |
+| + pg-patroni2 | xxx.xxx.xxx.xxx | Replica | running |  1 |         0 |
++---------------+-----------------+---------+---------+----+-----------+
+```
+
+### Patroni logs
+
+Patroni logs are sent to system logs by systemd. Use the `journalctl` system utility to fetch it:
+
+```bash
+$ sudo journalctl -u patroni.service -n 100 -f
+Jun 08 12:26:29 pg-patroni1 patroni[26589]: 2022-06-08 12:26:29,000 INFO: no action. I am (pg-patroni1), a secondary, and following a leader (pg-patroni2)
+...
+```
+
+### Maintenance mode
+
+To pause or resume cluster management, use:
+
+```bash
+$ patronictl -c /etc/patroni.yml pause
+Success: cluster management is paused
+
+$ patronictl -c /etc/patroni.yml list
++ Cluster: demo-cluster-1 (7106835957012965359) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | xxx.xxx.xxx.xxx | Leader  | running |  1 |           |
+| pg-patroni2 | xxx.xxx.xxx.xxx | Replica | running |  1 |         0 |
++-------------+-----------------+---------+---------+----+-----------+
+ Maintenance mode: on
+
+$ patronictl -c /etc/patroni.yml resume
+Success: cluster management is resumed
+```
+
+### Manual failover or switchover
+
+The failover endpoint allows to perform a manual failover when there are no healthy nodes, but at the same time it will not allow you to schedule a switchover.
+
+```bash
+Usage: patronictl failover [OPTIONS] [CLUSTER_NAME]
+
+  Failover to a replica
+
+Options:
+  --master TEXT     The name of the current master
+  --candidate TEXT  The name of the candidate
+  --force           Do not ask for confirmation at any point
+  --help            Show this message and exit.
+```
+
+The switchover endpoint is the opposite. It works only when the cluster is healthy (there is a leader) and allows to schedule a switchover at a given time.
+
+```bash
+Usage: patronictl switchover [OPTIONS] [CLUSTER_NAME]
+
+  Switchover to a replica
+
+Options:
+  --master TEXT     The name of the current master
+  --candidate TEXT  The name of the candidate
+  --scheduled TEXT  Timestamp of a scheduled switchover in unambiguous format
+                    (e.g. ISO 8601)
+  --force           Do not ask for confirmation at any point
+  --help            Show this message and exit.
+```
+
+Example:
+
+```bash
+$ patronictl -c /etc/patroni.yml switchover --candidate pg-patroni2
+Master [pg-patroni1]: 
+When should the switchover take place (e.g. 2022-06-08T13:14 )  [now]: 
+Current cluster topology
++ Cluster: demo-cluster-1 (7106835957012965359) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | xxx.xxx.xxx.xxx | Leader  | running |  1 |           |
+| pg-patroni2 | xxx.xxx.xxx.xxx | Replica | running |  1 |         0 |
++-------------+-----------------+---------+---------+----+-----------+
+Are you sure you want to switchover cluster demo-cluster-1, demoting current master pg-patroni1? [y/N]: y
+2022-06-08 12:14:48.01625 Successfully switched over to "pg-patroni2"
++ Cluster: demo-cluster-1 (7106835957012965359) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | xxx.xxx.xxx.xxx | Replica | stopped |    |   unknown |
+| pg-patroni2 | xxx.xxx.xxx.xxx | Leader  | running |  1 |           |
++-------------+-----------------+---------+---------+----+-----------+
+
+$ patronictl -c /etc/patroni.yml list
++ Cluster: demo-cluster-1 (7106835957012965359) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | xxx.xxx.xxx.xxx | Replica | running |  2 |         0 |
+| pg-patroni2 | xxx.xxx.xxx.xxx | Leader  | running |  2 |           |
++-------------+-----------------+---------+---------+----+-----------+
+
+$ patronictl -c /etc/patroni.yml history
++----+----------+------------------------------+----------------------------------+-------------+
+| TL |      LSN | Reason                       | Timestamp                        | New Leader  |
++----+----------+------------------------------+----------------------------------+-------------+
+|  1 | 67109024 | no recovery target specified | 2022-06-08T12:14:47.785857+00:00 | pg-patroni2 |
++----+----------+------------------------------+----------------------------------+-------------+
+```
