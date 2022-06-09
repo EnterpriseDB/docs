@@ -65,10 +65,31 @@ writing new private key to 'server.key'
 !!! Note
     When creating the certificate, the value specified for the common name field (designated as `CN=enterprisedb` in this example) must be the database user name that is specified in the **User** field of the Add Database or Update Database dialog box used when defining the publication database, subscription database, or primary nodes. See [Adding a publication database](../05_smr_operation/02_creating_publication/02_adding_pub_database/#adding_pub_database)), [Adding a subscription database](../05_smr_operation/03_creating_subscription/02_adding_subscription_database/#adding_subscription_database)), [Adding the primary definition node](../06_mmr_operation/02_creating_publication_mmr/#adding_pdn)), and [Creating more primary nodes](../06_mmr_operation/03_creating_primary_nodes/#creating_primary_nodes)).
 
-There are two options available when entering the value for the common name field: the database user name and host name. When configuring the host name as the common name value, follow the specified steps as outlined below. 
-    - Create root Certificate Authority (CA) private key (`root.key`) and root CA certificate (`root.crt`) files using the example below. Enter  
-    - 
 Alternatively, you can use user name maps as defined in the `pg_ident.conf` file to permit more flexibility for the common name and database user name. Steps 8 and 9 describe the use of user name maps.
+
+There are two options when entering the value for the common name field: the database user name and host name/ip-adress. If entering `CN=hostname/ip-address`, use the following command.
+-   Create root Certificate Authority (CA) private key (`root.key`) and root CA certificate (`root.crt`) files with these commands:
+    ```text
+    [root@localhost epas-certs-using-hostname]# openssl genrsa -des3 -out root.key 4096
+    Generating RSA private key, 4096 bit long modulus
+    ........++
+    .........++
+    e is 65537 (0x10001)
+    Enter pass phrase for root.key:
+    Verifying - Enter pass phrase for root.key:
+
+    [root@localhost epas-certs-using-hostname]# openssl req -x509 -new -nodes -key root.key -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=192.168.22.174' -sha256 -days 1024 -out root.crt
+    Enter pass phrase for root.key:
+    [root@localhost epas-certs-using-hostname]# openssl genrsa -out server.key 2048
+    Generating RSA private key, 2048 bit long modulus
+    ..........................................+++
+    .........................................................................................+++
+    e is 65537 (0x10001)
+
+    Note: Please note in below command database server ip-address which is given as CN(Common Name) value for server.csr(server certificate signing request) file generation could not be identical as you have used above while generating root.crt file. It must be different.
+
+    [root@localhost epas-certs-using-hostname]# openssl req -new -sha256 -key server.key -subj '/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=192.168.18.2' -out server.csr
+    ```
 
 **Step 2:** Generate the self-signed certificate.
 
@@ -80,12 +101,23 @@ Signature ok
 subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb
 Getting Private key
 ```
+The following command generates a server certificate with `CN=hostname/ip-address` to file `server.crt` using the certificate signing request file, `server.csr`, and the private root key, `root.key`, as input.
+
+```text
+[root@localhost epas-certs-using-hostname]# openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 1024 -sha256
+Signature ok
+subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=localhost.localdomain
+Getting CA Private Key
+Enter pass phrase for root.key:
+```
 
 **Step 3:** Make a copy of the server certificate (`server.crt`) to use as the root Certificate Authority (CA) file (`root.crt`).
 
 ```text
 $ cp server.crt root.crt
 ```
+
+If following the instructions specific to `CN=hostname/ip-address`, make a copy of the `root.crt` file from Step 1. 
 
 **Step 4:** Delete the now redundant certificate signing request (`server.csr`).
 
@@ -208,6 +240,29 @@ Before you begin, configure the client for SSL with trigger mode.
   Make the following client/cert files available on the publication/subscription server using an SSL connection:
   - `xdb.keystore`
   - `xdb_pkcs.p12`
+- If you generated the server certificate with `CN=hostname/ip-address`, you cannot use `server.crt/key` as client server/key. Instead, generate the client private key and ceriticate where CN value is specified as db user name. To do so, enter the following commands in the same location as above: 
+  - `postgresql.key`
+  - `postgresql.crt`
+  - `postgresql.pk8`
+  - `root.crt` (copied from database server data directory)
+  ```text
+  [root@localhost epas-certs-using-hostname]# openssl genrsa -out postgresql.key 2048
+  Generating RSA private key, 2048 bit long modulus
+  ....................................................................................................+++
+  ..............................................................................................................+++
+  e is 65537 (0x10001)
+  [root@localhost epas-certs-using-hostname]# openssl req -new -sha256 -key postgresql.key -subj "/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb" -out postgresql.csr
+  
+  Create the client certificate using above postgresql.csr certificate signing request and root.crt and root.key files will be given as input(root.crt and root.key files will be used we created in Configuring SSL on a Postgres database server section).
+  [root@localhost epas-certs-using-hostname]# openssl x509 -req -in postgresql.csr -CA root.crt -CAkey root.key -CAcreateserial -out postgresql.crt -days 1024 -sha256
+  Signature ok
+  subject=/C=US/ST=Massachusetts/L=Bedford/O=EnterpriseDB/OU=XDB/emailAddress=support@enterprisedb.com/CN=enterprisedb
+  Getting CA Private Key
+  Enter pass phrase for root.key:
+  [root@localhost epas-certs-using-hostname]# openssl pkcs8 -topk8 -inform PEM -in postgresql.key -outform DER -out postgresql.pk8 -v1 PBE-MD5-DES -nocrypt
+
+  [root@localhost epas-certs-using-hostname]# cp /var/lib/edb/as14/data/root.crt 
+  ```
   
 **Step 1:** Using files `server.crt` and server.key located under the Postgres database server data subdirectory, create copies of these files and move them to the host where the publication server and subscription server are running.
 
@@ -218,6 +273,12 @@ cp server.key xdb.key
 
 For this example, assume file `xdb.crt` is a copy of `server.crt` and `xdb.key` is a copy of `server.key`.
 
+If you generated the server certificate with `CN=hostname/ip-address`, create xdb.keystore/xdb_pkcs.p12 with the `postgresql.crt` and `postgresql.ke`y client files as created with `CN=username` using the following commands :
+```shell 
+$ cp postgresql.crt xdb.crt
+$ cp postgresql.key xdb.key
+```
+
 **Step 2:** Create a copy of `xdb.crt`.
 
 ```text
@@ -227,6 +288,12 @@ total 12
 -rw-r--r-- 1 user user 1346 Mar 15 09:58 xdb.crt
 -rw-r--r-- 1 user user 1704 Mar 15 09:58 xdb.key
 -rw-r--r-- 1 user user 1346 Mar 15 10:00 xdb_root.crt
+```
+
+If you generated the server certificate with `CN=hostname/ip-address`, use the `root.crt file` presets from the database data directory in the following command to make `xdb_root.crt` file:
+
+```shell
+$ cp root.crt xdb_root.crt
 ```
 
 **Step 3:** Create a distinguished encoding rules (DER) format of file `xdb_root.crt`. The generated DER format of this file is `xdb_root.crt.der`. The DER format of the file is required for the keytool program in the next step.
