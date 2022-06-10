@@ -3,7 +3,7 @@ navTitle: Overview
 title: HARP functionality overview
 ---
 
-HARP is a new approach to high availability for BDR
+HARP is a new approach to high availability for EDB Postgres Distributed (EPD)
 clusters. It leverages a consensus-driven quorum to determine the correct connection endpoint
 in a semi-exclusive manner to prevent unintended multi-node writes from an
 application.
@@ -21,7 +21,7 @@ that in a cluster of N nodes, quorum requires a minimum of N/2+1 nodes to hold
 a meaningful vote.
 
 All of this ensures the cluster is always in agreement regarding the node
-that is "in charge." For a BDR cluster consisting of multiple nodes, this
+that is "in charge." For an EPD cluster consisting of multiple nodes, this
 determines the node that is the primary write target. HARP designates this node
 as the lead master.
 
@@ -33,14 +33,14 @@ target is ambiguous or unknowable. In a standard Postgres cluster, it's
 important that only a single node is ever writable and sending replication
 traffic to the remaining nodes.
 
-Even in multi-master-capable approaches such as BDR, it can be help to
+Even in multi-master-capable approaches such as EPD, it can be help to
 reduce the amount of necessary conflict management to derive identical data
-across the cluster. In clusters that consist of multiple BDR nodes per physical
-location or region, this usually means a single BDR node acts as a "leader" and
+across the cluster. In clusters that consist of multiple EPD nodes per physical
+location or region, this usually means a single EPD node acts as a "leader" and
 remaining nodes are "shadow." These shadow nodes are still writable, but writing to them is discouraged unless absolutely necessary.
 
 By leveraging quorum, it's possible for all nodes to agree on the exact
-Postgres node to represent the entire cluster or a local BDR region. Any
+Postgres node to represent the entire cluster or a local EPD region. Any
 nodes that lose contact with the remainder of the quorum, or are overruled by
 it, by definition can't become the cluster leader.
 
@@ -65,14 +65,14 @@ translates this information to a valid Postgres node target. Because Proxy
 obtains the node target from the consensus layer, several such instances can
 exist independently.
 
-While using BDR as the consensus layer, each server node resembles this
+While using EPD as the consensus layer, each server node resembles this
 variant instead:
 
-![HARP Unit w/BDR Consensus](images/ha-unit-bdr.png)
+![HARP Unit w/EPD Consensus](images/ha-unit-bdr.png)
 
 In either case, each unit consists of the following elements:
 
-* A Postgres or EDB instance
+* A Postgres or EDB Postgres Advanced Server instance
 * A consensus layer resource, meant to track various attributes of the Postgres
   instance
 * A HARP Manager process to convey the state of the Postgres node to the
@@ -84,19 +84,19 @@ Not every application stack has access to additional node resources
 specifically for the Proxy component, so it can be combined with the 
 application server to simplify the stack.
 
-This is a typical design using two BDR nodes in a single data center organized in a lead master/shadow master configuration:
+This is a typical design using two EPD nodes in a single data center organized in a lead master/shadow master configuration:
 
 ![HARP Cluster](images/ha-ao.png)
 
-When using BDR  as the HARP consensus layer, at least three
-fully qualified BDR nodes must be present to ensure a quorum majority. (Not shown in the diagram are connections between BDR nodes.)
+When using EPD  as the HARP consensus layer, at least three
+fully qualified EPD nodes must be present to ensure a quorum majority. (Not shown in the diagram are connections between EPD nodes.)
 
-![HARP Cluster w/BDR Consensus](images/ha-ao-bdr.png)
+![HARP Cluster w/EPD Consensus](images/ha-ao-bdr.png)
 
 ## How it works
 
-When managing a BDR cluster, HARP maintains at most one leader node per
-defined location. This is referred to as the lead master. Other BDR
+When managing an EPD cluster, HARP maintains at most one leader node per
+defined location. This is referred to as the lead master. Other EPD
 nodes that are eligible to take this position are shadow master state until they take the leader role.
 
 Applications can contact the current leader only through the proxy service. 
@@ -109,7 +109,7 @@ multiple nodes.
 ### Determining a leader
 
 As an example, consider the role of lead master in a locally subdivided
-BDR Always-On group as can exist in a single data center. When any
+EDB Postgres Distributed Always-On group as can exist in a single data center. When any
 Postgres or Manager resource is started, and after a configurable refresh
 interval, the following must occur:
 
@@ -176,7 +176,7 @@ connections.
 As a result, the consensus layer generally exists outside of HARP or HARP-managed nodes for maximum safety. Our reference diagrams show this separation, although it isn't required.
 
 !!! Note
-    To operate and manage cluster state, BDR contains its own
+    To operate and manage cluster state, EPD contains its own
     implementation of the Raft Consensus model. You can configure HARP to
     leverage this same layer to reduce reliance on external dependencies and
     to preserve server resources. However, certain drawbacks to this
@@ -185,20 +185,20 @@ As a result, the consensus layer generally exists outside of HARP or HARP-manage
 
 ## Recommended architecture and use
 
-HARP was primarily designed to represent a BDR Always-On architecture that
-resides in two or more data centers and consists of at least five BDR
+HARP was primarily designed to represent a EDB Postgres Distributed Always-On architecture that
+resides in two or more data centers and consists of at least five EPD
 nodes. This configuration doesn't count any logical standby nodes.
 
 The following diagram shows the current and standard representation:
 
-![BDR Always-On Reference Architecture](images/bdr-ao-spec.png)
+![EDB Postgres Distributed Always-On Reference Architecture](images/bdr-ao-spec.png)
 
-In this diagram, HARP Manager exists on BDR Nodes 1-4. The initial state 
-of the cluster is that BDR Node 1 is the lead master of DC A, and BDR 
+In this diagram, HARP Manager exists on EPD Nodes 1-4. The initial state 
+of the cluster is that EPD Node 1 is the lead master of DC A, and EPD 
 Node 3 is the lead master of DC B.
 
-This configuration results in any HARP Proxy resource in DC A connecting to BDR Node 1 
-and the HARP Proxy resource in DC B connecting to BDR Node 3.
+This configuration results in any HARP Proxy resource in DC A connecting to EPD Node 1 
+and the HARP Proxy resource in DC B connecting to EPD Node 3.
 
 !!! Note
     While this diagram shows only a single HARP Proxy per DC, this is
@@ -208,18 +208,18 @@ and the HARP Proxy resource in DC B connecting to BDR Node 3.
 
 ### Location configuration
 
-For multiple BDR nodes to be eligible to take the lead master lock in
+For multiple EPD nodes to be eligible to take the lead master lock in
 a location, you must define a location in the `config.yml` configuration
 file.
 
-To reproduce the BDR Always-On reference architecture shown in the diagram, include these lines in the `config.yml`
-configuration for BDR Nodes 1 and 2:
+To reproduce the EDB Postgres Distributed Always-On reference architecture shown in the diagram, include these lines in the `config.yml`
+configuration for EPD Nodes 1 and 2:
 
 ```yaml
 location: dca
 ```
 
-For BDR Nodes 3 and 4, add:
+For EPD Nodes 3 and 4, add:
 
 ```yaml
 location: dcb
@@ -231,15 +231,15 @@ data centers as well.
 ### BDR 3.7 compatibility
 
 BDR 3.7 and later offers more direct location definition by assigning a
-location to the BDR node. This is done by calling the following SQL
-API function while connected to the BDR node. So for BDR Nodes 1 and 2, you
+location to the EPD node. This is done by calling the following SQL
+API function while connected to the EPD node. So for EPD Nodes 1 and 2, you
 might do this:
 
 ```sql
 SELECT bdr.set_node_location('dca');
 ```
 
-And for BDR Nodes 3 and 4:
+And for EPD Nodes 3 and 4:
 
 ```sql
 SELECT bdr.set_node_location('dcb');
