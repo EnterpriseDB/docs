@@ -19,15 +19,19 @@ The following hints influence how the optimizer accesses relations to create the
 
 In addition, you can use the `ALL_ROWS`, `FIRST_ROWS`, and `FIRST_ROWS(n)` hints.
 
+From version 15 onwards, `INDEX` and `NO_INDEX` hints for the partitioned table inherit the corresponding child indexes and apply in later processing.
+
 ## Examples
 
 The sample application doesn't have enough data to show the effects of optimizer hints. Thus the remainder of these examples use a banking database created by the `pgbench` application located in the EDB Postgres Advanced Server `bin` subdirectory.
 
-This example creates a database named `bank` populated by the tables `pgbench_accounts`, `pgbench_branches`, `pgbench_tellers`, and `pgbench_history`. The `–s 20` option specifies a scaling factor of 20, which creates 20 branches, each with 100,000 accounts. This results in a total of 2,000,000 rows in the `pgbench_accounts` table and 20 rows in the `pgbench_branches` table. Ten tellers are assigned to each branch, resulting in a total of 200 rows in the `pgbench_tellers` table.
+## Create a sample database and tables
+
+The following steps create a database named, `bank`, populated by the tables, `pgbench_accounts, pgbench_branches, pgbench_tellers`, and `pgbench_history`. The `–s 20` option specifies a scaling factor of twenty, which results in the creation of twenty branches, each with 100,000 accounts, resulting in a total of 2,000,000 rows in the `pgbench_accounts` table and twenty rows in the `pgbench_branches` table. Ten tellers are assigned to each branch resulting in a total of 200 rows in the `pgbench_tellers` table.
 
 The following initializes the `pgbench` application in the `bank` database.
 
-```text
+```sql
 createdb -U enterprisedb bank
 CREATE DATABASE
 
@@ -65,7 +69,7 @@ done.
 
 A total of 500,00 transactions are then processed. These transactions populate the `pgbench_history` table with 500,000 rows.
 
-```text
+```sql
 pgbench -U enterprisedb -t 500000 bank
 
 starting vacuum...end.
@@ -83,7 +87,7 @@ tps = 1464.350357 (excluding connections establishing)
 
 The following are the table definitions:
 
-```text
+```sql
 \d pgbench_accounts
 
    Table "public.pgbench_accounts"
@@ -134,7 +138,7 @@ Indexes:
 
 The `EXPLAIN` command shows the plan selected by the query planner. In this example, `aid` is the primary key column, so an indexed search is used on index `pgbench_accounts_pkey`:
 
-```text
+```sql
 EXPLAIN SELECT * FROM pgbench_accounts WHERE aid = 100;
 
                                        QUERY PLAN
@@ -146,9 +150,11 @@ rows=1 width=97)
 (2 rows)
 ```
 
-The `FULL` hint is used to force a full sequential scan instead of using the index:
+## FULL hint example
 
-```text
+The `FULL` hint is used to force a full sequential scan instead of using the index as shown below:
+
+```sql
 EXPLAIN SELECT /*+ FULL(pgbench_accounts) */ * FROM pgbench_accounts WHERE
 aid = 100;
 
@@ -159,9 +165,11 @@ Seq Scan on pgbench_accounts  (cost=0.00..58781.69 rows=1 width=97)
 (2 rows)
 ```
 
-The `NO_INDEX` hint forces a parallel sequential scan instead of using the index:
+## NO_INDEX hint example
 
-```text
+The `NO_INDEX` hint forces a parallel sequential scan instead of use of the index as shown below:
+
+```sql
 EXPLAIN SELECT /*+ NO_INDEX(pgbench_accounts pgbench_accounts_pkey) */ *
 FROM pgbench_accounts WHERE aid = 100;
 
@@ -176,15 +184,17 @@ FROM pgbench_accounts WHERE aid = 100;
 (4 rows)
 ```
 
-In addition to using the `EXPLAIN` command, you can get more detailed information about whether a hint was used by the planner by setting the `trace_hints` configuration parameter:
+## Tracing optimizer hints example
 
-```text
+In addition to using the `EXPLAIN` command as shown in the prior examples, more detailed information regarding whether or not a hint was used by the planner can be obtained by setting the `trace_hints` configuration parameter as follows:
+
+```sql
 SET trace_hints TO on;
 ```
 
 The `SELECT` command with the `NO_INDEX` hint shows the additional information produced when you set the `trace_hints` configuration parameters:
 
-```text
+```sql
 EXPLAIN SELECT /*+ NO_INDEX(pgbench_accounts pgbench_accounts_pkey) */ *
 FROM pgbench_accounts WHERE aid = 100;
 
@@ -201,9 +211,11 @@ width=97)
 (4 rows)
 ```
 
-If a hint is ignored, the `INFO: [HINTS]` line doesn't appear. This might be indicate a syntax error or some other misspelling in the hint as shown in this example. The index name is misspelled.
+## Hint ignored example
 
-```text
+Note that if a hint is ignored, the `INFO: [HINTS]` line doesn't appear. This might be an indication that there was a syntax error or some other misspelling in the hint as shown in the following example where the index name is misspelled.
+
+```sql
 EXPLAIN SELECT /*+ NO_INDEX(pgbench_accounts pgbench_accounts_xxx) */ * FROM
 pgbench_accounts WHERE aid = 100;
 
@@ -214,4 +226,51 @@ Index Scan using pgbench_accounts_pkey on pgbench_accounts  (cost=0.43..8.45
 rows=1 width=97)
    Index Cond: (aid = 100)
 (2 rows)
+```
+
+## INDEX hint example for the partitioned table
+
+
+```sql 
+CREATE TABLE t_1384(col1 int, col2 int, col3 int) 
+PARTITION BY RANGE(col1)
+(PARTITION p1 VALUES LESS THAN(500),
+PARTITION p2 VALUES LESS THAN(1000));
+    
+ALTER TABLE t_1384 ADD PRIMARY KEY(col1);
+    
+CREATE INDEX idx1 ON t_1384(col2);
+ 
+CREATE INDEX idx2 ON t_1384(col1, col2);
+ 
+SET enable_hints = true;
+    
+SET trace_hints TO on;
+ 
+-- Use primary index
+EXPLAIN (COSTS OFF) SELECT /*+ INDEX(s t_1384_pkey) */ * FROM t_1384 s
+WHERE col2 = 10;
+
+INFO:  [HINTS] SeqScan of [s] rejected due to INDEX hint.
+INFO:  [HINTS] Parallel SeqScan of [s] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p1_col1_col2_idx] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p1_col2_idx] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p1_pkey] accepted.
+INFO:  [HINTS] SeqScan of [s] rejected due to INDEX hint.
+INFO:  [HINTS] Parallel SeqScan of [s] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p2_col1_col2_idx] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p2_col2_idx] rejected due to INDEX hint.
+INFO:  [HINTS] Index Scan of [s].[t_1384_p2_pkey] accepted.
+                 QUERY PLAN                      
+-----------------------------------------------------
+Append
+  ->  Bitmap Heap Scan on t_1384_p1 s_1
+        Recheck Cond: (col2 = 10)
+        ->  Bitmap Index Scan on t_1384_p1_col2_idx
+            Index Cond: (col2 = 10)
+  ->  Bitmap Heap Scan on t_1384_p2 s_2
+        Recheck Cond: (col2 = 10)
+        ->  Bitmap Index Scan on t_1384_p2_col2_idx
+            Index Cond: (col2 = 10)
+(9 rows)
 ```
