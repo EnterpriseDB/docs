@@ -1,0 +1,204 @@
+---
+navTitle: Advanced usage
+title: Advanced Usage
+originalFilePath: advanced_usage.md
+
+---
+
+After the end of execution of LiveCompare, you will notice it created a folder
+called `lc_session_<session_id>` in the working directory. This folder contains
+the following files:
+
+-   `lc_<execution_mode>_<current_date>.log`: log file for the session;
+
+-   `summary_<current_date>.out`: shows a list of all tables that were processed,
+    and for each table it shows the time LiveCompare took to process the table, the
+    total number of rows and how many rows were processed, how many
+    differences were found in the table, and also the maximum number of ignored columns,
+    if any.
+
+To get the complete summary, you can also execute the following query against
+the output database:
+
+```postgresql
+select *
+from <output_schema>.vw_table_summary
+where session_id = <session_id>;
+```
+
+-   `differences_<current_date>.out`: if there are any differences, this file
+    shows useful information about each difference. This file is not generated if
+    there are no differences.
+
+For example, the difference list could be like this:
+
+```text
++-------------------+-------------------------+-----------------+---------------------+
+| table_name        | table_pk_column_names   |   difference_pk | difference_status   |
+|-------------------+-------------------------+-----------------+---------------------|
+| public.categories | category                |             (7) | P                   |
+| public.categories | category                |            (10) | P                   |
+| public.categories | category                |            (17) | P                   |
+| public.categories | category                |            (18) | P                   |
++-------------------+-------------------------+-----------------+---------------------+
+```
+
+To get the full list of differences with all details, you can also execute the
+following query against the output database:
+
+```postgresql
+select *
+from <output_schema.vw_differences
+where session_id = <session_id>;
+```
+
+To understand how LiveCompare consensus worked to decide which databases are
+divergent, then the view `vw_consensus` can provide details on the consensus
+algorithm:
+
+```postgresql
+select *
+from <output_schema.vw_consensus
+where session_id = <session_id>;
+```
+
+-   `apply_on_the_first_<current_date>.sql`: if there are any differences, this
+    file will show a DML command to be applied on the **first** database, to make
+    the **first** database consistent all other databases. For example, for the
+    differences above, this script could be:
+
+```postgresql
+BEGIN;
+
+DELETE FROM public.categories WHERE (category) = 7;
+UPDATE public.categories SET categoryname = $lc1$Games Changed$lc1$ WHERE (category) = 10;
+INSERT INTO public.categories (category,categoryname) VALUES (17, $lc1$Test 1$lc1$);
+INSERT INTO public.categories (category,categoryname) VALUES (18, $lc1$Test 2$lc1$);
+
+COMMIT;
+```
+
+LiveCompare generates this script automatically. In order to fix the
+inconsistencies in the **first** database, you can simply execute the script in
+the **first** database.
+
+LiveCompare generates a similar `apply_on_*.sql` script for each database that
+has inconsistent data.
+
+## Comparison abortion
+
+Before starting the comparison session, LiveCompare tries all connections. If the
+number of reachable connections is not at least 2, then LiveCompare aborts the
+whole session with an appropriate error message. If at least 2 connections are
+reachable, then LiveCompare proceeds with the comparison session. For all
+connections, LiveCompare writes a flag `connection_reachable` in the `connections`
+table in the cache database.
+
+For all reachable connections, LiveCompare does some sanity checks around the
+database technologies and the setting `logical_replication_mode`. If any of the
+sanity checks fail, then LiveCompare aborts the comparison with an appropriate
+error message.
+
+Considering the tables available on all reachable connections, LiveCompare builds
+the list of tables to be compared, also taking into account the `Table Filter`. If
+a specific table does not exist on at least 2 connections, then the comparison on
+that specific table is aborted.
+
+LiveCompare initially gathers metadata from all tables. This step is called "setup".
+If any errors happen during the setup (for example) the user does not have access
+to a specific table), then it's called a "setup error". If `abort_on_setup_error`
+is enabled, then LiveCompare aborts the whole comparison session and the program
+finishes with an error message. Otherwise, only the specific table having the error
+has its table comparison aborted and LiveCompare moves on to the next table.
+
+For each table LiveCompare starts the table comparison, first LiveCompare checks
+the table definition on all reachable connections. If the tables don't have the
+same columns and column data types, LiveCompare applies the `column_intersection`.
+If there are no columns to compare, then LiveCompare aborts the table comparison.
+
+## Comparison Key
+
+For each table being compared, when gathering the table metadata, LiveCompare
+builds the `Comparison Key` to be used in the table comparison, following these
+rules:
+
+1- Use the custom `Comparison Key` if the user configured it; or
+
+2- Use PK if available; or
+
+3- If the table has `UNIQUE` indexes: among the `UNIQUE` indexes that have all
+`NOT NULL` columns, use the `UNIQUE` index with less columns; or
+
+4- If none of the above is possible, try to use all `NOT NULL` columns as a
+Comparison Key (`NULL` columns can also be considered if `ignore_nullable = false`).
+
+If stratgies 1 or 4 above are decided to be used as a Comparison Key, then
+LiveCompare also checks for uniqueness on the key. If uniqueness is not possible,
+then LiveCompare aborts the comparison on that specific table (this behavior can be
+disabled with `check_uniqueness_enforcement = false`).
+
+## Which differences to fix
+
+LiveCompare is able to identify and provide fixes for the following differences:
+
+-   A row exists in the majority of the data connections. The fix will be an
+    `INSERT` on the divergent databases;
+-   A row does not exist in the majority of the data connections. The fix will be
+    a `DELETE` on the divergent databases;
+-   A row exists in all databases, but some column values mismatch. The fix will
+    be an `UPDATE` on the divergent databases.
+
+By default `difference_statements = all`, which means that LiveCompare will try
+to apply all 3 DML types (`INSERT`, `UPDATE` and `DELETE`) for each difference
+it finds. But it is possible to specify which type of DML LiveCompare should
+consider when providing difference fixes, by changing the value of
+the setting `difference_statements`, which can be:
+
+-   `all` (default): Fixes `INSERT`s, `UPDATE`s and `DELETE`s;
+-   `inserts`: Fixes only `INSERT`s;
+-   `updates`: Fixes only `UPDATE`s;
+-   `deletes`: Fixes only `DELETE`s;
+-   `inserts_updates`: Fixes only `INSERT`s and `UPDATE`s;
+-   `inserts_deletes`: Fixes only `INSERT`s and `DELETE`s;
+-   `updates_deletes`: Fixes only `UPDATE`s and `DELETE`s.
+
+When `difference_statements` has the values `all`, `updates`, `inserts_updates`
+or `updates_deletes`, then it is possible to tell LiveCompare to ignore any
+`UPDATE`s that would set `NULL` to a column.
+
+## Difference log
+
+Table `difference_log` stores all information about differences every time
+LiveCompare checked them. Users can run LiveCompare in re-check mode multiple
+times, so this table shows how the difference has evolved over the time window
+where LiveCompare was re-checking it.
+
+-   **Detected (D)**: The difference was just detected. In re-check and fix modes,
+    LiveCompare will mark all Permanent and Tie differences as Detected in order to
+    re-check them.
+
+-   **Permanent (P)**: After having re-checked the difference, if data is still
+    divergent, LiveCompare marks the difference as **Permanent**.
+
+-   **Tie (T)**: Same as Permanent, but there is not enough consensus to determine
+    which connections are the majority.
+
+-   **Absent (A)**: If upon a re-check LiveCompare finds that the difference does
+    not exist anymore (the row is now consistent between both databases), then
+    LiveCompare marks the difference as **Absent**.
+
+-   **Volatile (V)**: If upon a re-check `xmin` has changed on an inconsistent
+    row, then LiveCompare marks the difference as **Volatile**.
+
+-   **Ignored (I)**: Users can stop difference re-check of certain differences by
+    manually calling the function
+    `<livecompare_schema_name>.accept_divergence(session_id, table_name, difference_pk)`
+    in the Output PostgreSQL connection. For example:
+
+```postgresql
+SELECT livecompare.accept_divergence(
+    2                   -- session_id
+  , 'public.categories' -- table_name
+  , $$(10)$$            -- difference_pk
+);
+```
