@@ -182,6 +182,10 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `postgis/14/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 14}, platform: {name: "SLES 15"}}, 
       (ctx) => `postgis/14/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 12"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
   );
 
   function match(context, ...conditions) {
