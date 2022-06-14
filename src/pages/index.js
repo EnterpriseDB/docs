@@ -214,6 +214,9 @@ const Page = () => (
             <IndexCardLink to="/harp/latest" className="nested-link">
               HA Routing for Postgres (HARP)
             </IndexCardLink>
+            <IndexCardLink to="/pgd_cli/latest" className="nested-link">
+              EDB Postgres Distributed CLI
+            </IndexCardLink>
 
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Replication
