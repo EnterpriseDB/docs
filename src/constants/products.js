@@ -2,6 +2,7 @@ import IconNames from "../components/icon/iconNames";
 
 export const products = {
   bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
+  barman: { name: "Barman" },
   bdr: {
     name: "BDR (Bi-Directional Replication)",
     iconName: IconNames.HIGH_AVAILABILITY,
@@ -22,6 +23,7 @@ export const products = {
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
   livecompare: { name: "LiveCompare" },
+  "Migration Overview": { name: "Migration Overview" },
   migration_portal: {
     name: "Migration Portal",
     iconName: IconNames.EDB_MIGRATION_PORTAL,
@@ -42,6 +44,7 @@ export const products = {
   ocl_connector: { name: "OCL Connector", iconName: IconNames.CONNECT },
   odbc_connector: { name: "ODBC Connector", iconName: IconNames.CONNECT },
   pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
+  pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
   pgd: { name: "EDB Postgres Distributed" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
