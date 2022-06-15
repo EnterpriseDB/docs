@@ -23,14 +23,17 @@ After the publication table rows are corrected, update the appropriate control s
 
 **Step 1:** Manually correct the rows in the publication tables with `session_replication_role` set to `replica`. On `MMRnode_a`, correct the erroneous row:
 
-```shell
+```sql
 MMRnode_a=# SHOW session_replication_role;
+__OUTPUT__
 session_replication_role
 --------------------------
 replica
 (1 row)
-
+```
+```sql
 MMRnode_a=# SELECT * FROM dept;
+__OUTPUT__
  deptno |   dname    |   loc
 --------+------------+----------
      10 | ACCOUNTING | NEW YORK
@@ -39,11 +42,12 @@ MMRnode_a=# SELECT * FROM dept;
      40 | OPERATIONS | BOSTON
      50 | FINANCE    | CHICAGO
 (5 rows)
-
-
+```
+```sql
 MMRnode_a=# UPDATE dept SET dname = 'MARKETING', loc = 'LOS ANGELES' WHERE deptno = 50;
 UPDATE 1
 MMRnode_a=# SELECT * FROM dept ORDER BY deptno;
+__OUTPUT__
  deptno |   dname    |     loc
 --------+------------+-------------
      10 | ACCOUNTING | NEW YORK
@@ -56,17 +60,19 @@ MMRnode_a=# SELECT * FROM dept ORDER BY deptno;
 
 On `MMRnode_c`, insert the missing row:
 
-```shell
+```sql
 MMRnode_c=# SHOW session_replication_role;
+__OUTPUT__
  session_replication_role
 --------------------------
  replica
 (1 row)
-
-
+```
+```sql
 MMRnode_c=# INSERT INTO dept VALUES (50, 'MARKETING', 'LOS ANGELES');
 INSERT 0 1
 MMRnode_c=# SELECT * FROM dept ORDER BY deptno;
+__OUTPUT__
  deptno |   dname    |     loc
 --------+------------+-------------
      10 | ACCOUNTING | NEW YORK
@@ -79,8 +85,9 @@ MMRnode_c=# SELECT * FROM dept ORDER BY deptno;
 
 The dept table on `MMRnode_a` and `MMRnode_c` now match the content of the table on `MMRnode_b`:
 
-```shell
+```sql
 MMRnode_b=# SELECT * FROM dept ORDER BY deptno;
+__OUTPUT__
  deptno |   dname    |     loc
 --------+------------+-------------
      10 | ACCOUNTING | NEW YORK
@@ -101,7 +108,7 @@ Note the following points regarding shadow tables:
 
 To find the shadow table entries involved in a conflict, use the **Conflict History** tab in the Replication Server console or the SQL query described in [Finding conflicts](../10_manual_conflict_resolution_log_based_method/01_finding_conflict/#finding_conflict) and shown by the following output:
 
-```shell
+```text
 -[ RECORD 1 ]-------+----------------------------------------------------------------
 conflict_type       | II
 table_name          | dept
@@ -136,8 +143,9 @@ You can then query the shadow table in the desired primary node on its `rrep_syn
 
 The following query is performed on the shadow table for the dept table in `MMRnode_a` on `rrep_sync_id` value 2 obtained from field `src_rrep_sync_id` of RECORD 1 in the preceding output.
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.rrst_edb_dept WHERE rrep_sync_id = 2;
+__OUTPUT__
 -[ RECORD 1 ]-----------+--------------------------
 rrep_sync_id            | 2
 rrep_common_id          |
@@ -154,8 +162,9 @@ rrep_tx_conflict_status | P
 
 A similar query can locate the pending shadow table entry in `MMRnode_b` by querying on the key value obtained from field `src_rep_sync_id: of RECORD 2:`
 
-```shell
+```sql
 MMRnode_b=# SELECT * FROM _edb_replicator_pub.rrst_edb_dept WHERE rrep_sync_id = 1;
+__OUTPUT__
 -[ RECORD 1 ]-----------+--------------------------
 rrep_sync_id            | 1
 rrep_common_id          |
@@ -185,7 +194,7 @@ Make this change to the shadow tables in both `MMRnode_a` and `MMRnode_b`.
 
 Be sure to qualify the row with the correct `rrep_sync_id` value if you perform the update using a SQL statement such as in the following:
 
-```shell
+```sql
 UPDATE _edb_replicator_pub.rrst_edb_dept SET rrep_tx_conflict_status = 'D' WHERE rrep_sync_id = 1;
 ```
 
@@ -213,12 +222,13 @@ The following shows the **Conflict History** tab prior to updating the `xdb_conf
 
 You can find the conflict entry for synchronization from `MMRnode_a` to `MMRnode_b` in `xdb_conflicts` with the following query for this example:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
 MMRnode_a-#   WHERE src_db_id = 1
 MMRnode_a-#     AND target_db_id = 4
 MMRnode_a-#     AND src_rrep_sync_id = 2
 MMRnode_a-#     AND target_rrep_sync_id = 0;
+__OUTPUT__
 -[ RECORD 1 ]-------+----------------------------------------------------------------
 src_db_id           | 1
 target_db_id        | 4
@@ -240,12 +250,13 @@ notes               | ERROR: duplicate key value violates unique constraint "dep
 
 You can find the conflict entry for synchronization from `MMRnode_b` to `MMRnode_a` in xdb_conflicts with the following query for this example:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
 MMRnode_a-#   WHERE src_db_id = 4
 MMRnode_a-#     AND target_db_id = 1
 MMRnode_a-#     AND src_rrep_sync_id = 1
 MMRnode_a-#     AND target_rrep_sync_id = 0;
+__OUTPUT__
 -[ RECORD 1 ]-------+----------------------------------------------------------------
 src_db_id           | 4
 target_db_id        | 1
@@ -267,11 +278,12 @@ pk_value            | deptno=50
 
 For uniqueness (insert/insert) conflicts only, you can use the following query to display both of the preceding entries:
 
-```shell
+```sql
 MMRnode_a=# SELECT * FROM _edb_replicator_pub.xdb_conflicts
 MMRnode_a-#   WHERE pk_value = 'deptno=50'
 MMRnode_a-#     AND conflict_type = 'II'
 MMRnode_a-#     AND resolution_status = 'P';
+__OUTPUT__
 -[ RECORD 1 ]-------+----------------------------------------------------------------
 src_db_id           | 1
 target_db_id        | 4
@@ -314,7 +326,7 @@ Change the value in column `resolution_status` from `P` (pending) to `C` (comple
 
 The SQL statement to perform this update for the `MMRnode_a` to the `MMRnode_b` synchronization conflict is the following:
 
-```shell
+```sql
 UPDATE _edb_replicator_pub.xdb_conflicts SET
   resolution_status = 'C',
   win_db_id = 4,
@@ -327,7 +339,7 @@ WHERE src_db_id = 1
 
 The SQL statement to perform this update for the `MMRnode_b` to the `MMRnode_a` synchronization conflict is the following:
 
-```shell
+```sql
 UPDATE _edb_replicator_pub.xdb_conflicts SET
   resolution_status = 'C',
   win_db_id = 4,
@@ -340,7 +352,7 @@ WHERE src_db_id = 4
 
 For uniqueness (insert/insert) conflicts only, you can use the following SQL statement to update both of the preceding entries at the same time:
 
-```shell
+```sql
 UPDATE _edb_replicator_pub.xdb_conflicts SET
   resolution_status = 'C',
   win_db_id = 4,
