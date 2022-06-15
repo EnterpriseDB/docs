@@ -104,64 +104,6 @@ Do *not* use the `pgbouncer` user, as this this is used by HARP
 Proxy as an admin-level user to operate the underlying PgBouncer 
 service.
 
-In clusters administered by TPAexec, a function is created and installed 
-in the `pg_catalog` schema in the `template1` database during provisioning. 
-This means any databases created later also include the function, 
-and it's available to PgBouncer regardless of the database the user is 
-attempting to contact.
-
-If TPAexec isn't used, we still recommend this function definition:
-
-```sql
-CREATE OR REPLACE FUNCTION pg_catalog.pgbouncer_get_auth(p_usename TEXT)
-RETURNS TABLE(username TEXT, password TEXT) AS $$
-BEGIN
-  RETURN QUERY
-  SELECT usename::TEXT, passwd::TEXT FROM pg_catalog.pg_shadow
-   WHERE usename = p_usename;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER
-
-REVOKE ALL ON FUNCTION pg_catalog.pgbouncer_get_auth(p_usename TEXT)
-  FROM PUBLIC
-
-GRANT EXECUTE ON FUNCTION pg_catalog.pgbouncer_get_auth(p_usename TEXT)
-   TO <auth_user>;
-```
-
-Substitute `<auth_user>` for the `auth_user` field supplied to 
-HARP Proxy.
-
-Then in the Bootstrap file, the following completes the configuration:
-
-```yaml
-cluster: 
-  name: mycluster
-
-proxies:
-  monitor_interval: 5
-  default_pool_size: 20
-  max_client_conn: 1000
-  auth_user: pgb_auth
-  type: pgbouncer
-  auth_query: "SELECT * FROM pg_catalog.pgbouncer_get_auth($1)"
-  database_name: bdrdb
-  instances:
-    - name: proxy1
-    - name: proxy2
-```
-
-You can also define these fields with `harpctl set proxy`:
-
-```bash
-harpctl set proxy global auth_user=pgb_auth
-```
-
-!!! Note
-    This means the `postgres` or `enterprisedb` OS user that launches HARP
-    Proxy needs a `.pgpass` file so that `auth_user` can authenticate 
-    against Postgres.
-
 ### Configuration
 
 HARP Proxy expects the `dcs`, `cluster`, and `proxy` configuration stanzas. The 
