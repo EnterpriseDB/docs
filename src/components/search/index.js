@@ -213,7 +213,7 @@ const SearchBar = ({ searchProduct }) => {
   const searchConfig = useMemo(() => {
     return {
       hitsPerPage: 30,
-      filters: currentProduct ? `product:${currentProduct}` : "",
+      filters: currentProduct ? `product:"${currentProduct}"` : "",
     };
   }, [currentProduct]);
 
