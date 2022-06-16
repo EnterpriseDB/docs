@@ -1,89 +1,85 @@
 ---
-title: Durability & Performance Options
+title: Durability and performance options
 ---
 
 ## Overview
 
 Synchronous or *Eager Replication* synchronizes between at least two
-nodes of the cluster before committing a transaction.  This provides
-three properties of interest to applications, which are related, but
+nodes of the cluster before committing a transaction. This synchronization provides
+three properties of interest to applications that are related but
 can all be implemented individually:
 
--   *Durability*: writing to multiple nodes increases crash resilience
-    and allows the data to be recovered after a crash and restart.
--   *Visibility*: with the commit confirmation to the client, the database
+-   *Durability*: Writing to multiple nodes increases crash resilience
+    and allows you to recover the data after a crash and restart.
+-   *Visibility*: With the commit confirmation to the client, the database
     guarantees immediate visibility of the committed transaction on some
     sets of nodes.
--   *No Conflicts After Commit*: the client can rely on the transaction to
-    eventually be applied on all nodes without further conflicts, or get
+-   *No conflicts after commit*: The client can rely on the transaction to
+    eventually be applied on all nodes without further conflicts or get
     an abort directly informing the client of an error.
 
 BDR provides a [Group Commit](group-commit) feature to guarantee
 durability and visibility by providing a variant of synchronous
-replication.  This is very similar to Postgres' `synchronous_commit`
-feature for physical standbys, but providing a lot more flexibility
-for large scale distributed systems.
+replication. This feature is similar to the Postgres `synchronous_commit`
+feature for physical standbys but provides more flexibility
+for large-scale distributed systems.
 
-In addition to Group Commit, BDR also offers two additional modes
-(which cannot currently be combined with Group Commit):
+In addition to Group Commit, BDR also offers two other modes
+that can't currently be combined with Group Commit:
 
 -   Commit At Most Once (CAMO). This feature solves the problem with knowing
-    whether your transaction has COMMITed (and replicated) or not in case of
+    whether your transaction has committed (and replicated) in case of
     node or network failures COMMIT. Normally, it might be hard to know whether
-    or not the COMMIT was processed in. With this feature, your application can
-    find out what happened, even if your new database connection is to a different node
-    than your previous connection. For more info about this feature see the
-    [Commit At Most Once](camo) chapter.
+    the COMMIT was processed in. With this feature, your application can
+    find out what happened, even if your new database connection is to a node
+    different from your previous connection. For more information about this feature, see
+    [Commit At Most Once](camo).
 -   Eager Replication. This is an optional feature to check for conflicts prior
-    to the commit. Every transaction is applied and prepared on *all nodes* simultaneously,
-    and commits only if no replication conflicts are detected. This feature does
-    reduce performance, but provides very strong consistency guarantees.
-    For more info about this feature see the [Eager All-Node Replication](eager)
-    chapter.
+    to the commit. Every transaction is applied and prepared on all nodes simultaneously
+    and commits only if no replication conflicts are detected. This feature
+    reduces performance but provides strong consistency guarantees.
+    For more information about this feature, see [Eager All-Node Replication](eager).
 
-Postgres itself provides [Physical Streaming Replication](https://www.postgresql.org/docs/current/warm-standby.html#STREAMING-REPLICATION)
-(PSR), which is uni-directional, but offers a [synchronous variant](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION).
-For backwards compatibility, BDR still supports configuring synchronous
-replication via `synchronous_commit` and `synchronous_standby_names`, see
-[Legacy Synchronous Replication](durability#legacy-synchronous-replication-using-bdr),
+Postgres provides [Physical Streaming Replication](https://www.postgresql.org/docs/current/warm-standby.html#STREAMING-REPLICATION)
+(PSR), which is unidirectional but offers a [synchronous variant](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION).
+For backward compatibility, BDR still supports configuring synchronous
+replication with `synchronous_commit` and `synchronous_standby_names`. See
+[Legacy synchronous replication](durability#legacy-synchronous-replication-using-bdr),
 but the use of [Group Commit](group-commit) is recommended instead
 in all cases.
 
-This chapter covers the various forms of synchronous or eager
-replication and its timing aspects.
+## Terms and definitions
 
-## Terms and Definitions
-
-This and subsequent chapters refer to BDR nodes taking different
-roles.  These are implicitly assigned per transaction and are
+BDR nodes can take different
+roles. These are implicitly assigned per transaction and are
 unrelated even for concurrent transactions.
 
-* the *origin* is the node that receives the transaction from the
-  client or application. It is the node processing the transaction
-  first, initiating replication to other BDR nodes and responding back
+* The *origin* is the node that receives the transaction from the
+  client or application. It's the node processing the transaction
+  first, initiating replication to other BDR nodes, and responding back
   to the client with a confirmation or an error.
 
-* a *partner* node is a BDR node expected to confirm transactions
+* A *partner* node is a BDR node expected to confirm transactions
   either according to Group Commit or CAMO requirements.
 
-* a *commit group* is the group of all BDR nodes involved in the
-  commit, i.e. the origin and all of its partner nodes, which may be
+* A *commit group* is the group of all BDR nodes involved in the
+  commit, that is, the origin and all of its partner nodes, which can be
   just a few or all peer nodes.
 
 ## Comparison
 
 Most options for synchronous replication available to
 BDR allow for different levels of synchronization, offering different
-trade-offs between performance and protection against node or network
+tradeoffs between performance and protection against node or network
 outages.
 
 The following table summarizes what a client can expect from a peer
 node replicated to after having received a COMMIT confirmation from
-the origin node the transaction was issued to. The "Mode" column takes
-on different meaning depending on the variant. For PSR and Legacy
-Synchronous Replication with BDR, it refers to the
+the origin node the transaction was issued to. The Mode column takes
+on different meaning depending on the variant. For PSR and legacy
+synchronous replication with BDR, it refers to the
 `synchronous_commit` setting. For CAMO, it refers to the
-`bdr.enable_camo` setting. Lastly, for Group Commit, it refers to the
+`bdr.enable_camo` setting. And for Group Commit, it refers to the
 confirmation requirements of the
 [commit scope configuration](group-commit#configuration).
 
@@ -105,71 +101,71 @@ confirmation requirements of the
 | legacy (3)   | on (2)                        |  yes     |  yes     |  yes     |
 | legacy (3)   | remote_apply (2)              |  yes     |  yes     |  yes     |
 
-*(1) written to the OS, durable if the OS remains running and only
+*(1) Written to the OS, durable if the OS remains running and only
 Postgres crashes.*
 
-*(2) unless switched to Local mode (if allowed) by setting
+*(2) Unless switched to local mode (if allowed) by setting
 `synchronous_replication_availability` to `async'`, otherwise the
 values for the asynchronous BDR default apply.*
 
-*(3) not recommended, please consider using Group Commit instead.*
+*(3) Not recommended. Consider using Group Commit instead.*
 
-Reception ensures the normally operating peer will be able to
+Reception ensures the peer operating normally can
 eventually apply the transaction without requiring any further
-communication, i.e. even in the face of a full or partial network
-outage.  A crash of a peer node may still require a re-transmission of
-the transaction, as this confirmation does not involve persistent
+communication, even in the face of a full or partial network
+outage. A crash of a peer node might still require retransmission of
+the transaction, as this confirmation doesn't involve persistent
 storage. All modes considered synchronous provide this protection.
 
-Visibility implies the transaction was applied remotely and all other
-clients will see the results of the transaction on all nodes providing
+Visibility implies the transaction was applied remotely. All other
+clients see the results of the transaction on all nodes, providing
 this guarantee immediately after the commit is confirmed by the origin
-node.  Without visibility, other clients connected may not see the
+node. Without visibility, other clients connected might not see the
 results of the transaction and experience stale reads.
 
 Durability relates to the peer node's storage and provides protection
 against loss of data after a crash and recovery of the peer node.
-This can either relate to the reception of the data (as with Physical
-Streaming Replication) or to visibility (as with Group Commit, CAMO
-and Eager).  The former eliminates the need for retransmissions after
+This can either relate to the reception of the data (as with physical
+streaming replication) or to visibility (as with Group Commit, CAMO,
+and Eager). The former eliminates the need for retransmissions after
 a crash, while the latter ensures visibility is maintained across
 restarts.
 
-## Internal Timing of Operations
+## Internal timing of operations
 
-For a better understanding of how the different modes work, it is
-helpful to realize PSR and BDR apply transactions rather
+For a better understanding of how the different modes work, it's
+helpful to realize PSR and BDR apply transactions
 differently.
 
 With physical streaming replication, the order of operations is:
 
--   origin flushes a commit record to WAL, making the transaction
-    visible locally
--   peer node receives changes and issues a write
--   peer flushes the received changes to disk
--   peer applies changes, making the transaction visible locally
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes and issues a write.
+-   Peer flushes the received changes to disk.
+-   Peer applies changes, making the transaction visible locally.
 
 With BDR, the order of operations is different:
 
--   origin flushes a commit record to WAL, making the transaction
-    visible locally
--   peer node receives changes into its apply queue in memory
--   peer applies changes, making the transaction visible locally
--   peer persists the transaction by flushing to disk
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible locally.
+-   Peer persists the transaction by flushing to disk.
 
-For Group Commit, CAMO, and Eager, note that the origin node waits for
+For Group Commit, CAMO, and Eager, the origin node waits for
 a certain number of confirmations prior to making the transaction
-visible locally.  The order of operations is:
+visible locally. The order of operations is:
 
--   origin flushes a prepare or pre-commit record to WAL
--   peer node receives changes into its apply queue in memory
--   peer applies changes, making the transaction visible locally
--   peer persists the transaction by flushing to disk
--   origin commits and makes the transaction visible locally
+-   Origin flushes a prepare or precommit record to WAL.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible locally.
+-   Peer persists the transaction by flushing to disk.
+-   Origin commits and makes the transaction visible locally.
 
 The following table summarizes the differences.
 
-| Variant      | Order of apply vs persist | replication before or after commit |
+| Variant      | Order of apply vs persist | Replication before or after commit |
 |:-------------|:-------------------------:|:----------------------------------:|
 | PSR          |      persist first        | after WAL flush of commit record   |
 | BDR          |       apply first         | after WAL flush of commit record   |
@@ -179,9 +175,9 @@ The following table summarizes the differences.
 
 ## Configuration
 
-The following table provides an overview of which configuration
-settings are required to be set to a non-default value (req) or
-optional (opt), but affecting a specific variant.
+The following table provides an overview of the configuration
+settings that are required to be set to a nondefault value (req) or
+optional (opt) but affecting a specific variant.
 
 | setting (GUC)                        |  Group Commit | CAMO  | Eager  | PSR (1) |
 |--------------------------------------|:-------------:|:-----:|:------:|:-------:|
@@ -195,39 +191,38 @@ optional (opt), but affecting a specific variant.
 *(1) values in this column apply also to `synchronous_commit` and
 `synchronous_standby_names` being used in combination with BDR.*
 
-## Planned Shutdown and Restarts
-
+## Planned shutdown and restarts
 
 When using Group Commit with receive confirmations or CAMO in
-combination with `remote_write`, care must be taken
-with planned shutdown or restart.  By default, the apply queue is consumed
-prior to shutting down.  However, in the `immediate` shutdown mode, the queue
+combination with `remote_write`, take care
+with planned shutdown or restart. By default, the apply queue is consumed
+prior to shutting down. However, in the `immediate` shutdown mode, the queue
 is discarded at shutdown, leading to the stopped node "forgetting"
-transactions in the queue. A concurrent failure of the origin node could
+transactions in the queue. A concurrent failure of the origin node can
 lead to loss of data, as if both nodes failed.
 
-To ensure the apply queue gets flushed to disk, please use either
-`smart` or `fast` shutdown for maintenance tasks. This maintains the
+To ensure the apply queue gets flushed to disk, use either
+`smart` or `fast` shutdown for maintenance tasks. This approach maintains the
 required synchronization level and prevents loss of data.
 
-## Legacy Synchronous Replication using BDR
+## Legacy synchronous replication using BDR
 
 !!! Note
-    This approach is not recommended.  Please consider using
+    We don't recommend this approach.  Consider using
     [Group Commit](group-commit) instead.
 
 ### Usage
 
-To enable synchronous replication using BDR, the application
-name of the relevant BDR peer nodes need to be added to
-`synchronous_standby_names`.  The use of `FIRST x` or `ANY x` offers a
-some flexibility, if this does not conflict with the requirements of
+To enable synchronous replication using BDR, you need to add the application
+name of the relevant BDR peer nodes to
+`synchronous_standby_names`. The use of `FIRST x` or `ANY x` offers a
+some flexibility if this doesn't conflict with the requirements of
 non-BDR standby nodes.
 
-Once added, the level of synchronization can be configured per
-transaction via `synchronous_commit`, which defaults to `on` - meaning that
+Once you've added it, you can configure the level of synchronization per
+transaction using `synchronous_commit`, which defaults to `on`. This setting means that
 adding to `synchronous_standby_names` already enables synchronous
-replication.  Setting `synchronous_commit` to `local` or `off` turns
+replication. Setting `synchronous_commit` to `local` or `off` turns
 off synchronous replication.
 
 Due to BDR applying the transaction before persisting it, the
@@ -238,16 +233,16 @@ replication).
 
 The Group Commit feature of BDR is configured independent of
 `synchronous_commit` and `synchronous_standby_names`. Instead, the
-`bdr.commit_scope` GUC allows to select the scope per transaction. And
+`bdr.commit_scope` GUC allows you to select the scope per transaction. And
 instead of `synchronous_standby_names` configured on each node
 individually, Group Commit uses globally synchronized Commit Scopes.
 
 !!! Note
     While the grammar for `synchronous_standby_names` and Commit
-    Scopes looks very similar, it is important to note that the former
-    does not account for the origin node, but the latter does.
-    Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'`
-    is equivalent to a Commit Scope of `ANY 2 (...)`.  This choice
+    Scopes looks similar, the former
+    doesn't account for the origin node, but the latter does.
+    Therefore, for example, `synchronous_standby_names = 'ANY 1 (..)'`
+    is equivalent to a Commit Scope of `ANY 2 (...)`. This choice
     makes reasoning about majority easier and reflects that the origin
     node also contributes to the durability and visibility of the
     transaction.
