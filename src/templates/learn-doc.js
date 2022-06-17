@@ -147,7 +147,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             iconName={iconName}
           />
         </SideNavigation>
-        <MainContent>
+        <MainContent searchProduct={frontmatter.product}>
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>
