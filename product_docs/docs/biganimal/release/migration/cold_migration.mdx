@@ -63,13 +63,13 @@ Access requirements:
 #### Verify your access
 
 1.  Connect to the source database using `psql`. For example:
-    ```
+    ```shell
     psql -d "host=pg-source user=postgres dbname=postgres"
     ```
     Replace `pg-source` with the actual hostname or IP address of the source database and the `user` and `dbname` values as appropriate. If the connection doesn't work, contact your system and database administrators to make sure that you can access the source database. This might require changes to your `pg_hba.conf` and network settings. If `pg_hba.conf` changes, reload the configuration with either `SELECT pg_reload_conf();` via a psql connection or `pg_ctl reload` in a shell connection to the database host.
 
 2.  Connect to the target database using the `edb_admin` user. For example:
-    ```
+    ```shell
     psql -d "host=pg-target user=edb_admin dbname=edb_admin"
     ```
     Replace `pg-target` with the actual hostname of your BigAnimal cluster.
@@ -78,13 +78,13 @@ Access requirements:
 
 Export the existing roles from your source Postgres instance by running the following command on the migration host:
 
-```
+```shell
 pg_dumpall -r -d "host=pg-source user=postgres dbname=postgres" > roles.sql
 ```
 
 The generated SQL file looks like this:
 
-```
+```sql
 --
 -- PostgreSQL database cluster dump
 --
@@ -115,17 +115,17 @@ SET standard_conforming_strings = on;
     As a result, you need to modify the `roles.sql` file to:
 
 1.  Remove the lines involving the `postgres` user. For example, remove lines like these:
-    ```
+    ```sql
     CREATE ROLE postgres;
     ALTER ROLE postgres WITH SUPERUSER ….;
     ```
 2.  Remove any role with superuser or replication privileges. For example, remove lines like these:
-    ```
+    ```sql
     CREATE ROLE admin;
     ALTER ROLE admin WITH SUPERUSER ….;
     ```
 3.  For every role that is created, grant the new role to the `edb_admin` user immediately after creating the user. For example:
-    ```
+    ```sql
     CREATE ROLE my_role;
     GRANT my_role TO edb_admin;
     ```
@@ -133,14 +133,14 @@ SET standard_conforming_strings = on;
 
     The role section in the modified file, then, looks similar to:
 
-    ```
+    ```sql
     CREATE ROLE my_role;
     GRANT my_role TO edb_admin;
     ALTER ROLE my_role WITH INHERIT LOGIN PASSWORD 'SCRAM-SHA-256$4096:my-Scrambled-Password';
     ```
 5.  From the migration host, execute:
 
-    ```
+    ```shell
     psql -1 -f roles.sql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full"
     ```
 
@@ -152,7 +152,7 @@ SET standard_conforming_strings = on;
 
 From the migration host, use the `pg_dump` command to export the source database into the target database in BigAnimal. For example:
 
-```
+```shell
 pg_dump -Fc -d "host=pg-source user=postgres dbname=app" -f app.dump
 ```
 
@@ -172,7 +172,7 @@ For further information, see the [`pg_restore` documentation](https://www.postgr
 
 Use the `pg_restore` command and the .dump file you created when exporting the source database to import the database into BigAnimal. For example:
 
-```
+```shell
 pg_restore -C -d  "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full" app.dump
 ```
 
@@ -180,7 +180,7 @@ This process might take some time depending on the size of the database and the 
 
 In case of error, repeat the restore operation once you have deleted the database using the following command:
 
-```
+```shell
 psql -d "postgres://edb_admin@pg-target:5432/edb_admin?sslmode=verify-full" \
     -c ‘DROP DATABASE app’
 ```
