@@ -212,7 +212,7 @@ Here is a sample configuration file in YAML format with Azure specified as the p
 ```
 
 !!! Note
-For backward compatability `allowIpRangeMap` and `pgConfigMap` properties also support embeded JSON format
+For backward compatibility, `allowIpRangeMap` and `pgConfigMap` properties also support embeded JSON format
   ```
   allowIpRangeMap: [["9.9.9.9/28", "Allow traffic from App A"],["10.10.10.10/27", "Allow traffice from App B"]]
   pgConfigMap: [["application_name","test_app"],["array_nulls","true"]] 
@@ -276,24 +276,29 @@ After the cluster is created, you can update attributes of the cluster including
 
 -   Cluster name
 -   Password of administrator account
+-   Cluster Architecture
 -   Instance type of cluster
 -   Instance volume properties
 -   Networking
 -   Allowed IP list
--   High-availability
 -   Postgres database configuration
 
-For example, to enable high availability, use the `--high-availability` option:
+For example, to set the public allowed IP range list, use the `--cidr-blocks` flag:
 
 ```shell
-$ biganimal update-cluster --name my-biganimal-cluster --provider azure --region eastus --high-availability true
+$ biganimal update-cluster --name my-biganimal-cluster --provider azure --region eastus --cidr-blocks --cidr-blocks "9.9.9.9/28=Traffic from App A"
 ```
 
 To check whether the setting took effect, use the `show-clusters` command and view the detailed cluster information output in JSON format. For example,
 
 ```shell
-$ biganimal show-clusters --name my-biganimal-cluster --provider azure --region eastus --output json | grep zone
-    "zoneRedundantHa": true,
+$ biganimal show-clusters --name my-biganimal-cluster --provider azure --region eastus --output json | jq '.[0].allowIpRangeMap'
+[
+  [
+    "9.9.9.9/28",
+    "Traffic from App A"
+  ]
+]
 ```
 
 ### Update the Postgres configuration of a cluster
@@ -307,23 +312,32 @@ Cluster ID is "p-gxhkfww1fe"
 ```
 To specify multiple configurations, you can use multiple `--pg-config` flags or include multiple configuration settings as a key-value array string separated by commas in one `--pg-config` flag. If a Postgres setting contains a comma, you need to specify it with a separate `--pg-config` flag.
 
+!!! Note
+You may update "Cluster Architecture" with `--cluster-architecture` flag, the only supported scenario is to update a “Single Node” cluster to a “High Availability” cluster.
+!!!
+
+
 ### Restore a cluster
 Biganimal continuously backs up your PostgrSQL clusters. Using CLI you can restore a cluster from its backup to any point in time as long as the backups are retained in the backup storage. The restored cluster can be a in another region and with different configurations, you can specify new configurations in restore command. For example:
 
 ```
-biganimal restore-cluster --name "my-biganimal-cluster" --provider "azure" --region "eastus" --password "mypassword@123" --new-name "my-biganimal-cluster-restored" --new-region="eastus2" --instance-type azure:Standard_E2s_v3 --volume-type azurepremiumstorage --volume-property P1 --networking public --cidr-blocks="10.0.0.1/16=app traffic" --high-availability=true --restore-point 2022-01-26T15:04:05+0800
+biganimal restore-cluster --name "my-biganimal-cluster" --provider "azure" --region "eastus" --password "mypassword@123" --new-name "my-biganimal-cluster-restored" --new-region="eastus2" --cluster-architecture "single" --instance-type "azure:Standard_E2s_v3" --volume-type "azurepremiumstorage" --volume-property "P1" --networking "public" --cidr-blocks="10.10.10.10/27=Traffic from App B" --restore-point "2022-01-26T15:04:05+0800"
 ```
 
 The password for the restored cluster is a mandatory. The other parameters, if not specified, inherit the source database's settings. In interactive mode, the source database's settings appear as the default input, or appear as the first option in a selection list.
 
 To restore a deleted cluster, use `--from-deleted` flag in the command.
 
+!!! Note
+Restore a cluster in "Single" cluster to a "High Availability" cluster is supported, vice versa. The "Extreme High Availability" cluster can only be restored to a cluster in same architecture.
+!!!
+
 ### Delete a cluster
 
 To delete a cluster you no longer need, use the `delete-cluster` command. For example:
 
 ```shell
-$ biganimal delete-cluster --name my-biganimal-cluster --provider azure --region e\
+$ biganimal delete-cluster --name my-biganimal-cluster --provider azure --region eastus
 ```
 
 You can list all deleted clusters with the `show-deleted-clusters` command and restore them from their history backups as needed.
