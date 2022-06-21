@@ -1,4 +1,5 @@
 import React, {
+  useMemo,
   useState,
   useEffect,
   useCallback,
@@ -14,6 +15,8 @@ import {
 import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
+import { products } from "../../constants/products";
+import { Dropdown, DropdownButton } from "react-bootstrap";
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -34,12 +37,21 @@ const useClickOutside = (ref, handler, events) => {
   });
 };
 
-const SearchForm = ({ currentRefinement, refine, query }) => {
+const SearchForm = ({
+  currentRefinement,
+  refine,
+  query,
+  searchProduct,
+  onSearchProductChange,
+}) => {
   const searchBarRef = createRef();
   const [focus, setFocus] = useState(false);
   const inputRef = createRef();
   const searchContentRef = useRef(null);
   const [arrowIndex, setArrowIndex] = useState(0);
+  const context = searchProduct
+    ? " " + (products[searchProduct]?.name || searchProduct)
+    : "";
 
   const close = useCallback(() => {
     setFocus(false);
@@ -130,6 +142,25 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
           queryLength > 0 && focus && "open"
         }`}
       >
+        <DropdownButton
+          title={
+            products[searchProduct]?.name || searchProduct || "All products"
+          }
+          aria-label="Search in"
+          role="menu"
+          size="lg"
+          onSelect={(key) => onSearchProductChange(key)}
+        >
+          <Dropdown.Item as="button" type="button" eventKey="">
+            All products
+          </Dropdown.Item>
+          <Dropdown.Divider />
+          {Object.entries(products).map(([id, { name }]) => (
+            <Dropdown.Item as="button" type="button" eventKey={id}>
+              {name}
+            </Dropdown.Item>
+          ))}
+        </DropdownButton>
         <Icon
           iconName={iconNames.SEARCH}
           className="fill-black ml-3 opacity-5 flex-shrink-0"
@@ -141,7 +172,7 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
           className="form-control form-control-lg border-0 pl-3"
           type="text"
           aria-label="search"
-          placeholder="Search"
+          placeholder={"Search" + context}
           value={currentRefinement}
           onChange={(e) => refine(e.currentTarget.value)}
           onFocus={() => setFocus(true)}
@@ -173,11 +204,18 @@ const SearchForm = ({ currentRefinement, refine, query }) => {
 };
 const Search = connectSearchBox(SearchForm);
 
-const SearchBar = () => {
+const SearchBar = ({ searchProduct }) => {
   const ref = createRef();
   const [query, setQuery] = useState(``);
+  const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
+  const searchConfig = useMemo(() => {
+    return {
+      hitsPerPage: 30,
+      filters: currentProduct ? `product:"${currentProduct}"` : "",
+    };
+  }, [currentProduct]);
 
   return (
     <div className="global-search w-100 position-relative" ref={ref}>
@@ -187,8 +225,12 @@ const SearchBar = () => {
         onSearchStateChange={({ query }) => setQuery(query)}
         className="dropdown"
       >
-        <Configure hitsPerPage={30} />
-        <Search query={query} />
+        <Configure {...searchConfig} />
+        <Search
+          query={query}
+          searchProduct={currentProduct}
+          onSearchProductChange={(product) => setCurrentProduct(product)}
+        />
       </InstantSearch>
     </div>
   );
