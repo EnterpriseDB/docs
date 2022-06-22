@@ -146,6 +146,10 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/${prefix[plat]}_efm4_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Failover Manager", version: 4.4}, platform: {name: "SLES 15"}}, 
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/${prefix[plat]}_efm4_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "SLES 12"}}, 
+      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_sles12_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "SLES 15"}}, 
+      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_sles15_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Hadoop Foreign Data Wrapper"}, platform: {name: "SLES 12"}}, 
       (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/${prefix[plat]}_hadoop_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Hadoop Foreign Data Wrapper"}, platform: {name: "SLES 15"}}, 
@@ -190,6 +194,10 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.1}, platform: {name: "SLES 15"}}, 
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 12"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
   );
 
   function match(context, ...conditions) {
