@@ -209,13 +209,10 @@ const Page = () => (
               EDB Postgres Distributed
             </IndexCardLink>
             <IndexCardLink to="/bdr/latest/" className="nested-link">
-              BDR (Bi-Directional Replication)
+              Bi-Directional Replication (BDR)
             </IndexCardLink>
             <IndexCardLink to="/harp/latest" className="nested-link">
               HA Routing for Postgres (HARP)
-            </IndexCardLink>
-            <IndexCardLink to="/pgd_cli/latest" className="nested-link">
-              EDB Postgres Distributed CLI
             </IndexCardLink>
 
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
@@ -294,11 +291,17 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <IndexCardLink to="/partner_docs/DBeaverGuide">
+              DBeaver PRO
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixGuide">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ToadEdgeGuide">
+              Quest Toad Edge
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/RepostorGuide">
               Repostor Data Protector for PostgresSQL
@@ -308,6 +311,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/VeritasGuide">
               Veritas NetBackup for PostgreSQL
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/SIBVisionsVisionXGuide">
+              SIB Visions VisionX
             </IndexCardLink>
           </IndexCard>
         </div>

@@ -86,23 +86,61 @@ become relevant with BDR in combination with CAMO.
 
 ## pglogical Settings for BDR
 
-BDR is also affected by some of the pglogical settings as it uses 
+BDR is also affected by some of the pglogical settings as it uses
 pglogical internally to implement the basic replication.
 
--   `pglogical.track_subscription_apply` - Track apply statistics for 
+-   `pglogical.track_subscription_apply` - Track apply statistics for
     each subscription.
--   `pglogical.track_relation_apply` - Track apply statistics for each 
+-   `pglogical.track_relation_apply` - Track apply statistics for each
     relation.
 -   `pglogical.track_apply_lock_timing` - Track lock timing when tracking
     statistics for relations.
 -   `pglogical.standby_slot_names` - When using physical Standby nodes
-    intended for failover purposes, should be set to the replication 
+    intended for failover purposes, should be set to the replication
     slot(s) for each intended Standby.
 -   `pglogical.writers_per_subscription` - Default number of writers per
     subscription (in BDR this can also be changed by
     `bdr.alter_node_group_config` for a group).
 -   `pglogical.max_writers_per_subscription` - Maximum number of writers
     per subscription (sets upper limit for the setting above).
+
+### `pglogical.min_worker_backoff_delay` and `pglogical.max_worker_backoff_delay`
+
+Rate limit BDR background worker launches by preventing a given worker
+from being relaunched more often than every
+`pglogical.min_worker_backoff_delay` milliseconds. On repeated errors, the back-off
+increases exponentially with added jitter up to maximum of
+`pglogical.max_worker_backoff_delay`.
+
+Time-unit suffixes are supported.
+
+!!! Note
+    This setting currently only affects receiver worker, which means it
+    primarily affects how fast a subscription will try to reconnect on error
+    or connection failure.
+
+The default for `pglogical.min_worker_backoff_delay` 1 second, for
+`pglogical.max_worker_backoff_delay` it is 1 minute.
+
+If the backoff delay setting is changed and the PostgreSQL configuration is
+reloaded then all current backoff waits will be reset. Additionally, the
+`pglogical.worker_task_reset_backoff_all()` function is provided to allow the
+administrator to force all backoff intervals to immediately expire.
+
+A tracking table in shared memory is maintained to remember the last launch
+time of each type of worker. This tracking table is not persistent; it is
+cleared by PostgreSQL restarts, including soft-restarts during crash recovery
+after an unclean backend exit.
+
+The view `pglogical.worker_tasks` may be used to inspect this state so the
+administrator can see any backoff rate-limiting currently in effect.
+
+For rate limiting purposes, workers are classified by "task". This key consists
+of the worker role, database oid, subscription id, subscription writer id,
+extension library name and function name, extension-supplied worker name, and
+the remote relation id for sync writers. `NULL` is used where a given
+classifier does not apply, e.g. manager workers don't have a subscription ID
+and receivers don't have a writer id.
 
 ## BDR Specific Settings
 
@@ -190,7 +228,7 @@ Unless noted otherwise, values may be set by any user at any time.
     this setting. It is normal for some statements to result in two `WARNING`s,
     one for skipping the DML lock and one for skipping the DDL lock.
 
--   `bdr.truncate_locking` - False by default, this configuration option sets the 
+-   `bdr.truncate_locking` - False by default, this configuration option sets the
     TRUNCATE command's locking behavior. Determines whether (when true) TRUNCATE
     obeys the bdr.ddl_locking setting.
 
@@ -363,7 +401,7 @@ Unless noted otherwise, values may be set by any user at any time.
 
 -   `bdr.trace_level` - Similar to the above, this defines the log level
     to use for BDR trace messages.  Enabling tracing on all nodes of a
-    BDR cluster may help 2ndQuadrant Support to diagnose issues.
+    BDR cluster may help EDB Support to diagnose issues.
     May only be set at Postgres server start.
 
 !!! Warning
@@ -394,7 +432,7 @@ Unless noted otherwise, values may be set by any user at any time.
 -   `bdr.raft_group_max_connections` - The maximum number of connections
      across all BDR groups for a Postgres server. These connections carry
      bdr consensus requests between the groups' nodes. Default value of this
-     parameter is 100 connections. May only be set at Postgres server start.  
+     parameter is 100 connections. May only be set at Postgres server start.
 -   `bdr.backwards_compatibility` - Specifies the version to be
     backwards-compatible to, in the same numerical format as used by
     `bdr.bdr_version_num`, e.g. `30618`.  Enables exact behavior of a
