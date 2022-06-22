@@ -200,15 +200,19 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.1}, platform: {name: "SLES 15"}}, 
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles15_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Debian 9"}}, 
+    when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Debian 9"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_deb9_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Debian 10"}}, 
+    when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Debian 10"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_deb10_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Ubuntu 18.04"}}, 
+    when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
+    when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    );
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 12"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
+  );
 
   function match(context, ...conditions) {
     for (let test of conditions) {
