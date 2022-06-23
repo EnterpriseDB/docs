@@ -1,26 +1,29 @@
 import IconNames from "../components/icon/iconNames";
 
 export const products = {
-  epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
+  bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
+  barman: { name: "Barman" },
   bdr: {
     name: "BDR (Bi-Directional Replication)",
     iconName: IconNames.HIGH_AVAILABILITY,
+  },
+  biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
+  edb_plus: { name: "EDB*Plus" },
+  efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
+  epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
+  epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
+  eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
+  hadoop_data_adapter: {
+    name: "Hadoop Data Adapter",
+    iconName: IconNames.HADOOP,
   },
   harp: {
     name: "High Availability Routing for Postgres (HARP)",
     iconName: IconNames.HIGH_AVAILABILITY,
   },
-  ark: { name: "Postgres Ark", iconName: IconNames.EDB_ARK },
-  bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
-  biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
-  efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
-  epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
-  eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
-  postgres_for_kubernetes: {
-    name: "EDB Postgres for Kubernetes",
-    iconName: IconNames.KUBERNETES,
-  },
-  pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
+  jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
+  livecompare: { name: "LiveCompare" },
+  "Migration Overview": { name: "Migration Overview" },
   migration_portal: {
     name: "Migration Portal",
     iconName: IconNames.EDB_MIGRATION_PORTAL,
@@ -29,12 +32,6 @@ export const products = {
     name: "Migration Toolkit",
     iconName: IconNames.EDB_MIGRATION_TOOLKIT,
   },
-  hadoop_data_adapter: {
-    name: "Hadoop Data Adapter",
-    iconName: IconNames.HADOOP,
-  },
-  jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
-  net_connector: { name: ".NET Connector", iconName: IconNames.CONNECT },
   mongo_data_adapter: {
     name: "Mongo Data Adapter",
     iconName: IconNames.CONNECT,
@@ -43,11 +40,20 @@ export const products = {
     name: "MySQL Data Adapter",
     iconName: IconNames.CONNECT,
   },
+  net_connector: { name: ".NET Connector", iconName: IconNames.CONNECT },
   ocl_connector: { name: "OCL Connector", iconName: IconNames.CONNECT },
   odbc_connector: { name: "ODBC Connector", iconName: IconNames.CONNECT },
+  pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
+  pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
+  pgd: { name: "EDB Postgres Distributed" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
+  pglogical: { name: "pglogical" },
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },
+  postgres_for_kubernetes: {
+    name: "EDB Postgres for Kubernetes",
+    iconName: IconNames.KUBERNETES,
+  },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
 };
