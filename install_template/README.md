@@ -48,7 +48,7 @@ After a template file is found, no rules are enforced on how that template shoul
 
 #### `/templates/platformBase/base.njk`
 
-- All templates ultimitaly should inherit from this file. This is a good place to write copy that needs to be shared by all docs, regardless of the product being installed
+- All templates ultimately should inherit from this file. This is a good place to write copy that needs to be shared by all docs, regardless of the product being installed
 - 3 blocks are currently available:
   - `prerequisites` — This is where information like adding EDB repos will go
   - `installCommand` — This is where the command to actually install the product will go
@@ -56,7 +56,7 @@ After a template file is found, no rules are enforced on how that template shoul
 
 #### `/templates/platformBase/[platform name].njk`
 
-- These files are largely reposible for setting up the `prerequisites` and `installCommand` blocks
+- These files are largely responsible for setting up the `prerequisites` and `installCommand` blocks
 - Currently, they rely on a `packageName` macro to be set by a child template. This macro is being used in the `installCommand` block.
 - You will notice there are no Ubuntu templates in the platformBase folder. This is because install instructions were the same as Debian 10, and so only the `debian-10.njk` file was created to reduce duplication. If Ubuntu specific instructions are needed, new template files could be created which inherit from `debian-10.njk`.
 - The `centos-7.njk` template contains a conditional to include ppc64le specific instructions. To display these instructions, add `{% set includePPC = true %}` to a child template
