@@ -97,43 +97,84 @@ For information about using the pemworker utility to register a server, see [Reg
 
 To use a non-root user account to register a PEM agent, you must first install the PEM agent as a root user. After installation, assume the identity of a non-root user (for example, `edb`) and perform the following steps:
 
-1.  Create the `.pem` directory and `logs` directory and assign read, write, and execute permissions to the file:
+1.  Login as `edb` user. Create the `pem` directory and `logs` directory and assign read, write, and execute permissions to the file:
 
     ```shell
-    mkdir /home/<edb>/.pem
-    mkdir /home/<edb>/.pem/logs
-    chmod 700 /home/<edb>/.pem
-    chmod 700 /home/<edb>/.pem/logs
+    $ mkdir /home/edb/pem
+    $ mkdir /home/edb/pem/logs
+    $ chmod 700 /home/edb/pem
+    $ chmod 700 /home/edb/pem/logs
     ```
 
 2.  Register the agent with PEM server:
 
     ```shell
-    ./pemworker --register-agent --pem-server <172.19.11.230> --pem-user <postgres> --pem-port <5432> --display-name <non_root> --cert-path /home/<edb> --config-dir /home/<edb>
+    $ export PEM_SERVER_PASSWORD=edb
+    $ /usr/edb/pem/bin/pemworker --register-agent --pem-server <172.19.11.230> --pem-user postgres --pem-port 5432 --display-name non_root_pem_agent --cert-path /home/edb/pem --config-dir /home/edb/pem
 
-    The above command creates agent certificates and an agent configuration file (``agent.cfg``) in the ``/home/edb/.pem`` directory. Use the following command to assign read and write permissions to these files:
+    # The above command creates agent certificates and an agent 
+    # configuration file (`agent.cfg`) in the `/home/edb/pem` directory. 
+    # Use the following command to assign read and write permissions to 
+    # these files:
 
-    ``chmod -R 600 /home/edb/.pem/agent*``
+    $ chmod -R 600 /home/edb/pem/agent*
     ```
 
 3.  Change the parameters of the `agent.cfg` file:
 
     ```ini
-    agent_ssl_key=/home/edb/.pem/agent<id>.key
-    agent_ssl_crt=/home/edb/.pem/agent<id>.crt
-    log_location=/home/edb/.pem/worker.log
-    agent_log_location=/home/edb/.pem/agent.log
+    $ vi /home/edb/pem/agent.cfg
+    agent_ssl_key=/home/edb/pem/agent<id>.key
+    agent_ssl_crt=/home/edb/pem/agent<id>.crt
+    log_location=/home/edb/pem/worker.log
+    agent_log_location=/home/edb/pem/agent.log
     ```
 
-4.  Update the values for the configuration file path and the user in the `pemagent` service file:
+    Where `<id>` is the assigned PEM agent id.
+
+4.  Create a `tmp` directory, set the environment variable and start the agent:
     ```ini
-    User=edb
-    ExecStart=/usr/edb/pem/agent/bin/pemagent -c /home/edb/.pem/agent.cfg
+    $ mkdir /home/edb/pem/tmp
+    
+    # Create a script file, add the environment variable, give permissions and execute:
+    $ vi /home/edb/pem/run_pemagent.sh
+    #!/bin/bash
+    export TEMP=/home/edb/agent/tmp
+    /usr/edb/pem/agent/bin/pemagent -c /home/edb/agent/etc/agent.cfg
+    $ chmod a+x /home/edb/pem/run_pemagent.sh
+    $ cd /home/edb/pem
+    $ ./run_pemagent.sh
     ```
 
-5.  Stop the agent process, and then restart the agent service using the non-root user:
+    Your PEM agent is registered and started with `edb` user at this point. If the machine restarts then this agent do not restart automatically and need to start manually using the above command.
+
+    Optionally, you can create the service for this PEM agent as root user to start this agent automatically at machine restart as follows:
+
+5.  Update the values for the configuration file path and the user in the `pemagent` service file as superuser:
+    ```ini
+    $ sudo vi  /usr/lib/systemd/system/pemagent.service
+    User=edb
+    Group=edb
+    WorkingDirectory=/home/edb/pem/agent
+    Environment=LD_LIBRARY_PATH=/usr/edb/pem/agent/lib
+    Environment=TEMP=/home/edb/pem/agent/tmp
+    ExecStart=/usr/edb/pem/agent/bin/pemagent -c /home/edb/pem/agent.cfg
+    ```
+
+5.  Stop the running agent process, and then restart the agent service:
     ```shell
-    sudo systemctl start/stop/restart pemagent
+    # Find the process id of the running pem agent and pem worker process and kill that process
+    $ ps -ax | grep pemagent
+    $ kill -9 <process_id_of_pemagent>
+    $ ps -ax | grep pemworker
+    $ kill -9 <process_id_of_pemworker>
+    # Start the pem agent services as superuser
+    $ sudo systemctl enable pemagent
+    $ sudo systemctl start pemagent
+    $ sudo systemctl status pemagent
     ```
 
 6.  Check the agent status on PEM dashboard.
+
+!!! Note
+    Any probes and jobs that require root permission or the file access owned by another user (for eg: enterprisedb), will fail.
