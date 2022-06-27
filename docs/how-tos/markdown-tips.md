@@ -19,7 +19,6 @@ By default, the items in the left nav are sorted alphabetically by file name. Th
 ```
 ---
 title: "Getting started"
-indexCards: simple
 navigation:
  - identity_provider
  - preparing_cloud_account
@@ -124,6 +123,11 @@ Examples:
 Stuff about this in style guide
 ## Lists
 Stuff about this in style guide
+don't use tabs
+1. Text
+   1. sdfsdf
+
+
 ## Tables
 Stuff about this in style guide
 ## Inline code
@@ -172,7 +176,10 @@ For examples of what you can do with admonitions, see [this demo](https://github
 ## Block quotes
 
 ## Inserting images
+Show an example of the syntax we use in docs - don't use html 
 ## Using HTML 
+limited - as needed - example in the partners for the landing - it needed html to work correctly
+Using breaks in tables </br>
 ## Emphasis
    Bold and italic
 
