@@ -176,7 +176,16 @@ For examples of what you can do with admonitions, see [this demo](https://github
 ## Block quotes
 
 ## Inserting images
-Show an example of the syntax we use in docs - don't use html 
+
+Don't use HTML to insert images in your content. Instead, use Markdown syntax that begins with an exclamation mark, followed by a title in brackets, and the image's file path in parentheses. For example:
+
+```
+![Comparison with Oracle Call Interface](../images/oracle_call_interface.png)
+```
+The image's title, Comparison with Oracle Call Interface, appears when hovering over the image. The title should be descriptive and concise for accessibility purposes.
+
+The image's file path depends on the location of your Markdown content. In the example, the image's file path, ../images/oracle_call_interface.png, leads out of its folder and into the images folder, where oracle_call_interface.png is located. Your path should also lead to the corresponding images folder, where your image is located.
+
 ## Using HTML 
 limited - as needed - example in the partners for the landing - it needed html to work correctly
 Using breaks in tables </br>
