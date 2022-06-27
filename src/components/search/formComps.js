@@ -10,17 +10,29 @@ const Results = connectStateResults(
     res ? children : null,
 );
 
-const TryAdvancedSearch = connectStateResults(({ searchResults: res }) => (
-  <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
-    {res && res.nbHits > 0 ? "Not finding what you need?" : "No results found."}
-    <Link
-      to={`/search?query=${encodeURIComponent(res.query)}`}
-      className="ml-2"
-    >
-      Try Search by Product
-    </Link>
-  </div>
-));
+const TryAdvancedSearch = connectStateResults(
+  ({ searchResults: res, searchState: state }) => {
+    const productFilter = (state?.configure?.filters || "").replace(
+      /^product:/,
+      "",
+    );
+    return (
+      <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
+        {res && res.nbHits > 0
+          ? "Not finding what you need?"
+          : "No results found."}
+        <Link
+          to={`/search?query=${encodeURIComponent(res.query)}${
+            productFilter ? "&product=" + encodeURIComponent(productFilter) : ""
+          }`}
+          className="ml-2"
+        >
+          Try Advanced Search
+        </Link>
+      </div>
+    );
+  },
+);
 
 const Hits = ({ hits, arrowIndex }) => (
   <>
@@ -47,7 +59,7 @@ export const SearchPane = ({ arrowIndex }) => (
 export const AdvancedSearchTabLink = ({ query }) => (
   <div className="flex-grow-1 d-flex align-items-center justify-content-flex-end mr-4">
     <Link to={`/search?query=${encodeURIComponent(query)}`}>
-      Search by Product
+      Advanced Search
     </Link>
   </div>
 );

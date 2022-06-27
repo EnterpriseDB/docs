@@ -1,0 +1,97 @@
+---
+title: "EDB Audit logs"
+originalFilePath: 'src/logging.md'
+product: 'Cloud Native Operator'
+---
+
+
+
+Clusters that are running on EDB Postgres Advanced Server 
+can enable [EDB Audit](/epas/latest/epas_guide/03_database_administration/05_edb_audit_logging/) as follows:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+  imageName: quay.io/enterprisedb/edb-postgres-advanced:13
+  licenseKey: <LICENSE>
+
+  postgresql:
+    epas:
+      audit: true
+
+  storage:
+    size: 1Gi
+```
+
+Setting `.spec.postgresql.epas.audit: true` enforces the following parameters:
+
+```text
+edb_audit = 'csv'
+edb_audit_destination = 'file'
+edb_audit_directory = '/controller/log'
+edb_audit_filename = 'edb_audit'
+edb_audit_rotation_day = 'none'
+edb_audit_rotation_seconds = '0'
+edb_audit_rotation_size = '0'
+edb_audit_tag = ''
+edb_log_every_bulk_value = 'false'
+```
+
+Other parameters can be passed via `.spec.postgresql.parameters` as usual.
+
+The audit CSV logs are parsed and routed to stdout in JSON format, similarly to all the remaining logs:
+
+-   `.logger` set to `edb_audit`
+-   `.msg` set to `record`
+-   `.record` containing the whole parsed record as a JSON object
+
+See the example below:
+
+```json
+{
+  "level": "info",
+  "ts": 1624629110.7641866,
+  "logger": "edb_audit",
+  "msg": "record",
+  "record": {
+    "log_time": "2021-06-25 13:51:50.763 UTC",
+    "user_name": "postgres",
+    "database_name": "postgres",
+    "process_id": "68",
+    "connection_from": "[local]",
+    "session_id": "60d5df76.44",
+    "session_line_num": "5",
+    "process_status": "idle in transaction",
+    "session_start_time": "2021-06-25 13:51:50 UTC",
+    "virtual_transaction_id": "3/93",
+    "transaction_id": "1183",
+    "error_severity": "AUDIT",
+    "sql_state_code": "00000",
+    "message": "statement: GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text) TO \"streaming_replica\"",
+    "detail": "",
+    "hint": "",
+    "internal_query": "",
+    "internal_query_pos": "",
+    "context": "",
+    "query": "",
+    "query_pos": "",
+    "location": "",
+    "application_name": "",
+    "backend_type": "client backend",
+    "command_tag": "GRANT",
+    "audit_tag": "",
+    "type": "grant"
+  },
+  "logging_pod": "cluster-example-1",
+}
+```
+
+See EDB [Audit file](/epas/latest/epas_guide/03_database_administration/05_edb_audit_logging/04_audit_log_file/)
+for more details about the records' fields.
+
+See the [CloudNativePG documentation](https://cloudnative-pg.io/documentation/1.15.0/) for more information on logging.
+
