@@ -204,7 +204,7 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "SLES 15"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_sles15_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "SLES 12"}}, 
+    when({product: {name: "Postgres Enterprise Manager", version: 8}, platform: {name: "SLES 12"}}, 
       (ctx) => `pem/8/installing_pem_server/installing_on_linux/using_edb_repository/${fmtArchPath(ctx)}/pem_server_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.1}, platform: {name: "SLES 15"}}, 
       (ctx) => `postgis/3.1/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_postgis_sles15_${fmtArchFilename(ctx)}.mdx`),
