@@ -79,6 +79,7 @@ const moveDoc = async (product, platform, version) => {
     centos_7_x86_64: "04",
     sles_15_x86_64: "05",
     sles_12_x86_64: "06",
+    "ubuntu_22.04_x86_64": "06b",
     "ubuntu_20.04_x86_64": "07",
     "ubuntu_18.04_x86_64": "07a",
     debian_10_x86_64: "08",
@@ -300,6 +301,10 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "Debian 11"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_debian11_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 22.04"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_eprs_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
   );
 
   function match(context, ...conditions) {
