@@ -291,32 +291,47 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Backup
+            </span>
             <IndexCardLink to="/partner_docs/CommVaultGuide">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/RepostorGuide">
+              Repostor Data Protector for PostgresSQL
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VeritasGuide">
+              Veritas NetBackup for PostgreSQL
+            </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Development Tools
+            </span>
             <IndexCardLink to="/partner_docs/DBeaverGuide">
               DBeaver PRO
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibaseGuide">
               Liquibase Pro
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
-              Nutanix AHV
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ToadEdgeGuide">
               Quest Toad Edge
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/RepostorGuide">
-              Repostor Data Protector for PostgresSQL
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesGuide">
-              Thales CipherTrust Transparent Encryption
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/VeritasGuide">
-              Veritas NetBackup for PostgreSQL
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/SIBVisionsVisionXGuide">
               SIB Visions VisionX
+            </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Platform
+            </span>
+            <IndexCardLink to="/partner_docs/NutanixGuide">
+              Nutanix AHV
+            </IndexCardLink>
+
+            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
+              Security
+            </span>
+            <IndexCardLink to="/partner_docs/ThalesGuide">
+              Thales CipherTrust Transparent Encryption
             </IndexCardLink>
           </IndexCard>
         </div>
