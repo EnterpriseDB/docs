@@ -123,10 +123,15 @@ Examples:
 Stuff about this in style guide
 ## Lists
 Stuff about this in style guide
-don't use tabs
-1. Text
-   1. sdfsdf
 
+Lists appear with an indent by default. If you format a list with no indent, Markdown formats the list with an indent on the page. For example, the first list item in the example below appears with an indent on the page. 
+
+If you want to make a nested list, don't use tab to indent. Press space three times to make an indent. For example:
+
+```text
+- A list item. 
+   - Instead of tab, I pressed space three times to indent this nested list item.
+```
 
 ## Tables
 Stuff about this in style guide
@@ -179,12 +184,12 @@ For examples of what you can do with admonitions, see [this demo](https://github
 
 Don't use HTML to insert images in your content. Instead, use Markdown syntax that begins with an exclamation mark, followed by a title in brackets, and the image's file path in parentheses. For example:
 
-```
+```text
 ![Comparison with Oracle Call Interface](../images/oracle_call_interface.png)
 ```
-The image's title, Comparison with Oracle Call Interface, appears when hovering over the image. The title should be descriptive and concise for accessibility purposes.
+The image's title, Comparison with Oracle Call Interface, appears when hovering over the image. Use a descriptive and concise title for accessibility purposes.
 
-The image's file path depends on the location of your Markdown content. In the example, the image's file path, ../images/oracle_call_interface.png, leads out of its folder and into the images folder, where oracle_call_interface.png is located. Your path should also lead to the corresponding images folder, where your image is located.
+The image's file path depends on the location of your Markdown content. In the example, the image's file path, ../images/oracle_call_interface.png, leads out of its folder (../) and into the images folder (images/), where oracle_call_interface.png is located. Your path must lead to the corresponding images folder where your image is located.
 
 ## Using HTML 
 limited - as needed - example in the partners for the landing - it needed html to work correctly
