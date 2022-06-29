@@ -233,6 +233,9 @@ const Page = () => (
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
