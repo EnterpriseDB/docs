@@ -8,7 +8,7 @@ This example shows how you convert two tables with standard sequences used as pr
 
 The tables are defined as follows:
 
-```text
+```sql
 CREATE TABLE MMR_seq_tbl (
     id          SERIAL PRIMARY KEY,
     field       VARCHAR2(20)
@@ -27,7 +27,7 @@ CREATE TABLE MMR_seq_child_tbl (
 
 The tables are populated with an initial set of rows:
 
-```text
+```sql
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 1');
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 2');
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 3');
@@ -42,16 +42,19 @@ INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 3-2', 
 
 The resulting table content is the following:
 
-```text
+```sql
 edb=# SELECT * FROM MMR_seq_tbl;
+__OUTPUT__
  id |       field
 ----+-------------------
   1 | MMRnode_a - Row 1
   2 | MMRnode_a - Row 2
   3 | MMRnode_a - Row 3
 (3 rows)
-
+```
+```sql
 edb=# SELECT * FROM MMR_seq_child_tbl;
+__OUTPUT__
  id |        field        | parent_id
 ----+---------------------+-----------
   1 | MMRnode_a - Row 1-1 |         1
@@ -73,13 +76,13 @@ To convert the existing sequence values in columns `MMR_seq_tbl.id`, `MMR_seq_ch
 
 Permit deferred updates to the foreign key constraint.
 
-```text
+```sql
 ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk DEFERRABLE INITIALLY DEFERRED;
 ```
 
 Create the function to perform the sequence conversion.
 
-```text
+```sql
 CREATE OR REPLACE FUNCTION MMR_sequence_convert (
     old_seq_value   bigint
 )
@@ -95,7 +98,7 @@ $function$;
 
 Change the sequence columns to data type `BIGINT` so they are large enough for the MMR-ready sequence.
 
-```text
+```sql
 ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DATA TYPE BIGINT;
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN parent_id SET DATA TYPE BIGINT;
@@ -103,14 +106,14 @@ ALTER TABLE MMR_seq_child_tbl ALTER COLUMN parent_id SET DATA TYPE BIGINT;
 
 Set the unique database identifier used by the MMR-ready sequence.
 
-```text
+```sql
 ALTER DATABASE MMRnode_a SET cluster.unique_db_id TO 1;
 SET cluster.unique_db_id TO 1;
 ```
 
 Update the primary key and foreign key values with the `MMR_sequence_convert` function. Perform the updates affecting the foreign key constraint in the same transaction to avoid a foreign key violation error.
 
-```text
+```sql
 BEGIN TRANSACTION;
     UPDATE MMR_seq_tbl SET id = MMR_sequence_convert (id);
     UPDATE MMR_seq_child_tbl SET parent_id = MMR_sequence_convert (parent_id);
@@ -120,7 +123,7 @@ COMMIT;
 
 Reset the foreign key constraint back to its original setting. For example:
 
-```text
+```sql
 ALTER TABLE MMR_seq_child_tbl ALTER CONSTRAINT MMR_seq_tbl_fk NOT DEFERRABLE;
 ```
 
@@ -155,13 +158,13 @@ The primary key id values incorporate the old sequence values but are increased 
 
 Perform the steps described in [Creating an MMR-ready sequence](01_create_mmr_ready_sequence/#create_mmr_ready_sequence) on the databases to use as primary nodes. For database `MMRnode_a` that contains the converted tables, create a new sequence with a starting value of `7` to avoid a primary key uniqueness conflict with the existing rows. In the original tables, the maximum used sequence value was 6. When a sequence number is transformed to an MMR-ready sequence value, the same result is returned if the same database identifier is used with the same original number.
 
-```text
+```sql
 CREATE SEQUENCE MMR_seq START WITH 7 INCREMENT BY 1 NO CYCLE;
 ```
 
 Create the function to return the MMR-ready sequence value.
 
-```text
+```sql
 CREATE OR REPLACE FUNCTION MMR_sequence_nextval (
     seq_id          VARCHAR
 )
@@ -178,14 +181,14 @@ $function$;
 
 Modify the primary key columns to use the function to return the default value.
 
-```text
+```sql
 ALTER TABLE MMR_seq_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
 ALTER TABLE MMR_seq_child_tbl ALTER COLUMN id SET DEFAULT MMR_sequence_nextval('MMR_seq');
 ```
 
 Repeat the MMR-ready sequence setup process for the other primary nodes.
 
-```text
+```sql
 ALTER DATABASE MMRnode_b SET cluster.unique_db_id TO 2;
 SET cluster.unique_db_id TO 2;
 
@@ -207,7 +210,7 @@ $function$;
 
 Repeat the process for `MMRnode_c`.
 
-```text
+```sql
 ALTER DATABASE MMRnode_c SET cluster.unique_db_id TO 3;
 SET cluster.unique_db_id TO 3;
 
@@ -258,7 +261,7 @@ MMRnode_a=# SELECT * FROM MMR_seq_child_tbl;
 
 The following rows are inserted on `MMRnode_a`:
 
-```text
+```sql
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_a - Row 4');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_a - Row 4-1', 4503599627370503);
 
@@ -286,7 +289,7 @@ MMRnode_a=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 The following rows are inserted on `MMRnode_b`:
 
-```text
+```sql
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_b - Row 1');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_b - Row 1-1', 9007199254740993);
 
@@ -314,7 +317,7 @@ MMRnode_b=# SELECT * FROM MMR_seq_child_tbl ORDER BY id;
 
 The following rows are inserted on `MMRnode_c`:
 
-```text
+```sql
 INSERT INTO MMR_seq_tbl (field) VALUES ('MMRnode_c - Row 1');
 INSERT INTO MMR_seq_child_tbl (field, parent_id) VALUES ('MMRnode_c - Row 1-1', 13510798882111489);
 
