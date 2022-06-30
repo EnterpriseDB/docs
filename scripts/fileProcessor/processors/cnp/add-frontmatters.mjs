@@ -30,7 +30,6 @@ const getFrontmatter = async (header, filename) => {
   let frontmatter = `---
 title: '${header}'
 originalFilePath: '${filename}'
-product: 'Cloud Native Operator'
 `;
 
   if (filename.slice(-8) === "index.md") {
@@ -44,9 +43,6 @@ const addIndexFrontmatterSection = async (frontmatter) => {
   let modifiedFrontmatter =
     frontmatter +
     `indexCards: none
-directoryDefaults:
-  prevNext: true
-  iconName: logos/KubernetesMono
 
 navigation:
 `;
