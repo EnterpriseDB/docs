@@ -41,7 +41,7 @@ Ensure the following prerequisites are met before configuring SQL/Protect:
 
 The following example shows the settings of these parameters in the `postgresql.conf` file:
 
-```text
+```ini
 shared_preload_libraries = '$libdir/dbms_pipe,$libdir/edb_gen,$libdir/sqlprotect'
                                         # (change requires restart)
                           .
@@ -60,7 +60,7 @@ edb_sql_protect.max_queries_to_save = 5000
 
 On a Redhat or CentOS 7.x installation, use the command:
 
-```text
+```shell
 systemctl restart edb-as-14
 ```
 
@@ -70,7 +70,7 @@ systemctl restart edb-as-14
 
 The following example shows this process to set up protection for a database named `edb`:
 
-```text
+```sql
 $ /usr/edb/as14/bin/psql -d edb -U enterprisedb
 Password for user enterprisedb:
 psql.bin (14.0.0, server 14.0.0)
@@ -117,7 +117,7 @@ For each database that you want to protect, you must determine the roles you wan
 
 **Step 1:** Connect as a superuser to a database that you wish to protect with either `psql` or Postgres Enterprise Manager Client:
 
-```text
+```sql
 $ /usr/edb/as14/bin/psql -d edb -U enterprisedb
 Password for user enterprisedb:
 psql.bin (14.0.0, server 14.0.0)
@@ -128,7 +128,7 @@ edb=#
 
 **Step 2:** Since the SQL/Protect tables, functions, and views are built under the `sqlprotect` schema, use the `SET search_path` command to include the `sqlprotect` schema in your search path. This eliminates the need to schema-qualify any operation or query involving SQL/Protect database objects:
 
-```text
+```sql
 edb=# SET search_path TO sqlprotect;
 SET
 ```
@@ -137,8 +137,9 @@ SET
 
 To add a role, use the function `protect_role('rolename')`. The following example protects a role named `appuser`:
 
-```text
+```sql
 edb=# SELECT protect_role('appuser');
+__OUTPUT__
  protect_role
 --------------
 
@@ -147,8 +148,9 @@ edb=# SELECT protect_role('appuser');
 
 You can list the roles that have been added to the protected roles list by issuing the following query:
 
-```text
+```sql
 edb=# SELECT * FROM edb_sql_protect;
+__OUTPUT__
  dbid  | roleid | protect_relations | allow_utility_cmds | allow_tautology |
  allow_empty_dml
 -------+--------+-------------------+--------------------+-----------------+--
@@ -159,10 +161,11 @@ edb=# SELECT * FROM edb_sql_protect;
 
 A view is also provided that gives the same information using the object names instead of the Object Identification numbers (OIDs):
 
-```text
+```sql
 edb=# \x
 Expanded display is on.
 edb=# SELECT * FROM list_protected_users;
+__OUTPUT__
 -[ RECORD 1 ]------+--------
 dbname             | edb
 username           | appuser
@@ -204,7 +207,7 @@ However, if a role attempts to access a relation that is not in its protected re
 
 **Step 1:** To activate SQL/Protect in learn mode, set the parameters in the `postgresql.conf` file as shown below:
 
-```text
+```ini
 edb_sql_protect.enabled = on
 edb_sql_protect.level = learn
 ```
@@ -215,8 +218,9 @@ Choose `Expert Configuration`, then `Reload Configuration` from the EDB Postgres
 
 For an alternative method of reloading the configuration file, use the `pg_reload_conf` function. Be sure you are connected to a database as a superuser and execute `function pg_reload_conf` as shown by the following example:
 
-```text
+```sql
 edb=# SELECT pg_reload_conf();
+__OUTPUT__
  pg_reload_conf
 ----------------
  t
@@ -227,8 +231,9 @@ edb=# SELECT pg_reload_conf();
 
 As an example the following queries are issued in the `psql` application by protected role `appuser`:
 
-```text
+```sql
 edb=> SELECT * FROM dept;
+__OUTPUT__
 NOTICE:  SQLPROTECT: Learned relation: 16384
  deptno |   dname    |   loc
 --------+------------+----------
@@ -237,8 +242,10 @@ NOTICE:  SQLPROTECT: Learned relation: 16384
      30 | SALES      | CHICAGO
      40 | OPERATIONS | BOSTON
 (4 rows)
-
+```
+```sql
 edb=> SELECT empno, ename, job FROM emp WHERE deptno = 10;
+__OUTPUT__
 NOTICE:  SQLPROTECT: Learned relation: 16391
  empno | ename  |    job
 -------+--------+-----------
@@ -252,7 +259,7 @@ SQL/Protect generates a `NOTICE` severity level message indicating the relation 
 
 In SQL/Protect learn mode, SQL statements that are cause for suspicion are not prevented from executing, but a message is issued to alert the user to potentially dangerous statements as shown by the following example:
 
-```text
+```sql
 edb=> CREATE TABLE appuser_tab (f1 INTEGER);
 NOTICE: SQLPROTECT: This command type is illegal for this user
 CREATE TABLE
@@ -266,15 +273,16 @@ DELETE 0
 
 Connect as a superuser to the database you are monitoring and set the search path to include the `sqlprotect` schema:
 
-```text
+```sql
 edb=# SET search_path TO sqlprotect;
 SET
 ```
 
 Query the `edb_sql_protect_rel` table to see the relations added to the protected relations list:
 
-```text
+```sql
 edb=# SELECT * FROM edb_sql_protect_rel;
+__OUTPUT__
  dbid   | roleid | relid
 --------+--------+-------
  13917  | 16671  | 16384
@@ -285,8 +293,9 @@ edb=# SELECT * FROM edb_sql_protect_rel;
 
 The `list_protected_rels` view provides more comprehensive information along with the object names instead of the OIDs:
 
-```text
+```sql
 edb=# SELECT * FROM list_protected_rels;
+__OUTPUT__
  Database | Protected User | Schema |    Name     | Type  |    Owner
 ----------+----------------+--------+-------------+-------+------------
  edb      | appuser        | public | dept        | Table | enterprisedb
@@ -303,7 +312,7 @@ Passive mode is the less restrictive of the two protection modes, passive and ac
 
 **Step 1:** To activate `SQL/Protect` in passive mode, set the following parameters in the `postgresql.conf` file as shown below:
 
-```text
+```ini
 edb_sql_protect.enabled = on
 edb_sql_protect.level = passive
 ```
@@ -312,8 +321,9 @@ edb_sql_protect.level = passive
 
 Now SQL/Protect is in passive mode. For relations that have been learned such as the `dept` and `emp` tables of the prior examples, SQL statements are permitted with no special notification to the client by `SQL/Protect` as shown by the following queries run by user `appuser`:
 
-```text
+```sql
 edb=> SELECT * FROM dept;
+__OUTPUT__
  deptno |   dname    |   loc
 --------+------------+----------
     10  | ACCOUNTING | NEW YORK
@@ -321,8 +331,10 @@ edb=> SELECT * FROM dept;
     30  | SALES      | CHICAGO
     40  | OPERATIONS | BOSTON
 (4 rows)
-
+```
+```sql
 edb=> SELECT empno, ename, job FROM emp WHERE deptno = 10;
+__OUTPUT__
  empno | ename  |    job
 -------+--------+-----------
   7782 | CLARK  | MANAGER
@@ -333,7 +345,7 @@ edb=> SELECT empno, ename, job FROM emp WHERE deptno = 10;
 
 SQL/Protect does not prevent any SQL statement from executing, but issues a message of `WARNING` severity level for SQL statements executed against relations that were not learned, or for SQL statements that contain a prohibited signature as shown in the following example:
 
-```text
+```sql
 edb=> CREATE TABLE appuser_tab_2 (f1 INTEGER);
 WARNING: SQLPROTECT: This command type is illegal for this user
 CREATE TABLE
@@ -346,6 +358,7 @@ INSERT 0 1
 edb=> SELECT * FROM appuser_tab_2 WHERE 'x' = 'x';
 WARNING: SQLPROTECT: Illegal Query: relations
 WARNING: SQLPROTECT: Illegal Query: tautology
+__OUTPUT__
 f1
 ----
   1
@@ -359,10 +372,11 @@ By querying the view `edb_sql_protect_stats`, you can see the number of times SQ
 
 The following is a query on `edb_sql_protect_stats`:
 
-```text
+```sql
 edb=# SET search_path TO sqlprotect;
 SET
 edb=# SELECT * FROM edb_sql_protect_stats;
+__OUTPUT__
  username  | superusers | relations | commands | tautology | dml
 -----------+------------+-----------+----------+-----------+-----
  appuser   |     0      |     3     |    1     |     1     | 0
@@ -375,8 +389,9 @@ By querying the `edb_sql_protect_queries` view, you can see the SQL statements t
 
 The following code sample shows a query on `edb_sql_protect_queries`:
 
-```text
+```sql
 edb=# SELECT * FROM edb_sql_protect_queries;
+__OUTPUT__
 -[ RECORD 1 ]+---------------------------------------------
  username     | appuser
  ip_address   |
@@ -416,7 +431,7 @@ In active mode, disallowed SQL statements are prevented from executing. Also, th
 
 **Step 1:** To activate `SQL/Protect` in active mode, set the following parameters in the `postgresql.conf` file as shown below:
 
-```text
+```ini
 edb_sql_protect.enabled = on
 edb_sql_protect.level = active
 ```
@@ -425,7 +440,7 @@ edb_sql_protect.level = active
 
 The following example illustrates SQL statements similar to those given in the examples of Step 2 in `Passive Mode`, but executed by user `appuser` when `edb_sql_protect.level` is set to `active`:
 
-```text
+```sql
 edb=> CREATE TABLE appuser_tab_3 (f1 INTEGER);
 ERROR: SQLPROTECT: This command type is illegal for this user
 edb=> INSERT INTO appuser_tab_2 VALUES (1);
@@ -436,8 +451,9 @@ ERROR: SQLPROTECT: Illegal Query: relations
 
 The following shows the resulting statistics:
 
-```text
+```sql
 edb=# SELECT * FROM sqlprotect.edb_sql_protect_stats;
+__OUTPUT__
  username  | superusers | relations | commands | tautology | dml
 -----------+------------+-----------+----------+-----------+-----
  appuser   |      0     |     5     |     2    |     1     | 0
@@ -446,8 +462,9 @@ edb=# SELECT * FROM sqlprotect.edb_sql_protect_stats;
 
 The following is a query on `edb_sql_protect_queries`:
 
-```text
+```sql
 edb=# SELECT * FROM sqlprotect.edb_sql_protect_queries;
+__OUTPUT__
 -[ RECORD 1 ]+---------------------------------------------
  username     | appuser
  ip_address   |

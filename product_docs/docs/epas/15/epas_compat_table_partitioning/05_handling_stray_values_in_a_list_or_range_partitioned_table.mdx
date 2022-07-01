@@ -17,7 +17,7 @@ A `DEFAULT` partition captures any rows that don't fit into any other partition 
 
 The syntax of a `DEFAULT` rule is:
 
-```text
+```sql
 PARTITION [<partition_name>] VALUES (DEFAULT)
 ```
 
@@ -25,7 +25,7 @@ Where `partition_name` specifies the name of the partition or subpartition that 
 
 You can create a list-partitioned table in which the server decides the partition for storing the data based on the value of the `country` column. In that case, if you attempt to add a row in which the value of the `country` column contains a value not listed in the rules, an error is reported:
 
-```text
+```sql
 edb=# INSERT INTO sales VALUES
 edb-#  (40, '3000x', 'IRELAND', '01-Mar-2012', '45000');
 ERROR:  no partition of relation "sales_2012" found for row
@@ -34,7 +34,7 @@ DETAIL:  Partition key of the failing row contains (country) = (IRELAND).
 
 This example creates such a table but adds a `DEFAULT` partition. The server stores any rows that don't match a value specified in the partitioning rules for `europe`, `asia`, or `americas` partitions in the `others` partition.
 
-```text
+```sql
 CREATE TABLE sales
 (
   dept_no     number,
@@ -61,8 +61,9 @@ INSERT INTO sales VALUES
 
 Query the contents of the `sales` table to confirm that the previously rejected row is now stored in the `sales_others` partition:
 
-```text
+```sql
 edb=# SELECT tableoid::regclass, * FROM sales;
+__OUTPUT__
     tableoid    | dept_no | part_no | country  |        date        | amount
 ----------------+---------+---------+----------+--------------------+--------
  sales_americas |      40 | 9519b   | US       | 12-APR-12 00:00:00 | 145000
@@ -95,14 +96,14 @@ EDB Postgres Advanced Server provides the following methods to reassign the cont
 
 This example uses the `ALTER TABLE... ADD PARTITION` command. It assumes there's no conflicting values between the existing rows in the table and the values of the partition to add.
 
-```text
+```sql
 edb=# ALTER TABLE sales ADD PARTITION africa values ('SOUTH AFRICA', 'KENYA');
 ALTER TABLE
 ```
 
 When the following rows are inserted into the table, an error occurs, indicating that there are conflicting values:
 
-```text
+```sql
 edb=# INSERT INTO sales (dept_no, country) VALUES
 (1,'FRANCE'),(2,'INDIA'),(3,'US'),(4,'SOUTH AFRICA'),(5,'NEPAL');
 INSERT 0 5
@@ -110,7 +111,7 @@ INSERT 0 5
 
 Row `(4,'SOUTH AFRICA')` conflicts with the `VALUES` list in the `ALTER TABLE... ADD PARTITION` statement, thus resulting in an error:
 
-```text
+```sql
 edb=# ALTER TABLE sales ADD PARTITION africa values ('SOUTH AFRICA', 'KENYA');
 ERROR:  updated partition constraint for default partition "sales_others"
 would be violated by some row
@@ -122,7 +123,7 @@ This example splits a `DEFAULT` partition, redistributing the partition's conten
 
 This command inserts rows into the table, including rows into the `DEFAULT` partition:
 
-```text
+```sql
 INSERT INTO sales VALUES
   (10, '4519b', 'FRANCE', '17-Jan-2012', '45000'),
   (10, '9519b', 'ITALY', '07-Jul-2012', '15000'),
@@ -137,8 +138,9 @@ INSERT INTO sales VALUES
 
 The partitions include the `DEFAULT others` partition:
 
-```text
+```sql
 edb=# SELECT partition_name, high_value FROM ALL_TAB_PARTITIONS;
+__OUTPUT__
  partition_name |     high_value
 ----------------+---------------------
  EUROPE         | 'FRANCE', 'ITALY'
@@ -150,8 +152,9 @@ edb=# SELECT partition_name, high_value FROM ALL_TAB_PARTITIONS;
 
 This command shows the rows distributed among the partitions:
 
-```text
+```sql
 edb=# SELECT tableoid::regclass, * FROM sales;
+__OUTPUT__
  tableoid     | dept_no| part_no |   country    |        date        | amount
 --------------+--------+---------+--------------+--------------------+-------
 sales_americas|     30 | 9519b   | US           | 12-APR-12 00:00:00 |145000
@@ -168,7 +171,7 @@ sales_others  |     50 | 3788a   | CHINA        | 12-MAY-12 00:00:00 |  4950
 
 This command splits the `DEFAULT others` partition into partitions named `africa` and `others`:
 
-```text
+```sql
 ALTER TABLE sales SPLIT PARTITION others VALUES
   ('SOUTH AFRICA', 'KENYA')
   INTO (PARTITION africa, PARTITION others);
@@ -176,8 +179,9 @@ ALTER TABLE sales SPLIT PARTITION others VALUES
 
 The partitions now include the `africa` partition along with the `DEFAULT others` partition:
 
-```text
+```sql
 edb=# SELECT partition_name, high_value FROM ALL_TAB_PARTITIONS;
+__OUTPUT__
  partition_name |       high_value
 ----------------+-------------------------
  EUROPE         | 'FRANCE', 'ITALY'
@@ -190,8 +194,9 @@ edb=# SELECT partition_name, high_value FROM ALL_TAB_PARTITIONS;
 
 This command shows that the rows were redistributed across the new partitions:
 
-```text
+```sql
 edb=# SELECT tableoid::regclass, * FROM sales;
+__OUTPUT__
  tableoid      |dept_no | part_no |   country   |        date        | amount
 ---------------+--------+---------+-------------+--------------------+-------
 sales_americas |     30 | 9519b   | US          | 12-APR-12 00:00:00 |145000
@@ -212,7 +217,7 @@ A `MAXVALUE` partition or subpartition captures any rows that don't fit into any
 
 The syntax of a `MAXVALUE` rule is:
 
-```text
+```sql
 PARTITION [<partition_name>] VALUES LESS THAN (MAXVALUE)
 ```
 
@@ -220,7 +225,7 @@ Where `partition_name` specifies the name of the partition that stores any rows 
 
 The last example created a range-partitioned table in which the data was partitioned based on the value of the `date` column. If you attempt to add a row with a `date` value that exceeds a date listed in the partitioning constraints, EDB Postgres Advanced Server reports an error.
 
-```text
+```sql
 edb=# INSERT INTO sales VALUES
 edb-#   (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
 ERROR:  no partition of relation "sales" found for row
@@ -229,7 +234,7 @@ DETAIL:  Partition key of the failing row contains (date) = (01-MAR-13 00:00:00)
 
 This `CREATE TABLE` command creates the same table but with a `MAXVALUE` partition. Instead of throwing an error, the server stores any rows that don't match the previous partitioning constraints in the `others` partition.
 
-```text
+```sql
 CREATE TABLE sales
 (
   dept_no     number,
@@ -250,15 +255,16 @@ PARTITION BY RANGE(date)
 
 To test the `MAXVALUE` partition, add a row with a value in the `date` column that exceeds the last date value listed in a partitioning rule. The server stores the row in the `others` partition.
 
-```text
+```sql
 INSERT INTO sales VALUES
   (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
 ```
 
 Query the contents of the `sales` table to confirm that the previously rejected row is now stored in the `sales_others` partition:
 
-```text
+```sql
 edb=# SELECT tableoid::regclass, * FROM sales;
+__OUTPUT__
    tableoid    | dept_no | part_no | country  |        date        | amount
 ---------------+---------+---------+----------+--------------------+--------
  sales_q1_2012 |      10 | 4519b   | FRANCE   | 17-JAN-12 00:00:00 |  45000
