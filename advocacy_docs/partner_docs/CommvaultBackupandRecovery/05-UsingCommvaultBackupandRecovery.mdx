@@ -1,0 +1,161 @@
+---
+title: 'Using Commvault Backup & Recovery'
+description: 'Walkthroughs of multiple Commvault Backup & Recovery usage scenarios'
+---
+
+How to backup and restore an EDB Database using Commvault Backup & Recovery.
+
+## Using Commvault Backup & Recovery
+
+Commvault provides two methods of taking the backup from an EDB database and restoring it.
+
+1. DumpBasedBackupSet Backup and Restore
+2. FSBasedBackupSet Backup and Restore
+
+!!! Note
+    At this time there is a known issue with FSBased Restore that does not allow for proper restoration of the database. See the known issues section of the guide for more information. 
+
+### DumpBasedBackupSet Backup and Restore
+
+Dump based backup uses the `pg_dump` Utility to take the backup.
+
+#### Taking DumpBasedBackupSet Backup 
+
+1. Open Commvault Backup & Recovery's Command Center and from the navigation pane, go to `Protect > Databases`.
+
+   ![Instances Page](Images/Dumpbackup1.png)
+
+2. Click on the required instance.
+3. In the `Backup sets` section, click on `DumpBasedBackupSet` backup set.
+
+   ![Instances Page](Images/Dumpbackup2.png)
+
+4. In the `Database groups` section, click the database group that you want to back up. In this case it is `default`.
+
+   ![Select Database Group](Images/Dumpbackup3.png)
+
+5. In the `Backup` section, click `Back up now`.
+
+   ![Backup Section](Images/Dumpbackup4.png)
+
+6. Select `Full` in the `Select Backup Level` screen.
+
+   ![Backup Level Screen](Images/Dumpbackup5.png)
+
+7. A Job will be created to take the backup.
+
+   ![Backup Job](Images/Dumpbackup6.png)
+
+8. Once the Backup Job is completed then its status will be changed to `Completed`.
+
+   ![Backup Job](Images/Dumpbackup7.png)
+
+#### Restoring DumpBasedBackupSet Backup 
+
+DumpBased backupset can be used to restore the individual databases.
+
+1. From the navigation pane, go to `Protect > Databases`.
+2. Click the instance that you want to restore.
+3. In the `Recovery points` calendar, select `DumpBasedBackupSet`.
+
+   ![Recovery Points Calendar](Images/Dumprestore1.png)
+
+4. Select a date from the calendar, and then click `Restore`.
+5. The `Backup Content` screen will display the databases to be restored, select the required database to restore or select all of them to restore all.
+
+   ![Backup Content Screen](Images/Dumprestore2.png)
+
+6. Click `Restore`.
+7. From the `Restore Options` screen, select the `Destination Server` and `Destination Instance` and click on `submit`.
+
+   ![Restore Options Screen](Images/Dumprestore3.png)
+
+8. A Job will be created to restore the backup.
+
+   ![Restore Job](Images/Dumprestore4.png)
+   
+   ![Restore Job](Images/Dumprestore5.png)
+
+9. Once the Restore is completed successfully, login to the EDB database and check that the restore operation recovered the data. In our example below we connected to an EDB Postgres Advanced Server instance.
+
+```bash
+edb=#
+edb=# \l
+                                                           List of databases
+    Name     |    Owner     | Encoding |          Collate           |           Ctype            | ICU |       Access privileges
+-------------+--------------+----------+----------------------------+----------------------------+-----+-------------------------------
+ edb         | enterprisedb | UTF8     | English_United States.1252 | English_United States.1252 |     |
+ epas13_test | enterprisedb | UTF8     | English_United States.1252 | English_United States.1252 |     |
+ postgres    | enterprisedb | UTF8     | English_United States.1252 | English_United States.1252 |     |
+ template0   | enterprisedb | UTF8     | English_United States.1252 | English_United States.1252 |     | =c/enterprisedb              +
+             |              |          |                            |                            |     | enterprisedb=CTc/enterprisedb
+ template1   | enterprisedb | UTF8     | English_United States.1252 | English_United States.1252 |     | =c/enterprisedb              +
+             |              |          |                            |                            |     | enterprisedb=CTc/enterprisedb
+(5 rows)
+
+
+edb=#
+edb=# \c epas13_test
+You are now connected to database "epas13_test" as user "enterprisedb".
+epas13_test=# \dt
+                List of relations
+ Schema |       Name       | Type  |    Owner
+--------+------------------+-------+--------------
+ public | tp_department_db | table | enterprisedb
+ public | tp_sales_db      | table | enterprisedb
+(2 rows)
+
+
+epas13_test=# select * from  tp_department_db;
+ deptno |    dname    | location
+--------+-------------+----------
+     10 | Development | Pakistan
+     20 | Testing     | Pakistan
+     30 | CM          | Pakistan
+     40 | Marketing   | India
+(4 rows)
+
+
+epas13_test=# select * from  tp_sales_db;
+ salesman_id | salesman_name | sales_region | sales_amount | deptno
+-------------+---------------+--------------+--------------+--------
+         100 | Person 1      | CITY 1       |            1 |     10
+         110 | Person 2      | CITY 2       |            2 |     20
+         120 | Person 3      | CITY 3       |            3 |     30
+         130 | Person 4      | CITY 4       |        10000 |     40
+(4 rows)
+
+
+epas13_test=# select * from v1;
+ dept_no |  dept_name  | sales_no | sales_name | sales_salary | sales_dept_no
+---------+-------------+----------+------------+--------------+---------------
+      10 | Development |      100 | Person 1   |            1 |            10
+      20 | Testing     |      110 | Person 2   |            2 |            20
+      30 | CM          |      120 | Person 3   |            3 |            30
+      40 | Marketing   |      130 | Person 4   |        10000 |            40
+(4 rows)
+
+
+epas13_test=# desc  tp_sales_db;
+                                 Table "public.tp_sales_db"
+    Column     |         Type          | Collation | Nullable |           Default
+---------------+-----------------------+-----------+----------+------------------------------
+ salesman_id   | integer               |           |          |
+ salesman_name | character varying(30) |           |          |
+ sales_region  | character varying(30) |           |          |
+ sales_amount  | integer               |           |          | nextval('sal_seq'::regclass)
+ deptno        | integer               |           |          |
+Indexes:
+    "lower_reg_idx" btree (lower(sales_region::text))
+    "reg1_idx" btree (salesman_id)
+Foreign-key constraints:
+    "department_employee_fk" FOREIGN KEY (deptno) REFERENCES tp_department_db(deptno)
+
+
+epas13_test=#
+epas13_test=#
+
+```
+
+## Known Issues
+FSBaseBackupSet Restore has an issue if the default edb directory (for example, `*:\Program files\edb`) has been lost or deleted. If this occurs then after a restore is performed, the permissions on the restored directories are not recovered. Instead the directory inherits the permissions from the parent directory which does not allow EDB Postgres Advanced Server services to start on the restored directory. We are working with Commvault to resolve the issue.

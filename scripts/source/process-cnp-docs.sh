@@ -13,6 +13,11 @@ DESTINATION_CHECKOUT=`cd $2 && pwd`
 cd $DESTINATION_CHECKOUT/scripts/fileProcessor
 npm install --production
 
+cd $DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/
+node $DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs \
+  "$DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/" \
+  > $SOURCE_CHECKOUT/files-to-ignore.txt
+
 cd $SOURCE_CHECKOUT/docs
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
@@ -25,5 +30,4 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
 
-rsync -a --delete src/ $DESTINATION_CHECKOUT/advocacy_docs/kubernetes/cloud_native_postgresql/
-cp $DESTINATION_CHECKOUT/merge_sources/kubernetes/cloud_native_postgresql/interactive_demo.mdx $DESTINATION_CHECKOUT/advocacy_docs/kubernetes/cloud_native_postgresql/interactive_demo.mdx
+rsync -av --delete --exclude-from=$SOURCE_CHECKOUT/files-to-ignore.txt src/ $DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/
