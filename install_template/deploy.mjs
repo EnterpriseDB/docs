@@ -81,8 +81,8 @@ const moveDoc = async (product, platform, version) => {
     sles_12_x86_64: "06",
     "ubuntu_20.04_x86_64": "07",
     "ubuntu_18.04_x86_64": "07a",
-    debian_10_x86_64: "07b",
-    debian_9_x86_64: "08",
+    debian_10_x86_64: "08",
+    debian_9_x86_64: "08a",
     rhel_8_ppc64le: "09",
     rhel_7_ppc64le: "10",
     sles_15_ppc64le: "11",
@@ -105,6 +105,10 @@ const moveDoc = async (product, platform, version) => {
       prefix["sles_12_x86_64"] = "04";
       prefix["sles_15_ppc64le"] = "09";
       prefix["sles_12_ppc64le"] = "10";
+      prefix["ubuntu_20.04_x86_64"] = "05";
+      prefix["ubuntu_18.04_x86_64"] = "05a";
+      prefix["debian_10_x86_64"] = "05b";
+      prefix["debian_9_x86_64"] = "06";
       break;
   }
 
@@ -184,6 +188,14 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB JDBC Connector"}, platform: {name: "SLES 15"}}, 
       (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Debian 9"}}, 
+      (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_deb9_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Debian 10"}}, 
+      (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_deb10_${fmtArchFilename(ctx)}.mdx`),
+      when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 18.04"}}, 
+      (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
+      (ctx) => `jdbc_connector/42.3.3.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/${prefix[plat]}_jdbc42_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "SLES 12"}}, 
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_mtk55_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "SLES 15"}}, 
@@ -208,10 +220,26 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 15"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB OCL Connector"}, platform: {name: "Debian 9"}}, 
+      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_deb9_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB OCL Connector"}, platform: {name: "Debian 10"}}, 
+      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_deb10_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 18.04"}}, 
+      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 20.04"}}, 
+      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/${prefix[plat]}_ocl_connector14_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 12"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 15"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_sles15_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Debian 9"}}, 
+      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_deb9_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Debian 10"}}, 
+      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_deb10_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 18.04"}}, 
+      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
+      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/${prefix[plat]}_odbc13_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.16}, platform: {name: "SLES 12"}}, 
       (ctx) => `pgbouncer/1.16/01_installation/install_on_linux/${fmtArchPath(ctx)}/${prefix[plat]}_pgbouncer_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.16}, platform: {name: "SLES 15"}}, 
