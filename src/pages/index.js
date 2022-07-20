@@ -145,6 +145,34 @@ const Page = () => (
               PostgreSQL
             </IndexCardLink>
           </IndexCard>
+          
+          <IndexCard
+            iconName={iconNames.CONTROL}
+            headingText="Monitoring & Admin"
+          >
+            <IndexCardLink to="/pem/latest">
+              Postgres Enterprise Manager
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/pgadmin/">
+              pgAdmin
+            </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+          </IndexCard>
+          
+          <IndexCard
+            iconName={iconNames.HIGH_AVAILABILITY}
+            headingText="High Availability"
+          >
+            <IndexCardLink to="/pgd/latest">
+              EDB Postgres Distributed
+            </IndexCardLink>
+            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+            <IndexCardLink to="/repmgr/latest">
+              Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
+          </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
@@ -164,58 +192,7 @@ const Page = () => (
               </span>
             </IndexCardLink>
           </IndexCard>
-
-          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres for Kubernetes
-            </IndexCardLink>
-
-            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
-              CloudNativePG
-            </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard
-            iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin"
-          >
-            <IndexCardLink to="/pem/latest">
-              Postgres Enterprise Manager
-            </IndexCardLink>
-            <IndexCardLink to="/supported-open-source/pgadmin/">
-              pgAdmin
-            </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
-            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard
-            iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability"
-          >
-            <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
-            </IndexCardLink>
-            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/repmgr/latest">
-              Replication Manager (repmgr)
-            </IndexCardLink>
-            <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
-          </IndexCard>
-
+          
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery"
@@ -243,7 +220,7 @@ const Page = () => (
               Backup &amp; Recovery Tool
             </IndexCardLink>
           </IndexCard>
-
+          
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -269,6 +246,28 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
             <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+            <IndexCardLink to="/postgres_for_kubernetes/latest/">
+              EDB Postgres for Kubernetes
+            </IndexCardLink>
+
+            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
+              CloudNativePG
+            </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -303,7 +302,7 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
               SIB Visions VisionX
             </IndexCardLink>
-            
+
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
             </span>
