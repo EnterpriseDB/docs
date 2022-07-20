@@ -235,20 +235,6 @@ const Page = () => (
           </IndexCard>
           
           <IndexCard
-            iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin"
-          >
-            <IndexCardLink to="/pem/latest">
-              Postgres Enterprise Manager
-            </IndexCardLink>
-            <IndexCardLink to="/supported-open-source/pgadmin/">
-              pgAdmin
-            </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
-            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
-          </IndexCard>
-          
-          <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
@@ -273,6 +259,20 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
             <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
+          </IndexCard>
+          
+          <IndexCard
+            iconName={iconNames.CONTROL}
+            headingText="Monitoring & Admin"
+          >
+            <IndexCardLink to="/pem/latest">
+              Postgres Enterprise Manager
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/pgadmin/">
+              pgAdmin
+            </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
