@@ -199,6 +199,7 @@ const Page = () => (
             <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
@@ -290,31 +291,31 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-            <IndexCardLink to="/partner_docs/CommVaultGuide">
+            <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/DBeaverGuide">
+            <IndexCardLink to="/partner_docs/DBeaverPRO">
               DBeaver PRO
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/LiquibaseGuide">
+            <IndexCardLink to="/partner_docs/LiquibasePro">
               Liquibase Pro
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
+            <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ToadEdgeGuide">
+            <IndexCardLink to="/partner_docs/QuestToadEdge">
               Quest Toad Edge
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/RepostorGuide">
+            <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
               Repostor Data Protector for PostgresSQL
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesGuide">
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/VeritasGuide">
+            <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
               Veritas NetBackup for PostgreSQL
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/SIBVisionsVisionXGuide">
+            <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
               SIB Visions VisionX
             </IndexCardLink>
           </IndexCard>
