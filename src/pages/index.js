@@ -202,19 +202,6 @@ const Page = () => (
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability"
