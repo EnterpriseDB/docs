@@ -145,36 +145,7 @@ const Page = () => (
               PostgreSQL
             </IndexCardLink>
           </IndexCard>
-
-          <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
-            <IndexCardLink
-              to="/biganimal/latest/free_trial/"
-              className="nested-link"
-            >
-              Free Trial
-            </IndexCardLink>
-            <IndexCardLink
-              to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
-              className="nested-link"
-            >
-              Oracle SQL Compatiblity
-              <span className="new-thing" title="Interactive Demo">
-                Demo
-              </span>
-            </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-            <IndexCardLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres for Kubernetes
-            </IndexCardLink>
-
-            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
-              CloudNativePG
-            </IndexCardLink>
-          </IndexCard>
-
+          
           <IndexCard
             iconName={iconNames.CONTROL}
             headingText="Monitoring & Admin"
@@ -188,19 +159,7 @@ const Page = () => (
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
-
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-          </IndexCard>
-
+          
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability (HA)"
@@ -225,6 +184,26 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
+            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink
+              to="/biganimal/latest/free_trial/"
+              className="nested-link"
+            >
+              Free Trial
+            </IndexCardLink>
+            <IndexCardLink
+              to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+              className="nested-link"
+            >
+              Oracle SQL Compatiblity
+              <span className="new-thing" title="Interactive Demo">
+                Demo
+              </span>
+            </IndexCardLink>
+          </IndexCard>
+          
+          
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery"
@@ -252,7 +231,7 @@ const Page = () => (
               Backup &amp; Recovery Tool
             </IndexCardLink>
           </IndexCard>
-
+          
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -278,6 +257,28 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
             <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+            <IndexCardLink to="/postgres_for_kubernetes/latest/">
+              EDB Postgres for Kubernetes
+            </IndexCardLink>
+
+            <IndexCardLink to="/supported-open-source/cloud_native_pg/">
+              CloudNativePG
+            </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Overview
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
