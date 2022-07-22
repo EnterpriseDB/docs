@@ -199,37 +199,21 @@ const Page = () => (
             <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability (HA)"
+            headingText="High Availability"
           >
             <IndexCardLink to="/pgd/latest">
               EDB Postgres Distributed
             </IndexCardLink>
-            <IndexCardLink to="/bdr/latest/" className="nested-link">
-              Bi-Directional Replication (BDR)
-            </IndexCardLink>
-            <IndexCardLink to="/harp/latest" className="nested-link">
-              HA Routing for Postgres (HARP)
-            </IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Replication
-            </span>
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-            <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
-            <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Cluster Management
-            </span>
-
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
+            <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
           </IndexCard>
 
           <IndexCard

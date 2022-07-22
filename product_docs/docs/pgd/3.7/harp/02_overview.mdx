@@ -1,0 +1,246 @@
+---
+navTitle: Overview
+title: HARP functionality overview
+---
+
+HARP is a new approach to high availability for BDR
+clusters. It leverages a consensus-driven quorum to determine the correct connection endpoint
+in a semi-exclusive manner to prevent unintended multi-node writes from an
+application.
+
+## The importance of quorum
+
+The central purpose of HARP is to enforce full quorum on any Postgres cluster
+it manages. Quorum is a term applied to a voting body that
+mandates a certain minimum of attendees are available to make a decision. More simply: majority rules.
+
+For any vote to end in a result other than a tie, an odd number of
+nodes must constitute the full cluster membership. Quorum, however, doesn't
+strictly demand this restriction; a simple majority is enough. This means
+that in a cluster of N nodes, quorum requires a minimum of N/2+1 nodes to hold
+a meaningful vote.
+
+All of this ensures the cluster is always in agreement regarding the node
+that is "in charge." For a BDR cluster consisting of multiple nodes, this
+determines the node that is the primary write target. HARP designates this node
+as the lead master.
+
+## Reducing write targets
+
+The consequence of ignoring the concept of quorum, or not applying it
+well enough, can lead to a "split brain" scenario where the "correct" write
+target is ambiguous or unknowable. In a standard Postgres cluster, it's
+important that only a single node is ever writable and sending replication
+traffic to the remaining nodes.
+
+Even in multi-master-capable approaches such as BDR, it can be help to
+reduce the amount of necessary conflict management to derive identical data
+across the cluster. In clusters that consist of multiple BDR nodes per physical
+location or region, this usually means a single BDR node acts as a "leader" and
+remaining nodes are "shadow." These shadow nodes are still writable, but writing to them is discouraged unless absolutely necessary.
+
+By leveraging quorum, it's possible for all nodes to agree on the exact
+Postgres node to represent the entire cluster or a local BDR region. Any
+nodes that lose contact with the remainder of the quorum, or are overruled by
+it, by definition can't become the cluster leader.
+
+This restriction prevents split-brain situations where writes unintentionally reach two
+Postgres nodes. Unlike technologies such as VPNs, proxies, load balancers, or
+DNS, you can't circumvent a quorum-derived consensus by misconfiguration or
+network partitions. So long as it's possible to contact the consensus layer to
+determine the state of the quorum maintained by HARP, only one target is ever
+valid.
+
+## Basic architecture
+
+The design of HARP comes in essentially two parts, consisting of a manager and
+a proxy. The following diagram describes how these interact with a single
+Postgres instance:
+
+![HARP Unit](images/ha-unit.png)
+
+The consensus layer is an external entity where Harp Manager maintains 
+information it learns about its assigned Postgres node, and HARP Proxy 
+translates this information to a valid Postgres node target. Because Proxy
+obtains the node target from the consensus layer, several such instances can
+exist independently.
+
+While using BDR as the consensus layer, each server node resembles this
+variant instead:
+
+![HARP Unit w/BDR Consensus](images/ha-unit-bdr.png)
+
+In either case, each unit consists of the following elements:
+
+* A Postgres or EDB instance
+* A consensus layer resource, meant to track various attributes of the Postgres
+  instance
+* A HARP Manager process to convey the state of the Postgres node to the
+  consensus layer
+* A HARP Proxy service that directs traffic to the proper lead master node,
+  as derived from the consensus layer
+
+Not every application stack has access to additional node resources 
+specifically for the Proxy component, so it can be combined with the 
+application server to simplify the stack.
+
+This is a typical design using two BDR nodes in a single data center organized in a lead master/shadow master configuration:
+
+![HARP Cluster](images/ha-ao.png)
+
+When using BDR  as the HARP consensus layer, at least three
+fully qualified BDR nodes must be present to ensure a quorum majority. (Not shown in the diagram are connections between BDR nodes.)
+
+![HARP Cluster w/BDR Consensus](images/ha-ao-bdr.png)
+
+## How it works
+
+When managing a BDR cluster, HARP maintains at most one leader node per
+defined location. This is referred to as the lead master. Other BDR
+nodes that are eligible to take this position are shadow master state until they take the leader role.
+
+Applications can contact the current leader only through the proxy service. 
+Since the consensus layer requires quorum agreement before conveying leader 
+state, proxy services direct traffic to that node.
+
+At a high level, this mechanism prevents simultaneous application interaction with
+multiple nodes.
+
+### Determining a leader
+
+As an example, consider the role of lead master in a locally subdivided
+BDR Always-On group as can exist in a single data center. When any
+Postgres or Manager resource is started, and after a configurable refresh
+interval, the following must occur:
+
+1. The Manager checks the status of its assigned Postgres resource.
+    - If Postgres isn't running, try again after configurable timeout.
+    - If Postgres is running, continue.
+2. The Manager checks the status of the leader lease in the consensus layer.
+    - If the lease is unclaimed, acquire it and assign the identity of
+      the Postgres instance assigned to this manager. This lease duration is
+      configurable, but setting it too low can result in unexpected leadership
+      transitions.
+    - If the lease is already claimed by us, renew the lease TTL.
+    - Otherwise do nothing.
+
+A lot more occurs, but this simplified version explains
+what's happening. The leader lease can be held by only one node, and if it's
+held elsewhere, HARP Manager gives up and tries again later.
+
+!!! Note
+    Depending on the chosen consensus layer, rather than repeatedly looping to
+    check the status of the leader lease, HARP subscribes to notifications. In this case, it can respond immediately any time the state of the
+    lease changes rather than polling. Currently this functionality is
+    restricted to the etcd consensus layer.
+
+This means HARP itself doesn't hold elections or manage quorum, which is
+delegated to the consensus layer. A quorum of the consensus layer must acknowledge the act of obtaining the lease, so if the request succeeds,
+that node leads the cluster in that location.
+
+### Connection routing
+
+Once the role of the lead master is established, connections are handled
+with a similar deterministic result as reflected by HARP Proxy. Consider a case
+where HARP Proxy needs to determine the connection target for a particular backend
+resource:
+
+1. HARP Proxy interrogates the consensus layer for the current lead master in
+   its configured location.
+2. If this is unset or in transition:
+    - New client connections to Postgres are barred, but clients
+      accumulate and are in a paused state until a lead master appears.
+    - Existing client connections are allowed to complete current transactions
+      and are then reverted to a similar pending state as new connections.
+3. Client connections are forwarded to the lead master.
+
+The interplay shown in this case doesn't require any
+interaction with either HARP Manager or Postgres. The consensus layer
+is the source of all truth from the proxy's perspective.
+
+### Colocation
+
+The arrangement of the work units is such that their organization must follow these principles:
+
+1. The manager and Postgres units must exist concomitantly in the same
+   node.
+2. The contents of the consensus layer dictate the prescriptive role of all
+   operational work units.
+
+This arrangement delegates cluster quorum responsibilities to the consensus layer, 
+while HARP leverages it for critical role assignments and key/value storage. 
+Neither storage nor retrieval succeeds if the consensus layer is inoperable 
+or unreachable, thus preventing rogue Postgres nodes from accepting 
+connections.
+
+As a result, the consensus layer generally exists outside of HARP or HARP-managed nodes for maximum safety. Our reference diagrams show this separation, although it isn't required.
+
+!!! Note
+    To operate and manage cluster state, BDR contains its own
+    implementation of the Raft Consensus model. You can configure HARP to
+    leverage this same layer to reduce reliance on external dependencies and
+    to preserve server resources. However, certain drawbacks to this
+    approach are discussed in
+    [Consensus layer](09_consensus-layer).
+
+## Recommended architecture and use
+
+HARP was primarily designed to represent a BDR Always-On architecture that
+resides in two or more data centers and consists of at least five BDR
+nodes. This configuration doesn't count any logical standby nodes.
+
+The following diagram shows the current and standard representation:
+
+![BDR Always-On Reference Architecture](images/bdr-ao-spec.png)
+
+In this diagram, HARP Manager exists on BDR Nodes 1-4. The initial state 
+of the cluster is that BDR Node 1 is the lead master of DC A, and BDR 
+Node 3 is the lead master of DC B.
+
+This configuration results in any HARP Proxy resource in DC A connecting to BDR Node 1 
+and the HARP Proxy resource in DC B connecting to BDR Node 3.
+
+!!! Note
+    While this diagram shows only a single HARP Proxy per DC, this is
+    an example only and should not be considered a single point of failure. Any
+    number of HARP Proxy nodes can exist, and they all direct application
+    traffic to the same node.
+
+### Location configuration
+
+For multiple BDR nodes to be eligible to take the lead master lock in
+a location, you must define a location in the `config.yml` configuration
+file.
+
+To reproduce the BDR Always-On reference architecture shown in the diagram, include these lines in the `config.yml`
+configuration for BDR Nodes 1 and 2:
+
+```yaml
+location: dca
+```
+
+For BDR Nodes 3 and 4, add:
+
+```yaml
+location: dcb
+```
+
+This applies to any HARP Proxy nodes that are designated in those respective
+data centers as well.
+
+### BDR 3.7 compatibility
+
+BDR 3.7 and later offers more direct location definition by assigning a
+location to the BDR node. This is done by calling the following SQL
+API function while connected to the BDR node. So for BDR Nodes 1 and 2, you
+might do this:
+
+```sql
+SELECT bdr.set_node_location('dca');
+```
+
+And for BDR Nodes 3 and 4:
+
+```sql
+SELECT bdr.set_node_location('dcb');
+```
