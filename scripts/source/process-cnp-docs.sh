@@ -30,4 +30,10 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
 
+node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
+  "$SOURCE_CHECKOUT/docs/src/index.mdx" \
+  "$DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/index.mdx" \
+  "$SOURCE_CHECKOUT/docs/src/index.mdx" \
+  >> $SOURCE_CHECKOUT/files-to-ignore.txt
+
 rsync -av --delete --exclude-from=$SOURCE_CHECKOUT/files-to-ignore.txt src/ $DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/
