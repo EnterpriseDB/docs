@@ -312,6 +312,8 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "CentOS 7"}}, 
+      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
       (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_other_linux8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.2}, platform: {name: "RHEL 7 or OL 7"}}, 
