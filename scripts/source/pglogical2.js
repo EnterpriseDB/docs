@@ -18,6 +18,7 @@ const visitAncestors = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
 const { exec } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
+const slugger = require("github-slugger");
 
 const outputFiles = [];
 const source = new URL(
@@ -82,13 +83,26 @@ async function getReadme() {
 function pglogicalTransformer() {
   return (tree, file) => {
     let files = [];
+
+    // split file by heading - keep track of link targets
+    let mapLinkTargetToFile = {};
     for (let node of tree.children) {
       if (node.type === "heading") {
+        const title = cleanTitle(node);
+        const filename =
+          node.depth < 3
+            ? makeFilename(node)
+            : path.basename(files[files.length - 1].path);
+        mapLinkTargetToFile["#" + slugger.slug(title)] = path.basename(
+          filename,
+          ".mdx",
+        );
+
         if (node.depth < 3) {
           files.push({
-            path: path.resolve(destination, makeFilename(node)),
+            path: path.resolve(destination, filename),
             metadata: {
-              title: mdast2string(node),
+              title: title,
               product: "pglogical 2",
             },
             data: {
@@ -106,6 +120,28 @@ function pglogicalTransformer() {
       files[files.length - 1].data.position.end = node.position.end;
     }
 
+    // rewrite links
+    for (let file of files) {
+      visit(file.data, "link", (link) => {
+        const dest = mapLinkTargetToFile[link.url];
+        const isTopLevel = "#" + dest === link.url;
+        if (dest && dest !== path.basename(file.path, ".mdx"))
+          link.url = dest + (isTopLevel ? "" : link.url);
+      });
+    }
+
+    // move release notes to top
+    files.splice(
+      1,
+      0,
+      ...files.splice(
+        files.indexOf((f) => f.title === "Release Notes"),
+        1,
+      ),
+    );
+
+    files = files.filter((f) => f.metadata.title !== "Credits and License");
+
     files[0].metadata.navigation = files.map((f) =>
       path.basename(f.path, ".mdx"),
     );
@@ -115,12 +151,11 @@ function pglogicalTransformer() {
   };
 }
 
+function cleanTitle(heading) {
+  return mdast2string(heading).replace(/^Appendix \w: /, "");
+}
+
 function makeFilename(heading) {
   if (heading.depth === 1) return "index.mdx";
-  return (
-    mdast2string(heading)
-      .toLowerCase()
-      .replace(/[/\\?%*:|"<> ]/g, "-")
-      .replace(/-+/g, "-") + ".mdx"
-  );
+  return slugger.slug(cleanTitle(heading)) + ".mdx";
 }
