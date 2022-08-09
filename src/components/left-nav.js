@@ -73,7 +73,6 @@ const LeftNav = ({
 }) => {
   return (
     <ul className="list-unstyled mt-0">
-      <BackButton />
       {versionArray ? (
         <SectionHeadingWithVersions
           navTree={navTree}
