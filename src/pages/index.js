@@ -287,9 +287,6 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/QuestFoglightforDatabases">
-              Quest Foglight for Databases
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/QuestToadEdge">
               Quest Toad Edge
             </IndexCardLink>
