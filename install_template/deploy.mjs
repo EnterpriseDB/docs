@@ -262,29 +262,7 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel8_${fmtArchFilename(ctx)}.mdx`),
-
-
-
-
-
-
-
-
-
-
-
-
-      when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 12"}}, 
+    when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 12"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 15"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles15_${fmtArchFilename(ctx)}.mdx`),
