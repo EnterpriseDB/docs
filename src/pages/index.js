@@ -145,7 +145,7 @@ const Page = () => (
               PostgreSQL
             </IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
             <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
             <IndexCardLink
@@ -164,7 +164,7 @@ const Page = () => (
               </span>
             </IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
             <IndexCardLink to="/postgres_for_kubernetes/latest/">
               EDB Postgres for Kubernetes
@@ -174,7 +174,7 @@ const Page = () => (
               CloudNativePG
             </IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery"
@@ -202,7 +202,7 @@ const Page = () => (
               Backup &amp; Recovery Tool
             </IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard
             iconName={iconNames.HIGH_AVAILABILITY}
             headingText="High Availability"
@@ -216,7 +216,7 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard
             iconName={iconNames.CONTROL}
             headingText="Monitoring & Admin"
@@ -230,7 +230,7 @@ const Page = () => (
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
-          
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"

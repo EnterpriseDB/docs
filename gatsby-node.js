@@ -572,6 +572,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/p/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
 /edb-docs/*                                     /docs/ 301
 
+
 # Netlify pathPrefix path rewrite
 ${pathPrefix}/*  /:splat  200`,
   );
