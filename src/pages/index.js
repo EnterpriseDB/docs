@@ -275,32 +275,43 @@ const Page = () => (
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Backup
+            </span>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
+              Repostor Data Protector for PostgresSQL
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
+              Veritas NetBackup for PostgreSQL
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Developer Tools
+            </span>
             <IndexCardLink to="/partner_docs/DBeaverPRO">
               DBeaver PRO
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/LiquibasePro">
               Liquibase Pro
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixAHV">
-              Nutanix AHV
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/QuestToadEdge">
               Quest Toad Edge
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
-              Repostor Data Protector for PostgresSQL
+            <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
+              SIB Visions VisionX
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Other
+            </span>
+            <IndexCardLink to="/partner_docs/NutanixAHV">
+              Nutanix AHV
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
-              Veritas NetBackup for PostgreSQL
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
-              SIB Visions VisionX
             </IndexCardLink>
           </IndexCard>
         </div>
