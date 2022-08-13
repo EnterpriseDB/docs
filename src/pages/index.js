@@ -144,6 +144,10 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/latest">
+              Postgres extensions support
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
