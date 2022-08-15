@@ -312,8 +312,7 @@ const moveDoc = async (product, platform, version) => {
     when({product: {name: "EDB OCL Connector"}, platform: {name: "RHEL 7 or OL 7"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel8_${fmtArchFilename(ctx)}.mdx`),
-     
+      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel8_${fmtArchFilename(ctx)}.mdx`),     
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "CentOS 7"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -324,7 +323,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_rhel7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "RHEL 8"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_rhel8_${fmtArchFilename(ctx)}.mdx`),
-
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 12"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 15"}}, 
@@ -336,7 +334,6 @@ const moveDoc = async (product, platform, version) => {
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
 
-
     when({product: {name: "EDB pgBouncer", version: 1.16}, platform: {name: "SLES 12"}}, 
       (ctx) => `pgbouncer/1.16/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.16}, platform: {name: "SLES 15"}}, 
@@ -347,6 +344,7 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pgbouncer/1.16/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.16}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pgbouncer/1.16/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
+ 
     when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "SLES 12"}}, 
       (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "SLES 15"}}, 
@@ -357,7 +355,8 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "SLES 12"}}, 
+
+      when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "SLES 12"}}, 
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "SLES 15"}}, 
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_sles15_${fmtArchFilename(ctx)}.mdx`),
@@ -367,7 +366,8 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
+
+      when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -427,11 +427,30 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Debian 10"}}, 
       (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_deb10_${fmtArchFilename(ctx)}.mdx`),
+
     when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 12"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
-  );
+    
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8 or OL 8"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_other_linux8_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 7 or OL 7"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel7_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "CentOS 7"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_centos7_${fmtArchFilename(ctx)}.mdx`),
+
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 20.04"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 18.04"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "Debian 10"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_deb10_${fmtArchFilename(ctx)}.mdx`), 
+    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8"}}, 
+      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`), );
+
 
   function match(context, ...conditions) {
     for (let test of conditions) {
