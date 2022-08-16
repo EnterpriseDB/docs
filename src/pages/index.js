@@ -289,7 +289,7 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Developer Tools
+              Developer Tool
             </span>
             <IndexCardLink to="/partner_docs/DBeaverPRO">
               DBeaver PRO
