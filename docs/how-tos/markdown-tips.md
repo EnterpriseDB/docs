@@ -3,7 +3,9 @@
 This topic provides tips on using Markdown in the Docs 2.0 framework. We have done some tuning to turn basic Markdown into  high-performance markup.
 
 Links:
-[Markdown getting started]https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax - not everything applies
+
+[Markdown getting started](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax) - not everything applies
+
 Exceptions:
 
 Style Guide links:
@@ -110,17 +112,41 @@ Use headings to create a hierarchy for readers to navigate to more easily find i
 
 Headings are denoted by number signs (#) followed by one space. Enter a line break between a heading and its content. EDB docs use Heading 2 (##), Heading 3 (###) and Heading 4 (####). Use Heading 4 sparingly.
 
-Heading 1 is reserved for page titles. 
+## Headers:
 
-Examples:
+Specify a header by puttihng one or more hashes (`#`) at the start of a line. Headers should be a single line, separated by blank lines from the rest of the document, and cannot contain HTML. 
 
-```
-## This is heading 2
+All headers in Docs result in "anchors", IDs that can be linked to directly based on the text of the header. This is handy for providing quick access to definitions and allowing search results to link directly to the relevant section of a page.
 
-### And this is heading 3
-```
+### `# H1`
+
+This is the page title, and there should be only one. 
+
+**Never use this in Docs** - set the title using `title:` in the [frontmatter](#frontmatter).
+
+### `## H2` 
+
+Sections - use this for indicating sub-topics within the page's overall topic.
+   
+In Docs, H2 headers generate an entry in the right-hand "table of contents", allowing the reader to quickly scan the outline of the page and jump to a relevant section.
+
+### `### H3`
+
+Subsections - use this for breaking up longer sections into logically-distinct thoughts or concepts. Also useful for definition lists (e.g. a glossary).
+   
+### `#### H4`
+
+If you find yourself needing to use this, you might want to consider breaking up the topic into multiple pages...
+
 ## Linking
-Stuff about this in style guide
+
+Markdown supports two different syntaxes for links. In Docs, we use inline links exclusively. The syntax is:
+   
+`[text](URL "title text")`, where "title text" is optional (it can be used to add a more detailed description of a link, such as the full title of the page it links to). 
+
+URL can be absolute (`https://example.com/path/to/page`) or relative (`/epas/latest/page`, `../sibling`) - for links *within* docs, use relative links (but avoid complicated path-walking if possible, e.g. use `/pem/latest/page` instead of `../../..page`).
+
+More stuff about this in style guide
 ## Lists
 Stuff about this in style guide
 
@@ -136,10 +162,38 @@ If you want to make a nested list, don't use tab to indent. Press space three ti
 ## Tables
 Stuff about this in style guide
 ## Inline code
-Stuff about this in style guide
+Use inline code <code>`code`</code> for keywords, verbatim expressions, etc. Markdown between the backtics won't be rendered, so there's no need to escape special characters. To inclue a backtick within inline code, use more than one backtic to enclode it: <code>``code `code` code``</code>.
+
+More stuff about this in style guide
 ## Code blocks
-Stuff about this in style guide
-Josh to link to supported languages
+
+````markdown
+
+```sql
+select 'a block of code' as result;
+```
+````
+
+Use blocks of code for complete commands (even if only a single line), and all multi-line code or command listings. Specify a language tag (e.g. `sql`) at the opening "fence" (```` ``` ````) to indicate the type of code being listed (and enable syntax highlighting for that block). Supported languages: https://prismjs.com/#supported-languages
+
+Some code blocks consist of code or commands followed by program output: use the special sequence `__OUTPUT__` (on a line by itself) to visually separate the output and prevent it from being syntax-highlighted.
+
+More stuff about this in style guide
+
+### Code block style guidelines
+
+Readability is king - it may be code, but its target is a human reader, not a machine! To that end, pay attention to how code appears and take time to reformat or reorganize it when its meaning becomes difficult to grasp.
+
+Try to avoid mixing `__OUTPUT__` and multiple, consecutive code blocks. When possible, divide a sequence of commands into discrete steps - the output of each can then be shown. When multiple commands are effectively "atomic" (e.g., two steps always performed together, the output of one command fed directly into the next, etc.) then describe their purpose before showing them together - as they would be typed / entered - and list the output of both together. 
+
+Three conventions should be used in these docs for shell code blocks:
+
+1. Do not lead with a "prompt" (such as `$` or `#`) - if copy-pasted, these will lead to either "command not found" or a no-op, both which are confusing.
+
+2. Separate command output from the command(s) themselves by using `__OUTPUT__` (described above).
+
+3. Break long lines in a consistent and visually-appealing fashion to aid in reading long commands. 70 characters give or take is a good rule of thumb - if more than two lines, might as well go with one parameter per line. Use line continuation characters to accomplish this (e.g. [windows](https://superuser.com/questions/150116/how-can-i-insert-a-new-line-in-a-cmd-exe-command), [linux](https://unix.stackexchange.com/questions/571301/when-to-use-line-continuation-character-and-when-not/571313#571313)).
+
 ## Admonitions (Notes, Warnings, etc.)
 
 If you need to draw attention to information, consider using an admonition:
