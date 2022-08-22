@@ -13,17 +13,19 @@ tags:
 To install etcd from the official Debian/Ubuntu apt repositories:
 
 ```bash
-$ sudo apt-get -y install etcd
-
-$ etcd --version |head -1
-etcd Version: 3.3.25
-
-$ ETCD_RELEASE=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest|grep tag_name | cut -d '"' -f 4)
-$ echo "Latest etcd version released: $ETCD_RELEASE"
-Latest etcd version released: v3.5.4
+sudo apt-get -y install etcd
 ```
 
 If the version installed is too old and you want to install the latest one, use the below pre-built binaries method.
+
+You can check the version installed and the latest available version, you can use the following commands which will output the version of the installed etcd binary and get the latest version from the etcd-io website.
+
+```bash
+etcd --version |head -1
+ETCD_RELEASE=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest|grep tag_name | cut -d '"' -f 4)
+echo "Latest etcd version released: $ETCD_RELEASE"
+```
+
 
 ### Pre-built binaries
 
@@ -32,30 +34,34 @@ The easiest way to install etcd is from pre-built binaries.
 On `amd64` hosts, use the following commands:
 
 ```bash
-$ ETCD_RELEASE=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest|grep tag_name | cut -d '"' -f 4)
-$ echo $ETCD_RELEASE
-v3.5.4
-$ curl -sL https://github.com/etcd-io/etcd/releases/download/${ETCD_RELEASE}/etcd-${ETCD_RELEASE}-linux-amd64.tar.gz \
+ETCD_RELEASE=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest|grep tag_name | cut -d '"' -f 4)
+
+curl -sL https://github.com/etcd-io/etcd/releases/download/${ETCD_RELEASE}/etcd-${ETCD_RELEASE}-linux-amd64.tar.gz \
  | sudo tar xz -C /usr/bin --strip=1 --wildcards --no-anchored etcdctl etcd
-$ etcd --version
-etcd Version: 3.5.4
 ```
+
+Always verify the version installed with:
+
+```bash
+etcd --version
+```
+
 
 Then, create the data directory and system user:
 
 ```bash
-$ sudo mkdir -p /var/lib/etcd/
-$ sudo mkdir /etc/etcd
-$ sudo groupadd --system etcd
-$ sudo useradd -s /sbin/nologin --system -g etcd etcd
-$ sudo chown -R etcd:etcd /var/lib/etcd/
-$ sudo chmod -R a+rw /var/lib/etcd
+sudo mkdir -p /var/lib/etcd/
+sudo mkdir /etc/etcd
+sudo groupadd --system etcd
+sudo useradd -s /sbin/nologin --system -g etcd etcd
+sudo chown -R etcd:etcd /var/lib/etcd/
+sudo chmod -R a+rw /var/lib/etcd
 ```
 
 Configure the systemd unit file:
 
 ```bash
-$ cat <<EOF | sudo tee /etc/systemd/system/etcd.service
+cat <<EOF | sudo tee /etc/systemd/system/etcd.service
 [Unit]
 Description=etcd key-value store
 Documentation=https://github.com/etcd-io/etcd
@@ -77,7 +83,7 @@ LimitNOFILE=40000
 WantedBy=multi-user.target
 EOF
 
-$ sudo systemctl daemon-reload
+sudo systemctl daemon-reload
 ```
 
 ## Configuring Patroni
@@ -85,9 +91,9 @@ $ sudo systemctl daemon-reload
 First, configure the firewall if needed:
 
 ```bash
-$ sudo firewall-cmd --quiet --zone=public --add-port=2379/tcp --permanent
-$ sudo firewall-cmd --quiet --zone=public --add-port=2380/tcp --permanent
-$ sudo firewall-cmd --quiet --reload
+sudo firewall-cmd --quiet --zone=public --add-port=2379/tcp --permanent
+sudo firewall-cmd --quiet --zone=public --add-port=2380/tcp --permanent
+sudo firewall-cmd --quiet --reload
 ```
 
 To configure and create a new etcd cluster, you need to define the initial cluster configuration by setting the `ETCD_INITIAL_CLUSTER` variable. That list must contain all the etcd hosts and their IP addresses.
@@ -95,7 +101,7 @@ To configure and create a new etcd cluster, you need to define the initial clust
 Example with 3 etcd hosts:
 
 ```bash
-$ ETCD_INITIAL_CLUSTER="etcd1=http://192.168.121.35:2380,etcd2=http://192.168.121.245:2380,etcd3=http://192.168.121.191:2380"
+ETCD_INITIAL_CLUSTER="etcd1=http://192.168.121.35:2380,etcd2=http://192.168.121.245:2380,etcd3=http://192.168.121.191:2380"
 ```
 
 To fetch it dynamically, you can use this simple shell script (where `etcd1 etcd2 etcd3` are the 3 etcd hosts):
@@ -115,12 +121,13 @@ export ETCD_CLUSTER_URL=${ETCD_CLUSTER_URL:1}
 echo "ETCD_CLUSTER_URL=\"$ETCD_CLUSTER_URL\""
 ```
 
-Then, setup the local etcd configuration and start the service:
+Then, setup the local etcd configuration (we will be placing the etcd.conf file inside /etc/etcd/) and start the service:
 
 ```bash
-$ MY_IP=$(hostname -I | awk ' {print $1}')
-$ MY_NAME=$(hostname --short)
-$ cat <<EOF | sudo tee /etc/etcd/etcd.conf
+MY_IP=$(hostname -I | awk ' {print $1}')
+MY_NAME=$(hostname --short)
+
+cat <<EOF | sudo tee /etc/etcd/etcd.conf
 #[Member]
 ETCD_LISTEN_PEER_URLS="http://$MY_IP:2380"
 ETCD_LISTEN_CLIENT_URLS="http://localhost:2379,http://$MY_IP:2379"
@@ -132,17 +139,18 @@ ETCD_ADVERTISE_CLIENT_URLS="http://$MY_IP:2379"
 ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-1"
 ETCD_INITIAL_CLUSTER_STATE="new"
 EOF
-$ sudo systemctl enable etcd.service
-$ sudo systemctl start etcd.service
+
+sudo systemctl enable etcd.service
+sudo systemctl start etcd.service
 ```
 
 Note:
-* when using the pre-built binaries method, the configuration file is `/etc/etcd/etcd.conf`
+* when using the pre-built binaries method downloaded from etcd-io, the configuration file is `/etc/etcd/etcd.conf`
 * when using the Debian/Ubuntu packages, the configuration file is `/etc/default/etcd`
 
 The service should be started and listening on ports `2379` and `2380`. Check the cluster status:
 
-```bash
+```
 $ ss -tunelp | grep 2379
 tcp   LISTEN 0      4096       127.0.0.1:2379      0.0.0.0:*    uid:998 ino:19846 sk:4 cgroup:/system.slice/etcd.service <->
 tcp   LISTEN 0      4096   192.168.121.7:2379      0.0.0.0:*    uid:998 ino:19843 sk:5 cgroup:/system.slice/etcd.service <->

@@ -1,0 +1,163 @@
+---
+title: 'Configuring Patroni'
+navTitle: 'Configuring Patroni'
+description: 'Configuring the Patroni nodes'
+tags:
+  - configuration
+  - patroni
+---
+
+## Configure Patroni
+
+Let us now define the Patroni configuration in `/etc/patroni.yml`:
+
+```bash
+CLUSTER_NAME="demo-cluster-1"
+MY_NAME=$(hostname --short)
+MY_IP=$(hostname -I | awk ' {print $1}')
+
+cat <<EOF | sudo tee /etc/patroni.yml
+scope: $CLUSTER_NAME
+namespace: /db/
+name: $MY_NAME
+
+restapi:
+  listen: "0.0.0.0:8008"
+  connect_address: "$MY_IP:8008"
+  authentication:
+    username: patroni
+    password: mySupeSecretPassword
+
+etcd3:
+    hosts:
+    - etcd1:2379
+    - etcd2:2379
+    - etcd3:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        archive_mode: "on"
+        archive_command: "/bin/true"
+
+  initdb:
+  - encoding: UTF8
+  - data-checksums
+  - auth-local: peer
+  - auth-host: scram-sha-256
+
+  pg_hba:
+  - host replication replicator 0.0.0.0/0 scram-sha-256
+  - host all all 0.0.0.0/0 scram-sha-256
+
+  # Some additional users which needs to be created after initializing new cluster
+  users:
+    admin:
+      password: admin%
+      options:
+        - createrole
+        - createdb
+
+postgresql:
+  listen: "0.0.0.0:5432"
+  connect_address: "$MY_IP:5432"
+  data_dir: /var/lib/pgsql/14/data
+  bin_dir: /usr/pgsql-14/bin
+  pgpass: /tmp/pgpass0
+  authentication:
+    replication:
+      username: replicator
+      password: confidential
+    superuser:
+      username: postgres
+      password: my-super-password
+    rewind:
+      username: rewind_user
+      password: rewind_password
+  parameters:
+    unix_socket_directories: '/var/run/postgresql,/tmp'
+
+watchdog:
+  mode: required
+  device: /dev/watchdog
+  safety_margin: 5
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
+EOF
+```
+
+Except for `$MY_IP` and `$MY_NAME` which are related to the local host, the `patroni.yml` configuration should be the same on all Patroni nodes.
+
+Depending on the Patroni installation source, create the [systemd file](https://github.com/zalando/patroni/blob/master/extras/startup-scripts/patroni.service) if not done during the installation and start the Patroni service:
+
+```bash
+cat <<EOF | sudo tee /etc/systemd/system/patroni.service
+[Unit]
+Description=Runners to orchestrate a high-availability Postgres
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=-/etc/patroni_env.conf
+ExecStart=patroni /etc/patroni.yml
+ExecReload=/bin/kill -s HUP \$MAINPID
+KillMode=process
+TimeoutSec=30
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable patroni
+sudo systemctl start patroni
+```
+
+First, start the Patroni service on pg-patroni1 so it becomes the leader of our PostgreSQL cluster, and then start pg-patroni2.
+
+To list the members of the cluster, use the following `patronictl` command:
+
+```
+$ patronictl -c /etc/patroni.yml list
++ Cluster: demo-cluster-1 (7104275668989116902) ----+----+-----------+
+| Member      | Host            | Role    | State   | TL | Lag in MB |
++-------------+-----------------+---------+---------+----+-----------+
+| pg-patroni1 | 192.168.121.61  | Leader  | running |  1 |           |
+| pg-patroni2 | 192.168.121.135 | Replica | running |  1 |         0 |
++-------------+-----------------+---------+---------+----+-----------+
+```
+
+The Patroni REST API is available on port `8008`. Don't forget to configure the firewall if needed:
+
+```bash
+sudo firewall-cmd --quiet --zone=public --add-port=8008/tcp --permanent
+sudo firewall-cmd --quiet --reload
+```
+
+## Watchdog
+
+Patroni will be the component interacting with the watchdog device. Set the permissions of the software watchdog on both pg-patroni1 and pg-patroni2 hosts:
+
+```bash
+cat <<EOF | sudo tee /etc/udev/rules.d/99-watchdog.rules
+KERNEL=="watchdog", OWNER="postgres", GROUP="postgres"
+EOF
+
+sudo sh -c 'echo "softdog" >> /etc/modules-load.d/softdog.conf'
+sudo modprobe softdog
+sudo chown postgres: /dev/watchdog
+```
