@@ -81,10 +81,10 @@ When work is begun on the next version of a product, [a long-lived future releas
    > documenation for [vLatest] and [vNext]:
    >
    > 1. Rebase one last time (see above)
-   > 2. Bring the [vNext] subdirectory back into the source tree:
+   > 2. Bring the [vLatest] subdirectory back into the source tree:
    >    ```
-   >    git checkout develop product_docs/docs/[product]/[vNext]/
-   >    git commit -m "restore [product] [vNext] docs"
+   >    git checkout develop product_docs/docs/[product]/[vLatest]/
+   >    git commit -m "restore [product] [vLatest] docs"
    >    git push
    >    ```
    > 3. Immediately merge this branch into develop.
