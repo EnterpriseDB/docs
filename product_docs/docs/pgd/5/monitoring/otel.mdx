@@ -1,0 +1,92 @@
+---
+title: OpenTelemetry Integration
+---
+
+EDB Postgres Distributed can be configured to report monitoring information
+as well as traces to the OpenTelemetry collector.
+
+Several resource attributes are filled by EDB Postgres Distributed OTEL collector.
+These are attached to all metrics and traces:
+
+ - The `service.name` is configurable via `bdr.otel_service_name` configuration setting.
+ - The `service.namespace` is always set to `edb_postgres_distributed`.
+ - The `service.instance.id` is always set to system identifier of the Postgres instance.
+ - The `service.version` is set to current version of the BDR extension loaded in the Postgresql instance.
+
+## Metrics collection
+
+The metric collection is enable automatically when configuration option
+`bdr.metrics_otel_http_url` is set to non-empty URL.
+
+Different kinds of metrics are being collected as seen bellow.
+
+### Generic metrics
+
+| Metric name | Type | Labels | Description
+| ----------- | ---- | ------ | -----------
+| pg_backends_by_state | gauge | conn_state - idle, active, idle in transaction, fastpath functioncall, idle in transaction (aborted), disabled, undefined | Number of backends in a given state
+| pg_oldest_xact_start | gauge | | Oldest transaction start time
+| pg_oldest_activity_start | gauge | | Oldest query start time
+| pg_waiting_backends | gauge | wait_type - LWLock, Lock, BufferPin, Activity, Client, Extension, IPC, Timeout, IO, ??? (for unknown) | Number of currently waiting backends by wait type
+| pg_start_time | gauge | | Timestamp at which the server has started
+| pg_reload_time | gauge | | Timestamp at which the server has last reloaded configuration
+
+
+### Replication metrics
+
+| Metric name | Type | Labels | Description
+| ----------- | ---- | ------ | -----------
+| bdr_slot_sent_lag | gauge | slot_name - name of a slot | Current sent lag in bytes for each replication slot
+| bdr_slot_write_lag | gauge | slot_name - name of a slot | Current write lag in bytes for each replication slot
+| bdr_slot_flush_lag | gauge | slot_name - name of a slot | Current flush lag in bytes for each replication slot
+| bdr_slot_apply_lag | gauge | slot_name - name of a slot | Current apply lag in bytes for each replication slot
+| bdr_subscription_receive_lsn | gauge | sub_name - name of subscription | Current received LSN for each subscription
+| bdr_subscription_flush_lsn | gauge | sub_name - name of subscription | Current flushed LSN for each subscription
+| bdr_subscription_apply_lsn | gauge | sub_name - name of subscription | Current applied LSN for each subscription
+| bdr_subscription_receiver | gauge | sub_name - name of subscription | Whether subscription receiver is currently running (1) or not (0)
+
+### Consensus metric
+
+| Metric name | Type | Labels | Description
+| ----------- | ---- | ------ | -----------
+| bdr_raft_state | gauge | state_str - RAFT_FOLLOWER, RAFT_CANDIDATE, RAFT_LEADER, RAFT_STOPPED | Raft state of the consensus on this node
+| bdr_raft_protocol_version | gauge | | Consensus protocol version used by this node
+| bdr_raft_leader_node | gauge | | Id of a node that this node considers to be current leader
+| bdr_raft_nodes | gauge | | Total number of nodes that participate in consensus (includes learner/non-voting nodes)
+| bdr_raft_voting_nodes | gauge | | Number of actual voting nodes in consensus
+| bdr_raft_term | gauge | | Current raft term this node is on
+| bdr_raft_commit_index | gauge | | Raft commit index committed by this node
+| bdr_raft_apply_index | gauge | | Raft commit index applied by this node
+
+## Tracing
+
+Tracing collection to OpenTelemetry requires `bdr.trace_otel_http_url` to be
+configured and tracing itself to be enabled using `bdr.trace_enable`.
+
+The tracing is limited to only some subsystems at the moment, primarily to the
+cluster management functionality. The following spans can be seen in traces:
+
+| Span name | Description |
+| --------- | ----------- |
+| create_node_group | Group creation
+| alter_node_group_config | Change of group config option(s)
+| alter_node_config | Change of node config option
+| join_node_group | Node joining a group
+| join_send_remote_request | Join source sending the join request on behalf of the joining node
+| add_camo_pair | Add CAMO pair
+| alter_camo_pair | Change CAMO pair
+| remove_camo_pair | Delete CAMO pair
+| alter_commit_scope | Change commit scope definition (either create new or update existing)
+| alter_proxy_config | Change config for PGD-Proxy instance (either create new or update existing)
+| walmsg_global_lock_send | Send global locking WAL message
+| walmsg_global_lock_recv | Received global locking WAL message
+| ddl_epoch_apply | Global locking epoch apply (ensure cluster is synchronized enough for new epoch to start)
+| walmsg_catchup | Catchup during node removal WAL message
+| raft_send_appendentries | Internal Raft book keeping message
+| raft_recv_appendentries | Internal Raft book keeping message
+| raft_request | Raft request execution
+| raft_query | Raft query execution
+| msgb_send | Consensus messaging layer message
+| msgb_recv_receive | Consensus messaging layer message
+| msgb_recv_deliver | Consensus messaging layer message delivery
+| preprocess_ddl | DDL command preprocessing
