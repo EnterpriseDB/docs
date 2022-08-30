@@ -130,6 +130,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     katacodaPanel,
     indexCards,
     navigation,
+    originalFilePath,
+    editTarget,
     prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
@@ -147,11 +149,18 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
-  const editOrFeedbackButton = path.includes("/cloud_native_postgresql/") ? (
-    <FeedbackButton githubIssuesLink={githubIssuesLink} />
-  ) : (
-    <EditButton githubEditLink={githubEditLink} />
-  );
+  const editOrFeedbackButton =
+    editTarget === "none" ? (
+      <FeedbackButton githubIssuesLink={githubIssuesLink} />
+    ) : (
+      <EditButton
+        githubEditLink={
+          editTarget === "originalFilePath" && originalFilePath
+            ? originalFilePath.replace(/\/blob\//, "/edit/")
+            : githubEditLink
+        }
+      />
+    );
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
