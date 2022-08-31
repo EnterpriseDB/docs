@@ -216,7 +216,7 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
-              pgLogical 2
+              pglogical 2
             </IndexCardLink>
           </IndexCard>
 
