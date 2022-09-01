@@ -104,6 +104,7 @@ function pglogicalTransformer() {
             metadata: {
               title: title,
               product: "pglogical 2",
+              generatedBy: `${process.argv[1]} - re-run to regenerate from originalFilePath`,
             },
             data: {
               type: "root",
@@ -146,7 +147,10 @@ function pglogicalTransformer() {
       path.basename(f.path, ".mdx"),
     );
     files[0].metadata.indexCards = "simple";
-    files[0].metadata.directoryDefaults = { iconName: "EdbReplicate" };
+    files[0].metadata.directoryDefaults = {
+      iconName: "EdbReplicate",
+      editTarget: "originalFilePath",
+    };
     tree.children = files;
   };
 }
