@@ -1,0 +1,123 @@
+---
+title: 'Installing and configuring HAProxy'
+description: "Installing and configuring HAProxy for connection polling to Postgres nodes managed by Patroni"
+---
+
+Instead of connecting directly to the database server, it is possible to setup HAProxy so the application will connect to the proxy instead, which will then forward the request to PostgreSQL. By using HAproxy, it is also possible to route read-only requests to one or more replicas, for load balancing, by setting up a separate port for it (see configuration example below).
+
+HAproxy can be installed as an independent server but it can also be installed on the application server or the database server itself. We recommend having two independent HAProxy servers running on independent nodes.
+
+To install HAProxy on RedHat Enterprise Linux, log to each proxy node and run the following installation statement:
+
+```bash
+sudo dnf install -y haproxy
+```
+
+Once we have HAProxy installed we can continue with configuring to have connections to the two PostgreSQL nodes we prepared in the demo of this documentation. To acomplish this you need to execute the following statements:
+
+```bash
+sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bck
+cat <<EOF | sudo tee /etc/haproxy/haproxy.cfg
+global
+    maxconn 100
+
+defaults
+    log    global
+    mode    tcp
+    retries 2
+    timeout client 30m
+    timeout connect 4s
+    timeout server 30m
+    timeout check 5s
+
+listen stats
+    mode http
+    bind *:7000
+    stats enable
+    stats uri /
+
+listen read-write
+    bind *:5000
+    option httpchk OPTIONS /read-write
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pg-patroni1 pg-patroni1:5432 maxconn 100 check port 8008
+    server pg-patroni2 pg-patroni2:5432 maxconn 100 check port 8008
+
+listen read-only
+    balance roundrobin
+    bind *:5001
+    option httpchk OPTIONS /replica
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server pg-patroni1 pg-patroni1:5432 maxconn 100 check port 8008
+    server pg-patroni2 pg-patroni2:5432 maxconn 100 check port 8008
+EOF
+
+$ sudo setsebool -P haproxy_connect_any=1
+$ sudo systemctl enable haproxy
+$ sudo systemctl start haproxy
+```
+
+There are two sections in the configuration above: read-write, using port `5000`, and read-only, using port `5001`.
+
+Both PostgreSQL hosts should be included in both sections because they are both potential candidates to be either primary or standby. For HAproxy to know which role each host currently has, it will query the Patroni REST API:
+
+```bash
+curl -s http://pg-patroni1:8008
+{
+  "state": "running",
+  "postmaster_start_time": "2022-06-01 14:17:57.445349+00:00",
+  "role": "master",
+  "server_version": 140003,
+  "xlog": {
+    "location": 50334688
+  },
+  "timeline": 1,
+  "replication": [
+    {
+      "usename": "replicator",
+      "application_name": "pg-patroni2",
+      "client_addr": "192.168.121.135",
+      "state": "streaming",
+      "sync_state": "async",
+      "sync_priority": 0
+    }
+  ],
+  "dcs_last_seen": 1654095818,
+  "database_system_identifier": "7104275668989116902",
+  "patroni": {
+    "version": "2.1.3",
+    "scope": "demo-cluster-1"
+  }
+}
+```
+
+!!! Note
+    By using the `/replica` endpoint, Patroni will only redirect to a standby server. Use `/read-only` to also include the primary.
+
+
+Don't forget to configure the firewall if needed to access the ports HAProxy will be listening on:
+
+```bash
+sudo firewall-cmd --quiet --zone=public --add-port=7000/tcp --permanent
+sudo firewall-cmd --quiet --zone=public --add-port=5000/tcp --permanent
+sudo firewall-cmd --quiet --zone=public --add-port=5001/tcp --permanent
+sudo firewall-cmd --quiet --reload
+```
+
+Both `5000` and `5001` ports can now be used to choose between read-write or read-only connection:
+
+```
+$ psql -U admin -d postgres -h pg-patroni1 -p 5000 -c "SELECT pg_is_in_recovery();"
+ pg_is_in_recovery
+-------------------
+ f
+(1 row)
+
+$ psql -U admin -d postgres -h pg-patroni1 -p 5001 -c "SELECT pg_is_in_recovery();"
+ pg_is_in_recovery
+-------------------
+ t
+(1 row)
+```
