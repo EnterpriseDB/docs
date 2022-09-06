@@ -161,7 +161,6 @@ const moveDoc = async (product, platform, version) => {
     (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu20_${fmtArchFilename(ctx)}.mdx`),   
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 22.04"}}, 
     (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu22_${fmtArchFilename(ctx)}.mdx`),      
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "CentOS 7"}}, 
       (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
