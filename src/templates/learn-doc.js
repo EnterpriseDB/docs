@@ -34,14 +34,31 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (parentNode, navLinks) => {
+const getChildren = (parentNode, navLinks, navigationOrder) => {
+  const order = (a, b) => {
+    const navPosA = navigationOrder?.findIndex(
+      (item) =>
+        item.toLowerCase() ===
+        a.fields.path.split("/").slice(-2)[0].toLowerCase(),
+    );
+    const navPosB = navigationOrder?.findIndex(
+      (item) =>
+        item.toLowerCase() ===
+        b.fields.path.split("/").slice(-2)[0].toLowerCase(),
+    );
+    if (navigationOrder && navPosA >= 0 && navPosB >= 0)
+      return navPosA - navPosB;
+    if (navigationOrder && navPosA >= 0) return -1;
+    if (navigationOrder && navPosB >= 0) return 1;
+    return a.fields.path.localeCompare(b.fields.path);
+  };
   return navLinks
     .filter(
       (node) =>
         node.fields.path.includes(parentNode.fields.path) &&
         node.fields.depth === parentNode.fields.depth + 1,
     )
-    .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
+    .sort(order);
 };
 
 const TileModes = {
@@ -49,7 +66,7 @@ const TileModes = {
   Simple: "simple",
   Full: "full",
 };
-const Tiles = ({ mode, mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks, navigationOrder }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -58,7 +75,7 @@ const Tiles = ({ mode, mdx, navLinks }) => {
   }
 
   if (Object.values(TileModes).includes(mode)) {
-    const tiles = getChildren(mdx, navLinks).map((child) => {
+    const tiles = getChildren(mdx, navLinks, navigationOrder).map((child) => {
       if (mode === "simple") return child;
 
       return {
@@ -112,6 +129,9 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description,
     katacodaPanel,
     indexCards,
+    navigation,
+    originalFilePath,
+    editTarget,
     prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
@@ -129,11 +149,18 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
-  const editOrFeedbackButton = path.includes("/cloud_native_postgresql/") ? (
-    <FeedbackButton githubIssuesLink={githubIssuesLink} />
-  ) : (
-    <EditButton githubEditLink={githubEditLink} />
-  );
+  const editOrFeedbackButton =
+    editTarget === "none" ? (
+      <FeedbackButton githubIssuesLink={githubIssuesLink} />
+    ) : (
+      <EditButton
+        githubEditLink={
+          editTarget === "originalFilePath" && originalFilePath
+            ? originalFilePath.replace(/\/blob\//, "/edit/")
+            : githubEditLink
+        }
+      />
+    );
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
@@ -161,7 +188,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mode={indexCards} mdx={mdx} navLinks={navLinks} />
+              <Tiles
+                mode={indexCards}
+                mdx={mdx}
+                navLinks={navLinks}
+                navigationOrder={navigation}
+              />
             </Col>
 
             {showToc && (
