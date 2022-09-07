@@ -38,9 +38,8 @@ changes are sent directly, row-by-row, to all the
 other servers that are part of the same BDR group.
 
 By default, BDR uses asynchronous replication, applying changes on
-the peer nodes only after the local commit. An optional
-[Eager All-Node Replication](eager) feature allows for committing
-on all nodes using consensus.
+the peer nodes only after the local commit. Multiple synchronous replication
+options are also available.
 
 ## Basic architecture
 
@@ -120,32 +119,63 @@ be user controlled to allow rolling application upgrades, if desired.
 
 ## Architectural options and performance
 
-### Characterizing BDR performance
+### AlwaysOn architectures
 
-BDR can be configured in a number of different architectures, each of which has
+A number of different architectures can be configured, each of which has
 different performance and scalability characteristics.
 
-The group is the basic building block of a BDR group consisting of 2+ nodes
+The group is the basic building block consisting of 2+ nodes
 (servers). In a group, each node is in a different availability zone, with dedicated router
 and backup, giving immediate switchover and high availability. Each group has a
 dedicated replication set defined on it. If the group loses a node, you can easily
 repair or replace it by copying an existing node from the group.
 
-Adding more master nodes to a BDR group doesn't result in significant write
-throughput increase when most tables are replicated because BDR has to replay
-all the writes on all nodes. Because BDR writes are in general more effective
-than writes coming from Postgres clients by way of SQL, some performance increase
-can be achieved. Read throughput generally scales linearly with the number of
-nodes.
+The AlwaysOn architectures are built from either one group in a single location
+or two groups in two separate locaions. Each group provides HA and IS.  When two
+groups are leveraged in remote locations, they together also provide disaster recovery (DR).
 
-The following architectures are available:
+Tables are created across both groups, so any change goes to all nodes, not just to
+nodes in the local group.
 
--   Multi-master/single group
--   BDR AlwaysOn
+One node in each group is the target for the main application. All other nodes are described as
+shadow nodes (or "read-write replica"), waiting to take over when needed. If a node
+loses contact, we switch immediately to a shadow node to continue processing. If a
+group fails, we can switch to the other group. Scalability isn't the goal of this
+architecture.
 
-The simplest architecture is to have just one group.
+Since we write mainly to only one node, the possibility of contention between is
+reduced to almost zero. As a result, performance impact is much reduced.
 
-### BDR multi-master in one group
+Secondary applications might execute against the shadow nodes, although these are
+reduced or interrupted if the main application begins using that node.
+
+In the future, one node will be elected as the main replicator to other groups, limiting CPU
+overhead of replication as the cluster grows and minimizing the bandwidth to other groups.
+
+### Supported PostgreSQL database servers
+
+BDR is compatible with Postgres, EDB Postgres Extended Server, and EDB Postgres
+Advanced Server distributions and can be deployed as a
+standard Postgres extension. See [Compatibility matrix](/pgd/latest/compatibility_matrix/)
+for details of supported version combinations.
+
+Some key BDR features depend on certain core
+capabilities being available in the targeted Postgres database server.
+Therefore, BDR users must also adopt the Postgres
+database server distribution that's best suited to their business needs. For
+example, if having the BDR feature Commit At Most Once (CAMO) is mission
+critical to your use case, don't adopt the community
+PostgreSQL distribution because it doesn't have the core capability required to handle
+CAMO. See the full feature matrix compatibility in
+[Choosing a Postgres distribution](/pgd/latest/choosing_server/).
+
+BDR offers close to native Postgres compatibility. However, some access
+patterns don't necessarily work as well in multi-node setup as they do on a
+single instance. There are also some limitations in what can be safely
+replicated in multi-node setting. [Application usage](appusage)
+goes into detail on how BDR behaves from an application development perspective.
+
+### Characteristics affecting BDR performance
 
 By default, BDR keeps one copy of each table on each node in the group, and any
 changes propagate to all nodes in the group.
@@ -166,40 +196,19 @@ Applications with very low contention perform better than a single node.
 Applications with high contention can perform worse than a single node.
 These results are consistent with any multi-master technology. They aren't particular to BDR.
 
-Eager Replication can avoid conflicts but is inherently more expensive.
-
-Changes are sent concurrently to all nodes so that the replication lag is minimized.
-Adding more nodes means using more CPU for replication, so peak TPS reduces
-slightly as each node is added.
+Synchronous replilcation options can send changes concurrently to multiple nodes
+so that the replication lag is minimized. Adding more nodes means using more CPU for 
+replication, so peak TPS reduces slightly as each node is added.
 
 If the workload tries to use all CPU resources, then this resource constrains
 replication, which can then affect the replication lag.
 
-### BDR AlwaysOn
-
-The AlwaysOn architecture is built from two groups in two separate regions. Each group
-provides HA and IS, but together they also provide disaster recovery (DR), so we refer
-to this architecture as AlwaysOn with very high availability.
-
-Tables are created across both groups, so any change goes to all nodes, not just to
-nodes in the local group.
-
-One node is the target for the main application. All other nodes are described as
-shadow nodes (or "read-write replica"), waiting to take over when needed. If a node
-loses contact, we switch immediately to a shadow node to continue processing. If a
-group fails, we can switch to the other group. Scalability isn't the goal of this
-architecture.
-
-Since we write mainly to only one node, the possibility of contention between is
-reduced to almost zero. As a result, performance impact is much reduced.
-
-CAMO is Eager Replication in the local group, lazy with regard to other groups.
-
-Secondary applications might execute against the shadow nodes, although these are
-reduced or interrupted if the main application begins using that node.
-
-In the future, one node will be elected as the main replicator to other groups, limiting CPU
-overhead of replication as the cluster grows and minimizing the bandwidth to other groups.
+In summary, adding more master nodes to a BDR group doesn't result in significant write
+throughput increase when most tables are replicated because all the writes will
+be replayed on all nodes. Because BDR writes are in general more effective
+than writes coming from Postgres clients by way of SQL, some performance increase
+can be achieved. Read throughput generally scales linearly with the number of
+nodes.
 
 ## Deployment
 
@@ -227,28 +236,6 @@ other solutions. Clock skew can impact origin conflict detection, although
 BDR provides controls to report and manage any skew that exists. BDR also
 provides row-version conflict detection, as described in [Conflict detection](conflicts).
 
-### Supported PostgreSQL database servers
-
-BDR is compatible with Postgres, EDB Postgres Extended Server, and EDB Postgres
-Advanced Server distributions and can be deployed as a
-standard Postgres extension. See [Compatibility matrix](/pgd/latest/compatibility_matrix/)
-for details of supported version combinations.
-
-Some key BDR features depend on certain core
-capabilities being available in the targeted Postgres database server.
-Therefore, BDR users must also adopt the Postgres
-database server distribution that's best suited to their business needs. For
-example, if having the BDR feature Commit At Most Once (CAMO) is mission
-critical to your use case, don't adopt the community
-PostgreSQL distribution because it doesn't have the core capability required to handle
-CAMO. See the full feature matrix compatibility in
-[Choosing a Postgres distribution](/pgd/latest/choosing_server/).
-
-BDR offers close to native Postgres compatibility. However, some access
-patterns don't necessarily work as well in multi-node setup as they do on a
-single instance. There are also some limitations in what can be safely
-replicated in multi-node setting. [Application usage](appusage)
-goes into detail on how BDR behaves from an application development perspective.
 
 ## Limits
 
@@ -268,4 +255,4 @@ BDR places a limit that at most 10 databases in any one PostgreSQL instance
 can be BDR nodes across different BDR node groups. However, BDR works best if
 you use only one BDR database per PostgreSQL instance.
 
-The minimum recommended number of nodes in a EDB Postgres Distributed cluster is three to provide fault tolerance for BDR's consensus mechanism. With just two nodes, consensus would fail if one of the nodes was unresponsive. Consensus is required for some BDR operations such as distributed sequence generation. For more information about the consensus mechanism used by EDB Postgres Distributed, see [Architectural details](/pgd/latest/architectures/#architecture-details).
+The minimum recommended number of nodes in a group is three to provide fault tolerance for BDR's consensus mechanism. With just two nodes, consensus would fail if one of the nodes was unresponsive. Consensus is required for some BDR operations such as distributed sequence generation. For more information about the consensus mechanism used by EDB Postgres Distributed, see [Architectural details](/pgd/latest/architectures/#architecture-details).
