@@ -5,11 +5,9 @@ description: "Options for connecting to a Postgres cluster managed by Patroni"
 
 ## Connection strings
 
-PostgreSQL [client libraries](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING) like `libpq` and `jdbc` support client connection fail-over. The connection string contains multiple servers (eg: `host=srv1,srv2`) and the client library loops over the available hosts to find a connection that is available and capable of read-write or read-only operations. This capability allows clients to follow the primary cluster during a switchover.
+PostgreSQL [client libraries](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING) like `libpq` and `jdbc` support client-connection failover. The connection string contains multiple servers, for example, `host=srv1,srv2`. The client library loops over the available hosts to find a connection that's available and capable of read-write or read-only operations. This configuration allows clients to follow the primary cluster during a switchover.
 
-The following examples requires you have `psycopg2` linked to `libpq` library from PostgreSQL 14.
-
-Example:
+The following examples require you to have `psycopg2` linked to `libpq` library from PostgreSQL 14.
 
 ```
 $ psql "host=srv1,srv2 dbname=postgres user=admin target_session_attrs=read-write" -c "SELECT pg_is_in_recovery();"
@@ -25,35 +23,31 @@ $ psql "host=srv1,srv2 dbname=postgres user=admin target_session_attrs=read-only
 (1 row)
 ```
 
----
+## Using multihost connection strings and HAProxy
 
-## Using multi-host connection strings and HAProxy
+When setting up a cluster with two or more HAProxy nodes, a good option is to set up all HAProxy nodes in a multihost connection.
 
-When setting up a cluster with two or more HAProxy nodes, a good option is to setup all HAProxy nodes in a multi-host connection.
+When using HAProxy, read-write and read-only connections are distinguished by the port number they connect to. This approach differs from the [Connection strings](#connection-strings) example, which uses `target_session_attrs` for these cnnections.
 
-The difference with the example above where we used `target_session_attrs` is that when using HAProxy, read-write and read-only connections are distinguished by the port number they connect to.
-
-If using an HAProxy configuration like the one described in the earlier sections, with port 5000 on the HAProxy node routing connections to the primary read-write node and 5001 to the replicas for read-only connections, the configuration of the connection strings would look like this for connections to the primary node:
+Suppose you are using a HAProxy configuration with port 5000 on the HAProxy node routing connections to the primary read-write node and 5001 to the replicas for read-only connections. The configuration of the connection strings for connections to the primary node look llike this:
 
 ```
 'host=haproxy-node1,haproxy-node2 dbname=postgres user=admin port=5000'
 ```
 
-While read-only connections would have a similar connection strin, but with a different port number:
+Read-only connections have a similar connection string but with a different port number:
 
 ```
 'host=haproxy-node1,haproxy-node2 dbname=postgres user=admin port=5001'
 ```
 
----
+## VIP and Keepalived
 
-## VIP & Keepalived
-
-When using multiple HAProxy instances and you need a way to decide to which proxy host to connect to, the easiest solution is to use Keepalived and a VIP (virtual IP).
+When using multiple HAProxy instances and you need a way to decide which proxy host to connect to, the easiest solution is to use Keepalived and a VIP (virtual IP).
 
 ### RHEL8 example
 
-This is an installation and configuration example on RHEL8.
+This example shows installating and configuring on RHEL8.
 
 First, install Keepalived on each of the hosts running HAProxy:
 
@@ -62,7 +56,7 @@ sudo dnf install -y keepalived
 sudo cp /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf.bck
 ```
 
-For the purpose of this demo, we will use `192.168.121.121` as the virtual IP. Configure then Keepalived:
+For this example, use 192.168.121.121 as the virtual IP. Configure the Keepalived:
 
 ```bash
 VIP=192.168.121.121
@@ -93,21 +87,21 @@ vrrp_instance patroni {
 EOF
 ```
 
-Don't forget to configure the firewall if needed:
+Configure the firewall if needed:
 
 ```bash
 sudo firewall-cmd --add-rich-rule='rule protocol value="vrrp" accept' --permanent
 sudo firewall-cmd --reload
 ```
 
-Finally, enable and start the Keepalived service:
+Enable and start the Keepalived service:
 
 ```bash
 sudo systemctl enable keepalived
 sudo systemctl start keepalived
 ```
 
-Once started, the virtual IP should be attached to one of the hosts. Try to reach it:
+Once started, the virtual IP is attached to one of the hosts. To verify, try to reach it:
 
 ```
 $ ping -c 3 $VIP
