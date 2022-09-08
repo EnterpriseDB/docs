@@ -223,7 +223,14 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
 
-  const { iconName, description, katacodaPanel, indexCards } = frontmatter;
+  const {
+    iconName,
+    description,
+    katacodaPanel,
+    indexCards,
+    editTarget,
+    originalFilePath,
+  } = frontmatter;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
@@ -284,12 +291,18 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </h1>
             <div className="d-flex">
-              <a
-                href={githubEditLink || "#"}
-                className="btn btn-sm btn-primary px-4 text-nowrap"
-              >
-                Edit this page
-              </a>
+              {editTarget !== "none" && (
+                <a
+                  href={
+                    (editTarget === "originalFilePath" && originalFilePath
+                      ? originalFilePath.replace(/\/blob\//, "/edit/")
+                      : githubEditLink) || "#"
+                  }
+                  className="btn btn-sm btn-primary px-4 text-nowrap"
+                >
+                  Edit this page
+                </a>
+              )}
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
             </div>
           </div>
