@@ -114,6 +114,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            originalFilePath
+            editTarget
             navigation
             legacyRedirects
             legacyRedirectsGenerated
@@ -135,8 +137,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               description
               prevNext
               iconName
+              editTarget
               product
               platform
+              indexCards
+              showInteractiveBadge
+              hideVersion
+              displayBanner
             }
           }
           fields {
@@ -481,19 +488,45 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type Frontmatter {
+      description: String
+      prevNext: Boolean
+      iconName: String
+      product: String
+      platform: String
       originalFilePath: String
       indexCards: TileModes
+      editTarget: EditTargets
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
       hideVersion: Boolean
       displayBanner: String
+      directoryDefaults: DirectoryDefaults
     }
 
     enum TileModes {
       none
       simple
       full
+    }
+
+    enum EditTargets {
+      github
+      originalFilePath
+      none
+    }
+
+    type DirectoryDefaults {
+      description: String
+      prevNext: Boolean
+      iconName: String
+      product: String
+      platform: String
+      indexCards: TileModes
+      editTarget: EditTargets
+      showInteractiveBadge: Boolean
+      hideVersion: Boolean
+      displayBanner: String
     }
   `;
   createTypes(typeDefs);
@@ -571,6 +604,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/p/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
 /edb-docs/p/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
 /edb-docs/*                                     /docs/ 301
+
 
 # Netlify pathPrefix path rewrite
 ${pathPrefix}/*  /:splat  200`,
