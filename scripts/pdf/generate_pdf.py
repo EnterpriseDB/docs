@@ -28,6 +28,15 @@ def main(args):
     with open(mdx_file, "w") as output:
         resource_search_paths = {doc_path, *combine_mdx(files, output)}
 
+    output = run(
+            [
+                "node",
+                BASE_DIR / "cleanup_combined_markdown.mjs",
+                mdx_file
+            ]
+        )
+    output.check_returncode()
+
     # TODO: Pick up refactoring from this point
     title = get_title(doc_path) or product
 
@@ -39,6 +48,7 @@ def main(args):
             "--from=gfm",
             "--self-contained",
             "--highlight-style=tango",
+            "--metadata", f"title='{title}'"
             f"--css={BASE_DIR / 'pdf-styles.css'}",
             f"--resource-path={':'.join((str(p) for p in resource_search_paths))}",
             f"--output={html_file}",
@@ -171,6 +181,7 @@ def combine_mdx(files, output):
     for item in files:
         resource_search_paths.add(item.filename.parent)
         front_matter, content = parse_mdx(item.filename)
+        output.write("\n<span data-original-path='" + str(item.filename) + "'></span>\n\n")
         write_front_matter(front_matter, item.chapter, output)
         write_content(content, output)
 
@@ -180,19 +191,13 @@ def combine_mdx(files, output):
 def write_front_matter(front_matter, chapter, output):
     title_marker = "title: "
 
-    print("---", file=output)
-
     for line in [
         line for line in front_matter.split(os.linesep) if title_marker in line
     ]:
         title = strip_quotes(line.replace(title_marker, ""))
-        print(f'{chapter}{"&nbsp;" * 10}{title}', file=output)
+        print(f'# {chapter}{"&nbsp;" * 10}{title}', file=output)
 
-    print("---", file=output)
     output.write(os.linesep)
-
-
-RE_MD_HEADER = re.compile(r"^#+\s")
 
 
 def write_content(content, output):
@@ -200,9 +205,7 @@ def write_content(content, output):
     for line in content.split(os.linesep):
         if "toctree" in line:
             break
-        # TODO: Use a more robust mechanism such as remark to handle increasing
-        # heading depth
-        lines.append(RE_MD_HEADER.sub(r"#\g<0>", line) + os.linesep)
+        lines.append(line + os.linesep)
     output.writelines(lines)
     output.write(os.linesep)
 
