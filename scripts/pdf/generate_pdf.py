@@ -49,7 +49,7 @@ def main(args):
             "--from=gfm",
             "--self-contained",
             "--highlight-style=tango",
-            "--metadata", f"title='{title}'"
+            "--metadata", f"title='{title}'",
             f"--css={BASE_DIR / 'pdf-styles.css'}",
             f"--resource-path={':'.join((str(p) for p in resource_search_paths))}",
             f"--output={html_file}",
