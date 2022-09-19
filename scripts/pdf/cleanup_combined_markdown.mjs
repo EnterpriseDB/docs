@@ -123,7 +123,7 @@ function cleanup() {
 
     visitParents(
       tree,
-      ["jsx-hast", "element", "link", "heading", "code", "admonition"],
+      ["jsx-hast", "element", "link", "heading", "code", "admonition", "table"],
       (node, ancestors) => {
         if (node.type === "jsx-hast") {
           let originalPath = (node.value.match(originalRE) || [])[1];
@@ -250,6 +250,16 @@ function cleanup() {
               ...content.children,
             ],
           });
+        }
+
+        // pandoc is very sensitive to tables being separated from surrounding content
+        // this can be removed once we're no longer using pandoc to render markdown->HTML
+        if (node.type ==="table")
+        {
+          const siblings = ancestors[ancestors.length - 1].children;
+          const idx = siblings.indexOf(node);
+          siblings.splice(idx, 1, {type: "break"}, node, {type:"break"});
+          return idx + 3;
         }
       },
     );
