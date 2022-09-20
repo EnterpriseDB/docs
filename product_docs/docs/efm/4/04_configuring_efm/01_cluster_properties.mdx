@@ -438,10 +438,10 @@ Set the `is.witness` property to `true` to indicate that the current node is a w
 is.witness=
 ```
 
-The EDB Postgres Advanced Server `pg_is_in_recovery()` function is a Boolean function that reports the recovery state of a database. The function returns `true` if the database is in recovery or `false` if the database isn't in recovery. When an agent starts, it connects to the local database and invokes the `pg_is_in_recovery()` function. 
+The EDB Postgres Advanced Server `pg_is_in_recovery()` function is a Boolean function that reports the recovery state of a database. The function returns `true` if the database is in recovery or `false` if the database isn't in recovery. When an agent starts, it connects to the local database and invokes the `pg_is_in_recovery()` function.
 
-- If the server responds true, the agent assumes the role of standby. 
-- If the server responds false, the agent assumes the role of primary. 
+- If the server responds true, the agent assumes the role of standby.
+- If the server responds false, the agent assumes the role of primary.
 - If there's no local database, the agent assumes an idle state.
 
 !!! Note
@@ -555,10 +555,12 @@ stop.failed.primary=true
 
 <div id="primary_shutdown_as_failure" class="registered_link"></div>
 
-Use the `primary.shutdown.as.failure` property to treat any shutdown of the Failover Manager agent on the primary node as a failure. If this property is set to `true` and the primary agent is shut down, the rest of the cluster treats the shutdown as a failure. This includes any proper shutdown of the agent such as a shutdown of the whole node. None of the timeout properties apply in this case: when the agent exits, the rest of the cluster is notified immediately. After the agent exits, the rest of the cluster performs the regular failover steps that happen in the case of agent failure. The regular failover steps include attempting to connect to the primary database, seeing if the VIP is reachable if used, and so on).
+Use `primary.shutdown.as.failure` property to control how other nodes treat a graceful/proper shutdown ([systemctl stop edb-efm-4.<x>](../05_using_efm.mdx/#stop_efm_agent)) of the primary agent.
 
--   If the database is reached, a notification is sent informing you of the agent status.
--   If the database isn't reached, a failover occurs.
+`primary.shutdown.as.failure=false` does not treat a proper shutdown of the agent ([systemctl stop edb-efm-4.<x>](../05_using_efm.mdx/#stop_efm_agent)) as a failure, and other nodes will not not failover if the database subsequently goes offline.
+This can be used to perform maintenance and prevent failover. Afterwards, the agent should be restarted with ([systemctl start edb-efm-4.<x>](../05_using_efm.mdx/#starting_efm_cluster))
+
+However, if the agent fails due to the process being killed, or the OS is killed, or there are connectivity problems between the nodes, failover will occur if the database goes offline.
 
 ```ini
 # Treat a primary agent shutdown as an agent failure. This can be set
@@ -570,9 +572,15 @@ Use the `primary.shutdown.as.failure` property to treat any shutdown of the Fail
 primary.shutdown.as.failure=false
 ```
 
-The `primary.shutdown.as.failure` property is meant to catch user error, rather than failures, such as the accidental shutdown of a primary node. The proper shutdown of a node can appear to the rest of the cluster as if a user has stopped the primary Failover Manager agent, for example to perform maintenance on the primary database. If you set the `primary.shutdown.as.failure` property to `true`, take care when performing maintenance.
+`primary.shutdown.as.failure=true` treats any shutdown of the Failover Manager agent on the primary node as a failure. This includes any proper shutdown of the agent such as a shutdown of the whole node ([systemctl stop edb-efm-4.<x>](../05_using_efm.mdx/#stop_efm_agent)).
 
-To perform maintenance on the primary database when `primary.shutdown.as.failure` is `true`, stop the primary agent and wait to receive a notification that the primary agent has failed but the database is still running. Then, it is safe to stop the primary database. Alternatively, you can use the `stop-cluster` command to stop all of the agents without performing failure checks.
+None of the timeout properties apply in this case: when the agent exits, the rest of the cluster is notified immediately. After the agent exits, the rest of the cluster performs the regular failover steps that happen in the case of agent failure. The regular failover steps include attempting to connect to the primary database, seeing if the VIP is reachable if used, and so on):
+-   If the database is reached, a notification is sent informing you of the agent status.
+-   If the database isn't reached, a failover occurs.
+
+To perform maintenance on the primary database when `primary.shutdown.as.failure=true`, stop the efm agent with ([systemctl stop edb-efm-4.<x>](../05_using_efm.mdx/#stop_efm_agent)), and ensure that you receive a notification/logs from the remaining nodes that failover will not happen.
+
+The `stop-cluster` command ([efm stop-cluster <cluster_name>](../05_using_efm.mdx/#stopping_efm_cluster)) is an alternative method for performing maintenance with `primary.shutdown.as.failure=true`. This will stop all of the agents without performing failure checks, and then perform the maintenance. However, all nodes will need to be restarted, and authorized node information will be removed from the Allowed Node host list
 
 <div id="update_physical_slots_period" class="registered_link"></div>
 
@@ -902,7 +910,7 @@ restart.connection.timeout=60
 
 <div id="auto_resume_period" class="registered_link"></div>
 
-Use the `auto.resume.period` property to specify the number of seconds for an agent to attempt to resume monitoring that database. This property applies after a monitored database fails and an agent has assumed an idle state or when starting in IDLE mode. 
+Use the `auto.resume.period` property to specify the number of seconds for an agent to attempt to resume monitoring that database. This property applies after a monitored database fails and an agent has assumed an idle state or when starting in IDLE mode.
 
 ```ini
 # Period in seconds for IDLE agents to try to resume monitoring
@@ -970,7 +978,7 @@ check.vip.before.promotion=true
 
 <div id="pgpool_enable" class="registered_link"></div>
 
-Use the `pgpool.enable` property to specify if you want to enable the Failover Manager and Pgpool integration for high availability. If you want to enable Pgpool integration in a non-sudo mode (running as the DB owner), the PCPPASS file must be owned by the DB owner operating system user and you must set the file permissions to 600.  
+Use the `pgpool.enable` property to specify if you want to enable the Failover Manager and Pgpool integration for high availability. If you want to enable Pgpool integration in a non-sudo mode (running as the DB owner), the PCPPASS file must be owned by the DB owner operating system user and you must set the file permissions to 600.
 
 
 ```ini
@@ -1034,13 +1042,13 @@ script.load.balancer.detach=
 Use the `detach.on.agent.failure` property to indicate that you don't want to detach a node from the load balancer in a scenario where the primary agent fails but the database is still reachable. The default value is `true.`
 
 ```ini
-# If set to true, Failover Manager will detach the node from load 
-# balancer if the primary agent fails but the database is still 
-# reachable. In most scenarios this is NOT the desired situation. In 
-# scenarios where the detach script should run with a failed primary 
-# agent, even when the primary database is still healthy this parameter 
-# should be set to true. If no value specified it defaults to true (for 
-# backwards compatibility). 
+# If set to true, Failover Manager will detach the node from load
+# balancer if the primary agent fails but the database is still
+# reachable. In most scenarios this is NOT the desired situation. In
+# scenarios where the detach script should run with a failed primary
+# agent, even when the primary database is still healthy this parameter
+# should be set to true. If no value specified it defaults to true (for
+# backwards compatibility).
 # This is not applicable for standbys.
 detach.on.agent.failure=
 ```
