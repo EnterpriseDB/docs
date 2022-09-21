@@ -159,8 +159,6 @@ const moveDoc = async (product, platform, version) => {
     (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 20.04"}}, 
     (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu20_${fmtArchFilename(ctx)}.mdx`),   
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 22.04"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu22_${fmtArchFilename(ctx)}.mdx`),      
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "CentOS 7"}}, 
       (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -195,8 +193,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "Failover Manager", version: 4}, platform: {name: "CentOS 7"}}, 
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_centos7_${fmtArchFilename(ctx)}.mdx`),
@@ -220,15 +216,11 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu18_${fmtArchFilename(ctx)}.mdx`),      
     when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu22_${fmtArchFilename(ctx)}.mdx`),      
     
     when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
       (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 15"}}, 
       (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 18.04"}}, 
@@ -270,8 +262,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "Migration Toolkit"}, platform: {name: "SLES 12"}}, 
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_sles12_${fmtArchFilename(ctx)}.mdx`),
@@ -285,8 +275,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -302,8 +290,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "SLES 15"}}, 
       (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 18.04"}}, 
@@ -346,8 +332,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 12"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles12_${fmtArchFilename(ctx)}.mdx`),
@@ -361,8 +345,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "CentOS 7"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB OCL Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -396,13 +378,9 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "Debian 11"}}, 
       (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_deb11_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -446,8 +424,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu20_${fmtArchFilename(ctx)}.mdx`),  
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu22_${fmtArchFilename(ctx)}.mdx`),          
 
     when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -471,8 +447,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -496,8 +470,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
 
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
@@ -522,11 +494,7 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Debian 11"}}, 
       (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_deb11_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "PostGIS", version: 3.2}, platform: {name: "CentOS 7"}}, 
@@ -556,8 +524,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Replication Server", version: 7}, platform: {name: "Debian 11"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_deb11_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 22.04"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_ubuntu22_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -575,7 +541,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_deb10_${fmtArchFilename(ctx)}.mdx`), 
     when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8"}}, 
       (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`), );
-
 
   function match(context, ...conditions) {
     for (let test of conditions) {
