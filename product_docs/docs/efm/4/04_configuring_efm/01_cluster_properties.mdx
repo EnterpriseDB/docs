@@ -555,15 +555,14 @@ stop.failed.primary=true
 
 <div id="primary_shutdown_as_failure" class="registered_link"></div>
 
-Use `primary.shutdown.as.failure` property to control how other nodes treat a graceful/proper shutdown ([`systemctl stop edb-efm-4.<x>``](../05_using_efm.mdx/#stop_efm_agent)) of the primary agent.
+Use the `primary.shutdown.as.failure` property to treat any shutdown of the Failover Manager agent on the primary node as a failure. If this property is set to `true` and the primary agent is shut down, the rest of the cluster treats the shutdown as a failure. This includes any proper shutdown of the agent such as a shutdown of the whole node. None of the timeout properties apply in this case: when the agent exits, the rest of the cluster is notified immediately. After the agent exits, the rest of the cluster performs the [regular checks](../11_supported_scenarios.mdx/#primary_agent_exits) that happen in the case of a primary agent failure. The regular checks include attempting to connect to the primary database, seeing if the VIP is reachable if used, and so on).
 
-`primary.shutdown.as.failure=false` does not treat a proper shutdown of the agent ([`systemctl stop edb-efm-4.<x>``](../05_using_efm.mdx/#stop_efm_agent)) as a failure, and other nodes will not not failover if the database subsequently goes offline.
-This can be used to perform maintenance and prevent failover. Afterwards, the agent should be restarted with ([`systemctl start edb-efm-4.<x>``](../05_using_efm.mdx/#starting_efm_cluster)).
-
-However, if the agent fails due to the process being killed, or the OS is killed, or there are connectivity problems between the nodes, failover will occur if the database goes offline.
+-   If the database is reached, a notification is sent informing you of the agent status.
+-   If the database isn't reached, a failover occurs.
 
 ```ini
-# This can be set to true to treat a primary agent shutdown as a failure situation.
+# Treat a primary agent shutdown as an agent failure. This can be set
+# to true to treat a primary agent shutdown as a failure situation.
 # Caution should be used when using this feature, as it could
 # cause an unwanted promotion in the case of performing primary
 # database maintenance.
@@ -571,15 +570,11 @@ However, if the agent fails due to the process being killed, or the OS is killed
 primary.shutdown.as.failure=false
 ```
 
-`primary.shutdown.as.failure=true` treats any shutdown of the Failover Manager agent on the primary node as a failure. This includes any proper shutdown of the agent such as a shutdown of the whole node ([systemctl stop edb-efm-4.<x>](../05_using_efm.mdx/#stop_efm_agent)).
+The `primary.shutdown.as.failure` property is meant to catch user error, rather than failures, such as the accidental shutdown of a primary node. The proper shutdown of a node can appear to the rest of the cluster as if a user has stopped the primary Failover Manager agent, for example to perform maintenance on the primary database. If you set the `primary.shutdown.as.failure` property to `true`, take care when performing maintenance.
 
-None of the timeout properties apply in this case: when the agent exits, the rest of the cluster is notified immediately. After the agent exits, the rest of the cluster performs the regular failover steps that happen in the case of agent failure. The regular failover steps include attempting to connect to the primary database, seeing if the VIP is reachable if used, and so on):
--   If the database is reached, a notification is sent informing you of the agent status.
--   If the database isn't reached, a failover occurs.
+To perform maintenance on the primary database when `primary.shutdown.as.failure` is `true`, stop the primary agent and wait to receive a notification that the primary agent has failed but the database is still running. Then, it is safe to stop the primary database. Alternatively, you can use the `stop-cluster` command to stop all of the agents without performing failure checks.
 
-To perform maintenance on the primary database when `primary.shutdown.as.failure=true`, stop the efm agent with ([`systemctl stop edb-efm-4.<x>``](../05_using_efm.mdx/#stop_efm_agent)), and ensure that you receive a notification/logs from the remaining nodes that failover will not happen.
-
-The `stop-cluster` command ([`efm stop-cluster <cluster_name>``](../05_using_efm.mdx/#stopping_efm_cluster)) is an alternative method for performing maintenance with `primary.shutdown.as.failure=true`. This will stop all of the agents without performing failure checks, and then perform the maintenance. However, authorized node information will be removed from the Allowed Node host list, all nodes will need to be restarted.
+To perform maintenance on the primary database when `primary.shutdown.as.failure` is `false`, stop the primary agent/ use the `stop-cluster` command. Then, it is safe to stop the primary database.
 
 <div id="update_physical_slots_period" class="registered_link"></div>
 
