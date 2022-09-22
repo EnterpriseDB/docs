@@ -1,0 +1,86 @@
+---
+title: "Application connection management"
+navTitle: "Connection management"
+indexCards: none
+---
+
+
+Managing application connections is important part of high availability.
+
+Especially with asynchronous replication, having consistent write lead node is
+important in order to avoid conflicts and guarantee availability for the
+application.
+
+EDB Postgres Distributed provides a proxy layer called PDG-Proxy which is
+normally installed in highly available configuration (at least 2 instances per
+region).
+
+The PGD-Proxy connects to one of the EDB Postgres Distributed nodes and monitors
+routing configuration changes as decided by the EDB Postgres Distributed cluster
+and ensures that the connections are routed to correct node(s) consistently.
+
+## Configuration
+
+The configuration of the routing is done through either SQL interfaces or through
+PGD-CLI.
+
+The SQL interfaces are described in this section.
+
+You can enable routing decisions by calling `bdr.alter_node_group_option()` function.
+For example `SELECT bdr.alter_node_group_option('region1-group', 'enable_proxy_routing', 'true')`.
+It can be disabled again by setting the same option to `false`.
+
+There are additional group-level options that affect the routing decisions:
+
+- route_writer_max_lag - Maximum lag in bytes of the new write candidate to be
+  selected as write leader, if no candidate passes this, there will be no writer
+  selected automatically.
+- route_reader_max_lag - Maximum lag in bytes for node to be considered viable
+  read-only node (currently reserved for future use).
+- route_writer_wait_flush - Whether to wait for replication queue flush before
+  switching to new leader when using `bdr.routing_leadership_transfer()`.
+
+Per node configuration of routing is set using `bdr.alter_node_option()`. The
+available options that affect routing are following:
+
+- route_priority - Relative routing priority of the node against other nodes in
+  the same node group.
+- route_fence - Whether the node is fenced from routing (can't receive connections
+  from PGD-Proxy)
+- route_writes - Whether writes can be routed to this node, i.e. whether the node
+  can become write leader.
+- route_reads - Whether read only connections can be routed to this node (currnetly
+  reserved for future use).
+
+The proxies are also configured using SQL interfaces. You can add proxy configuration
+using `bdr.create_proxy`. For example `SELECT bdr.create_proxy('region1-proxy1', 'region1-group');`
+will add default configuration for proxy named "region1-proxy1" that is member
+of BDR group "region1-group". The name of the proxy given here must be same
+as the name given in the proxy configuration file. Proxy configuration can be
+removed using `SELECT bdr.drop_proxy('region1-proxy1')`, such proxy will be
+deactivated as a result.
+
+Options for each proxy can be configured using `bdr.alter_proxy_option()` function.
+The available option are:
+
+- listen_address - Address the proxy should listen on.
+- listen_port - Port the proxy should listen on.
+- max_client_conn - Maximum number of connections the proxy will accept.
+- max_server_conn - Maximum number of connections the proxy will make to the
+  Postgres node.
+- server_conn_timeout - Connection timeout for server connections.
+- server_conn_keepalive - Keepalive interval for server connections.
+- fallback_groups - Array of groups (in priority order) to route to if the main
+  group does not have any write lead. This is useful primarily for cross-region
+  fail-over.
+- fallback_group_timeout - Interval after which the routing falls back to one
+  of the fallback_groups.
+
+The current configuration of every group is visible in the
+`bdr.node_group_routing_config_summary` view. Similarly the
+`bdr.node_routing_config_summary` view shows current per node routing
+configuration and `bdr.proxy_config_summary` shows per proxy configuration.
+
+It's also possible to do a switch-over operation (changing which node is
+the write leader explicitly) using `bdr.routing_leadership_transfer()` function.
+
