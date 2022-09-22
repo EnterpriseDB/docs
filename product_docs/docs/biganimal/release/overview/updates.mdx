@@ -2,25 +2,22 @@
 title: Periodic maintenance
 ---
 
-EDB performs periodic maintenance to ensure stability and security of your clusters. EDB performs minor version upgrades and patch updates as part of this periodic maintenance. You are notified in the BigAnimal portal prior to maintenance occurring. Details are available on the [BigAnimal status page](https://status.biganimal.com/). You can subscribe to get these updates in a feed by selecting **Subscribe to Updates** on the status page. 
+EDB performs periodic maintenance to ensure stability and security of your clusters. We perform minor version upgrades and patch updates as part of this periodic maintenance. You're notified in the BigAnimal portal prior to maintenance occurring. Details are available on the [BigAnimal status page](https://status.biganimal.com/). You can subscribe to get these updates in a feed by selecting **Subscribe to Updates** on the status page. 
 
-EDB reserves the right to upgrade customers to the latest minor version without prior notice in an extraordinary circumstance. You cannot configure minor versions. 
+EDB reserves the right to upgrade customers to the latest minor version without prior notice in an extraordinary circumstance. You can't configure minor versions. 
 
-In some cases these updates may terminate existing network connections to your clusters. If that happens, the outage should be very brief - typically less than 30 seconds. Be sure your applications are configured to automatically reconnect when connections are interrupted. Most modern database libraries do this by default. 
+In some cases these updates might terminate existing network connections to your clusters. If that happens, the outage is typically less than 30 seconds. Be sure your applications are configured to automatically reconnect when connections are interrupted. Most modern database libraries do this by default. 
 
-## Tips for handling transient connectivity errors
+## Connectivity issues after an automatic upgrade
 
-Transient connectivity errors are best handled using retry logic. 
+Most connectivity issues correct themselves when you reopen the connection after waiting for a minimum of five seconds. Our recommendation is to:
 
-Our recommendation is to:
+-  Wait five seconds before your first attempt.
+-  For the next attempt, increase the wait by doubling the previous wait time. Keep trying this approach until you reach a maximum wait time of 60 seconds.
 
-- Wait for 5 seconds before your first retry.
-- For each following retry, the increase the wait exponentially, up to 60 seconds.
-- Set a max number of retries at which point your application considers the operation failed.
-When a connection with an active transaction fails, it is more difficult to handle the recovery correctly. There are two cases: If the transaction was read-only in nature, it is safe to reopen the connection and to retry the transaction. If however if the transaction was also writing to the database, you must determine if the transaction was rolled back, or if it succeeded before the transient error happened. In that case, you might just not have received the commit acknowledgment from the database server.
+We also recommend that you set a maximum number of attempts to reopen the connection before your application reports that it can't reconnect.
+<!--- Would it be helpful to say how you set this? --->
 
-One way of doing this, is to generate a unique ID on the client that is used for all the retries. You pass this unique ID as part of the transaction to the server and to store it in a column with a unique constraint. This way you can safely retry the transaction. It will succeed if the previous transaction was rolled back and the client generated unique ID does not yet exist in the system. It will fail indicating a duplicate key violation if the unique ID was previously stored because the previous transaction completed successfully.
+When an active connection that's currently executing a command is interrupted, you might need to take extra action when reopening the connection. (For read-only transactions that were in progress, you can reopen the connection without any extra steps.) For a transaction that was writing to the database, you need to know whether the transaction was rolled back or whether it succeeded to determine whether you need to retry the transaction. If it was rolled back, you need to retry it. If it succeeded, you don't need to retry it. (It's possible for a transaction to succeed without sending you the commit acknowledgment from the database server, so you'll need to add some logic to be sure.)
 
-When your program communicates with Azure Database for PostgreSQL through third-party middleware, ask the vendor whether the middleware contains retry logic for transient errors.
-
-Make sure to test your retry logic. For example, try to execute your code while scaling up or down the compute resources of your Azure Database for PostgreSQL server. Your application should handle the brief downtime that is encountered during this operation without any problems.
+Test your retry logic by creating an event that causes a brief downtime to see if it is handling these transactions correctly.
