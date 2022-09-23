@@ -130,6 +130,7 @@ async function buildTable(auth) {
           rowspan: cell.rowspan,
           colspan: cell.colspan,
           textFormat: cell.effectiveFormat?.textFormat,
+          align: cell.effectiveFormat?.horizontalAlignment,
         };
       });
     if (
@@ -153,16 +154,22 @@ async function buildTable(auth) {
   if (tableStart > 0) rows.splice(0, tableStart);
 
   const formatCell = (cell, tag) => {
+    let style = {};
     let value = cell.formattedValue?.replace(/^ +/, (m) =>
       m.replace(" ", "\u00A0"),
     );
     if (value === "TRUE") value = "✔";
     else if (value === "FALSE") value = "❌";
-    else if (cell.textFormat?.bold && !tag === "th")
-      value = h("b", cell.formattedValue);
+
+    if (cell.textFormat?.bold) style["font-weight"] = "bold";
+    if (cell.align) style["text-align"] = cell.align.toLowerCase();
     return h(
       tag,
-      { rowspan: cell.rowspan, colspan: cell.colspan },
+      {
+        rowspan: cell.rowspan,
+        colspan: cell.colspan,
+        style,
+      },
       value ? [value] : [],
     );
   };
@@ -176,13 +183,13 @@ async function buildTable(auth) {
           row.values.map((cell) => formatCell(cell, "th")),
         ),
       ),
-      h(
-        "tbody",
-        rows.map((row) =>
-          h(
-            "tr",
-            row.values.map((cell) => formatCell(cell, "td")),
-          ),
+    ),
+    h(
+      "tbody",
+      rows.map((row) =>
+        h(
+          "tr",
+          row.values.map((cell) => formatCell(cell, "td")),
         ),
       ),
     ),
