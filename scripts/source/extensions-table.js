@@ -31,7 +31,7 @@ const CREDENTIALS_PATH = path.join(SCRIPT_ROOT, "credentials.json");
 const SOURCE_SPREADSHEET = "1GXzzVYT6CULGgGcyp0VtBfOtbxuWxkOU2pRYW42W4pM";
 const TARGET_FILE = path.resolve(
   SCRIPT_ROOT,
-  "../../product_docs/docs/pg_extensions/release/index.mdx",
+  "../../advocacy_docs/pg_extensions/index.mdx",
 );
 
 /**
