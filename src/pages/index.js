@@ -145,7 +145,7 @@ const Page = () => (
               PostgreSQL
             </IndexCardLink>
 
-            <IndexCardLink to="/pg_extensions/latest">
+            <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
             </IndexCardLink>
           </IndexCard>
