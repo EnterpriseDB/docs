@@ -131,10 +131,15 @@ async function buildTable(auth) {
           colspan: cell.colspan,
           textFormat: cell.effectiveFormat?.textFormat,
           align: cell.effectiveFormat?.horizontalAlignment,
+          borders: cell.effectiveFormat?.borders,
+          padding: cell.effectiveFormat?.padding,
+          backgroundColor: cell.effectiveFormat?.backgroundColorStyle,
         };
       });
     if (
-      row.values.every((cell) => !cell.formattedValue || cell.textFormat?.bold)
+      row.values.every(
+        (cell, i) => i === 0 || (cell.formattedValue && cell.textFormat?.bold),
+      )
     )
       row.isHeader = true;
   }
@@ -142,6 +147,9 @@ async function buildTable(auth) {
   const tableStart = rows.findIndex((row) =>
     row.values.some((cell) => !!cell.formattedValue),
   );
+  let tableEnd = rows.length - 1;
+  for (; tableStart >= 0 && tableEnd > tableStart; --tableEnd)
+    if (rows[tableEnd].values.some((cell) => !!cell.formattedValue)) break;
   const headerStart = rows.findIndex(
     (row, i) => i >= tableStart && row.isHeader,
   );
@@ -149,9 +157,38 @@ async function buildTable(auth) {
     (row, i) => i >= headerStart && !row.isHeader,
   );
 
-  const headers =
-    headerStart >= 0 ? rows.splice(headerStart, headerEnd - headerStart) : [];
-  if (tableStart > 0) rows.splice(0, tableStart);
+  const headers = headerStart >= 0 ? rows.slice(headerStart, headerEnd) : [];
+  if (tableStart >= 0 && tableEnd >= 0)
+    rows = rows.slice(Math.max(tableStart, headerEnd), tableEnd + 1);
+
+  const isAllWhite = (colorStyle) => {
+    return (
+      colorStyle?.rgbColor?.red == 1 &&
+      colorStyle?.rgbColor?.green == 1 &&
+      colorStyle?.rgbColor?.blue == 1
+    );
+  };
+  const formatColor = (colorStyle) => {
+    return `rgb(${(colorStyle.rgbColor?.red || 1) * 255}, ${
+      (colorStyle.rgbColor?.red || 1) * 255
+    }, ${(colorStyle.rgbColor?.blue || 1) * 255})`;
+  };
+
+  const formatBorderStyle = (sheetStyle) => {
+    sheetStyle = sheetStyle || { style: "none" };
+    let style = [];
+    if (sheetStyle.style) style.push(sheetStyle.style.toLowerCase());
+    if (sheetStyle.width) style.push(sheetStyle.width + "px");
+
+    if (
+      sheetStyle.colorStyle &&
+      Object.keys(sheetStyle.colorStyle).length &&
+      !isAllWhite(sheetStyle.colorStyle)
+    )
+      style.color = formatColor(sheetStyle.colorStyle);
+
+    return style.join(" ");
+  };
 
   const formatCell = (cell, tag) => {
     let style = {};
@@ -163,6 +200,16 @@ async function buildTable(auth) {
 
     if (cell.textFormat?.bold) style["font-weight"] = "bold";
     if (cell.align) style["text-align"] = cell.align.toLowerCase();
+    style["border-left"] = formatBorderStyle(cell.borders?.left);
+    style["border-right"] = formatBorderStyle(cell.borders?.right);
+    style["border-top"] = formatBorderStyle(cell.borders?.top);
+    style["border-bottom"] = formatBorderStyle(cell.borders?.bottom);
+    style["padding-left"] = (cell.padding?.left || 0) + "px";
+    style["padding-right"] = (cell.padding?.right || 0) + "px";
+    style["padding-top"] = (cell.padding?.top || 0) + "px";
+    style["padding-bottom"] = (cell.padding?.bottom || 0) + "px";
+    if (cell.backgroundColor && !isAllWhite(cell.backgroundColor))
+      style["background-color"] = formatColor(cell.backgroundColor);
     return h(
       tag,
       {
