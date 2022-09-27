@@ -2,6 +2,7 @@
 // heavily adapted from https://developers.google.com/sheets/api/quickstart/nodejs
 
 const fs = require("fs").promises;
+const existsSync = require("fs").existsSync;
 const path = require("path");
 const process = require("process");
 const { authenticate } = require("@google-cloud/local-auth");
@@ -33,6 +34,11 @@ const TARGET_FILE = path.resolve(
   SCRIPT_ROOT,
   "../../advocacy_docs/pg_extensions/index.mdx",
 );
+const WITNESS_COMMENTS = [
+  `This table was generated automatically from ${SOURCE_SPREADSHEET}`,
+  `on ${new Date().toISOString()}.`,
+  `Do not edit it directly without first removing this attribute!`,
+];
 
 /**
  * Reads previously authorized credentials from the save file.
@@ -73,6 +79,17 @@ async function saveCredentials(client) {
  *
  */
 async function authorize() {
+  try {
+    return google.auth.fromJSON(
+      JSON.parse(process.env["EXTENSION_SOURCE_TOKEN"]),
+    );
+  } catch (e) {
+    console.error(
+      "Ensure valid client token is stored in EXTENSION_SOURCE_TOKEN!",
+    );
+  }
+  if (!existsSync(CREDENTIALS_PATH)) return;
+
   let client = await loadSavedCredentialsIfExist();
   if (client) {
     return client;
@@ -131,6 +148,7 @@ async function buildTable(auth) {
           colspan: cell.colspan,
           textFormat: cell.effectiveFormat?.textFormat,
           align: cell.effectiveFormat?.horizontalAlignment,
+          valign: cell.effectiveFormat?.verticalAlignment,
           borders: cell.effectiveFormat?.borders,
           padding: cell.effectiveFormat?.padding,
           backgroundColor: cell.effectiveFormat?.backgroundColorStyle,
@@ -143,7 +161,6 @@ async function buildTable(auth) {
     )
       row.isHeader = true;
   }
-
   const tableStart = rows.findIndex((row) =>
     row.values.some((cell) => !!cell.formattedValue),
   );
@@ -191,6 +208,8 @@ async function buildTable(auth) {
   };
 
   const formatCell = (cell, tag) => {
+    const alignMappings = { CENTER: "center", RIGHT: "right" };
+    const valignMappings = { MIDDLE: "middle", TOP: "top" };
     let style = {};
     let value = cell.formattedValue?.replace(/^ +/, (m) =>
       m.replace(" ", "\u00A0"),
@@ -199,7 +218,10 @@ async function buildTable(auth) {
     else if (value === "FALSE") value = "❌";
 
     if (cell.textFormat?.bold) style["font-weight"] = "bold";
-    if (cell.align) style["text-align"] = cell.align.toLowerCase();
+    if (alignMappings[cell.align])
+      style["text-align"] = alignMappings[cell.align];
+    if (valignMappings[cell.valign])
+      style["vertical-align"] = valignMappings[cell.valign];
     style["border-left"] = formatBorderStyle(cell.borders?.left);
     style["border-right"] = formatBorderStyle(cell.borders?.right);
     style["border-top"] = formatBorderStyle(cell.borders?.top);
@@ -221,7 +243,7 @@ async function buildTable(auth) {
     );
   };
 
-  const table = h("table", [
+  const table = h("table", { "data-source": WITNESS_COMMENTS.join(" ") }, [
     h(
       "thead",
       headers.map((row) =>
@@ -257,8 +279,8 @@ async function updateTable() {
       visit(tree, "jsx", (node, parent) => {
         if (replaced) return;
 
-        if (!/<table>/.test(node.value)) return;
-        if (!/EDB Supported Extensions/.test(node.value)) return;
+        if (!/<table/.test(node.value)) return;
+        if (node.value.indexOf(WITNESS_COMMENTS[0]) < 0) return;
 
         replaced = true;
 

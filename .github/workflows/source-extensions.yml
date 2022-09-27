@@ -1,0 +1,50 @@
+name: Source extension information from spreadsheet
+on:
+  pull_request:
+    types: [labeled, opened, synchronize]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    if: |
+      (github.event.action == 'labeled' && github.event.label.name == 'source_extensions') ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'source_extensions'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          lfs: true
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+
+      - name: update npm
+        run: npm install -g npm@7
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+      - name: Install dependencies
+        run: |
+          cd scripts/source
+          npm i
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+
+      - name: update spreadsheet
+        run: |
+          node scripts/source/extensions-table.js
+        env:
+          EXTENSION_SOURCE_TOKEN: ${{ secrets.EXTENSION_SOURCE_TOKEN }}
+
+      - name: commit updated files
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .
+          git commit -m "generated new extensions table"
+          git push
