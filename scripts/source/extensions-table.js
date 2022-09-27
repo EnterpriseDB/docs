@@ -104,6 +104,81 @@ async function authorize() {
   return client;
 }
 
+const isCellEmpty = (cell) =>
+  cell.formattedValue === undefined ||
+  cell.formattedValue === "" ||
+  cell.formattedValue === null;
+const isRowEmpty = (row) => row.values.every(isCellEmpty);
+
+const isHeader = (row) =>
+  !isRowEmpty(row) &&
+  row.values.every((cell) => isCellEmpty(cell) || cell.textFormat.bold);
+
+const isAllWhite = (colorStyle) => {
+  return (
+    colorStyle?.rgbColor?.red == 1 &&
+    colorStyle?.rgbColor?.green == 1 &&
+    colorStyle?.rgbColor?.blue == 1
+  );
+};
+const formatColor = (colorStyle) => {
+  return `rgb(${(colorStyle.rgbColor?.red || 1) * 255}, ${
+    (colorStyle.rgbColor?.red || 1) * 255
+  }, ${(colorStyle.rgbColor?.blue || 1) * 255})`;
+};
+
+const formatBorderStyle = (sheetStyle) => {
+  sheetStyle = sheetStyle || { style: "none" };
+  let style = [];
+  if (sheetStyle.style) style.push(sheetStyle.style.toLowerCase());
+  if (sheetStyle.width) style.push(sheetStyle.width + "px");
+
+  if (
+    sheetStyle.colorStyle &&
+    Object.keys(sheetStyle.colorStyle).length &&
+    !isAllWhite(sheetStyle.colorStyle)
+  )
+    style.color = formatColor(sheetStyle.colorStyle);
+
+  return style.join(" ");
+};
+
+const formatCell = (cell, tag) => {
+  const alignMappings = { CENTER: "center", RIGHT: "right" };
+  const valignMappings = { MIDDLE: "middle", TOP: "top" };
+  let style = {};
+  let value = cell.formattedValue?.replace(/^ +/, (m) =>
+    m.replace(" ", "\u00A0"),
+  );
+  if (value === "TRUE") value = "✔";
+  else if (value === "FALSE") value = "❌";
+
+  if (cell.textFormat?.bold) style["font-weight"] = "bold";
+  if (alignMappings[cell.align])
+    style["text-align"] = alignMappings[cell.align];
+  if (valignMappings[cell.valign])
+    style["vertical-align"] = valignMappings[cell.valign];
+  style["border-left"] = formatBorderStyle(cell.borders?.left);
+  style["border-right"] = formatBorderStyle(cell.borders?.right);
+  style["border-top"] = formatBorderStyle(cell.borders?.top);
+  style["border-bottom"] = formatBorderStyle(cell.borders?.bottom);
+  style["padding-left"] = (cell.padding?.left || 0) + "px";
+  style["padding-right"] = (cell.padding?.right || 0) + "px";
+  style["padding-top"] = (cell.padding?.top || 0) + "px";
+  style["padding-bottom"] = (cell.padding?.bottom || 0) + "px";
+  if (cell.backgroundColor && !isAllWhite(cell.backgroundColor))
+    style["background-color"] = formatColor(cell.backgroundColor);
+  return h(
+    tag,
+    {
+      rowspan: cell.rowspan,
+      colspan: cell.colspan,
+      style,
+    },
+    value ? [value] : [],
+  );
+};
+
 /**
  * Grabs data from the Doc Preview sheet
  * @see https://docs.google.com/spreadsheets/d/1GXzzVYT6CULGgGcyp0VtBfOtbxuWxkOU2pRYW42W4pM/edit#gid=1884264748
@@ -154,137 +229,96 @@ async function buildTable(auth) {
           backgroundColor: cell.effectiveFormat?.backgroundColorStyle,
         };
       });
-    if (
-      row.values.every(
-        (cell, i) => i === 0 || (cell.formattedValue && cell.textFormat?.bold),
-      )
-    )
-      row.isHeader = true;
   }
-  const tableStart = rows.findIndex((row) =>
-    row.values.some((cell) => !!cell.formattedValue),
-  );
+
+  const tableStart = rows.findIndex((row) => !isRowEmpty(row));
   let tableEnd = rows.length - 1;
   for (; tableStart >= 0 && tableEnd > tableStart; --tableEnd)
-    if (rows[tableEnd].values.some((cell) => !!cell.formattedValue)) break;
+    if (!isRowEmpty(rows[tableEnd])) break;
+
   const headerStart = rows.findIndex(
-    (row, i) => i >= tableStart && row.isHeader,
+    (row, i) => i >= tableStart && isHeader(row),
   );
   const headerEnd = rows.findIndex(
-    (row, i) => i >= headerStart && !row.isHeader,
+    (row, i) => i >= headerStart && !isHeader(row),
   );
 
-  const headers = headerStart >= 0 ? rows.slice(headerStart, headerEnd) : [];
+  const globalHeaders =
+    headerStart >= 0 ? rows.slice(headerStart, headerEnd) : [];
   if (tableStart >= 0 && tableEnd >= 0)
     rows = rows.slice(Math.max(tableStart, headerEnd), tableEnd + 1);
 
-  const isAllWhite = (colorStyle) => {
-    return (
-      colorStyle?.rgbColor?.red == 1 &&
-      colorStyle?.rgbColor?.green == 1 &&
-      colorStyle?.rgbColor?.blue == 1
-    );
-  };
-  const formatColor = (colorStyle) => {
-    return `rgb(${(colorStyle.rgbColor?.red || 1) * 255}, ${
-      (colorStyle.rgbColor?.red || 1) * 255
-    }, ${(colorStyle.rgbColor?.blue || 1) * 255})`;
-  };
+  let currentTable = [];
+  let tables = [];
+  const addTable = () => {
+    if (!currentTable.length) return;
 
-  const formatBorderStyle = (sheetStyle) => {
-    sheetStyle = sheetStyle || { style: "none" };
-    let style = [];
-    if (sheetStyle.style) style.push(sheetStyle.style.toLowerCase());
-    if (sheetStyle.width) style.push(sheetStyle.width + "px");
-
-    if (
-      sheetStyle.colorStyle &&
-      Object.keys(sheetStyle.colorStyle).length &&
-      !isAllWhite(sheetStyle.colorStyle)
-    )
-      style.color = formatColor(sheetStyle.colorStyle);
-
-    return style.join(" ");
-  };
-
-  const formatCell = (cell, tag) => {
-    const alignMappings = { CENTER: "center", RIGHT: "right" };
-    const valignMappings = { MIDDLE: "middle", TOP: "top" };
-    let style = {};
-    let value = cell.formattedValue?.replace(/^ +/, (m) =>
-      m.replace(" ", "\u00A0"),
-    );
-    if (value === "TRUE") value = "✔";
-    else if (value === "FALSE") value = "❌";
-
-    if (cell.textFormat?.bold) style["font-weight"] = "bold";
-    if (alignMappings[cell.align])
-      style["text-align"] = alignMappings[cell.align];
-    if (valignMappings[cell.valign])
-      style["vertical-align"] = valignMappings[cell.valign];
-    style["border-left"] = formatBorderStyle(cell.borders?.left);
-    style["border-right"] = formatBorderStyle(cell.borders?.right);
-    style["border-top"] = formatBorderStyle(cell.borders?.top);
-    style["border-bottom"] = formatBorderStyle(cell.borders?.bottom);
-    style["padding-left"] = (cell.padding?.left || 0) + "px";
-    style["padding-right"] = (cell.padding?.right || 0) + "px";
-    style["padding-top"] = (cell.padding?.top || 0) + "px";
-    style["padding-bottom"] = (cell.padding?.bottom || 0) + "px";
-    if (cell.backgroundColor && !isAllWhite(cell.backgroundColor))
-      style["background-color"] = formatColor(cell.backgroundColor);
-    return h(
-      tag,
-      {
-        rowspan: cell.rowspan,
-        colspan: cell.colspan,
-        style,
-      },
-      value ? [value] : [],
-    );
-  };
-
-  const table = h("table", { "data-source": WITNESS_COMMENTS.join(" ") }, [
-    h(
-      "thead",
-      headers.map((row) =>
-        h(
-          "tr",
-          row.values.map((cell) => formatCell(cell, "th")),
+    const headers = [
+      ...globalHeaders,
+      ...currentTable.splice(
+        0,
+        currentTable.findIndex((row) => !isHeader(row)) + 1 ||
+          currentTable.length,
+      ),
+    ];
+    const table = h("table", { "data-source": WITNESS_COMMENTS.join(" ") }, [
+      h(
+        "thead",
+        headers.map((row) =>
+          h(
+            "tr",
+            row.values.map((cell) => formatCell(cell, "th")),
+          ),
         ),
       ),
-    ),
-    h(
-      "tbody",
-      rows.map((row) =>
-        h(
-          "tr",
-          row.values.map((cell) => formatCell(cell, "td")),
+      h(
+        "tbody",
+        currentTable.map((row) =>
+          h(
+            "tr",
+            row.values.map((cell) => formatCell(cell, "td")),
+          ),
         ),
       ),
-    ),
-  ]);
-  rehypeFormat()(table);
-  return toHtml(table);
+    ]);
+
+    tables.push(table);
+    currentTable = [];
+  };
+  for (let row of rows) {
+    // blank row starts new table
+    if (isRowEmpty(row)) {
+      addTable();
+    } else {
+      currentTable.push(row);
+    }
+  }
+  addTable();
+
+  const formatter = rehypeFormat();
+  return tables
+    .map((table) => {
+      formatter(table);
+      return toHtml(table);
+    })
+    .join("\n");
 }
 
 async function updateTable() {
   console.log("authorizing access to source spreadsheet");
   const auth = await authorize();
   console.log("converting table");
-  const newTable = await buildTable(auth);
+  const newTables = await buildTable(auth);
 
   const replaceTable = function () {
     return (tree) => {
       let replaced = false;
       visit(tree, "jsx", (node, parent) => {
-        if (replaced) return;
-
         if (!/<table/.test(node.value)) return;
         if (node.value.indexOf(WITNESS_COMMENTS[0]) < 0) return;
 
-        replaced = true;
-
-        node.value = newTable;
+        if (!replaced) node.value = newTables;
+        else node.value = "";
       });
     };
   };
