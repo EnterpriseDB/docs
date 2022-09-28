@@ -130,7 +130,7 @@ function cleanup() {
           if (originalPath) {
             currentOriginalPath = originalPath
               .split(basePath)[1]
-              .replace(/index\.mdx|\.mdx?/, "");
+              .replace(/(?:(?<=^|\/)index\.mdx|\.mdx?)$/, "");
             currentUnversionedOriginalPath = currentOriginalPath.replace(
               /\/([^\/]+)\/[\d.]+\//,
               "/$1/latest/",
@@ -254,15 +254,23 @@ function cleanup() {
 
         // pandoc is very sensitive to tables being separated from surrounding content
         // this can be removed once we're no longer using pandoc to render markdown->HTML
-        if (node.type ==="table")
-        {
+        if (node.type === "table") {
           const siblings = ancestors[ancestors.length - 1].children;
           const idx = siblings.indexOf(node);
-          siblings.splice(idx, 1, {type: "break"}, node, {type:"break"});
+          siblings.splice(idx, 1, { type: "break" }, node, { type: "break" });
           return idx + 3;
         }
       },
     );
+
+    // it is possible the root index won't be present (if empty) - special case this (for EPAS)
+    if (!mapOrigPathToSlugs[thisProductPath]) {
+      const slugMap =
+        (mapOrigPathToSlugs[thisUnversionedProductPath] =
+        mapOrigPathToSlugs[thisProductPath] =
+          {});
+      slugMap[""] = "";
+    }
 
     visitParents(tree, ["link", "element"], (node) => {
       if (
