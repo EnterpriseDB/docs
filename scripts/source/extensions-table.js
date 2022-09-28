@@ -253,34 +253,44 @@ async function buildTable(auth) {
   const addTable = () => {
     if (!currentTable.length) return;
 
-    const headers = [
-      ...globalHeaders,
-      ...currentTable.splice(
-        0,
-        currentTable.findIndex((row) => !isHeader(row)) + 1 ||
-          currentTable.length,
-      ),
-    ];
-    const table = h("table", { "data-source": WITNESS_COMMENTS.join(" ") }, [
-      h(
-        "thead",
-        headers.map((row) =>
-          h(
-            "tr",
-            row.values.map((cell) => formatCell(cell, "th")),
+    let headers = currentTable.splice(
+      0,
+      currentTable.findIndex((row) => !isHeader(row)) + 1 ||
+        currentTable.length,
+    );
+
+    let sectionHeader = headers[0];
+
+    headers = [...globalHeaders, ...headers];
+    const table = h(
+      "table",
+      {
+        "data-source": WITNESS_COMMENTS.join(" "),
+        "data-section": sectionHeader
+          ? sectionHeader.values.map((cell) => cell.formattedValue).join(" ")
+          : "",
+      },
+      [
+        h(
+          "thead",
+          headers.map((row) =>
+            h(
+              "tr",
+              row.values.map((cell) => formatCell(cell, "th")),
+            ),
           ),
         ),
-      ),
-      h(
-        "tbody",
-        currentTable.map((row) =>
-          h(
-            "tr",
-            row.values.map((cell) => formatCell(cell, "td")),
+        h(
+          "tbody",
+          currentTable.map((row) =>
+            h(
+              "tr",
+              row.values.map((cell) => formatCell(cell, "td")),
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
 
     tables.push(table);
     currentTable = [];
@@ -296,12 +306,18 @@ async function buildTable(auth) {
   addTable();
 
   const formatter = rehypeFormat();
-  return tables
-    .map((table) => {
-      formatter(table);
-      return toHtml(table);
-    })
-    .join("\n");
+  return tables.flatMap((table) => {
+    formatter(table);
+    let nodes = [];
+    if (table.properties.dataSection)
+      nodes.push({
+        type: "heading",
+        depth: 3,
+        children: [{ type: "text", value: table.properties.dataSection }],
+      });
+    nodes.push({ type: "jsx", value: toHtml(table) });
+    return nodes;
+  });
 }
 
 async function updateTable() {
@@ -313,12 +329,29 @@ async function updateTable() {
   const replaceTable = function () {
     return (tree) => {
       let replaced = false;
-      visit(tree, "jsx", (node, parent) => {
+      visit(tree, "jsx", (node, index, parent) => {
         if (!/<table/.test(node.value)) return;
         if (node.value.indexOf(WITNESS_COMMENTS[0]) < 0) return;
 
-        if (!replaced) node.value = newTables;
-        else node.value = "";
+        const removePrecedingHeading = () => {
+          if (parent.children[index - 1]?.type === "heading") {
+            parent.children.splice(index - 1, 1);
+            return -1;
+          }
+          return 0;
+        };
+
+        if (!replaced) {
+          replaced = true;
+          parent.children.splice(index, 1, ...newTables);
+          return [
+            visit.SKIP,
+            index + newTables.length + removePrecedingHeading(),
+          ];
+        }
+
+        node.value = "";
+        return [visit.SKIP, index + 1 + removePrecedingHeading()];
       });
     };
   };
