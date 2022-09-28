@@ -17,6 +17,18 @@ import remarkMdxEmbeddedHast from "./lib/mdast-embedded-hast.mjs";
 import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
+// if this build was triggered by a GH action in response to a PR,
+// use the head ref (the branch that someone is requesting be merged)
+let branch = process.env.GITHUB_HEAD_REF;
+// if this process was otherwise triggered by a GH action, use the current branch name
+if (!branch) branch = process.env.GITHUB_REF;
+
+const formatErrorPath = (path, line, column) => {
+  return branch
+    ? `https://github.com/EnterpriseDB/docs/blob/${branch}/${path}?plain=1#L${line}`
+    : `${path}:${line}:${column}`;
+};
+
 (async () => {
   if (!process.argv[2]) {
     console.log(`usage:
@@ -54,7 +66,8 @@ example:
 })();
 
 function cleanup() {
-  const originalRE = /<span data-original-path='(.+?)'><\/span>/;
+  const originalRE =
+    /<span data-original-path='(?<originalPath>.+?):(?<originalStartLine>\d+)'><\/span>/;
   const docsUrl = "https://www.enterprisedb.com/docs";
   return (tree, file) => {
     const docsLocations = /product_docs\/docs|advocacy_docs/;
@@ -69,7 +82,9 @@ function cleanup() {
     const basePath = path.dirname(file.path).split(thisProductPath)[0];
 
     let mapOrigPathToSlugs = {};
+    let currentOriginalFile = "";
     let currentOriginalPath = thisProductPath;
+    let currentOriginalStartLine = 0;
     let currentUnversionedOriginalPath = thisUnversionedProductPath;
     let currentSubpageSlug = "";
     let currentSubpageSlugger = new GithubSlugger();
@@ -87,13 +102,18 @@ function cleanup() {
         mapOrigPathToSlugs[normalizedPath.toLowerCase() + "/"];
 
       if (!slugs) {
-        console.error("⚠️⚠️  cannot find topic for path: " + origPath);
-        return "";
+        throw {
+          message: "cannot find topic for path: " + origPath,
+          severity: 1,
+        };
       }
 
       if (origSlug) {
         if (!slugs[origSlug])
-          console.error(`⚠️  cannot find slug for ${origSlug} in ${origPath}`);
+          throw {
+            message: `cannot find slug for ${origSlug} in ${origPath}`,
+            severity: 2,
+          };
         return slugs[origSlug];
       }
       return Object.values(slugs)[0];
@@ -126,8 +146,11 @@ function cleanup() {
       ["jsx-hast", "element", "link", "heading", "code", "admonition", "table"],
       (node, ancestors) => {
         if (node.type === "jsx-hast") {
-          let originalPath = (node.value.match(originalRE) || [])[1];
+          let { originalPath, originalStartLine } =
+            node.value.match(originalRE)?.groups || {};
           if (originalPath) {
+            currentOriginalFile = originalPath;
+            currentOriginalStartLine = originalStartLine;
             currentOriginalPath = originalPath
               .split(basePath)[1]
               .replace(/(?:(?<=^|\/)index\.mdx|\.mdx?)$/, "");
@@ -151,7 +174,15 @@ function cleanup() {
           // bump all headings down a level
           node.depth++;
 
-          if (node.depth === 2) currentSubpageSlug = slug;
+          if (node.depth === 2) {
+            currentSubpageSlug = slug;
+
+            // make note of original filename + offset for later
+            node.data = {
+              originalFile: currentOriginalFile,
+              originalStartLine: currentOriginalStartLine,
+            };
+          }
 
           const slugMap =
             (mapOrigPathToSlugs[currentUnversionedOriginalPath] =
@@ -272,14 +303,32 @@ function cleanup() {
       slugMap[""] = "";
     }
 
-    visitParents(tree, ["link", "element"], (node) => {
-      if (
-        node.type === "element" &&
-        node.tagName === "a" &&
-        node.properties.href
-      )
-        node.properties.href = mapUrlToSlug(node.properties.href);
-      else if (node.type === "link") node.url = mapUrlToSlug(node.url);
+    let lineOffset = 0;
+    visitParents(tree, ["link", "element", "heading"], (node) => {
+      try {
+        if (node.type === "heading" && node.data?.originalFile) {
+          currentOriginalFile = node.data.originalFile;
+          lineOffset =
+            node.position.end.line - node.data?.originalStartLine + 2; // add offset for heading line and separator newline
+        }
+
+        if (
+          node.type === "element" &&
+          node.tagName === "a" &&
+          node.properties.href
+        )
+          node.properties.href = mapUrlToSlug(node.properties.href);
+        else if (node.type === "link") node.url = mapUrlToSlug(node.url);
+      } catch (e) {
+        console.log(
+          `${e.severity === 1 ? "⚠️⚠️ " : "⚠️  "} ${formatErrorPath(
+            currentOriginalFile,
+            node.position.start.line - lineOffset,
+            node.position.start.column,
+          )}\n`,
+          e.message,
+        );
+      }
     });
   };
 }

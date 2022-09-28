@@ -180,8 +180,8 @@ def combine_mdx(files, output):
 
     for item in files:
         resource_search_paths.add(item.filename.parent)
-        front_matter, content = parse_mdx(item.filename)
-        output.write("\n<span data-original-path='" + str(item.filename) + "'></span>\n\n")
+        front_matter, content, lines_before_content = parse_mdx(item.filename)
+        output.write(f"\n<span data-original-path='{str(item.filename)}:{lines_before_content}'></span>\n\n")
         write_front_matter(front_matter, item.chapter, output)
         write_content(content, output)
 
@@ -218,7 +218,7 @@ def filter_path(path):
     if path.is_dir() and not path.match("*images*"):
         return True
     elif path.suffix in [".mdx", ".md"]:
-        _, content = parse_mdx(path)
+        _, content, _ = parse_mdx(path)
         no_content = content == "" or (
             len(content.split(os.linesep)) == 1 and "StubCards" in content
         )
@@ -229,7 +229,11 @@ def filter_path(path):
 
 def parse_mdx(mdx_file):
     front_matter, _, content = mdx_file.read_text().partition("---")[2].partition("---")
-    return front_matter.strip(), content.strip()
+    lines_before_content = front_matter.count('\n') + 1
+    for c in content:
+        if not c.isspace(): break
+        if c == '\n': lines_before_content += 1
+    return front_matter.strip(), content.strip(), lines_before_content
 
 def load_nav_index(path):
     try:
