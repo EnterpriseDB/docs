@@ -256,7 +256,7 @@ const DocTemplate = ({ data, pageContext }) => {
     ),
   };
 
-  const showToc = !!tableOfContents.items;
+  const showToc = !!tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge

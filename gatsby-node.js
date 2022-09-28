@@ -121,6 +121,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirectsGenerated
             navigation
             showInteractiveBadge
+            hideToC
             katacodaPages {
               scenario
               account
@@ -499,6 +500,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
+      hideToC: Boolean
       hideVersion: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults

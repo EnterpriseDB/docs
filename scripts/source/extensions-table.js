@@ -150,8 +150,9 @@ const formatCell = (cell, tag) => {
   let value = cell.formattedValue?.replace(/^ +/, (m) =>
     m.replace(" ", "\u00A0"),
   );
-  if (value === "TRUE") value = "✔";
-  else if (value === "FALSE") value = "❌";
+  if (value === "TRUE") value = h("span", { style: { color: "green" } }, ["✔"]);
+  else if (value === "FALSE")
+    value = h("span", { style: { color: "red" } }, ["❌"]);
 
   if (cell.textFormat?.bold) style["font-weight"] = "bold";
   if (alignMappings[cell.align])
@@ -255,8 +256,7 @@ async function buildTable(auth) {
 
     let headers = currentTable.splice(
       0,
-      currentTable.findIndex((row) => !isHeader(row)) + 1 ||
-        currentTable.length,
+      currentTable.findIndex((row) => !isHeader(row)) || currentTable.length,
     );
 
     let sectionHeader = headers[0];
@@ -312,7 +312,7 @@ async function buildTable(auth) {
     if (table.properties.dataSection)
       nodes.push({
         type: "heading",
-        depth: 3,
+        depth: 2,
         children: [{ type: "text", value: table.properties.dataSection }],
       });
     nodes.push({ type: "jsx", value: toHtml(table) });
