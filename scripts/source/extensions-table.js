@@ -232,23 +232,6 @@ async function buildTable(auth) {
       });
   }
 
-  const tableStart = rows.findIndex((row) => !isRowEmpty(row));
-  let tableEnd = rows.length - 1;
-  for (; tableStart >= 0 && tableEnd > tableStart; --tableEnd)
-    if (!isRowEmpty(rows[tableEnd])) break;
-
-  const headerStart = rows.findIndex(
-    (row, i) => i >= tableStart && isHeader(row),
-  );
-  const headerEnd = rows.findIndex(
-    (row, i) => i >= headerStart && !isHeader(row),
-  );
-
-  const globalHeaders =
-    headerStart >= 0 ? rows.slice(headerStart, headerEnd) : [];
-  if (tableStart >= 0 && tableEnd >= 0)
-    rows = rows.slice(Math.max(tableStart, headerEnd), tableEnd + 1);
-
   let currentTable = [];
   let tables = [];
   const addTable = () => {
@@ -259,9 +242,9 @@ async function buildTable(auth) {
       currentTable.findIndex((row) => !isHeader(row)) || currentTable.length,
     );
 
-    let sectionHeader = headers[0];
+    if (!headers.length) return;
+    let sectionHeader = headers.splice(0, 1)[0];
 
-    headers = [...globalHeaders, ...headers];
     const table = h(
       "table",
       {
