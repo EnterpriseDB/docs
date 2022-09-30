@@ -141,7 +141,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage: isIndexPage,
   };
 
-  const showToc = !!mdx.tableOfContents.items;
+  const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
