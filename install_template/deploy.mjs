@@ -181,6 +181,8 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "RHEL 8"}}, 
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel8_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "RHEL 7"}}, 
+      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "SLES 12"}}, 
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "SLES 15"}}, 
