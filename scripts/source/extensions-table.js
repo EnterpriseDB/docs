@@ -151,8 +151,7 @@ const formatCell = (cell, tag) => {
     m.replace(" ", "\u00A0"),
   );
   if (value === "TRUE") value = h("span", { style: { color: "green" } }, ["✔"]);
-  else if (value === "FALSE")
-    value = h("span", { style: { color: "red" } }, ["❌"]);
+  else if (value === "FALSE") value = h("span", ["–"]);
 
   if (cell.textFormat?.bold) style["font-weight"] = "bold";
   if (alignMappings[cell.align])
