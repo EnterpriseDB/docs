@@ -243,6 +243,8 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu18_${fmtArchFilename(ctx)}.mdx`),      
     when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
+    when({product: {name: "Failover Manager", version: 4}, platform: {name: "index"}}, 
+      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/index.mdx`),      
     
     when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
       (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_sles12_${fmtArchFilename(ctx)}.mdx`),
