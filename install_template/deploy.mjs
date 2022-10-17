@@ -118,10 +118,10 @@ const moveDoc = async (product, platform, version) => {
   }
 
   const expand_arch = {
-    ppcle: "ibm_power_ppc64le",
-    x86: "x86_amd64",
-    x86_64: "x86_amd64",
-    ppc64le: "ibm_power_ppc64le",
+    ppcle: "linux_ppc64le",
+    x86: "linux_x86_64",
+    x86_64: "linux_x86_64",
+    ppc64le: "linux_ppc64le",
   };
 
   const plat = [
