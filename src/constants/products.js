@@ -23,7 +23,7 @@ export const products = {
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
   livecompare: { name: "LiveCompare" },
-  "Migration Overview": { name: "Migration Overview" },
+  "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
     name: "Migration Portal",
     iconName: IconNames.EDB_MIGRATION_PORTAL,
