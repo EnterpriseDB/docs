@@ -4,28 +4,28 @@ title: Storage extensions
 
 EDB provides advanced storage options for PostgreSQL databases in the form of Table Access Method (TAM) extensions. By default, tables in PostgreSQL are implemented using a built-in TAM named "heap". This TAM has been optimized for over twenty years to serve general purpose access patterns well, balancing performance considerations of one access pattern against those of other others.
 
-For tables whose access patterns are known in advance, a targeted TAM that makes different trade-offs may be preferable. For more information on the targeted TAMs EDB offers, see [AutoCluster](autocluster) and [RefData](refdata). 
+For tables whose access patterns are known in advance, a targeted TAM that makes different trade-offs may be preferable. EDB offers the two following targeted TAMs. 
 
-## Installing
+## Autocluster
 
-content
+The AutoCluster TAM trades INSERT performance for better SELECT performance on tables where multiple rows are selected based on an indexed set of columns. This feature is achieved by maintaining rows with the same key values clustered together so that an index scan for a specific key can find all the rows close together and doesn't need to retrieve as many table pages to satisfy the query.
 
-## Configuring
+## Refdata
 
-Place the extension module implementing the custom Table Access Method in `shared_preload_libraries` so that it loads early during the PostgreSQL startup. This step is necessary to ensure that the extension is available before the first access to a table based on the given TAM. For example, to load the autocluster TAM, add this line to `postgresql.conf`:
-
-```ini
-shared_preload_libraries = 'autocluster'
-```
-
-After restarting the server, execute the SQL command to create the extension. This command creates the extension only in the connected database where the SQL is executed, and must be rerun in each database where the extension used:
+The RefData TAM trades the concurrency of updates to a reference table for better INSERT and UPDATE performance on tables, which refer through foreign keys to the reference table. This feature is achieved by taking an Exclusive lock on the reference table whenever it is modified, blocking out concurrent modifications by any other session as well as modifications to tables which reference the table. For example:
 
 ```sql
-CREATE EXTENSION autocluster;
+CREATE TABLE department (
+	department_id	SERIAL PRIMARY KEY,
+	department_name	TEXT
+) USING refdata;
+
+CREATE TABLE employee (
+	...
+	department_id	NOT NULL REFERENCES department(department_id)
+);
 ```
 
-Within databases where the extension has been created, tables can be created to use the TAM which the extension provides:
+The `employee` table is just a standard heap table; only the `department` table uses the `refdata` TAM. Inserts and updates of the employee table don't take out row level locks on the department table, thereby saving query time, avoiding the need to update the rows in the department table, and avoiding the need to write out the referred-to department table rows to disk and to the write ahead log.
 
-```sql
-CREATE TABLE mytable USING autocluster;
-```
+If updates to the `department` table are frequent, using the refdata TAM isn't advisable, because concurrent modifcations to it and to the employee table are then blocked. If only infrequent changes are made to the `department` table, speeding up frequent changes to the employee table, and reducing write ahead log traffic may well be worth this cost.
