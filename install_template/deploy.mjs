@@ -72,6 +72,8 @@ const moveDoc = async (product, platform, version) => {
       context.platform.arch,
     ].join("_") + ".mdx";
 
+  const srcFilepath = path.resolve(__dirname, "renders", srcFilename);
+
   const prefix = {
     rhel_8_x86_64: "01",
     other_linux8_x86_64: "02",
@@ -145,8 +147,10 @@ const moveDoc = async (product, platform, version) => {
   const fmtArchPath = (ctx) => expand_arch[ctx.platform.arch];
   const fmtArchFilename = (ctx) => ctx.platform.arch.replace(/_?64/g, "");
 
+  const [srcContent, integralDeploymentPath] = await readSource(srcFilepath);
+
   // prettier-ignore
-  const destFilename = match(context, 
+  const destFilename = integralDeploymentPath || match(context, 
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 12"}}, 
       (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 15"}}, 
@@ -168,7 +172,7 @@ const moveDoc = async (product, platform, version) => {
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8"}}, 
       (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_RHEL8_${fmtArchFilename(ctx)}.mdx`),
+      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel8_${fmtArchFilename(ctx)}.mdx`),
   
   
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "CentOS 7"}}, 
@@ -295,29 +299,6 @@ const moveDoc = async (product, platform, version) => {
     when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
 
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_sles_12.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 15"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_sles_15.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_ubuntu_20.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_ubuntu_18.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Debian 11"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_debian_11.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Debian 10"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_debian_10.mdx`),
-      when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_centos_7.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_other_linux_8.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_rhel_7.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_rhel_8.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/installing/linux_${ctx.platform.arch}/hadoop_rhel_8.mdx`),
-    
     when({product: {name: "EDB JDBC Connector"}, platform: {name: "CentOS 7"}}, 
       (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB JDBC Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
@@ -363,52 +344,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Migration Toolkit"}, platform: {name: "RHEL 8"}}, 
       (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_rhel8_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "SLES 12"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_sles_12.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "SLES 15"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_sles_15.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_ubuntu_20.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_ubuntu_18.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Debian 11"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_debian_11.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Debian 10"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_debian_10.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_centos_7.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_other_linux_8.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_rhel_7.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_rhel_8.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `mongo_data_adapter/5/installing/linux_${ctx.platform.arch}/mongo_rhel_8.mdx`),
-
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_rhel_8.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_other_linux_8.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_rhel_7.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_centos_7.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_rhel_8.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_sles_12.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "SLES 15"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_sles_15.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Debian 10"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_debian_10.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Debian 11"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_debian_11.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_ubuntu_18.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `mysql_data_adapter/2/installing/linux_${ctx.platform.arch}/mysql_ubuntu_20.mdx`),
 
     when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 12"}}, 
       (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles12_${fmtArchFilename(ctx)}.mdx`),
@@ -635,18 +570,17 @@ const moveDoc = async (product, platform, version) => {
     return { note: `Skipping (no mapping): ${srcFilename}`, context };
   }
 
-  const src = path.resolve(__dirname, "renders", srcFilename);
-  const dest = path.resolve(__dirname, destPath, destFilename);
+  const destFilepath = path.resolve(__dirname, destPath, destFilename);
   try {
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.copyFile(src, dest);
-    return { success: `deployed ${src} to ${dest}` };
+    await fs.mkdir(path.dirname(destFilepath), { recursive: true });
+    await fs.writeFile(destFilepath, srcContent, "utf8");
+    return { success: `deployed ${srcFilepath} to ${destFilepath}` };
   } catch (err) {
     return {
       warn: err.toString(),
       context: {
-        src,
-        dest,
+        srcFilepath,
+        destFilepath,
       },
     };
   }
@@ -691,6 +625,57 @@ const generateContext = (product, platform, version) => {
       arch: platform.arch,
     },
   };
+};
+
+/**
+ * Reads the source mdx file, parse out the deployment path and filename from the MDX frontmatter
+ * @param srcPath the path + name of the mdx file to read
+ * @returns [full contents, the relative deployment path], undefined on error
+ */
+const readSource = async (srcPath) => {
+  const frontmatterRE = /^(?<open>---\s*?\n)(?<yaml>.+?\n)(?<close>---\s*?\n)/s;
+
+  try {
+    let src = await fs.readFile(srcPath, "utf8");
+    const frontmatter = yaml.parseDocument(
+      src.match(frontmatterRE)?.groups?.yaml,
+    );
+
+    const deployPath = frontmatter.contents.get("deployPath");
+    const redirects = frontmatter.contents.get("redirects");
+
+    // delete deployPath but preserve any comments that might've been attached
+    if (deployPath) {
+      let deployComments = "";
+      for (let { key, value } of frontmatter.contents.items) {
+        if (
+          (key.value || key) === "deployPath" &&
+          (key.commentBefore || value.commentBefore)
+        ) {
+          deployComments =
+            (key.commentBefore || "") + (value.commentBefore || "");
+        }
+        if (key.value === "redirects")
+          key.commentBefore = deployComments + (key.commentBefore || "");
+      }
+      frontmatter.contents.delete("deployPath");
+    }
+
+    for (let i = 0; i < redirects?.items?.length; ++i) {
+      redirects.items[i].value = redirects.items[i].value
+        .replace(/^\/?/, "/")
+        .replace(/\.mdx$/, "");
+    }
+
+    src = src.replace(
+      frontmatterRE,
+      (_, open, fmYaml, close) => open + frontmatter.toString() + close,
+    );
+
+    return [src, deployPath];
+  } catch (e) {
+    console.log(srcPath, e);
+  }
 };
 
 run();
