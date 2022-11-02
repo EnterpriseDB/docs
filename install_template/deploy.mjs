@@ -243,8 +243,6 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `epas/12/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_deb11_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 12}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `epas/12/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server", version: 12}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `epas/12/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
 
     when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "CentOS 7"}}, 
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_centos7_${fmtArchFilename(ctx)}.mdx`),
@@ -262,14 +260,10 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "SLES 15"}}, 
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "Debian 10"}}, 
-      (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_deb10_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "Debian 11"}}, 
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_deb11_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
 
 
     when({product: {name: "Failover Manager", version: 4}, platform: {name: "CentOS 7"}}, 
