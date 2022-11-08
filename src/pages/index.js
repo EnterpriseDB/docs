@@ -285,7 +285,7 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Backup
             </span>
-            <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
+            <IndexCardLink to="/partner_docs/CohesityBackupandRecover">
               Cohesity Backup &amp; Recovery
               </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
