@@ -286,6 +286,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
+              Cohesity Backup &amp; Recovery
+            <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
