@@ -5,13 +5,87 @@ navTitle: Configuring
 
 EDB LDAP Sync is a collection of tools that synchronize credentials from an LDAP or Active Directory server to EDB Postgres Advanced Server. We recommend that you configure its tools in the following ways.
 
-Find the sample ldap_sync configuration files at `/usr/lib/python3.6/site-packages/ldap_sync/samples/`.
+Find the sample EDB LDAP Sync configuration files at `/usr/lib/python3.6/site-packages/ldap_sync/samples/`.
 
 ## Configure pgAgent
 
 pgAgent sets up periodic synchronization tasks. Use `edb-pgagent.conf_tmpl` as the default configuration for pgAgent setup with Postgres. Copy it into the configuration directory for pgAgent with Postgres. 
 
 For more information, see the [pgAgent documentation](/docs/pem/latest/pem_online_help/10_pgagent/).
+
+## Setting Postgres database permissions
+
+The permission settings for the database server need to be modified to allow Postgres to query the LDAP host whenever the Postgres authentication procedure is performed. This is accomplished by updating `pg_hba.conf` in the configuration folder of the database server. For EDB Postgres Advanced Server configuration, `pg_hba.conf` is located in `/opt/postgres/data/pg_hba.conf`.
+
+### `pg_hba.conf` settings
+
+When configuring `pg_hba.conf`, the LDAP authentication string must come after the `enterprisedb` user authentication string or, due to the order of evaluation, the `enterprisedb` user can't log into the system i.e. LDAP server will be queried instead of local authentication, LDAP server will return authentication failure and the authentication process will terminate. For this reason, host authentication for the `enterprisedb` user needs to be added if you want to use host authentication as a part of the ldap2pg setup. The following authentication methods are available: peer, host with a password string via `dsn` option, host via reading `.pgpass`. See [Configure ldap2pg](#configure-ldap2pg) for more information. 
+
+The Postgres database permissions are set according to your database requirements. The following are sample `pg_hba.conf` stanzas for LDAP authentication queries, where the values in `{}` are the LDAP server hostname and the basedn LDAP query string: 
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+host    all             enterprisedb    127.0.0.1/32            scram-sha-256
+host    all             enterprisedb    ::1/128                 scram-sha-256
+host    all             all             0.0.0.0/0               ldap ldapserver="{{ldap host/ip}}" ldapbasedn="{{basedn}}" ldapsearchattribute=uid  ldaptls=0  ldapport=389
+# Other authentication strings
+.
+.
+.
+# End of the file / add ldap SSL connection here
+hostssl all             all             0.0.0.0/0 ldap ldapserver="{{ldap host/ip}}" ldapbasedn="dc={{basedn}}" ldapsearchattribute=uid  ldaptls=0  ldapport=389
+```
+
+The following is a sample `pg_hba.conf` for EDB Postgres Advanced Server without any modifications:
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+local   replication     all                                     peer
+local   all             all                                     peer
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+# node1
+hostssl all all 10.10.0.5/32 scram-sha-256
+hostssl replication all 10.10.0.5/32 scram-sha-256
+# ldap
+
+hostssl all all 0.0.0.0/0 scram-sha-256
+```
+
+The following is a sample `pg_hba.conf` with the initial configuration and LDAP authentication:
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+host    all             enterprisedb    127.0.0.1/32            scram-sha-256
+host    all             enterprisedb    ::1/128                 scram-sha-256
+host    all             all             0.0.0.0/0               ldap ldapserver="ldap" ldapbasedn="dc=planetexpress,dc=com" ldapsearchattribute=uid  ldaptls=0  ldapport=10389
+local   replication     all                                     peer
+local   all             all                                     peer
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+# node1
+hostssl all all 172.17.0.2/32 scram-sha-256
+hostssl replication all 172.17.0.2/32 scram-sha-256
+# ldap
+hostssl all all 0.0.0.0/0 ldap ldapserver="ldap" ldapbasedn="dc=planetexpress,dc=com" ldapsearchattribute=uid  ldaptls=0  ldapport=10389
+```
+
+After setting `pg_hab.conf`, reload the configuration to apply the changes with the Postgres shell or the `systemctl`: 
+
+```sql
+SELECT pg_reload_conf();
+```
+
+```shell
+systemctl restart postgres
+```
 
 ## Configure ldap2pg
 
