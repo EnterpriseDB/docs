@@ -1,0 +1,111 @@
+---
+title: 'Add-ons'
+originalFilePath: 'src/addons.md'
+---
+
+EDB Postgres for Kubernetes supports add-ons that can be enabled on a
+per-cluster basis. These add-ons are:
+
+1.  [Velero](#velero)
+
+!!! Info
+    If you are planning to use Velero in OpenShift, please refer to the
+    [OADP section](openshift.md#oadp-for-velero) in the Openshift documentation.
+
+All add-ons will automatically be available to the operator and to be used will
+need to be enabled at the cluster level via the `k8s.enterprisedb.io/addons`
+annotation.
+
+## Velero
+
+Velero is an open-source tool to safely back up and restores, perform disaster
+recovery, and migrate Kubernetes cluster resources and persistent volumes. For
+more information, see the [Velero documentation](https://velero.io/docs/latest/).
+To enable Velero compatibility with an EDB Postgres for Kubernetes Cluster, add
+the `velero` value to the `k8s.enterprisedb.io/addons` annotation in a Cluster
+spec.
+For example:
+
+```yaml
+ kind: Cluster
+ metadata:
+   name: one-instance
+   annotations:
+      k8s.enterprisedb.io/addons: '["velero"]'
+      k8s.enterprisedb.io/snapshotAllowColdBackupOnPrimary: enabled
+ spec:
+   instances: 1
+   storage:
+     size: 1Gi
+   walStorage:
+     size: 1Gi
+```
+
+Once the cluster is created and healthy, the operator will select the farthest
+ahead replica instance to be the designated backup and will add Velero-specific
+backup hooks as annotations to that instance.
+
+These [annotations](https://velero.io/docs/latest/backup-hooks/) are used by
+Velero to run the commands to prepare the Postgres instance to be backed up.
+
+!!! Important
+    The operator will refuse to shut down a primary instance to take a cold
+    backup unless the Cluster is annotated with
+    `k8s.enterprisedb.io/snapshotAllowColdBackupOnPrimary: enabled`.
+
+### Limitations
+
+As far as the backup part is concerned, currently, the EDB Postgres for
+Kubernetes integration with Velero supports **cold backups** only. These are also
+referred to as **offline backups**. This means that the selected replica is
+temporarily fenced so that Velero can take a physical snapshot of the `PGDATA`
+volume and, where available, the WAL volume.
+In this short timeframe, the standby cannot accept read-only connections.
+If no standby is available - usually because we're in a single instance cluster
+
+-   Velero will temporarily fence the primary, causing downtime in terms of
+    read-write operations. This use case is normally left to development
+    environments.
+
+In terms of recovery, the integration with Velero supports snapshot recovery
+only. No Point-in-Time Recovery (PITR) is available at the moment with the
+Velero add-on, and RPO is determined by the frequency of the snapshots in your
+Velero environment. If your organization relies on Velero, this usually is
+acceptable, but if you need PITR we recommend you look at the native continuous
+backup method on object stores.
+
+### Backup
+
+By design, EDB Postgres for Kubernetes offloads as much of the backup
+functionality to Velero as possible, with the only requirement to make
+available the previously mentioned backup hooks. Since EDB Postgres for
+Kubernetes transparently sets all the needed configurations, and the rest is
+standard Velero, using Velero to backup a Postgres cluster is as
+straightforward as it would be for any other object. For example:
+
+```bash
+velero backup create mybackup \
+  --include-namespaces mynamespace \
+  -n velero-install-namespace
+```
+
+This command will create a standard Velero backup using the configured object
+storage and the configured Snapshot API.
+
+!!! Important
+    By default, the Velero add-on exclude only a few resources from the backup
+    operation, namely pods and PVCs of the instances that have not been selected
+    (as you recall, the operator tries to backup the PVCs of the first replica).
+    However, you can use the options for the `velero backup` command to fine tune
+    the resources you want to be part of your backup.
+
+### Restore
+
+As with backup, the recovery process is a standard Velero procedure. The
+command to restore from a backup created with the above parameters would be:
+
+```bash
+velero create restore myrestore \
+  --from-backup mybackup \
+  -n velero-install-namespace
+```

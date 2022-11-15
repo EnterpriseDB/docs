@@ -1,12 +1,10 @@
 // retrieve current supported extensions spreadsheet, generate a table from it, write to product_docs/docs/pg_extensions/release/index.mdx
 // heavily adapted from https://developers.google.com/sheets/api/quickstart/nodejs
 
-const fs = require("fs").promises;
-const existsSync = require("fs").existsSync;
 const path = require("path");
 const process = require("process");
-const { authenticate } = require("@google-cloud/local-auth");
 const { google } = require("googleapis");
+const { auth } = require("google-auth-library");
 const h = require("hastscript");
 const toHtml = require("hast-util-to-html");
 const remarkParse = require("remark-parse");
@@ -19,16 +17,8 @@ const visit = require("unist-util-visit");
 const { read, write } = require("to-vfile");
 const rehypeFormat = require("rehype-format");
 
-// TODO: use token in Github secret store instead of this
-// right now, running locally will require you to have configured a project/app
-// If modifying these scopes, delete token.json.
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
-// The file token.json stores the user's access and refresh tokens, and is
-// created automatically when the authorization flow completes for the first
-// time.
 const SCRIPT_ROOT = path.dirname(process.argv[1]);
-const TOKEN_PATH = path.join(SCRIPT_ROOT, "token.json");
-const CREDENTIALS_PATH = path.join(SCRIPT_ROOT, "credentials.json");
 const SOURCE_SPREADSHEET = "1GXzzVYT6CULGgGcyp0VtBfOtbxuWxkOU2pRYW42W4pM";
 const TARGET_FILE = path.resolve(
   SCRIPT_ROOT,
@@ -41,67 +31,22 @@ const WITNESS_COMMENTS = [
 ];
 
 /**
- * Reads previously authorized credentials from the save file.
- *
- * @return {Promise<OAuth2Client|null>}
- */
-async function loadSavedCredentialsIfExist() {
-  try {
-    const content = await fs.readFile(TOKEN_PATH);
-    const credentials = JSON.parse(content);
-    return google.auth.fromJSON(credentials);
-  } catch (err) {
-    return null;
-  }
-}
-
-/**
- * Serializes credentials to a file comptible with GoogleAUth.fromJSON.
- *
- * @param {OAuth2Client} client
- * @return {Promise<void>}
- */
-async function saveCredentials(client) {
-  const content = await fs.readFile(CREDENTIALS_PATH);
-  const keys = JSON.parse(content);
-  const key = keys.installed || keys.web;
-  const payload = JSON.stringify({
-    type: "authorized_user",
-    client_id: key.client_id,
-    client_secret: key.client_secret,
-    refresh_token: client.credentials.refresh_token,
-  });
-  await fs.writeFile(TOKEN_PATH, payload);
-}
-
-/**
- * Load or request or authorization to call APIs.
+ * Load credentials for calling APIs.
  *
  */
 async function authorize() {
   try {
-    return google.auth.fromJSON(
+    let client = auth.fromJSON(
       JSON.parse(process.env["EXTENSION_SOURCE_TOKEN"]),
     );
+    client.scopes = SCOPES;
+    return client;
   } catch (e) {
     console.error(
       "Ensure valid client token is stored in EXTENSION_SOURCE_TOKEN!",
     );
   }
-  if (!existsSync(CREDENTIALS_PATH)) return;
-
-  let client = await loadSavedCredentialsIfExist();
-  if (client) {
-    return client;
-  }
-  client = await authenticate({
-    scopes: SCOPES,
-    keyfilePath: CREDENTIALS_PATH,
-  });
-  if (client.credentials) {
-    await saveCredentials(client);
-  }
-  return client;
+  return null;
 }
 
 const isCellEmpty = (cell) =>
@@ -182,7 +127,7 @@ const formatCell = (cell, tag) => {
 /**
  * Grabs data from the Doc Preview sheet
  * @see https://docs.google.com/spreadsheets/d/1GXzzVYT6CULGgGcyp0VtBfOtbxuWxkOU2pRYW42W4pM/edit#gid=1884264748
- * @param {google.auth.OAuth2} auth The authenticated Google OAuth client.
+ * @param {GoogleAuth.JSONClient>} auth The authenticated Google client.
  */
 async function buildTable(auth) {
   const sheets = google.sheets({ version: "v4", auth });
