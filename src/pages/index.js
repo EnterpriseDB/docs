@@ -285,8 +285,8 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Backup
             </span>
-            <IndexCardLink to="/partner_docs/CohesityConnectorAgentforEDBPostgreSQL">
-            Cohesity Connector Agent for EDB PostgreSQL
+            <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
+            Cohesity DataProtect for PostgreSQL
               </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
