@@ -58,13 +58,13 @@ const Page = () => (
                     to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
                   >
                     Demonstration of Oracle SQL <br />
-                    compatibility in BigAnimal
+                    compatibility in EDB BigAnimal
                   </Link>
                 </h3>
                 <p>
-                  BigAnimal lets you run Oracle SQL queries in the cloud via EDB
-                  Postgres Advanced Server. Watch the video, or load up psql and
-                  follow along.
+                  EDB BigAnimal lets you run Oracle SQL queries in the cloud via
+                  EDB Postgres Advanced Server. Watch the video, or load up psql
+                  and follow along.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
@@ -151,7 +151,7 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink to="/biganimal/latest">EDB BigAnimal</IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/free_trial/"
               className="nested-link"
@@ -285,6 +285,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Backup
             </span>
+            <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
+            Cohesity DataProtect for PostgreSQL
+              </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
