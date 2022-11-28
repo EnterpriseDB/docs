@@ -1,0 +1,368 @@
+---
+title: Configuring EDB LDAP Sync
+navTitle: Configuring
+---
+
+EDB LDAP Sync is a collection of tools that synchronize credentials from an LDAP or Active Directory server to EDB Postgres Advanced Server. We recommend that you configure its tools in the following ways.
+
+Find the sample EDB LDAP Sync configuration files at `/usr/lib/python3.6/site-packages/ldap_sync/samples/`.
+
+## Configure pgAgent
+
+pgAgent sets up periodic synchronization tasks. Use `edb-pgagent.conf_tmpl` as the default configuration for pgAgent setup with Postgres. Copy it into the configuration directory for pgAgent with Postgres. 
+
+For more information, see the [pgAgent documentation](/docs/pem/latest/pem_online_help/10_pgagent/).
+
+## Setting Postgres database permissions
+
+The permission settings for the database server need to be modified to allow Postgres to query the LDAP host whenever the Postgres authentication procedure is performed. This is accomplished by updating `pg_hba.conf` in the configuration folder of the database server. For EDB Postgres Advanced Server configuration, `pg_hba.conf` is located in `/opt/postgres/data/pg_hba.conf`.
+
+### `pg_hba.conf` settings
+
+!!! Note
+The user varies depending on your database service. With PostgreSQL, there is a `postgres` user. With EDB Postgres Advanced Server, there is an `enterprisedb` user. 
+!!!
+
+When configuring `pg_hba.conf`, the LDAP authentication string must come after the `enterprisedb` user authentication string or, due to the order of evaluation, the `enterprisedb` user can't log into the system (for example, LDAP server is queried instead of local authentication, LDAP server returns an authentication failure and the authentication process terminates). For this reason, host authentication for the `enterprisedb` user needs to be added if you want to use host authentication as a part of the ldap2pg setup. The following authentication methods are available: peer, host with a password string via `dsn` option, host via reading `.pgpass`. See [Configure ldap2pg](#configure-ldap2pg) for more information. 
+
+The Postgres database permissions are set according to your database requirements. The following are sample `pg_hba.conf` stanzas for LDAP authentication queries, where the values in `{}` are the LDAP server hostname and the basedn LDAP query string: 
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+host    all             enterprisedb    127.0.0.1/32            scram-sha-256
+host    all             enterprisedb    ::1/128                 scram-sha-256
+host    all             all             0.0.0.0/0               ldap ldapserver="{{ldap host/ip}}" ldapbasedn="{{basedn}}" ldapsearchattribute=uid  ldaptls=0  ldapport=389
+# Other authentication strings
+.
+.
+.
+# End of the file / add ldap SSL connection here
+hostssl all             all             0.0.0.0/0 ldap ldapserver="{{ldap host/ip}}" ldapbasedn="dc={{basedn}}" ldapsearchattribute=uid  ldaptls=0  ldapport=389
+```
+
+The following is a sample `pg_hba.conf` for EDB Postgres Advanced Server without any modifications:
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+local   replication     all                                     peer
+local   all             all                                     peer
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+# node1
+hostssl all all 10.10.0.5/32 scram-sha-256
+hostssl replication all 10.10.0.5/32 scram-sha-256
+# ldap
+
+hostssl all all 0.0.0.0/0 scram-sha-256
+```
+
+The following is a sample `pg_hba.conf` with the initial configuration and LDAP authentication:
+
+```text
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             enterprisedb                            peer
+host    all             enterprisedb    127.0.0.1/32            scram-sha-256
+host    all             enterprisedb    ::1/128                 scram-sha-256
+host    all             all             0.0.0.0/0               ldap ldapserver="ldap" ldapbasedn="dc=planetexpress,dc=com" ldapsearchattribute=uid  ldaptls=0  ldapport=10389
+local   replication     all                                     peer
+local   all             all                                     peer
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+# node1
+hostssl all all 172.17.0.2/32 scram-sha-256
+hostssl replication all 172.17.0.2/32 scram-sha-256
+# ldap
+hostssl all all 0.0.0.0/0 ldap ldapserver="ldap" ldapbasedn="dc=planetexpress,dc=com" ldapsearchattribute=uid  ldaptls=0  ldapport=10389
+```
+
+After setting `pg_hab.conf`, reload the configuration to apply the changes with the Postgres shell or the `systemctl`: 
+
+```sql
+SELECT pg_reload_conf();
+```
+
+```shell
+systemctl restart postgres
+```
+
+## Configure ldap2pg
+
+ldap2pg is a PostgreSQL role and access control list (ACL) management tool. Find the `ldap2pg.yml` in its default location in the `/etc/` folder. For more information on ldap2pg, see its [documentation](https://ldap2pg.readthedocs.io/en/latest/). 
+
+Install the ldap2pg tool with the following command:
+
+```shell
+yum install python3-ldap2pg
+```
+
+For synchronization to work, the following sections need to be set in the configuration file:
+
+- `ldap` 
+
+- `postgres`
+
+- `sync_map`
+
+### Verify LDAP server connection
+
+Before configuring ldap2pg, check that the connection string works. For LDAP servers, you can check if the database server can communicate with the LDAP server by installing the `openldap-clients` package: 
+
+```shell
+$ yum install -y openldap-clients
+```
+
+And test the connection from the database server to the LDAP server with the `ldapsearch` command:
+
+```shell
+$   ldapsearch -H ldap://ldap_server:389 -x -b "<ldap query string>" \
+        -D "<admin query string>" -w <admin password> \
+        uid=alphanum_user_id
+```
+
+A sample search string looks like this: 
+
+```shell
+$ ldapsearch -H ldap://ldap:10389 -x -b "ou=people,dc=planetexpress,dc=com" \
+        -D "cn=admin,dc=planetexpress,dc=com" -w GoodNewsEveryone \
+        uid=professor
+```
+
+A successful request returns an LDAP object definition as a plain text response, like the following:
+
+```text 
+# extended LDIF
+#
+# LDAPv3
+# base <ou=people,dc=planetexpress,dc=com> with scope subtree
+# filter: uid=professor
+# requesting: ALL
+#
+
+# Hubert J. Farnsworth, people, planetexpress.com
+dn: cn=Hubert J. Farnsworth,ou=people,dc=planetexpress,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+objectClass: top
+cn: Hubert J. Farnsworth
+```
+
+### `ldap`
+
+#### OpenLDAP configuration
+
+For servers that allow anonymous connections, the LDAP configuration requires a LDAP server url and port. For servers that need authentication, you must provide `password` and `binddn` queries. In order to, `binddn` must have permission to perform user lookups.
+
+The default port for LDAP is 389:
+
+```yaml
+ldap:
+  uri: ldap://ldap:389
+```
+
+#### Active Directory configuration 
+
+The Active Directory setup requires that a `binddn`, `password`, and `uri` with permission to read user information. 
+
+```yaml
+ldap:
+  binddn: cn=ldap2pg,ou=postgresql,dc=edb,dc=com
+  password: EDBad32
+  uri: ldap://10.100.20.21:389
+```
+
+### `postgres`
+
+The Postgres configuration contains the PostgreSQL database settings, such as authentication and the specifics of schemas and queries, which populate user information. 
+
+Database authentication can be done with the `dsn` string, which supports any authentication methods available in libpq. 
+
+#### Peer authentication 
+
+To use peer authentication for EDB Postgres Advanced Server, you need to list only the database name under `dbanme`. Enter the following string:
+
+```yaml
+dsn: dbname=postgres
+```
+
+To run the sync of ldap2pg as a default peer user for EDB Postgres Advanced Server, set the file permission for `/etc/ldap2pg.yml` to the local database user. For example: 
+
+```shell
+$ chown enterprisedb:enterprisedb /etc/ldap2pg.yml
+```
+
+Pass a `-v` parameter to verify that the user sync process for ldap2pg on the database server runs:
+
+```shell
+$ ldap2pg -v
+```
+
+#### Using Pgpass
+
+EDB Postgres Advanced Server creates the `.pgpass` authentication file in `/var/lib/edb/` with the default user `enterprisedb`. If you plan to run synchronization jobs as the `enterprisedb` user, it is easier to use peer authentication. 
+
+This case examines the scenario where EDB Postgres Advanced Server authentication is performed with the `enterprisedb` user but the sync job for ldap2pg is run as a different user:
+
+Copy `.pgpass` from `enterprisedb` user home directory:
+
+```shell
+$ sudo cp /var/lib/edb/.pgpass ~/
+```
+
+Modify the `dsn` variable in the `postgres` section in `/etc/ldap2pg.yaml`:
+
+```yaml
+dsn: host=localhost user=enterprisedb dbname=postgres
+```
+
+#### OpenLDAP configuration 
+
+This is a sample configuration for synchronizing the PostgreSQL user accounts with OpenLDAP.
+
+`dsn` &mdash; a Postgres URI string that uses the username:password authentication method
+
+`databases_query` &mdash; specifies the Postgres database that contains the user records
+
+`schemas_query` &mdash; return all schemas in pg_catalog to be available to ldap2pg 
+
+`roles_blacklist_query` &mdash; excludes tables from synchronization operations, in particular anything related to EDB Postgres Advanced Server or internal Postgres tables
+
+```yaml
+postgres:
+  dsn: postgres://enterprisedb:LOCALPASS@localhost:5444/postgres
+  databases_query: [postgres]
+  schemas_query: "SELECT nspname FROM pg_catalog"
+  roles_blacklist_query: [aq_administrator_role, pg_*]
+  ```
+
+#### Active Directory configuration
+
+This is a sample configuration for synchronizing the PostgreSQL user accounts with Active Directory.
+
+`dsn` &mdash; a Postgres URI string that uses the username:password authentication method
+`managed_roles_query` &mdash; Query to restrict role deletion and privilege edition to specific roles
+`owners_query` &mdash; Specifies a global list of owners common to all databases and schemas
+`schemas_query` &mdash; Specifies owners for schemas so that ldap2pg can be aware of what schemas are in each database
+
+```yaml
+postgres:
+  dsn: postgres://enterprisedb:LOCALPASS@localhost:5444/postgres
+  managed_roles_query: |
+    SELECT 'public'
+    UNION
+    SELECT DISTINCT role.rolname
+    FROM pg_roles AS role
+    LEFT OUTER JOIN pg_auth_members AS ms ON ms.member = role.oid
+    LEFT OUTER JOIN pg_roles AS ldap_roles
+      ON ldap_roles.rolname = 'ldap_roles' AND ldap_roles.oid = ms.roleid
+    WHERE role.rolname IN ('ldap_roles', 'readers', 'writers', 'owners')
+        OR ldap_roles.oid IS NOT NULL
+    ORDER BY 1;
+  owners_query: |
+    SELECT DISTINCT role.rolname
+    FROM pg_catalog.pg_roles AS role
+    JOIN pg_catalog.pg_auth_members AS ms ON ms.member = role.oid
+    JOIN pg_catalog.pg_roles AS owners
+      ON owners.rolname = 'owners' AND owners.oid = ms.roleid
+    ORDER BY 1;
+  schemas_query: |
+    SELECT nspname FROM pg_catalog.pg_namespace
+    WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'
+    ORDER BY 1;
+```
+
+### `sync_map`
+
+Each `sync_map` item is called a mapping. A mapping is a YAML dictionary with a `description` field and any of `ldapsearch`, `role`, and `grant subsection`. 
+
+#### Roles
+
+Define one or more roles that target the PostgreSQL cluster. As in, the roles under selected LDAP accounts that are imported, and what permissions they use. 
+
+A value can be a single role or a list. This is a sample definition of roles under `sync_map`:
+
+```yaml
+roles:
+  - names:
+    - ldap_roles
+    - readers
+    options: NOLOGIN
+  - name: writers
+    # Grant reading to writers
+    parent: readers
+    options: NOLOGIN
+  - name: owners
+    # Grant read/write to owners
+    parent: writers
+    options: NOLOGIN
+```
+
+This is a simple definition of a single role with `LOGIN` and `SUPERUSER` privileges applied to every user authenticated with LDAP:
+
+```yaml
+role:
+    name: '{uid}'
+    options: LOGIN SUPERUSER
+```
+
+#### Grant
+
+The `grant` section defines grant privilege to a role with the corresponding parameters. In other words, what privileges are granted for a particular role defined in the `roles` section. 
+
+```yaml
+  grant:
+  - privilege: ro
+    role: readers
+    schemas: __all__
+  - privilege: rw
+    role: writers
+    schema: __all__
+  - privilege: ddl
+    role: owners
+    schema: __all__
+```
+
+#### ldapsearch query and filters
+
+The `ldapsearch` section specifies the necessary search queries to identify what LDAP accounts can be synchronized with PostgreSQL. For example:
+
+
+```yaml
+ ldapsearch:
+    base: ou=people,dc=planetexpress,dc=com
+    binddn: ou=people,dc=planetexpress,dc=com
+    filter: "(objectClass=inetOrgPerson)"
+
+```
+
+#### Role statement
+
+The `role` section defines the user accounts and options that can be mapped in the PostgreSQL database. The default name parameter for each user record is `cn`, which is the account’s full name, so the `uid` name is specified, which is a short username. 
+
+```yaml
+role:
+    name: '{uid}'
+    options: LOGIN SUPERUSER
+```
+
+## Set a synchronization schedule
+
+`schedule_pgagent` sets up a synchronization schedule for ldap2pg. This utility uses syntax similar to cron and produces the SQL command `pgagent.sql`, which is loaded into the database. 
+
+An example of a a schedule that runs every hour: 
+
+```shell
+schedule_pgagent "0 * * * *"
+```
+
+This command produces the  `pgagent.sql` file, which is loaded into the database with `enterprisedb` user credentials: 
+
+```shell
+psql < pgagent.sql
+```
