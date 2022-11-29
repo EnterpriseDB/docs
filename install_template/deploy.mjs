@@ -150,31 +150,7 @@ const moveDoc = async (product, platform, version) => {
   const [srcContent, integralDeploymentPath] = await readSource(srcFilepath);
 
   // prettier-ignore
-  const destFilename = integralDeploymentPath || match(context, 
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 12"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 15"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_sles15_${fmtArchFilename(ctx)}.mdx`),   
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Debian 10"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Debian 11"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_deb11_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 18.04"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 20.04"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu20_${fmtArchFilename(ctx)}.mdx`),   
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel8_${fmtArchFilename(ctx)}.mdx`),
-  
-  
+  const destFilename = integralDeploymentPath || match(context,   
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "CentOS 7"}}, 
       (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_centos7_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "EDB Postgres Advanced Server", version: 14}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
