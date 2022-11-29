@@ -1,0 +1,37 @@
+---
+title: EDB Advanced Storage Pack
+navigation:
+- rel_notes
+- installing
+- configuring
+---
+
+EDB Advanced Storage Pack provides advanced storage options for PostgreSQL databases in the form of Table Access Method (TAM) extensions. These storage options can enhance the performance and reliability of databases without requiring application changes.
+
+For tables whose access patterns are known in advance, a targeted TAM that makes different trade-offs may be preferable. For instance, if a given table in an application is INSERT-only and the rows never receive any updates, using a specialized TAM for this table that has INSERT-specific optimizations could be considered.
+
+EnterpriseDB offers two TAMs in the Advanced Storage pack: 
+
+## Autocluster 
+
+The Autocluster TAM provides faster access to clustered data by keeping track of the last inserted row for any value in a side-table. New rows can then be added to the same data blocks as previous rows, keeping the data clustered, which reduces access time to related data. This feature is achieved by maintaining rows with the same key values clustered together so that an index scan for a specific key can find all the rows close together and doesn't need to retrieve as many table pages to satisfy the query.
+
+## Refdata
+
+The Refdata TAM is optimized for mostly-static data, which contains occasional INSERTs and very few DELETEs and UPDATEs. For database schemas that utilize foreign keys to reference data, this TAM can provide performance gains of 5-10% and increased scalability. This feature is achieved by taking an exclusive lock on the reference table whenever it is modified, blocking out concurrent modifications by any other session as well as modifications to tables which reference the table. For example:
+
+```sql
+CREATE TABLE department (
+	department_id	SERIAL PRIMARY KEY,
+	department_name	TEXT
+) USING refdata;
+
+CREATE TABLE employee (
+	...
+	department_id	NOT NULL REFERENCES department(department_id)
+);
+```
+
+The `employee` table is just a standard heap table; only the `department` table uses the `refdata` TAM. Inserts and updates of the employee table don't take out row level locks on the department table, thereby saving query time, avoiding the need to update the rows in the department table, and avoiding the need to write out the referred-to department table rows to disk and to the write ahead log.
+
+If updates to the `department` table are frequent, using the Refdata TAM isn't advisable, because concurrent modifications to it and to the employee table are then blocked. If only infrequent changes are made to the `department` table, speeding up frequent changes to the employee table, and reducing write ahead log traffic may well be worth this cost.

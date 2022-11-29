@@ -145,8 +145,21 @@ const Page = () => (
               PostgreSQL
             </IndexCardLink>
 
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Extensions and tools
+            </span>
+
             <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              EDB Advanced Storage Pack
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              EDB Postgres Tuner
             </IndexCardLink>
           </IndexCard>
 
