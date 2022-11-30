@@ -1,0 +1,62 @@
+---
+title: "Example Metrics"
+---
+
+## Status
+
+This shows if the pods are up
+
+``` text
+up{cluster="$cluster",pod=~"$instances"}
+```
+
+## CPU
+
+This shows CPU usage as provided from the [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/).
+
+``` text
+sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{pod=~"$instances", namespace=~"$namespace"})
+```
+
+## Memory
+
+This shows mem usage
+
+``` text
+container_memory_usage_bytes{namespace=~"default", container="postgres"}
+```
+
+## Storage
+
+``` text
+sum(kubelet_volume_stats_used_bytes{namespace=~"default"}) by (persistentvolumeclaim) / sum(kubelet_volume_stats_capacity_bytes{namespace=~"default"}) by (persistentvolumeclaim)
+```
+
+## Replication lag
+
+``` text
+cnp_pg_replication_lag{namespace=~"$namespace",pod=~"$instances"}
+```
+
+## Max connections
+
+To calculate the maximum connections in we need to leverage the [cnp_backends_total](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_backends) and [cnp_pg_settings_setting](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_settings) metrics
+
+the general formula to calculate the percentage of connections used:
+
+``` text
+percentage connections used = 100 * (open connections / total available connections)
+                            = 100 * (cnp_backends_total / cnp_pg_settings_setting{name=max_connections})
+```
+
+PromQL example
+
+``` text
+100 * sum by (pod) (cnp_backends_total{namespace=~"$namespace",pod=~"$instances"}) / sum by (pod) (cnp_pg_settings_setting{name="max_connections",namespace=~"$namespace",pod=~"$instances"})
+```
+
+## XID Wraparound
+
+``` text
+max by (pod) (cnp_pg_database_xid_age{namespace=~"$namespace",pod=~"$instances"})
+```
