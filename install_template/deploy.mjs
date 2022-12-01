@@ -245,6 +245,8 @@ const moveDoc = async (product, platform, version) => {
     when({product: {name: "EDB Postgres Advanced Server", version: 11}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `epas/11/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
 
+
+    
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8"}}, 
