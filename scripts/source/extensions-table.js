@@ -140,6 +140,7 @@ async function buildTable(auth) {
   const columnMetadata = sheet.data.sheets[0].data[0].columnMetadata;
   let rows = sheet.data.sheets[0].data[0].rowData;
   for (let i = 0, row = rows[i]; i < rows.length; ++i, row = rows[i]) {
+    row.values = row.values || [];
     row.values = row.values
       .map((cell, j) => {
         const merge = merges.find(
