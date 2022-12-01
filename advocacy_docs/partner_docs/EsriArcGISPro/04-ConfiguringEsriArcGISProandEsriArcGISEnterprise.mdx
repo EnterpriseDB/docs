@@ -1,0 +1,176 @@
+---
+title: 'Configuring Esri ArcGIS Pro and Esri ArcGIS Enterprise'
+description: 'Walkthrough on configuring Esri ArcGIS Pro and Esri ArcGIS Enterprise'
+---
+
+Implementing Esri ArcGIS Pro with EDB Postgres Advanced Server requires the following components:
+
+- A running EDB Postgres Advanced Server instance
+- A current version of PostGIS installed on EDB Postgres Advanced Server
+- GIS data set
+- Esri License files
+- Esri Enterprise Server
+
+###Configuring EDB Postgres Advanced Server and PostGIS
+
+##Prerequisites
+
+These components are needed before integrating EDB Postgres Advanced Server with Esri ArcGIS Pro:
+- A running instance of EDB Postgres Advanced Server.
+- PostGIS installed on your EDB Postgres Advanced Server instance. 
+
+The following steps demonstrate how to create a gisadmin user, which is an administrator read/write user with Superuser privileges, a PostGIS database, and all of the extensions needed for PostGIS to operate correctly, and then inputting some data to ensure PostGIS is working and you can view data with geometry data types.
+
+```bash
+c:\Program Files\edb\as14\bin>psql.exe -p 5444 -d edb -U enterprisedb
+psql (14.4.0)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+ 
+edb=#
+edb=# CREATE ROLE gisadmin LOGIN PASSWORD 'Fusion123' SUPERUSER;
+CREATE ROLE
+edb=#
+edb=# exit
+ 
+c:\Program Files\edb\as14\bin>
+c:\Program Files\edb\as14\bin>psql.exe -p 5444 -d edb -U gisadmin
+psql (14.4.0)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+
+edb=#
+edb=# CREATE DATABASE postgis;
+CREATE DATABASE
+edb=#
+edb=# \c postgis
+You are now connected to database "postgis" as user "gisadmin".
+postgis=#
+postgis=# CREATE EXTENSION postgis;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_topology;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION fuzzystrmatch;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION address_standardizer;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION address_standardizer_data_us;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_tiger_geocoder;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_sfcgal;
+ERROR:  could not open extension control file "C:/Program Files/edb/as14/share/extension/postgis_sfcgal.control": No such file or directory                  —THIS WILL NOT WORK WITH 2.* and above versions as per docs
+postgis=# CREATE EXTENSION postgis_raster;
+CREATE EXTENSION
+postgis=#
+postgis=# SELECT PostGIS_Version();
+            postgis_version
+---------------------------------------
+ 3.2 USE_GEOS=1 USE_PROJ=1 USE_STATS=1
+(1 row)
+
+postgis=#
+
+postgis=# CREATE  TABLE roads ( ID int4, NAME varchar(128) );
+CREATE TABLE
+postgis=# SELECT AddGeometryColumn( 'roads', 'geom', -1, 'GEOMETRY', 2 );
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+               addgeometrycolumn
+------------------------------------------------
+ public.roads.geom SRID:0 TYPE:GEOMETRY DIMS:2
+(1 row)
+
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (1,ST_GeomFromText('LINESTRING(0 10,0 0)',-1),'Beacon Road');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (2,ST_GeomFromText('LINESTRING(0 0,0 10)',-1),'Violet Road');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (3,ST_GeomFromText('LINESTRING(0 0,10 0)',-1),'Skelton Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (4,ST_GeomFromText('LINESTRING(0 0,10 10)',-1),'Fifth Avenue');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (5,ST_GeomFromText('LINESTRING(0 10,0 0)',-1),'Main Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (6,ST_GeomFromText('LINESTRING(10 0,0 0)',-1),'Lipton Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=#
+postgis=# SELECT id, ST_AsText(geom) AS geom, name FROM ROADS order by id;
+ id |         geom          |      name
+----+-----------------------+----------------
+  1 | LINESTRING(0 10,0 0)  | Beacon Road
+  2 | LINESTRING(0 0,0 10)  | Violet Road
+  3 | LINESTRING(0 0,10 0)  | Skelton Street
+  4 | LINESTRING(0 0,10 10) | Fifth Avenue
+  5 | LINESTRING(0 10,0 0)  | Main Street
+  6 | LINESTRING(10 0,0 0)  | Lipton Street
+(6 rows)
+
+postgis=#
+
+```
+
+###Configuring ArcGIS Pro with EDB Postgres Advanced Server
+
+In the previous section you configured PostGIS with your EDB Postgres Advanced Server instance and created some sample tables and added some data to those tables to ensure that PostGIS was configured correctly.  In doing so, you have primed your database to be ready to interact with Esri ArcGIS Pro as you create an Enterprise Geodatabase.
+
+##Download GIS Data
+
+There are many sources to download GIS data.  Esri provides sample data, which is available at: https://hub.arcgis.com/datasets.
+
+We are using the sample HongKong GDB data file for demonstration, which can be found here: https://www.arcgis.com/home/item.html?id=96a56c14f72c4638961f4ee9a271e34d
+
+###Enable Enterprise Geodatabase
+
+1. Download the License File from My Esri.
+
+- Go to myesri.com and go to 'Licenses' under My Organization, then click 'Start' to begin the licensing process.
+- Under Product select 'ArcGis Enterprise'.
+- Under Version select the 'Version 11'.
+- Under License Type select 'ArcGis Server' and then select 'Server Licensing roles and extensions' then select 'Next'. 
+- From there continue selecting the ArcGis Server license configurations and enter your role information and the Organization information on the following pages.
+- When you get to Review License File, ensure all of the information you input is correct and choose to receive this file by Download.
+
+2. Generate a keycodes file to authorize an Enterprise Geodatabase:
+
+- On the machine, navigate to the following location: 'C:\Program Files (x86)\Common Files\ArcGIS\bin'.
+- Double-click 'SoftwareAuthorization.exe' to run the authorization wizard.
+- In the Software Authorization Wizard, under 'Authorization Options', select 'I have received an authorization file and am now ready to finish the authorization process'.
+
+![](Images/.png)
+
+- Click 'Browse...' to select the .ecp authorization file obtained from My Esri. 
+- Select the file used to authorize the organization's ArcGIS Server machine.
+- For the Product to be Authorized, ensure ArcGIS Server is selected, and click 'Next'.
+- Refer to Steps 7 to 14 of 'ArcGIS Pro: Authorize a Single Use License' (https://pro.arcgis.com/en/pro-app/latest/get-started/authorize-and-start-arcgis-pro-with-a-single-use-license.htm)to complete the software authorization process.
+
+![](Images/.png)
+
+![](Images/.png)
+
+![](Images/.png)
+
+- Navigate to the following location to access the newly created keycodes file and verify the keycodes file is present: 'C:\Program Files(x86)\Esri\License10.x\sysgen'.
+- Authorize the enterprise geodatabase with the newly created keycodes file.
+
+###Configuring Esri ArcGIS Enterprise Server
+
+Esri ArcGIS Enterprise Server must be configured and running; installing and configuring it is not part of this Implementation Guide. For more information please refer to the following link:
+https://enterprise.arcgis.com/en/get-started/latest/windows/tutorial-creating-your-first-web-gis-configuration.htm
+
+###Esri ArcGIS Desktop Configuration
+
+Before you can share from your Esri ArcGIS Desktop environment to the Portal that you have created, you will need to add that Portal in your Esri ArcGIS Pro environment.
+ 
+ 1. Click 'Projects' then select 'Portals'
+ 2. Click 'Add Portal' to add the URL of the Portal
+ 3. Set the Portal as the active portal by selecting the option from the three dots to the right
+ 4. Right click the Portal and select 'Sign in'
