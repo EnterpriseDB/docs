@@ -1,0 +1,48 @@
+---
+title: "Example: WHERE clause pushdown"
+---
+
+MongoDB Foreign Data Wrapper supports pushdown for WHERE clause. For example:
+
+Postgres data set:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, ename TEXT, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 'John', 10);
+INSERT INTO emp VALUES (0, 110, 'Mark', 10);
+INSERT INTO emp VALUES (0, 120, 'Smith', 20);
+INSERT INTO emp VALUES (0, 130, 'Ed', 30);
+```
+
+The output:
+```sql
+edb=# EXPLAIN (VERBOSE, COSTS FALSE) select eid from emp where deptid>20 order by eid;
+             QUERY PLAN             
+------------------------------------
+ Sort
+   Output: eid
+   Sort Key: emp.eid
+   ->  Foreign Scan on public.emp
+         Output: eid
+         Foreign Namespace: edb.emp
+(6 rows)
+
+edb=# 
+edb=# select eid from emp where deptid>20 order by eid;
+ eid 
+-----
+ 130
+(1 row)
+```
