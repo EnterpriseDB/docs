@@ -330,8 +330,8 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
             </span>
-            <IndexCardLink to="/partner_docs/EsriArcGISPro">
-            Esri ArcGIS Pro
+            <IndexCardLink to="/partner_docs/EsriArcGISProandArcGISEnterprise">
+            Esri ArcGIS Pro and ArcGIS Enterprise
               </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
