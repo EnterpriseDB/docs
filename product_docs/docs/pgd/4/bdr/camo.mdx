@@ -498,6 +498,114 @@ The function returns one of these results:
 
 The client must be prepared to retry the function call on error.
 
+### Connection pools and proxies
+
+The effect of connection pools and proxies needs to be considered when
+designing a CAMO cluster. A proxy may freely distribute transactions
+to all nodes in the commit group (i.e. to both nodes of a CAMO pair or
+to all BDR nodes in case of Eager All Node Replication).
+
+Care needs to be taken to ensure that the application fetches
+the proper node id: when using session pooling, the client remains
+connected to the same node, so the node id remains constant for the
+lifetime of the client session. However, with finer-grained transaction
+pooling, the client needs to fetch the node id for every transaction (as
+in the example given below).
+
+A client that is not directly connected to the BDR nodes might not even
+notice a failover or switchover, but can always use the
+`bdr.local_node_id` parameter to determine which node it is currently
+connected to. In the crucial situation of a disconnect during COMMIT,
+the proxy must properly forward that disconnect as an error to the
+client applying the CAMO protocol.
+
+For CAMO in `remote_write` mode, a proxy that potentially switches
+between the CAMO pairs must use the `bdr.wait_for_camo_partner_queue`
+function to prevent stale reads.
+
+HARP is the only proxy that supports all of the above requirements.
+PgBouncer and HAproxy can work with CAMO, but do not support CAMO's
+`remote_write` mode.
+
+### Example
+
+The following example demonstrates what a retry loop of a CAMO aware
+client application should look like in C-like pseudo-code. It expects
+two DSNs `origin_dsn` and `partner_dsn` providing connection information.
+These usually are the same DSNs as used for the initial call to
+`bdr.create_node`, and can be looked up in `bdr.node_summary`, column
+`interface_connstr`.
+
+```shell
+PGconn *conn = PQconnectdb(origin_dsn);
+
+loop {
+    // start a transaction
+    PQexec(conn, "BEGIN");
+
+    // apply transactional changes
+    PQexec(conn, "INSERT INTO ...");
+    ...
+
+    // store a globally unique transaction identifier
+    node_id = PQparameterStatus(conn, "bdr.local_node_id");
+    xid = PQparameterStatus(conn, "transaction_id");
+
+    // attempt to commit
+    PQexec(conn, "COMMIT");
+    if (PQresultStatus(res) == PGRES_COMMAND_OK)
+        return SUCCESS;
+    else if (PQstatus(res) == CONNECTION_BAD)
+    {
+        // Re-connect to the partner
+        conn = PQconnectdb(partner_dsn);
+        // Check if successfully reconnected
+        if (!connectionEstablished())
+            panic();
+
+        // Check the attempted transaction's status
+        sql = "SELECT bdr.logical_transaction_status($node_id, $xid)";
+        txn_status = PQexec(conn, sql);
+        if (txn_status == "committed")
+            return SUCCESS;
+        else
+            continue;   // to retry the transaction on the partner
+    }
+    else
+    {
+        // The connection is intact, but the transaction failed for some
+        // other reason.  Differentiate between permanent and temporary
+        // errors.
+        if (isPermanentError())
+            return FAILURE;
+        else
+        {
+            // Determine an appropriate delay to back-off to account for
+            // temporary failures due to congestion, so as to decrease
+            // the overall load put on the servers.
+            sleep(increasing_retry_delay);
+
+            continue;
+        }
+    }
+}
+```
+
+This example needs to be extended with proper logic for connecting, including
+retries and error handling. If using a load balancer
+(e.g. PgBouncer), re-connecting can be implemented by simply using
+`PQreset`. Ensure that the load balancer only
+ever redirects a client to a CAMO partner and not any other BDR node.
+
+In practice, an upper limit of retries is recommended. Depending on the
+actions performed in the transaction, other temporary errors may be
+possible and need to be handled by retrying the transaction depending
+on the error code, similarly to the best practices on deadlocks or on
+serialization failures while in `SERIALIZABLE` isolation mode.
+
+Please see the [reference client implementations](camo_clients.md) provided
+as part of this documentation.
+
 ## Interaction with DDL and global locks
 
 Transactions protected by CAMO can contain DDL operations. However, DDL uses global locks, which already provide some
