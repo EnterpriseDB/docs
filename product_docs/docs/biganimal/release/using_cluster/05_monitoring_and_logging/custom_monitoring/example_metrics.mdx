@@ -7,75 +7,75 @@ The below examples are in `PromQL` with `$variables` suitable for use in a Grafa
 
 ## Status
 
-The query below shows if the pods are up and running and can be filtered by the `Postgres Cluster ($cluster)` and the `Postgres Instance ($instances)`
+The query below shows if the pods are up as provided by [Kube State Metrics](https://github.com/kubernetes/kube-state-metrics/blob/master/docs/pod-metrics.md):
 
 ``` PromQL
-up{cluster="$cluster",pod=~"$instances"}
+kube_pod_container_status_ready{container="postgres"}
 ```
+
+![status_example](images/status_example.png)
 
 ## CPU
 
-The query below shows CPU usage as provided by the [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/)
+The query below shows CPU usage as provided by [Kubernetes metrics](https://kubernetes.io/docs/reference/instrumentation/metrics/):
 
 ``` PromQL
-sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate{pod=~"$instances", namespace=~"$namespace"})
+rate(container_cpu_usage_seconds_total{container="postgres"}[5m])
 ```
+
+![cpu_usage_example](images/cpu_usage_example.png)
 
 ## Memory
 
-The query below shows Memory usage as provided by the [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/).
+The query below shows Memory usage in megabytes as provided by [Kubernetes metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/):
 
 ``` PromQL
-container_memory_usage_bytes{namespace=~"default", container="postgres"}
+container_memory_working_set_bytes{container="postgres"}/1000000
 ```
+
+![memory_usage_example](images/memory_usage_example.png)
 
 ## Storage
 
-The query below shows the Storage used as provided by the [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/).
+The query below shows the percentage of available storage used as provided by [Kubernetes metrics](https://kubernetes.io/docs/reference/instrumentation/metrics/):
 
 ``` PromQL
-sum(kubelet_volume_stats_used_bytes{namespace=~"default"}) by (persistentvolumeclaim) / sum(kubelet_volume_stats_capacity_bytes{namespace=~"default"}) by (persistentvolumeclaim)
+(sum(kubelet_volume_stats_used_bytes{namespace=~"default"}) by (persistentvolumeclaim) / sum(kubelet_volume_stats_capacity_bytes{namespace=~"default"}) by (persistentvolumeclaim)) * 100
 ```
+
+![pvc_usage_example](images/pvc_usage_example.png)
 
 ## Replication lag
 
-//Need to check the proper link syntax
+The query below will show the replication lag as provided by the [CNP Replication Lag Metric](/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_replication). The example below is filtered by the `Postgres Instance ($instance)` pod:
 
-The query below will show the replication lag as provided by the [CNP Replication Lag Metric](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_replication)
-
-``` text
-cnp_pg_replication_lag{namespace=~"$namespace",pod=~"$instances"}
+``` PromQL
+cnp_pg_replication_lag{container="postgres", pod="$instance"}
 ```
 
-## Max connections
+![replication_lag_example](images/replication_lag_example.png)
 
-To calculate the maximum connections in we need to leverage the [cnp_backends_total](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_backends) and [cnp_pg_settings_setting](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_settings) metrics
+## Connections used
 
-the general formula to calculate the percentage of connections used:
+To calculate the connections used as a percentage we need to leverage the [cnp_backends_total](/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_backends) and [cnp_pg_settings_setting](/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_settings) metrics. The following query will calculate the percentage of connections used filtered by the `Postgres Instance ($instance)` pod:
 
-``` text
-percentage connections used = 100 * (open connections / total available connections)
-                            = 100 * (cnp_backends_total / cnp_pg_settings_setting{name=max_connections})
+``` PromQL
+100* (sum by (pod)(cnp_backends_total{pod="$instance"}) / max by (pod)(max_over_time(cnp_pg_settings_setting{name="max_connections",pod="$instance"}[30m])))
 ```
 
-The query below
+![connections_example](images/connections_example.png)
 
-``` text
-100 * sum by (pod) (cnp_backends_total{namespace=~"$namespace",pod=~"$instances"}) / sum by (pod) (cnp_pg_settings_setting{name="max_connections",namespace=~"$namespace",pod=~"$instances"})
+## Transaction ID Age
+
+The query below will show the database transaction ID age as provided by the [CNP Database xid Metric](/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_database):
+
+``` PromQL
+(max by (pod) (cnp_pg_database_xid_age{container="postgres", pod="$instance"}))
 ```
 
-## XID Wraparound
+![xid_age_example](images/xid_age_example.png)
 
-The query below will show the replication lag as provided by the [CNP Database xid Metric](https://www.enterprisedb.com/docs/biganimal/latest/using_cluster/05_monitoring_and_logging/metrics/#cnp_pg_database)
+The age will be relative to the workloads being run on your database and the following settings:
 
-``` text
-This will depend on the autovacuum_freeze_max_age per select name, setting, source from pg_settings where name = 'autovacuum_freeze_max_age'
-
-Setting threshold that is > autovacuum_freeze_max_age (def 200000000) and < vacuum_failsafe_age (def 1600000000)
-```
-
-So then we could calculate the percentage by 100 * (xid_age / max_xid)
-
-``` text
-max by (pod) (cnp_pg_database_xid_age{namespace=~"$namespace",pod=~"$instances"})
-```
+* `autovacuum_freeze_max_age`, the default is 200000000
+* `vacuum_multixact_failsafe_age`, the default is 1600000000
