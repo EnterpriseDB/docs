@@ -1,0 +1,173 @@
+---
+title: 'Configuring Esri ArcGIS Enterprise'
+description: 'Walkthrough on configuring Esri ArcGIS Enterprise'
+---
+
+Implementing Esri ArcGIS Pro with EDB Postgres Advanced Server requires the following components:
+
+- A running EDB Postgres Advanced Server instance
+- PostGIS version 3.2 or above, installed on EDB Postgres Advanced Server
+- Your GIS data
+- A running Esri Enterprise Environment
+
+## Configuring EDB Postgres Advanced Server and PostGIS
+The below steps will guide you through configuring PostGIS on your EDB Postgres Advanced Server instance and setting up the appropriate users and extensions needed for PostGIS to work with Esri ArcGIS Pro.
+
+## Prerequisites
+
+These components are needed before integrating EDB Postgres Advanced Server with Esri ArcGIS Pro:
+- A running instance of EDB Postgres Advanced Server.
+- PostGIS installed on your EDB Postgres Advanced Server instance. 
+
+The following steps demonstrate how to create a gisadmin user, which is an administrator read/write user with Superuser privileges, a PostGIS database, and all of the extensions needed for PostGIS to operate correctly, and then inputting some data to ensure PostGIS is working and you can view data with geometry data types.
+
+1. Create a `gisadmin` user
+
+```bash
+c:\Program Files\edb\as14\bin>psql.exe -p 5444 -d edb -U enterprisedb
+psql (14.4.0)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+ 
+edb=#
+edb=# CREATE ROLE gisadmin LOGIN PASSWORD 'Fusion123' SUPERUSER;
+CREATE ROLE
+edb=#
+edb=# exit
+ 
+```
+ 
+2. Log in as the new `gisadmin` user
+
+```bash
+c:\Program Files\edb\as14\bin>
+c:\Program Files\edb\as14\bin>psql.exe -p 5444 -d edb -U gisadmin
+psql (14.4.0)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+
+```
+
+3. Create a `postgis` database and connect to it
+
+```bash
+edb=#
+edb=# CREATE DATABASE postgis;
+CREATE DATABASE
+edb=#
+edb=# \c postgis
+You are now connected to database "postgis" as user "gisadmin".
+postgis=#
+
+```
+
+4. Create all of the `PostGIS` extensions
+
+```bash
+postgis=#
+postgis=# CREATE EXTENSION postgis;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_topology;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION fuzzystrmatch;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION address_standardizer;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION address_standardizer_data_us;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_tiger_geocoder;
+CREATE EXTENSION
+postgis=# CREATE EXTENSION postgis_sfcgal;
+ERROR:  could not open extension control file "C:/Program Files/edb/as14/share/extension/postgis_sfcgal.control": No such file or directory                  —THIS WILL NOT WORK WITH 2.* and above versions as per docs
+postgis=# CREATE EXTENSION postgis_raster;
+CREATE EXTENSION
+postgis=#
+```
+
+5. Create a table to test `PostGIS` is working properly
+
+```bash 
+postgis=#
+
+postgis=# CREATE  TABLE roads ( ID int4, NAME varchar(128) );
+CREATE TABLE
+postgis=# SELECT AddGeometryColumn( 'roads', 'geom', -1, 'GEOMETRY', 2 );
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+               addgeometrycolumn
+------------------------------------------------
+ public.roads.geom SRID:0 TYPE:GEOMETRY DIMS:2
+(1 row)
+
+```
+
+6.  Insert some data into the table that was created above
+
+```bash
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (1,ST_GeomFromText('LINESTRING(0 10,0 0)',-1),'Beacon Road');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (2,ST_GeomFromText('LINESTRING(0 0,0 10)',-1),'Violet Road');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (3,ST_GeomFromText('LINESTRING(0 0,10 0)',-1),'Skelton Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (4,ST_GeomFromText('LINESTRING(0 0,10 10)',-1),'Fifth Avenue');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (5,ST_GeomFromText('LINESTRING(0 10,0 0)',-1),'Main Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=# INSERT INTO ROADS (ID,GEOM,NAME ) VALUES (6,ST_GeomFromText('LINESTRING(10 0,0 0)',-1),'Lipton Street');
+NOTICE:  SRID value -1 converted to the officially unknown SRID value 0
+INSERT 0 1
+postgis=#
+```
+
+7. Show the data that was added in table format
+
+```bash
+postgis=#
+postgis=# SELECT id, ST_AsText(geom) AS geom, name FROM ROADS order by id;
+ id |         geom          |      name
+----+-----------------------+----------------
+  1 | LINESTRING(0 10,0 0)  | Beacon Road
+  2 | LINESTRING(0 0,0 10)  | Violet Road
+  3 | LINESTRING(0 0,10 0)  | Skelton Street
+  4 | LINESTRING(0 0,10 10) | Fifth Avenue
+  5 | LINESTRING(0 10,0 0)  | Main Street
+  6 | LINESTRING(10 0,0 0)  | Lipton Street
+(6 rows)
+
+postgis=#
+
+```
+
+8. Show `PostGIS` version
+
+```bash 
+postgis=# SELECT PostGIS_Version();
+            postgis_version
+---------------------------------------
+ 3.2 USE_GEOS=1 USE_PROJ=1 USE_STATS=1
+(1 row)
+
+```
+
+## Configuring Esri ArcGIS Enterprise Server
+
+Esri ArcGIS Enterprise Server must be configured and running, installing and configuring it is not part of this Implementation Guide, for more information please refer to the following link:
+https://enterprise.arcgis.com/en/get-started/latest/windows/tutorial-creating-your-first-web-gis-configuration.htm
+
+## Esri ArcGIS Pro Configuration for Enterprise Sharing
+
+Before you can share from your Esri ArcGIS Pro environment to the Enterprise Portal that you have created, you will need to add that Portal in your Esri ArcGIS Pro environment.
+
+1. Click `Projects` then select `Portals`.
+ 2. Click `Add Portal` to add the URL of the Portal you wish to use.
+ 3. Set the Portal as the active portal by selecting the option from the three dots to the right.
+ 4. Right click the Portal and select `Sign in`.
