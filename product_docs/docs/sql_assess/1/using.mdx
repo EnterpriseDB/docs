@@ -97,3 +97,91 @@ To generate the trace file for an application, perform the following steps:
    ```SQL
    EXECUTE dbms_system.set_sql_trace_in_session(16, 6590, false);
    ```
+
+## Using the Query extractor
+
+Query extractor is a SQL script that can be run on SQL*Plus prompt to extract queries run by the user application from the `V$SQL` system table. The query extractor script expects four input parameters:
+
+1. Location for output file &mdash; Provide the path where you want the query extractor to place the SQL statements extracted from the `V$SQL` table.
+
+1. The name of the user whose queries are to be extracted &mdash; The script extracts the SQL statements run only by the provided Oracle user.
+
+1. The start timestamp of the queries &mdash; Provide the starting timestamp of the queries to extract in the format DD-MM-YYYY HH24:MI:SS.
+
+1. The end timestamp of the queries &mdash; Provide the ending timestamp of the queries to extract in the format DD-MM-YYYY HH24:MI:SS.
+
+For example:
+
+    ```text
+    SQL>@edb_queries_extractor.sql
+    Location for output file : /tmp/
+    Enter the name of the user whose queries are to be extracted: rs0_lin32
+    Enter the start timestamp of the queries (DD-MM-YYYY HH24:MI:SS): 04-12-2022 10:00:00
+    Enter the end timestamp of the queries (DD-MM-YYYY HH24:MI:SS): 04-12-2022 11:00:00
+    ```
+
+## Performing a SQL assessment
+
+After generating the trace files using either the Oracle trace file or the Query extractor, the user can run the assessSQL.jar file to generate a report. The report helps the user to modify the SQL statements in the application for porting the application to EDB Postgres Advanced Server. The tool also generates SQL output files. The queries in these output files might be modified to be compatible with EDB Postgres Advanced Server syntax.
+
+### Command options
+
+```shell
+java -jar assessSQL.jar -help
+usage: assessSQL <options>
+ -appname <name>             Specify the name of the application
+ -help                       Print all available options
+ -inputfilepath <path>       Specify the path containing the input file/s
+ -inputfiletype <filetype>   Specify either trace, exported or plain
+ -loglevel <level>           Specify logging level e.g. OFF, INFO, FINE
+ -reportpath <path>          Specify the path where report will be saved
+ -sourcedb <version>         Specify source database e.g. Oracle 19c
+ -targetdb <version>         Specify target database e.g. EPAS 14
+ -version                    Print the version information and exit
+
+java -jar assessSQL.jar -version
+AssessSQL ver 1.0
+
+java -jar assessSQL.jar -appname TeleApp -inputfilepath /home/abbas/Projects/trc4/ -inputfiletype trace -reportpath /home/abbas/Projects/rep4/ -loglevel FINE
+AssessSQL ver 1.0
+Input file type: TRACE
+Inputfile path: /home/abbas/Projects/trc4/
+Report path: /home/abbas/Projects/rep4/
+Application Name: TeleApp
+Logging Level : FINE
+Processing File: orcl_ora_61964.trc...
+Generating Report....
+Connected to H2 ..
+**********************
+Generating report ....
+**********************
+Report generation complete.
+```
+
+## Reviewing EDB SQL Assess reports
+
+EDB SQL Assess divides the features used by application queries into four categories:
+
+1. **Compatible features** &mdash; Provides the count of compatible features used in queries.
+
+1. **Features with existing available workaround** &mdash; Provides the count of features with known and practical workarounds used in queries.
+
+1. **Features with reasonable effort new workaround** &mdash; Provides the count of features where no practical in-database workaround is available and that may require a change in the application architecture.
+
+1. **Features with no workaround or requiring further investigation** &mdash; Provides the count of incompatible features for which further investigation is required.
+
+The generated report contains the following tables:
+
+1. Overall feature compatibility summary
+
+1. Compatibility summary for each input file
+
+1. Incompatible features for each input file &mdash; Contains a list of incompatible features used by queries in the input file. Also provides the query ID of the query that uses this incompatible feature.
+
+1. Incompatible queries for each input file &mdash; Contains a list of all incompatible queries along with the incompatible features used in that query.
+
+1. Queries with suggested repairs &mdash; Provides two rows per query. The first row contains the original query and the second row contains the modified query. The incompatible feature that is repaired in the modified query is also provided.
+
+## Troubleshooting
+
+The EDB SQL Assess tool generates a log file in the same path where the report is generated. The path is provided by the user in the command line options. The tool supports three log levels. If set to OFF then log is not generated. If set to INFO, which is the default, then all messages are logged except the queries that are assessed. If the level is set to FINE then the queries that are assessed are also logged in the file.
