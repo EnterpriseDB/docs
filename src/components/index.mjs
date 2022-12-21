@@ -18,7 +18,7 @@ import LeftNav from "./left-nav";
 import Link from "./link";
 import Logo from "./logo";
 import MainContent from "./main-content";
-import PdfDownload from "./pdf-download.js";
+import PdfDownload from "./pdf-download.mjs";
 import PrevNext from "./prev-next";
 import SearchNavigationLinks from "./search-navigation-links";
 import SearchNavigation from "./search-navigation";

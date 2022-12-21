@@ -1,6 +1,6 @@
-require("prismjs/themes/prism-okaidia.css");
+import "prismjs/themes/prism-okaidia.css";
 
-exports.onRouteUpdate = ({ location }) => scrollToAnchor(location);
+export const onRouteUpdate = ({ location }) => scrollToAnchor(location);
 
 /**
  *

@@ -1,13 +1,14 @@
 // this patch is required to consistently load all the doc files
-const realFs = require("fs");
-const path = require("path");
-const gracefulFs = require("graceful-fs");
-gracefulFs.gracefulify(realFs);
+import realFs, { copyFileSync } from "fs";
+import path, { sep, join } from "path";
+import gracefulfs from "graceful-fs";
+const { gracefulify } = gracefulfs;
+gracefulify(realFs);
 
-const { createFilePath } = require(`gatsby-source-filesystem`);
-const { exec, execSync } = require("child_process");
+import { createFilePath } from "gatsby-source-filesystem";
+import { exec, execSync } from "child_process";
 
-const {
+import {
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
@@ -24,7 +25,7 @@ const {
   configureLegacyRedirects,
   readFile,
   writeFile,
-} = require("./src/constants/gatsby-utils.js");
+} from "./src/constants/gatsby-utils.mjs";
 
 const gitData = (() => {
   // if this build was triggered by a GH action in response to a PR,
@@ -54,7 +55,12 @@ const gitData = (() => {
   return { branch, sha };
 })();
 
-exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
+export async function onCreateNode({
+  node,
+  getNode,
+  actions,
+  loadNodeContent,
+}) {
   const { createNodeField } = actions;
 
   if (node.internal.mediaType === "text/yaml") {
@@ -66,7 +72,7 @@ exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
 
   const fileNode = getNode(node.parent);
   const nodeFields = {
-    docType: filePathToDocType(node.fileAbsolutePath),
+    docType: filePathToDocType(node.internal.contentFilePath),
     mtime: fileNode.mtime,
   };
 
@@ -97,9 +103,9 @@ exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
   for (const [name, value] of Object.entries(nodeFields)) {
     createNodeField({ node, name: name, value: value });
   }
-};
+}
 
-exports.createPages = async ({ actions, graphql, reporter }) => {
+export async function createPages({ actions, graphql, reporter }) {
   const result = await graphql(`
     query {
       allMdx {
@@ -155,7 +161,9 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             version
             topic
           }
-          fileAbsolutePath
+          internal {
+            contentFilePath
+          }
         }
       }
       allFile(filter: { extension: { eq: "yaml" } }) {
@@ -265,7 +273,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, learn, actions);
     }
   }
-};
+}
 
 const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const isLatest =
@@ -292,7 +300,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
     });
   }
 
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
+  const isIndexPage = isPathAnIndexPage(doc.internal.contentFilePath);
   const docsRepoUrl = "https://github.com/EnterpriseDB/docs";
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
@@ -305,22 +313,19 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
     fileUrlSegment,
   )}`;
 
-  const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
-  const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
-
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
-  actions.createPage({
-    path: path,
-    component: require.resolve(`./src/templates/${template}`),
-    context: {},
-  });
+  const template = doc.frontmatter.productStub ? "doc-stub.mjs" : "doc.mjs";
+  const pagePath = isLatest
+    ? replacePathVersion(doc.fields.path)
+    : doc.fields.path;
 
   actions.createPage({
-    path: path,
-    component: require.resolve(`./src/templates/${template}`),
+    path: pagePath,
+    component: `${path.resolve(
+      "./src/templates/" + template,
+    )}?__contentFilePath=${doc.internal.contentFilePath}`,
     context: {
       frontmatter: doc.frontmatter,
-      pagePath: path,
+      pagePath,
       navTree,
       prevNext,
       versions: productVersions[doc.fields.product],
@@ -344,13 +349,13 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       );
     }
 
-    const path = `${doc.fields.path}${katacodaPage.scenario}`;
+    const scenarioPath = `${doc.fields.path}${katacodaPage.scenario}`;
     actions.createPage({
-      path: path,
-      component: require.resolve("./src/templates/katacoda-page.js"),
+      path: scenarioPath,
+      component: path.resolve("./src/templates/katacoda-page.mjs"),
       context: {
         ...katacodaPage,
-        pagePath: path,
+        pagePath: scenarioPath,
         learn: {
           title: doc.frontmatter.title,
           description: doc.frontmatter.description,
@@ -378,7 +383,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const advocacyDocsRepoUrl = "https://github.com/EnterpriseDB/docs";
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
+  const isIndexPage = isPathAnIndexPage(doc.internal.contentFilePath);
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
@@ -388,16 +393,11 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
     fileUrlSegment,
   )}`;
 
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
   actions.createPage({
     path: doc.fields.path,
-    component: require.resolve("./src/templates/learn-doc.js"),
-    context: {},
-  });
-
-  actions.createPage({
-    path: doc.fields.path,
-    component: require.resolve("./src/templates/learn-doc.js"),
+    component: `${path.resolve(
+      "./src/templates/learn-doc.mjs",
+    )}?__contentFilePath=${doc.internal.contentFilePath}`,
     context: {
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
@@ -419,13 +419,13 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       );
     }
 
-    const path = `${doc.fields.path}${katacodaPage.scenario}`;
+    const scenarioPath = `${doc.fields.path}${katacodaPage.scenario}`;
     actions.createPage({
-      path: path,
-      component: require.resolve("./src/templates/katacoda-page.js"),
+      path: scenarioPath,
+      component: path.resolve("./src/templates/katacoda-page.mjs"),
       context: {
         ...katacodaPage,
-        pagePath: path,
+        pagePath: scenarioPath,
         learn: {
           title: doc.frontmatter.title,
           description: doc.frontmatter.description,
@@ -441,9 +441,9 @@ const processFileNodes = (fileNodes, productVersions, actions) => {
       node.sourceInstanceName === "advocacy_docs"
         ? ""
         : node.sourceInstanceName;
-    const version = node.relativePath.split(path.sep)[0];
+    const version = node.relativePath.split(sep)[0];
     const isLatest = product ? productVersions[product][0] === version : false;
-    let urlPath = path.join(path.sep, product, node.relativePath);
+    let urlPath = join(sep, product, node.relativePath);
     if (isLatest) {
       const latestPath = replacePathVersion(urlPath);
       actions.createRedirect({
@@ -458,7 +458,7 @@ const processFileNodes = (fileNodes, productVersions, actions) => {
 
     actions.createPage({
       path: urlPath,
-      component: require.resolve("./src/templates/file.js"),
+      component: path.resolve("./src/templates/file.mjs"),
       context: {
         nodeId: node.id,
       },
@@ -466,11 +466,11 @@ const processFileNodes = (fileNodes, productVersions, actions) => {
   });
 };
 
-exports.sourceNodes = async ({
+export async function sourceNodes({
   actions: { createNode },
   createNodeId,
   createContentDigest,
-}) => {
+}) {
   // create edb-git node
   createNode({
     ...gitData,
@@ -480,9 +480,9 @@ exports.sourceNodes = async ({
       contentDigest: createContentDigest(gitData),
     },
   });
-};
+}
 
-exports.createSchemaCustomization = ({ actions }) => {
+export function createSchemaCustomization({ actions }) {
   const { createTypes } = actions;
   const typeDefs = `
     type Mdx implements Node {
@@ -531,11 +531,19 @@ exports.createSchemaCustomization = ({ actions }) => {
       hideVersion: Boolean
       displayBanner: String
     }
+
+    type File implements Node {
+      fields: FileContent
+    }
+
+    type FileContent {
+      content: String
+    }
   `;
   createTypes(typeDefs);
-};
+}
 
-exports.onPreBootstrap = () => {
+export function onPreBootstrap() {
   console.log(`
  _____  ____   _____    ____
 |   __||    \\ | __  |  |    \\  ___  ___  ___
@@ -543,12 +551,12 @@ exports.onPreBootstrap = () => {
 |_____||____/ |_____|  |____/ |___||___||___|
 
   `);
-};
+}
 
-exports.onPostBuild = async ({ reporter, pathPrefix }) => {
-  realFs.copyFileSync(
-    path.join(__dirname, "/netlify.toml"),
-    path.join(__dirname, "/public/netlify.toml"),
+export async function onPostBuild({ reporter, pathPrefix }) {
+  copyFileSync(
+    join(__dirname, "/netlify.toml"),
+    join(__dirname, "/public/netlify.toml"),
   );
 
   const originalRedirects = await readFile("public/_redirects");
@@ -612,4 +620,4 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 # Netlify pathPrefix path rewrite
 ${pathPrefix}/*  /:splat  200`,
   );
-};
+}

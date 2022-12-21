@@ -1,5 +1,5 @@
-const fs = require("fs");
-const path = require("path");
+import { readFile as _readFile, writeFile as _writeFile } from "fs";
+import { resolve as _resolve } from "path";
 
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
@@ -256,7 +256,7 @@ const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
   if (!redirects) return;
   redirects.forEach((fromPath) => {
     // allow relative paths in redirects
-    fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
+    fromPath = _resolve("/", toPath, fromPath).replace(/\/*$/, "/");
     if (fromPath !== toPath)
       actions.createRedirect({
         fromPath,
@@ -320,19 +320,19 @@ const configureLegacyRedirects = ({
 
 const readFile = (filePath) =>
   new Promise(function (resolve, reject) {
-    fs.readFile(filePath, "utf8", function (err, data) {
+    _readFile(filePath, "utf8", function (err, data) {
       err ? reject(err) : resolve(data);
     });
   });
 
 const writeFile = (filePath, data) =>
   new Promise(function (resolve, reject) {
-    fs.writeFile(filePath, data, function (err) {
+    _writeFile(filePath, data, function (err) {
       err ? reject(err) : resolve();
     });
   });
 
-module.exports = {
+export {
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,

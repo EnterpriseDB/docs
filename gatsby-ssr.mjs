@@ -1,6 +1,6 @@
-const React = require("react");
+import React from "react";
 
-exports.onRenderBody = ({ setPreBodyComponents }) => {
+export const onRenderBody = ({ setPreBodyComponents }) => {
   setPreBodyComponents(
     React.createElement("script", {
       key: "injectedDarkModeScript",

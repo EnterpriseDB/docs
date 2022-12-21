@@ -1,16 +1,16 @@
-const utf8Truncate = require("truncate-utf8-bytes");
-const {
+import rehypeParse from "rehype-parse";
+import utf8Truncate from "truncate-utf8-bytes";
+import {
   mdxNodesToTree,
   computeFrontmatterForTreeNode,
   buildProductVersions,
   replacePathVersion,
-} = require("./gatsby-utils.js");
-const unified = require("unified");
-const rehypeParse = require("rehype-parse");
-const hast2string = require("hast-util-to-string");
-const visit = require("unist-util-visit-parents");
-const mdast2string = require("mdast-util-to-string");
-const slugger = require("github-slugger");
+} from "./gatsby-utils.mjs";
+import unified from "unified";
+import { toString as hast2string } from "hast-util-to-string";
+import { visitParents as visit, SKIP } from "unist-util-visit-parents";
+import { toString as mdast2string } from "mdast-util-to-string";
+import { slug } from "github-slugger";
 
 // this function is weird - note that it's modifying the node in place
 // NOT returning a copy of the node
@@ -90,7 +90,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
     // the parent of the last observed heading should be among the ancestors of the current node for the last heading to be considered relevant.
     const headingNode = ancestors.includes(lastHeadingParent) && lastHeading;
     const heading = (headingNode && mdast2string(headingNode)) || "";
-    const headingId = heading && slugger.slug(heading);
+    const headingId = heading && slug(heading);
     searchNodes.push({ text: currentText, heading, headingId });
 
     currentText = "";
@@ -100,7 +100,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
     if (node.type === "heading") {
       storeCurrentText(ancestors);
       observeHeading(node, ancestors);
-      return visit.SKIP;
+      return SKIP;
     }
 
     // break on new contextual container if current node length exceeds minimum
@@ -121,7 +121,7 @@ const mdxTreeToSearchNodes = (rootNode) => {
     }
 
     // these are pure JSX directives - don't index.
-    if (["import", "export"].includes(node.type)) return visit.SKIP;
+    if (["import", "export"].includes(node.type)) return SKIP;
 
     let nodeText = node.value?.trim();
 
@@ -177,11 +177,11 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
       continue;
     }
 
-    const searchNodes = mdxTreeToSearchNodes(node.mdxAST);
+    const searchNodes = mdxTreeToSearchNodes(node.body);
 
     searchNodes.forEach((searchNode, i) => {
       let newNode = { ...node };
-      delete newNode["mdxAST"];
+      delete newNode["body"];
 
       newNode.id = `${newNode.path}-${i + 1}`;
       newNode.heading = trimSpaces(searchNode.heading);
@@ -221,4 +221,4 @@ const algoliaTransformer = ({ data }) => {
   return buildFinalAlgoliaNodes(mdxNodes, productVersions);
 };
 
-module.exports = algoliaTransformer;
+export default algoliaTransformer;
