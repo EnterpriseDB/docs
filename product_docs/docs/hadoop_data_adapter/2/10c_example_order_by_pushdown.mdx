@@ -1,8 +1,8 @@
 ---
-title: "Example: Aggregate pushdown "
+title: "Example: ORDER BY pushdown "
 ---
 
-This example shows aggregate pushdown between the foreign tables of the same remote HIVE/SPARK server to that remote HIVE/SPARK server:
+This example shows ORDER BY pushdown between the foreign tables of the same remote HIVE/SPARK server as the remote HIVE/SPARK server:
 
 Tables on HIVE/SPARK server:
 
@@ -45,13 +45,6 @@ CREATE SERVER hdfs_server FOREIGN DATA WRAPPER hdfs_fdw OPTIONS(host 'localhost'
 CREATE USER MAPPING FOR public SERVER hdfs_server OPTIONS (username 'user1', password 'pwd123');
 
 -- create foreign table
-CREATE FOREIGN TABLE dept (
-    deptno          INTEGER,
-    dname           VARCHAR(14),
-    loc             VARCHAR(13)
-)
-SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'dept');
-
 CREATE FOREIGN TABLE emp (
     empno           INTEGER,
     ename           VARCHAR(10),
@@ -65,24 +58,26 @@ CREATE FOREIGN TABLE emp (
 SERVER hdfs_server OPTIONS (dbname 'fdw_db', table_name 'emp');
 ```
 
-Query with aggregate pushdown:
+Query with ORDER BY pushdown:
 
 ```sql
--- aggregate functions
-EXPLAIN (VERBOSE, COSTS OFF)
-SELECT deptno, COUNT(*),SUM(sal),MAX(sal),MIN(sal),AVG(sal) FROM emp
-GROUP BY deptno
-HAVING deptno IN (10,20)
-ORDER BY deptno;
+edb=# SET hdfs_fdw.enable_order_by_pushdown TO ON;
+SET
+edb=# EXPLAIN (COSTS OFF) SELECT * FROM emp order by deptno;
 __OUTPUT__
-QUERY PLAN                                                                         
-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     QUERY PLAN      
+---------------------
+ Foreign Scan on emp
+(1 row)
+
+edb=# SET hdfs_fdw.enable_order_by_pushdown TO OFF;
+SET
+edb=# EXPLAIN (COSTS OFF) SELECT * FROM emp order by deptno;
+__OUTPUT__
+        QUERY PLAN         
+---------------------------
  Sort
-   Output: deptno, (count(*)), (sum(sal)), (max(sal)), (min(sal)), (avg(sal))
-   Sort Key: emp.deptno
-   ->  Foreign Scan
-         Output: deptno, (count(*)), (sum(sal)), (max(sal)), (min(sal)), (avg(sal))
-         Relations: Aggregate on (k_test.emp)
-         Remote SQL: SELECT `deptno`, count(*), sum(`sal`), max(`sal`), min(`sal`), avg(`sal`) FROM `k_test`.`emp` WHERE (`deptno`  IN (10,20)) GROUP BY `deptno`
-(7 rows)
+   Sort Key: deptno
+   ->  Foreign Scan on emp
+(3 rows)
 ```
