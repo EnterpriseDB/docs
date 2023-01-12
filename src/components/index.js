@@ -6,6 +6,7 @@ import CodeBlock from "./code-block";
 import DarkModeToggle from "./dark-mode-toggle";
 import DevOnly from "./dev-only";
 import DevFrontmatter from "./dev-frontmatter";
+import FeatureFlag from "./feature-flag";
 import Footer from "./footer";
 import IndexLinks from "./index-links";
 import IndexSubNav from "./index-sub-nav";
@@ -40,6 +41,7 @@ export {
   DarkModeToggle,
   DevOnly,
   DevFrontmatter,
+  FeatureFlag,
   Footer,
   IndexLinks,
   IndexSubNav,

@@ -5,6 +5,7 @@ import {
   Archive,
   AuthenticatedContentPlaceholder,
   CodeBlock,
+  FeatureFlag,
   KatacodaPageLink,
   KatacodaPanel,
   LayoutContext,
@@ -85,6 +86,7 @@ const Layout = ({
           }
         ></blockquote>
       ),
+      FeatureFlag,
       KatacodaPanel: () => (
         <KatacodaPanel katacodaPanelData={katacodaPanelData} />
       ),

@@ -531,6 +531,14 @@ exports.createSchemaCustomization = ({ actions }) => {
       hideVersion: Boolean
       displayBanner: String
     }
+
+    type File implements Node {
+      fields: FileFields
+    }
+
+    type FileFields {
+      content: String
+    }
   `;
   createTypes(typeDefs);
 };

@@ -326,6 +326,13 @@ module.exports = {
       },
     },
     {
+      resolve: "gatsby-plugin-launchdarkly",
+      options: {
+        clientSideID: "616ecb0bd01b5c2442f9cd0e",
+        options: {},
+      },
+    },
+    {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
       resolve: `gatsby-plugin-algolia`,
       options: {
