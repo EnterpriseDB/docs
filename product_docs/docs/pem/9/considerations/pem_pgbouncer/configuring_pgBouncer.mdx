@@ -7,15 +7,28 @@ redirects:
     - /pem/latest/pem_pgbouncer/03_configuring_pgBouncer/
 ---
 
-You must configure PgBouncer to work with the PEM database server. This example runs PgBouncer as the enterprisedb system user and outlines the process of configuring pgBouncer version 1.9 or later.
+You must configure PgBouncer to work with the PEM database server. 
 
-1.  Open a terminal window and navigate to the pgBouncer directory.
+The name and location of the directories and files in the configuration steps depend on whether you installed the community version of PgBouncer or EDB PgBouncer. The instructions assume you are using EDB PgBouncer. If you have installed PgBouncer from the community repo, replace the names of the files and directories in the example with the PgBouncer values.
 
-2.  Change the owner of the `etc` directory for pgBouncer (where `pgbouncer.ini` resides) to `enterprisedb`, and change the directory permissions to `0700`:
+
+| Name                | PgBouncer                          | EDB PgBouncer                          |
+|---------------------|------------------------------------|----------------------------------------|
+| PgBouncer directory | `/etc/pgbouncer<1.x>`              | `/etc/edb/pgbouncer<1.x>`               |
+| ini file            | `pgbouncer.ini`                    | `edb-pgbouncer.ini`                    |
+| userlist file       | `/etc/pgbouncer<1.x>/userlist.txt` | `/etc/edb/pgbouncer<1.x>/userlist.txt` |
+| HBA file            | `(/etc/pgbouncer<1.x>/hba_file)`   | `(/etc/edb/pgbouncer<1.x>/hba_file)`   |
+| Service file        | `pgbouncer-<1.x>`                  | `edb-pgbouncer-<1.x>`                  |
+
+This example runs PgBouncer as the enterprisedb system user and outlines the process of configuring PgBouncer.
+
+1.  Open a terminal window and navigate to the PgBouncer directory.
+
+2.  Change the owner of the `etc` directory for PgBouncer (where `pgbouncer.ini` resides) to `enterprisedb`, and change the directory permissions to `0700`:
 
     ```shell
-    $ chown enterprisedb:enterprisedb /etc/edb/pgbouncer1.9
-    $ chmod 0700 /etc/edb/pgbouncer1.9
+    $ chown enterprisedb:enterprisedb /etc/edb/pgbouncer<1.x>
+    $ chmod 0700 /etc/edb/pgbouncer<1.x>
     ```
 
 3.  Change the contents of the `pgbouncer.ini` or `edb-pgbouncer.ini` file:
@@ -27,14 +40,14 @@ You must configure PgBouncer to work with the PEM database server. This example 
     ;; 'auth_user' will be used for authenticate the db user (proxy
     ;; agent user in our case)
 
-    pem = port=5444 host=/tmp dbname=pem auth_user=pgbouncer
+    pem = port=5444 host=localhost dbname=pem auth_user=pgbouncer
     pool_size=80 pool_mode=transaction
-    * = port=5444 host=/tmp dbname=pem auth_user=pgbouncer
+    * = port=5444 host=localhost dbname=pem auth_user=pgbouncer
     pool_size=10
 
     [pgbouncer]
-    logfile = /var/log/edb/pgbouncer1.9/edb-pgbouncer-1.9.log
-    pidfile = /var/run/edb/pgbouncer1.9/edb-pgbouncer-1.9.pid
+    logfile = /var/log/edb/pgbouncer<1.x>/edb-pgbouncer-<1.x>.log
+    pidfile = /var/run/edb/pgbouncer<1.x>/edb-pgbouncer-<1.x>.pid
     listen_addr = *
     ;; Agent needs to use this port to connect the pem database now
     listen_port = 6432
@@ -51,9 +64,9 @@ You must configure PgBouncer to work with the PEM database server. This example 
     auth_type = hba
     ;; Authentication file, Reference:
     ;; https://pgbouncer.github.io/config.html#auth_file
-    auth_file = /etc/edb/pgbouncer1.9/userlist.txt
+    auth_file = /etc/edb/pgbouncer<1.x>/userlist.txt
     ;; HBA file
-    auth_hba_file = /etc/edb/pgbouncer1.9/hba_file
+    auth_hba_file = /etc/edb/pgbouncer<1.x>/hba_file
     ;; Use pem.get_agent_pool_auth(TEXT) function to authenticate
     ;; the db user (used as a proxy agent user).
     auth_query = SELECT * FROM pem.get_agent_pool_auth($1)
@@ -69,25 +82,35 @@ You must configure PgBouncer to work with the PEM database server. This example 
     server_idle_timeout = 60
     ```
 
-4.  Create and update the `/etc/edb/pgbouncer1.9/userlist.txt` authentication file for PgBouncer:
+!!! Note
+    For more information on `auth_user` see [Authentication settings](https://www.pgbouncer.org/config.html#authentication-settings).
+
+4.  Create and update the `/etc/edb/pgbouncer<1.x>/userlist.txt` authentication file for PgBouncer:
 
     ```sql
+    ## Connect to pem database as a superuser, 
+    ## create the userslist.txt file and add 
+    ## username and their password list in CSV format
+    $ psql -p 5444 -d pem -U enterprisedb
+    
     pem=# COPY (
     SELECT 'pgbouncer'::TEXT, 'pgbouncer_password'
     UNION ALL
     SELECT 'pem_admin1'::TEXT, 'pem_admin1_password'
-    TO '/etc/edb/pgbouncer1.9/userlist.txt'
+    TO '/etc/edb/pgbouncer<1.x>/userlist.txt'
     WITH (FORMAT CSV, DELIMITER ' ', FORCE_QUOTE *);
-
+    __OUTPUT__
     COPY 2
     ```
 
+    This creates `/etc/edb/pgbouncer<1.x>/userlist.txt` file and adds the username and password list.
+
     !!! Note
-        A superuser can't invoke the PEM authentication query function `pem.get_proxy_auth(text)`. If the pem_admin user is a superuser, you must add the password to the authentication file (`enterprisedb` in the example).
+        If the pem_admin user is a superuser, you must add the password to the authentication file (`enterprisedb` in the example). This allows the pem_admin user to invoke the PEM authentication query function `pem.get_proxy_auth(text)`.
 
-5.  Create an HBA file `(/etc/edb/pgbouncer1.9/hba_file)` for PgBouncer that contains the following content:
+5.  Create an HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` for PgBouncer that contains the following content:
 
-    ```shell
+    ```ini
     # Use authentication method md5 for the local connections to
     # connect pem database & pgbouncer (virtual) database.
     local pgbouncer all md5
@@ -98,28 +121,30 @@ You must configure PgBouncer to work with the PEM database server. This example 
     host pgbouncer,pem pem_admin1 0.0.0.0/0 md5
     ```
 
-    ```shell
+    ```ini
     # Use authentication method cert for the TCP/IP connections to
     # connect the pem database using pem_agent_user1
 
     hostssl pem pem_agent_user1 0.0.0.0/0 cert
     ```
 
-6.  Change the owner of the HBA file `(/etc/edb/pgbouncer1.9/hba_file)` to `enterprisedb`, and change the directory permissions to `0600`:
+6.  Change the owner of the HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` to `enterprisedb`, and change the directory permissions to `0600`:
 
     ```shell
-    $ chown enterprisedb:enterprisedb /etc/edb/pgbouncer1.9/hba_file
-    $ chmod 0600 /etc/edb/pgbouncer1.9/hba_file
+    $ chown enterprisedb:enterprisedb /etc/edb/pgbouncer<1.x>/hba_file
+    $ chmod 0600 /etc/edb/pgbouncer<1.x>/hba_file
     ```
 
 7.  Enable the PgBouncer service, and start the service:
 
     ```shell
-    $ systemctl enable edb-pgbouncer-1.9
-
+    $ systemctl enable edb-pgbouncer-<1.x>
+    __OUTPUT__
     Created symlink from
-    /etc/systemd/system/multi-user.target.wants/edb-pgbouncer-1.9.service
-    to /usr/lib/systemd/system/edb-pgbouncer-1.9.service.
+    /etc/systemd/system/multi-user.target.wants/edb-pgbouncer-<1.x>.service
+    to /usr/lib/systemd/system/edb-pgbouncer-<1.x>.service.
+    ```
 
-    $ systemctl start edb-pgbouncer-1.9
+    ```shell
+    $ systemctl start edb-pgbouncer-<1.x>
     ```
