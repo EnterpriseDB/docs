@@ -75,7 +75,9 @@ PGDATAKEYUNWRAPCMD='openssl enc -d -aes128-wrap -pbkdf2 -in "%p"'
 export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
 ```
 
-External key management systems can be used by the same mechanisms. Here is an example using the AWS Key Management Service (leaving out details such as how to set up credentials):
+External key management systems can be used by the same mechanisms. Here are some examples for some well-known services (leaving out details such as how to set up credentials):
+
+### AWS Key Management Service:
 
 ```shell
 aws kms create-key
@@ -87,8 +89,45 @@ PGDATAKEYWRAPCMD='aws kms encrypt --key-id alias/pg-tde-master-1 --plaintext fil
 PGDATAKEYUNWRAPCMD='aws kms decrypt --key-id alias/pg-tde-master-1 --ciphertext-blob fileb://"%p" --output text --query Plaintext | base64 -d'
 ```
 
+or using https://github.com/VirtusLab/crypt:
+
+```shell
+PGDATAKEYWRAPCMD='crypt encrypt aws --out %p --region us-east-1 --kms alias/pg-tde-master-1'
+PGDATAKEYUNWRAPCMD='crypt decrypt aws --in %p --region us-east-1'
+```
+### Azure Key Vault:
+
+```shell
+az keyvault key create --vault-name pg-tde --name pg-tde-master-1
+```
+
+```shell
+PGDATAKEYWRAPCMD='crypt encrypt azure --vaultURL https://pg-tde.vault.azure.net --name pg-tde-master-1 --version fa2bf368449e432085318c5bf666754c --out %p'
+PGDATAKEYUNWRAPCMD='crypt decrypt azure --vaultURL https://pg-tde.vault.azure.net --name pg-tde-master-1 --version fa2bf368449e432085318c5bf666754c --in %p'
+```
+
+This uses https://github.com/VirtusLab/crypt. The Azure CLI cannot be used directly for this, because it lacks some functionality.
+
+### Google Cloud KMS: 
+
+```shell
+gcloud kms keys create pg-tde-master-1 --location=global --keyring=pg-tde --purpose=encryption
+```
+
+```shell
+PGDATAKEYWRAPCMD='gcloud kms encrypt --plaintext-file=- --ciphertext-file=%p --location=global --keyring=pg-tde --key=pg-tde-master-1'
+PGDATAKEYUNWRAPCMD='gcloud kms decrypt --plaintext-file=- --ciphertext-file=%p --location=global --keyring=pg-tde --key=pg-tde-master-1'
+```
+
+or using https://github.com/VirtusLab/crypt:
+
+```shell
+PGDATAKEYWRAPCMD='crypt encrypt gcp --out=%p --location=global --keyring=pg-tde --key=pg-tde-master-1 --project your-project-123456'
+PGDATAKEYUNWRAPCMD='crypt decrypt gcp --in=%p --location=global --keyring=pg-tde --key=pg-tde-master-1 --project your-project-123456'
+```
+
 !!! Note
-    Shell commands with pipes, as in the above example, are problematic because the exit status of the pipe is that of the last command, and so a failure of the first (more interesting) command would not be reported properly. PostgreSQL will handle this somewhat by recognizing whether the wrap or unwrap command wrote nothing. It is better to make this more robust, however, for example by using the pipefail option available in some shells or the mispipe command available on some operating systems. More complicated commands should probably be put into an external shell script or other program instead of being defined inline.
+    Shell commands with pipes, as in some of these examples, are problematic because the exit status of the pipe is that of the last command, and so a failure of the first (more interesting) command would not be reported properly. PostgreSQL will handle this somewhat by recognizing whether the wrap or unwrap command wrote nothing. It is better to make this more robust, however, for example by using the pipefail option available in some shells or the mispipe command available on some operating systems. More complicated commands should probably be put into an external shell script or other program instead of being defined inline.
 
 If no key wrapping is wanted (for testing), then the wrap and unwrap commands must be set to an empty string. This specifies to use the key from the file without further processing. This is distinct from not setting a wrap or unwrap command at all. Having no wrap or unwrap command set when transparent data encryption is used will result in a fatal error when running an affected utility program.
 
