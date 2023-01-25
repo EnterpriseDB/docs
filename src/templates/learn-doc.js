@@ -95,7 +95,7 @@ const EditButton = ({ githubEditLink }) => (
     className="btn btn-sm btn-primary px-4 text-nowrap"
     title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
   >
-    Suggest Edits
+    Suggest edits
   </a>
 );
 
