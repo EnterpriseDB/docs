@@ -1,0 +1,260 @@
+---
+title: 'Using Chemaxon JChem PostgreSQL Cartridge'
+description: 'Walkthroughs of example usage scenarios'
+---
+
+This section features use cases that show EDB Postgres Advanced Server can be used with Chemaxon JChem PostgreSQL Cartridge. 
+
+## Create Table with MOLECULE datatype column
+
+Execute the following SQL Statement to create the table where a column has the MOLECULE datatype to store and process chemical data: 
+
+```yaml
+CREATE TABLE public.chemical_data
+(
+             empno 	INT4 Primary Key,
+    	ename 	VARCHAR(50),
+    	location  CLOB,
+    	mol   	MOLECULE('sample')
+);
+
+
+```
+
+View the structure of the above created table using the following statement: 
+
+```yaml
+DESC public.chemical_data;
+               	Table "public.chemical_data"
+  Column  |     	Type      	| Collation | Nullable | Default
+----------+-----------------------+-----------+----------+---------
+ empno	| integer           	|       	| not null |
+ ename	| character varying(50) |       	|      	|
+ location | clob              	|       	|      	|
+ mol  	| molecule('sample')	|       	|      	|
+Indexes:
+	"chemical_data_pkey" PRIMARY KEY, btree (empno)
+
+```
+
+## Insert/Update/Delete Chemical Data 
+
+Execute the following SQL Statements to insert data including chemical data into the table:
+
+```yaml
+INSERT INTO public.chemical_data VALUES (10,'EMP1','COUNTRY1','c1ccccc1');
+INSERT INTO public.chemical_data VALUES (20,'EMP2','COUNTRY2','O=Cc1ccccc1');
+INSERT INTO public.chemical_data VALUES (30,'EMP3','COUNTRY3','C=CCOC=O');
+INSERT INTO public.chemical_data VALUES (40,'EMP4','COUNTRY4','c1nc2cncnc2n1');
+```
+
+Execute the following SELECT Statement to retrieve the data from the table including the chemical data in the column mo1:
+
+```yaml
+SELECT * FROM public.chemical_data;
+ empno | ename | location |  	mol 	 
+-------+-------+----------+---------------
+	10 | EMP1  | COUNTRY1 | c1ccccc1
+	20 | EMP2  | COUNTRY2 | O=Cc1ccccc1
+	30 | EMP3  | COUNTRY3 | C=CCOC=O
+	40 | EMP4  | COUNTRY4 | c1nc2cncnc2n1
+(4 rows)
+
+```
+
+Execute the following  SQL Statements to update and delete data from the table including the chemical data: 
+
+```yaml
+UPDATE public.chemical_data SET ename = 'EMP#1',mol='C=CCOC=O' WHERE empno = 20;
+
+SELECT * FROM public.chemical_data;
+ empno | ename | location |  	mol 	 
+-------+-------+----------+---------------
+	10 | EMP1  | COUNTRY1 | c1ccccc1
+	20 | EMP#1  | COUNTRY2 | O=Cc1ccccc1
+	30 | EMP3  | COUNTRY3 | C=CCOC=O
+	40 | EMP4  | COUNTRY4 | c1nc2cncnc2n1
+(4 rows)
+
+DELETE FROM public.chemical_data WHERE empno = 30;
+
+SELECT * FROM public.chemical_data;
+ empno | ename | location |  	mol 	 
+-------+-------+----------+---------------
+	10 | EMP1  | COUNTRY1 | c1ccccc1
+	30 | EMP3  | COUNTRY3 | C=CCOC=O
+	40 | EMP4  | COUNTRY4 | c1nc2cncnc2n1
+(3 rows)
+
+```
+
+## Create Indexes in Molecule Columns 
+
+For indexing a column containing chemical structures the following indextypes are provided:
+    - chemindex  
+    - sortedchemindex
+
+The following example creates indexes in the Molecule columns on the Table:
+
+```yaml
+CREATE TABLE public.chemical_data
+(
+            empno 	INT4,
+    	ename 	VARCHAR(50),
+    	location  CLOB,
+    	mol1   	MOLECULE('sample') NOT NULL,
+    	mol2   	MOLECULE('sample')
+);
+
+CREATE INDEX chmcal_index1 ON public.chemical_data  USING chemindex(mol1);
+CREATE INDEX chmcal_index2 ON public.chemical_data  USING sortedchemindex(mol2);
+
+DESC public.chemical_data;
+               	Table "public.chemical_data"
+  Column  |     	Type      	| Collation | Nullable | Default
+----------+-----------------------+-----------+----------+---------
+ empno	| integer           	|       	|      	|
+ ename	| character varying(50) |       	|      	|
+ location | clob              	|       	|      	|
+ mol1 	| molecule('sample')	|       	| not null |
+ mol2 	| molecule('sample')	|       	|      	|
+Indexes:
+	"chmcal_index1" chemindex (mol1)
+	"chmcal_index2" sortedchemindex (mol2)
+
+```
+
+## Searching for data from the Molecule Column
+
+**Substructure Search:**
+
+Substructure search finds all structures that contain the query structure as a subgraph. Sometimes the chemical subgraph is not the only thing that is provided, but certain query features that further restrict the structure are also provided as well. If special molecular features are present on the query (eg. stereochemistry, charge, etc.), then only those targets match the ones which also contain the feature. However, if a feature is missing from the query, it is not required to be missing (by default). 
+
+Substructure search is performed using the symmetrical sub-/super-structure search operator: `|<|`.
+
+Execute the following SQL Statement to create a table and insert data:
+
+```yaml
+CREATE TABLE public.chemical_data
+(
+            empno 	INT4,
+    	ename 	VARCHAR(50),
+    	location  CLOB,
+    	mol1   	MOLECULE('sample') NOT NULL,
+    	mol2   	MOLECULE('sample')
+);
+
+INSERT INTO public.chemical_data VALUES (10,'EMP1','COUNTRY1','c1ccccc1','C=CCOC=O');
+INSERT INTO public.chemical_data VALUES (20,'EMP2','COUNTRY2','O=Cc1ccccc1','C=CCOC=O');
+INSERT INTO public.chemical_data VALUES (30,'EMP3','COUNTRY3','C=CCOC=O','c1nc2cncnc2n1');
+INSERT INTO public.chemical_data VALUES (40,'EMP4','COUNTRY4','c1nc2cncnc2n1',NULL);
+
+```
+
+Execute the following SQL Statements to search data from the Molecule Column:
+
+```yaml
+SELECT * FROM public.chemical_data WHERE 'C=CCOC=O'|<| mol1 AND mol2 IS NOT NULL ORDER BY mol1;
+ empno | ename | location |   mol1   | 	mol2 	 
+-------+-------+----------+----------+---------------
+	30 | EMP3  | COUNTRY3  	| C=CCOC=O | c1nc2cncnc2n1
+(1 row)
+
+SELECT * FROM public.chemical_data WHERE 'cncn'|<| mol1 ORDER BY mol1 LIMIT 2;
+ empno | ename | location | 	mol1  	| mol2
+-------+-------+----------+---------------+------
+	40 | EMP4  | COUNTRY4   	| c1nc2cncnc2n1 |
+
+```
+
+**Duplicate Search:**
+
+Duplicate searches are mainly used before database inserts to check whether the given molecule is already contained in the database or not.
+
+Duplicate searches are performed using the `|=|` operator.
+
+Execute the following SQL Statement to search data from the Molecule Column:
+
+```yaml
+SELECT * FROM public.chemical_data WHERE 'C=CCOC=O' |=| mol1;
+ empno | ename | location |   mol1   | 	mol2 	 
+-------+-------+----------+----------+---------------
+	30 | EMP3  | COUNTRY3  	| C=CCOC=O | c1nc2cncnc2n1
+(1 row)
+
+```
+
+**Superstructure Search:**
+
+Superstructure searches find all molecules where the query is the superstructure of the target.
+Superstructure searches are performed using the sub-/super-structure search operator: `|>|`.
+
+Execute the following SQL Statement to search data from the Molecule Column:
+
+```yaml
+SELECT * FROM public.chemical_data WHERE 'C=CCOC=O'|>| mol1;
+ empno | ename | location |   mol1   | 	mol2 	 
+-------+-------+----------+----------+---------------
+	30 | EMP3  | COUNTRY3  	| C=CCOC=O | c1nc2cncnc2n1
+(1 row)
+```
+
+**Full Fragment (exact fragment) Search:**
+
+Full Fragment searches are between Substructure searches and Full searches; the query must fully match to a whole fragment of the target. Other fragments may be present in the target, but they are ignored. 
+
+Execute the following SQL Statement to search data from the Molecule Column:
+
+```yaml
+SELECT * FROM public.chemical_data WHERE 'C=CCOC=O'|=>| mol1 ORDER BY empno LIMIT 2;
+WARNING:  am_functions.cpp:458 Index scan of reverse full fragment search is not supported.
+ empno | ename | location |   mol1   | 	mol2 	 
+-------+-------+----------+----------+---------------
+	30 | EMP3  | USA  	| C=CCOC=O | c1nc2cncnc2n1
+(1 row)
+
+```
+
+**Import Data using COPY command**
+
+Data can be imported into the table that has a Molecule column using the COPY Command.
+
+Create a .csv File containing the comma separate data for the example below to work:
+
+```yaml
+cat /home/edb/Desktop/m_data.csv
+ 10,EMP1, COUNTRY1, c1ccccc1
+ 20,EMP2, COUNTRY2, O=Cc1ccccc1
+ 30,EMP3, COUNTRY3, C=CCOC=O
+ 40,EMP4, COUNTRY4, c1nc2cncnc2n1
+
+```
+
+Execute the following SQL Statement to create the table:
+
+```yaml
+CREATE TABLE public.chemical_data
+(
+            empno 	INT4,
+    	ename 	VARCHAR(50),
+    	location  CLOB,
+    	mol1   	MOLECULE('sample')
+);
+
+```
+
+Execute the COPY statement to load data into the table: `COPY public.chemical_data FROM '/home/edb/Desktop/m_data.csv' (FORMAT csv);`
+
+Once the COPY statement is executed successfully, then execute the following SQL Statement to fetch data from the table:
+
+```yaml
+SELECT * FROM public.chemical_data ORDER BY empno;
+ empno | ename | location | 	mol1 	 
+-------+-------+----------+---------------
+	10 | EMP1  | COUNTRY1 | c1ccccc1
+	20 | EMP2  | COUNTRY2	| O=Cc1ccccc1
+	30 | EMP3  | COUNTRY3  	| C=CCOC=O
+	40 | EMP4  | COUNTRY4   	| c1nc2cncnc2n1
+(4 rows)
+
+```
