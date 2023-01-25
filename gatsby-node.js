@@ -121,6 +121,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirectsGenerated
             navigation
             showInteractiveBadge
+            hideToC
             katacodaPages {
               scenario
               account
@@ -236,9 +237,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     node.frontmatter = computeFrontmatterForTreeNode(curr);
 
     // build navigation tree
-    const navigationDepth = 2;
+    const navigationDepth = 1;
     let navRoot = curr;
-    while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
+    while (navRoot.depth > navigationDepth && navRoot?.parent?.mdxNode)
+      navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, node);
 
     // determine next and previous nodes
@@ -499,6 +501,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
+      hideToC: Boolean
       hideVersion: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults

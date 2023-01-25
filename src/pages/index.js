@@ -58,13 +58,13 @@ const Page = () => (
                     to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
                   >
                     Demonstration of Oracle SQL <br />
-                    compatibility in BigAnimal
+                    compatibility in EDB BigAnimal
                   </Link>
                 </h3>
                 <p>
-                  BigAnimal lets you run Oracle SQL queries in the cloud via EDB
-                  Postgres Advanced Server. Watch the video, or load up psql and
-                  follow along.
+                  EDB BigAnimal lets you run Oracle SQL queries in the cloud via
+                  EDB Postgres Advanced Server. Watch the video, or load up psql
+                  and follow along.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
@@ -144,10 +144,27 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Extensions and tools
+            </span>
+
+            <IndexCardLink to="/pg_extensions/">
+              Supported Postgres extensions
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              EDB Advanced Storage Pack
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              EDB Postgres Tuner
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink to="/biganimal/latest">EDB BigAnimal</IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/free_trial/"
               className="nested-link"
@@ -263,7 +280,7 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
             <IndexCardLink to="/migrating/oracle">
-              Migration Overview
+              Migration Handbook
             </IndexCardLink>
             <IndexCardLink to="/migration_portal/latest">
               Migration Portal
@@ -281,6 +298,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Backup
             </span>
+            <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
+            Cohesity DataProtect for PostgreSQL
+              </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -310,6 +330,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
             </span>
+            <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
+            Esri ArcGIS Pro and Esri ArcGIS Enterprise
+              </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>

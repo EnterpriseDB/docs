@@ -1,0 +1,93 @@
+---
+title: "Example: LIMIT OFFSET pushdown"
+---
+
+This example shows LIMIT OFFSET pushdown on the EMP table.
+
+Postgres data set:
+
+```sql
+-- load extension first time after install
+CREATE EXTENSION mongo_fdw;
+
+-- create server object
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address 'localhost', port '27017');
+
+-- create user mapping
+CREATE USER MAPPING FOR public SERVER mongo_server OPTIONS (username 'edb', password 'edb');
+
+-- create foreign table
+CREATE FOREIGN TABLE emp (_id NAME, eid INTEGER, ename TEXT, deptid INTEGER) SERVER mongo_server OPTIONS (database 'edb', collection 'emp');
+
+-- insert into table
+INSERT INTO emp VALUES (0, 100, 'John', 10);
+INSERT INTO emp VALUES (0, 110, 'Mark', 10);
+INSERT INTO emp VALUES (0, 120, 'Smith', 20);
+INSERT INTO emp VALUES (0, 130, 'Ed', 30);
+```
+
+```sql
+-- LIMIT and OFFSET
+edb=# SELECT min(eid), eid FROM emp GROUP BY eid ORDER BY eid ASC NULLS FIRST LIMIT 0 OFFSET 0;
+ min | eid 
+-----+-----
+(0 rows)
+
+-- LIMIT and OFFSET
+edb=# EXPLAIN (VERBOSE, COSTS OFF)
+edb-# SELECT min(eid), eid FROM emp GROUP BY eid ORDER BY eid ASC NULLS FIRST LIMIT NULL OFFSET 2;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan
+   Output: (min(eid)), eid
+   Foreign Namespace: Aggregate on ("FDW_134".emp)
+(3 rows)
+
+-- LIMIT and OFFSET
+edb=# SELECT min(eid), eid FROM emp GROUP BY eid ORDER BY eid ASC NULLS FIRST LIMIT NULL OFFSET 2;
+ min | eid 
+-----+-----
+ 120 | 120
+ 130 | 130
+ 140 | 140
+(3 rows)
+
+-- LIMIT and OFFSET
+edb=# EXPLAIN (VERBOSE, COSTS OFF)
+edb-# SELECT min(eid), eid FROM emp GROUP BY eid ORDER BY eid ASC NULLS FIRST LIMIT ALL OFFSET 2;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Foreign Scan
+   Output: (min(eid)), eid
+   Foreign Namespace: Aggregate on ("FDW_134".emp)
+(3 rows)
+
+-- LIMIT only
+edb=# EXPLAIN (VERBOSE, COSTS FALSE)
+edb-# SELECT eid, max(eid) FROM emp GROUP BY eid ORDER BY 1 ASC NULLS FIRST LIMIT -1;
+                  QUERY PLAN                  
+----------------------------------------------
+ Limit
+   Output: eid, (max(eid))
+   ->  GroupAggregate
+         Output: eid, max(eid)
+         Group Key: emp.eid
+         ->  Foreign Scan on public.emp
+               Output: _id, eid, deptid
+               Foreign Namespace: FDW_134.emp
+(8 rows)
+
+-- OFFSET only
+edb=# EXPLAIN (VERBOSE, COSTS FALSE)
+edb-# SELECT eid, max(eid) FROM emp GROUP BY eid ORDER BY 1 ASC NULLS FIRST OFFSET -2;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit
+   Output: eid, (max(eid))
+   ->  Foreign Scan
+         Output: eid, (max(eid))
+         Foreign Namespace: Aggregate on ("FDW_134".emp)
+(5 rows)
+
+edb=# 
+```

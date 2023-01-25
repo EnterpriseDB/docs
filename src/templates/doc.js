@@ -256,7 +256,7 @@ const DocTemplate = ({ data, pageContext }) => {
     ),
   };
 
-  const showToc = !!tableOfContents.items;
+  const showToc = !!tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
@@ -299,8 +299,9 @@ const DocTemplate = ({ data, pageContext }) => {
                       : githubEditLink) || "#"
                   }
                   className="btn btn-sm btn-primary px-4 text-nowrap"
+                  title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
                 >
-                  Edit this page
+                  Suggest edits
                 </a>
               )}
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
