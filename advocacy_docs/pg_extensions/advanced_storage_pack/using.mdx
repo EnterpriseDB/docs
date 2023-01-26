@@ -1,0 +1,201 @@
+---
+title: Using EDB Advanced Storage Pack
+navTitle: Using
+---
+
+The following are scenarios where the EDB Advances Storage Pack TAMs are useful.
+
+## Refdata example
+
+A scenario where Refdata is useful is when creating a reference table of all the New York Stock Exchange (NYSE) stock symbols and their corporate names. This data is expected to change very rarely and be referenced frequently from a table tracking all stock trades for the entire market (like in the [Advanced Autocluster example](#advanced-autocluster-example)). You can use Refdata instead of heap to increase performance. 
+
+```sql
+CREATE SEQUENCE nyse_symbol_id_seq;
+CREATE TABLE nyse_symbol (
+	nyse_symbol_id INTEGER NOT NULL PRIMARY KEY DEFAULT NEXTVAL('nyse_symbol_id_seq'),
+	symbol TEXT NOT NULL,
+	name TEXT NOT NULL
+) USING refdata;
+```
+## Autocluster example
+
+A scenario where Autocluster is useful is with Internet of Things (IoT) data, which are usually inserted with many rows that relate to each other and often use append-only data. When using heap instead of Autocluster, Postgres can't cluster together these related rows, so access to the set of rows touches many data blocks, can be very slow, and is input/output heavy.
+
+This example is for an IoT thermostat that reports house temperatures and temperature settings every 60 seconds:
+
+```sql
+CREATE TABLE iot (
+    thermostat_id         bigint NOT NULL,
+    recordtime            timestamp NOT NULL,
+    measured_temperature  float 4,
+    temperature_setting   float 4,
+) USING autocluster;
+```
+
+Using Autocluster, rows with the same `thermostat_id` are clustered together and are easier to access:
+
+```sql
+CREATE INDEX ON iot USING btree(thermostat_id);
+SELECT autocluster.autocluster(
+    rel := 'iot'::regclass,
+    cols := '{1}',
+    max_objects := 10000
+);
+```
+
+!!! Note
+The `cols` parameter specifies which table is clustered. In this case, `{1}` corresponds to the first column of the table, `thermostat_id`, which is the most common access pattern.
+!!!
+
+Populate the table with the `thermostat_id` and `recordtime` data:
+
+```sql
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, 12:01);
+INSERT INTO iot (thermostat_id, recordtime) VALUES (8945, 04:55);
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, 15:32);
+INSERT INTO iot (thermostat_id, recordtime) VALUES (6785, 01:36);
+INSERT INTO iot (thermostat_id, recordtime) VALUES (456, 19:25);
+INSERT INTO iot (thermostat_id, recordtime) VALUES (5678, 03:44);
+```
+
+When you select the data from the IoT table, you can see from the ctid location that the data with the same `thermostat_id` was clustered together:
+
+```sql
+SELECT ctid, thermostat_id, recordtime FROM iot ORDER BY CTID;
+__OUTPUT__
+ctid   | thermostat_id | recordtime
+-------+---------------+------------
+ (0,1) |           456 |      12:01
+ (0,2) |           456 |      15:32
+ (0,3) |           456 |      19:25
+ (2,2) |          8945 |      04:55
+ (2,5) |          5678 |      03:44
+ (3,2) |          6785 |      01:36
+(6 rows)
+```
+
+ ## Advanced example
+
+This is an advanced example where Refdata and Autocluster are used together. It involves referencing the NYSE table from the [Refdata example](#refdata) and clustering together the rows based on the stock symbol. This approach makes it easier to find the latest number of trades. 
+
+Start with the NYSE table from the Refdata example: 
+
+```sql
+CREATE SEQUENCE nyse_symbol_id_seq;
+CREATE TABLE nyse_symbol (
+	nyse_symbol_id INTEGER NOT NULL PRIMARY KEY DEFAULT NEXTVAL('nyse_symbol_id_seq'),
+	symbol TEXT NOT NULL,
+	name TEXT NOT NULL
+) USING refdata;
+```
+
+Create a highly updated table containing NYSE trades, referencing the mostly static stock symbols in the Refdata table. Cluster the rows on the stock symbol to make it easier to look up the last x trades for a given stock: 
+
+```sql
+CREATE TABLE nyse_trade (
+	nyse_symbol_id INTEGER NOT NULL REFERENCES nyse_symbol(nyse_symbol_id),
+	trade_time TIMESTAMP NOT NULL DEFAULT NOW(),
+	trade_price	FLOAT8 NOT NULL CHECK(trade_price >= 0.0),
+	trade_volume BIGINT NOT NULL CHECK(trade_volume >= 1)
+); --  USING autocluster;
+CREATE INDEX ON nyse_trade USING BTREE(nyse_symbol_id);
+SELECT autocluster.autocluster(
+	rel := 'nyse_trade'::regclass,
+	cols := '{1}',
+	max_objects := 3000
+);
+ autocluster 
+-------------
+ 
+(1 row)
+```
+
+Create a view to facilitate inserting by symbol name rather than id: 
+
+```sql
+CREATE VIEW nyse_trade_symbol AS
+	SELECT ns.symbol, nt.trade_time, nt.trade_price, nt.trade_volume
+		FROM nyse_symbol ns
+		JOIN nyse_trade nt
+		  ON ns.nyse_symbol_id = nt.nyse_symbol_id;
+CREATE RULE stock_insert AS ON INSERT TO nyse_trade_symbol
+	DO INSTEAD INSERT INTO nyse_trade
+		(SELECT ns.nyse_symbol_id, NEW.trade_time, NEW.trade_price, NEW.trade_volume
+			FROM nyse_symbol ns
+			WHERE ns.symbol = NEW.symbol
+		);
+```
+
+For more information on creating a view, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-createview.html).
+
+Prepopulate the static data (shortened for brevity): 
+
+```sql
+INSERT INTO nyse_symbol (symbol, name) VALUES
+    ('A', 'Agilent Technologies'),
+	('AA', 'Alcoa Corp'),
+	('AAC', 'Ares Acquisition Corp Cl A'),
+	('AAIC', 'Arlington Asset Investment Corp'),
+	('AAIN', 'Arlington Asset Investment Corp 6.000%'),
+	('AAN', 'Aarons Holdings Company'),
+	('AAP', 'Advance Auto Parts Inc'),
+	('AAQC', 'Accelerate Acquisition Corp Cl A'),
+    ('ZTR', 'Virtus Total Return Fund Inc'),
+	('ZTS', 'Zoetis Inc Cl A'),
+	('ZUO', 'Zuora Inc'),
+	('ZVIA', 'Zevia Pbc Cl A'),
+	('ZWS', 'Zurn Elkay Water Solutions Corp'),
+	('ZYME', 'Zymeworks Inc');
+ANALYZE nyse_symbol;
+```
+
+Insert stock trades over a given time range on Friday, November 18, 2022 (shortened for brevity):
+
+```sql 
+\timing
+INSERT INTO nyse_trade_symbol VALUES ('NSC', 'Fri Nov 18 09:51:32 2022', 248.100000, 98778);
+Time: 32.349 ms
+INSERT INTO nyse_trade_symbol VALUES ('BOE', 'Fri Nov 18 09:51:32 2022', 9.640000, 72973);
+Time: 1.055 ms
+INSERT INTO nyse_trade_symbol VALUES ('LOMA', 'Fri Nov 18 09:51:32 2022', 6.180000, 41632);
+Time: 0.927 ms
+INSERT INTO nyse_trade_symbol VALUES ('LXP', 'Fri Nov 18 09:51:32 2022', 10.670000, 85768);
+Time: 0.941 ms
+INSERT INTO nyse_trade_symbol VALUES ('ABBV', 'Fri Nov 18 09:51:32 2022', 155.000000, 46842);
+Time: 0.916 ms
+INSERT INTO nyse_trade_symbol VALUES ('AGD', 'Fri Nov 18 09:51:32 2022', 9.360000, 90684);
+Time: 0.669 ms
+INSERT INTO nyse_trade_symbol VALUES ('PAGS', 'Fri Nov 18 11:14:31 2022', 12.985270, 34734);
+Time: 0.849 ms
+INSERT INTO nyse_trade_symbol VALUES ('KTF', 'Fri Nov 18 11:14:31 2022', 8.435753, 73719);
+Time: 0.679 ms
+INSERT INTO nyse_trade_symbol VALUES ('AES', 'Fri Nov 18 11:14:31 2022', 28.072732, 549);
+Time: 0.667 ms
+INSERT INTO nyse_trade_symbol VALUES ('LIN', 'Fri Nov 18 11:14:31 2022', 334.617829, 39838);
+Time: 0.665 ms
+INSERT INTO nyse_trade_symbol VALUES ('DTB', 'Fri Nov 18 11:14:31 2022', 18.679245, 55863);
+Time: 0.680 ms
+ANALYZE nyse_trade;
+Time: 73.832 ms
+```
+
+Select the ctid from the data for a given stock symbol to see in the output how it was clustered together:
+
+```sql
+SELECT ctid, * FROM nyse_trade WHERE nyse_symbol_id = 1000 ORDER BY trade_time DESC LIMIT 10;
+__OUTPUT__
+ctid       | nyse_symbol_id |        trade_time        | trade_price | trade_volume 
+-----------+----------------+--------------------------+-------------+--------------
+ (729,71)  |           1000 | Fri Nov 18 11:13:51 2022 |   11.265938 |        72662
+ (729,22)  |           1000 | Fri Nov 18 11:08:39 2022 |   11.262747 |        50897
+ (729,20)  |           1000 | Fri Nov 18 11:08:30 2022 |   11.267203 |        37120
+ (729,9)   |           1000 | Fri Nov 18 11:07:21 2022 |   11.269852 |          792
+ (729,6)   |           1000 | Fri Nov 18 11:07:02 2022 |   11.268067 |        46221
+ (632,123) |           1000 | Fri Nov 18 11:04:46 2022 |   11.272623 |        97874
+ (632,118) |           1000 | Fri Nov 18 11:04:28 2022 |   11.271794 |        65579
+ (632,14)  |           1000 | Fri Nov 18 10:55:45 2022 |   11.268543 |         8557
+ (632,2)   |           1000 | Fri Nov 18 10:54:45 2022 |    11.26414 |        94078
+ (506,126) |           1000 | Fri Nov 18 10:54:01 2022 |   11.264657 |        89641
+(10 rows)
+```
+

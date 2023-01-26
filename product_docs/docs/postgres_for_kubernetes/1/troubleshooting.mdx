@@ -26,6 +26,9 @@ Make sure you know:
     class and benchmarks you have done before going into production.
 -   which relevant Kubernetes applications you are using in your cluster (i.e.
     Prometheus, Grafana, Istio, Certmanager, ...)
+-   the situation of continuous backup, in particular if it's in place and working
+    correctly: in case it is not, make sure you take an [emergency backup](#emergency-backup)
+    before performing any potential disrupting operation
 
 ### Useful utilities
 
@@ -38,6 +41,59 @@ following plugins/utilities to be available in your system:
     for lines containing a match to a specified pattern. It is already available in most \*nix distros.
     If you are on Windows OS, you can use [`findstr`](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/findstr) as an alternative to `grep` or directly use [`wsl`](https://docs.microsoft.com/en-us/windows/wsl/)
     and install your preferred \*nix distro and use the tools mentioned above.
+
+## Emergency backup
+
+In some emergency situations, you might need to take an emergency logical
+backup of the main `app` database.
+
+!!! Important
+    The instructions you find below must be executed only in emergency situations
+    and the temporary backup files kept under the data protection policies
+    that are effective in your organization. The dump file is indeed stored
+    in the client machine that runs the `kubectl` command, so make sure that
+    all protections are in place and you have enough space to store the
+    backup file.
+
+The following example shows how to take a logical backup of the `app` database
+in the `cluster-example` Postgres cluster, from the `cluster-example-1` pod:
+
+```sh
+kubectl exec cluster-example-1 -c postgres \
+  -- pg_dump -Fc -d app > app.dump
+```
+
+!!! Note
+    You can easily adapt the above command to backup your cluster, by providing
+    the names of the objects you have used in your environment.
+
+The above command issues a `pg_dump` command in custom format, which is the most
+versatile way to take [logical backups in PostgreSQL](https://www.postgresql.org/docs/current/app-pgdump.html).
+
+The next step is to restore the database. We assume that you are operating
+on a new PostgreSQL cluster that's been just initialized (so the `app` database
+is empty).
+
+The following example shows how to restore the above logical backup in the
+`app` database of the `new-cluster-example` Postgres cluster, by connecting to
+the primary (`new-cluster-example-1` pod):
+
+```sh
+kubectl exec -i new-cluster-example-1 -c postgres \
+  -- pg_restore --no-owner --role=app -d app --verbose < app.dump
+```
+
+!!! Important
+    The example in this section assumes that you have no other global objects
+    (databases and roles) to dump and restore, as per our recommendation. In case
+    you have multiple roles, make sure you have taken a backup using `pg_dumpall -g`
+    and you manually restore them in the new cluster. In case you have multiple
+    databases, you need to repeat the above operation one database at a time, making
+    sure you assign the right ownership. If you are not familiar with PostgreSQL,
+    we advise that you do these critical operations under the guidance of
+    a professional support company.
+
+The above steps might be integrated into the `cnp` plugin at some stage in the future.
 
 ### Logs
 
@@ -127,7 +183,7 @@ Cluster in healthy state
 Name:               cluster-example
 Namespace:          default
 System ID:          7044925089871458324
-PostgreSQL Image:   quay.io/enterprisedb/postgresql:14.4-3
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:15.1-3
 Primary instance:   cluster-example-1
 Instances:          3
 Ready instances:    3
@@ -203,7 +259,7 @@ kubectl describe cluster <CLUSTER_NAME> -n <NAMESPACE> | grep "Image Name"
 Output:
 
 ```shell
-  Image Name:    quay.io/enterprisedb/postgresql:14.4-3
+  Image Name:    quay.io/enterprisedb/postgresql:15.1-3
 ```
 
 !!! Note
@@ -389,7 +445,7 @@ Additionally, you can gather the list of nodes where the pods of a given
 cluster are running with:
 
 ```shell
-kubectl get pod -l k8s.enterprisedb.io/clusterName=<CLUSTER> \
+kubectl get pod -l k8s.enterprisedb.io/cluster=<CLUSTER> \
   -L role -n <NAMESPACE> -o wide
 ```
 
@@ -405,6 +461,17 @@ event to occur instead of relying on the overall cluster health state. Available
 
 -   LastBackupSucceeded
 -   ContinuousArchiving
+-   Ready
+
+`LastBackupSucceeded` is reporting the status of the latest backup. If set to `True` the
+last backup has been taken correctly, it is set to `False` otherwise.
+
+`ContinuousArchiving` is reporting the status of the WAL archiving. If set to `True` the
+last WAL archival process has been terminated correctly, it is set to `False` otherwise.
+
+`Ready` is `True` when the cluster has the number of instances specified by the user
+and the primary instance is ready. This condition can be used in scripts to wait for
+the cluster to be created.
 
 ### How to wait for a particular condition
 
@@ -420,6 +487,12 @@ $ kubectl wait --for=condition=LastBackupSucceeded cluster/<CLUSTER-NAME> -n <NA
 $ kubectl wait --for=condition=ContinuousArchiving cluster/<CLUSTER-NAME> -n <NAMESPACE>
 ```
 
+-   Ready (Cluster is ready or not):
+
+```bash
+$ kubectl wait --for=condition=Ready cluster/<CLUSTER-NAME> -n <NAMESPACE>
+```
+
 Below is a snippet of a `cluster.status` that contains a failing condition.
 
 ```bash
@@ -431,14 +504,21 @@ $ kubectl get cluster/<cluster-name> -o yaml
     conditions:
     - message: 'unexpected failure invoking barman-cloud-wal-archive: exit status
         2'
-      reason: Continuous Archiving is Failing
+      reason: ContinuousArchivingFailing
       status: "False"
       type: ContinuousArchiving
 
     - message: exit status 2
-      reason: Backup is failed
+      reason: LastBackupFailed
       status: "False"
       type: LastBackupSucceeded
+
+    - message: Cluster Is Not Ready
+      reason: ClusterIsNotReady
+      status: "False"
+      type: Ready
+
+
 ```
 
 ## Some common issues
@@ -498,5 +578,5 @@ PODNAME=<POD>
 VOLNAME=$(kubectl get pv -o json | \
   jq -r '.items[]|select(.spec.claimRef.name=='\"$PODNAME\"')|.metadata.name')
 
-kubectl delete pod/$PODNAME pvc/$PODNAME pv/$VOLNAME
+kubectl delete pod/$PODNAME pvc/$PODNAME pvc/$PODNAME-wal pv/$VOLNAME
 ```

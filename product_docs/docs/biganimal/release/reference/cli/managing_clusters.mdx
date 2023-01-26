@@ -1,0 +1,271 @@
+---
+title: Managing clusters using the CLI
+navTitle: Managing clusters
+---
+
+These examples show Azure as the cloud provider unless indicated otherwise. The functionality is the same when using AWS.
+
+## Create a cluster in interactive mode
+
+The default mode for the `create-cluster` command is an interactive mode that guides you through the required cluster configuration by providing you with the valid values.
+
+!!!Tip
+You can turn off prompting using the `biganimal config set interactive_mode off` command. With prompting disabled, if there are any missing required flags, the CLI exits with an error.
+!!!
+
+```shell
+biganimal create-cluster
+__OUTPUT__
+Cluster architecture: High Availability
+Number of standby replicas: 2 Replicas
+Enable read-only workloads: No
+Provider: Azure
+Cluster Name: my-biganimal-cluster
+Password: ****************
+PostgreSQL type: Oracle Compatible
+PostgreSQL version: 14
+Region: (US) East US
+Instance type: E2s v3(2vCPU, 16GB RAM)
+Volume type: Azure Premium Storage
+Volume properties: P1 (4 Gi, 120 Provisioned IOPS, 25 Provisioned MB/s)
+Networking: Public
+By default your cluster allows all inbound communications, add IP allowed list to restrict the access: Yes
+Add CIDR blocks "192.168.1.1/16=Sample Description" leave empty to stop adding: 
+Add database config in the format "application_name=sample_app&array_nulls=true", Leave empty for default configuration: 
+Backup Retention Period, note backups will incur storage charges from the cloud provider directly. e.g. "7d", "2w" or "3m": 30d
+ 
+```
+
+You are prompted to confirm you want to create the cluster. After the cluster creation process is completed, it generates a cluster ID.
+
+```shell
+biganimal create-cluster
+__OUTPUT__
+........
+Are you sure you want to Create Cluster ? [y|n]: y
+Create Cluster operation is started
+Cluster ID is "p-gxhkfww1fe"
+To check current state, run: biganimal show-clusters --id p-gxhkfww1fe
+```
+
+Check your cluster was created successfully using the `show-clusters` command shown in the return message:
+
+```shell
+biganimal show-clusters --id p-gxhkfww1fe
+__OUTPUT__
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────------───────────────────┐
+│ Clusters                                                                                                                                          │
+├──────────────┬──────────────────────┬────────────────────------┬──────────┬──────────────┬───────-───────┬──────────────────────────────┬─────────┤
+│ ID           │ Name                 │ Status                   │ Provider │ Region       │ Instance Type │ Postgres Type                │ Version │
+├──────────────┼──────────────────────┼─────────────────------───┼──────────┼──────────────┼───────────────┼──────────────────────────────┼─────────┤
+│ p-gxhkfww1fe │ my-biganimal-cluster │ Cluster in healthy state │ Azure    │ (US) East US │ E2s v3        │ Oracle Compatible            │ 14      │
+└──────────────┴──────────────────-───┴──────────────────------──┴──────────┴──────────────┴───────────────┴──────────────────────────────┴─────────┘
+```
+
+
+## Create a cluster using a configuration file
+
+You can use the `--clusterConfigFile` command to create one or more clusters with the same configuration in a noninteractive mode.
+
+Here is a sample configuration file in YAML format with Azure specified as the provider:
+
+```yaml
+  # config_file.yaml
+  ---
+  clusterArchitecture: ha                     # <string:  cluster architecture, valid values ["single" | "ha" | "eha"]>
+  haStandbyReplicas: 2                        # <number:  Number of standby replicas. Field must be specified if user has selected high availability cluster type. Default value is 2, valid values [1, 2].>
+  provider: azure                             # <string:  cloud provider id>
+  clusterName: my-biganimal-cluster           # <string:  cluster name>
+  password: ************                      # <string:  cluster password (must be at least 12 characters)>
+  iamAuthentication: false                    # <bool:    Identity and Access Management, enabling IAM authentication will allow database users to authenticate to Postgres using your cloud provider's IAM(currently supported only for AWS). You can set up IAM authentication after your cluster is provisioned.>
+  postgresType: epas                          # <string:  postgresType id, valid values ["postgres" | "epas" | "pgextended"]>
+  postgresVersion: "14"                       # <string:  postgres version>
+  region: eastus                              # <string:  provider region id>
+  instanceType: azure:Standard_E2s_v3         # <string:  instance type id>
+  volumeType: azurepremiumstorage             # <string:  volume type id>
+  volumeProperties: P1                        # <string:  Applicable to Azure only, volume properties id>
+  volumePropertySize: "4Gi"                   # <string:  Applicable to AWS gp3 only and Azure Ultradisk, volume size in Byte, you may append unit suffix 'Gi' or 'G'.>
+  volumePropertyIOPS: 3000                    # <number>: Applicable to AWS gp3 and Azure Ultradisk, volume Input/Output Operations Per Second> 
+  networking: public                          # <string:  input "private" or "public" network>
+  allowIpRangeMap:                            # <list:    IP Range to allow network traffic to your cluster from the public Internet>
+    - cidr: 9.9.9.9/28                        # <string:  CIDR of allowed source IP range>
+      description: Allow traffic from App A   # <string:  The description of this allowed ip range>
+    - cidr: 10.10.10.10/27                    # <string:  CIDR of allowed source IP range>
+      description: Allow traffic from App B   # <string:  The description of this allowed ip range>
+  pgConfigMap:                                # <Object:  Postgres configuration>
+    application_name: test_app                # <string:  set the database "application_name" property to "test_app">
+    array_nulls: true                         # <bool:    set the database "array_nulls" property to True>
+  backupRetentionPeriod: 30d                  # <string:  Use strings like “7d“ or “2w“ or “3m” to specify days (1-180), weeks (1-25) or months (1-6) to set retention period>
+  readOnlyWorkloads:                          # <bool:    Set True to enable read-only connection and route all read-only queries to standby replicas and reduce the workload on primary>
+  ---
+```
+
+!!! Note
+For backward compatibility, `allowIpRangeMap` and `pgConfigMap` properties also support embedded JSON format.
+  ```json
+  allowIpRangeMap: [["9.9.9.9/28", "Allow traffic from App A"],["10.10.10.10/27", "Allow traffic from App B"]]
+  pgConfigMap: [["application_name","test_app"],["array_nulls","true"]] 
+  ```
+!!!
+
+To create the cluster using the sample configuration file `config_file.yaml`:
+
+```shell
+biganimal create-cluster --clusterConfigFile "./config_file.yaml"
+```
+
+To query an enumeration of valid values for above BigAnimal and cloud service provider related properties, CLI provides you a series of subcommands, for example: you can use `show-cluster-architecture` to list all available cloud architecture to your current login account.
+
+```shell
+biganimal show-cluster-architectures
+__OUTPUT__
+┌──────────────────────────────────────────────┐
+│ Architecture                                 │
+├────────┬───────────────────────────┬─────────┤
+│ ID     │ Name                      │ Status  │
+├────────┼───────────────────────────┼─────────┤
+│ eha    │ Extreme High Availability │ enabled │
+│ ha     │ High Availability         │ enabled │
+│ single │ Single Node               │ enabled │
+└────────┴───────────────────────────┴─────────┘
+```
+
+!!!Note
+"Extreme High Availability" architecture is not enabled by default, to get access to this offering, contact your sales representative or [Support](/biganimal/release/overview/support).
+!!!
+
+For more information 
+!!!Tip
+You can turn off the confirmation step with the `biganimal disable-confirm` command.
+!!!
+
+## Get cluster connection information
+
+To use your BigAnimal cluster, you first need to get your cluster's connection information. To get your cluster's connection information, use the `show-cluster-connection` command:
+
+```shell
+biganimal show-cluster-connection \
+  --name "my-biganimal-cluster" \
+  --provider "azure" \
+  --region "eastus"
+__OUTPUT__
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Connection String                                                                              ┃
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃ postgres://edb_admin@p-gxhkfww1fe.30glixgayvwhtmn3.biganimal.io:5432/edb_admin?sslmode=require ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
+
+!!!tip
+You can query the complete connection information with other output formats, like JSON or YAML. For example:
+
+```shell
+biganimal show-cluster-connection \
+  --name "my-biganimal-cluster" \
+  --provider "azure" \
+  --region "eastus" \
+  --output "json"
+```
+!!!
+
+## Update cluster
+
+After the cluster is created, you can update attributes of the cluster including both the cluster’s profile and its deployment architecture. You can update the following attributes:
+
+-   Cluster name
+-   Password of administrator account
+-   Cluster Architecture
+-   Instance type of cluster
+-   Instance volume properties
+-   Networking
+-   Allowed IP list
+-   Postgres database configuration
+-   Retention period
+-   Read-only workloads
+-   IAM authentication
+
+For example, to set the public allowed IP range list, use the `--cidr-blocks` flag:
+
+```shell
+./biganimal update-cluster --name "my-biganimal-cluster" --provider "azure" \
+  --region "eastus" \
+  --cidr-blocks "9.9.9.9/28=Traffic from App A"
+```
+
+To check whether the setting took effect, use the `show-clusters` command and view the detailed cluster information output in JSON format. For example,
+
+```shell
+biganimal show-clusters --name "my-biganimal-cluster" --provider "azure" \
+  --region "eastus" \
+  --output "json" \
+| jq '.[0].allowIpRangeMap'
+__OUTPUT__
+[
+  [
+    "9.9.9.9/28",
+    "Traffic from App A"
+  ]
+]
+```
+
+## Update the Postgres configuration of a cluster
+
+To update the Postgres configuration of a BigAnimal cluster directly from the CLI:
+
+```shell
+biganimal update-cluster --id "p-gxhkfww1fe" \
+  --pg-config "application_name=ba_test_app,array_nulls=false"
+__OUTPUT__
+Update Cluster operation is started
+Cluster ID is "p-gxhkfww1fe"
+```
+To specify multiple configurations, you can use multiple `--pg-config` flags or include multiple configuration settings as a key-value array string separated by commas in one `--pg-config` flag. If a Postgres setting contains a comma, you need to specify it with a separate `--pg-config` flag.
+
+!!! Note
+You can update "Cluster Architecture" with the `--cluster-architecture` flag. The only supported scenario is to update a “Single Node” cluster to a “High Availability” cluster.
+!!!
+
+## Delete a cluster
+
+To delete a cluster you no longer need, use the `delete-cluster` command. For example:
+
+```shell
+biganimal delete-cluster \
+  --name "my-biganimal-cluster" \
+  --provider "azure" \
+  --region "eastus"
+```
+
+You can list all deleted clusters with the `show-deleted-clusters` command and restore them from their history backups as needed.
+
+
+## Restore a cluster
+Biganimal continuously backs up your PostgrSQL clusters. Using CLI you can restore a cluster from its backup to any point in time as long as the backups are retained in the backup storage. The restored cluster can be a in another region and with different configurations, you can specify new configurations in restore command. For example:
+
+```shell
+biganimal restore-cluster \
+  --name "my-biganimal-cluster" \
+  --provider "azure" \
+  --region "eastus" \
+  --password "mypassword@123" \
+  --new-name "my-biganimal-cluster-restored" \
+  --new-region="eastus2" \
+  --cluster-architecture "single" \
+  --instance-type "azure:Standard_E2s_v3" \
+  --volume-type "azurepremiumstorage" \
+  --volume-property "P1" \
+  --networking "public" \
+  --cidr-blocks="10.10.10.10/27=Traffic from App B" \
+  --restore-point "2022-01-26T15:04:05+0800" \
+  --backup-retention-period "2w" \
+  --read-only-workloads: "true"
+```
+
+The password for the restored cluster is a mandatory. The other parameters, if not specified, inherit the source database's settings. In interactive mode, the source database's settings appear as the default input, or appear as the first option in a selection list.
+
+To restore a deleted cluster, use `--from-deleted` flag in the command.
+
+!!! Note
+You can restore a cluster in a "Single" cluster to a "High Availability" cluster and vice versa. You can only restore an "Extreme High Availability" cluster to a cluster in using the same architecture.
+!!!
+

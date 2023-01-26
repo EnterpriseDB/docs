@@ -16,7 +16,6 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 /******** Sourcing *********/
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
-  ark: { name: "ark", path: "product_docs/docs/ark" },
   bart: { name: "bart", path: "product_docs/docs/bart" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
   postgres_for_kubernetes: {
@@ -70,6 +69,10 @@ const sourceToPluginConfig = {
   },
   pem: { name: "pem", path: "product_docs/docs/pem" },
   pgbouncer: { name: "pgbouncer", path: "product_docs/docs/pgbouncer" },
+  pg_extensions: {
+    name: "pg_extensions",
+    path: "advocacy_docs/pg_extensions",
+  },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },

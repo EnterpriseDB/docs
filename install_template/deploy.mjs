@@ -72,6 +72,8 @@ const moveDoc = async (product, platform, version) => {
       context.platform.arch,
     ].join("_") + ".mdx";
 
+  const srcFilepath = path.resolve(__dirname, "renders", srcFilename);
+
   const prefix = {
     rhel_8_x86_64: "01",
     other_linux8_x86_64: "02",
@@ -79,8 +81,10 @@ const moveDoc = async (product, platform, version) => {
     centos_7_x86_64: "04",
     sles_15_x86_64: "05",
     sles_12_x86_64: "06",
+    "ubuntu_22.04_x86_64": "06b",
     "ubuntu_20.04_x86_64": "07",
     "ubuntu_18.04_x86_64": "07a",
+    debian_11_x86_64: "07b",
     debian_10_x86_64: "08",
     rhel_8_ppc64le: "09",
     rhel_7_ppc64le: "10",
@@ -104,9 +108,12 @@ const moveDoc = async (product, platform, version) => {
       prefix["sles_12_x86_64"] = "04";
       prefix["sles_15_ppc64le"] = "09";
       prefix["sles_12_ppc64le"] = "10";
-      prefix["ubuntu_20.04_x86_64"] = "05";
-      prefix["ubuntu_18.04_x86_64"] = "05a";
-      prefix["debian_10_x86_64"] = "05b";
+      prefix["ubuntu_22.04_x86_64"] = "05";
+      prefix["ubuntu_20.04_x86_64"] = "05a";
+      prefix["ubuntu_18.04_x86_64"] = "05b";
+      prefix["debian_11_x86_64"] = "06";
+      prefix["debian_10_x86_64"] = "06a";
+      prefix["debian_9_x86_64"] = "06b";
       break;
   }
 
@@ -140,278 +147,11 @@ const moveDoc = async (product, platform, version) => {
   const fmtArchPath = (ctx) => expand_arch[ctx.platform.arch];
   const fmtArchFilename = (ctx) => ctx.platform.arch.replace(/_?64/g, "");
 
+  const [srcContent, integralDeploymentPath] = await readSource(srcFilepath);
+
   // prettier-ignore
-  const destFilename = match(context, 
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 12"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "SLES 15"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Debian 10"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 18.04"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "Ubuntu 20.04"}}, 
-    (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB*Plus", version: 40}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `edb_plus/40/03_installing_edb_plus/install_on_linux/${fmtArchPath(ctx)}/edbplus_RHEL8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "SLES 12"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository/${fmtArchPath(ctx)}/epas_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "SLES 15"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "Debian 10"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Postgres Advanced Server"}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `epas/14/epas_inst_linux/installing_epas_using_edb_repository//${fmtArchPath(ctx)}/epas_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_rhel_8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "SLES 12"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "SLES 15"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "Debian 10"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_deb10_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu18_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "Failover Manager", version: 4}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `efm/4/03_installing_efm/${fmtArchPath(ctx)}/efm4_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "SLES 15"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "Debian 10"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_deb10_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Hadoop Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `hadoop_data_adapter/2/05_installing_the_hadoop_data_adapter/${fmtArchPath(ctx)}/hadoop_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_rhel8_${fmtArchFilename(ctx)}.mdx`),  
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "SLES 12"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "SLES 15"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Debian 10"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB JDBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `jdbc_connector/42.5.0.1/04_installing_and_configuring_the_jdbc_connector/01_installing_the_connector_with_an_rpm_package/${fmtArchPath(ctx)}/jdbc42_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-  
-      when({product: {name: "Migration Toolkit"}, platform: {name: "SLES 12"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "SLES 15"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "Debian 10"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Migration Toolkit"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `migration_toolkit/55/05_installing_mtk/install_on_linux/${fmtArchPath(ctx)}/mtk55_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "SLES 12"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "SLES 15"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "Debian 10"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MongoDB Foreign Data Wrapper", version: 5}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `mongo_data_adapter/5/04_installing_the_mongo_data_adapter/${fmtArchPath(ctx)}/mongo_rhel8_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_rhel8_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "SLES 12"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "SLES 15"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Debian 10"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "MySQL Foreign Data Wrapper", version: 2}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `mysql_data_adapter/2/04_installing_the_mysql_data_adapter/${fmtArchPath(ctx)}/mysql_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-        
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 12"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "SLES 15"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "Debian 10"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB OCL Connector"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `ocl_connector/${ctx.product.version}/04_open_client_library/01_installing_and_configuring_the_ocl_connector/install_on_linux_using_edb_repo/${fmtArchPath(ctx)}/ocl_connector14_rhel8_${fmtArchFilename(ctx)}.mdx`),     
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 12"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "SLES 15"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Debian 10"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB ODBC Connector"}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `odbc_connector/13/03_installing_edb_odbc/01_installing_linux/${fmtArchPath(ctx)}/odbc13_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "SLES 12"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "SLES 15"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "Debian 10"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB pgBouncer", version: 1.17}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `pgbouncer/1.17/01_installation/install_on_linux/${fmtArchPath(ctx)}/pgbouncer_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_centos7_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "SLES 12"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "SLES 15"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_sles15_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Debian 10"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_deb10_${fmtArchFilename(ctx)}.mdx`),      
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `pgpool/4.3/01_installing_and_configuring_the_pgpool-II/${fmtArchPath(ctx)}/pgpool_ubuntu20_${fmtArchFilename(ctx)}.mdx`),      
-
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_centos7_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "SLES 12"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "SLES 15"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Debian 10"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_deb10_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "EDB Pgpool-II Extensions", version: 4.3}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `pgpool/4.3/02_extensions/${fmtArchPath(ctx)}/pgpoolext_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-
-      when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
+  const destFilename = integralDeploymentPath || match(context,   
+    when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "RHEL 8"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -425,13 +165,16 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_sles15_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "SLES 12"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_sles12_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Debian 11"}}, 
+      (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_deb11_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Debian 10"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_deb10_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager server", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
       (ctx) => `pem/8/installing_pem_server/pem_server_inst_linux/installing_pem_server_using_edb_repository/${fmtArchPath(ctx)}/pem_server_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-      when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
+
+    when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "RHEL 8 or OL 8"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_rhel8_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "RHEL 8"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_rhel8_${fmtArchFilename(ctx)}.mdx`),
@@ -447,52 +190,12 @@ const moveDoc = async (product, platform, version) => {
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_sles12_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Debian 10"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_deb10_${fmtArchFilename(ctx)}.mdx`),
+    when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Debian 11"}}, 
+      (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_deb11_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Ubuntu 18.04"}}, 
       (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
     when({product: {name: "Postgres Enterprise Manager agent", version: 8}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_rhel_8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "SLES 12"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "SLES 15"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "PostGIS", version: 3.2}, platform: {name: "Debian 10"}}, 
-      (ctx) => `postgis/3.2/01a_installing_postgis/installing_on_linux/${fmtArchPath(ctx)}/postgis_deb10_${fmtArchFilename(ctx)}.mdx`),
-
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 12"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_sles12_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "SLES 15"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_sles15_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8 or OL 8"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "AlmaLinux 8 or Rocky Linux 8"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_other_linux8_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 7 or OL 7"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "CentOS 7"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_centos7_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 20.04"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_ubuntu20_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "Ubuntu 18.04"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_ubuntu18_${fmtArchFilename(ctx)}.mdx`),
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "Debian 10"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_deb10_${fmtArchFilename(ctx)}.mdx`), 
-    when({product: {name: "Replication Server", version: 7}, platform: {name: "RHEL 8"}}, 
-      (ctx) => `eprs/7/03_installation/03_installing_rpm_package/${fmtArchPath(ctx)}/eprs_rhel8_${fmtArchFilename(ctx)}.mdx`), );
-
+      (ctx) => `pem/8/installing_pem_agent/installing_on_linux/${fmtArchPath(ctx)}/pem_agent_ubuntu20_${fmtArchFilename(ctx)}.mdx`), );
 
   function match(context, ...conditions) {
     for (let test of conditions) {
@@ -510,18 +213,17 @@ const moveDoc = async (product, platform, version) => {
     return { note: `Skipping (no mapping): ${srcFilename}`, context };
   }
 
-  const src = path.resolve(__dirname, "renders", srcFilename);
-  const dest = path.resolve(__dirname, destPath, destFilename);
+  const destFilepath = path.resolve(__dirname, destPath, destFilename);
   try {
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.copyFile(src, dest);
-    return { success: `deployed ${src} to ${dest}` };
+    await fs.mkdir(path.dirname(destFilepath), { recursive: true });
+    await fs.writeFile(destFilepath, srcContent, "utf8");
+    return { success: `deployed ${srcFilepath} to ${destFilepath}` };
   } catch (err) {
     return {
       warn: err.toString(),
       context: {
-        src,
-        dest,
+        srcFilepath,
+        destFilepath,
       },
     };
   }
@@ -566,6 +268,57 @@ const generateContext = (product, platform, version) => {
       arch: platform.arch,
     },
   };
+};
+
+/**
+ * Reads the source mdx file, parse out the deployment path and filename from the MDX frontmatter
+ * @param srcPath the path + name of the mdx file to read
+ * @returns [full contents, the relative deployment path], undefined on error
+ */
+const readSource = async (srcPath) => {
+  const frontmatterRE = /^(?<open>---\s*?\n)(?<yaml>.+?\n)(?<close>---\s*?\n)/s;
+
+  try {
+    let src = await fs.readFile(srcPath, "utf8");
+    const frontmatter = yaml.parseDocument(
+      src.match(frontmatterRE)?.groups?.yaml,
+    );
+
+    const deployPath = frontmatter.contents.get("deployPath");
+    const redirects = frontmatter.contents.get("redirects");
+
+    // delete deployPath but preserve any comments that might've been attached
+    if (deployPath) {
+      let deployComments = "";
+      for (let { key, value } of frontmatter.contents.items) {
+        if (
+          (key.value || key) === "deployPath" &&
+          (key.commentBefore || value.commentBefore)
+        ) {
+          deployComments =
+            (key.commentBefore || "") + (value.commentBefore || "");
+        }
+        if (key.value === "redirects")
+          key.commentBefore = deployComments + (key.commentBefore || "");
+      }
+      frontmatter.contents.delete("deployPath");
+    }
+
+    for (let i = 0; i < redirects?.items?.length; ++i) {
+      redirects.items[i].value = redirects.items[i].value
+        .replace(/^\/?/, "/")
+        .replace(/\.mdx$/, "");
+    }
+
+    src = src.replace(
+      frontmatterRE,
+      (_, open, fmYaml, close) => open + frontmatter.toString() + close,
+    );
+
+    return [src, deployPath];
+  } catch (e) {
+    console.log(srcPath, e);
+  }
 };
 
 run();
