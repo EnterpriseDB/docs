@@ -5,6 +5,8 @@ const gracefulFs = require("graceful-fs");
 
 const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
+const { replacePathVersion } = require("./src/constants/gatsby-utils.js");
+
 const ANSI_BLUE = "\033[34m";
 const ANSI_GREEN = "\033[32m";
 const ANSI_STOP = "\033[0m";
@@ -201,8 +203,14 @@ module.exports = {
           allSitePage: { nodes: allPages },
           allMdx: { nodes: allMdxNodes },
         }) => {
+          const knownPaths = new Set(allPages.map((p) => p.path));
           const mapPathToTime = allMdxNodes.reduce((acc, node) => {
-            acc[node.fields.path] = { lastmod: node.fields.mtime };
+            if (knownPaths.has(node.fields.path))
+              acc[node.fields.path] = { lastmod: node.fields.mtime };
+            else
+              acc[replacePathVersion(node.fields.path)] = {
+                lastmod: node.fields.mtime,
+              };
             return acc;
           }, {});
 
