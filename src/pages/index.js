@@ -134,32 +134,63 @@ const Page = () => (
 
         <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
-            <IndexCardLink to="/epas/latest">
-              EDB Postgres Advanced Server
-            </IndexCardLink>
-            <IndexCardLink to="/postgis/latest" className="nested-link">
-              PostGIS
-            </IndexCardLink>
-
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
 
+            <IndexCardLink to="/epas/latest">
+              EDB Postgres Advanced Server
+            </IndexCardLink>
+
+            <IndexCardLink to="/pge/latest">
+              EDB Postgres Extended
+            </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard
+            iconName={iconNames.BIG_DATA}
+            headingText="Database Server Features"
+          >
+            <IndexCardLink to="/epas/latest/languagepack">
+              Procedural languages - LanguagePack
+            </IndexCardLink>
+
+            <IndexCardLink to="/postgis/latest">
+              Geographical data - PostGIS
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              Storage options - EDB Advanced Storage Pack
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              Database tuning recommendations - EDB Postgres Tuner
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              Synchronize role directory - EDB LDAP Sync
+            </IndexCardLink>
+
+            <IndexCardLink to="/tde/latest">
+              Transparent Data Encryption
+            </IndexCardLink>
+
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Extensions and tools
+              Foreign Data Wrappers
+            </span>
+
+            <IndexCardLink to="/hadoop_data_adapter/latest">
+              Hadoop
+            </IndexCardLink>
+            <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
+            <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Compatibility
             </span>
 
             <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-              EDB Advanced Storage Pack
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/ldap_sync">
-              EDB LDAP Sync
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/pg_tuner">
-              EDB Postgres Tuner
             </IndexCardLink>
           </IndexCard>
 
@@ -228,6 +259,12 @@ const Page = () => (
               EDB Postgres Distributed
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+          </IndexCard>
+          <IndexCard
+            iconName={iconNames.HIGH_AVAILABILITY}
+            headingText="Replication"
+          >
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
@@ -235,6 +272,7 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pglogical2/">
               pglogical 2
             </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -247,8 +285,10 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
-            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+
+            <IndexCardLink to="/edb_plus/latest">
+              Oracle-compatible shell - EDB*Plus
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -267,15 +307,6 @@ const Page = () => (
             </span>
             <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
             <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Foreign Data Wrappers
-            </span>
-            <IndexCardLink to="/hadoop_data_adapter/latest">
-              Hadoop
-            </IndexCardLink>
-            <IndexCardLink to="/mongo_data_adapter/latest">Mongo</IndexCardLink>
-            <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
@@ -288,7 +319,6 @@ const Page = () => (
             <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -299,8 +329,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-            Cohesity DataProtect for PostgreSQL
-              </IndexCardLink>
+              Cohesity DataProtect for PostgreSQL
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -334,11 +364,11 @@ const Page = () => (
             Chemaxon JChem PostgreSQL Cartridge
               </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-            Esri ArcGIS Pro and Esri ArcGIS Enterprise
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-            Imperva Data Security Fabric
-              </IndexCardLink>
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
