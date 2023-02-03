@@ -132,3 +132,55 @@ You can include Postgres tables containing the built-in range types in the publi
 -   If a publication table of the primary definition node in a multi-master replication system contains any built-in range types, then you can add a database as a primary node only if the database server of this intended primary node is Postgres version 9.2 or later.
 
 Custom range types constructed with the `CREATE TYPE AS RANGE` command aren't supported in Replication Server.
+
+## Limitations during re-snapshot for views
+
+As part of the re-snapshot process, when Replication Server drops constraints from the table’s column that are the part of view objects using `CASCADE` option, the views might also get dropped. Here is a simplified example of the limitation:
+
+```sql
+CREATE TABLE t_place_type
+(
+  id serial NOT NULL,
+  c_name character varying(100),
+  CONSTRAINT pk_t_place_type PRIMARY KEY (id)
+);
+
+CREATE TABLE t_place
+(
+  id serial NOT NULL,
+  c_name character varying(50),
+  id_place_type integer,
+  CONSTRAINT pk_t_place PRIMARY KEY (id),
+  CONSTRAINT fk_t_place_t_place_type FOREIGN KEY (id_place_type)
+      REFERENCES t_place_type (id) MATCH SIMPLE
+      ON UPDATE NO ACTION ON DELETE NO ACTION
+);
+
+CREATE OR REPLACE VIEW v_place AS 
+ SELECT p.id,
+    p.c_name,
+    pt.c_name AS c_place_type
+   FROM t_place p
+     LEFT JOIN t_place_type pt ON pt.id = p.id_place_type
+  GROUP BY p.id, pt.id, p.c_name;
+
+ALTER TABLE t_place DROP CONSTRAINT fk_t_place_t_place_type;
+ALTER TABLE t_place DROP CONSTRAINT pk_t_place;
+ALTER TABLE t_place_type DROP CONSTRAINT pk_t_place_type;
+
+ERROR:  cannot drop constraint pk_t_place_type on table t_place_type because other objects depend on it
+DETAIL:  view v_place depends on constraint pk_t_place_type on table t_place_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+```
+
+In this case, since Replication Server drops the constraints using CASCADE the view is dropped too.
+
+The database behaves in this manner because the view query doesn't work if the primary key is dropped on the table `t_place_type`. It produces this error:
+
+```sql
+ERROR:  column "pt.c_name" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 3:     pt.c_name AS c_place_type
+            ^
+```
+
+In the PostgreSQL documentation it states, "A functional dependency exists if the grouped columns (or a subset thereof) are the primary key of the table containing the ungrouped column."
