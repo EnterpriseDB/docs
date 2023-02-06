@@ -96,6 +96,115 @@ CREATE TABLE "RHS_SANITY"."DEPT"
    ) ;
 ```
 
+While using the Oracle default case, you can experience a lower compatibility ratio compared to other projects. The following are reasons that might contribute to this lower compatibility ratio: 
+
+- The most common reason is that the object/relation doesn't exist. This scenario is caused by the fact that the table/object is in double-quoted upper case to preserve the Oracle case, whereas in the failing object it is referred to without the double-quotes. For example: 
+
+   ```sql
+   CREATE TABLE "HR"."EMP"
+      (   "EMPNO" NUMBER(4,0),
+	        "ENAME" VARCHAR2(10),
+	        "JOB" CLOB,
+	        "MGR" NUMBER(4,0),
+	        "HIREDATE" DATE,
+	        "SAL" NUMBER(7,2),
+	        "COMM" NUMBER(7,2),
+	        "DEPTNO" NUMBER(2,0),
+	      CONSTRAINT "PK_EMP" PRIMARY KEY ("EMPNO")
+     USING INDEX  ENABLE
+      ) ;
+
+   CREATE OR REPLACE  PROCEDURE "HR"."PROC"
+   IS
+    CURSOR emp_cur IS SELECT hiredate, CAST(hiredate AS timestamp(6)) AS timestamped FROM emp;
+    REC emp_cur%rowtype;
+   BEGIN
+      OPEN emp_cur;
+      LOOP
+      FETCH emp_cur INTO rec;
+	      EXIT WHEN emp_cur%NOTFOUND ;
+		          DBMS_OUTPUT.PUT_LINE(rec.hiredate ||'  '||rec.timestamped);
+            END LOOP;
+       CLOSE EMP_CUR;
+      END ;
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   relation "emp" does not exist
+   ```
+
+- The variables defined using %type are failing in code objects as preceding `table.column-name` are in lower case, like `employees.employee_id%type` whereas the actual table is in double-quoted uppercase. For example: 
+
+   ```sql
+   CREATE TABLE "HR"."EMPLOYEES"
+      (    "EMPLOYEE_ID" NUMBER(6,0),
+	         "FIRST_NAME" VARCHAR2(20),
+	         "LAST_NAME" VARCHAR2(25) CONSTRAINT "EMP_LAST_NAME_NN" NOT NULL ENABLE,
+	         "EMAIL" VARCHAR2(25) CONSTRAINT "EMP_EMAIL_NN" NOT NULL ENABLE,
+	         "PHONE_NUMBER" VARCHAR2(20),
+	         "HIRE_DATE" DATE CONSTRAINT "EMP_HIRE_DATE_NN" NOT NULL ENABLE,
+	         "JOB_ID" VARCHAR2(10) CONSTRAINT "EMP_JOB_NN" NOT NULL ENABLE,
+	         "SALARY" NUMBER(8,2),
+	         "COMMISSION_PCT" NUMBER(2,2),
+	         "MANAGER_ID" NUMBER(6,0),
+	         "DEPARTMENT_ID" NUMBER(4,0),
+	          CONSTRAINT "EMP_SALARY_MIN" CHECK ("SALARY" > 0) ENABLE,
+	          CONSTRAINT "EMP_EMP_ID_PK" PRIMARY KEY ("EMPLOYEE_ID")
+     USING INDEX  ENABLE,
+	          CONSTRAINT "EMP_EMAIL_UK" UNIQUE ("EMAIL")
+     USING INDEX  ENABLE
+      ) ;
+   CREATE OR REPLACE  PROCEDURE "HR"."PKG" AS
+   -- declare variables for data fetched from cursor
+     empid       employees.employee_id%TYPE; -- variable for employee_id
+     hiredate    employees.hire_date%TYPE;   -- variable for hire_date
+     firstname   employees.first_name%TYPE;  -- variable for first_name
+     lastname    employees.last_name%TYPE;   -- variable for last_name
+     rowcount    NUMBER;
+     bonusamount NUMBER;
+     yearsworked NUMBER;
+   -- declare the cursor with a parameter
+     CURSOR cursor1 (thismonth NUMBER)IS
+       SELECT employee_id, first_name, last_name, hire_date FROM employees
+          WHERE EXTRACT(MONTH FROM hire_date) = thismonth;
+   BEGIN
+     null;
+   END;
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   syntax error at or near "%" (line 3, char 37)
+   ```
+
+- When tables have TYPE reference in column data type they fail due to the difference in case. For example:
+
+   ```sql
+   CREATE OR REPLACE TYPE "HR"."USER_TYPE" IS OBJECT(
+       "ID" NUMBER,
+       "NAME" VARCHAR2(256)
+   );
+
+   CREATE TABLE "HR"."MY_TABLE"
+   (
+       "ID" NUMBER,
+       "MY_NAME" user_type
+   );
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   type "user_type" does not exist
+   LINE 4:     "MY_NAME" user_type
+                 ^
+   SQL state: 42704
+   Character: 58
+   ```
+
 
 ## EDB DDL Extractor
 
