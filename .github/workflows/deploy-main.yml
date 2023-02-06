@@ -13,9 +13,6 @@ jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Cleanup disk
-        uses: curoky/cleanup-disk-action@v2.0
-
       - uses: actions/checkout@v3
         with:
           ref: main
@@ -28,11 +25,24 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: "14.x"
+
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+      - uses: actions/cache@v3
+        id: npm-cache # use this to check for `cache-hit` ==> if: steps.npm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: update npm
         run: npm install -g npm@7
         env:
           NODE_ENV: ${{ secrets.NODE_ENV }}
-      - name: npm install
+      - name: Install dependencies
         run: |
           npm run presetup
           npm ci
@@ -40,10 +50,10 @@ jobs:
           NODE_ENV: ${{ secrets.NODE_ENV }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.x"
-      - uses: r-lib/actions/setup-pandoc@v1
+      - uses: r-lib/actions/setup-pandoc@v2
         with:
           pandoc-version: "2.14.1"
       - name: Install wkhtmltopdf
@@ -72,6 +82,7 @@ jobs:
 
       - name: Fix mtimes
         run: npm run fix-mtimes
+
       - name: Gatsby build
         run: npm run build
         env:
@@ -86,7 +97,7 @@ jobs:
 
       - name: Deploy to Netlify
         id: netlify-deploy
-        uses: nwtgck/actions-netlify@v1.2.4
+        uses: nwtgck/actions-netlify@v2
         with:
           publish-dir: "./public"
           production-branch: "main"
