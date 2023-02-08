@@ -5,10 +5,9 @@ title: Enabling TDE
 You enable transparent data encryption when you initialize a database cluster using [initdb](https://www.postgresql.org/docs/15/app-initdb.html). 
 
 
-
-
-
 ## Using initdb options
+
+Use the following options to the initdb command, or their fallback environment variables, to enable encryption: 
 
 |          Option                |                                                                                                                                                                                                                                                                  Description                                                                                                                                                                                                                                                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,27 +28,32 @@ PGDATAKEYUNWRAPCMD='openssl enc -d -aes128-wrap -pbkdf2 -in "%p"'
 export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
 ```
 
+## Setting the `data_encryption_key_unwrap_command` parameter in postgresql.conf 
+
+When you enable TDE for a cluster, the initdb command initializes the `data_encryption_key_unwrap_command` parameter in the postgresql.conf configuration file. The string specified in the data_encryption_key_unwrap_command unwraps (decrypts) the data encryption key. The command should contain a placeholder `%p`, which will be replaced by the name of the file containing the key to unwrap. The command must print the unwrapped (decrypted) key to its standard output. If this is not specified, the environment variable `PGDATAKEYUNWRAPCMD` is used. An empty string means to not apply any key unwrapping command. Specifying this option or the environment variable fallback is required if data encryption is used. See [Key management](/tde/latest/#key-management) for more information. This parameter can only be set at server start. 
+
+This parameter is normally initialized by `initdb` and doesn't need to be changed unless the key wrap method is changed.
+
+For more information on the configuration files, see [PostgreSQL File Locations documentation](https://www.postgresql.org/docs/15/runtime-config-file-locations.html).
+
 ## Example
 
-This example uses EDB Postgres Advanced Server 15. It uses openssl to define the passkey wrap and unwrap the generated data encryption key.
+This example uses EDB Postgres Advanced Server 15. It uses openssl to define the passkey to wrap and unwrap the generated data encryption key.
 
 1. Set the data encrytpion key (wrap) and decryption (unwrap) environment variables. 
-
-```shell
-export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pass pass:ok -out %p'
-export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pass pass:ok -in %p'
-export LC_ALL="en_US.UTF-8"
-export LC_CTYPE="en_US.UTF-8"
-```
-
-1. Initialize the cluster using initdb:
-(Nidhi, is -D the short name for the --data-encryption option? If so, we need to describe that somewhere or use the long name)
-```shell
-/usr/edb/as15/bin//initdb -D /var/lib/edb/as15/data -y
-```
-
+   ```shell
+   export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pass pass:ok -out %p'
+   export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pass pass:ok -in %p'
+   export LC_ALL="en_US.UTF-8"
+   export LC_CTYPE="en_US.UTF-8"
+   ```
+1. Initialize the cluster using initdb with encyrption enabled:
+   ```shell
+   /usr/edb/as15/bin//initdb --data-encryption -D /var/lib/edb/as15/data -y
+   ```
 1. Start the cluster:
+   ```shell
+   /usr/edb/as15/bin//pg_ctl -D /var/lib/edb/as15/data start
+   ```
+   This sets the `data_encryption_key_unwrap_command` parameter in the postgresql.conf file.
 
-```shell
-/usr/edb/as15/bin//pg_ctl -D /var/lib/edb/as15/data start
-```
