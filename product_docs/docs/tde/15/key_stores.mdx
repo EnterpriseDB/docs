@@ -13,9 +13,11 @@ To secure the data key properly, it should be “wrapped” by encrypting it wit
 
 - The wrapping key is stored elsewhere, for example in a key management system (key store). This second key is also called the key-wrapping key or master key.
 
+If no key wrapping is wanted (for testing), then the wrap and unwrap commands must be set to an empty string. This specifies to use the key from the file without further processing. This is distinct from not setting a wrap or unwrap command at all. Having no wrap or unwrap command set when transparent data encryption is used will result in a fatal error when running an affected utility program.
+
 Postgres leaves the configuration of this up to the user, which allows tailoring the setup to local requirements and integrating with existing key management software or similar. To configure the data key protection, a pair of external commands needs to be specified that take care of the wrapping (encrypting) and unwrapping (decryption) respectively.
 
-## Using a passphrase to wrap and unwrap the key
+## Using a passphrase 
 
 You can protect the data key by a passphrase using the openssl command line utility. The following is an example invocation that sets this up:
 
@@ -40,7 +42,8 @@ PGDATAKEYUNWRAPCMD='openssl enc -d -aes128-wrap -pbkdf2 -in "%p"'
 export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
 ```
 
-## Using a key store to wrap and unwrap the key
+## Using a key store 
+External key management systems can be used by the same mechanisms. 
 
 The tested and supported key stores are:
 
@@ -49,31 +52,41 @@ The tested and supported key stores are:
 - Microsoft Azure Key Vault
 - Thales CipherTrust Manager
 
-External key management systems can be used by the same mechanisms. Here are some examples for some well-known services (leaving out details such as how to set up credentials):
 
-### Wrap and unwrap the key for AWS Key Management Service:
+
+### AWS Key Management Service example
+
+To create a key with AWS Key Management Service: 
 
 ```shell
 aws kms create-key
 aws kms create-alias --alias-name alias/pg-tde-master-1 --target-key-id "..."
 ```
 
+To specify that we should use the `aws kms` command with the `alias/pg-tde-master-1` key we created, to wrap and unwrap the data encryption key:
+
 ```shell
 PGDATAKEYWRAPCMD='aws kms encrypt --key-id alias/pg-tde-master-1 --plaintext fileb:///dev/stdin --output text --query CiphertextBlob | base64 -d > "%p"'
 PGDATAKEYUNWRAPCMD='aws kms decrypt --key-id alias/pg-tde-master-1 --ciphertext-blob fileb://"%p" --output text --query Plaintext | base64 -d'
 ```
+!!! Note
+    Shell commands with pipes, as in the example above, are problematic because the exit status of the pipe is that of the last command, and so a failure of the first (more interesting) command would not be reported properly. Postgres will handle this somewhat by recognizing whether the wrap or unwrap command wrote nothing. It is better to make this more robust, however, for example by using the pipefail option available in some shells or the mispipe command available on some operating systems. More complicated commands should probably be put into an external shell script or other program instead of being defined inline.
 
-or using https://github.com/VirtusLab/crypt:
+Alternatively, you can use the [crypt utility] https://github.com/VirtusLab/crypt to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='crypt encrypt aws --out %p --region us-east-1 --kms alias/pg-tde-master-1'
 PGDATAKEYUNWRAPCMD='crypt decrypt aws --in %p --region us-east-1'
 ```
-### Wrap and unwrap the key for Azure Key Vault:
+### Azure Key Vault example
+
+To create a key with Azure Key Vault: 
 
 ```shell
 az keyvault key create --vault-name pg-tde --name pg-tde-master-1
 ```
+
+To specify that we should use the `az keyvault` command with the `pg-tde-master-1` key we created, to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='crypt encrypt azure --vaultURL https://pg-tde.vault.azure.net --name pg-tde-master-1 --version fa2bf368449e432085318c5bf666754c --out %p'
@@ -82,25 +95,26 @@ PGDATAKEYUNWRAPCMD='crypt decrypt azure --vaultURL https://pg-tde.vault.azure.ne
 
 This uses https://github.com/VirtusLab/crypt. The Azure CLI cannot be used directly for this, because it lacks some functionality.
 
-### Wrap and unwrap the key for Google Cloud KMS: 
+### Google Cloud KMS example
+
+To create a key with Google Cloud KMS: 
 
 ```shell
 gcloud kms keys create pg-tde-master-1 --location=global --keyring=pg-tde --purpose=encryption
 ```
+
+To specify that we should use the `az keyvault` command with the `pg-tde-master-1` key we created, to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='gcloud kms encrypt --plaintext-file=- --ciphertext-file=%p --location=global --keyring=pg-tde --key=pg-tde-master-1'
 PGDATAKEYUNWRAPCMD='gcloud kms decrypt --plaintext-file=- --ciphertext-file=%p --location=global --keyring=pg-tde --key=pg-tde-master-1'
 ```
 
-or using https://github.com/VirtusLab/crypt:
+Alternatively, you can use the [crypt utility] https://github.com/VirtusLab/crypt to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='crypt encrypt gcp --out=%p --location=global --keyring=pg-tde --key=pg-tde-master-1 --project your-project-123456'
 PGDATAKEYUNWRAPCMD='crypt decrypt gcp --in=%p --location=global --keyring=pg-tde --key=pg-tde-master-1 --project your-project-123456'
 ```
 
-!!! Note
-    Shell commands with pipes, as in some of these examples, are problematic because the exit status of the pipe is that of the last command, and so a failure of the first (more interesting) command would not be reported properly. Postgres will handle this somewhat by recognizing whether the wrap or unwrap command wrote nothing. It is better to make this more robust, however, for example by using the pipefail option available in some shells or the mispipe command available on some operating systems. More complicated commands should probably be put into an external shell script or other program instead of being defined inline.
 
-If no key wrapping is wanted (for testing), then the wrap and unwrap commands must be set to an empty string. This specifies to use the key from the file without further processing. This is distinct from not setting a wrap or unwrap command at all. Having no wrap or unwrap command set when transparent data encryption is used will result in a fatal error when running an affected utility program.
