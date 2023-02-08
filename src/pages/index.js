@@ -283,7 +283,7 @@ const Page = () => (
 
           <IndexCard
             iconName={iconNames.CODE_WRITING}
-            headingText="Integration"
+            headingText="Connections"
           >
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Connectors
