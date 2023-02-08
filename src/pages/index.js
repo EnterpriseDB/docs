@@ -145,34 +145,33 @@ const Page = () => (
             <IndexCardLink to="/pge/latest">
               EDB Postgres Extended
             </IndexCardLink>
-          </IndexCard>
+            
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Database Features
+            </span>
 
-          <IndexCard
-            iconName={iconNames.BIG_DATA}
-            headingText="Database Server Features"
-          >
             <IndexCardLink to="/epas/latest/languagepack">
-              Procedural languages - LanguagePack
+              Procedural languages
             </IndexCardLink>
 
             <IndexCardLink to="/postgis/latest">
-              Geographical data - PostGIS
+              Geographical data
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-              Storage options - EDB Advanced Storage Pack
+              Storage optimization
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/pg_tuner">
-              Database tuning recommendations - EDB Postgres Tuner
+              Database tuning
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/ldap_sync">
-              Synchronize role directory - EDB LDAP Sync
+              EDB LDAP Sync
             </IndexCardLink>
 
             <IndexCardLink to="/tde/latest">
-              Transparent Data Encryption
+              Security
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
@@ -259,12 +258,6 @@ const Page = () => (
               EDB Postgres Distributed
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-          </IndexCard>
-          <IndexCard
-            iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="Replication"
-          >
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
@@ -272,7 +265,6 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pglogical2/">
               pglogical 2
             </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -285,10 +277,8 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
-
-            <IndexCardLink to="/edb_plus/latest">
-              Oracle-compatible shell - EDB*Plus
-            </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -319,6 +309,7 @@ const Page = () => (
             <IndexCardLink to="/migration_toolkit/latest">
               Migration Toolkit
             </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -329,8 +320,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-              Cohesity DataProtect for PostgreSQL
-            </IndexCardLink>
+            Cohesity DataProtect for PostgreSQL
+              </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -364,11 +355,11 @@ const Page = () => (
             Chemaxon JChem PostgreSQL Cartridge
               </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-              Esri ArcGIS Pro and Esri ArcGIS Enterprise
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
-            </IndexCardLink>
+            Esri ArcGIS Pro and Esri ArcGIS Enterprise
+              </IndexCardLink>
+              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+            Imperva Data Security Fabric
+              </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
