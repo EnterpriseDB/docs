@@ -145,7 +145,7 @@ const Page = () => (
             <IndexCardLink to="/pge/latest">
               EDB Postgres Extended Server
             </IndexCardLink>
-            
+
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Database Features
             </span>
@@ -167,12 +167,10 @@ const Page = () => (
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/ldap_sync">
-              EDB LDAP Sync
+              LDAP synchronization
             </IndexCardLink>
 
-            <IndexCardLink to="/tde/latest">
-              Security
-            </IndexCardLink>
+            <IndexCardLink to="/tde/latest">Security</IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Foreign Data Wrappers
@@ -320,8 +318,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-            Cohesity DataProtect for PostgreSQL
-              </IndexCardLink>
+              Cohesity DataProtect for PostgreSQL
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -352,14 +350,14 @@ const Page = () => (
               Other
             </span>
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
-            Chemaxon JChem PostgreSQL Cartridge
-              </IndexCardLink>
+              Chemaxon JChem PostgreSQL Cartridge
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-            Esri ArcGIS Pro and Esri ArcGIS Enterprise
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-            Imperva Data Security Fabric
-              </IndexCardLink>
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
