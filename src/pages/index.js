@@ -143,7 +143,7 @@ const Page = () => (
             </IndexCardLink>
 
             <IndexCardLink to="/pge/latest">
-              EDB Postgres Extended
+              EDB Postgres Extended Server
             </IndexCardLink>
             
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
