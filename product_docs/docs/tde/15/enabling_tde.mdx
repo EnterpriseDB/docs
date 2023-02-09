@@ -7,15 +7,41 @@ You enable transparent data encryption when you initialize a database cluster us
 
 ## Using initdb TDE options
 
-Use the following options to the `initdb` command, or their fallback environment variables, to enable encryption: 
+To enable encryption, use the following options with the `initdb` command or their fallback environment variables: 
 
-|          Option                |                                                                                                                                                                                                                                                                  Description                                                                                                                                                                                                                                                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -y, --data-encryption              | Initialize the new database cluster with transparent data encryption. See [Transparent Data Encryption](tde/latest/) for further information.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --copy-key-from=*file*         | Copy the data encryption key from the given location. This can be used for copying a key from an existing cluster when preparing a new cluster as a target for pg_upgrade.                                                                                                                                                                                                                                                                                                                                                                                                      |
-| --key-wrap-command=*command*   | Specifies a command to wrap (encrypt) the generated data encryption key. The command should include a placeholder `%p` that specifies the file to write the wrapped key to. The unwrapped key will be provided to the command on its standard input. If this is not specified, the environment variable `PGDATAKEYWRAPCMD` is used. An empty string means to not apply any key wrapping command. Specifying this option or the environment variable fallback is required if data encryption is used. See [Securing the data encryption key](docs/tde/latest/key_stores/) for further information. |
-| --key-unwrap-command=*command* | Specifies a command to unwrap (decrypt) the data encryption key. The command should include a placeholder `%p` that specifies the file to read the wrapped key from. The command needs to write the unwrapped key to its standard output. If this is not specified, the environment variable `PGDATAKEYUNWRAPCMD` is used. An empty string means to not apply any key unwrapping command. Specifying this option or the environment variable fallback is required if data encryption is used. See [[Securing the data encryption key](docs/tde/latest/key_stores/) for further information.        |
-| --no-key-wrap                  | Do not use key wrapping, thus storing the data encryption key in plaintext in the data directory. This is insecure and only suitable for testing purposes. If data encryption is selected and this option is not specified, then key wrap and unwrap commands must be provided or `initdb` will abort with an error. (This option is a shortcut for setting both the wrap and the unwrap command to an empty string.)                                                                                                                                                             |
+
+`-y, --data-encryption`
+
+  Initialize the new database cluster with transparent data encryption. See [Transparent Data Encryption](./index/) for more information.
+
+`--copy-key-from=<file>`
+
+  Copy the data encryption key from the given location. You can use this option to copy a key from an existing cluster when preparing a new cluster as a target for pg_upgrade.
+  
+`--key-wrap-command=<command>`
+ 
+ Specify a command to wrap (encrypt) the generated data encryption key. The command must include a placeholder `%p` that specifies the file to write the wrapped key to. The unwrapped key is provided to the command on its standard input. If you don't specify this option, the environment variable `PGDATAKEYWRAPCMD` is used. 
+ 
+ Use an empty string if you don't want to apply any key wrapping command. 
+ 
+ You must specify this option or the environment variable fallback if you're using data encryption. See [Securing the data encryption key](./key_stores/) for more information.
+
+`--key-unwrap-command=<command>`
+
+ Specify a command to unwrap (decrypt) the data encryption key. The command must include a placeholder `%p` that specifies the file to read the wrapped key from. The command needs to write the unwrapped key to its standard output. If you don't specify this option, the environment variable `PGDATAKEYUNWRAPCMD` is used. 
+ 
+ Use an empty string if you don't want to apply any key unwrapping command. 
+ 
+ You must specify this option or the environment variable fallback if you're usig data encryption. See [[Securing the data encryption key](./key_stores/) for more information.
+ 
+`--no-key-wrap`
+
+  Disable key wrapping. The data encryption key is instead stored in plaintext in the data directory.   (This option is a shortcut for setting both the wrap and the unwrap command to an empty string.)
+  
+  !!! Note
+      Using this option isn't secure. Use it only for testing purposes. 
+  
+  If you select data encryption and don't specify this option, then you must provide key wrap and unwrap commands. Otherwise, `initdb` terminates with an error. 
 
 ## Using environment variables
 
@@ -29,11 +55,23 @@ PGDATAKEYUNWRAPCMD='openssl enc -d -aes128-wrap -pbkdf2 -in "%p"'
 export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
 ```
 
-## Setting the `data_encryption_key_unwrap_command` parameter in postgresql.conf 
+## Setting the `data_encryption_key_unwrap_command` parameter in `postgresql.conf` 
 
-When you enable TDE for a cluster, the `initdb` command initializes the `data_encryption_key_unwrap_command` parameter in the postgresql.conf configuration file. The string specified in the `data_encryption_key_unwrap_command` unwraps (decrypts) the data encryption key. The command should contain a placeholder `%p`, which will be replaced by the name of the file containing the key to unwrap. The command must print the unwrapped (decrypted) key to its standard output. If this is not specified, the environment variable `PGDATAKEYUNWRAPCMD` is used. An empty string means to not apply any key unwrapping command. Specifying this option or the environment variable fallback is required if data encryption is used. See [Securing the data encryption key](docs/tde/latest/key_stores/) for more information. This parameter can only be set at server start. 
+When you enable TDE for a cluster, the `initdb` command initializes the `data_encryption_key_unwrap_command` parameter in the `postgresql.conf` configuration file. The string specified in `data_encryption_key_unwrap_command` unwraps (decrypts) the data encryption key. 
 
-This parameter is normally initialized by `initdb` and doesn't need to be changed unless the key wrap method is changed.
+The command must contain a placeholder `%p`, which is replaced with the name of the file containing the key to unwrap. The command must print the unwrapped (decrypted) key to its standard output. 
+
+If you don't specify this parameter, the environment variable `PGDATAKEYUNWRAPCMD` is used. 
+
+Use an empty string if you don't want to apply any key unwrapping command.
+
+<!--Should this be worded differently? Is this the environment variable fallback? I changed the word "option" to parameter. -->
+
+You must specify this parameter or the environment variable fallback if you're using data encryption. See [Securing the data encryption key](./key_stores/) for more information. 
+
+You can set this parameter only at server start. 
+
+This parameter is normally initialized by `initdb`. Change it only if you change the key wrap method.
 
 For more information on the configuration files, see [PostgreSQL File Locations documentation](https://www.postgresql.org/docs/15/runtime-config-file-locations.html).
 
@@ -41,23 +79,29 @@ For more information on the configuration files, see [PostgreSQL File Locations 
 
 This example uses EDB Postgres Advanced Server 15. It uses openssl to define the passkey to wrap and unwrap the generated data encryption key.
 
-1. Set the data encrytpion key (wrap) and decryption (unwrap) environment variables. 
+1. Set the data encryption key (wrap) and decryption (unwrap) environment variables:
+
    ```shell
    export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pass pass:ok -out %p'
    export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pass pass:ok -in %p'
    export LC_ALL="en_US.UTF-8"
    export LC_CTYPE="en_US.UTF-8"
    ```
-1. Initialize the cluster using `initdb` with encyrption enabled:
+
+1. Initialize the cluster using `initdb` with encyrption enabled. This command sets the `data_encryption_key_unwrap_command` parameter in the postgresql.conf file.
+
    ```shell
    /usr/edb/as15/bin/initdb --data-encryption -D /var/lib/edb/as15/data 
    ```
-   This sets the `data_encryption_key_unwrap_command` parameter in the postgresql.conf file.
+   
 1. Start the cluster:
+
    ```shell
    /usr/edb/as15/bin/pg_ctl -D /var/lib/edb/as15/data start
    ```
+
 1. Run grep on the config file to see the setting.
+
    ```
    grep data_encryption_key_unwrap_command /var/lib/edb/as15/data/postgresql.conf
    ___output___
