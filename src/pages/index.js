@@ -134,6 +134,10 @@ const Page = () => (
 
         <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
+            <IndexCardLink to="/pge/latest">
+              EDB Postgres Extended Server
+            </IndexCardLink>
+
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
             </IndexCardLink>
