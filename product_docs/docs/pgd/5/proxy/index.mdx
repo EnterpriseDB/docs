@@ -3,7 +3,7 @@ title: "EDB Postgres Distributed Proxy"
 navTitle: "PGD Proxy"
 ---
 
-PGD Proxy is a daemon that acts as an abstraction layer between the client application and Postgres. It interfaces with the BDR consensus mechanism to obtain the identity of the current write leader node and redirects traffic to that node.
+EDB Postgres Distributed Proxy is a daemon that acts as an abstraction layer between the client application and Postgres. It interfaces with the BDR consensus mechanism to obtain the identity of the current write leader node and redirects traffic to that node.
 
 There is always at least one global group and one data group in the PGD cluster. BDR elects the write leader for each data group which has the `enable_proxy_routing` option set to true. Proxy can be attached to a global group or data group. There could be multiple proxies attached to each group.
 
@@ -14,15 +14,15 @@ PGD Proxy is a TCP layer 4 proxy. It can't encode/decode the PostgreSQL Wire Pro
 
 Upon starting, PGD Proxy connects to one of the endpoints given in the local config file and fetches DB connection information for all nodes, proxy options like listen address, listen port, routing details like current write leader, etc.
 
-Proxy internally maintains watchers and PubSub mechanism to get leader change notifications on Postgres notify/listen channels.
+The write leader election and routing is managed by BDR itself. Proxy internally maintains watchers and PubSub mechanism to get leader change notifications on Postgres notify/listen channels.
 
-All application client traffic then passes through the Proxy into the current write leader. If the write leader is not available then, Proxy disconnects all connection traffic until a new write leader is available. This also applies to circumstances when `pgd switchover` is used to invoke a planned transition to a new write leader. The disconnect is immediate.
+All application client traffic then passes through the Proxy into the current write leader. If the write leader is not available then, Proxy disconnects all connection traffic until a new write leader is available. This also applies to circumstances when `pgd switchover` command is used to invoke a planned transition to a new write leader. The disconnect is immediate.
 
 ## Installing PGD Proxy
 
 ### Installing through TPAexec
 
-If PGD cluster is being created through TPAexec then it installs and configures PGD Proxy automatically. If you you wish to install PGD Proxy on any other node in PGD cluster then, you simply need to attach the `pgd-proxy` role to that instance in TPAexec's configuration file as shown below before deploying. See [TPAexec](/pgd/latest/deployments/tpaexec) for more information.
+If PGD cluster is being deployed through TPAexec then it installs and configures PGD Proxy automatically. If you you wish to install PGD Proxy on any other node in PGD cluster then, you simply need to attach the `pgd-proxy` role to that instance in TPAexec's configuration file as shown below before deploying. See [TPAexec](/pgd/latest/deployments/tpaexec) for more information.
 ```yaml
 - Name: proxy-a1
   location: a
@@ -31,7 +31,7 @@ If PGD cluster is being created through TPAexec then it installs and configures 
   - pgd-proxy
   volumes:
   - device_name: /dev/sdf
-	volume_type: none
+    volume_type: none
 ```
 
 
@@ -44,13 +44,12 @@ You can manually install the PGD Proxy on any Linux machine using `.deb` and `.r
 sudo apt-get install edb-pgd5-proxy
 ```
 
-Note: You can install PGD Proxy on any BDR instance in the cluster though it is not recommended.
+*Note:* You can install PGD Proxy on any BDR instance in the cluster, however it is not recommended.
 
 
-## Configuration file
+## Configuration
 
-Proxy connects to BDR database for its internal operations, like getting proxy configs, getting write leader details, etc. Therefore, it needs a list of endpoints/dsn to connect to BDR nodes. Proxy always tries to connect to the first endpoint in the list, if it fails it tries the next endpoint and so on. The
-following is a functional example of `pgd-proxy-config.yml` file:
+Proxy connects to BDR database for its internal operations, like getting proxy configs, getting write leader details, etc. Therefore, it needs a list of endpoints/dsn to connect to BDR nodes. Proxy expects these configurations in a local config file `pgd-proxy-config.yml`. Following is a functional example of `pgd-proxy-config.yml` file:
 
 ```yaml
 cluster:
@@ -63,7 +62,7 @@ cluster:
     name: "proxy-a1"
 ```
 
-The `cluster.endpoints` and `cluster.proxy.name` are mandatory fields in the config file.
+The `cluster.endpoints` and `cluster.proxy.name` are mandatory fields in the config file. Proxy always tries to connect to the first endpoint in the list, if it fails it tries the next endpoint and so on.
 
 PGD Proxy searches for `pgd-proxy-config.yml` in the following locations (precedence order - higher to lower):
 
@@ -73,37 +72,31 @@ PGD Proxy searches for `pgd-proxy-config.yml` in the following locations (preced
 
 The `pgd-proxy-config.yml`, is located in the `/etc/edb/pgd-proxy` directory, by default. If you rename the file or move it to another location, specify the new name and location using the `-f` flag in the `pgd-proxy.service` file.
 
-The password for the database user which is given in the endpoint should be configured properly on the proxy machine using ~/.pgpass file. If it uses certificate based authentication or any other auth mechanism then required configuration should be done accordingly including any other changes required in pg_hba.conf. If the PGD Cluster is created by TPAexec, the default configuration file is generated automatically, but with a manual installation to a EDB Postgres Distributed cluster you need to create the config file and setup authentication manually.
+### Proxy user authentication
 
+The password for the database user which is given in the endpoint should be configured properly on the proxy machine using [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) file. If the PGD Cluster is created by TPAexec, the default configuration file and the password file file is generated automatically, but with a manual installation to a EDB Postgres Distributed cluster you need to create the config file and setup authentication manually.
 
-### Sample with sslpassword support (if certificate based authentication is used).
+If you wish to use certificate based authentication then required configuration should be done accordingly including any other changes required in pg_hba.conf. For proxy configuration file, you need to specify the `ssl` related `dsn` parameters for the endpoints as shown below.
 
 ```yaml
-log-level: debug
 cluster:
   name: my_pgd_cluster
   endpoints:
   - "host=bdr-a1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_encrypted_key_psw' "
-  - "host=bdr-b1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_encrypted_key_psw' "
-  - "host=bdr-c1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_encrypted_key_psw' "
   proxy:
-	name: proxy-a1
+    name: proxy-a1
 ```
 
-### Sample with obfuscated sslpassword support (if certificate based authentication is used and sslpassword is not in plain text).
-
+If client certificate authentication is used and password is obfuscated then an additional config needs to be set to deobfuscate the password as shown below.
 ```yaml
-log-level: debug
 cluster:
   name: my_pgd_cluster
   endpoints:
-  - "host=bdr-a1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_obfuscated_psw' "
-  - "host=bdr-b1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_obfuscated_psw' "
-  - "host=bdr-c1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_obfuscated_psw' "
+  - "host=bdr-a1 port=5432 dbname=bdrdb user=pgdproxy sslcert='bdr_client.crt' sslkey='bdr_client.key' sslmode='verify-full' sslrootcert='root.crt' sslpassword='my_encrypted_key_psw' "
   ssl:
-	ssl_password_command: echo my_deobfuscated_psw
+    ssl_password_command: echo my_deobfuscated_psw
   proxy:
-	name: proxy-a1
+    name: proxy-a1
 ```
 
 
@@ -111,7 +104,7 @@ cluster:
 
 PGD Proxy is preferably run as a systemd service. Following is the sample service file for EDB Postgres Extended Server and Postgres Community.
 
-Note: For EDB Postgres Advanced Server please change User and Group from `postgres` to `enterprisedb`.
+*Note:* For EDB Postgres Advanced Server please change User and Group from `postgres` to `enterprisedb`.
 
 ```
 [Unit]
@@ -136,4 +129,7 @@ WantedBy=multi-user.target
 ## Managing PGD Proxy
 
 PGD CLI provides few commands viz., `create-proxy`, `show-proxy`, `set-proxy-options` and `delete-proxy` to manage Proxies in PGD cluster. See [PGD CLI](/pgd/latest/cli/command_ref) for more information.
+
+See [Connection management](/pgd/latest/routing) for more information on BDR side of configuration and management of PGD Proxy.
+
 
