@@ -81,6 +81,7 @@ const sourceToPluginConfig = {
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
+  tpa: { name: "tpa", path: "product_docs/docs/tpa" },
 };
 
 const externalSourcePlugins = () => {
