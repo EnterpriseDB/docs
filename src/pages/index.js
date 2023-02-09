@@ -210,6 +210,12 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery"
