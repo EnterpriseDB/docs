@@ -134,32 +134,50 @@ const Page = () => (
 
         <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
-            <IndexCardLink to="/epas/latest">
-              EDB Postgres Advanced Server
-            </IndexCardLink>
-            <IndexCardLink to="/postgis/latest" className="nested-link">
-              PostGIS
-            </IndexCardLink>
-
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
 
+            <IndexCardLink to="/epas/latest">
+              EDB Postgres Advanced Server
+            </IndexCardLink>
+
+            <IndexCardLink to="/pge/latest">
+              EDB Postgres Extended Server
+            </IndexCardLink>
+
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Extensions and tools
+              Database Features
+            </span>
+
+            <IndexCardLink to="/epas/latest/languagepack">
+              Procedural languages
+            </IndexCardLink>
+
+            <IndexCardLink to="/postgis/latest">
+              Geographical data
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              Storage optimization
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              Database tuning
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              LDAP synchronization
+            </IndexCardLink>
+
+            <IndexCardLink to="/tde/latest">Security</IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Compatibility
             </span>
 
             <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-              EDB Advanced Storage Pack
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/ldap_sync">
-              EDB LDAP Sync
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/pg_tuner">
-              EDB Postgres Tuner
             </IndexCardLink>
           </IndexCard>
 
@@ -175,7 +193,7 @@ const Page = () => (
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
             >
-              Oracle SQL Compatiblity
+              Oracle SQL Compatibility
               <span className="new-thing" title="Interactive Demo">
                 Demo
               </span>
@@ -299,8 +317,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-            Cohesity DataProtect for PostgreSQL
-              </IndexCardLink>
+              Cohesity DataProtect for PostgreSQL
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -331,14 +349,14 @@ const Page = () => (
               Other
             </span>
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
-            Chemaxon JChem PostgreSQL Cartridge
-              </IndexCardLink>
+              Chemaxon JChem PostgreSQL Cartridge
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-            Esri ArcGIS Pro and Esri ArcGIS Enterprise
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-            Imperva Data Security Fabric
-              </IndexCardLink>
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
