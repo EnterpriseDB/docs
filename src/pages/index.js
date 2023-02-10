@@ -134,50 +134,50 @@ const Page = () => (
 
         <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
-            <IndexCardLink to="/supported-open-source/postgresql/">
-              PostgreSQL
-            </IndexCardLink>
-
             <IndexCardLink to="/epas/latest">
               EDB Postgres Advanced Server
+            </IndexCardLink>
+            <IndexCardLink to="/postgis/latest" className="nested-link">
+              PostGIS
             </IndexCardLink>
 
             <IndexCardLink to="/pge/latest">
               EDB Postgres Extended Server
             </IndexCardLink>
 
+            <IndexCardLink to="/supported-open-source/postgresql/">
+              PostgreSQL
+            </IndexCardLink>
+
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Database Features
+              Security
             </span>
 
-            <IndexCardLink to="/epas/latest/languagepack">
-              Procedural languages
+            <IndexCardLink to="/tde/latest">
+              Transparent Data Encryption
             </IndexCardLink>
-
-            <IndexCardLink to="/postgis/latest">
-              Geographical data
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-              Storage optimization
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/pg_tuner">
-              Database tuning
-            </IndexCardLink>
-
             <IndexCardLink to="/pg_extensions/ldap_sync">
-              LDAP synchronization
+              EDB LDAP Sync
             </IndexCardLink>
-
-            <IndexCardLink to="/tde/latest">Security</IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Compatibility
+              Extensions and Tools
             </span>
 
             <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              EDB Advanced Storage Pack
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              EDB Postgres Tuner
+            </IndexCardLink>
+
+            <IndexCardLink to="/epas/latest/language_pack">
+              Language Pack
             </IndexCardLink>
           </IndexCard>
 
