@@ -1,6 +1,6 @@
-// run: node scripts/source/tpaexec.js source_path destination_path"
+// run: node scripts/source/tpaexec.js source_path"
 // purpose:
-//  Import and convert the tpaexec docs, rendering them in /product_docs/docs/pgd/5/tpa
+//  Import and convert the tpa docs to EDB Docs -style MDX
 //
 const path = require("path");
 const fs = require("fs/promises");
@@ -17,12 +17,11 @@ const visitAncestors = require("unist-util-visit-parents");
 const mdast2string = require("mdast-util-to-string");
 const { exec } = require("child_process");
 const isAbsoluteUrl = require("is-absolute-url");
-const { stringify } = require("querystring");
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
 const basePath = path.resolve(args[0], "");
-const destination = path.resolve(args[1]);
+const referenceMarkdownFiles = [];
 
 (async () => {
   const processor = unified()
@@ -44,15 +43,43 @@ const destination = path.resolve(args[1]);
       // subsection
       //
       if (dest instanceof Array) {
-        // add section break
-        fileToMetadata[indexFilename] = {
-          navigation: [],
-          ...fileToMetadata[indexFilename],
-        };
-        fileToMetadata[indexFilename].navigation.push("#" + navTitle);
+        let subDestPath = destPath;
+        let subIndexFilename = indexFilename;
+        // special handling: if navTitle ends with a slash, put contents in subdirectory
+        if (navTitle.endsWith("/")) {
+          fileToMetadata[indexFilename] = {
+            navigation: [],
+            ...fileToMetadata[indexFilename],
+          };
+          fileToMetadata[indexFilename].navigation.push(
+            navTitle.replace(/\/$/, ""),
+          );
+
+          subIndexFilename = path.relative(basePath, "/dev/null");
+          fileToMetadata[subIndexFilename] = {
+            title: navTitle.replace(/\/$/, ""),
+          };
+          subDestPath = path.resolve(destPath, navTitle);
+        }
+        // default: add section break
+        else {
+          fileToMetadata[indexFilename] = {
+            navigation: [],
+            ...fileToMetadata[indexFilename],
+          };
+          fileToMetadata[indexFilename].navigation.push("#" + navTitle);
+        }
 
         for (const subEntry of dest) {
-          await processEntry(subEntry, destPath, indexFilename);
+          await processEntry(subEntry, subDestPath, subIndexFilename);
+        }
+
+        // write dummy index
+        if (navTitle.endsWith("/")) {
+          await process(
+            subIndexFilename,
+            path.resolve(subDestPath, "index.mdx"),
+          );
         }
         continue;
       }
@@ -96,15 +123,33 @@ const destination = path.resolve(args[1]);
   );
 
   const markdownToProcess = mdIndex.nav;
-  const destPath = path.resolve(
-    destination,
-    "product_docs",
-    "docs",
-    "pgd",
-    "5",
-    "tpa",
-  );
   const indexFilename = "index.md";
+
+  // look for markdown files in the root but not in the index, add them under "reference"
+  //
+  function findDirEntry(filename, entries) {
+    for (const dirEntry of entries) {
+      for (const [navTitle, dest] of Object.entries(dirEntry)) {
+        let result = null;
+        if (dest instanceof Array) {
+          result = findDirEntry(filename, dest);
+        }
+        if (dest === filename) {
+          result = {};
+          result[navTitle] = dest;
+        }
+        if (result) return result;
+      }
+    }
+  }
+  const { globby } = await import("globby");
+  const allMarkdown = await globby(path.join(basePath, "*.md"));
+  for (const mdxPath of allMarkdown) {
+    if (findDirEntry(path.basename(mdxPath), markdownToProcess)) continue;
+    referenceMarkdownFiles.push(path.basename(mdxPath));
+  }
+  if (referenceMarkdownFiles.length)
+    markdownToProcess.push({ "reference/": referenceMarkdownFiles });
 
   for (const dirEntry of markdownToProcess) {
     if (!dirEntry) continue;
@@ -117,12 +162,6 @@ const destination = path.resolve(args[1]);
   await process(
     path.resolve(basePath, indexFilename),
     path.resolve(basePath, "index.mdx"),
-  );
-
-  // copy select files, removing those that have been deleted
-  await fs.mkdir(destPath, { recursive: true });
-  await exec(
-    `rsync --archive --recursive --delete --include="*/" --include="*.mdx" --include="*.png" --include="*.jpg" --include="*.jpeg" --include="*.svg" --exclude="*" ${basePath}/ ${destPath}/`,
   );
 })();
 
@@ -142,6 +181,7 @@ function transformer() {
   return (tree, file) => {
     const filename = path.relative(basePath, file.path);
     const metadata = fileToMetadata[filename];
+    if (!metadata) console.warn(`No metadata for ${filename}`);
     let title = "";
     for (let i = 0; i < tree.children.length; ++i) {
       const node = tree.children[i];
@@ -179,9 +219,27 @@ function transformer() {
     // link rewriter:
     // - strip .md
     // - collapse subdirectories
+    // - add references subdirectory where necessary
+    const isInReferences = referenceMarkdownFiles.find(
+      (file) => file === filename,
+    );
     visit(tree, "link", (node) => {
       if (isAbsoluteUrl(node.url) || node.url[0] === "/") return;
       node.url = node.url.replace(/\//g, "_").replace(/\.md(?=$|\?|#)/, "");
+      const parsed = new URL(node.url, "base:/reference/");
+      if (parsed.protocol !== "base:" || parsed.pathname === "/reference/")
+        return;
+      if (
+        referenceMarkdownFiles.find(
+          (file) =>
+            path.basename(file, ".md") ===
+            parsed.pathname.replace(/^\/reference\//, ""),
+        )
+      ) {
+        if (!isInReferences) node.url = parsed.href.replace(/^base:\//, "");
+      } else if (isInReferences) {
+        node.url = parsed.href.replace(/^base:\/reference\//, "../");
+      }
     });
 
     // MDExtra anchors:
@@ -221,8 +279,8 @@ function transformer() {
 
     if (!metadata.title) metadata.title = title;
     if (
-      metadata.title.trim() === metadata.navTitle.trim() ||
-      !metadata.navTitle.trim().length
+      metadata.title?.trim() === metadata.navTitle?.trim() ||
+      !metadata.navTitle?.trim()?.length
     )
       delete metadata.navTitle;
     metadata.originalFilePath = filename;
