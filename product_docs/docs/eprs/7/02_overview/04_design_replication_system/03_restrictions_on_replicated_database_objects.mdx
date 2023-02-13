@@ -132,3 +132,45 @@ You can include Postgres tables containing the built-in range types in the publi
 -   If a publication table of the primary definition node in a multi-master replication system contains any built-in range types, then you can add a database as a primary node only if the database server of this intended primary node is Postgres version 9.2 or later.
 
 Custom range types constructed with the `CREATE TYPE AS RANGE` command aren't supported in Replication Server.
+
+## Limitations during re-snapshot for views
+
+As part of the re-snapshot process, Replication Server drops constraints from the tables included in the snapshot using the `CASCADE` option.  As a result, any objects, such as views in certain use cases, are also dropped.  The following example illustrates a situation with a view that contains a `GROUP BY` clause that depends on the constraints in the underlying table where if the `CASCADE` option were not used, the constraints could not be dropped for the snapshot operation.
+
+```sql
+CREATE TABLE t_place_type
+(
+  id serial NOT NULL,
+  c_name character varying(100),
+  CONSTRAINT pk_t_place_type PRIMARY KEY (id)
+);
+
+CREATE TABLE t_place
+(
+  id serial NOT NULL,
+  c_name character varying(50),
+  id_place_type integer,
+  CONSTRAINT pk_t_place PRIMARY KEY (id),
+  CONSTRAINT fk_t_place_t_place_type FOREIGN KEY (id_place_type)
+      REFERENCES t_place_type (id) MATCH SIMPLE
+      ON UPDATE NO ACTION ON DELETE NO ACTION
+);
+
+CREATE OR REPLACE VIEW v_place AS 
+ SELECT p.id,
+    p.c_name,
+    pt.c_name AS c_place_type
+   FROM t_place p
+     LEFT JOIN t_place_type pt ON pt.id = p.id_place_type
+  GROUP BY p.id, pt.id, p.c_name;
+
+ALTER TABLE t_place DROP CONSTRAINT fk_t_place_t_place_type;
+ALTER TABLE t_place DROP CONSTRAINT pk_t_place;
+ALTER TABLE t_place_type DROP CONSTRAINT pk_t_place_type;
+
+ERROR:  cannot drop constraint pk_t_place_type on table t_place_type because other objects depend on it
+DETAIL:  view v_place depends on constraint pk_t_place_type on table t_place_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+```
+
+Since Replication Server drops the constraints using the `CASCADE` option, the above error would not occur; however, the result of using this option means that the view will also be dropped.
