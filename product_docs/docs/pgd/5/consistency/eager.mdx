@@ -1,0 +1,89 @@
+---
+title: Eager conflict resolution
+---
+
+Eager conflict resolution (also known as Eager Replication) prevents conflicts
+by aborting transactions that conflict with each other with serializable error
+during the COMMIT decision process.
+
+It is configured using [Commit Scopes](/pgd/latest/durability/commit-scopes)
+as one of the conflict resolution options for
+[Group Commit](/pgd/latest/durability/group-commit).
+
+## Usage
+
+To enable Eager conflict resolution, the client needs to switch to
+a Commit Scope which uses it at session level or for individual transactions
+as shown here:
+
+```sql
+BEGIN;
+
+SET LOCAL bdr.commit_scope = 'eager_scope';
+
+... other commands possible...
+```
+
+The client can continue to issue a `COMMIT` at the end of the
+transaction and let BDR manage the two phases:
+
+```sql
+COMMIT;
+```
+
+In this case the `eager_scope` commit scope would be defined something like this:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'eager_scope',
+    origin_node_group := 'top_group',
+    rule := 'ALL (top_group) GROUP COMMIT (conflict_resolution = eager, commit_decision = raft) ABORT ON (timeout = 60s)'
+);
+```
+
+!!! Upgrade note
+    The old `global` commit scope does not exist anymore and the above command
+    creates scope that is same as the old `global` scope with
+    `bdr.global_commit_timeout` set to `60s`.
+
+## Error handling
+
+Given that BDR manages the transaction, the client needs to check only the
+result of the `COMMIT`. (This is advisable in any case, including single-node
+Postgres.)
+
+In case of an origin node failure, the remaining nodes eventually
+(after at least `ABORT ON timeout`) decide to roll back the
+globally prepared transaction. Raft prevents inconsistent commit versus
+rollback decisions. However, this requires a majority of connected
+nodes. Disconnected nodes keep the transactions prepared
+to eventually commit them (or roll back) as needed to reconcile with the
+majority of nodes that might have decided and made further progress.
+
+## Effects of Eager Replication in general
+
+#### Increased commit latency
+
+Adding a synchronization step means additional communication between
+the nodes, resulting in additional latency at commit time. Eager All-Node
+Replication adds roughly two network roundtrips (to the furthest
+peer node in the worst case). Logical standby nodes and nodes still
+in the process of joining or catching up aren't included but
+eventually receive changes.
+
+Before a peer node can confirm its local preparation of the
+transaction, it also needs to apply it locally. This further adds to
+the commit latency, depending on the size of the transaction.
+This is independent of the `synchronous_commit` setting.
+
+#### Increased abort rate
+
+With single-node Postgres, or even with BDR in its default asynchronous
+replication mode, errors at `COMMIT` time are rare. The additional
+synchronization step adds a source of errors, so applications need to
+be prepared to properly handle such errors (usually by applying a
+retry loop).
+
+The rate of aborts depends solely on the workload. Large transactions
+changing many rows are much more likely to conflict with other
+concurrent transactions.
