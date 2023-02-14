@@ -1,25 +1,14 @@
 ---
-title: Group Commit
+title: Commit Scopes
 ---
 
-The goal of Group Commit is to protect against data loss
-in case of single node failures or temporary outages. You achieve this
-by requiring more than one BDR node to successfully receive and
-confirm a transaction at COMMIT time.
+Commit Scopes give applications granular control about durability and
+consistency of EDB Postgres Distributed.
 
-## Requirements
-
-During normal operation, Group Commit is completely transparent to the
-application.  Upon failover, the reconciliation phase needs to be
-explicitly triggered or consolidated by either the application or a
-proxy in between. HARP provides native support for Group Commit and
-triggers the reconciliation phase, making this equally transparent
-to the client.
-
-On the origin node, a transaction committed with Group Commit uses
-two-phase commit underneath. Therefore, configure `max_prepared_transactions`
-high enough to handle all such transactions
-originating per node.
+A Commit Scope is a named rule that describes behavior of COMMIT replication.
+The actual behavior depends on whether a Commit Scope uses
+[Group Commit](group-commit), [Commit At Most Once](camo),
+[Lag Control](lag-control) or combination of these.
 
 ## Configuration
 
@@ -63,8 +52,9 @@ To make this transparent for the application, BDR allows a commit
 scope to define different rules depending on where the transaction
 originates from.
 
-For example, consider a EDB Postgres Distributed cluster with nodes spread across two data
-centers: a left and a right one. Assume the top-level BDR node group
+For example, consider a EDB Postgres Distributed cluster with nodes
+spread across two data centers: a left and a right one.
+Assume the top-level BDR node group
 is called `top_group`. You can use the following commands to set up
 subgroups and create a commit scope requiring all nodes in the local
 data center to confirm the transaction but only one node from the
@@ -97,12 +87,35 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
+Now using the `example_scope` on any node that's part of `left_dc` will use the
+first scope, while using same scope on node that's part of `right_dc` will
+use the second scope. This is effective way of creating inverted scope without
+having to juggle scope names in application.
+
+In addition to this, each group can also have default commit scope specified using
+`bdr.alter_node_group_option` admin interface.
+
+So making the above scopes the default ones for all transactions originatin on
+nodes withing those groups would look like this.
+
+```sql
+SELECT bdr.alter_node_group_option(
+  node_group_name := 'left_dc',
+  config_key := 'default_commit_scope',
+  config_value := 'example_scope'
+);
+SELECT bdr.alter_node_group_option(
+  node_group_name := 'right_dc',
+  config_key := 'default_commit_scope',
+  config_value := 'example_scope'
+);
+```
+
 ### Confirmation levels
 
 BDR nodes can send confirmations for a transaction at different points
-in time, similar to [Commit At Most Once](camo). In increasing
-levels of protection, from the perspective of the confirming node,
-these are:
+in time. In increasing levels of protection, from the perspective of the
+confirming node, these are:
 
 * `received` &mdash; A remote BDR node confirms the transaction immediately
   after receiving it, prior to starting the local application.
@@ -118,8 +131,7 @@ In rules for commit scopes, you can append these confirmation levels
 to the node group definition in parenthesis with `ON` as follows:
 
 * `ANY 2 (right_dc) ON replicated`
-* `ALL (left_dc) ON visible` (default and may as well be
-  omitted)
+* `ALL (left_dc) ON visible` (default and may as well be omitted)
 * `ALL (left_dc) ON received AND ANY 1 (right_dc) ON durable`
 
 ## Reference
@@ -132,18 +144,62 @@ For reference, the grammar for commit scopes is composed as follows:
 commit_scope:
     confirmation [AND ...]
 
-confirmation:
-    node_def (ON [received|replicated|durable|visible])
+commit_scope_operation:
+    commit_scope_group [ ON { received|replicated|durable|visible } ] commit_scope_kind
 
-node_def:
-    ANY num (node_group [, ...])
-    | MAJORITY (node_group [, ...])
-    | ALL (node_group [, ...])
+commit_scope_group:
+{ ANY num (node_group [, ...])
+  | MAJORITY (node_group [, ...])
+  | ALL (node_group [, ...]) }
+
+commit_scope_kind:
+{ GROUP_COMMIT [ ( group_commit_parameter = value ) ] [ ABORT ON ( abort_on_parameter = value ) ]
+  | CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
+  | LAG_CONTROL [ ( lag_control_parameter = value ) ] }
 ```
+
+#### Parameters
+
+* `node_group` - name of a node group
+* `( group_commit_parameter = value )` - options for Group Commit
+    * `transaction_tracking` (boolean) - specifies whether status of
+       transaction should be tracked
+    * `conflict_resolution` (enum) - how to handle conflicts, possible values
+       are either `async` meaning conflicts should be resolved asynchronously
+       after during replication using the conflict resolution policy or `eager`
+       meaning that conflicts are resolved eagerly during COMMIT by aborting
+       one of the conflicting transactions
+    * `commit_decision` (enum) - how is COMMIT decision made, it can be either
+      `group` meaning the `commit_scope_group` specification also affects the
+      COMMIT decision, not just durability, it can also be `partner` which means
+      partner node decides whether transaction can be committed (this is only
+      allowed on 2 data node groups) or it can be `raft` which means COMMIT
+      decision is done using Raft consensus independently of `commit_scope_group`
+      consensus.
+* `ABORT ON ( abort_on_parameter = value )` - allows automatic transaction
+  abort on timeout
+    * `timeout` (interval) - timeout in milliseconds (accepts other units)
+* `DEGRADE ON ( degrade_on_parameter = value )` - allows degrading to asynchronous
+  operation on timeout
+    * `timeout` (interval) - timeout in milliseconds (accepts other units) after
+      which operation becomes asynchronous
+    * `require_write_lead` (boolean) - whether the node has to be a write lead to
+      to be able to switch to asynchronous mode
+* `( lag_control_parameter = value )` - options for Lag Control
+    * `max_lag_size` (int) - maximum allowed lag based on WAL bytes
+    * `max_lag_time` (interval) - maximum allowed lag based on wall clock sampling
+    * `max_commit_delay` (interval) - maximum delay that can be injected to
+      commit in order to try to keep within the lag limits
+
+!!! Note
+    `CAMO` commit scope kind is mostly syntax sugar for
+    `GROUP_COMMIT (transaction_tracking = true, commit_decision = partner)` with
+    additional `DEGRADE ON` clause. It's expected that `GROUP_COMMIT` will
+    eventually gain `DEGRADE ON` clause as well, making `CAMO` syntax deprecated.
 
 !!! Note
     While the grammar for `synchronous_standby_names` and Commit
-    Scopes looks very similar, it is important to note that the former
+    Scopes can loo very similar, it is important to note that the former
     does not account for the origin node, but the latter does.
     Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'`
     is equivalent to a Commit Scope of `ANY 2 (...)`.  This choice
