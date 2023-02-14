@@ -12,7 +12,11 @@ The goal of this section is to help you decide the best installation method for
 EDB Postgres for Kubernetes based on your organizations' security and access
 control policies.
 
-EDB Postgres for Kubernetes can be installed and managed via:
+The first and critical step is to design the [architecture](#architecture) of
+your PostgreSQL clusters in your OpenShift environment.
+
+Once the architecture is clear, you can proceed with the installation. EDB
+Postgres for Kubernetes can be installed and managed via:
 
 -   [OpenShift web console](#installation-via-web-console)
 -   [OpenShift command-line interface (CLI)](#installation-via-the-oc-cli) called `oc`, for full control
@@ -41,6 +45,48 @@ and ["Users and Permissions"](#users-and-permissions) below).
     a `cluster-admin` is *"a super-user that can perform any action in any
     project. When bound to a user with a local binding, they have full control over
     quota and every action on every resource in the project*".
+
+## Architecture
+
+The same concepts that have been included in the generic
+[Kubernetes/PostgreSQL architecture page](architecture.md)
+apply for OpenShift as well.
+
+Here as well, the critical factor is the number of availability
+zones or data centers for your OpenShift environment.
+
+As outlined in the
+["Disaster Recovery Strategies for Applications Running on OpenShift"](https://cloud.redhat.com/blog/disaster-recovery-strategies-for-applications-running-on-openshift)
+blog article written by Raffaele Spazzoli back in 2020 about stateful
+applications, in order to fully exploit EDB Postgres for Kubernetes, you need
+to plan, design and implement an OpenShift cluster spanning 3 or more
+availability zones. While this doesn't pose an issue in most of the public
+cloud provider deployments, it is definitely a challenge in on-premise
+scenarios.
+
+If your OpenShift cluster has only **one availability zone**, the zone is your
+Single Point of Failure (SPoF) from a High Availability standpoint - provided
+that you have wisely adopted a share-nothing architecture, making sure that
+your PostgreSQL clusters have at least one standby (two if using synchronous
+replication), and that each PostgreSQL instance runs on a different Kubernetes
+worker node using different storage. Make sure that continuous backup data is
+stored additionally in a storage service outside the OpenShift cluster,
+allowing you to perform Disaster Recovery operations beyond your data center.
+
+Most likely you will have another OpenShift cluster in another data center,
+either in the same metropolitan area or in another region, in an active/passive
+strategy. You can set up an independent ["Replica cluster"](replica_cluster.md),
+with the understanding that this is primarily a Disaster Recovery solution - very
+effective but with some limitations that require manual intervention, as
+explained in the feature page. The same solution can be applied to additional
+OpenShift clusters, even in a cascading manner.
+
+On the other hand, if your OpenShift cluster spans **multiple availability
+zones** in a region, you can fully leverage the capabilities of the operator for
+resilience and self-healing, and the region can become your SPoF, i.e.
+it would take a full region outage to bring down your cluster.
+Moreover, you can take advantage of multiple OpenShift clusters in different
+regions by setting up replica clusters, as previously mentioned.
 
 ## Important information about upgrading to a 1.16.x operator version on Openshift
 
@@ -152,15 +198,14 @@ principles, our recommendation is to use the `fast` channel.
 ### About the `stable` channel
 
 The `stable` channel was previously used by EDB to distribute `cloud-native-postgresql`.
-This channel is **obsolete**, and for backwards compatibility it is currently set to 
-version 1.16.2. The `stable` channel will be removed entirely in the future.
+This channel is **obsolete** and has been removed.
 
 If you are currently using `stable`, you have two options for moving off of it:
 
-1.  Move to a `stable-vX.Y` channel to remain in a minor release (e.g. `stable-v1.16` would 
-    remain in the 1.16 minor release, consuming future patch releases). 
+1.  Move to a `stable-vX.Y` channel to remain in a minor release (e.g. `stable-v1.18` would
+    remain in the 1.18 minor LTS release, consuming future patch releases).
 2.  Move to `fast`, which is the equivalent of `stable` before we introduced support for
-    multiple minor releases with the advent of 1.16
+    multiple minor releases
 
 ## Installation via web console
 
@@ -414,6 +459,31 @@ suits your needs in terms of operating system and architecture:
     For more detailed and updated information, please refer to the official
     [OpenShift CLI documentation](https://docs.openshift.com/container-platform/4.9/cli_reference/openshift_cli/getting-started-cli.html)
     directly maintained by Red Hat.
+
+## Upgrading the operator
+
+In order to upgrade your operator safely, you need to be in a `stable-vX.Y` channel,
+or the `fast` channel if you want to follow the head of the development trunk of
+EDB Postgres for Kubernetes.
+
+If you are currently in the `stable` channel, you need to either choose `fast` or
+progressively move to the latest Long Term Supported release of EDB Postgres
+for Kubernetes - currently `stable-v1.18`.
+
+If you are in `stable` and your operator version is 1.15, please move to
+`stable-v1.15` and upgrade. Then repeat the operation with `stable-v1.16`, then
+`stable-v1.17` to finally reach `stable-v1.18` or `fast`.
+
+If you are in `stable` and your operator version is 1.16, please move to
+`stable-v1.16` and upgrade. Then repeat the operation with `stable-v1.17` to
+finally reach `stable-v1.18` or `fast`.
+
+!!! Warning Both 1.15.x and 1.16.x are now End of Life
+    The last supported version of 1.15.x was released on October 22, 2022.
+    The last supported version of 1.16.x was released on December 21, 2022.
+    No future updates to these version are planned.
+    Please refer to the [EDB "Platform Compatibility" page](https://www.enterprisedb.com/resources/platform-compatibility)
+    for more details.
 
 ## Predefined RBAC objects
 
