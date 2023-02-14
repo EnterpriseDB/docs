@@ -45,14 +45,6 @@ discussed in the following sections.
 
 ### S3
 
-You can define the permissions to store backups in S3 buckets in two ways:
-
--   If EDB Postgres for Kubernetes is running in EKS. you may want to use the
-    [IRSA authentication method](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
--   Alternatively, you can use the `ACCESS_KEY_ID` and `ACCESS_SECRET_KEY` credentials
-
-#### AWS Access key
-
 You will need the following information about your environment:
 
 -   `ACCESS_KEY_ID`: the ID of the access key that will be used
@@ -100,34 +92,13 @@ The destination path can be any URL pointing to a folder where
 the instance can upload the WAL files, e.g.
 `s3://BUCKET_NAME/path/to/folder`.
 
-#### IAM Role for Service Account (IRSA)
-
-In order to use IRSA you need to set an `annotation` in the `ServiceAccount` of
-the Postgres cluster.
-
-We can configure EDB Postgres for Kubernetes to inject them using the `serviceAccountTemplate`
-stanza:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: Cluster
-metadata:
-[...]
-spec:
-  serviceAccountTemplate:
-    metadata:
-      annotations:
-        eks.amazonaws.com/role-arn: arn:[...]
-        [...]
-```
-
 ### Other S3-compatible Object Storages providers
 
-In case you're using S3-compatible object storage, like MinIO or
-Linode Object Storage, you can specify an endpoint instead of using the
+In case you're using S3-compatible object storage, like **MinIO** or
+**Linode Object Storage**, you can specify an endpoint instead of using the
 default S3 one.
 
-In this example, it will use the `bucket` bucket of Linode in the region
+In this example, it will use the `bucket` of **Linode** in the region
 `us-east1`.
 
 ```yaml
@@ -138,7 +109,23 @@ spec:
   backup:
     barmanObjectStore:
       destinationPath: "<destination path here>"
-      endpointURL: bucket.us-east1.linodeobjects.com
+      endpointURL: "https://bucket.us-east1.linodeobjects.com"
+      s3Credentials:
+        [...]
+```
+
+In case you're using **Digital Ocean Spaces**, you will have to use the Path-style syntax.
+In this example, it will use the `bucket` from **Digital Ocean Spaces** in the region `SFO3`.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+[...]
+spec:
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://[your-bucket-name]/[your-backup-folder]/"
+      endpointURL: "https://sfo3.digitaloceanspaces.com"
       s3Credentials:
         [...]
 ```
@@ -368,40 +355,33 @@ Emulator or [Azurite](https://github.com/Azure/Azurite).
 
 ### Google Cloud Storage
 
-Currently, the operator supports two authentication methods for Google Cloud Storage:
-
--   the first one assumes that the pod is running inside a Google Kubernetes Engine cluster
--   the second one leverages the environment variable `GOOGLE_APPLICATION_CREDENTIALS`
+Currently, the operator supports two authentication methods for Google Cloud Storage,
+one assumes the pod is running inside a Google Kubernetes Engine cluster, the other one leverages
+the environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
 
 #### Running inside Google Kubernetes Engine
 
-When running inside Google Kubernetes Engine you can configure your backups to
-simply rely on [Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity),
-without having to set any credentials. In particular, you need to:
-
--   set `.spec.backup.barmanObjectStore.googleCredentials.gkeEnvironment` to `true`
--   set the `iam.gke.io/gcp-service-account` annotation in the `serviceAccountTemplate` stanza
-
-Please use the following example as a reference:
+This could be one of the easiest way to create a backup, and only requires
+the following configuration:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
 kind: Cluster
 [...]
 spec:
-  [...]
   backup:
     barmanObjectStore:
       destinationPath: "gs://<destination path here>"
       googleCredentials:
         gkeEnvironment: true
-
-  serviceAccountTemplate:
-    metadata:
-      annotations:
-        iam.gke.io/gcp-service-account:  [...].iam.gserviceaccount.com
-        [...]
 ```
+
+This, will tell the operator that the cluster is running inside a Google Kubernetes
+Engine meaning that no credentials are needed to upload the files
+
+!!! Important
+    This method will require carefully defined permissions for cluster
+    and pods, which have to be defined by a cluster administrator.
 
 #### Using authentication
 
@@ -644,6 +624,12 @@ requested).
 
 For details and instructions on the `recovery` bootstrap method, please refer
 to the ["Bootstrap from a backup" section](bootstrap.md#bootstrap-from-a-backup-recovery).
+
+!!! Important
+    If you are not familiar with how [PostgreSQL PITR](https://www.postgresql.org/docs/current/continuous-archiving.html#BACKUP-PITR-RECOVERY)
+    works, we suggest that you configure the recovery cluster as the original
+    one when it comes to `.spec.postgresql.parameters`. Once the new cluster is
+    restored, you can then change the settings as desired.
 
 Under the hood, the operator will inject an init container in the first
 instance of the new cluster, and the init container will start recovering the
