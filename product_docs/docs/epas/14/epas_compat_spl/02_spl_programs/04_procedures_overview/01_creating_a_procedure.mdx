@@ -1,0 +1,171 @@
+---
+title: "Creating a procedure"
+---
+
+<div id="creating_a_procedure" class="registered_link"></div>
+
+The `CREATE PROCEDURE` command defines and names a standalone procedure that's stored in the database.
+
+If you include a schema name, then the procedure is created in the specified schema. Otherwise it's created in the current schema. The name of the new procedure must not match any existing procedure with the same input argument types in the same schema. However, procedures of different input argument types can share a name. This is called *overloading*. 
+
+!!! Note
+  Overloading of procedures is an EDB Postgres Advanced Server feature. Overloading of stored, standalone procedures isn't compatible with Oracle databases.
+
+To update the definition of an existing procedure, use `CREATE OR REPLACE PROCEDURE`. You can't change the name or argument types of a procedure this way. Attempting to do so creates a new, distinct procedure. When using `OUT` parameters, you can't change the types of any `OUT` parameters except by dropping the procedure.
+
+```text
+CREATE [OR REPLACE] PROCEDURE <name> [ (<parameters>) ]
+   [
+          IMMUTABLE
+        | STABLE
+        | VOLATILE
+        | DETERMINISTIC
+        | [ NOT ] LEAKPROOF
+        | CALLED ON NULL INPUT
+        | RETURNS NULL ON NULL INPUT
+        | STRICT
+        | [ EXTERNAL ] SECURITY INVOKER
+        | [ EXTERNAL ] SECURITY DEFINER
+        | AUTHID DEFINER
+        | AUTHID CURRENT_USER
+        | PARALLEL { UNSAFE | RESTRICTED | SAFE }
+        | COST <execution_cost>
+        | ROWS <result_rows>
+        | SET <configuration_parameter>
+          { TO <value> | = <value> | FROM CURRENT }
+   ...]
+{ IS | AS }
+    [ PRAGMA AUTONOMOUS_TRANSACTION; ]
+    [ <declarations> ]
+  BEGIN
+    <statements>
+  END [ <name> ];
+```
+
+Where:
+
+`name`
+
+ `name` is the identifier of the procedure.
+
+`parameters`
+
+ `parameters` is a list of formal parameters.
+
+`declarations`
+
+ `declarations` are variable, cursor, type, or subprogram declarations. If you include subprogram declarations, you must declare them after all other variable, cursor, and type declarations.
+
+`statements`
+
+ `statements` are SPL program statements. The `BEGIN - END` block can contain an `EXCEPTION` section.
+
+`IMMUTABLE`
+
+`STABLE`
+
+`VOLATILE`
+
+ These attributes inform the query optimizer about the behavior of the procedure. You can specify only one choice. `VOLATILE` is the default behavior.
+
+-   `IMMUTABLE` indicates that the procedure can't modify the database and always reaches the same result when given the same argument values. It doesn't perform database lookups or otherwise use information not directly present in its argument list. If you include this clause, you can immediately replace any call of the procedure with all-constant arguments with the procedure value.
+
+-   `STABLE` indicates that the procedure can't modify the database. It also indicates that, in a single table scan, it consistently returns the same result for the same argument values but that its result might change across SQL statements. Use this selection for procedures that depend on database lookups, parameter variables (such as the current time zone), and so on.
+
+-   `VOLATILE` indicates that the procedure value can change even in a single table scan, so you can't make optimizations. You must classify any function that has side effects as volatile, even if its result is predictable, to prevent calls from being optimized away.
+
+`DETERMINISTIC`
+
+ `DETERMINISTIC` is a synonym for `IMMUTABLE`. A `DETERMINISTIC` procedure can't modify the database and always reaches the same result when given the same argument values. It doesn't do database lookups or otherwise use information not directly present in its argument list. If you include this clause, any call of the procedure with all-constant arguments can be immediately replaced with the procedure value.
+
+`[ NOT ] LEAKPROOF`
+
+ A `LEAKPROOF` procedure has no side effects and reveals no information about the values used to call the procedure.
+
+`CALLED ON NULL INPUT`
+
+`RETURNS NULL ON NULL INPUT`
+
+`STRICT`
+
+-   `CALLED ON NULL INPUT` (the default) indicates that the procedure is called normally when some of its arguments are `NULL`. It's the author's responsibility to check for `NULL` values if necessary and respond appropriately.
+
+-   `RETURNS NULL ON NULL INPUT` or `STRICT` indicates that the procedure always returns `NULL` when any of its arguments are `NULL`. If these clauses are specified, the procedure isn't executed when there are `NULL` arguments. Instead a `NULL` result is assumed automatically.
+
+`[ EXTERNAL ] SECURITY DEFINER`
+
+ `SECURITY DEFINER` specifies for the procedure to execute with the privileges of the user that created it. This is the default. The key word `EXTERNAL` is allowed for SQL conformance but is optional.
+
+`[ EXTERNAL ] SECURITY INVOKER`
+
+ The `SECURITY INVOKER` clause indicates for the procedure to execute with the privileges of the user that calls it. The key word `EXTERNAL` is allowed for SQL conformance but is optional.
+
+`AUTHID DEFINER`
+
+`AUTHID CURRENT_USER`
+
+-   The `AUTHID DEFINER` clause is a synonym for `[EXTERNAL] SECURITY DEFINER`. If you omit the `AUTHID` clause or specify `AUTHID DEFINER`, the rights of the procedure owner determine access privileges to database objects.
+
+-   The `AUTHID CURRENT_USER` clause is a synonym for `[EXTERNAL] SECURITY INVOKER`. If you specify `AUTHID CURRENT_USER`, the rights of the current user executing the procedure determine access privileges.
+
+`PARALLEL { UNSAFE | RESTRICTED | SAFE }`
+
+ The `PARALLEL` clause enables the use of parallel sequential scans, that is, parallel mode. A parallel sequential scan uses multiple workers to scan a relation in parallel during a query, in contrast to a serial sequential scan.
+
+-   When the value is set to `UNSAFE`, you can't execute the procedure in parallel mode. The presence of such a procedure forces a serial execution plan. This is the default setting.
+
+-   When the value is set to `RESTRICTED`, you can execute the procedure in parallel mode, but the execution is restricted to the parallel group leader. If the qualification for any particular relation has anything that's parallel restricted, that relation isn't chosen for parallelism.
+
+-   When the value is set to `SAFE`, you can execute the procedure in parallel mode without restriction.
+
+`COST execution_cost`
+
+ `execution_cost` is a positive number giving the estimated execution cost for the procedure, in units of `cpu_operator_cost`. If the procedure returns a set, this is the cost per returned row. Larger values cause the planner to try to avoid evaluating the function more often than necessary.
+
+`ROWS result_rows`
+
+ `result_rows` is a positive number giving the estimated number of rows for the planner to expect the procedure to return. This setting is allowed only when the procedure is declared to return a set. The default is 1000 rows.
+
+`SET configuration_parameter { TO value | = value | FROM CURRENT }`
+
+ The `SET` clause causes the specified configuration parameter to be set to the specified value when the procedure is entered and then restored to its prior value when the procedure exits. `SET FROM CURRENT` saves the session's current value of the parameter as the value to apply when the procedure is entered.
+
+ If a `SET` clause is attached to a procedure, then the effects of a `SET LOCAL` command executed inside the procedure for the same variable are restricted to the procedure. The configuration parameter's prior value is restored at procedure exit. An ordinary `SET` command (without `LOCAL`) overrides the `SET` clause, much as it does for a previous `SET LOCAL` command. The effects of this command persist after procedure exit, unless the current transaction is rolled back.
+
+`PRAGMA AUTONOMOUS_TRANSACTION`
+
+ `PRAGMA AUTONOMOUS_TRANSACTION` is the directive that sets the procedure as an autonomous transaction.
+
+!!! Note
+    -   The `STRICT`, `LEAKPROOF`, `PARALLEL`, `COST`, `ROWS` and `SET` keywords provide extended functionality for EDB Postgres Advanced Server and aren't supported by Oracle.
+
+    -   By default, stored procedures are created as `SECURITY DEFINERS`, but when written in plpgsql, the stored procedures are created as `SECURITY INVOKERS`.
+
+## Example
+
+This example shows a simple procedure that takes no parameters:
+
+```text
+CREATE OR REPLACE PROCEDURE simple_procedure
+IS
+BEGIN
+   DBMS_OUTPUT.PUT_LINE('That''s all folks!');
+END simple_procedure;
+```
+
+Store the procedure in the database by entering the procedure code in EDB Postgres Advanced Server.
+
+This example shows using the `AUTHID DEFINER` and `SET` clauses in a procedure declaration. The `update_salary` procedure conveys the privileges of the role that defined the procedure to the role that's calling the procedure while the procedure executes.
+
+```text
+CREATE OR REPLACE PROCEDURE update_salary(id INT, new_salary NUMBER)
+  SET SEARCH_PATH = 'public' SET WORK_MEM = '1MB'
+  AUTHID DEFINER IS
+BEGIN
+  UPDATE emp SET salary = new_salary WHERE emp_id = id;
+END;
+```
+
+Include the `SET` clause to set the procedure's search path to `public` and the work memory to `1MB`. These settings don't affect other procedures, functions, and objects.
+
+In the example, the `AUTHID DEFINER` clause temporarily grants privileges to a role that otherwise might not be allowed to execute the statements in the procedure. To instruct the server to use the privileges associated with the role invoking the procedure, replace the `AUTHID DEFINER` clause with the `AUTHID CURRENT_USER` clause.
