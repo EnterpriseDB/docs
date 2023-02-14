@@ -53,6 +53,162 @@ When migrating users, the Migration Portal does not migrate the users' passwords
 
 The Migration Portal migrates non-`DEFAULT` profiles assigned to the schema users. Oracle profiles include both password and resource limits.  EDB Postgres Advanced Server only supports the Oracle password related limits.  Resource limits are extracted with the profiles, but only the password limits are uploaded, assessed, and migrated by the Migration Portal.  Also, in the Oracle database, the `DEFAULT` profile may have been overridden with new limit values.  The `DEFAULT` profile is not migrated by the Migration Portal.  If it is desired that the `DEFAULT` profile in EDB Postgres Advanced Server be configured with any limit overrides that have been applied to the Oracle `DEFAULT` profile, then they have to be applied manually in the target EDB Postgres Advanced Server database by using the `ALTER PROFILE` statement.
 
+!!! Note
+    Starting with version 4.3.0, the Migration Portal supports assessment of users, roles, profiles, and grants. However for the projects created using an earlier version (earlier than 4.3.0) of the Migration Portal, this capability is not supported. In order to assess the users, roles, profiles, and grants, use the latest version of the EDB DDL Extractor and create a new project.
+
+
+### Using Oracle default case
+
+The option to use the Oracle default case feature preserves Oracle’s default uppercase naming convention for all database objects when migrating a schema from an Oracle database to an EDB Postgres Advanced Server database.
+
+The EDB DDL Extractor and Oracle Data Pump utilities extract all the DDLs in the default case of Oracle (that is, uppercase for object names or the respective case for case-sensitive object names) except for object names referenced inside the body of PL/SQL objects unless they are explicitly double-quoted by the user when creating the DDL.
+
+So, the Migration Portal preserves all double quotes from the source schema file for this feature, and in addition, the Migration Portal applies double quotes to:
+
+- The column names inside the `SELECT` statement of views and materialized views.
+
+- The column names inside check constraints.
+
+- The table name and column names inside the trigger header.
+
+When the option to use Oracle casing is not selected, the default behavior of the Migration Portal is that all objects are created in lowercase (the default case of EDB Postgres Advanced Server) or mixed case if an object name is specified using a quoted mixed case in the source DDL.
+
+Find the below source and target DDLs using the useOraCase feature:
+
+```sql
+-- Source DDL
+CREATE TABLE "RHS_SANITY"."DEPT"
+   (	"DEPTNO" NUMBER(2,0),
+	"DNAME" VARCHAR2(14),
+	"LOC" VARCHAR2(14),
+	 CONSTRAINT "DEPTDEPTNO_PK" PRIMARY KEY ("DEPTNO")
+  USING INDEX  ENABLE,
+	 CONSTRAINT "DEPTDNAME_UK" UNIQUE ("DNAME")
+  USING INDEX  ENABLE
+   ) ;
+
+-- Target DDL
+CREATE TABLE "RHS_SANITY"."DEPT"
+   (	"DEPTNO" NUMBER(2,0),
+	"DNAME" VARCHAR2(14),
+	"LOC" VARCHAR2(14),
+	 CONSTRAINT "DEPTDEPTNO_PK" PRIMARY KEY ("DEPTNO")
+  USING INDEX  ENABLE,
+	 CONSTRAINT "DEPTDNAME_UK" UNIQUE ("DNAME")
+  USING INDEX  ENABLE
+   ) ;
+```
+
+While using the Oracle default case, you may experience a lower compatibility ratio compared to other projects. The following are reasons that might contribute to this lower compatibility ratio: 
+
+- The most common reason is that the object/relation doesn't exist. This scenario is caused by the fact that the table/object is in double-quoted upper case to preserve the Oracle case, whereas in the failing object it is referenced without the double-quotes. For example: 
+
+   ```sql
+   CREATE TABLE "HR"."EMP"
+      (   "EMPNO" NUMBER(4,0),
+	        "ENAME" VARCHAR2(10),
+	        "JOB" CLOB,
+	        "MGR" NUMBER(4,0),
+	        "HIREDATE" DATE,
+	        "SAL" NUMBER(7,2),
+	        "COMM" NUMBER(7,2),
+	        "DEPTNO" NUMBER(2,0),
+	      CONSTRAINT "PK_EMP" PRIMARY KEY ("EMPNO")
+     USING INDEX  ENABLE
+      ) ;
+
+   CREATE OR REPLACE  PROCEDURE "HR"."PROC"
+   IS
+    CURSOR emp_cur IS SELECT hiredate, CAST(hiredate AS timestamp(6)) AS timestamped FROM emp;
+    REC emp_cur%rowtype;
+   BEGIN
+      OPEN emp_cur;
+      LOOP
+      FETCH emp_cur INTO rec;
+	      EXIT WHEN emp_cur%NOTFOUND ;
+		          DBMS_OUTPUT.PUT_LINE(rec.hiredate ||'  '||rec.timestamped);
+            END LOOP;
+       CLOSE EMP_CUR;
+      END ;
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   relation "emp" does not exist
+   ```
+   In the example above, the table name and its column names are specified with quoted uppercase names in the `CREATE TABLE` statement; however, in the `CREATE OR REPLACE PROCEDURE` statement, the table and its columns are referenced using using unquoted lowercase identifiers.
+
+- The variables defined using `%type` are failing in code objects as preceding `table.column-name` are in lower case, like `employees.employee_id%type` whereas the table name and the column names for the actual table are in double-quoted uppercase. For example: 
+
+   ```sql
+   CREATE TABLE "HR"."EMPLOYEES"
+      (    "EMPLOYEE_ID" NUMBER(6,0),
+	         "FIRST_NAME" VARCHAR2(20),
+	         "LAST_NAME" VARCHAR2(25) CONSTRAINT "EMP_LAST_NAME_NN" NOT NULL ENABLE,
+	         "EMAIL" VARCHAR2(25) CONSTRAINT "EMP_EMAIL_NN" NOT NULL ENABLE,
+	         "PHONE_NUMBER" VARCHAR2(20),
+	         "HIRE_DATE" DATE CONSTRAINT "EMP_HIRE_DATE_NN" NOT NULL ENABLE,
+	         "JOB_ID" VARCHAR2(10) CONSTRAINT "EMP_JOB_NN" NOT NULL ENABLE,
+	         "SALARY" NUMBER(8,2),
+	         "COMMISSION_PCT" NUMBER(2,2),
+	         "MANAGER_ID" NUMBER(6,0),
+	         "DEPARTMENT_ID" NUMBER(4,0),
+	          CONSTRAINT "EMP_SALARY_MIN" CHECK ("SALARY" > 0) ENABLE,
+	          CONSTRAINT "EMP_EMP_ID_PK" PRIMARY KEY ("EMPLOYEE_ID")
+     USING INDEX  ENABLE,
+	          CONSTRAINT "EMP_EMAIL_UK" UNIQUE ("EMAIL")
+     USING INDEX  ENABLE
+      ) ;
+   CREATE OR REPLACE  PROCEDURE "HR"."PKG" AS
+   -- declare variables for data fetched from cursor
+     empid       employees.employee_id%TYPE; -- variable for employee_id
+     hiredate    employees.hire_date%TYPE;   -- variable for hire_date
+     firstname   employees.first_name%TYPE;  -- variable for first_name
+     lastname    employees.last_name%TYPE;   -- variable for last_name
+     rowcount    NUMBER;
+     bonusamount NUMBER;
+     yearsworked NUMBER;
+   -- declare the cursor with a parameter
+     CURSOR cursor1 (thismonth NUMBER)IS
+       SELECT employee_id, first_name, last_name, hire_date FROM employees
+          WHERE EXTRACT(MONTH FROM hire_date) = thismonth;
+   BEGIN
+     null;
+   END;
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   syntax error at or near "%" (line 3, char 37)
+   ```
+
+- When tables have TYPE reference in column data type they fail due to the difference in case. For example:
+
+   ```sql
+   CREATE OR REPLACE TYPE "HR"."USER_TYPE" IS OBJECT(
+       "ID" NUMBER,
+       "NAME" VARCHAR2(256)
+   );
+
+   CREATE TABLE "HR"."MY_TABLE"
+   (
+       "ID" NUMBER,
+       "MY_NAME" user_type
+   );
+   ```
+
+   The error displays as follows:
+
+   ```sql
+   type "user_type" does not exist
+   LINE 4:     "MY_NAME" user_type
+                 ^
+   SQL state: 42704
+   Character: 58
+   ```
+
 ## EDB DDL Extractor
 
 -   The EDB DDL Extractor script doesn't extract objects restored using `Flashback` that still have names like `BIN$b54+4XlEYwPgUAB/AQBWwA==$0`. If you want to extract these objects, you must change the names of the objects and rerun the extraction process.

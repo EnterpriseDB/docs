@@ -47,6 +47,7 @@ export const products = {
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
   pgd: { name: "EDB Postgres Distributed" },
+  pge: { name: "EDB Postgres Extended Server" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   pglogical: { name: "pglogical" },
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },

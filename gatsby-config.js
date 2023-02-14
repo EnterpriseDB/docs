@@ -28,6 +28,7 @@ const sourceToPluginConfig = {
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
+  pge: { name: "pge", path: "product_docs/docs/pge" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
     name: "hadoop_data_adapter",
@@ -79,6 +80,7 @@ const sourceToPluginConfig = {
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
+  tde: { name: "tde", path: "product_docs/docs/tde" },
 };
 
 const externalSourcePlugins = () => {
