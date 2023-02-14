@@ -1,0 +1,106 @@
+---
+title: Group Commit
+---
+
+The goal of Group Commit is to protect against data loss
+in case of single node failures or temporary outages. You achieve this
+by requiring more than one BDR node to successfully receive and
+confirm a transaction at COMMIT time.
+
+## Requirements
+
+During normal operation, Group Commit is completely transparent to the
+application.  Upon failover, the reconciliation phase needs to be
+explicitly triggered or consolidated by either the application or a
+proxy in between. HARP provides native support for Group Commit and
+triggers the reconciliation phase, making this equally transparent
+to the client.
+
+Transactions using committed with Group Commit use two-phase commit underneath.
+Therefore, configure `max_prepared_transactions` high enough to handle all such
+transactions originating per node.
+
+## Configuration
+
+To use Group Commit, first define a [Commit Scope](commit-scopes). This
+determines the BDR nodes involved in the commit of a transaction.
+
+## Behavior
+
+The behavior of Group Commit depends on the configuration applied by the Commit
+Scope.
+
+### Commit decisions
+
+Group Commit can be configured to decide commits in 3 different ways, `group`,
+`partner` and `raft`.
+
+Group commit decision is done through the consensus specified using the same
+commit scope group settings used for the durability purposes. The difference
+is that the commit decision is made based on PREPARE replication while the
+durability checks COMMIT (PREPARED) replication.
+
+The partner decision is what [Commit At Most Once](camo) uses. This approach
+only works when there are 2 data nodes in the node group. These two nodes are
+partners of each other, and the replica rather than origin decides whether
+to commit something or not. This approach requires application changes to use
+the CAMO transaction protocol to work correctly as application is in some way
+part of the consensus. More on this approach in the [CAMO](camo) chapter.
+
+Last option is raft, which uses the builtin Raft consensus to decide whether
+commit can happen. Currently the global Raft is used so for this to work majority
+of nodes across whole cluster must work.
+
+### Conflict resolution
+
+Conflict resolution can be either `async` or `eager`.
+
+Async means that PGD does optimistic conflict resolution during replication
+(regardless of whether the origin transaction committed or or is still in progress)
+using the row level resolution as configured for given node. See
+[Conflicts](/pgd/latest/consistency/conflicts) chapter for detailed description
+of how the asynchronous conflict resolution works.
+
+Eager means that conflicts are resolved eagerly (as part of agreement on COMMIT)
+and conflicting transactions get aborted with serialization error. This approach
+provides greater isolation than the asynchronous resolution at the price of
+performance. For the details of how Eager conflict resolution works, see
+[Eager conflict resolution](/pgd/latest/consistency/eager).
+
+### Aborts
+
+To prevent transaction which cannot get consensus on the COMMIT from hanging
+forever, the `ABORT ON` clause allows specifying timeout after which the
+transaction abort is requested. Note that in case the transaction is already
+decided to be committed at the time the abort request is sent, the transaction
+will eventually COMMIT even though client might receive abort message.
+
+## Limitations
+
+Group Commit transactions can't yet execute DDL,
+nor do they support explicit two-phase commit. These might be allowed in
+later releases. However, the `TRUNCATE` command is allowed.
+
+Only CAMO transactions can combined with `DEGRADE TO` clause for switching
+to asynchronous operation on case of lowered availability yet.
+
+Neither Eager or CAMO transactions are not currently supported in combination
+with the Decoding Worker feature nor with transaction streaming.
+Installations using Eager must keep `enable_wal_decoder` and `streaming_mode`
+disabled for the BDR node group.
+
+Synchronous replication uses a mechanism for transaction confirmation
+different from Group Commit. The two aren't compatible, and you must not use
+them together. Therefore, whenever Group Commit transactions,
+make sure none of the BDR nodes are configured in
+`synchronous_standby_names`.
+
+Currently, Raft commit decisions are extremely slow producing very low TPS and
+are only recommended to be used along with the `eager` conflict resolution setting
+to get the Eager All-Node Replication behavior of PGD 4 and older.
+
+Combining different commit decision options in the same transaction is not
+supported.
+
+Combining different conflict resolution options in the same transaction is not
+supported.
