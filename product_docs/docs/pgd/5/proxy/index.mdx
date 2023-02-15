@@ -4,6 +4,9 @@ navTitle: "PGD Proxy"
 indexCards: none
 navigation:
 - installing_proxy
+
+directoryDefaults:
+  description: "The PGD Proxy is a service that acts as proxy layer between the client application and Postgres for your EDB Postgres Distributed cluster"
 ---
 
 EDB Postgres Distributed Proxy is a daemon that acts as an abstraction layer between the client application and Postgres. It interfaces with the BDR consensus mechanism to obtain the identity of the current write leader node and redirects traffic to that node.
@@ -17,7 +20,18 @@ PGD Proxy is a TCP layer 4 proxy.
 
 Upon starting, PGD Proxy connects to one of the endpoints given in the local config file and fetches DB connection information for all nodes, proxy options like listen address, listen port, routing details like current write leader, etc. Endpoints given in config file are only used at the time of startup, after that actual endpoints are taken from bdr catalog `bdr.node_routing_config_summary#route_dsn`.
 
-The write leader election is managed by BDR itself. Proxy internally interacts with BDR to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to current write leader. Proxy disconnects all client connections on write leader change. This also applies when `pgd switchover` command is used to invoke a planned transition to a new write leader. Write leader election is a Raft backed activity and is subject to Raft leader availability.
+The write leader election is managed by BDR itself. Proxy internally interacts with BDR to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to current write leader. Proxy disconnects all client connections on write leader change. Write leader election is a Raft backed activity and is subject to Raft leader availability.
+
+PGD Proxy responds to write leader change events that can be categorized into two modes of operation viz., `Failover` and `Switchover`.
+
+Automatic transfer of write leadership from current write leader node  to new node in the event of but not limited to Postgres or Operating system crash is termed as `Failover`. BDR automatically elects a new write leader when the current write leader goes down or becomes unresponsive. Once the new write leader is elected by BDR, proxy will close existing client connections (which were to the old write leader) and redirect new client connections to newly elected write leader.
+
+User controlled, manual transfer of write leadership from current write leader to new target leader is termed as `Switchover`.  Switchover is triggered through [PGD CLI switchover](/product_docs/docs/pgd/5/cli/command_ref/pgd_switchover.mdx) command. The command is submitted to BDR and BDR attempts to elect the given target node as new write leader. Similar to failover, proxy will close existing client connections and redirect new client connections to newly elected write leader. This is useful at the time of server maintenance, e.g, if the current write leader node needs to be stopped for maintenance like server update, OS patch update etc.
+
+Please note switchover may or may not happen to the user provided target leader. It depends on but not limited to following factors -
+- switchover command arguments like switchover method, timeout,
+- different group routing option values like route_writer_max_lag, and
+- data lags across nodes when switchover command was executed
 
 
 ## Managing PGD Proxy
