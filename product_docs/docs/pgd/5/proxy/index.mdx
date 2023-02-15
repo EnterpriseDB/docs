@@ -1,6 +1,9 @@
 ---
 title: "EDB Postgres Distributed Proxy"
 navTitle: "PGD Proxy"
+indexCards: none
+navigation:
+- installing_proxy
 ---
 
 EDB Postgres Distributed Proxy is a daemon that acts as an abstraction layer between the client application and Postgres. It interfaces with the BDR consensus mechanism to obtain the identity of the current write leader node and redirects traffic to that node.
@@ -16,98 +19,6 @@ Upon starting, PGD Proxy connects to one of the endpoints given in the local con
 
 The write leader election is managed by BDR itself. Proxy internally interacts with BDR to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to current write leader. Proxy disconnects all client connections on write leader change. This also applies when `pgd switchover` command is used to invoke a planned transition to a new write leader. Write leader election is a Raft backed activity and is subject to Raft leader availability.
 
-
-## Installing PGD Proxy
-
-### Installing through TPAexec
-
-If PGD cluster is being deployed through TPAexec then it installs and configures PGD Proxy automatically. If you you wish to install PGD Proxy on any other node in PGD cluster then, you simply need to attach the `pgd-proxy` role to that instance in TPAexec's configuration file and set the `bdr_child_group` parameter as shown below before deploying. See [TPAexec](/product_docs/docs/pgd/5/deployments/tpaexec) for more information.
-```yaml
-- Name: proxy-a1
-  location: a
-  node: 4
-  role:
-  - pgd-proxy
-  vars:
-    bdr_child_group: group_a
-  volumes:
-  - device_name: /dev/sdf
-    volume_type: none
-```
-
-
-### Installing manually
-
-You can manually install the PGD Proxy on any Linux machine using `.deb` and `.rpm` packages available from the [BDR repository](https://techsupport.enterprisedb.com/software_subscriptions/add/products/bdr5/). The package name is `edb-pgd5-proxy`. For example:
-
-```sh
-# for Debian
-sudo apt-get install edb-pgd5-proxy
-```
-
-
-## Configuration
-
-Proxy connects to BDR database for its internal operations, like getting proxy configs, getting write leader details, etc. Therefore, it needs a list of endpoints/dsn to connect to BDR nodes. Proxy expects these configurations in a local config file `pgd-proxy-config.yml`. Following is a functional example of `pgd-proxy-config.yml` file:
-
-```yaml
-log-level: debug
-cluster:
-  name: my_pgd_cluster
-  endpoints:
-    - "host=bdr-a1 port=5432 dbname=bdrdb user=pgdproxy "
-    - "host=bdr-a3 port=5432 dbname=bdrdb user=pgdproxy "
-    - "host=bdr-a2 port=5432 dbname=bdrdb user=pgdproxy "
-  proxy:
-    name: "proxy-a1"
-```
-
-The `cluster.endpoints` and `cluster.proxy.name` are mandatory fields in the config file. Proxy always tries to connect to the first endpoint in the list, if it fails it tries the next endpoint and so on. The log level for PGD Proxy service can be set using the top level config parameter `log-level` as shown in the sample config.
-
-PGD Proxy searches for `pgd-proxy-config.yml` in the following locations (precedence order - higher to lower):
-
-   1. "-f config-file" (e.g. 'pgd-proxy -f /opt/my-config.yml')
-   2. "/etc/edb/pgd-proxy" (default)
-   3. "$HOME/.edb/pgd-proxy"
-
-The `pgd-proxy-config.yml`, is located in the `/etc/edb/pgd-proxy` directory, by default. If you rename the file or move it to another location, specify the new name and location using the `-f` flag in the `pgd-proxy.service` file.
-
-### Proxy user
-
-If the PGD Cluster is created by TPAexec, then TPAExec creates a postgres user `pgdproxy` for PGD Proxy and `route_dsn` at node level is set. If you wish to setup a different user then you need to create the user and set in the `endpoints` in config file manually.
-
-
-## PGD Proxy service file
-
-PGD Proxy is preferably run as a systemd service. The `pgd-proxy` service unit file is located at `/etc/systemd/system/pgd-proxy.service` by default. Following is the sample service file for EDB Postgres Extended Server and Postgres Community.
-
-*Note:* For EDB Postgres Advanced Server please change User and Group from `postgres` to `enterprisedb`.
-
-```
-[Unit]
-Description=PGD Proxy
-
-[Service]
-Type=simple
-User=postgres
-Group=postgres
-Restart=on-failure
-RestartSec=1s
-ExecStart=/usr/bin/pgd-proxy -f /etc/edb/pgd-proxy/pgd-proxy-config.yml
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=pgd-proxy
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Use the below commands to manage `pgd-proxy` service
-```
-systemctl status pgd-proxy
-systemctl stop pgd-proxy
-systemctl restart pgd-proxy
-```
 
 ## Managing PGD Proxy
 
