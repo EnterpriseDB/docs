@@ -1,0 +1,445 @@
+---
+title: PGD Raft
+
+
+---
+
+## PGD Raft Background
+
+Raft is an industry accepted algorithm for making decisions via achieving 
+“consensus” from a group of separate nodes within a distributed system. 
+
+In the case of PGD, prior to release 5, PGD clusters have a single 
+global Raft group that includes all the data nodes in the PGD cluster. 
+This enabled a Raft leader to be elected for the PGD cluster and for 
+the leader to propagate the state of the cluster to all the nodes within
+the cluster. For certain operations on a PGD cluster a Raft leader must 
+be established and maintained. In order for a Raft leader to be established
+and maintained a majority of the nodes must be reachable from a possible 
+Raft leader candidate node. This means that one half of the nodes plus at
+least one additional node must be able to reach each other. 
+By way of example, in a five node PGD cluster at least three of nodes must 
+be reachable to establish a Raft leader. 
+
+A Raft leader is required for a variety of operations within a BDR cluster 
+including: DDL operations, adding and removing additional nodes and allocating
+node ranges for Galloc sequences.
+
+
+### Using PGD Raft to establish a location lead master 
+
+In PGD releases prior to PGD 5, PGD Raft consensus implementation is used
+to identify a “lead master” node for a location in an extreme high availability 
+deployment. For instance, in a two data center PGD deployment consisting of 
+two nodes in each data center, and a witness node in a third data center, 
+the lead master for each location is where the HARP nodes for the location 
+would direct all traffic from an application. If the lead master dies, 
+in a given location, then a new lead master for the application is 
+established in the BDR Raft consensus implementation. In order for a new 
+leader to be established in the PGD Raft consensus layer, Raft consensus 
+must be achievable. This means a majority of the nodes in the PGD cluster 
+must be able to reach each other for a new lead master in the location to 
+be established. This deployment is illustrated below:
+
+
+## 
+
+![Raft Consensus Prior to PGD 5.0](./img/raft.png)
+
+
+## The motivation for subgroup Raft
+
+Prior to PGD 5.0 there were scenarios where a location could not failover 
+to another datanode even if the datanode was healthy. 
+For example, in a two location deployment, without a third location hosting a 
+witness node,  a location could become isolated as a result of the data center 
+in the remote location going down or a network problem between the locations. 
+The effect is that a Raft leader can no longer be maintained since a majority 
+of the nodes in the cluster are not visible to each other. In this scenario, 
+if the lead master in a given location goes down, a new lead master can not be
+ identified and an application outage occurs in the location.
+
+In releases prior to PGD 5.0 this scenario is mitigated by one of two solutions:
+
+1. Having a third location hosting a fifth node for the cluster
+  (i.e. a witness node) as shown in the above diagram. This allows 
+  the majority of the nodes to be available in at least one of the data centers
+  so a PGD Raft leader can be established. This solution requires an additional 
+  location and an additional node. This is the solution in Figure 1.
+2. Introduce an external Raft consensus layer via etcd (http://etcd.io). 
+   etcd is an open source key store implementation of RAFT.  
+   This Raft consensus layer will be used exclusively by the HARP nodes to decide 
+   who a write leader / shadow master is for a given location. This solution
+   requires an additional set of software to manage and up to three additional 
+   nodes. There must be 3 etcd nodes for each given location.
+
+To eliminate these potential additional resource requirements and to alleviate 
+the problem described at the beginning of this section PGD 5 introduces the
+ “Sub Group Raft” functionality. Subgroup Raft enables BDR deployments to 
+ identify a _“lead master”,_ referred to as a _“write leader”_ in a location 
+ in PGD 5, without additional software or additional data centers hosting 
+ witness nodes. The following diagram illustrates a two location PGD 5 
+ deployment with a RAFT top group and two RAFT subgroups.
+
+![Deployment with 2 RAFT subgroups in PDG 5.0](./img/raft1.png)
+
+Note: We have added an additional node to each data center and eliminated 
+the third data center. This is for the purpose of having a minimum of three 
+nodes in each Raft group. Generally speaking, Raft clusters should always 
+have a minimum of three nodes. Oftentimes, an odd number of nodes is
+ recommended but is a factor of many different things including data 
+ center and network SLAs. Alternatively, we could have added a data 
+ node to each location resulting in the following configuration:
+
+![Six node 2 DC deployment with two Raft subgroups in PGD 5.0 and 6 data nodes](./img/raft2.png)
+
+Subgroup Raft allows node groups within a global PGD group to establish a Raft leader for the group of nodes. In PGD 5 the primary use case is to allow a location to establish a write leader (formerly called a _lead master_ in releases prior to PGD 5) to be established in a given location without any dependencies on external software or nodes in a separate location. 
+
+A few things to note between a pgd5 and a pgd4 deployment:
+
+1. The write leader, when using subgroup Raft  for each location in a  pgd5 cluster, is identified within the subgroup. In pgd4 is defined in the global Raft group or externally in an etcd cluster.
+2. In pgd5 node is potentially a member of two groups. A location based sub group and a global group. In pgd4 a node is only part of one group.
+3. In pgd5 subgroups vote among themselves for identifying a write leader.
+
+
+## Using Subgroup Raft
+
+To use subgroup for establishing a write leader per location in a PGD cluster use the following steps:
+
+1. Establish a “topgroup” for all nodes in a PGD cluster. This is a Raft group that includes all the nodes in the cluster. In future releases of BDR a subgroup may represent one Node in a “topgroup”.
+2. Create a node group for each location.
+3. Add the nodes for a given location to the node group for the location.
+4. Add the node groups to the top group.
+5. Alter each of the location node groups to enable raft for the group.
+
+Note: The purpose of a lead master or a write leader is to minimize write conflicts. If all the update traffic for a given location goes to a single node, the chance of conflicts is greatly reduced. As of PGD 5, this concept is more tightly integrated throughout the software stack.
+
+
+## Example
+
+In this example, a two location cluster with three data nodes in each location will be created. The nodes in each location will be part of a PGD Raft subgroup for the location. The following table describes the cluster.
+
+**Cluster Locations: **US_East, US_West
+
+**Raft Global Group: **bdrgroup
+
+**Raft subgroups: **US_East, US_West
+
+**US-East Nodes: **east1, east2, east3
+
+**US-West Nodes: **west1, west2, west3
+
+Here is the tpaexec description of this cluster:
+
+
+```
+tpaexec configure bdrgroup --architecture PGD-Always-ON --location-names US_East US_West --data-nodes-per-location 3 --enable-subgroup-raft --postgres-version 14 --bdr-version 5
+--pgextended
+
+Config.yml
+---
+architecture: PGD-Always-ON
+cluster_name: raft_global_group
+cluster_tags: {}
+
+cluster_rules:
+- cidr_ip: 0.0.0.0/0
+  from_port: 22
+  proto: tcp
+  to_port: 22
+- cidr_ip: 10.33.82.176/28
+  from_port: 0
+  proto: tcp
+  to_port: 65535
+- cidr_ip: 10.33.136.112/28
+  from_port: 0
+  proto: tcp
+  to_port: 65535
+ec2_ami:
+  Name: debian-10-amd64-20210721-710
+  Owner: '136693071363'
+ec2_instance_reachability: public
+ec2_vpc:
+  Name: Test
+  cidr: 10.33.0.0/16
+
+cluster_vars:
+  bdr_database: bdrdb
+  bdr_node_group: bdrgroup
+  bdr_node_groups:
+  - name: bdrgroup
+  - name: US_West
+    options:
+      enable_proxy_routing: true
+      location: US_West
+    parent_group_name: bdrgroup
+  - name: US_East
+    options:
+      enable_proxy_routing: true
+      location: US_East
+    parent_group_name: bdrgroup
+  bdr_version: '5'
+  default_pgd_proxy_options:
+    listen_port: 6432
+  edb_repositories:
+  - dev_postgres_extended
+  - dev_postgres_distributed
+  - enterprise
+  enable_pg_backup_api: false
+  enable_subgroup_raft: true
+  failover_manager: pgd
+  postgres_coredump_filter: '0xff'
+  postgres_version: '14'
+  postgresql_flavour: pgextended
+  preferred_python_version: python3
+  use_volatile_subscriptions: false
+
+locations:
+- Name: US_West
+  az: eu-west-1a
+  region: eu-west-1
+  subnet: 10.33.82.176/28
+- Name: US_East
+  az: eu-west-1b
+  region: eu-west-1
+  subnet: 10.33.136.112/28
+
+instance_defaults:
+  default_volumes:
+  - device_name: root
+    encrypted: true
+    volume_size: 16
+    volume_type: gp2
+  - device_name: /dev/sdf
+    encrypted: true
+    vars:
+      volume_for: postgres_data
+    volume_size: 64
+    volume_type: gp2
+  platform: aws
+  type: m5.xlarge
+  vars:
+    ansible_user: admin
+
+instances:
+- Name: west1
+  backup: westbarman
+  location: US_West
+  node: 1
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_West
+    bdr_node_options:
+      route_priority: 100
+- Name: west2
+  location: US_West
+  node: 2
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_West
+    bdr_node_options:
+      route_priority: 100
+- Name: west3
+  location: US_West
+  node: 3
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_West
+    bdr_node_options:
+      route_priority: 100
+- Name: pgdproxywest1
+  location: US_West
+  node: 4
+  role:
+  - pgd-proxy
+  vars:
+    bdr_child_group: US_West
+  volumes:
+  - device_name: /dev/sdf
+    volume_type: none
+- Name: pgdproxywest2
+  location: US_West
+  node: 5
+  role:
+  - pgd-proxy
+  vars:
+    bdr_child_group: US_West
+  volumes:
+  - device_name: /dev/sdf
+    volume_type: none
+- Name: westbarman
+  location: US_West
+  node: 6
+  role:
+  - barman
+  volumes:
+  - device_name: /dev/sdf
+    encrypted: true
+    vars:
+      volume_for: barman_data
+    volume_size: 128
+    volume_type: gp2
+- Name: east1
+  backup: eastbarman
+  location: US_East
+  node: 7
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_East
+    bdr_node_options:
+      route_priority: 100
+- Name: east2
+  location: US_East
+  node: 8
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_East
+    bdr_node_options:
+      route_priority: 100
+- Name: east3
+  location: US_East
+  node: 9
+  role:
+  - bdr
+  vars:
+    bdr_child_group: US_East
+    bdr_node_options:
+      route_priority: 100
+- Name: pgdproxyeast1
+  location: US_East
+  node: 10
+  role:
+  - pgd-proxy
+  vars:
+    bdr_child_group: US_East
+  volumes:
+  - device_name: /dev/sdf
+    volume_type: none
+- Name: pgdproxyeast2
+  location: US_East
+  node: 11
+  role:
+  - pgd-proxy
+  vars:
+    bdr_child_group: US_East
+  volumes:
+  - device_name: /dev/sdf
+    volume_type: none
+- Name: eastbarman
+  location: US_East
+  node: 12
+  role:
+  - barman
+  volumes:
+  - device_name: /dev/sdf
+    encrypted: true
+    vars:
+      volume_for: barman_data
+    volume_size: 128
+    volume_type: gp2
+```
+
+
+
+### Viewing all the nodes in a group
+
+We will walk through a number of the sub group Raft pgd commands in this section. However, to help illustrate the nodes and the group we start with the `pgd show-nodes` command:
+
+```
+$pgd show-nodes
+Node     Node ID    Node Group Type Current State Target State Status Seq ID 
+----     -------    ---------- ---- ------------- ------------ ------ ------ 
+east1    916860695  US_East    data ACTIVE        ACTIVE       Up     1      
+east2    2241077170 US_East    data ACTIVE        ACTIVE       Up     2      
+east3    1093023575 US_East    data ACTIVE        ACTIVE       Up     3      
+west1    1668243030 US_West    data ACTIVE        ACTIVE       Up     4      
+west2    2311995928 US_West    data ACTIVE        ACTIVE       Up     5      
+West3    4162758468 US_West    data ACTIVE        ACTIVE       Up     6  
+```
+
+As described above there are 3 nodes (`east1`, `east2` and `east3`)  in the `US_East `subgroup and 3 nodes (`west1`, `west2`, and `west3`) in the `US_West` subgroup. The role each node plays in the group is not visible. In addition, attributes of the group are not visible. These will be described using the pgd-cli commands in the following sections.
+
+
+### Viewing Subgroups
+
+To show the groups in a PGD deployment, along with their names and attributes, use the PGD cli command `show-groups.`
+
+```
+$pgd show-groups
+Group    Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----    --------   ----   ------------ -------- ---- ------- ------------ 
+bdrgroup 1360502012 global                       true false                 
+US_East  1806884964 data   bdrgroup     US_East  true true    east2     
+US_West  3098768667 data   bdrgroup     US_West  true true    west1     
+```
+
+Observe two subgroups (`US_East`, `US_West`) with top group `bdrgroup`. Subgroup
+
+raft is enabled on both the subgroups and is seen under the "Raft" column. The write leader is elected for the subgroups under the "write leader" column. `US_East` and `US_West `
+
+have the `bdrgroup` as their parent group.
+
+
+### Viewing the Raft roles of all nodes
+
+To view all the Raft status for each node in the cluster use the cli command `show-raft.`
+
+```
+$pgd show-raft
+Instance Group       Node  Raft State    Raft Term Commit Index Nodes Voting Nodes Protocol Version 
+-------- -----       ----  ----------    --------- ------------ ----- ------------ ---------------- 
+1       bdrgroup     west3 RAFT_LEADER   0         21974        6     6            5000             
+1       bdrgroup     east1 RAFT_FOLLOWER 0         21974        6     6            5000             
+1       bdrgroup     east2 RAFT_FOLLOWER 0         21974        6     6            5000             
+1       bdrgroup     east3 RAFT_FOLLOWER 0         21974        6     6            5000             
+1       bdrgroup     west1 RAFT_FOLLOWER 0         21974        6     6            5000             
+1       bdrgroup     west2 RAFT_FOLLOWER 0         21974        6     6            5000             
+2       US_West      west1 RAFT_LEADER   1         2            3     3            0                
+2       US_West      west2 RAFT_FOLLOWER 1         2            3     3            0                
+2       US_West      west3 RAFT_FOLLOWER 1         2            3     3            0                
+3       US_East      east3 RAFT_LEADER   1         2            3     3            0                
+3       US_East      east1 RAFT_FOLLOWER 1         2            3     3            0                
+3       US_East      east2 RAFT_FOLLOWER 1         2            3     3            0
+```
+
+This view identifies the Raft leader and Raft followers for each of the nodes in the cluster. This instance column refers to the Raft instance in the cluster. An instance value of 1 is always the Global Raft group or top level raft group. All the nodes in the cluster will be a member of this group even if they are also a member of a Raft subgroup. As shown, Raft instance 1 has 6 nodes. Instances 2 and 3 have three nodes each. Also, note that west3 is the leader for Raft group 1 (the global group). East3 is the leader of Raft group 2 (the east subgroup). While west1 is the leader of Raft group 3(the west subgroup).
+
+
+## Creating subgroup raft without tpaexec
+
+Node groups can be created using: `bdr.create_node_group`, `bdr.join_node_group` and<code> bdr.switch_node_group()<em>, </em>bdr.alter_node_group</code>. 
+
+In PGD 5.0 there is a new option to `bdr.alter_node_group_option() ` for making a node group a RAFT group. The option is `'enable_raft'. `Setting it to `true` makes the node group a raft subgroup. Setting it to `false` disables a node group as a raft subgroup. 
+
+Enable a node group for subgroup raft.
+
+
+```
+SELECT bdr.alter_node_group_option('$group_name', 'enable_raft', 'true');
+```
+
+
+Disabling subgroup raft.
+
+
+```
+SELECT bdr.alter_node_group_option('$group_name', 'enable_raft', 'true');
+```
+
+
+The default is disabled.
+
+
+## Limitations of subgroup raft queries and commands
+
+
+### Mixed Clusters consisting of nodes with different versions of BDR
+
+For mixed clusters, consisting of two different major versions of BDR i.e. BDR 4.1 and BDR 5.0 the some of the pgd cli commands and some of the queries related to Raft will show confusing results depending on which node you are querying from or running the cli command. One scenario where this will be visible is when doing a major version upgrade of BDR. 
+
+It is therefore recommended that if a user encounters Raft queries or cli commands that are confusing on a mixed cluster, during an upgrade or other operation to complete the process of getting all the nodes to the same version level and repeat the query.
