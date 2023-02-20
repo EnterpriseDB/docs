@@ -19,16 +19,15 @@ for some reason.
 To upgrade an EDB Postgres Distributed cluster, perform the following steps:
 
 1. Plan the upgrade.
-1. Prepare for the upgrade.
-1. Upgrade the server software.
-1. Check and validate the upgrade.
+2. Prepare for the upgrade.
+3. Upgrade the server software.
+4. Check and validate the upgrade.
 
 ## Upgrade Planning
 
 There are broadly two ways to upgrade each node.
 
 * Upgrading nodes in-place to the newer software version, see [Rolling Server Software Upgrades](#rolling-server-software-upgrades).
-
 * Replacing nodes with ones that have the newer version installed, see [Rolling Upgrade Using Node Join](#rolling-upgrade-using-node-join).
 
 Both of these approaches can be done in a rolling manner.
@@ -45,7 +44,7 @@ upgraded to the same version, the new features are automatically enabled.
 
 Similarly, when a cluster with WAL decoder enabled nodes is going through a
 rolling upgrade, WAL decoder on a higher version of BDR node produces LCRs
-with a higher pglogical version and WAL decoder on a lower version of BDR node 
+with a higher pglogical version and WAL decoder on a lower version of BDR node
 produces LCRs with lower pglogical version. As a result, WAL senders on a higher
 version of BDR nodes are not expected to use LCRs due to a mismatch in protocol
 versions while on a lower version of BDR nodes, WAL senders may continue to use
@@ -103,17 +102,14 @@ new DDL syntax that may have been added to a newer release of Postgres.
     `bdr_init_physical` makes a byte-by-byte of the source node
     so it cannot be used while upgrading from one major Postgres version
     to another. In fact, currently `bdr_init_physical` requires that even the
-    BDR version of the source and the joining node is exactly the same. 
+    BDR version of the source and the joining node is exactly the same.
     It cannot be used for rolling upgrades via joining a new node method. Instead, a logical join must be used.
 
 ### Upgrading a CAMO-Enabled Cluster
 
-CAMO protection requires at least one of the nodes of a CAMO pair to
-be operational. For upgrades, we recommend to ensure that no CAMO
-protected transactions are running concurrent to the upgrade, or to
-use a rolling upgrade strategy, giving the nodes enough time to
-reconcile in between the upgrades and the corresponding node downtime
-due to the upgrade.
+Upgrading CAMO-Enabled Cluster requires upgrading CAMO groups one by one, while
+disabling the CAMO protection for the group being upgraded and reconfiguring it
+using the new [Commit Scope](/pgd/latest/durability/commit-scopes) based settings.
 
 ## Upgrade Preparation
 
@@ -162,7 +158,7 @@ Upgrading to a new minor version of Postgres is similar to [upgrading
 the BDR extension](#bdr-extension-upgrade). Stopping Postgres, upgrading packages,
 and starting Postgres again is typically all that's needed.
 
-However, sometimes additional steps like reindexing may be recommended for
+However, sometimes additional steps like re-indexing may be recommended for
 specific minor version upgrades. Refer to the Release Notes of the
 specific version of Postgres you are upgrading to.
 
@@ -190,90 +186,17 @@ SELECT bdr.bdr_version();
 Always check the [monitoring](../monitoring) after upgrade of a node to confirm
 that the upgraded node is working as expected.
 
-## Application Schema Upgrades
+## Moving from HARP to PGD-Proxy
 
-Similar to the upgrade of BDR itself, there are two approaches to
-upgrading the application schema.  The simpler option is to stop all
-applications affected, preform the schema upgrade, and restart the
-application upgraded to use the new schema variant. Again, this
-imposes some downtime.
+HARP can for a time coexist with the new
+[Connection management](/product_docs/docs/pgd/5/routing) configuration.
 
-To eliminate this downtime, BDR offers ways to perform a rolling
-application schema upgrade.
+This means you can upgrade whole pre-5 cluster to PGD 5 cluster, setup
+the connection routing, replace the HARP Proxy with PGD-Proxy, move application
+connections to PGD-Proxy instances and removed the HARP Manager from all servers.
 
-### Rolling Application Schema Upgrades
+It's highly recommended to do this as soon as possible after upgrading nodes to
+PGD 5 as HARP is not certified for long term use with PGD 5.
 
-By default, DDL will automatically be sent to all nodes. This can be
-controlled manually, as described in
-[DDL Replication](../bdr/ddl/), which
-could be used to create differences between database schemas across nodes.
-BDR is designed to allow replication to continue even while minor
-differences exist between nodes. These features are designed to allow
-application schema migration without downtime, or to allow logical
-standby nodes for reporting or testing.
-
-!!! Warning
-    Rolling Application Schema Upgrades have to be managed outside of BDR.
-    Careful scripting is required to make this work correctly
-    on production clusters. Extensive testing is advised.
-
-See [Replicating between nodes with differences](../bdr/appusage/) for details.
-
-When one node runs DDL that adds a new table, nodes that have not
-yet received the latest DDL need to handle the extra table.
-In view of this, the appropriate setting for rolling schema upgrades
-is to configure all nodes to apply the `skip` resolver in case of a
-`target_table_missing` conflict. This must be performed before any
-node has additional tables added and is intended to be a permanent
-setting.
-
-This is done with the following query, that must be **executed
-separately on each node**, after replacing `node1` with the actual
-node name:
-
-```sql
-SELECT bdr.alter_node_set_conflict_resolver('node1',
-		'target_table_missing', 'skip');
-```
-
-When one node runs DDL that adds a column to a table, nodes that have not
-yet received the latest DDL need to handle the extra columns.
-In view of this, the appropriate setting for rolling schema
-upgrades is to configure all nodes to apply the `ignore` resolver in
-case of a `target_column_missing` conflict. This must be performed
-before one node has additional columns added and is intended to be a
-permanent setting.
-
-This is done with the following query, that must be **executed
-separately on each node**, after replacing `node1` with the actual
-node name:
-
-```sql
-SELECT bdr.alter_node_set_conflict_resolver('node1',
-		'target_column_missing', 'ignore');
-```
-
-When one node runs DDL that removes a column from a table, nodes that
-have not yet received the latest DDL need to handle the missing column.
-This situation will cause a `source_column_missing` conflict, which uses
-the `use_default_value` resolver. Thus, columns that neither
-accept NULLs nor have a DEFAULT value require a two step process:
-
-1. Remove NOT NULL constraint or add a DEFAULT value for a column
-   on all nodes.
-2. Remove the column.
-
-Constraints can be removed in a rolling manner.
-There is currently no supported way for handling adding table
-constraints in a rolling manner, one node at a time.
-
-When one node runs a DDL that changes the type of an existing column,
-depending on the existence of binary coercibility between the current
-type and the target type, the operation may not rewrite the underlying
-table data. In that case, it will be only a metadata update of the
-underlying column type. Rewrite of a table is normally restricted.
-However, in controlled DBA environments, it is possible to change
-the type of a column to an automatically castable one by adopting
-a rolling upgrade for the type of this column in a non-replicated
-environment on all the nodes, one by one. See [ALTER TABLE](../bdr/ddl/#alter-table) for more details.
- section.
+TPA provides some useful tools for this and will eventually provide single
+command upgrade path between PGD 4 and PGD 5.
