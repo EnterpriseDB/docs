@@ -218,15 +218,15 @@ function transformer() {
 
     // link rewriter:
     // - strip .md
-    // - collapse subdirectories
     // - add references subdirectory where necessary
     const isInReferences = referenceMarkdownFiles.find(
       (file) => file === filename,
     );
-    visit(tree, "link", (node) => {
-      if (isAbsoluteUrl(node.url) || node.url[0] === "/") return;
-      node.url = node.url.replace(/\//g, "_").replace(/\.md(?=$|\?|#)/, "");
-      const parsed = new URL(node.url, "base:/reference/");
+    visit(tree, ["link", "image"], (node) => {
+      let url = node.url || node.src;
+      if (isAbsoluteUrl(url) || url[0] === "/") return;
+      url = url.replace(/\.md(?=$|\?|#)/, "");
+      const parsed = new URL(url, "base:/reference/");
       if (parsed.protocol !== "base:" || parsed.pathname === "/reference/")
         return;
       if (
@@ -236,10 +236,12 @@ function transformer() {
             parsed.pathname.replace(/^\/reference\//, ""),
         )
       ) {
-        if (!isInReferences) node.url = parsed.href.replace(/^base:\//, "");
+        if (!isInReferences) url = parsed.href.replace(/^base:\//, "");
       } else if (isInReferences) {
-        node.url = parsed.href.replace(/^base:\/reference\//, "../");
+        url = parsed.href.replace(/^base:\/reference\//, "../");
       }
+      if (node.url) node.url = url;
+      else node.src = url;
     });
 
     // MDExtra anchors:
