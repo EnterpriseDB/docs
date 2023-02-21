@@ -295,7 +295,10 @@ function cleanup() {
     );
 
     // it is possible the root index won't be present (if empty) - special case this (for EPAS)
-    if (!mapOrigPathToSlugs[thisProductPath]) {
+    if (
+      !mapOrigPathToSlugs[thisProductPath] &&
+      !mapOrigPathToSlugs[thisProductPath + "/"]
+    ) {
       const slugMap =
         (mapOrigPathToSlugs[thisUnversionedProductPath] =
         mapOrigPathToSlugs[thisProductPath] =
