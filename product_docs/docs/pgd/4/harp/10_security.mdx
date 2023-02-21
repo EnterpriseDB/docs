@@ -1,0 +1,67 @@
+---
+navTitle: Security
+title: Security and roles
+---
+
+Beyond basic package installation and configuration, HARP requires
+Postgres permissions to operate. These allow it to gather information about
+Postgres or BDR as needed to maintain node status in the consensus
+layer.
+
+## Postgres permissions
+
+Create the role specified in the `node.dsn` parameter in one
+of the following ways:
+
+* `CREATE USER ...`
+* `CREATE ROLE ... WITH LOGIN`
+
+This syntax ensures the role can log into the database to
+gather diagnostic information.
+
+Similarly, an entry must exist in `pg_hba.conf` for this role. You can do this in
+many ways. As an example, consider a VPN subnet where all database hosts are
+located somewhere in `10.10.*`. In such a case, the easiest approach is to add
+a specific line:
+
+```
+# TYPE     DATABASE    USER         ADDRESS         METHOD
+hostssl    all         harp_user    10.10.1.1/16    scram-sha-256
+```
+
+!!! Note
+    In this case we've used the more modern `scram-sha-256` authentication
+    rather than `md5`, which is now deprecated. We've also elected to require
+    SSL authentication by specifying `hostssl`.
+
+## BDR permissions
+
+BDR nodes have metadata and views that are visible only when certain roles are
+granted to the HARP-enabled user. In this case, the HARP user requires the
+following:
+
+```sql
+GRANT bdr_monitor TO harp_user;
+```
+
+The `bdr_monitor` BDR role is meant for status monitoring tools to maintain
+ongoing information on cluster operation, thus it is well-suited to HARP.
+
+## BDR consensus permissions
+
+When the `dcs.driver` configuration parameter is set to `bdr`, HARP 
+uses BDR as the consensus layer. As such, it requires access to API 
+methods that are currently available only to the `bdr_superuser` role. This 
+means the HARP-enabled user requires the following:
+
+```sql
+GRANT bdr_superuser TO foobar;
+```
+
+Currently access to the BDR consensus model requires superuser equivalent
+permission.
+
+!!! Important
+    BDR superusers *are not* Postgres superusers. The `bdr_superuser` role is
+    merely granted elevated privileges in BDR, such as access to
+    restricted functions, tables, views, and other objects.
