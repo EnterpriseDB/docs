@@ -64,27 +64,30 @@ const SimpleCard = ({ card }) => (
   </div>
 );
 
-const CardDecks = ({ cards, cardType = "simple" }) => {
+const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
   return (
-    <div className="card-deck row no-gutters">
-      {cards.map((card) => {
-        return (
-          <Col
-            key={card.fields.path}
-            md={12}
-            lg={6}
-            xl={cardType === "simple" && 4}
-            className="d-flex"
-          >
-            {cardType === "full" ? (
-              <FullCard card={card} />
-            ) : (
-              <SimpleCard card={card} />
-            )}
-          </Col>
-        );
-      })}
-    </div>
+    <>
+      {deckTitle && <h2>{deckTitle}</h2>}
+      <div className="card-deck row no-gutters">
+        {cards.map((card) => {
+          return (
+            <Col
+              key={card.fields.path}
+              md={12}
+              lg={6}
+              xl={cardType === "simple" && 4}
+              className="d-flex"
+            >
+              {cardType === "full" ? (
+                <FullCard card={card} />
+              ) : (
+                <SimpleCard card={card} />
+              )}
+            </Col>
+          );
+        })}
+      </div>
+    </>
   );
 };
 

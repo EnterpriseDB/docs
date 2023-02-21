@@ -1,0 +1,71 @@
+---
+title: Compatibility changes
+---
+
+There are numerous changes in PGD 5 that are not backwards compatible with
+PGD 4 or PGD 3.7.
+
+## Connection routing
+
+HARP Manager does not exist anymore, it's been replaced by new
+[Connection management](../routing) configuration.
+
+HARP Proxy is replaced by similarly functioning PGD-Proxy which removes any
+deprecated features and is configured through above mentioned connection
+management configuration.
+
+## Commit At Most Once
+
+CAMO configuration is now done through [Commit Scopes](../durability/commit-scopes). The
+`bdr.camo_pairs` catalog and any related manipulation functions don't exist
+anymore. The `bdr.enable_camo` GUC was removed.
+The `synchronous_replication_availability` GUC does not affect CAMO anymore.
+Use the `DEGRADE ON ... TO ASYNC` clause of a commit scope.
+
+
+## Eager All Node Replication
+
+There is no more `global` scope, however it's possible to create scope with same
+behavior using [Group Commit](../durability/group-commit).
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'eager_scope',
+    origin_node_group := 'top_group',
+    rule := 'ALL (top_group) GROUP COMMIT (conflict_resolution = eager, commit_decision = raft) ABORT ON (timeout = 60s)',
+    wait_for_ready := true
+);
+```
+
+The `bdr.global_commit_timeout` GUC was removed, use `ABORT ON` clause for the
+commit scope.
+
+## Lag Control
+
+Similarly to CAMO and Eager, Lag Control configuration was also moved to
+[Commit Scopes](../durability/commit-scopes) for more flexible durability configuration.
+
+## Catalogs
+
+- `bdr.workers` does not show worker specific info like worker_commit_timestamp anymore
+- `bdr.worker_errors` is deprecated and lost most of the info
+- `bdr.state_journal_details` is deprecated and lost most of the info
+- `bdr.event_summary` replaces the `bdr.worker_errors` and
+  `bdr.state_journal_details` with additional info like Raft role changes
+- the table `bdr.node_catchup_info` now has user consumable view
+  `bdr.node_catchup_info_details` which shows info in more friendly way
+- witness node is no longer distinguished by which replication sets
+  it replicates, but using `node_kind` value in `bdr.node_summary`
+- all the Raft (consensus) related tables and functions were adjusted to support
+  multiple Raft instances (sub-group Raft)
+- `bdr.node_pre_commit` view and the underlying table was removed as the
+  information is no longer stored in a table
+- `bdr.commit_decisions` view was added and replaces the `bdr.node_pre_commit` one
+- multiple internal autopatition tables were replaced by taskmgr ones as the
+  mechanism behind was generalized
+- `bdr.network_monitoring` view was removed along with underlying tables and
+  functions
+- many catalogs were added and some have new columns, as documented in the
+  [Catalogs](../catalogs) section of the documentation, these
+  are not breaking changes strictly speaking but we recommend to review them
+  when upgrading

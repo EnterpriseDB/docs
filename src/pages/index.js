@@ -309,6 +309,12 @@ const Page = () => (
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"

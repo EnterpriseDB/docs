@@ -57,4 +57,6 @@ export const products = {
   },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
+  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
+  tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
 };
