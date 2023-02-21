@@ -210,12 +210,6 @@ const Page = () => (
             </IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
-            <IndexCardLink to="/tpa/latest/">
-              Trusted Postgres Architect
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.DRIVES}
             headingText="Backup & Recovery"
@@ -313,6 +307,12 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
