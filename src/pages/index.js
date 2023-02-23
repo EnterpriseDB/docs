@@ -47,7 +47,9 @@ const Page = () => (
             <div className="col-sm mb-3 mr-1">
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
-                  <span className="badge-text font-weight-bold">Demo</span>
+                  <span className="badge-text font-weight-bold">
+                    What's new
+                  </span>
                 </div>
               </div>
 
@@ -55,28 +57,24 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                    to="/epas/latest/"
                   >
-                    Demonstration of Oracle SQL <br />
-                    compatibility in EDB BigAnimal
+                    EDB Postgres Advanced Server <br />
+                    Version 15
                   </Link>
                 </h3>
                 <p>
-                  EDB BigAnimal lets you run Oracle SQL queries in the cloud via
-                  EDB Postgres Advanced Server. Watch the video, or load up psql
-                  and follow along.
+                  EDB Postgres Advanced Server 15.2.0, which is built on
+                  open-source PostgreSQL 15.2, includes compatibility with
+                  Oracle and enhanced security, administration, and performance
+                  features.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
-                      className="btn btn-info btn-sm"
-                      to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                      className="btn-sm ml-2"
+                      to="/epas/latest/epas_rel_notes/epas15_2_0_rel_notes/"
                     >
-                      Watch demo
-                    </Link>
-                  </p>
-                  <p>
-                    <Link className="btn-sm ml-2" to="/biganimal/latest/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -87,7 +85,7 @@ const Page = () => (
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
                   <span className="badge-text font-weight-bold">
-                    Interactive Demo
+                    What's new
                   </span>
                 </div>
               </div>
@@ -96,31 +94,19 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/postgres_for_kubernetes/latest/interactive_demo/"
+                    to="/pg_extensions/"
                   >
-                    Install, Configure and Deploy PostgreSQL <br />
-                    with Kubernetes
+                    New Postgres extensions <br />
+                    and tools
                   </Link>
                 </h3>
                 <p>
-                  Want to see what it takes to get the EDB Postgres for
-                  Kubernetes Operator up and running? Try in the browser now, no
-                  downloads required.
+                  • EDB Advanced Storage Pack <br />
+                  • EDB Postgres Tuner <br />• EDB LDAP Sync
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link
-                      className="btn btn-info btn-sm"
-                      to="/postgres_for_kubernetes/latest/interactive_demo/"
-                    >
-                      Try it now
-                    </Link>
-                  </p>
-                  <p>
-                    <Link
-                      className="btn-sm ml-2"
-                      to="/postgres_for_kubernetes/latest/"
-                    >
+                    <Link className="btn-sm ml-2" to="/pg_extensions/">
                       Find out more &rarr;
                     </Link>
                   </p>
