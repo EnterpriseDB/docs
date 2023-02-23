@@ -57,7 +57,7 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                    to="/epas/latest/"
                   >
                     EDB Postgres Advanced Server <br />
                     Version 15
@@ -94,7 +94,7 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/postgres_for_kubernetes/latest/interactive_demo/"
+                    to="/pg_extensions/"
                   >
                     New Postgres extensions <br />
                     and tools
