@@ -127,9 +127,26 @@ const Tiles = ({ mode, node }) => {
   if (!node || !node.items) return null;
 
   if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
-    const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
+    const decks = {};
+    let currentDeckName = "";
+    for (let item of node.items) {
+      if (!item.path) {
+        currentDeckName = item.title;
+      } else {
+        decks[currentDeckName] = decks[currentDeckName] || [];
+        decks[currentDeckName].push(getCards(item, mode === "simple" ? 0 : 1));
+      }
+    }
 
-    return <CardDecks cards={tiles} cardType={mode} />;
+    return Object.keys(decks).map((deckName) => {
+      return (
+        <CardDecks
+          cards={decks[deckName]}
+          cardType={mode}
+          deckTitle={deckName}
+        />
+      );
+    });
   }
   return null;
 };
