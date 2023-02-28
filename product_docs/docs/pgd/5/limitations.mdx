@@ -2,29 +2,28 @@
 title: "Limitations"
 ---
 
-##  Using Postgres Distributed for multiple databases on the same instance
 
-The documentation for EDB Postgres Distributed states that it’s best practice for EDB Postgres Distributed to be used for a single database. This is codified in the default deployment automation with TPA and tooling like the CLI and proxy. Additionally, each VM or physical server hosting EDB Postgres Distributed should have only a single Postgres installation.
+This is a (non-comprehensive) list of limitations that are
+expected and are by design. They are not expected to be resolved in the
+future.
 
-While the documentation also states up to 10 databases are allowed, the content is included in the “Limitations” section of the documentation and intended to communicate it as an “exception” situation rather than a “best practice”. The documentation for existing PGD versions will be updated in the near future to provide more clarity about the limitations and challenges with the current product when multiple databases are used. 
+-   Replacing a node with its physical standby doesn't work for nodes that
+    use CAMO/Eager/Group Commit. Combining physical standbys and BDR in
+    general isn't recommended, even if otherwise possible.
 
-Support for using EDB Postgres Distributed for multiple databases on the same Postgres instance will be deprecated in the near term and not supported in future releases. As we extend the capabilities of the product to include sharding and write anywhere functionality, the additional complexity introduced operationally and functionally is no longer viable in a multi-database design. 
+-   A `galloc` sequence might skip some chunks if the
+    sequence is created in a rolled back transaction and then created
+    again with the same name. This can also occur if it is created and dropped when DDL
+    replication isn't active and then it is created again when DDL
+    replication is active.
+    The impact of the problem is mild, because the sequence
+    guarantees aren't violated. The sequence skips only some
+    initial chunks. Also, as a workaround you can specify the
+    starting value for the sequence as an argument to the
+    `bdr.alter_sequence_set_kind()` function.
 
-Limitations/Risks when using EDB Postgres Distributed for multiple databases on the same instance:
-
-1. Administrative commands need to be executed for each database if PGD configuration changes are needed, which increases risk for potential inconsistencies and errors.
-
-1. Each database needs to be monitored separately, adding overhead.
-
-1. TPAexec assumes one database; additional coding is needed by customers or PS in a post-deploy hook to set up replication for additional databases.
-
-1. HARP works at the Postgres instance level, not at the database level, meaning the leader node will be the same for all databases.
-
-1. Each additional database increases the resource requirements on the server. Each one needs its own set of worker processes maintaining replication (e.g.  logical workers, WAL senders, and WAL receivers). Each one also needs its own set of connections to other instances in the replication cluster. This might severely impact performance of all databases.
-
-1. When rebuilding or adding a node, the physical initialization method (“bdr_init_physical”) for one database can only be used for one node, all other databases will have to be initialized by logical replication, which can be problematic for large databases because of the time it might take.
-
-1. Synchronous replication methods (e.g. CAMO, Group Commit) won’t work as expected. Since the Postgres WAL is shared between the databases, a synchronous commit confirmation may come from any database, not necessarily in the right order of commits.
-
-1. CLI and OTEL integration (new with v5) assumes one database. 
-
+-   Legacy BDR synchronous replication uses a mechanism for transaction
+    confirmation different from the one used by CAMO, Eager, and Group Commit.
+    The two are not compatible and must not be used together. Using synchronous
+    replication to other non-BDR nodes, including both logical and physical
+    standby is possible.
