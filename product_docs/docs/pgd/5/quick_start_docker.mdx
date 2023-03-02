@@ -15,20 +15,50 @@ You'll need to install and configure several software packages in order to compl
 
 ### Linux environment
 
-[TPA supports several flavors of Linux](/tpa/latest/INSTALL/) as a host platform - you should have one of them at your disposal. 
+[TPA supports several flavors of Linux](/tpa/latest/INSTALL/) as a host platform - you should have one of them at your disposal.
 
 !!! Important
-    If you're running cgroup v2, you'll need to disable it while using TPA to deploy to Docker. The [TPA Docker Platform](/tpa/latest/platform-docker/#cgroupversion) topic contains instructions for disabling cgroup v2.
+    If you're running cgroup v2, you'll need to disable it while using TPA to deploy to Docker. 
+    
+    Check for cgroup v2:
+
+    ```shell
+    mount | grep cgroup | head -1
+    ```
+
+    If the output is
+    ```text
+    cgroup on /sys/fs/cgroup type cgroup2
+    ```
+
+    Then you'll need to disable cgroup v2:
+
+    ```shell
+    echo 'GRUB_CMDLINE_LINUX=systemd.unified_cgroup_hierarchy=false' | sudo tee \
+      /etc/default/grub.d/cgroup.cfg
+    sudo update-grub
+    sudo reboot    
+    ```
 
 ### Free disk space
 
 You'll need at least 5GB of free storage (accessible by Docker) to deploy the cluster described by this example. A bit more is probably wise.
 
-### Docker desktop
+### Docker Engine
 
-https://docs.docker.com/desktop/install/linux-install/
+We'll be using Docker containers as the target platform for this PGD deployment, so you should have Docker installed and configured. We recommend using [the convenience script](https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script) available at https://get.docker.com:
 
-We'll be using Docker containers as the target platform for this PGD deployment, so you should have Docker installed and configured.
+```shell
+curl -1sLf https://get.docker.com | sudo -E bash
+```
+
+!!! Important Running as a non-root user
+    Be sure to add your user to the Docker group once installed:
+
+    ```shell
+    sudo usermod -aG docker <username>
+    newgrp docker
+    ```
 
 ### EDB subscription
 
@@ -40,7 +70,34 @@ Then obtain your repo token from [EDB Repos 2.0](https://www.enterprisedb.com/re
 
 ### Trusted Postgres Architect
 
-We'll use the Trusted Postgres Architect (TPA) to provision and deploy PGD. You'll find instructions for installing it in the [Trusted Postgres Architect documentation](/tpa/latest/INSTALL/).
+We'll use the Trusted Postgres Architect (TPA) to provision and deploy PGD. You'll find instructions for installing it in the [Trusted Postgres Architect documentation](/tpa/latest/INSTALL/), which we've repeated here for convenience:
+
+### Configure the repository
+
+On Debian or Ubuntu: 
+
+```shell
+curl -1sLf 'https://downloads.enterprisedb.com/<your-token>/postgres_distributed/setup.deb.sh' | sudo -E bash
+``` 
+
+### Install the TPA package
+
+```shell
+sudo apt install tpaexec
+```
+
+### Configure TPA
+
+```shell
+sudo /opt/EDB/TPA/bin/tpaexec setup
+export PATH=$PATH:/opt/EDB/TPA/bin
+```
+
+### Test the TPA installation
+
+```shell
+tpaexec selftest
+```
 
 ## Generate a configuration file:
 
@@ -53,13 +110,13 @@ export EDB_SUBSCRIPTION_TOKEN=<token>
 Then run `tpaexec configure` to generate a configuration folder.
 
 ```shell
-tpaexec configure myedbdpcluster --architecture PGD-Always-ON --platform docker --epas --location-names dc1 --data-nodes-per-location 3 --no-git
+tpaexec configure democluster --architecture PGD-Always-ON --platform docker --epas --location-names dc1 --data-nodes-per-location 3 --no-git
 ```
 
-This creates a subdirectory in the current working directory called `myedbdpcluster` containing the `config.yml` configuration file TPA uses to create the cluster.
+This creates a subdirectory in the current working directory called `democluster` containing the `config.yml` configuration file TPA uses to create the cluster.
 
 ```shell
-less myedbdpcluster/config.yml
+less democluster/config.yml
 ```
 
 Edit the `config.yml` as needed, for example to change the IP address range used for servers or adjust locations of nodes.
@@ -72,7 +129,7 @@ For simplicity in this example, we're passing the `--no-git` flag - this will pr
 ### Provision the cluster:
    
 ```shell
-tpaexec provision myedbdpcluster
+tpaexec provision democluster
 ```
 
 Since we specified Docker as the platform, TPA provisions an image, containers, networks, etc.
@@ -80,7 +137,7 @@ Since we specified Docker as the platform, TPA provisions an image, containers, 
 ### Deploy the cluster: 
 
 ```shell
-tpaexec deploy myedbdpcluster
+tpaexec deploy democluster
 ```
 
 TPA installs the needed packages, applies the configuration and sets up the actual EDB Postgres Distributed cluster.
@@ -95,7 +152,7 @@ After the successful run of the `deploy` command the cluster is ready to use. Yo
 It's also possible to run a test that ensures the cluster is running as expected:
 
 ```shell
-tpaexec test myedbdpcluster
+tpaexec test democluster
 ```
 
 
@@ -104,5 +161,5 @@ tpaexec test myedbdpcluster
 When you're done testing the cluster, you'll want to deprovision it: this will tear down the Docker containers, network, etc.
 
 ```shell
-tpaexec deprovision myedbdpcluster
+tpaexec deprovision democluster
 ```
