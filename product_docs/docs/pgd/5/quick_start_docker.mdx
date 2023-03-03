@@ -11,6 +11,10 @@ architecture using local Docker containers.
 
 This platform is not suitable for production use, but can be valuable for testing the functionality and behavior of PGD clusters. You may also find it useful when familiarizing yourself with PGD commands and APIs in preparation for deployment on cloud, VM, or bare-metal platforms. 
 
+!!! Note
+This set of steps is specifically for Ubuntu 22.04 LTS on Intel/AMD processors.  
+!!!
+
 ## Prerequisites
 
 You'll need to install and configure several software packages in order to complete this example. 
@@ -48,7 +52,7 @@ You'll need at least 5GB of free storage (accessible by Docker) to deploy the cl
 
 ### Docker Engine
 
-We'll be using Docker containers as the target platform for this PGD deployment, so you should have Docker installed and configured. We recommend using [the convenience script](https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script) available at https://get.docker.com:
+We'll be using Docker containers as the target platform for this PGD deployment. If you do not have Docker installed, we recommend using [the convenience script](https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script) available at https://get.docker.com:
 
 ```shell
 curl -1sLf https://get.docker.com | sudo -E bash
@@ -62,21 +66,23 @@ curl -1sLf https://get.docker.com | sudo -E bash
     newgrp docker
     ```
 
-### EDB subscription
+### EDB account
 
-You'll need an EDB subscription in order to install TPA *and* in order to deploy PGD. 
+You'll need an EDB account in order to install both TPA *and* PGD. 
 
 [Sign up for a free EDB account](https://www.enterprisedb.com/accounts/register) if you don't already have one - this will give you a trial subscription to EDB's software repositories. 
 
 Once you have registered, or if you are already registered, go to the [EDB Repos 2.0](https://www.enterprisedb.com/repos-downloads) page where you can obtain your "repo token". 
 
-On your first visit to this page you'll have to select **Request Access** to generate your "repo token". Copy the token using the Copy Token icon and store it safely. You'll need this to install TPA and PGD.
+On your first visit to this page you'll have to select **Request Access** to generate your "repo token". Copy the token using the Copy Token icon and store it safely. 
 
-### Trusted Postgres Architect
+### Trusted Postgres Architect (TPA)
 
-We'll use Trusted Postgres Architect (TPA) to provision and deploy PGD. You'll find instructions for installing it in the [Trusted Postgres Architect documentation](/tpa/latest/INSTALL/), which we've repeated here for convenience:
+We'll use TPA to provision and deploy PGD. You'll find instructions for installing it in the [Trusted Postgres Architect documentation](/tpa/latest/INSTALL/), which we've included here for convenience:
 
 #### Configure the repository
+
+We'll use a convenience script to configure the Postgres Distributed repository. This repository also contains the TPA packages.
 
 On Debian or Ubuntu: 
 
@@ -92,73 +98,85 @@ sudo apt install tpaexec
 
 #### Configure TPA
 
+We now need to configure TPA which configures TPA's Python environment. Just call `tpaexec` with the command `setup`.
+
 ```shell
 sudo /opt/EDB/TPA/bin/tpaexec setup
 export PATH=$PATH:/opt/EDB/TPA/bin
 ```
 
+You can add the export command to your shell's profile.
+
 #### Test the TPA installation
+
+You can verify TPA is correctly installed by running `selftest`.
 
 ```shell
 tpaexec selftest
 ```
+TPA is now installed.
 
 ## Generate a configuration file
 
-First, set the `EDB_SUBSCRIPTION_TOKEN` environmental variable to your EDB repo token.
+First, set the `EDB_SUBSCRIPTION_TOKEN` environmental variable to the value of your EDB repo token.
 
 ```shell
-export EDB_SUBSCRIPTION_TOKEN=<token>
+export EDB_SUBSCRIPTION_TOKEN=<your-repo-token>
 ```
 
 Then run `tpaexec configure` to generate a configuration folder.
 
 ```shell
-tpaexec configure democluster --architecture PGD-Always-ON --platform docker --epas --location-names dc1 --data-nodes-per-location 3 --no-git
+tpaexec configure democluster --architecture PGD-Always-ON --platform docker --epas \
+--location-names dc1 --data-nodes-per-location 3 --no-git
 ```
-
-This creates a subdirectory in the current working directory called `democluster` containing the `config.yml` configuration file TPA uses to create the cluster.
-
-```shell
-less democluster/config.yml
-```
-
-Edit the `config.yml` as needed, for example to change the IP address range used for servers or adjust locations of nodes.
 
 We included options to specify using Docker, a single location, and three data nodes running [EDB Postgres Advanced Server](/epas/latest/). By default, PGD will also configure two [PGD Proxy](routing/proxy/) nodes and a [Barman](backup#physical-backup) node for backup. Rocky Linux is the default image for all nodes.
 
 For simplicity in this example, we're passing the `--no-git` flag - this will prevent TPA from trying to commit configuration changes to a Git repository. 
 
+This creates a subdirectory in the current working directory called `democluster` containing the `config.yml` configuration file TPA uses to create the cluster. You can view it using:
+
+```shell
+less democluster/config.yml
+```
 
 ## Provision the cluster
+
+Now we'll allocate the resources needed to run the configuration we have just created, using the `tpaexec provision` command.
    
 ```shell
 tpaexec provision democluster
 ```
 
-Since we specified Docker as the platform, TPA provisions an image, containers, networks, and so on.
+Since we specified Docker as the platform, TPA creates a Docker image, containers, networks, and so on.
 
 ## Deploy the cluster
+
+With configuration in place and infrastructure provisioned, we can now deploy the distrbuted cluster.
 
 ```shell
 tpaexec deploy democluster
 ```
 
-TPA installs the needed packages, applies the configuration, and sets up the actual EDB Postgres Distributed cluster.
+TPA applies the confuration, installing the needed packages and setting up the actual EDB Postgres Distributed cluster.
 
 !!! Tip
     If you see a failure while processing the `barman/first_backup` task, retry this step. Depending on the speed of your test machine, 40 retries may not be enough for initialization to complete in the relevant Docker containers. 
    
 ## Test the cluster
    
-After the successful run of the `deploy` command the cluster is ready to use. You can connect to it via `psql` or any other database client.
+After the successful run of the `deploy` command the cluster is ready to use. 
 
-It's also possible to run a test that ensures the cluster is running as expected:
+We can now run a test that ensures the cluster is running as expected:
 
 ```shell
 tpaexec test democluster
 ```
+## Use the cluster
 
+>O
+ ^
 
 ## Deprovisioning
 
