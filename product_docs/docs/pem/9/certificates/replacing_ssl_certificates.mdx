@@ -1,0 +1,136 @@
+---
+title: "Replacing agent self-signed SSL certificates"
+---
+
+You can replace the self-signed SSL certificates on an existing PEM installation, if needed. If you upgrade your server to a new version, you need to replace the certificates. If you are upgrading PEM, first upgrade the PEM server and then the PEM agent on all PEM installations before replacing the SSL certificates. 
+
+Perform the steps to replace the self-signed SSL certificates:
+
+1. Stop all running PEM agents, first on the server host and then on any monitored host.
+
+   ```shell
+   # Running as root
+   systemctl stop pemagent
+   ```
+
+   On a Windows host, you can use the Services applet to stop the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Stop the service**.
+
+2.  Take a backup of the existing SSL certificates and keys. The SSL certificates and keys are stored in the `data` directory under your PEM installation. For example, the default location on a Linux system is:
+
+    `/var/lib/pgsql/x/data`, where `x` is the Postgres database version
+
+    Copy the files, adding an extension (in this example "old") to each file to make the name unique:
+
+    -   `ca_certificate.crt`
+    -   `ca_key.key`
+    -   `root.crt`
+    -   `root.crl`
+    -   `server.key`
+    -   `server.crt`
+
+    ```shell
+    # Running as root
+    cp ca_certificate.crt ca_certificate_old.crt
+    ```    
+
+3.  Use the `openssl_rsa_generate_key()` function to generate the `ca_key.key` file:
+
+    ```shell
+    /usr/pgsql-x.x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT public.openssl_rsa_generate_key(1024)" > /var/lib/pgsql/x/data/ca_key.key
+    ```
+
+4.  `cat` the contents to the variable `CA_KEY` for use when generating the `ca_certificate.crt` file. Change the permissions on the `ca_key.key` file:
+
+    ```shell
+    CA_KEY=$(cat /var/lib/pgsql/x/data/ca_key.key)
+
+    chmod 600 /var/lib/pgsql/x/data/ca_key.key
+    ```
+
+5.  Use the key to generate the `ca_certificate.crt` file. For simplicity, place the SQL query in a temporary file with a unique name:
+
+    ```shell
+    echo "SELECT openssl_csr_to_crt(openssl_rsa_key_to_csr('${CA_KEY}',
+    'PEM','US', 'MA', 'Bedford', 'Postgres Enterprise Manager',
+    'support@enterprisedb.com'), NULL,
+    '/var/lib/pgsql/x/data/ca_key.key')" > /tmp/_random.$$
+    ```
+
+6.  Use the variable to execute the query, placing the content in the `ca_certificate.crt` file.
+
+    ```shell
+    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -f /tmp/_random.$$ > /var/lib/pgsql/x/data/ca_certificate.crt
+    ```
+
+7.  Change the permissions of the `ca_certificate.crt` file, and remove the temporary file containing the SQL command:
+
+    ```shell
+    chmod 600 /var/lib/pgsql/x/data/ca_certificate.crt
+
+    rm -f /tmp/_random.$$
+    ```
+
+8.  Reuse the `ca_certificate.crt` file as the `root.crt` file:
+
+    ```shell
+    cp /var/lib/pgsql/x/data/ca_certificate.crt /var/lib/pgsql/x/data/root.crt
+    ```
+  
+9.  Change the permissions on the `root.crt` file:
+
+    ```shell
+    chmod 600 /var/lib/pgsql/x/data/root.crt
+    ```
+
+10. Use the `openssl_rsa_generate_crl()` function to create the certificate revocation list (`root.crl`):
+
+    ```shell
+    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c
+     "SELECT openssl_rsa_generate_crl('/var/lib/pgsql/x/data/ca_certificate.crt', '/var/lib/pgsql/x/data/ca_key.key')" > /var/lib/pgsql/x/data/root.crl
+    ```
+
+11. Change the permissions of the `root.crl` file:
+
+    ```shell
+    chmod 600 /var/lib/pgsql/x/data/root.crl
+    ```
+
+12. Use the `openssl_rsa_generate_key()` function to generate the `server.key` file:
+
+    ```shell
+    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT public.openssl_rsa_generate_key(1024)" >> /var/lib/pgsql/x/data/server.key
+    ```
+
+13.  `cat` the contents to the variable `SSL_KEY` for use when generating the `server.crt` file and change the permissions on the `server.key` file:
+
+    ```shell
+    SSL_KEY=$(cat /var/lib/pgsql/x/data/server.key)
+
+    chmod 600 /var/lib/pgsql/x/data/server.key
+    ```
+
+14. Use the `SSL_KEY` to generate the server certificate. Save the certificate in the `server.crt` file. For simplicity, first place the SQL query into a temporary file with a unique name:
+
+    ```shell
+    echo "SELECT openssl_csr_to_crt(openssl_rsa_key_to_csr('${SSL_KEY}',
+    'PEM','US', 'MA', 'Bedford', 'Postgres Enterprise Manager',
+    'support@enterprisedb.com'),
+    '/var/lib/pgsql/x/data/ca_certificate.crt',
+    '/var/lib/pgsql/x/data/ca_key.key')" > /tmp/_random.$$
+
+     /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -f /tmp/_random.$$ >> /var/lib/pgsql/x/data/server.crt
+    ```
+
+15. Change the permissions on the `server.crt` file, and delete the temporary file:
+
+    ```shell
+    chmod 600 /var/lib/pgsql/x/data/server.crt
+
+    rm -f /tmp/_random.$$
+    ```
+
+16. Restart the Postgres server:
+
+    ```shell
+    systemctl restart postgresql-x
+    ```
