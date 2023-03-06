@@ -12,11 +12,13 @@ PEM, by default, supports secured SSL/TLS connections and acts as its own certif
 
 The SSL CA certificates and keys for the PEM server and agent get generated during the PEM installation. These certificates and keys encrypt the connections between the server and agent. You can replace the PEM self-signed CA certificate and key with trusted third-party CA certificates for increased security.
 
-## PEM self-signed SSL certificate framework
+## How PEM SSL certificates work
 
 The PEM server configuration script generates self-signed CA certificates and key files for the PEM backend database server. The backend database server uses these certificates and keys to authenticate and encrypt the agent connections.
 
-The PEM server generates the following certificates and key files in the data directory of the backend database server:
+The agent connects to the PEM backend database server using the libpq interface. It establishes the connection with the self-signed SSL certificate and key files generated during the self-registration.
+
+The PEM server generates the certificates and key files in the data directory of the backend database server:
 
 - `ca_certificate.crt`
 - `ca_key.key`
@@ -33,9 +35,7 @@ The `root.crl` file maintains the certificate revocation list of the agents. It 
 
 The `server.crt` is the signed certificate for the PEM server and the `server.key` is the private key to the certificate. The PEM agent certificates get generated using this server certificate and key.
 
-The agent connects to the PEM backend database server using the libpq interface. It establishes the connection with the self-signed SSL certificate and key files generated during the self-registration.
-
-## PEM self-signed SSL certificate expiration
+## PEM self-signed SSL certificate renewal
 
 The PEM agent installed with the PEM server monitors the expiration date of the `ca_certificate.crt` file. When the certificate is about to expire, PEM performs these steps:
 
@@ -50,9 +50,9 @@ If you uninstall an agent, the certificate associated with the agent gets added 
 
 You must generate a certificate and rsa key for each agent interacting with the PEM server and copy the key and certificate to the agent.
 
-Each agent has a unique identifier that is stored in the `pem.agent` table of the PEM database. You must replace the key and certificate files with the key or certificate that corresponds to the agent's identifier. 
+Each agent has a unique identifier that is stored in the `pem.agent` table of the `pem` database. You must replace the key and certificate files with the key or certificate that corresponds to the agent's identifier. 
 
-In addition, you should move the `agent.key` and `agent.crt` files generated in the following steps 2 and 3 into place on their respective PEM agent host before generating the next certificate and key file pair.
+In addition, move the `agent.key` and `agent.crt` files generated in the steps 2 and 3 on their respective PEM agent host before generating the next certificate and key file pair.
 
 Perform the following steps to generate a PEM agent certificate and key file pair:
 
@@ -62,21 +62,21 @@ Perform the following steps to generate a PEM agent certificate and key file pai
     /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT ID FROM pem.agent"
     ```
 
--   On Linux, you can also find the agent identifier and location of the keys and certificates in the `PEMagent` section of the `/etc/postgres-reg.ini` file.
+    -   On Linux, you can also find the agent identifier and location of the keys and certificates in the `PEMagent` section of the `/etc/postgres-reg.ini` file.
 
--   On Windows, the information is stored in the registry:
+    -   On Windows, the information is stored in the registry:
 
-    -   On a 64-bit Windows installation, check:
+        -   On a 64-bit Windows installation, check:
 
-    ```shell
-    HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EnterpriseDB\PEM\agent
-    ```
+        ```shell
+        HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EnterpriseDB\PEM\agent
+        ```
 
-    -   On a 32-bit Windows installation, check:
+        -   On a 32-bit Windows installation, check:
 
-    ```shell
-    HKEY_LOCAL_MACHINE\SOFTWARE\EnterpriseDB\PEM\agent
-    ```
+        ```shell
+        HKEY_LOCAL_MACHINE\SOFTWARE\EnterpriseDB\PEM\agent
+        ```
 
 2.  After identifying the agents that need key files, generate an `agent.key` for each agent. To generate the key, execute the following command, capturing the output in a key file:
 
@@ -109,15 +109,9 @@ Perform the following steps to generate a PEM agent certificate and key file pai
     chmod 600 agent.crt
     ```
 
-5. Replace each agent's key and certificate file with the newly generated files before restarting the PEM agent service:
+5.  Replace each agent's key and certificate file with the newly generated files. 
 
-
-- Linux
-    -   On Linux with `init.d`, restart the service with the command:
-
-    ```shell
-    /etc/init.d/pemagent start
-    ```
+6.  Restart the PEM agent service:
 
     -   On Linux with `systemd`, restart the service with the command:
 
@@ -125,8 +119,7 @@ Perform the following steps to generate a PEM agent certificate and key file pai
     systemctl start pemagent
     ```
 
-- Windows
-    - On a Windows host, you can use the Services applet to start the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Start the service**.
+    -   On a Windows host, you can use the Services applet to start the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Start the service**.
 
 ## Replacing agent self-signed SSL certificates
 
@@ -187,19 +180,19 @@ Perform the steps to update the self-signed SSL certificates:
     '/var/lib/pgsql/x/data/ca_key.key')" > /tmp/_random.$$
     ```
 
-    1.  Use the variable to execute the query, placing the content in the `ca_certificate.crt` file.
+    a.  Use the variable to execute the query, placing the content in the `ca_certificate.crt` file.
 
-    ```shell
-    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -f /tmp/_random.$$ > /var/lib/pgsql/x/data/ca_certificate.crt
-    ```
+        ```shell
+        /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -f /tmp/_random.$$ > /var/lib/pgsql/x/data/ca_certificate.crt
+        ```
 
-    Modify the permissions of the `ca_certificate.crt` file, and remove the temporary file that contained the SQL command:
+    b.  Modify the permissions of the `ca_certificate.crt` file, and remove the temporary file that contained the SQL command:
 
-    ```shell
-    chmod 600 /var/lib/pgsql/x/data/ca_certificate.crt
+        ```shell
+        chmod 600 /var/lib/pgsql/x/data/ca_certificate.crt
 
-    rm -f /tmp/_random.$$
-    ```
+        rm -f /tmp/_random.$$
+        ```
 
 5.  Reuse the `ca_certificate.crt` file as the `root.crt` file:
 
@@ -207,11 +200,11 @@ Perform the steps to update the self-signed SSL certificates:
     cp /var/lib/pgsql/x/data/ca_certificate.crt /var/lib/pgsql/x/data/root.crt
     ```
 
-    Modify the permissions of the `root.crt` file:
+    a.  Modify the permissions of the `root.crt` file:
 
-    ```shell
-    chmod 600 /var/lib/pgsql/x/data/root.crt
-    ```
+        ```shell
+        chmod 600 /var/lib/pgsql/x/data/root.crt
+        ```
 
 6.  Use the `openssl_rsa_generate_crl()` function to create the certificate revocation list (`root.crl`):
 
@@ -220,13 +213,13 @@ Perform the steps to update the self-signed SSL certificates:
      "SELECT openssl_rsa_generate_crl('/var/lib/pgsql/x/data/ca_certificate.crt', '/var/lib/pgsql/x/data/ca_key.key')" > /var/lib/pgsql/x/data/root.crl
     ```
 
-    Modify the permissions of the `root.crl` file:
+7.  Modify the permissions of the `root.crl` file:
 
     ```shell
     chmod 600 /var/lib/pgsql/x/data/root.crl
     ```
 
-7.  Use the `openssl_rsa_generate_key()` function to generate the `server.key` file:
+8.  Use the `openssl_rsa_generate_key()` function to generate the `server.key` file:
 
     ```shell
     /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT public.openssl_rsa_generate_key(1024)" >> /var/lib/pgsql/x/data/server.key
@@ -240,7 +233,7 @@ Perform the steps to update the self-signed SSL certificates:
     chmod 600 /var/lib/pgsql/x/data/server.key
     ```
 
-8.  Use the `SSL_KEY` to generate the server certificate. Save the certificate in the `server.crt` file. For simplicity, first place the SQL query into a temporary file with a unique name:
+9.  Use the `SSL_KEY` to generate the server certificate. Save the certificate in the `server.crt` file. For simplicity, first place the SQL query into a temporary file with a unique name:
 
     ```shell
     echo "SELECT openssl_csr_to_crt(openssl_rsa_key_to_csr('${SSL_KEY}',
@@ -252,7 +245,7 @@ Perform the steps to update the self-signed SSL certificates:
      /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -f /tmp/_random.$$ >> /var/lib/pgsql/x/data/server.crt
     ```
 
-9.  Modify the privileges on the `server.crt` file, and delete the temporary file:
+10. Modify the privileges on the `server.crt` file, and delete the temporary file:
 
     ```shell
     chmod 600 /var/lib/pgsql/x/data/server.crt
@@ -260,15 +253,7 @@ Perform the steps to update the self-signed SSL certificates:
     rm -f /tmp/_random.$$
     ```
 
-10. Restart the Postgres server:
-
-       On Linux with `init.d`, for example, on a Centos6 host:
-
-    ```shell
-    /etc/init.d/postgresql-x restart
-    ```
-
-    On Linux with `systemd`, for example, on a Centos7 host:
+11. Restart the Postgres server:
 
     ```shell
     systemctl restart postgresql-x
@@ -295,7 +280,7 @@ Perform the steps to update the self-signed SSL certificates:
 
 1.  Make sure both the PEM agents and the PEM server are up and running.
 
-1.  Take a backup of the existing SSL keys and certificates. The SSL keys and certificates are stored in the `data` directory under your PEM installation. For example, the default location on a Linux system is:
+1.  Take a backup of the existing SSL keys and certificates. The SSL keys and certificates are stored in the `data` directory under your PEM installation. Since we are using CentOS in this example, the default location is:
 
     `/var/lib/edb-as/x/data`, where `x` is the EDB Postgres Advanced server database version
 
@@ -307,8 +292,6 @@ Perform the steps to update the self-signed SSL certificates:
     -   `root.crl`
     -   `server.key`
     -   `server.crt`
-
-    For example, to create a backup of the `ca_certificate` file with the word `old` appended to the entry, use this command:
 
     ```shell
     cp ca_certificate.crt ca_certificate_old.crt
