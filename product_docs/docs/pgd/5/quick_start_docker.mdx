@@ -126,17 +126,23 @@ export EDB_SUBSCRIPTION_TOKEN=<your-repo-token>
 
 Then run `tpaexec configure` to generate a configuration folder.
 
-```shell
+```shell-session
 tpaexec configure democluster \
   --architecture PGD-Always-ON \
   --platform docker \
   --epas \
   --location-names dc1 \
+  --active-locations dc1 \3
   --data-nodes-per-location 3 \
-  --no-git
+  --no-git \
+  --hostnames-unsorted
 ```
 
 We included options to specify using Docker, a single location, and three data nodes running [EDB Postgres Advanced Server](/epas/latest/). By default, PGD will also configure two [PGD Proxy](routing/proxy/) nodes and a [Barman](backup#physical-backup) node for backup. Rocky Linux is the default image for all nodes.
+
+!!! Note PGD Proxy only enabled in active locations
+    While PGD Proxy notes will be configured wihtout it, the flag `--active-locations` causes proxy routing (and subgroup RAFT) to be enabled for the location(s) specified in it. Here we have only one location specified by `--location-names`, so 
+    we pass that to `--active-locations` as well. 
 
 For simplicity in this example, we're passing the `--no-git` flag - this will prevent TPA from trying to commit configuration changes to a Git repository. 
 
@@ -180,29 +186,10 @@ tpaexec test democluster
 ```
 ## Use the cluster
 
-We can also do a quick hands-on test with psql. For convenience, we'll use the barman instance to launch psql and connect to a proxy instance. Refer back to your config.yml to identify the host name of a proxy and of the barman instance.
-
-For example, in the following config.yml instance definitions:
-
-```yaml
-- Name: quarto
-  location: dc1
-  node: 5
-  role:
-  - pgd-proxy
-  vars:
-    bdr_child_group: dc1_subgroup
-- Name: zebra
-  location: dc1
-  node: 6
-  role:
-  - barman
-```
-
-...the proxy instance name (and container name) is "quarto", while the barman instance is named "zebra". So we can drop into psql like so:
+We can also do a quick hands-on test with psql. For convenience, we'll use the barman instance to launch psql and connect to a proxy instance. As we saw previously in config.yml, TPA has assigned the name `karakul` to the barman instance, and `kapok` to the first proxy.
 
 ```shell
-docker exec -it -u barman zebra psql -h quarto -p 6432 -U barman bdrdb
+docker exec -it -u barman karakul psql -h kapok -p 6432 -U barman bdrdb
 ```
 
 ## Deprovision the cluster
