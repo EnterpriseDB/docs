@@ -55,11 +55,9 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/epas/latest/"
-                  >
-                    EDB Postgres Advanced Server <br />
+                  <Link className="homepage-headling-link" to="/epas/latest/">
+                    EDB Postgres Advanced Server
+                    <br />
                     Version 15
                   </Link>
                 </h3>
@@ -92,10 +90,7 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/pg_extensions/"
-                  >
+                  <Link className="homepage-headling-link" to="/pg_extensions/">
                     New Postgres extensions <br />
                     and tools
                   </Link>
@@ -121,7 +116,7 @@ const Page = () => (
         <div className="card-columns mb-4">
           <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
             <IndexCardLink to="/epas/latest">
-              EDB Postgres Advanced Server
+              EDB Postgres Advanced Server (EPAS)
             </IndexCardLink>
             <IndexCardLink to="/postgis/latest" className="nested-link">
               PostGIS
@@ -229,7 +224,7 @@ const Page = () => (
             headingText="High Availability"
           >
             <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
+              EDB Postgres Distributed (PGD)
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
@@ -246,7 +241,7 @@ const Page = () => (
             headingText="Monitoring & Admin"
           >
             <IndexCardLink to="/pem/latest">
-              Postgres Enterprise Manager
+              Postgres Enterprise Manager (PEM)
             </IndexCardLink>
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
@@ -297,7 +292,7 @@ const Page = () => (
 
           <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
             <IndexCardLink to="/tpa/latest/">
-              Trusted Postgres Architect
+              Trusted Postgres Architect (TPA)
             </IndexCardLink>
           </IndexCard>
 
