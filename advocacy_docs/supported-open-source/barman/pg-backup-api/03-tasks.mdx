@@ -1,0 +1,87 @@
+---
+title: 'Operations'
+description: 'Instructions for creating and querying tasks operations on the Postgres Backup API'
+tags:
+    - barman
+    - backup
+    - recovery
+    - postgresql
+    - pg-backup-api
+---
+
+### Prerequisites
+
+ You can ask Barman to perform operations on upstream servers. If you plan to use that feature, the following setup is expected:
+
+ * Postgres backup API (pg-backup-api) must be installed on the same server as Barman. Please check [How to install Postgres backup API](01-installation) if you haven't done it already.
+ * SSH passwordless login must be in place among the different hosts.
+ * Ownership of destination directory or write permissions must be granted to the user Barman will be connecting as to the Postgres nodes.
+ * For security reasons, the API will listen to on localhost only. You need to use some proxy to forward the traffic. The Apache http server was used during our tests. Please [read our notes about how to define a virtual host](02-securing-pg-backup-api#adding-a-virtualhost-definition-for-postgres-backup-api).
+
+### Available endpoints
+
+ * /servers/NAME/operations/
+ * /servers/NAME/operations/OPERATION_ID
+
+NAME is an available Barman server configuration. Usually in a file like /etc/barman.d/myserver.conf
+
+OPERATION_ID is a short string that represents the ID of an operation created by the API.
+
+You can find out how to fetch operations created by the API below
+
+### Available operations
+
+#### GET: /servers/NAME/operations
+
+Returns all tasks created by the API, if any.
+
+```bash
+curl http://barman-server.my.org/servers/db_server_two/operations
+{
+  "operations": [
+    "20230223T092433",
+    "20230223T092630"
+  ]
+}
+```
+
+#### POST: /servers/NAME/operations
+
+This method is one of the most important ones, because it is where you ask pg-backup-api to create operations. Pay attention on the response below because we will use the ID to query its status later.
+
+You need to send instructions about the operation you want to be created. This step is done by a json message (payload) which should look like this:
+
+The first supported (and only for the moment) operation type is "recover".
+
+```
+{"operation_type": "recover",
+ "backup_id": "20230221T155931",
+ "remote_ssh_command": "ssh postgres@db_server_two.my.org",
+ "destination_directory": "/var/lib/pgdata"}
+```
+
+!!! Note
+    You need to set the "content-type" header as "application/json" like the example below, otherwise you will receive a 400 Bad Request error.
+
+
+```bash
+curl -X POST http://barman-server.my.org/servers/db_server_two/operations -H "content-type: application/json" -d@payload-pg-backup-api.json
+{
+  "operation_id": {  "20230223T093201" },
+}
+```
+
+In the response above, "20230223T093201" is the OPERATION_ID which we will use next to check its status.
+
+
+#### GET: /servers/NAME/operations/OPERATION_ID
+
+This method allows you to check if an operation is: DONE, SUCCESS or IN_PROGRESS.
+
+```bash
+curl http://barman-server.my.org/servers/db_server_two/operations/20230223T093201
+{
+  "recovery_id": "20230223T093201",
+  "status": "DONE"
+}
+```
