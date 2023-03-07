@@ -10,7 +10,10 @@ export const products = {
   biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
-  epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
+  epas: {
+    name: "EDB Postgres Advanced Server (EPAS)",
+    iconName: IconNames.EDB_EPAS,
+  },
   epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
@@ -43,10 +46,13 @@ export const products = {
   net_connector: { name: ".NET Connector", iconName: IconNames.CONNECT },
   ocl_connector: { name: "OCL Connector", iconName: IconNames.CONNECT },
   odbc_connector: { name: "ODBC Connector", iconName: IconNames.CONNECT },
-  pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
+  pem: {
+    name: "Postgres Enterprise Manager (PEM)",
+    iconName: IconNames.EDB_PEM,
+  },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pgd: { name: "EDB Postgres Distributed" },
+  pgd: { name: "EDB Postgres Distributed (PGD)" },
   pge: { name: "EDB Postgres Extended Server" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   pglogical: { name: "pglogical" },
@@ -57,6 +63,12 @@ export const products = {
   },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
-  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
-  tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
+  tde: {
+    name: "Transparent Data Encryption (TDE)",
+    iconName: IconNames.SECURITY,
+  },
+  tpa: {
+    name: "Trusted Postgres Architect (TPA)",
+    iconName: IconNames.INSTANCES,
+  },
 };

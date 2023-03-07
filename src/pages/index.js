@@ -135,7 +135,7 @@ const Page = () => (
             </span>
 
             <IndexCardLink to="/tde/latest">
-              Transparent Data Encryption
+              Transparent Data Encryption (TDE)
             </IndexCardLink>
             <IndexCardLink to="/pg_extensions/ldap_sync">
               EDB LDAP Sync
