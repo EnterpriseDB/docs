@@ -46,7 +46,7 @@ export const products = {
   pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pgd: { name: "EDB Postgres Distributed" },
+  pgd: { name: "EDB Postgres Distributed (PGD)" },
   pge: { name: "EDB Postgres Extended Server" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   pglogical: { name: "pglogical" },

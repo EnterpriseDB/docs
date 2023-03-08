@@ -229,7 +229,7 @@ const Page = () => (
             headingText="High Availability"
           >
             <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
+              EDB Postgres Distributed (PGD)
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
