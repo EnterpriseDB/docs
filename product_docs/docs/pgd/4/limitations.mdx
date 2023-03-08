@@ -1,0 +1,51 @@
+---
+title: "Limitations"
+---
+
+
+This section covers design limitations of BDR, that should be taken into account when planning your deployment.
+
+## Limits on nodes
+
+- BDR can run hundreds of nodes assuming adequate hardware and network. However, for mesh-based deployments, we generally don’t recommend running more than 48 nodes in one cluster. If extra read scalability is needed beyond the 48 node limit, subscriber only nodes can be added without adding connections to the mesh network.
+
+- BDR currently has a hard limit of no more than 1000 active nodes, as this is the current maximum Raft connections allowed.
+
+- BDR places a limit that at most 10 databases in any one PostgreSQL instance can be BDR nodes across different BDR node groups. However, BDR works best if you use only one BDR database per PostgreSQL instance.
+
+- The minimum recommended number of nodes in a group is three to provide fault tolerance for BDR's consensus mechanism. With just two nodes, consensus would fail if one of the nodes was unresponsive. Consensus is required for some BDR operations such as distributed sequence generation. For more information about the consensus mechanism used by EDB Postgres Distributed, see [Architectural details](/pgd/4/architectures/#architecture-details).
+
+
+## Limitations of multiple databases on a single instance
+
+Support for using BDR for multiple databases on the same Postgres instance is deprecated beginning with PGD 5 and will no longer be supported with PGD 6. As we extend the capabilities of the product, the additional complexity introduced operationally and functionally is no longer viable in a multi-database design.
+
+It is best practice and recommended that only one database per PGD instance be configured. The deployment automation with TPA and the tooling such as the CLI and proxy already codify that recommendation. 
+
+While it is still possible to host up to ten databases in a single instance, this incurs many immediate risks and current limitations:
+
+- Administrative commands need to be executed for each database if PGD configuration changes are needed, which increases risk for potential inconsistencies and errors.
+
+- Each database needs to be monitored separately, adding overhead.
+
+- TPAexec assumes one database; additional coding is needed by customers or PS in a post-deploy hook to set up replication for additional databases.
+
+- HARP works at the Postgres instance level, not at the database level, meaning the leader node will be the same for all databases.
+
+- Each additional database increases the resource requirements on the server. Each one needs its own set of worker processes maintaining replication (e.g.  logical workers, WAL senders, and WAL receivers). Each one also needs its own set of connections to other instances in the replication cluster. This might severely impact performance of all databases.
+
+- When rebuilding or adding a node, the physical initialization method (“bdr_init_physical”) for one database can only be used for one node, all other databases will have to be initialized by logical replication, which can be problematic for large databases because of the time it might take.
+
+- Synchronous replication methods (e.g. CAMO, Group Commit) won’t work as expected. Since the Postgres WAL is shared between the databases, a synchronous commit confirmation may come from any database, not necessarily in the right order of commits.
+
+- CLI and OTEL integration (new with v5) assumes one database. 
+
+## Other limitations
+
+This is a (non-comprehensive) list of limitations that are expected and are by design. They are not expected to be resolved in the future.
+
+-   Replacing a node with its physical standby doesn't work for nodes that use CAMO/Eager/Group Commit. Combining physical standbys and BDR in general isn't recommended, even if otherwise possible.
+
+-   A `galloc` sequence might skip some chunks if the sequence is created in a rolled back transaction and then created again with the same name. This can also occur if it is created and dropped when DDL replication isn't active and then it is created again when DDL replication is active. The impact of the problem is mild, because the sequence guarantees aren't violated. The sequence skips only some initial chunks. Also, as a workaround you can specify the starting value for the sequence as an argument to the `bdr.alter_sequence_set_kind()` function.
+
+-   Legacy BDR synchronous replication uses a mechanism for transaction confirmation different from the one used by CAMO, Eager, and Group Commit. The two are not compatible and must not be used together. Therefore, nodes that appear in `synchronous_standby_names` must not be part of CAMO, Eager, or Group Commit configuration. 
