@@ -390,6 +390,9 @@ const Page = () => {
               <IndexCardLink to="/eprs/latest">
                 Replication Server
               </IndexCardLink>
+              <IndexCardLink to="/transporter/latest">
+                EDB Transporter
+              </IndexCardLink>
             </IndexCard>
 
             <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
