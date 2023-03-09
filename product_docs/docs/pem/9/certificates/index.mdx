@@ -74,28 +74,21 @@ The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Serve
 
 1.  Make sure both the PEM agents and the PEM server are up and running.
 
-1.  Take a backup of the existing SSL certificates and keys. The SSL certificates and keys are stored in the `data` directory under your PEM installation (`/var/lib/edb-as/14/data` in this example). 
+1. Take a backup of the existing SSL certificates and keys. The SSL certificates and keys are stored in the `data` directory under your PEM installation (`/var/lib/edb-as/14/data` in this example). 
 
-    Copy the files, adding an extension (in this example "old") to each file to make the name unique:
+   Copy the files, adding an extension (in this example "old") to each file to make the name unique:
 
-    -   `ca_certificate.crt`
-    -   `ca_key.key`
-    -   `root.crt`
-    -   `root.crl`
-    -   `server.key`
-    -   `server.crt`
+   ```shell
+   # Running as root
+   cp ca_certificate.crt ca_certificate_old.crt
+   cp ca_key.key ca_key_old.key
+   cp root.crt root_old.crt
+   cp root.crl root_old.crl
+   cp server.key server_old.key
+   cp server.crt server_old.crt
+   ```    
 
-    ```shell
-    # Running as root
-    cp ca_certificate.crt ca_certificate_old.crt
-    cp ca_key.key ca_key_old.key
-    cp root.crt root_old.crt
-    cp root.crl root_old.crl
-    cp server.key server_old.key
-    cp server.crt server_old.crt
-    ```    
-
-3.  Replace the certificates and keys with the CA certificates and keys. You can do so either by using an intermediate key or root key or using certificates without a key. In this example, we use an intermediate or root key.
+1. Replace the certificates and keys with the CA certificates and keys. You can do so either by using an intermediate key or root key or using certificates without a key. In this example, we use an intermediate or root key.
 
     a. Generate a private key for the server:
  
@@ -130,20 +123,20 @@ The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Serve
        server.crt: OK
        ```
 
-    e. Copy the intermediate certificate and key files:
+    f. Copy the intermediate certificate and key files:
     
        ```shell
        cp intermediate.crt ca_certificate.crt
        cp intermediate.key ca_key.key
     
-4. Change the owner of the intermediate certificate and key files to `enterprisedb` and set the permissions:
+1. Change the owner of the intermediate certificate and key files to `enterprisedb` and set the permissions:
        
    ```shell
    chown enterprisedb server.* root.* ca_* intermediate.*
    chmod 600 server.* root.* ca_*  intermediate.*
    ```
 
-5. Modify the parameters in the postgresql.conf file of the backend database server:
+1. Modify the parameters in the postgresql.conf file of the backend database server:
     
    ```ini
    # Comment the `ssl_crl_file` parameter to disable CRL usage 
@@ -156,7 +149,7 @@ The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Serve
 
    Do not restart the database server at this point.
 
-6. Create and execute the `create_job_for_renewing_certs` function using the query editor in the PEM web client. The function gets created in the `pem` schema of your backend database server. It creates a job for each registered agent to recreate all the agent certificates.
+1. Create and execute the `create_job_for_renewing_certs` function using the query editor in the PEM web client. The function gets created in the `pem` schema of your backend database server. It creates a job for each registered agent to recreate all the agent certificates.
 
    ```sql
    # Drop the function
@@ -201,7 +194,7 @@ The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Serve
     SELECT pem.create_job_for_renewing_certs();
     ```
 
-7. Restart the PEM backend database server: 
+1. Restart the PEM backend database server: 
     
    ```shell
    # Running as root
@@ -211,3 +204,52 @@ The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Serve
    Each agent's new certificates and keys are in `/root/.pem`.
 
    To do a sanity check that all the agent-level jobs have completed successfully, go to the PEM agents in the browser tree and check the status of the scheduled tasks. If the jobs completed successfully, the PEM server and agents are up and running using new certificates and keys.
+
+### Example
+
+This example shows you how to replace the self-signed SSL certificates with the trusted third-party CA certificates without keys.
+
+The example uses a PEM 9.1 server on CentOS 7 with EDB Postgres Enterprise Server 14 as the backend server and a standalone agent installed on another machine. It shows replacing the certificates for the backend server, standalone agent, and default agent.
+
+Perform the steps to generate a PEM agent certificate and key file pair:
+
+1. Use psql to find the number of agents and their corresponding identifiers:
+
+   ```shell
+   /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT ID FROM pem.agent"
+   ```
+
+   - On Linux, you can also find the agent identifier and location of the certificates and keys in the `PEMagent` section of the `/etc/postgres-reg.ini` file.
+
+   - On Windows, the information is stored in the registry:
+
+     ```shell
+     HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EnterpriseDB\PEM\agent
+     ```
+
+1. After identifying the agents that need key files, generate an `agent.key` for each agent. To generate the key, execute the command, capturing the output in a key file:
+
+    ```shell
+    /usr/pgsql-x/bin/psql -U enterprisedb -d pem --no-psqlrc -t -A -c "SELECT openssl_rsa_generate_key(4096)" > agent.key
+    ```
+
+1. CA needs each agents information to generate the new certificates. Collect the information for each agent like `agentID` or `agent name`, `country name`, `state`, `location` or `city`, `organization` and `emailID`. Using this information CA generates new certificates for each agent.
+
+1. Change the permission on the `agent.crt` file:
+
+    ```shell
+    chmod 600 agent.crt
+    ```
+
+1. Replace each agent's certificate and key file with the newly generated files. 
+
+1. Take backup of agent certificate
+
+   ```shell
+   # Running as root
+   mkdir root/.pem/certs
+   mv root/.pem/agent1.* root/.pem/certs
+
+1. Rename the new `agent.key` and `agent.crt` to `agent<ID>.key` and `agent<ID>.crt` respectively.
+
+1. Copy the new `agent<ID>.key` and `agent<ID>.crt` to root/.pem
