@@ -26,6 +26,7 @@ import SideNavigation from "./side-navigation";
 import StubCards from "./stub-cards";
 import TableOfContents from "./table-of-contents";
 import TextBalancer from "./text-balancer";
+import TimedBanner from "./timed-banner";
 import TopBar from "./top-bar";
 import TreeNode from "./tree-node";
 import VersionDropdown from "./version-dropdown";
@@ -60,6 +61,7 @@ export {
   StubCards,
   TableOfContents,
   TextBalancer,
+  TimedBanner,
   TopBar,
   TreeNode,
   VersionDropdown,
