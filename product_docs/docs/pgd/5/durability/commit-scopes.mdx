@@ -1,21 +1,14 @@
 ---
-title: Commit Scopes
+title: Commit scopes
 ---
 
-Commit Scopes give applications granular control about durability and
-consistency of EDB Postgres Distributed.
+Commit scopes give applications granular control about durability and consistency of EDB Postgres Distributed.
 
-A Commit Scope is a named rule that describes behavior of COMMIT replication.
-The actual behavior depends on whether a Commit Scope uses
-[Group Commit](group-commit), [Commit At Most Once](camo),
-[Lag Control](lag-control) or combination of these.
+A commit scope is a named rule that describes behavior of COMMIT replication. The actual behavior depends on whether a commit scope uses [group commit](group-commit), [Commit At Most Once](camo), [lag control](lag-control), or combination of these.
 
 ## Configuration
 
-To use Group Commit, first define a commit scope. This
-determines the BDR nodes involved in the commit of a transaction.
-Once a scope is established, you can configure a transaction to use
-Group Commit as follows:
+To use group commit, first define a commit scope, which determines the PGD nodes involved in the commit of a transaction. Once a scope is established, you can configure a transaction to use group commit as follows:
 
 ```sql
 BEGIN;
@@ -24,7 +17,7 @@ SET LOCAL bdr.commit_scope = 'example_scope';
 COMMIT;
 ```
 
-The commit scope must be set before the transaction has written any data.
+You must set the commit scope before the transaction writes any data.
 
 For this example, you might previously have defined the commit scope as:
 
@@ -37,29 +30,14 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-This assumes a *node group* named `example_bdr_group` exists and
-includes at least two BDR nodes as members, either directly or in
-subgroups. Any transaction committed in the `example_scope`
-requires one extra confirmation from a BDR node in the group.
-Together with the origin node, this accounts for "ANY 2" nodes out of
-the group, on which the transaction is guaranteed to be visible and
-durable after the commit.
+This assumes a *node group* named `example_bdr_group` exists and includes at least two PGD nodes as members, either directly or in subgroups. Any transaction committed in the `example_scope` requires one extra confirmation from a PGD node in the group. Together with the origin node, this accounts for "ANY 2" nodes out of the group, on which the transaction is guaranteed to be visible and durable after the commit.
 
 ### Origin groups
 
-Rules for commit scopes can depend on the node the transaction is
-committed on, that is, the node that acts as the origin for the transaction.
-To make this transparent for the application, BDR allows a commit
-scope to define different rules depending on where the transaction
-originates from.
+Rules for commit scopes can depend on the node the transaction is committed on, that is, the node that acts as the origin for the transaction. To make this transparent for the application, PGD allows a commit scope to define different rules depending on where the transaction originates from.
 
-For example, consider a EDB Postgres Distributed cluster with nodes
-spread across two data centers: a left and a right one.
-Assume the top-level BDR node group
-is called `top_group`. You can use the following commands to set up
-subgroups and create a commit scope requiring all nodes in the local
-data center to confirm the transaction but only one node from the
-remote one.
+For example, consider an EDB Postgres Distributed cluster with nodes spread across two data centers: a left and a right one. Assume the top-level PGD node group is called `top_group`. You can use the following commands to set up
+subgroups and create a commit scope requiring all nodes in the local data center to confirm the transaction but only one node from the remote one.
 
 ```sql
 -- create sub-groups
@@ -90,16 +68,11 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-Now using the `example_scope` on any node that's part of `left_dc` will use the
-first scope, while using same scope on node that's part of `right_dc` will
-use the second scope. This is effective way of creating inverted scope without
-having to juggle scope names in application.
+Now, using the `example_scope` on any node that's part of `left_dc` uses the first scope. Using the same scope on a node that's part of `right_dc` uses the second scope. This is effective way of creating inverted scope without having to juggle scope names in application.
 
-In addition to this, each group can also have default commit scope specified using
-`bdr.alter_node_group_option` admin interface.
+Each group can also have a default commit scope specified using the `bdr.alter_node_group_option` admin interface.
 
-So making the above scopes the default ones for all transactions originatin on
-nodes withing those groups would look like this.
+Making the above scopes the default ones for all transactions originating on nodes within those groups looks like this:
 
 ```sql
 SELECT bdr.alter_node_group_option(
@@ -116,32 +89,24 @@ SELECT bdr.alter_node_group_option(
 
 ### Confirmation levels
 
-BDR nodes can send confirmations for a transaction at different points
-in time. In increasing levels of protection, from the perspective of the
-confirming node, these are:
+PGD nodes can send confirmations for a transaction at different times. In increasing levels of protection, from the perspective of the confirming node, these are:
 
-* `received` &mdash; A remote BDR node confirms the transaction immediately
-  after receiving it, prior to starting the local application.
-* `replicated` &mdash; Confirm after applying changes of the transaction
-  but before flushing them to disk.
-* `durable` &mdash; Confirm the transaction after all of its changes are
-  flushed to disk.
-* `visible` (default) &mdash; Confirm the transaction after all of its
-  changes are flushed to disk and it's visible to
-  concurrent transactions.
+* `received` &mdash; A remote PGD node confirms the transaction immediately after receiving it, prior to starting the local application.
+* `replicated` &mdash; Confirms after applying changes of the transaction but before flushing them to disk.
+* `durable` &mdash; Confirms the transaction after all of its changes are flushed to disk.
+* `visible` (default) &mdash; Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions.
 
-In rules for commit scopes, you can append these confirmation levels
-to the node group definition in parenthesis with `ON` as follows:
+In rules for commit scopes, you can append these confirmation levels to the node group definition in parentheses with `ON` as follows:
 
 * `ANY 2 (right_dc) ON replicated`
-* `ALL (left_dc) ON visible` (default and may as well be omitted)
+* `ALL (left_dc) ON visible` (default, can be ommitted)
 * `ALL (left_dc) ON received AND ANY 1 (right_dc) ON durable`
 
 ## Reference
 
 ### Commit scope grammar
 
-For reference, the grammar for commit scopes is composed as follows:
+The grammar for commit scopes is composed as follows:
 
 ```
 commit_scope:
@@ -163,63 +128,32 @@ commit_scope_kind:
 
 #### Parameters
 
-* `node_group` - name of a node group
-* `( group_commit_parameter = value )` - options for Group Commit
-    * `transaction_tracking` (boolean) - specifies whether status of
-       transaction should be tracked
-    * `conflict_resolution` (enum) - how to handle conflicts, possible values
-       are either `async` meaning conflicts should be resolved asynchronously
-       after during replication using the conflict resolution policy or `eager`
-       meaning that conflicts are resolved eagerly during COMMIT by aborting
-       one of the conflicting transactions
-    * `commit_decision` (enum) - how is COMMIT decision made, it can be either
-      `group` meaning the `commit_scope_group` specification also affects the
-      COMMIT decision, not just durability, it can also be `partner` which means
-      partner node decides whether transaction can be committed (this is only
-      allowed on 2 data node groups) or it can be `raft` which means COMMIT
-      decision is done using Raft consensus independently of `commit_scope_group`
-      consensus.
-* `ABORT ON ( abort_on_parameter = value )` - allows automatic transaction
-  abort on timeout
-    * `timeout` (interval) - timeout in milliseconds (accepts other units)
-* `DEGRADE ON ( degrade_on_parameter = value )` - allows degrading to asynchronous
-  operation on timeout
-    * `timeout` (interval) - timeout in milliseconds (accepts other units) after
-      which operation becomes asynchronous
-    * `require_write_lead` (boolean) - whether the node has to be a write lead to
-      to be able to switch to asynchronous mode
-* `( lag_control_parameter = value )` - options for Lag Control
-    * `max_lag_size` (int) - maximum allowed lag based on WAL bytes
-    * `max_lag_time` (interval) - maximum allowed lag based on wall clock sampling
-    * `max_commit_delay` (interval) - maximum delay that can be injected to
-      commit in order to try to keep within the lag limits
+* `node_group` &mdash; Name of a node group.
+* `( group_commit_parameter = value )` &mdash; Options for group commit.
+    * `transaction_tracking` (Boolean) &mdash; Specifies whether to track status of transaction.
+    * `conflict_resolution` (enum) &mdash; Specifies how to handle conflicts. Possible values are either `async`, meaning to resolve conflicts asynchronously during replication using the conflict resolution policy, or `eager` meaning that conflicts are resolved eagerly during COMMIT by aborting one of the conflicting transactions.
+    * `commit_decision` (enum) &mdash; Specifies how the COMMIT decision is made. The value `group` means the `commit_scope_group` specification also affects the COMMIT decision, not just durability. The value `partner`  means the partner node decides whether transactions can be committed. This value is allowed only on 2 data node groups). The valye `raft` means the COMMIT decision is done using Raft consensus independent of `commit_scope_group` consensus.
+* `ABORT ON ( abort_on_parameter = value )` &mdash; Allows automatic transaction abort on timeout.
+    * `timeout` (interval) &mdash; Timeout in milliseconds (accepts other units).
+* `DEGRADE ON ( degrade_on_parameter = value )` &mdash; Allows degrading to asynchronous operation on timeout
+    * `timeout` (interval) &mdash; Timeout in milliseconds (accepts other units) after which operation becomes asynchronous.
+    * `require_write_lead` (Boolean) &mdash; Specifies whether the node must be a write lead to be able to switch to asynchronous mode.
+* `( lag_control_parameter = value )` &mdash; Options for lag control:
+    * `max_lag_size` (int) &mdash; Maximum allowed lag based on WAL bytes.
+    * `max_lag_time` (interval) &mdash; Maximum allowed lag based on wall clock sampling.
+    * `max_commit_delay` (interval) &mdash; Maximum delay that can be injected to commit in order to try to keep within the lag limits.
+<!--Is the word "sugar" appropriate? -->
+!!! Note
+    `CAMO` commit scope kind is mostly syntax sugar for `GROUP COMMIT (transaction_tracking = true, commit_decision = partner)` with additional `DEGRADE ON` clause. It's expected that `GROUP COMMIT` will eventually gain the `DEGRADE ON` clause as well, making `CAMO` syntax deprecated.
 
 !!! Note
-    `CAMO` commit scope kind is mostly syntax sugar for
-    `GROUP COMMIT (transaction_tracking = true, commit_decision = partner)` with
-    additional `DEGRADE ON` clause. It's expected that `GROUP COMMIT` will
-    eventually gain `DEGRADE ON` clause as well, making `CAMO` syntax deprecated.
-
-!!! Note
-    While the grammar for `synchronous_standby_names` and Commit
-    Scopes can loo very similar, it is important to note that the former
-    does not account for the origin node, but the latter does.
-    Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'`
-    is equivalent to a Commit Scope of `ANY 2 (...)`.  This choice
-    makes reasoning about majority easier and reflects that the origin
-    node also contributes to the durability and visibility of the
-    transaction.
+    While the grammar for `synchronous_standby_names` and commit scopes can look similar, the former doesn't account for the origin node, but the latter does. Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'` is equivalent to a commit scope of `ANY 2 (...)`.  This choice makes reasoning about majority easier and reflects that the origin node also contributes to the durability and visibility of the transaction.
 
 ### Adding a commit scope rule
 
-The function `bdr.add_commit_scope` creates a rule for the given
-commit scope name and origin node group. If the rule is the same for
-all nodes in the EDB Postgres Distributed cluster, invoking this function once for the
-top-level node group is enough to fully define the commit scope.
+The function `bdr.add_commit_scope` creates a rule for the given commit scope name and origin node group. If the rule is the same for all nodes in the EDB Postgres Distributed cluster, invoking this function once for the top-level node group is enough to fully define the commit scope.
 
-Alternatively, you can invoke it multiple times with the same
-`commit_scope_name` but different origin node groups and rules for
-commit scopes that vary depending on the origin of the transaction.
+Alternatively, you can invoke it multiple times with the same `commit_scope_name` but different origin node groups and rules for commit scopes that vary depending on the origin of the transaction.
 
 #### Synopsis
 
@@ -233,8 +167,7 @@ bdr.add_commit_scope(
 
 ### Changing a commit scope rule
 
-To change a specific rule for a single origin node group in a
-commit scope, you can use the function `bdr.alter_commit_scope`.
+To change a specific rule for a single origin node group in a commit scope, you can use the function `bdr.alter_commit_scope`.
 
 #### Synopsis
 
@@ -247,10 +180,7 @@ bdr.alter_commit_scope(
 
 ### Removing a commit scope rule
 
-You can use `bdr.remove_commit_scope` to drop a single rule in
-a commit scope. If you define multiple rules for the commit scope, you must invoke
-this function once per rule to fully remove the entire
-commit scope.
+You can use `bdr.remove_commit_scope` to drop a single rule in a commit scope. If you define multiple rules for the commit scope, you must invoke this function once per rule to fully remove the entire commit scope.
 
 #### Synopsis
 
@@ -261,6 +191,4 @@ bdr.remove_commit_scope(
 ```
 
 !!! Note
-    Removing a commit scope that is still used as default by a node
-    group is not allowed
-
+    Removing a commit scope that is still used as default by a node group isn't allowed.
