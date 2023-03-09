@@ -87,3 +87,75 @@ application_name=psql
 2020-05-08 10:42:17 IST DETAIL:  Connection matched pg_hba.conf line 84:
 "local   all             all               md5"
 ```
+
+### Obfuscating the LDAP password
+
+When using [LDAP](https://www.postgresql.org/docs/15/auth-ldap.html) for authentication, the LDAP password used to connect to the LDAP server, (the ldapbindpasswd password) is stored in the pg_hba.conf file. You can store the password there in an obfuscated form, which can then be de-obfuscated by a loadable module which you supply. The loadable module supplies a hook function that performs the de-obfuscation.
+
+For example, here is a C loadable module which uses `rot13_passphrase` as the hook function to de-obfuscate the password from the pg_hba.conf file:
+
+   ```c
+   #include "postgres.h"
+
+   #include <float.h>
+   #include <stdio.h>
+
+   #include "libpq/libpq.h"
+   #include "libpq/libpq-be.h"
+   #include "libpq/auth.h"
+   #include "utils/guc.h"
+
+   PG_MODULE_MAGIC;
+
+   void		_PG_init(void);
+   void		_PG_fini(void);
+
+   /* hook function */
+   static char*	rot13_passphrase(char *password);
+
+   /*
+   * Module load callback
+   */
+   void
+   _PG_init(void)
+   {
+	   ldap_password_hook = rot13_passphrase;
+   }
+
+   void
+   _PG_fini(void)
+   {
+	  /* do  nothing yet */
+   }
+
+   static char*
+   rot13_passphrase(char *pw)
+   {
+	  size_t size = strlen(pw) + 1;
+
+	  * new_pw = (char*) palloc(size);
+	  strlcpy(new_pw, pw, size);
+	  for (char *p = new_pw; *p; p++)
+	  {
+		 char		c = *p;
+
+		 if ((c >= 'a' && c <= 'm') || (c >= 'A' && c <= 'M'))
+			 *p = c + 13;
+		 else if ((c >= 'n' && c <= 'z') || (c >= 'N' && c <= 'Z'))
+			 *p = c - 13;
+	  }
+
+	 return new_pw;
+   }
+   ```
+
+Add your module to the `shared_preload_libraries` parameter in the postgresql.conf file. For example:
+
+   ```ini
+   shared_preload_libraries = '$libdir/ldap_password_func'
+   ```
+
+Restart your server to load the changes in this parameter.
+
+
+
