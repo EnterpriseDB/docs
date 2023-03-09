@@ -102,6 +102,7 @@ const sourceToPluginConfig = {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
   },
+  transporter: { name: "transporter", path: "product_docs/docs/transporter" },
 };
 
 const externalSourcePlugins = () => {
