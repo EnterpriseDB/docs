@@ -292,6 +292,7 @@ module.exports = {
                 postgresql: "sql",
                 sh: "shell",
                 "c++": "cpp",
+                console: "shell-session",
               },
             },
           },
