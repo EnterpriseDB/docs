@@ -8,12 +8,15 @@ legacyRedirectsGenerated:
 redirects:
 - /pem/latest/managing_certificates/
 - /pem/latest/pem_admin/04_managing_certificates/
+navigation:
+- replacing_ssl_certificates
+- regenerating_agent_certificates
 ---
 
-PEM has two types of SSL certificates:
+PEM supports self-signed SSL certificates:
 
-- Webserver certificates
-- PEM server and agent connection certificates
+- Webserver(HTTPD)
+- PEM agent and backend database server connection
 
 ## Webserver certificates
 
@@ -94,7 +97,59 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
 - Replace PEM self-signed certificates and keys with trusted CA-signed certificates and keys
 - Disable CRL usage by the server if the trusted third-party CA does not provide CRL
 
-Steps to replace self-signed SSL certificates with trusted third-party CA certificates:
+### Replace the server self-signed SSL certificates with the trusted third-party CA certificates:
+
+1. Take backup of old server certificate and key file:
+
+   ```shell
+   # Running as root
+   mkdir /var/lib/edb/as<x>/data/certs
+   cd /var/lib/edb/as<x>/data/
+   mv server.* root.* ca_* /var/lib/edb/as<x>/data/certs
+   ```
+
+1. Generate a private key for the server:
+
+   ```shell
+   openssl genrsa -out server.key 4096 
+   ```
+
+1. Generate a Certificate Signing Request (CSR) for the server:
+
+   ```shell
+   openssl req -new -key server.key -out server.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=server'
+   ```
+
+1. Obtain the third-party SSL certificate from a trusted certificate authority (CA). Ask your CA to sign the CSR and generate the server certificate for you. 
+
+1. Verify the authenticity of the certificate:
+
+   ```shell
+   openssl x509 -noout -text -in certificate.crt
+   ```
+
+1. Change the owner and permission of new certificates and keys:
+
+    ```shell
+    chown enterprisedb /var/lib/edb/as<x>/data/server.*
+    chmod 600 /var/lib/edb/as<x>/data/server.*
+    ```
+
+1. [Replace the PEM agent SSL certificates with trusted third-party CA certificates](/replace-the-agent-self-signed-ssl-certificates-with-the-trusted-third-party-ca-certificates).
+
+1. Restart the Postgres server:
+
+   - On Linux,
+
+   ```shell
+   # Running as root
+   systemctl start edb-as-<x>
+   ```
+
+   - On a Windows, you can use the Services applet to start the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Start the service**.
+
+
+### Replace the agent self-signed SSL certificates with the trusted third-party CA certificates:
 
 1. Use psql to find the number of agents and their corresponding identifiers:
 
@@ -113,13 +168,13 @@ Steps to replace self-signed SSL certificates with trusted third-party CA certif
 1. After identifying the agents that need key files, generate an `agent<ID>.key` for each agent. To generate the key, execute the command, capturing the output in a key file:
 
    ```shell
-   /usr/edb/as<x>/bin/psql -U enerprisedb -d pem --no-psqlrc -t -A -c "SELECT openssl_rsa_generate_key(4096)" > agent<ID>.key
+   openssl genrsa -out agent<ID>.key 4096 
    ```
 
 1. Generate a Certificate Signing Request (CSR) for each agent:
 
    ```shell
-   openssl req -new -key agent<ID>.key -out agent<ID>.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=pem.enterprisedb.com'
+   openssl req -new -key agent<ID>.key -out agent<ID>.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=agent<ID>'
    ```
 
 1. Ask your CA to sign the CSR and generate agent certificate for you. 
