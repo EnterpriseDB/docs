@@ -19,7 +19,11 @@ The signature of the `executeUpdate()` method is:
     int executeUpdate(String sqlStatement)
 ```
 
-Provide this method a single parameter of type `String` containing the SQL command that you want to execute.
+Provide this method a single parameter of type `String` containing the SQL command that you want to execute. 
+
+!!!Warning ""
+    We recommend that this string does not contain any user-sourced values. Avoid concatenating strings and values to compose your SQL command.  Instead, use [PreparedStatements](#using-preparedstatements-to-send-sql-commands) which are reusable, parameterized SQL statements which safely manage the use of variable values in the SQL statement.
+
 
 ## Using executeUpdate() to INSERT data
 
@@ -30,41 +34,45 @@ The example that follows shows using the `executeUpdate()` method to add a row t
 
 
 ```java
-    public void updateEmployee(Connection con)
+    public void addOneEmployee(Connection con)
     {
-      try
-      {
-        int rowcount = stmt.executeUpdate("INSERT INTO "
-          + "emp(empno, ename) VALUES(6000,'Jones')");
-        System.out.println("");
-        System.out.println("Success - "+rowcount+
-          " rows affected.");
-      } catch(Exception err) {
-        System.out.println("An error has occurred.");
-        System.out.println("See full details below.");
-        err.printStackTrace();
-      }
+        try
+        {
+            Statement stmt=con.createStatement();
+            int rowcount = stmt.executeUpdate("INSERT INTO emp(empno, ename) VALUES(6000,'Jones')");
+            System.out.println();
+            System.out.printf("Success - %d - rows affected.\n",rowcount);
+        } catch(Exception err) {
+            System.out.println("An error has occurred.");
+            System.out.println("See full details below.");
+            err.printStackTrace();
+        }
     }
 ```
 
-The `updateEmployee()` method expects a single argument from the caller, a `Connection` object that must be connected to an EDB Postgres Advanced Server database:
+The `addOneEmployee()` method expects a single argument from the caller, a `Connection` object that must be connected to an EDB Postgres Advanced Server database:
 
 ```java
-    public void updateEmployee(Connection con);
+    public void addOneEmployee(Connection con);
+```
+
+A `Statement` object is needed to run `ExecuteUpdate()`. This can be obtained by using `createStatement()` on the Connection object.
+
+```java
+    Statement stmt=con.createStatement();
 ```
 
 The `executeUpdate()` method returns the number of rows affected by the SQL statement (an `INSERT` typically affects one row, but an `UPDATE` or `DELETE` statement can affect more).
 
 ```java
-    int rowcount = stmt.executeUpdate("INSERT INTO emp(empno, ename)"
-    +" VALUES(6000,'Jones')");
+    int rowcount = stmt.executeUpdate("INSERT INTO emp(empno, ename) VALUES(6000,'Jones')");
 ```
 
-If `executeUpdate()` returns without an error, the call to `System.out.println` displays a message to the user that shows the number of rows affected.
+If `executeUpdate()` returns without an error, the call to `System.out.printf` displays a message to the user that shows the number of rows affected.
 
 ```java
     System.out.println(""); 
-    System.out.println("Success - "+rowcount+" rows affected.");
+    System.out.printf("Success - %d - rows affected.\n",rowcount);
 ```
 
 The catch block displays an appropriate error message to the user if the program encounters an exception:
@@ -77,7 +85,30 @@ The catch block displays an appropriate error message to the user if the program
     }
 ```
 
-You can use `executeUpdate()` with any SQL command that doesn't return a result set. However, you probably want to use `PrepareStatements` when the queries can be parameterized.
+You can use `executeUpdate()` with any SQL command that doesn't return a result set. It is best suited to situations where a specific command needs to be executed and that command takes no parameters:
+
+To use the `DROP TABLE` command to delete a table from a database:
+
+```java
+   Statement stmt=con.createStatement();
+   stmt.executeUpdate("DROP TABLE tableName");     
+```
+
+To use the `CREATE TABLE` command to add a new table to a database:
+
+```java
+   Statement stmt=con.createStatement();
+   stmt.executeUpdate("CREATE TABLE tablename (fieldname NUMBER(4,2), fieldname2 VARCHAR2(30))"; 
+```
+
+To use the `ALTER TABLE` command to change the attributes of a table:
+
+```java
+    Statement stmt=con.createStatement();
+    stmt.executeUpdate("ALTER TABLE tablename ADD COLUMN colname BOOLEAN "; 
+```
+
+However, you should use `PreparedStatement` when passing values to an SQL update statement, especially if those values have come from user input.
 
 ## Using PreparedStatements to send SQL commands 
 
@@ -86,23 +117,23 @@ Many applications execute the same SQL statement over and over again, changing o
 The following shows invoking a `PreparedStatement` that accepts an employee ID and employee name and inserts that employee information in the `emp` table:
 
 ```java
-    public void AddEmployee(Connection con) 
-    {   
-        try {    
-          Console c = System.console();   
-          String command = "INSERT INTO emp(empno,ename) VALUES(?,?)";     
-          PreparedStatement stmt = con.prepareStatement(command); 
-          stmt.setObject(1,new Integer(c.readLine("ID:")));    
-          stmt.setObject(2,c.readLine("Name:"));   
-          stmt.execute();   
-          System.out.println("The procedure successfully executed.");    
-          } catch(Exception err) {           
-            System.out.println("An error has occurred.");    
-            System.out.println("See full details below.");  
-            err.printStackTrace();  
-          } 
+    public void addEmployee(Connection con, Integer id, String name)
+    {
+        try {
+            String command = "INSERT INTO emp(empno,ename) VALUES(?,?)";
+            PreparedStatement addstmt = con.prepareStatement(command);
+            addstmt.setObject(1,id);
+            addstmt.setObject(2,name);
+            addstmt.execute();
+        } catch(Exception err) {
+            System.out.println("An error has occurred.");
+            System.out.println("See full details below.");
+            err.printStackTrace();
+        }
     }
 ```
+
+This version of an add employee method takes as parameters the connection and values for the employee number (an integer) and name (a string).
 
 Instead of hard coding data values in the SQL statement, you insert placeholders to represent the values to change with each iteration. The example shows an `INSERT` statement that includes two placeholders (each represented by a question mark):
 
@@ -113,7 +144,7 @@ Instead of hard coding data values in the SQL statement, you insert placeholders
 With the parameterized SQL statement in hand, the `AddEmployee()` method can ask the `Connection` object to prepare that statement and return a `PreparedStatement` object:
 
 ```java
-    PreparedStatement stmt = con.prepareStatement(command);
+    PreparedStatement addstmt = con.prepareStatement(command);
 ```
 
 At this point, the `PreparedStatement` has parsed and planned the `INSERT` statement, but it doesn't know the values to add to the table. Before executing `PreparedStatement`, you must supply a value for each placeholder by calling a `setter` method. `setObject()` expects two arguments:
@@ -121,17 +152,17 @@ At this point, the `PreparedStatement` has parsed and planned the `INSERT` state
 - A parameter number. Parameter number one corresponds to the first question mark, parameter number two corresponds to the second question mark, etc. 
 - The value to substitute for the placeholder.
 
-The `AddEmployee()` method prompts the user for an employee ID and name and calls `setObject()` with the values supplied by the user:
+The `AddEmployee()` method prompts the user for an employee ID and name and calls `setObject()` with the values supplied in the parameters:
 
 ```java
-    stmt.setObject(1,new Integer(c.readLine("ID:"))); 
-    stmt.setObject(2, c.readLine("Name:"));
+    addstmt.setObject(1,id);
+    addstmt.setObject(2,name);
 ```
 
 It then asks the `PreparedStatement` object to execute the statement:
 
 ```java
-    stmt.execute();
+    addstmt.execute();
 ```
 
 If the SQL statement executes as expected, `AddEmployee()` displays a message that confirms the execution. If the server encounters an exception, the error handling code displays an error message.
@@ -141,33 +172,45 @@ Some simple syntax examples using `PreparedStatement` sending SQL commands follo
 To use the `UPDATE` command to update a row:
 
 ```java
-    String command = " UPDATE emp SET ename=? WHERE empno=?";     
-    PreparedStatement stmt = con.prepareStatement(command); 
-    stmt.setObject(1, c.readLine("Name:"));
-    stmt.setObject(2,new Integer(c.readLine("ID:"))); 
-    stmt.execute();
+    public static void updateEmployee(Connection con, Integer id, String name)
+    {
+        try {
+            String command = "UPDATE emp SET ename=? where empno=?";
+            PreparedStatement updatestmt = con.prepareStatement(command);
+            updatestmt.setObject(1,id);
+            updatestmt.setObject(2,name);
+            updatestmt.execute();
+        } catch(Exception err) {
+            System.out.println("An error has occurred.");
+            System.out.println("See full details below.");
+            err.printStackTrace();
+        }
+    }
 ```
 
-To use the `DROP TABLE` command to delete a table from a database:
+For regularly and repeatedly used statements, the prepared statement can be initialized and reused. 
 
 ```java
-    String command = "DROP TABLE tableName";     
-    PreparedStatement stmt = con.prepareStatement(command); 
-    stmt.execute();
-```
+    PreparedStatement preparedAddstmt;
 
-To use the `CREATE TABLE` command to add a new table to a database:
+    public void prepareStatements(Connection con) {
+        try {
+            preparedAddstmt=con.prepareStatement("INSERT INTO emp(empno,ename) VALUES(?,?)");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-```java
-    String command = ("CREATE TABLE tablename (fieldname NUMBER(4,2), fieldname2 VARCHAR2(30))"; 
-    PreparedStatement stmt = con.prepareStatement(command); 
-    stmt.execute();
-```
-
-To use the `ALTER TABLE` command to change the attributes of a table:
-
-```java
-    String command ="ALTER TABLE tablename ADD COLUMN colname BOOLEAN "; 
-    PreparedStatement stmt = con.prepareStatement(command); 
-    stmt.execute();
+    public void addPreparedEmployee(Integer id, String name)
+    {
+        try {
+            preparedAddstmt.setObject(1,id);
+            preparedAddstmt.setObject(2,name);
+            preparedAddstmt.execute();
+        } catch(Exception err) {
+            System.out.println("An error has occurred.");
+            System.out.println("See full details below.");
+            err.printStackTrace();
+        }
+    }
 ```
