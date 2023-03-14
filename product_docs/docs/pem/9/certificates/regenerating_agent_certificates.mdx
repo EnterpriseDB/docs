@@ -2,13 +2,11 @@
 title: "Regenerating the agent self-signed SSL certificates"
 ---
 
-If PEM agent certificates and keys are expiring, you can regenerate the certificates and key files.
+If the PEM agent certificates are expiring, you can regenerate the certificates and key files.
 
 You must regenerate a certificate and a key for each agent interacting with the PEM server and copy to the agent.
 
 Each agent has a unique identifier that is stored in the `pem.agent` table of the `pem` database. You must replace the certificate and key files with the certificate or key files that corresponds to the agent's identifier. 
-
-In addition, move the `agent.key` and `agent.crt` files generated in the steps 2 and 4 on their respective PEM agent host before generating the next certificate and key file pair.
 
 Pre-requisites:
 - PEM Server has self-signed certificates.
@@ -18,62 +16,65 @@ Pre-requisites:
 
 Perform the steps to generate a PEM agent certificate and key file pair:
 
-1.  Use psql to find the number of agents and their corresponding identifiers:
+1. Use psql to find the number of agents and their corresponding identifiers:
 
-    ```shell
-    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT ID FROM pem.agent"
+   ```shell
+    /usr/edb/as<x>/bin/psql -p 5444 -U enterprisedb -d pem --no-psqlrc -t -A -c "SELECT ID FROM pem.agent WHERE active='true'"
     ```
 
-    -   On Linux, you can also find the agent identifier and location of the certificates and keys in the `PEMagent` section of the `/etc/postgres-reg.ini` file.
-
-    -   On Windows, the information is stored in the registry:
-
-        ```shell
-        HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\EnterpriseDB\PEM\agent
-        ```
-
-2.  After identifying the agents that need key files, generate an `agent.key` for each agent. To generate the key, execute the command, capturing the output in a key file:
+1. After identifying the agents that need key files, generate an `agent.key` for each agent. To generate the key, execute the command:
 
     ```shell
-    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c "SELECT openssl_rsa_generate_key(4096)" > agent.key
-    ```
+    openssl genrsa -out agent<ID>.key 4096
+   ```
+   
+   Where `ID` is the agent identifier obtained in step 1
 
-3.  Change the permission on the `agent.key` file:
+1. Generate a Certificate Signing Request (CSR) for each agent:
 
-    ```shell
-    chmod 600 agent.key
-    ```
+   ```shell
+   openssl req -new -key agent<ID>.key -out agent<ID>.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=agent<ID>'
+   ```
+   
+   Where `CN` is the `agent<ID>`.
 
-4.  To generate a certificate for each agent, execute the command, capturing the output in a certificate file:
+1. Use the openssl x509 command to sign the CSR and generate an agent certificate:
 
-    ```shell
-    /usr/pgsql-x/bin/psql -U postgres -d pem --no-psqlrc -t -A -c
-    "SELECT openssl_csr_to_crt(openssl_rsa_key_to_csr('$(cat agent.key)',
-    'agent<$ID>', 'US', 'MA', 'Bedford', 'Postgres Enterprise Manager',
-    'support@enterprisedb.com'),
-    '/var/lib/pgsql/x/data/ca_certificate.crt',
-    '/var/lib/pgsql/x/data/ca_key.key')" > agent.crt
-    ```
+   ```shell
+   openssl x509 -req -days 365 -in agent<ID>.csr -CA ca_certificate.crt -CAkey ca_key.key -CAcreateserial -out agent<ID>.crt
+   ```
 
-    Where `$ID` is the agent number of the agent (retrieved by the psql command in step 1).
+   Move the `agent.key` and `agent.crt` files generated in the steps 2 and 4 on their respective PEM agent host before generating the next certificate and key file pair.
 
-5.  Change the permission on the `agent.crt` file:
+1. Change the permission on the new `agent<ID>.crt` and `agent<ID>.key` file:
 
-    ```shell
-    chmod 600 agent.crt
-    ```
+   ```shell
+   chmod 600 agent<ID>.crt agent<ID>.key
+   ```
 
-6.  Replace each agent's certificate and key file with the newly generated files. 
+1. Take the backup of old agent certificate and key file:
 
-7.  Restart the PEM agent service:
+   ```shell
+   # Running as root
+   mkdir root/.pem/certs
+   mv root/.pem/agent<ID>.* root/.pem/certs
+   ```
 
-    -   On Linux,
+1. Replace each agent's certificate and key file with the newly generated files. 
+   
+   ```shell
+   cp agent<ID>.key agent<ID>.crt root/.pem
+   ```
 
-    ```shell
-    # Running as root
-    systemctl start pemagent
-    ```
+1. Restart the PEM agent service:
 
-    -   On a Windows, you can use the Services applet to start the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Start the service**.
+   - On Linux,
+
+     ```shell
+     # Running as root
+     systemctl start pemagent
+     ```
+
+    - On Windows, you can use the Services applet to start the PEM agent. The PEM agent service is named Postgres Enterprise Manager Agent. Select the service name in the Services dialog box and select **Start the service**.
 
 
