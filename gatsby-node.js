@@ -303,7 +303,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
   const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
   const githubIssuesLink = `${docsRepoUrl}/issues/new?title=${encodeURIComponent(
-    `Feedback on ${doc.fields.process} ${doc.fields.version} - "${doc.frontmatter.title}"`,
+    `Feedback on ${doc.fields.product} ${doc.fields.version} - "${doc.frontmatter.title}"`,
   )}&context=${encodeURIComponent(
     `${githubFileLink}\n`,
   )}&template=problem-with-topic.yaml`;
