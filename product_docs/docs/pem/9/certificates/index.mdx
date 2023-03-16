@@ -41,13 +41,13 @@ SSLCertificateFile /path/to/your_domain_name.crt
 SSLCertificateKeyFile /path/to/your_private.key
 ```
 
-You can also replace the HTTPD self-signed SSL certificates with trusted CA-signed certificates in PEM. For more information, see [Replacing HTTPD self-signed SSL certificates](https://www.enterprisedb.com/postgres-tutorials/how-replacing-httpd-self-signed-ssl-certificates-trusted-ca-signed-certificates).
+To increase the security, you can replace the HTTPD self-signed SSL certificates with the trusted third-party CA signed certificates in PEM. For more information, see [Replacing HTTPD self-signed SSL certificates](https://www.enterprisedb.com/postgres-tutorials/how-replacing-httpd-self-signed-ssl-certificates-trusted-ca-signed-certificates).
 
-## PEM server and agent connection certificates
+## PEM backend database server and agent connection certificates
 
 PEM, by default, supports secured SSL/TLS connections and acts as its own certificate authority (CA) to generate certificates and keys for the PEM server and agent. The self-signed SSL certificates and keys for the PEM server and agent get generated during the PEM installation. These certificates and keys encrypt the connections between the server and the agent. 
 
-To increase the security, you can replace the PEM self-signed CA certificate and key with trusted third-party CA certificates. For more information, see [Trusted third-party CA certificates and keys](/pem/latest/certificates/#trusted-third-party-ca-certificates-and-keys).
+To increase the security, you can replace the PEM self-signed SSL certificates and keys with the trusted third-party CA certificates. For more information, see [Trusted third-party CA certificates and keys](/pem/latest/certificates/#trusted-third-party-ca-certificates-and-keys).
 
 ### How PEM self-signed SSL certificates work
 
@@ -56,6 +56,8 @@ The PEM server configuration script generates self-signed SSL certificates and k
 The PEM agent connects to the PEM backend database server using the libpq interface, acting as a client of the backend database server. The agent self-signed SSL certificates and keys get generated during the [PEM registration](/pem/latest/registering_agent). PEM agent establishes the connection with the PEM backend database server using the self-signed SSL certificate and key files. 
 
 Each agent has a unique identifier and the agent certificates and keys have the corresponding identifier mentioned. Each certificate has an expiry date. You should regenerate the certificates when it nears expiration. For more information, see [Regenerating agent self-signed SSL certificates](/pem/latest/certificates/regenerating_agent_certificates).
+
+You can generate a common agent certificate and key file pair for all the PEM agents and use for connecting to PEM backend database server. For more information see [Generate common agent certificate and key pair](/pem/lates/certificates/#generate-a-common-agent-certificate-and-key-pair)
 
 For more information on using the SSL certificates to connect in Postgres, see [Securing TCP/IP connections with SSL](https://www.postgresql.org/docs/current/ssl-tcp.html).
 
@@ -87,6 +89,89 @@ The PEM agent installed with the PEM server monitors the expiration date of the 
 - Creates a job to renew the certificate file of any active agents
 - Restarts the PEM server
 
+## Generate a common agent certificate and key pair
+
+You can generate one agent certificate and key pair and use them for all the PEM agents.
+
+1. Create one common agent user in the PEM backend database. Grant `pem_agent` role to the user.
+
+   ```shell
+   # Running as enterprisedb
+   psql -p 5444 -U enterprisedb -d pem
+   CREATE USER pem_agent_common_user;
+   GRANT pem_agent TO pem_agent_common_user;
+   ```
+
+1. Generate an agent key:
+
+   ```shell
+   # Running as root
+   openssl genrsa -out agent.key 4096 
+   ```
+
+1.  Generate a Certificate Signing Request (CSR) for agent:
+
+   ```shell
+   openssl req -new -key agent.key -out agent.csr -subj '/C=IN/ST=MH/L=Pune/O=PEM/CN=<agent_user>'
+   ```
+
+1. Use the openssl x509 command to sign the CSR and generate an agent certificate:
+
+   ```shell
+   openssl x509 -req -days 365 -in agent.csr -CA ca_certificate.crt -CAkey ca_key.key -CAcreateserial -out agent.crt
+   ```
+
+1. Change the permission on the `agent.crt` and `agent.key` file:
+
+   ```shell
+   chmod 600 agent.crt agent.key
+   ```
+
+1. You can use this agent certificate and key pair:
+
+   - For registering the new PEM agent from remote host to the PEM server
+
+     a. Copy the agent certificate and key pair to the remote agent host and register the agent:
+
+        ```shell
+        export PEM_SERVER_PASSWORD=edb
+
+        /usr/edb/pem/agent/bin/pemworker --register-agent \
+        --pem-server 192.168.99.130 \
+        --pem-user enterprisedb \
+        --pem-port 5444 \
+        --pem-agent-user pem_agent_common_user \
+        -o agent_ssl_crt= agent.crt \
+        -o agent_ssl_key= agent.key
+        ```
+
+     b. Enable and start the pemagent services:
+
+        ```shell
+        systemctl enable pemagent
+        systemctl start pemagent
+        ```
+
+   - To replace the agent certificate and key pair with the registered agent:
+ 
+     a. Edit the `agent_user`, `agent_ssl_key`, and `agent_ssl_crt` parameters in `agent.cfg` file of the agent host
+
+        ```shell
+        vi /usr/edb/pem/agent/etc/agent.cfg
+        # Edit the agent username
+        agent_user=pem_agent_common_user
+        # Edit the ssl parameters with new certificate and key file location
+        agent_ssl_key=<new_location>/agent.key
+        agent_ssl_crt=<new_location>/agent.crt
+        ```
+      
+     b. Restart the pemagent service:
+
+        ```shell
+        systemctl restart pemagent
+        ```
+
+
 ## Trusted third-party CA certificates and keys
 
 You can replace the PEM self-signed SSL certificates and keys with the trusted third-party CA certificates and keys. 
@@ -96,7 +181,7 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
 - Replace PEM self-signed certificates and keys with trusted CA-signed certificates and keys
 - Disable CRL usage by the server if the trusted third-party CA does not provide CRL
 
-### Replace the server self-signed SSL certificates with the trusted third-party CA certificates:
+### Replace the server self-signed SSL certificates with the trusted third-party CA certificates
 
 1. Take the backup of old server certificate and key files:
 
@@ -125,7 +210,7 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
 
 1. Ask your CA to sign the CSR and generate the server certificate for you. 
 
-1. Verify the details of the new server certificate aren't tampered with and match your provided details.
+1. Verify the details of the new server certificate aren't tampered with and match your provided details:
 
    ```shell
    openssl x509 -noout -text -in server.crt
@@ -166,7 +251,7 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
 
    Restarting the backend database server, restarts the PEM server.
 
-### Replace the agent self-signed SSL certificates with the trusted third-party CA certificates:
+### Replace the agent self-signed SSL certificates with the trusted third-party CA certificates
 
 1. Use psql to find all the agent identifiers(IDs) we need to replace the SSL certificates:
 
@@ -179,6 +264,7 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
    ```shell
    openssl genrsa -out agent<ID>.key 4096 
    ```
+   
    Where `<ID>` is the agent identifier.
 
 1. Generate a Certificate Signing Request (CSR) for each agent:
@@ -208,13 +294,13 @@ After obtaining the trusted third-party CA certificates and keys, perform the fo
    mv root/.pem/agent<ID>.* root/.pem/certs
    ```
 
-1. Replace each agent's certificate and key file with the newly generated files. 
+1. Replace each agent's certificate and key file with the newly generated files: 
    
    ```shell
    cp agent<ID>.key agent<ID>.crt root/.pem
    ```
 
-7. Restart the PEM agent service:
+7. Start the PEM agent service:
 
    - On Linux,
 
