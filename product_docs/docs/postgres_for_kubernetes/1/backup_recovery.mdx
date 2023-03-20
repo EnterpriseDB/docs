@@ -3,13 +3,6 @@ title: 'Backup and Recovery'
 originalFilePath: 'src/backup_recovery.md'
 ---
 
-EDB Postgres for Kubernetes natively supports **online/hot backup** of PostgreSQL
-clusters through continuous physical backup and WAL archiving.
-This means that the database is always up (no downtime required)
-and that you can recover at any point in time from the first
-available base backup in your system. The latter is normally
-referred to as "Point In Time Recovery" (PITR).
-
 The operator can orchestrate a continuous backup infrastructure
 that is based on the [Barman](https://pgbarman.org) tool. Instead
 of using the classical architecture with a Barman server, which
@@ -33,8 +26,7 @@ as it is composed of a community PostgreSQL image and the latest
 A backup is performed from a primary or a designated primary instance in a
 `Cluster` (please refer to
 [replica clusters](replica_cluster.md)
-for more information about designated primary instances), or alternatively
-on a [standby](#backup-from-a-standby).
+for more information about designated primary instances).
 
 ## Cloud provider support
 
@@ -52,14 +44,6 @@ The required setup depends on the chosen storage provider and is
 discussed in the following sections.
 
 ### S3
-
-You can define the permissions to store backups in S3 buckets in two ways:
-
--   If EDB Postgres for Kubernetes is running in EKS. you may want to use the
-    [IRSA authentication method](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
--   Alternatively, you can use the `ACCESS_KEY_ID` and `ACCESS_SECRET_KEY` credentials
-
-#### AWS Access key
 
 You will need the following information about your environment:
 
@@ -107,27 +91,6 @@ spec:
 The destination path can be any URL pointing to a folder where
 the instance can upload the WAL files, e.g.
 `s3://BUCKET_NAME/path/to/folder`.
-
-#### IAM Role for Service Account (IRSA)
-
-In order to use IRSA you need to set an `annotation` in the `ServiceAccount` of
-the Postgres cluster.
-
-We can configure EDB Postgres for Kubernetes to inject them using the `serviceAccountTemplate`
-stanza:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: Cluster
-metadata:
-[...]
-spec:
-  serviceAccountTemplate:
-    metadata:
-      annotations:
-        eks.amazonaws.com/role-arn: arn:[...]
-        [...]
-```
 
 ### Other S3-compatible Object Storages providers
 
@@ -187,7 +150,7 @@ Specifically, the EDB Postgres for Kubernetes cluster can directly point to a lo
 MinIO Gateway as an endpoint, using previously created credentials and service.
 
 MinIO secrets will be used by both the PostgreSQL cluster and the MinIO instance.
-Therefore, you must create them in the same namespace:
+Therefore you must create them in the same namespace:
 
 ```sh
 kubectl create secret generic minio-creds \
@@ -392,40 +355,33 @@ Emulator or [Azurite](https://github.com/Azure/Azurite).
 
 ### Google Cloud Storage
 
-Currently, the operator supports two authentication methods for Google Cloud Storage:
-
--   the first one assumes that the pod is running inside a Google Kubernetes Engine cluster
--   the second one leverages the environment variable `GOOGLE_APPLICATION_CREDENTIALS`
+Currently, the operator supports two authentication methods for Google Cloud Storage,
+one assumes the pod is running inside a Google Kubernetes Engine cluster, the other one leverages
+the environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
 
 #### Running inside Google Kubernetes Engine
 
-When running inside Google Kubernetes Engine you can configure your backups to
-simply rely on [Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity),
-without having to set any credentials. In particular, you need to:
-
--   set `.spec.backup.barmanObjectStore.googleCredentials.gkeEnvironment` to `true`
--   set the `iam.gke.io/gcp-service-account` annotation in the `serviceAccountTemplate` stanza
-
-Please use the following example as a reference:
+This could be one of the easiest way to create a backup, and only requires
+the following configuration:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
 kind: Cluster
 [...]
 spec:
-  [...]
   backup:
     barmanObjectStore:
       destinationPath: "gs://<destination path here>"
       googleCredentials:
         gkeEnvironment: true
-
-  serviceAccountTemplate:
-    metadata:
-      annotations:
-        iam.gke.io/gcp-service-account:  [...].iam.gserviceaccount.com
-        [...]
 ```
+
+This, will tell the operator that the cluster is running inside a Google Kubernetes
+Engine meaning that no credentials are needed to upload the files
+
+!!! Important
+    This method will require carefully defined permissions for cluster
+    and pods, which have to be defined by a cluster administrator.
 
 #### Using authentication
 
@@ -655,43 +611,6 @@ WALs, including the one requested by PostgreSQL.
 When PostgreSQL will request the archiving of a WAL that has
 already been archived by the instance manager as an optimization,
 that archival request will be just dismissed with a positive status.
-
-## Backup from a standby
-
-By default, backups will run on the primary instance of a `Cluster`.
-
-Taking a base backup requires to scrape the whole data content of the
-PostgreSQL instance on disk, possibly resulting in I/O contention with the
-actual workload of the database.
-
-For this reason, EDB Postgres for Kubernetes allows you to take advantage of a
-feature which is directly available in PostgreSQL: **backup from a standby**.
-
-!!! Info
-    Although the standby might not always be up to date with the primary,
-    in the time continuum from the first available backup to the last
-    archived WAL this is normally irrelevant. The base backup indeed
-    represents the starting point from which to begin a recovery operation,
-    including PITR.
-
-You can use set backup target to `prefer-standby` as outlined in the
-example below:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: Cluster
-  [...]
-spec:
-  backup:
-    target: "prefer-standby"
-```
-
-The `prefer-standby` policy will ensure backups are run on the most up-to-date
-available secondary instance, falling back to the primary instance if no other
-instance is available.
-
-By default, when not specified, target is automatically set to take backups
-from a primary.
 
 ## Recovery
 
