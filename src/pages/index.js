@@ -47,36 +47,30 @@ const Page = () => (
             <div className="col-sm mb-3 mr-1">
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
-                  <span className="badge-text font-weight-bold">Demo</span>
+                  <span className="badge-text font-weight-bold">
+                    What's new
+                  </span>
                 </div>
               </div>
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
-                  >
-                    Demonstration of Oracle SQL <br />
-                    compatibility in BigAnimal
+                  <Link className="homepage-headling-link" to="/pgd/latest/">
+                    EDB Postgres Distributed <br />
+                    Version 5
                   </Link>
                 </h3>
                 <p>
-                  BigAnimal lets you run Oracle SQL queries in the cloud via EDB
-                  Postgres Advanced Server. Watch the video, or load up psql and
-                  follow along.
+                  EDB Postgres Distributed 5.0 uniquely solves the problem of
+                  planned downtime and unplanned outages for enterprises running
+                  business-critical applications.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
-                      className="btn btn-info btn-sm"
-                      to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                      className="btn-sm ml-2"
+                      to="/pgd/latest/rel_notes/pgd_5.0.0_rel_notes/"
                     >
-                      Watch demo
-                    </Link>
-                  </p>
-                  <p>
-                    <Link className="btn-sm ml-2" to="/biganimal/latest/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -87,40 +81,26 @@ const Page = () => (
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
                   <span className="badge-text font-weight-bold">
-                    Interactive Demo
+                    What's new
                   </span>
                 </div>
               </div>
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/postgres_for_kubernetes/latest/interactive_demo/"
-                  >
-                    Install, Configure and Deploy PostgreSQL <br />
-                    with Kubernetes
+                  <Link className="homepage-headling-link" to="/tde/latest">
+                    New security feature
                   </Link>
                 </h3>
                 <p>
-                  Want to see what it takes to get the EDB Postgres for
-                  Kubernetes Operator up and running? Try in the browser now, no
-                  downloads required.
+                  Transparent Data Encryption (TDE) extends Postgres with robust
+                  security and performance capabilities for enterprises. TDE
+                  significantly hardens data security and mitigates risks for
+                  large enterprises.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link
-                      className="btn btn-info btn-sm"
-                      to="/postgres_for_kubernetes/latest/interactive_demo/"
-                    >
-                      Try it now
-                    </Link>
-                  </p>
-                  <p>
-                    <Link
-                      className="btn-sm ml-2"
-                      to="/postgres_for_kubernetes/latest/"
-                    >
+                    <Link className="btn-sm ml-2" to="/tde/latest">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -141,13 +121,48 @@ const Page = () => (
               PostGIS
             </IndexCardLink>
 
+            <IndexCardLink to="/pge/latest">
+              EDB Postgres Extended Server
+            </IndexCardLink>
+
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Security
+            </span>
+
+            <IndexCardLink to="/tde/latest">
+              Transparent Data Encryption
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Extensions and Tools
+            </span>
+
+            <IndexCardLink to="/pg_extensions/">
+              Supported Postgres extensions
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
+              EDB Advanced Storage Pack
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_tuner">
+              EDB Postgres Tuner
+            </IndexCardLink>
+
+            <IndexCardLink to="/epas/latest/language_pack">
+              Language Pack
             </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/biganimal/latest">BigAnimal</IndexCardLink>
+            <IndexCardLink to="/biganimal/latest">EDB BigAnimal</IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/free_trial/"
               className="nested-link"
@@ -158,7 +173,7 @@ const Page = () => (
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
             >
-              Oracle SQL Compatiblity
+              Oracle SQL Compatibility
               <span className="new-thing" title="Interactive Demo">
                 Demo
               </span>
@@ -172,66 +187,6 @@ const Page = () => (
 
             <IndexCardLink to="/supported-open-source/cloud_native_pg/">
               CloudNativePG
-            </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard
-            iconName={iconNames.CONTROL}
-            headingText="Monitoring & Admin"
-          >
-            <IndexCardLink to="/pem/latest">
-              Postgres Enterprise Manager
-            </IndexCardLink>
-            <IndexCardLink to="/supported-open-source/pgadmin/">
-              pgAdmin
-            </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
-            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-            <IndexCardLink to="/migrating/oracle">
-              Migration Overview
-            </IndexCardLink>
-            <IndexCardLink to="/migration_portal/latest">
-              Migration Portal
-            </IndexCardLink>
-            <IndexCardLink to="/migration_toolkit/latest">
-              Migration Toolkit
-            </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard
-            iconName={iconNames.HIGH_AVAILABILITY}
-            headingText="High Availability (HA)"
-          >
-            <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
-            </IndexCardLink>
-            <IndexCardLink to="/bdr/latest/" className="nested-link">
-              Bi-Directional Replication (BDR)
-            </IndexCardLink>
-            <IndexCardLink to="/harp/latest" className="nested-link">
-              HA Routing for Postgres (HARP)
-            </IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Replication
-            </span>
-            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-            <IndexCardLink to="/pglogical/latest">pglogical</IndexCardLink>
-            <IndexCardLink to="/slony/latest">Slony</IndexCardLink>
-
-            <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
-              Cluster Management
-            </span>
-
-            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-            <IndexCardLink to="/repmgr/latest">
-              Replication Manager (repmgr)
-            </IndexCardLink>
-            <IndexCardLink to="/supported-open-source/patroni/">
-              Patroni
             </IndexCardLink>
           </IndexCard>
 
@@ -264,6 +219,40 @@ const Page = () => (
           </IndexCard>
 
           <IndexCard
+            iconName={iconNames.HIGH_AVAILABILITY}
+            headingText="High Availability"
+          >
+            <IndexCardLink to="/pgd/latest">
+              EDB Postgres Distributed (PGD)
+            </IndexCardLink>
+            <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
+            <IndexCardLink to="/repmgr/latest">
+              Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
+            </IndexCardLink>
+            <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
+            <IndexCardLink to="/supported-open-source/pglogical2/">
+              pglogical 2
+            </IndexCardLink>
+          </IndexCard>
+
+          <IndexCard
+            iconName={iconNames.CONTROL}
+            headingText="Monitoring & Admin"
+          >
+            <IndexCardLink to="/pem/latest">
+              Postgres Enterprise Manager
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/pgadmin/">
+              pgAdmin
+            </IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
+            <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
           >
@@ -290,36 +279,78 @@ const Page = () => (
             <IndexCardLink to="/mysql_data_adapter/latest">MySQL</IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
+            <IndexCardLink to="/migrating/oracle">
+              Migration Handbook
+            </IndexCardLink>
+            <IndexCardLink to="/migration_portal/latest">
+              Migration Portal
+            </IndexCardLink>
+            <IndexCardLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </IndexCardLink>
+            <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+          </IndexCard>
+
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-            <IndexCardLink to="/partner_docs/CommVaultGuide">
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Backup
+            </span>
+            <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
+              Cohesity DataProtect for PostgreSQL
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/DBeaverGuide">
-              DBeaver PRO
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/LiquibaseGuide">
-              Liquibase Pro
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/NutanixGuide">
-              Nutanix AHV
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ToadEdgeGuide">
-              Quest Toad Edge
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/RepostorGuide">
+            <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
               Repostor Data Protector for PostgresSQL
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesGuide">
-              Thales CipherTrust Transparent Encryption
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/VeritasGuide">
+            <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
               Veritas NetBackup for PostgreSQL
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/SIBVisionsVisionXGuide">
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Developer Tools
+            </span>
+            <IndexCardLink to="/partner_docs/DBeaverPRO">
+              DBeaver PRO
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/LiquibasePro">
+              Liquibase Pro
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/QuestToadEdge">
+              Quest Toad Edge
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
               SIB Visions VisionX
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Other
+            </span>
+            <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
+              Chemaxon JChem PostgreSQL Cartridge
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/NutanixAHV">
+              Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
+              Thales CipherTrust Transparent Encryption
             </IndexCardLink>
           </IndexCard>
         </div>
