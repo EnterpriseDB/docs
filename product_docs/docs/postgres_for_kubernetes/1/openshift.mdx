@@ -88,23 +88,6 @@ it would take a full region outage to bring down your cluster.
 Moreover, you can take advantage of multiple OpenShift clusters in different
 regions by setting up replica clusters, as previously mentioned.
 
-## Important information about upgrading to a 1.16.x operator version on Openshift
-
-We have made a change to the way conditions are represented in the status of
-the operator in version 1.16.0 and onward. This change could cause an operator
-upgrade to hang on Openshift, if one of the old conditions are set during the
-upgrade process, because of the way the Operator Lifecycle Manager checks new
-CRDs against existing CRs.
-
-To avoid this issue, you need to upgrade to version 1.15.5 first, and then you
-can safely go to 1.16.x or 1.17.x.  
-1.15.5 will automatically remove the offending conditions from all the cluster
-CRs which will unblock Openshift from upgrading. 
-
-!!! Warning 1.15.x is now at End of Life
-    No future updates to this version are planned; please use 1.15.5 only temporarily, to 
-    upgrade to 1.16.x or later, as described above.
-
 ## Important OpenShift concepts
 
 To understand how the EDB Postgres for Kubernetes operator fits in an OpenShift environment,
@@ -470,7 +453,7 @@ If you are currently in the `stable` channel, you need to either choose `fast` o
 progressively move to the latest Long Term Supported release of EDB Postgres
 for Kubernetes - currently `stable-v1.18`.
 
-If you are in `stable` and your operator version is 1.15, please move to
+If you are in `stable` and your operator version is 1.15 or older, please move to
 `stable-v1.15` and upgrade. Then repeat the operation with `stable-v1.16`, then
 `stable-v1.17` to finally reach `stable-v1.18` or `fast`.
 
@@ -478,12 +461,22 @@ If you are in `stable` and your operator version is 1.16, please move to
 `stable-v1.16` and upgrade. Then repeat the operation with `stable-v1.17` to
 finally reach `stable-v1.18` or `fast`.
 
-!!! Warning Both 1.15.x and 1.16.x are now End of Life
-    The last supported version of 1.15.x was released on October 22, 2022.
-    The last supported version of 1.16.x was released on December 21, 2022.
+!!! Warning "1.15.x, 1.16.x, and 1.17.x are now End of Life"
+    The last supported version of 1.15.x was released in October 2022.
+    The last supported version of 1.16.x was released in December 2022.
+    The last supported version of 1.17.x was released in March 2023.
     No future updates to these version are planned.
     Please refer to the [EDB "Platform Compatibility" page](https://www.enterprisedb.com/resources/platform-compatibility)
     for more details.
+
+!!! Important
+    We have made a change to the way conditions are represented in the status of
+    the operator in version 1.16.0, 1.15.2, and onward. This change could cause
+    an operator upgrade to hang on Openshift, if one of the old conditions are set
+    during the upgrade process, because of the way the Operator Lifecycle Manager
+    checks new CRDs against existing CRs.  To avoid this issue, you need to upgrade
+    to version 1.15.5 first, which will automatically remove the offending
+    conditions from all the cluster CRs that prevent Openshift from upgrading.
 
 ## Predefined RBAC objects
 
@@ -817,6 +810,52 @@ rules:
   verbs:
   - '*'
 ```
+
+## Pod Security Standards
+
+EDB Postgres for Kubernetes on OpenShift supports the `restricted` and
+`restricted-v2` SCC (`SecurityContextConstraints`), which vary depending on the
+version of EDB Postgres for Kubernetes and OpenShift you are running.
+Please pay close attention to the following table and notes:
+
+| EDB Postgres for Kubernetes Version | OpenShift Versions | Supported SCC             |
+| ----------------------------------- | ------------------ | ------------------------- |
+| 1.19.x                              | 4.10-4.12          | restricted, restricted-v2 |
+| 1.18.x                              | 4.10-4.12          | restricted, restricted-v2 |
+
+!!! Important
+    Since version 4.10 only provides `restricted`, EDB Postgres for Kubernetes
+    versions 1.18 and 1.19 support `restricted`. Future releases of EDB Postgres
+    for Kubernetes are not guaranteed to support `restricted`, since in Openshift
+    4.11 `restricted` was replaced with `restricted-v2`.
+
+!!! Important "Security changes in OpenShift >=4.11"
+    With Kubernetes 1.21 the `PodSecurityPolicy` has been replaced by the Pod
+    Security Admission Controller to become the new default way to manage the
+    security inside Kubernetes. On Openshift 4.11, which is running Kubernetes
+    1.21, there is also included a new set of SecurityContextConstraints (SCC) that
+    will be the default SCCs to manage workloads; these new SCC are
+    `restricted-v2`, `nonroot-v2` and `hostnetwork-v2`. For more information,
+    please read ["Important OpenShift changes to Pod Security Standards"](https://connect.redhat.com/en/blog/important-openshift-changes-pod-security-standards).
+
+Since the operator has been developed with a security focus from the beginning,
+in addition to always adhering to the Red Hat Certification process, EDB
+Postgres for Kubernetes works under the new SCCs introduced in OpenShift 4.11.
+
+By default, EDB Postgres for Kubernetes will drop all capabilities. This
+ensures that during its lifecycle the operator will never make use of any
+unsafe capabilities.
+
+On OpenShift we inherit the `SecurityContext.SeccompProfile` for each Pod from
+the OpenShift deployment, which in turn is set by the Pod Security Admission
+Controller.
+
+!!! Note
+    Even if `nonroot-v2` and `hostnetwork-v2` are qualified as less restricted
+    SCCs, we don't run tests on them, and therefore we cannot guarantee that these
+    SCCs will work. That being said, `nonroot-v2` and `hostnetwork-v2` are a subset
+    of rules in `restricted-v2` so there is no reason to believe that they would
+    not work. 
 
 ## Customization of the Pooler image
 
