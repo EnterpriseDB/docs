@@ -10,7 +10,7 @@ legacyRedirectsGenerated:
 
 ## Name
 
-`REVOKE` -- remove access privileges.
+`REVOKE` &mdash; Remove access privileges.
 
 ## Synopsis
 
@@ -62,35 +62,40 @@ REVOKE EXEMPT ACCESS POLICY
 
 ## Description
 
-The `REVOKE` command revokes previously granted privileges from one or more roles. The key word `PUBLIC` refers to the implicitly defined group of all roles.
+The `REVOKE` command revokes privileges that were granted to one or more roles. The key word `PUBLIC` refers to the implicitly defined group of all roles.
 
-See the description of the `GRANT` command for the meaning of the privilege types.
+See [`GRANT`](64_grant) for the meaning of the privilege types.
 
-Note that any particular role will have the sum of privileges granted directly to it, privileges granted to any role it is presently a member of, and privileges granted to `PUBLIC`. Thus, for example, revoking `SELECT` privilege from `PUBLIC` does not necessarily mean that all roles have lost `SELECT` privilege on the object: those who have it granted directly or via another role will still have it.
+A role has the sum of:
+-  Privileges granted directly to it 
+-  Privileges granted to any role it is presently a member of
+-  Privileges granted to `PUBLIC`
 
-If the privilege had been granted with the grant option, the grant option for the privilege is revoked as well as the privilege, itself.
+Thus, for example, revoking the `SELECT` privilege from `PUBLIC` doesn't necessarily mean that all roles lose `SELECT` privilege on the object. Roles that were granted the privilege directly or from another role still have it.
 
-If a user holds a privilege with grant option and has granted it to other users then the privileges held by those other users are called dependent privileges. If the privilege or the grant option held by the first user is being revoked and dependent privileges exist, those dependent privileges are also revoked if `CASCADE` is specified, else the revoke action will fail. This recursive revocation only affects privileges that were granted through a chain of users that is traceable to the user that is the subject of this `REVOKE` command. Thus, the affected users may effectively keep the privilege if it was also granted through other users.
+If the privilege was granted with the grant option, the grant option for the privilege is revoked along with the privilege.
+
+If a user holds a privilege with grant option and granted it to other users, then the privileges held by those other users are called *dependent privileges*. If the privilege or the grant option held by the first user is revoked, any dependent privileges are also revoked if `CASCADE` is specified. Without the `CASCADE` option, the revoke action fails. This recursive revocation affects only privileges that were granted through a chain of users that's traceable to the subject of this `REVOKE` command. The affected users can keep the privilege if it was also granted through other users.
 
 !!! Note
-    `CASCADE` is not an option compatible with Oracle databases. By default Oracle always cascades dependent privileges, but EDB Postgres Advanced Server requires the `CASCADE` keyword to be explicitly given, otherwise the `REVOKE` command will fail.
+    The `CASCADE` option isn't compatible with Oracle databases. By default, Oracle always cascades dependent privileges. EDB Postgres Advanced Server requires the `CASCADE` keyword for the `REVOKE` command to succeed.
 
-When revoking membership in a role, `GRANT OPTION` is instead called `ADMIN OPTION`, but the behavior is similar.
+When revoking membership in a role, `GRANT OPTION` is called `ADMIN OPTION`. The behavior is similar.
 
 ## Notes
 
-A user can only revoke privileges that were granted directly by that user. If, for example, user `A` has granted a privilege with grant option to user `B`, and user `B` has in turned granted it to user `C`, then user `A` cannot revoke the privilege directly from `C`. Instead, user `A` could revoke the grant option from user `B` and use the `CASCADE` option so that the privilege is in turn revoked from user `C`. For another example, if both `A` and `B` have granted the same privilege to `C`, `A` can revoke his own grant but not `B`’s grant, so `C` will still effectively have the privilege.
+A user can revoke only the privileges that were granted directly by that user. If, for example, user A  granted a privilege with grant option to user B, and user B granted it to user C, then user A can't revoke the privilege directly from C. Instead, user A can revoke the grant option from user B and use the `CASCADE` option to revoke the privilege from user C. For another example, if both A and B granted the same privilege to `C`, A can revoke their own grant but not B’s grant. C still has the privilege.
 
-When a non-owner of an object attempts to `REVOKE` privileges on the object, the command will fail outright if the user has no privileges whatsoever on the object. As long as some privilege is available, the command will proceed, but it will revoke only those privileges for which the user has grant options. The `REVOKE ALL PRIVILEGES` forms will issue a warning message if no grant options are held, while the other forms will issue a warning if grant options for any of the privileges specifically named in the command are not held. (In principle these statements apply to the object owner as well, but since the owner is always treated as holding all grant options, the cases can never occur.)
+When a non-owner of an object attempts to revoke privileges on the object, the command fails if the user doesn't have privileges on the object. As long as some privilege is available, the command proceeds, but it revokes only those privileges for which the user has grant options. The `REVOKE ALL PRIVILEGES` forms issue a warning message if no grant options are held. The other forms issue a warning if grant options for any of the privileges named in the command aren't held. In principle, these statements apply to the object owner as well. However, since the owner is always treated as holding all grant options, the cases can never occur.
 
-If a superuser chooses to issue a `GRANT` or `REVOKE` command, the command is performed as though it were issued by the owner of the affected object. Since all privileges ultimately come from the object owner (possibly indirectly via chains of grant options), it is possible for a superuser to revoke all privileges, but this may require use of `CASCADE` as stated above.
+If a superuser issues a `GRANT` or `REVOKE` command, the command is performed as though it were issued by the owner of the affected object. Since all privileges ultimately come from the object owner (possibly indirectly by way of chains of grant options), a superuser can revoke all privileges. This might require use of `CASCADE`.
 
-`REVOKE` can also be done by a role that is not the owner of the affected object, but is a member of the role that owns the object, or is a member of a role that holds privileges `WITH GRANT OPTION` on the object. In this case the command is performed as though it were issued by the containing role that actually owns the object or holds the privileges `WITH GRANT OPTION`. For example, if table `t1` is owned by role `g1`, of which role `u1` is a member, then `u1` can revoke privileges on `t1` that are recorded as being granted by `g1`. This would include grants made by `u1` as well as by other members of role `g1`.
+A role that is not the owner of the affected object can also use `REVOKE`. That role must be a member of the role that owns the object or a member of a role that holds privileges `WITH GRANT OPTION` on the object. In this case, the command is performed as if issued by the containing role that owns the object or holds the privileges `WITH GRANT OPTION`. For example, if table t1 is owned by role g1, of which role u1 is a member, then u1 can revoke privileges on t1 that are recorded as being granted by g1. This includes grants made by u1 as well as by other members of role g1.
 
-If the role executing `REVOKE` holds privileges indirectly via more than one role membership path, it is unspecified which containing role will be used to perform the command. In such cases it is best practice to use `SET ROLE` to become the specific role you want to do the `REVOKE` as. Failure to do so may lead to revoking privileges other than the ones you intended, or not revoking anything at all.
+If the role executing `REVOKE` holds privileges indirectly by more than one role membership path, the containing role that performs the command is unspecified. In such cases, best practice is to use `SET ROLE` to become the specific role you want to do the `REVOKE` as. Otherwise, you might revoke privileges other than the ones you intended or not revoke anything at all.
 
 !!! Note
-    The EDB Postgres Advanced Server `ALTER ROLE` command also supports syntax that revokes the system privileges required to create a public or private database link, or exemptions from fine-grained access control policies (`DBMS_RLS`). The `ALTER ROLE` syntax is functionally equivalent to the respective `REVOKE` command, compatible with Oracle databases.
+    The EDB Postgres Advanced Server `ALTER ROLE` command also supports syntax that revokes the system privileges required to create a public or private database link or exemptions from fine-grained access control policies (`DBMS_RLS`). The `ALTER ROLE` syntax is functionally equivalent to the respective `REVOKE` command, compatible with Oracle databases.
 
 ## Examples
 
@@ -100,13 +105,11 @@ Revoke insert privilege for the public on table `emp`:
 REVOKE INSERT ON emp FROM PUBLIC;
 ```
 
-Revoke all privileges from user `mary` on view `salesemp`:
+Revoke all privileges from user `mary` on view `salesemp`. This actually means “revoke all privileges that I granted.”
 
 ```text
 REVOKE ALL PRIVILEGES ON salesemp FROM mary;
 ```
-
-Note that this actually means “revoke all privileges that I granted”.
 
 Revoke membership in role `admins` from user `joe`:
 

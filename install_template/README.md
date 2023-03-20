@@ -48,15 +48,16 @@ After a template file is found, no rules are enforced on how that template shoul
 
 #### `/templates/platformBase/base.njk`
 
-- All templates ultimitaly should inherit from this file. This is a good place to write copy that needs to be shared by all docs, regardless of the product being installed
-- 3 blocks are currently available:
+- All templates ultimately should inherit from this file. This is a good place to write copy that needs to be shared by all docs, regardless of the product being installed
+- several blocks are currently defined in this base file, including:
+  - `frontmatter` — This is where additional frontmatter keys can be defined (the base template defines title and navTitle) - this is particularly useful for redirects and deployment rules, see below.
   - `prerequisites` — This is where information like adding EDB repos will go
   - `installCommand` — This is where the command to actually install the product will go
   - `postinstall` — This is where commands like starting the EPAS server will go
 
 #### `/templates/platformBase/[platform name].njk`
 
-- These files are largely reposible for setting up the `prerequisites` and `installCommand` blocks
+- These files are largely responsible for setting up the `prerequisites` and `installCommand` blocks
 - Currently, they rely on a `packageName` macro to be set by a child template. This macro is being used in the `installCommand` block.
 - You will notice there are no Ubuntu templates in the platformBase folder. This is because install instructions were the same as Debian 10, and so only the `debian-10.njk` file was created to reduce duplication. If Ubuntu specific instructions are needed, new template files could be created which inherit from `debian-10.njk`.
 - The `centos-7.njk` template contains a conditional to include ppc64le specific instructions. To display these instructions, add `{% set includePPC = true %}` to a child template
@@ -107,3 +108,33 @@ We also use global variables to trigger conditionals:
 For small template systems, this system works well enough. But as the number of templates increases, this becomes harder to understand. In this case, we need to search through the template files to find out where the variables are being used. Fortunately, they are used just once, but it's not hard to imagine multiple (and exclusive) conditionals that are hard to read, modify and debug.
 
 It's almost always better to use one of the other techniques than fall back on conditionals triggered by global variables.
+
+## Deployment rules
+
+The deployment script (`npm run install-docs:deploy`) can use two sources of information on where to deploy the final MDX files:
+
+1. A rule defined within the deployment script itself (`deploy.mjs`). 
+2. (RECOMMENDED) A frontmatter key (`deployPath`) written to the generated MDX file itself. Ex:
+
+   ```yaml
+   deployPath: mongo_data_adapter/5/installing/linux_ppc64le/mongo_sles_12.mdx
+   ```
+
+   This is best defined within the product template heirarchy, where context variables can be used:
+
+   ```
+   {% block frontmatter %}
+   deployPath: mongo_data_adapter/{{ product.version }}/installing/linux_{{platform.arch}}/mongo_{{deploy.map_platform[platform.name]}}.mdx
+   {% endblock frontmatter %}
+   ```
+
+The 2nd technique above lends itself well to writing redirect rules that prevent broken links when deployment paths change:
+
+```
+{% block frontmatter %}
+redirects:
+  - mongo_data_adapter/{{ product.version }}/04_installing_the_mongo_data_adapter/{{deploy.expand_arch[platform.arch]}}/mongo_{{deploy.map_platform_old[platform.name]}}_{{platform.arch | replace("_64", "")}}.mdx
+{% endblock frontmatter %}
+```
+
+**Note:** the path generated from that pattern wouldn't normally be a valid redirect rule - it should start with `/` and *not* end with `.mdx`. For convenience, the deploy script will automatically rewrite redirects written in this form to the proper format, thus allowing you to just copy the old `deployPath` value to a redirect before modifying it. 

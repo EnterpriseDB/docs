@@ -1,0 +1,413 @@
+---
+title: "PRAGMA AUTONOMOUS_TRANSACTION"
+---
+
+<div id="pragma_autonomous_transaction" class="registered_link"></div>
+
+An SPL program can be declared as an *autonomous transaction* by specifying the following directive in the declaration section of the SPL block. An autonomous transaction is an independent transaction started by a calling program. 
+
+```sql
+PRAGMA AUTONOMOUS_TRANSACTION;
+```
+
+A commit or rollback of SQL commands in the autonomous transaction has no effect on the commit or rollback in any transaction of the calling program. A commit or rollback in the calling program has no effect on the commit or rollback of SQL commands in the autonomous transaction.
+
+The following SPL programs can include `PRAGMA AUTONOMOUS_TRANSACTION`:
+
+-   Standalone procedures and functions
+-   Anonymous blocks
+-   Procedures and functions declared as subprograms in packages and other calling procedures, functions, and anonymous blocks
+-   Triggers
+-   Object type methods
+
+The following are issues and restrictions related to autonomous transactions:
+
+-   Each autonomous transaction consumes a connection slot for as long as it's in progress. In some cases, this might mean that you need to raise the `max_connections` parameter in the `postgresql.conf` file.
+-   In most respects, an autonomous transaction behaves as if it were a completely separate session, but GUCs (settings established with `SET`) are a deliberate exception. Autonomous transactions absorb the surrounding values and can propagate values they commit to the outer transaction.
+-   Autonomous transactions can be nested, but there is a limit of 16 levels of autonomous transactions in a single session.
+-   Parallel query isn't supported in autonomous transactions.
+-   The EDB Postgres Advanced Server implementation of autonomous transactions isn't entirely compatible with Oracle databases. The EDB Postgres Advanced Server autonomous transaction doesn't produce an error if there's an uncommitted transaction at the end of an SPL block.
+
+The following set of examples use autonomous transactions. This first set of scenarios shows the default behavior when there are no autonomous transactions.
+
+Before each scenario, the `dept` table is reset to the following initial values:
+
+```sql
+SELECT * FROM dept;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+## Scenario 1a: No autonomous transactions with only a final COMMIT
+
+This first set of scenarios shows the insertion of three rows:
+
+-  Starting just after the initial `BEGIN` command of the transaction 
+-  From an anonymous block in the starting transactions
+-  From a stored procedure executed from  the anonymous block
+
+The stored procedure is the following:
+
+```sql
+CREATE OR REPLACE PROCEDURE insert_dept_70 IS
+BEGIN
+    INSERT INTO dept VALUES (70,'MARKETING','LOS ANGELES');
+END;
+```
+
+The PSQL session is the following:
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+END;
+COMMIT;
+```
+
+After the final commit, all three rows are inserted:
+
+```sql
+SELECT * FROM dept ORDER BY 1;
+__OUTPUT__
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | HR         | DENVER
+     60 | FINANCE    | CHICAGO
+     70 | MARKETING  | LOS ANGELES
+(7 rows)
+```
+
+## Scenario 1b: No autonomous transactions but a final ROLLBACK
+
+The next scenario shows that a final `ROLLBACK` command after all inserts results in the rollback of all three insertions:
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+END;
+ROLLBACK;
+
+SELECT * FROM dept ORDER BY 1;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+## Scenario 1c: No autonomous transactions, but anonymous block ROLLBACK
+
+A `ROLLBACK` command given at the end of the anonymous block also eliminates all three prior insertions:
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+    ROLLBACK;
+END;
+COMMIT;
+
+SELECT * FROM dept ORDER BY 1;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+The next set of scenarios shows the effect of using autonomous transactions with `PRAGMA AUTONOMOUS_TRANSACTION` in various locations.
+
+## Scenario 2a: Autonomous transaction of anonymous block with COMMIT
+
+The procedure remains as initially created:
+
+```sql
+CREATE OR REPLACE PROCEDURE insert_dept_70 IS
+BEGIN
+    INSERT INTO dept VALUES (70,'MARKETING','LOS ANGELES');
+END;
+```
+
+The `PRAGMA AUTONOMOUS_TRANSACTION` is given with the anonymous block along with the `COMMIT` command at the end of the anonymous block:
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+    COMMIT;
+END;
+ROLLBACK;
+```
+
+After the `ROLLBACK` at the end of the transaction, only the first row insertion at the beginning of the transaction is discarded. The other two row insertions in the anonymous block with `PRAGMA AUTONOMOUS_TRANSACTION` were independently committed.
+
+```sql
+SELECT * FROM dept ORDER BY 1;
+__OUTPUT__
+ deptno |   dname    |     loc
+--------+------------+-------------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     60 | FINANCE    | CHICAGO
+     70 | MARKETING  | LOS ANGELES
+(6 rows)
+```
+
+## Scenario 2b: Autonomous transaction anonymous block with COMMIT, including procedure with ROLLBACK but not an autonomous transaction procedure
+
+This procedure has the `ROLLBACK` command at the end. However, the `PRAGMA ANONYMOUS_TRANSACTION` isn't included in this procedure.
+
+```sql
+CREATE OR REPLACE PROCEDURE insert_dept_70 IS
+BEGIN
+    INSERT INTO dept VALUES (70,'MARKETING','LOS ANGELES');
+    ROLLBACK;
+END;
+```
+
+The rollback in the procedure removes the two rows inserted in the anonymous block (`deptno` 60 and 70) before the final `COMMIT` command in the anonymous block:
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+    COMMIT;
+END;
+COMMIT;
+```
+
+After the final commit at the end of the transaction, the only row inserted is the first one from the beginning of the transaction. Since the anonymous block is an autonomous transaction, the rollback in the enclosed procedure has no effect on the insertion that occurs before the anonymous block is executed.
+
+```sql
+SELECT * FROM dept ORDER by 1;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | HR         | DENVER
+(5 rows)
+```
+
+## Scenario 2c: Autonomous transaction anonymous block with COMMIT, including procedure with ROLLBACK that is also an autonomous transaction procedure
+
+The procedure with the `ROLLBACK` command at the end also has `PRAGMA ANONYMOUS_TRANSACTION` included. This isolates the effect of the `ROLLBACK` command in the procedure.
+
+```sql
+CREATE OR REPLACE PROCEDURE insert_dept_70 IS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO dept VALUES (70,'MARKETING','LOS ANGELES');
+    ROLLBACK;
+END;
+```
+
+The rollback in the procedure removes the row inserted by the procedure but not the other row inserted in the anonymous block.
+
+```sql
+BEGIN;
+INSERT INTO dept VALUES (50,'HR','DENVER');
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO dept VALUES (60,'FINANCE','CHICAGO');
+    insert_dept_70;
+    COMMIT;
+END;
+COMMIT;
+```
+
+After the final commit at the end of the transaction, the row inserted is the first one from the beginning of the transaction as well as the row inserted at the beginning of the anonymous block. The only insertion rolled back is the one in the procedure.
+
+```sql
+SELECT * FROM dept ORDER by 1;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     50 | HR         | DENVER
+     60 | FINANCE    | CHICAGO
+(6 rows)
+```
+
+The following examples show `PRAGMA AUTONOMOUS_TRANSACTION` in a couple of other SPL program types.
+
+## Autonomous transaction trigger
+
+This example shows the effect of declaring a trigger with `PRAGMA AUTONOMOUS_TRANSACTION`.
+
+The following table is created to log changes to the `emp` table:
+
+```sql
+CREATE TABLE empauditlog (
+    audit_date      DATE,
+    audit_user      VARCHAR2(20),
+    audit_desc      VARCHAR2(20)
+);
+```
+
+The trigger attached to the `emp` table that inserts these changes into the `empauditlog` table is the following. `PRAGMA AUTONOMOUS_TRANSACTION` is included in the declaration section.
+
+```sql
+CREATE OR REPLACE TRIGGER emp_audit_trig
+    AFTER INSERT OR UPDATE OR DELETE ON emp
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+    v_action        VARCHAR2(20);
+BEGIN
+    IF INSERTING THEN
+        v_action := 'Added employee(s)';
+    ELSIF UPDATING THEN
+        v_action := 'Updated employee(s)';
+    ELSIF DELETING THEN
+        v_action := 'Deleted employee(s)';
+    END IF;
+    INSERT INTO empauditlog VALUES (SYSDATE, USER,
+        v_action);
+END;
+```
+
+The following two inserts are made into the `emp` table in a transaction started by the `BEGIN` command:
+
+```sql
+BEGIN;
+INSERT INTO emp VALUES (9001,'SMITH','ANALYST',7782,SYSDATE,NULL,NULL,10);
+INSERT INTO emp VALUES (9002,'JONES','CLERK',7782,SYSDATE,NULL,NULL,10);
+```
+
+The following shows the two new rows in the `emp` table as well as the two entries in the `empauditlog` table:
+
+```sql
+SELECT * FROM emp WHERE empno > 9000;
+__OUTPUT__
+ empno | ename |   job   | mgr  |      hiredate      | sal | comm | deptno
+-------+-------+---------+------+--------------------+-----+------+--------
+  9001 | SMITH | ANALYST | 7782 | 23-AUG-18 07:12:27 |     |      |     10
+  9002 | JONES | CLERK   | 7782 | 23-AUG-18 07:12:27 |     |      |     10
+(2 rows)
+```
+```sql
+SELECT TO_CHAR(AUDIT_DATE,'DD-MON-YY HH24:MI:SS') AS "audit date",
+ audit_user, audit_desc FROM empauditlog ORDER BY 1 ASC;
+__OUTPUT__
+  audit date        |  audit_user  |    audit_desc
+--------------------+--------------+-------------------
+ 23-AUG-18 07:12:27 | enterprisedb | Added employee(s)
+ 23-AUG-18 07:12:27 | enterprisedb | Added employee(s)
+(2 rows)
+```
+
+But then the `ROLLBACK` command is given during this session. The `emp` table no longer contains the two rows, but the `empauditlog` table still contains its two entries. The trigger implicitly performed a commit, and `PRAGMA AUTONOMOUS_TRANSACTION` commits those changes independent from the rollback given in the calling transaction.
+
+```sql
+ROLLBACK;
+
+SELECT * FROM emp WHERE empno > 9000;
+__OUTPUT__
+ empno | ename | job | mgr | hiredate | sal | comm | deptno
+-------+-------+-----+-----+----------+-----+------+--------
+(0 rows)
+```
+```sql
+SELECT TO_CHAR(AUDIT_DATE,'DD-MON-YY HH24:MI:SS') AS "audit date",
+    audit_user, audit_desc FROM empauditlog ORDER BY 1 ASC;
+__OUTPUT__
+     audit date     |  audit_user  |    audit_desc
+--------------------+--------------+-------------------
+ 23-AUG-18 07:12:27 | enterprisedb | Added employee(s)
+ 23-AUG-18 07:12:27 | enterprisedb | Added employee(s)
+(2 rows)
+```
+
+## Autonomous transaction object type method
+
+This example shows the effect of declaring an object method with `PRAGMA AUTONOMOUS_TRANSACTION`.
+
+The following object type and object type body are created. The member procedure in the object type body contains the `PRAGMA AUTONOMOUS_TRANSACTION` in the declaration section along with `COMMIT` at the end of the procedure.
+
+```sql
+CREATE OR REPLACE TYPE insert_dept_typ AS OBJECT (
+    deptno          NUMBER(2),
+    dname           VARCHAR2(14),
+    loc             VARCHAR2(13),
+    MEMBER PROCEDURE insert_dept
+);
+
+CREATE OR REPLACE TYPE BODY insert_dept_typ AS
+    MEMBER PROCEDURE insert_dept
+    IS
+        PRAGMA AUTONOMOUS_TRANSACTION;
+    BEGIN
+        INSERT INTO dept VALUES (SELF.deptno,SELF.dname,SELF.loc);
+        COMMIT;
+    END;
+END;
+```
+
+In the following anonymous block, an insert is performed into the `dept` table, followed by invoking the `insert_dept` method of the object and ending with a `ROLLBACK` command in the anonymous block.
+
+```sql
+BEGIN;
+DECLARE
+    v_dept          INSERT_DEPT_TYP :=
+                      insert_dept_typ(60,'FINANCE','CHICAGO');
+BEGIN
+    INSERT INTO dept VALUES (50,'HR','DENVER');
+    v_dept.insert_dept;
+    ROLLBACK;
+END;
+```
+
+Since `insert_dept` was declared as an autonomous transaction, its insert of department number 60 remains in the table, but the rollback removes the insertion of department 50:
+
+```sql
+SELECT * FROM dept ORDER BY 1;
+__OUTPUT__
+ deptno |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+     60 | FINANCE    | CHICAGO
+(5 rows)
+```

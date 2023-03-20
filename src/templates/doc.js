@@ -127,9 +127,26 @@ const Tiles = ({ mode, node }) => {
   if (!node || !node.items) return null;
 
   if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
-    const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
+    const decks = {};
+    let currentDeckName = "";
+    for (let item of node.items) {
+      if (!item.path) {
+        currentDeckName = item.title;
+      } else {
+        decks[currentDeckName] = decks[currentDeckName] || [];
+        decks[currentDeckName].push(getCards(item, mode === "simple" ? 0 : 1));
+      }
+    }
 
-    return <CardDecks cards={tiles} cardType={mode} />;
+    return Object.keys(decks).map((deckName) => {
+      return (
+        <CardDecks
+          cards={decks[deckName]}
+          cardType={mode}
+          deckTitle={deckName}
+        />
+      );
+    });
   }
   return null;
 };
@@ -189,14 +206,16 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     }
   >
     <Dropdown.Item
-      href={githubIssuesLink + "&template=documentation-feedback.md"}
+      href={githubIssuesLink + "&template=problem-with-topic.yaml"}
       target="_blank"
       rel="noreferrer"
     >
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
+      href={
+        githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"
+      }
       target="_blank"
       rel="noreferrer"
     >
@@ -223,7 +242,14 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(versions, path);
   const { product, version } = getProductAndVersion(path);
 
-  const { iconName, description, katacodaPanel, indexCards } = frontmatter;
+  const {
+    iconName,
+    description,
+    katacodaPanel,
+    indexCards,
+    editTarget,
+    originalFilePath,
+  } = frontmatter;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
@@ -249,7 +275,7 @@ const DocTemplate = ({ data, pageContext }) => {
     ),
   };
 
-  const showToc = !!tableOfContents.items;
+  const showToc = !!tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
@@ -284,12 +310,19 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </h1>
             <div className="d-flex">
-              <a
-                href={githubEditLink || "#"}
-                className="btn btn-sm btn-primary px-4 text-nowrap"
-              >
-                Edit this page
-              </a>
+              {editTarget !== "none" && (
+                <a
+                  href={
+                    (editTarget === "originalFilePath" && originalFilePath
+                      ? originalFilePath.replace(/\/blob\//, "/edit/")
+                      : githubEditLink) || "#"
+                  }
+                  className="btn btn-sm btn-primary px-4 text-nowrap"
+                  title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
+                >
+                  Suggest edits
+                </a>
+              )}
               <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
             </div>
           </div>

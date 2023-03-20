@@ -1,0 +1,28 @@
+---
+title: 'Known issues'
+---
+
+This section discusses currently known issues in EDB Postgres Distributed 5. These issues are tracked in EDB's ticketing system and are expected to be resolved in a future release.
+
+-   If the resolver for the `update_origin_change` conflict is set to `skip`, `synchronous_commit=remote_apply` is used, and concurrent updates of the same row are repeatedly applied on two different nodes, then one of the update statements might hang due to a deadlock with the BDR writer.  As mentioned in the [Conflicts](consistency/conflicts/) chapter, `skip` is not the default resolver for the `update_origin_change` conflict, and this combination isn't intended to be used in production. It discards one of the two conflicting updates based on the order of arrival on that node, which is likely to cause a divergent cluster. In the rare situation that you do choose to use the `skip` conflict resolver,  note the issue with the use of the `remote_apply` mode.
+
+-   The Decoding Worker feature doesn't work with CAMO/EAGER/Group Commit. Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder` disabled.
+
+-   Lag control doesn't adjust commit delay in any way on a fully isolated node, that is, in case all other nodes are unreachable or not operational. As soon as at least one node is connected, replication lag control picks up its work and adjusts the BDR commit delay again.
+
+-   For time-based lag control, BDR currently uses the lag time (measured by commit timestamps) rather than the estimated catchup time that's based on historic apply rate.
+
+-   Changing the CAMO partners in a CAMO pair isn't currently possible. It's possible only to add or remove a pair. Adding or removing a pair doesn't need a restart of Postgres or even a reload of the configuration.
+
+-   Group Commit cannot be combined with [CAMO](durability/camo/) or [Eager All Node replication](consistency/eager/). Eager Replication currently only works by using the "global" BDR commit scope.
+
+-   Transactions using Eager Replication can't yet execute DDL, nor do they support explicit two-phase commit. The TRUNCATE command is allowed.
+
+-   Not all DDL can be run when either CAMO or Group Commit is used.
+
+-   Parallel apply is not currently supported in combination with Group Commit, please make sure to disable it when using Group Commit by either setting `num_writers` to 1 for the node group (using [`bdr.alter_node_group_config`](nodes#bdralter_node_group_config)) or via the GUC `bdr.writers_per_subscription` (see [Configuration of Generic Replication](configuration#generic-replication)).
+
+-   There currently is no protection against altering or removing a commit scope. Running transactions in a commit scope that is concurrently being altered or removed can lead to the transaction blocking or replication stalling completely due to an error on the downstream node attempting to apply the transaction. Ensure that any transactions using a specific commit scope have finished before altering or removing it.
+
+Details of other design or implementation [limitations](limitations) are also available.
+

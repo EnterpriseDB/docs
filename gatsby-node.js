@@ -114,11 +114,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             originalFilePath
             productStub
             indexCards
+            originalFilePath
+            editTarget
             navigation
             legacyRedirects
             legacyRedirectsGenerated
             navigation
             showInteractiveBadge
+            hideToC
             katacodaPages {
               scenario
               account
@@ -135,8 +138,13 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               description
               prevNext
               iconName
+              editTarget
               product
               platform
+              indexCards
+              showInteractiveBadge
+              hideVersion
+              displayBanner
             }
           }
           fields {
@@ -229,9 +237,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     node.frontmatter = computeFrontmatterForTreeNode(curr);
 
     // build navigation tree
-    const navigationDepth = 2;
+    const navigationDepth = 1;
     let navRoot = curr;
-    while (navRoot.depth > navigationDepth) navRoot = navRoot.parent;
+    while (navRoot.depth > navigationDepth && navRoot?.parent?.mdxNode)
+      navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, node);
 
     // determine next and previous nodes
@@ -290,21 +299,16 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
+  const githubFileLink = `${docsRepoUrl}/blob/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
   const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
-  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(
-    fileUrlSegment,
-  )}`;
-
+  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=${encodeURIComponent(
+    `Feedback on ${doc.fields.product} ${doc.fields.version} - "${doc.frontmatter.title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
-
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
-  actions.createPage({
-    path: path,
-    component: require.resolve(`./src/templates/${template}`),
-    context: {},
-  });
 
   actions.createPage({
     path: path,
@@ -316,7 +320,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       prevNext,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
-      githubFileLink: githubFileLink,
+      githubFileLink: githubFileHistoryLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
       isIndexPage: isIndexPage,
@@ -373,18 +377,14 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
+  const githubFileLink = `${advocacyDocsRepoUrl}/blob/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${advocacyDocsRepoUrl}/commits/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
   const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
-  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
-    fileUrlSegment,
-  )}`;
-
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
-  actions.createPage({
-    path: doc.fields.path,
-    component: require.resolve("./src/templates/learn-doc.js"),
-    context: {},
-  });
+  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=${encodeURIComponent(
+    `Regarding "${doc.frontmatter.title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
 
   actions.createPage({
     path: doc.fields.path,
@@ -396,7 +396,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       navLinks: navLinks,
       prevNext,
       navTree,
-      githubFileLink: githubFileLink,
+      githubFileLink: githubFileHistoryLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
       isIndexPage: isIndexPage,
@@ -481,19 +481,46 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type Frontmatter {
+      description: String
+      prevNext: Boolean
+      iconName: String
+      product: String
+      platform: String
       originalFilePath: String
       indexCards: TileModes
+      editTarget: EditTargets
       legacyRedirects: [String]
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
+      hideToC: Boolean
       hideVersion: Boolean
       displayBanner: String
+      directoryDefaults: DirectoryDefaults
     }
 
     enum TileModes {
       none
       simple
       full
+    }
+
+    enum EditTargets {
+      github
+      originalFilePath
+      none
+    }
+
+    type DirectoryDefaults {
+      description: String
+      prevNext: Boolean
+      iconName: String
+      product: String
+      platform: String
+      indexCards: TileModes
+      editTarget: EditTargets
+      showInteractiveBadge: Boolean
+      hideVersion: Boolean
+      displayBanner: String
     }
   `;
   createTypes(typeDefs);
@@ -571,6 +598,7 @@ exports.onPostBuild = async ({ reporter, pathPrefix }) => {
 /edb-docs/p/edb-postgres-ocl-connector/*        /docs/ocl_connector/latest/ 301
 /edb-docs/p/edb-backup-and-recovery-tool/*      /docs/bart/latest/ 301
 /edb-docs/*                                     /docs/ 301
+
 
 # Netlify pathPrefix path rewrite
 ${pathPrefix}/*  /:splat  200`,

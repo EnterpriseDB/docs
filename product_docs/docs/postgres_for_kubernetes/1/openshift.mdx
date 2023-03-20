@@ -1,7 +1,6 @@
 ---
 title: 'Red Hat OpenShift'
 originalFilePath: 'src/openshift.md'
-product: 'EDB Postgres for Kubernetes'
 ---
 
 EDB Postgres for Kubernetes is certified to run on
@@ -13,7 +12,11 @@ The goal of this section is to help you decide the best installation method for
 EDB Postgres for Kubernetes based on your organizations' security and access
 control policies.
 
-EDB Postgres for Kubernetes can be installed and managed via:
+The first and critical step is to design the [architecture](#architecture) of
+your PostgreSQL clusters in your OpenShift environment.
+
+Once the architecture is clear, you can proceed with the installation. EDB
+Postgres for Kubernetes can be installed and managed via:
 
 -   [OpenShift web console](#installation-via-web-console)
 -   [OpenShift command-line interface (CLI)](#installation-via-the-oc-cli) called `oc`, for full control
@@ -42,6 +45,65 @@ and ["Users and Permissions"](#users-and-permissions) below).
     a `cluster-admin` is *"a super-user that can perform any action in any
     project. When bound to a user with a local binding, they have full control over
     quota and every action on every resource in the project*".
+
+## Architecture
+
+The same concepts that have been included in the generic
+[Kubernetes/PostgreSQL architecture page](architecture.md)
+apply for OpenShift as well.
+
+Here as well, the critical factor is the number of availability
+zones or data centers for your OpenShift environment.
+
+As outlined in the
+["Disaster Recovery Strategies for Applications Running on OpenShift"](https://cloud.redhat.com/blog/disaster-recovery-strategies-for-applications-running-on-openshift)
+blog article written by Raffaele Spazzoli back in 2020 about stateful
+applications, in order to fully exploit EDB Postgres for Kubernetes, you need
+to plan, design and implement an OpenShift cluster spanning 3 or more
+availability zones. While this doesn't pose an issue in most of the public
+cloud provider deployments, it is definitely a challenge in on-premise
+scenarios.
+
+If your OpenShift cluster has only **one availability zone**, the zone is your
+Single Point of Failure (SPoF) from a High Availability standpoint - provided
+that you have wisely adopted a share-nothing architecture, making sure that
+your PostgreSQL clusters have at least one standby (two if using synchronous
+replication), and that each PostgreSQL instance runs on a different Kubernetes
+worker node using different storage. Make sure that continuous backup data is
+stored additionally in a storage service outside the OpenShift cluster,
+allowing you to perform Disaster Recovery operations beyond your data center.
+
+Most likely you will have another OpenShift cluster in another data center,
+either in the same metropolitan area or in another region, in an active/passive
+strategy. You can set up an independent ["Replica cluster"](replica_cluster.md),
+with the understanding that this is primarily a Disaster Recovery solution - very
+effective but with some limitations that require manual intervention, as
+explained in the feature page. The same solution can be applied to additional
+OpenShift clusters, even in a cascading manner.
+
+On the other hand, if your OpenShift cluster spans **multiple availability
+zones** in a region, you can fully leverage the capabilities of the operator for
+resilience and self-healing, and the region can become your SPoF, i.e.
+it would take a full region outage to bring down your cluster.
+Moreover, you can take advantage of multiple OpenShift clusters in different
+regions by setting up replica clusters, as previously mentioned.
+
+## Important information about upgrading to a 1.16.x operator version on Openshift
+
+We have made a change to the way conditions are represented in the status of
+the operator in version 1.16.0 and onward. This change could cause an operator
+upgrade to hang on Openshift, if one of the old conditions are set during the
+upgrade process, because of the way the Operator Lifecycle Manager checks new
+CRDs against existing CRs.
+
+To avoid this issue, you need to upgrade to version 1.15.5 first, and then you
+can safely go to 1.16.x or 1.17.x.  
+1.15.5 will automatically remove the offending conditions from all the cluster
+CRs which will unblock Openshift from upgrading. 
+
+!!! Warning 1.15.x is now at End of Life
+    No future updates to this version are planned; please use 1.15.5 only temporarily, to 
+    upgrade to 1.16.x or later, as described above.
 
 ## Important OpenShift concepts
 
@@ -112,9 +174,38 @@ Operator Lifecycle Manager (OLM) can install operators multiple times in
 different namespaces, with one important limitation: they all need to share the
 same API version of the operator.
 
-For more information, refer to
+For more information, please refer to
 ["Operator groups"](https://docs.openshift.com/container-platform/4.9/operators/understanding/olm/olm-understanding-operatorgroups.html)
-in the OpenShift documentation.
+in OpenShift documentation.
+
+## Channels
+
+Since the release of version 1.16.0, EDB Postgres for Kubernetes is available in the following
+[OLM channels](https://olm.operatorframework.io/docs/best-practices/channel-naming/):
+
+-   `fast`: the head version in the channel is always the latest available patch
+    release in the latest available minor release of EDB Postgres for Kubernetes
+-   `stable-vX.Y`: the head version in the channel is always the latest available
+    patch release in the X.Y minor release of EDB Postgres for Kubernetes
+
+While `fast` might contain versions spanning over multiple minor versions, the
+`stable-vX.Y` branches include only patch versions of the same minor release.
+
+Considering the both CloudNativePG and EDB Postgres for Kubernetes are
+developed using the *trunk development* and *continuous delivery* DevOps
+principles, our recommendation is to use the `fast` channel.
+
+### About the `stable` channel
+
+The `stable` channel was previously used by EDB to distribute `cloud-native-postgresql`.
+This channel is **obsolete** and has been removed.
+
+If you are currently using `stable`, you have two options for moving off of it:
+
+1.  Move to a `stable-vX.Y` channel to remain in a minor release (e.g. `stable-v1.18` would
+    remain in the 1.18 minor LTS release, consuming future patch releases).
+2.  Move to `fast`, which is the equivalent of `stable` before we introduced support for
+    multiple minor releases
 
 ## Installation via web console
 
@@ -137,7 +228,8 @@ directly from your OpenShift dashboard.
 
     -   the installation mode: [cluster-wide](#cluster-wide-installation) or
         [single namespace](#single-project-installation) installation
-    -   the update channel: currently only stable is available
+    -   the update channel (see [the "Channels" section](#channels) for more
+        information - if unsure, pick `fast`)
     -   the approval strategy, following the availability on the market place of
         a new release of the operator, certified by Red Hat:
     -   `Automatic`: OLM automatically upgrades the running operator with the
@@ -174,7 +266,7 @@ recommended approach to install EDB Postgres for Kubernetes.
     This doesn't mean that every user in the OpenShift cluster can use the Cloud Native
     PostgreSQL Operator, deploy a `Cluster` object or even see the `Cluster` objects that
     are running in their own namespaces. There are some special roles that users must
-    have in the namespace in order to interact with EDB Postgres for Kubernetes's managed
+    have in the namespace in order to interact with EDB Postgres for Kubernetes' managed
     custom resources - primarily the `Cluster` one. Please refer to the
     ["Users and Permissions" section below](#users-and-permissions) for details.
 
@@ -201,7 +293,7 @@ Operator in a given namespace, and to make it available to that project only.
     PostgreSQL Operator, deploy a `Cluster` object or even see the `Cluster` objects that
     are running in the namespace. Similarly to the cluster-wide installation mode,
     There are some special roles that users must have in the namespace in order to
-    interact with EDB Postgres for Kubernetes's managed custom resources - primarily the `Cluster`
+    interact with EDB Postgres for Kubernetes' managed custom resources - primarily the `Cluster`
     one. Please refer to the ["Users and Permissions" section below](#users-and-permissions)
     for details.
 
@@ -291,7 +383,7 @@ projects with a simple example, by creating an `OperatorGroup` and a
          ["Target namespace selection"](https://docs.openshift.com/container-platform/4.9/operators/understanding/olm/olm-understanding-operatorgroups.html#olm-operatorgroups-target-namespace_olm-understanding-operatorgroups).
 
 4.  Create a `Subscription` object in the `my-operators` namespace to subscribe
-    to the `stable` channel of the `cloud-native-postgresql` operator that is
+    to the `fast` channel of the `cloud-native-postgresql` operator that is
     available in the `certified-operators` source of the `openshift-marketplace`
     (as previously located in steps 1 and 2):
 
@@ -302,7 +394,7 @@ projects with a simple example, by creating an `OperatorGroup` and a
        name: cloud-native-postgresql
        namespace: my-operators
      spec:
-       channel: stable
+       channel: fast
        name: cloud-native-postgresql
        source: certified-operators
        sourceNamespace: openshift-marketplace
@@ -312,7 +404,7 @@ projects with a simple example, by creating an `OperatorGroup` and a
     `OperatorGroup` and `Subscription` objects.
 
 The method described in this section can be very powerful in conjunction with
-proper `RoleBinding` objects, as it enables mapping EDB Postgres for Kubernetes's
+proper `RoleBinding` objects, as it enables mapping EDB Postgres for Kubernetes'
 predefined `ClusterRole`s to specific users in selected namespaces.
 
 !!! Info
@@ -340,7 +432,7 @@ metadata:
   name: cloud-native-postgresql
   namespace: openshift-operators
 spec:
-  channel: stable
+  channel: fast
   name: cloud-native-postgresql
   source: certified-operators
   sourceNamespace: openshift-marketplace
@@ -364,9 +456,34 @@ suits your needs in terms of operating system and architecture:
 ![Command Line Tools](./images/openshift/oc_installation_screenshot_2.png)
 
 !!! Seealso "OpenShift CLI"
-    For more detailed and updated information, refer to the official
+    For more detailed and updated information, please refer to the official
     [OpenShift CLI documentation](https://docs.openshift.com/container-platform/4.9/cli_reference/openshift_cli/getting-started-cli.html)
     directly maintained by Red Hat.
+
+## Upgrading the operator
+
+In order to upgrade your operator safely, you need to be in a `stable-vX.Y` channel,
+or the `fast` channel if you want to follow the head of the development trunk of
+EDB Postgres for Kubernetes.
+
+If you are currently in the `stable` channel, you need to either choose `fast` or
+progressively move to the latest Long Term Supported release of EDB Postgres
+for Kubernetes - currently `stable-v1.18`.
+
+If you are in `stable` and your operator version is 1.15, please move to
+`stable-v1.15` and upgrade. Then repeat the operation with `stable-v1.16`, then
+`stable-v1.17` to finally reach `stable-v1.18` or `fast`.
+
+If you are in `stable` and your operator version is 1.16, please move to
+`stable-v1.16` and upgrade. Then repeat the operation with `stable-v1.17` to
+finally reach `stable-v1.18` or `fast`.
+
+!!! Warning Both 1.15.x and 1.16.x are now End of Life
+    The last supported version of 1.15.x was released on October 22, 2022.
+    The last supported version of 1.16.x was released on December 21, 2022.
+    No future updates to these version are planned.
+    Please refer to the [EDB "Platform Compatibility" page](https://www.enterprisedb.com/resources/platform-compatibility)
+    for more details.
 
 ## Predefined RBAC objects
 
@@ -439,7 +556,7 @@ plane in managing PostgreSQL clusters.
 
 ### Cluster roles
 
-The Operator Licecycle Manager (OLM) automatically creates a set of cluster
+The Operator Lifecycle Manager (OLM) automatically creates a set of cluster
 role objects to facilitate role binding definitions and granular implementation
 of RBAC policies. Some cluster roles have rules that apply to Custom Resource
 Definitions that are part of EDB Postgres for Kubernetes, while others that are
@@ -447,7 +564,7 @@ part of the broader Kubernetes/OpenShift realm.
 
 #### Cluster roles on EDB Postgres for Kubernetes CRDs
 
-For [every CRD owned by EDB Postgres for Kubernetes's CSV](#custom-resource-definitions-crd),
+For [every CRD owned by EDB Postgres for Kubernetes' CSV](#custom-resource-definitions-crd),
 OLM deploys some predefined cluster roles that can be used by customer facing
 users and service accounts. In particular:
 
@@ -521,8 +638,8 @@ rules:
 
 !!! Seealso "There's more ..."
     If you are interested in the actual implementation of RBAC by an
-    OperatorGroup, refer to the
-    [OperatorGroup: RBAC](https://olm.operatorframework.io/docs/concepts/crds/operatorgroup/#rbac) in the Operator Lifecycle Manager documentation.
+    OperatorGroup, please refer to the
+    ["OperatorGroup: RBAC" section from the Operator Lifecycle Manager documentation](https://olm.operatorframework.io/docs/concepts/crds/operatorgroup/#rbac).
 
 #### Cluster roles on Kubernetes CRDs
 
@@ -597,7 +714,7 @@ PolicyRule:
     account to interact with the Kubernetes API server.  They are not directly
     accessible by the users of the operator that interact only with `Cluster`,
     `Pooler`, `Backup`, and `ScheduledBackup` resources (see
-    ["Cluster roles on EDB Postgres for Kubernetes CRDs"](#cluster-roles-on-cloud-native-postgresql-crds)).
+    ["Cluster roles on EDB Postgres for Kubernetes CRDs"](#cluster-roles-on-edb-postgres-for-kubernetes-crds)).
 
 The operator automates in a declarative way a lot of operations related to
 PostgreSQL management that otherwise would require manual and imperative
@@ -606,8 +723,8 @@ interventions. Such operations also include security related matters at RBAC
 levels (e.g. TLS certificates).
 
 For more information about the reasons why the operator needs these elevated
-permissions, refer to the
-["Security / Cluster / RBAC" section](https://cloudnative-pg.io/documentation/1.15.0/security/#role-based-access-control-rbac).
+permissions, please refer to the
+["Security / Cluster / RBAC" section](security.md#role-based-access-control-rbac).
 
 ## Users and Permissions
 
@@ -707,8 +824,8 @@ By default, the `Pooler` resource creates pods having the `pgbouncer` container
 that runs with the `quay.io/enterprisedb/pgbouncer` image.
 
 !!! Note "There's more"
-    For more details about pod customization for the pooler, refer to
-    [Pod templates](https://cloudnative-pg.io/documentation/1.15.0/connection_pooling/#podtemplates) in the
+    For more details about pod customization for the pooler, please refer to
+    the ["Pod templates"](connection_pooling.md#podtemplates) section in the
     connection pooling documentation.
 
 You can change the image name from the advanced interface, specifically by
@@ -723,3 +840,137 @@ Then:
 -   set the *"Image"* field as desired (see the image below)
 
 ![Pooler image](./images/pgbouncer-pooler-image.png)
+
+## OADP for Velero
+
+The EDB Postgres for Kubernetes operator recommends the use of the
+[Openshift API for Data Protection](https://github.com/openshift/oadp-operator) operator for managing [Velero](https://velero.io/)
+in OpenShift environments.
+Specific details about how EDB Postgres for Kubernetes integrates with Velero
+can be found in the [Velero section](addons.md#velero) of the Addons documentation.
+The [OADP operator](https://docs.openshift.com/container-platform/latest/backup_and_restore/application_backup_and_restore/installing/about-installing-oadp.html)
+is a community operator that is not directly supported by EDB.
+The OADP operator is not required to use Velero with EDB Postgres but is a
+convenient way to install Velero on OpenShift.
+
+## Monitoring and metrics
+
+OpenShift includes a [Prometheus](https://prometheus.io) installation out of
+the box that can be leveraged for user-defined projects, including EDB
+Postgres for Kubernetes.
+
+Grafana integration is out of scope for this guide, as Grafana is no longer
+included with OpenShift.
+
+In this section, we show you how to get started with basic observability,
+leveraging the default OpenShift installation.
+
+Please refer to the [OpenShift monitoring stack overview](https://docs.openshift.com/container-platform/4.11/monitoring/monitoring-overview.html)
+for further background.
+
+Depending on your OpenShift configuration, you may need to do a bit of setup
+before you can monitor your EDB Postgres for Kubernetes clusters.
+
+You will need to have your OpenShift configured to
+[enable monitoring for user-defined projects](https://docs.openshift.com/container-platform/4.11/monitoring/enabling-monitoring-for-user-defined-projects.html).
+
+You should check, perhaps with your OpenShift administrator, if your
+installation has the `cluster-monitoring-config` configMap, and if so,
+if user workload monitoring is enabled.
+
+You can check for the presence of this `configMap` (note that it should be in the
+`openshift-monitoring` namespace):
+
+```sh
+oc -n openshift-monitoring get configmap cluster-monitoring-config
+```
+
+To enable user workload monitoring, you might want to `oc apply` or `oc edit`
+the configmap to look something like this:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    enableUserWorkload: true 
+```
+
+After `enableUserWorkload` is set, several monitoring components will be
+created in the `openshift-user-workload-monitoring` namespace.
+
+```sh
+$ oc -n openshift-user-workload-monitoring get pod
+NAME                                  READY   STATUS    RESTARTS   AGE
+prometheus-operator-58768d7cc-28xb5   2/2     Running   0          5h10m
+prometheus-user-workload-0            6/6     Running   0          5h10m
+prometheus-user-workload-1            6/6     Running   0          5h10m
+thanos-ruler-user-workload-0          3/3     Running   0          5h10m
+thanos-ruler-user-workload-1          3/3     Running   0          5h10m
+```
+
+You should now be able to see metrics from any cluster enabling them.
+
+For example, we can create the following cluster with monitoring on the `foo`
+namespace:
+
+```sh
+kubectl apply -n foo -f - <<EOF
+---
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-with-metrics
+spec:
+  instances: 3
+
+  storage:
+    size: 1Gi
+
+  monitoring:
+    enablePodMonitor: true
+EOF
+```
+
+You should now be able to query for the default metrics that will be installed
+with this example.
+In the `Observe` section of OpenShift (in Developer perspective), you should see
+a `Metrics` submenu where you can write PromQL queries. Auto-complete is
+enabled, so you can peek the `cnp_` prefix:
+
+![Prometheus queries](./images/openshift/prometheus-queries.png)
+
+It is easy to define Alerts based on the default metrics as `PrometheusRules`.
+You can find some examples of rules in the [cnp-prometheusrule.yaml](../samples/monitoring/cnp-prometheusrule.yaml)
+file, which you can download.
+
+Before applying the rules, again, some OpenShift setup may be necessary.
+
+The `monitoring-rules-edit` or at least `monitoring-rules-view` roles should
+be assigned for the user wishing to apply and monitor the rules.
+
+This involves creating a RoleBinding with that permission, for a namespace.
+Again, refer to the [relevant OpenShift document page](https://docs.openshift.com/container-platform/4.11/monitoring/enabling-monitoring-for-user-defined-projects.html)
+for further detail.
+Specifically, the *Granting user permissions by using the web console* section
+should be of interest.
+
+Note that the RoleBinding for `monitoring-rules-edit` applies to a namespace, so
+make sure you get the right one/ones.
+
+Suppose that the `cnp-prometheusrule.yaml` file that you have previouly downloaded
+now contains your alerts. You can install those rules as follows:
+
+```sh
+oc apply -n foo -f cnp-prometheusrule.yaml
+```
+
+Now you should be able to see Alerts, if there are any. Note that initially
+there might be no alerts.
+
+![Prometheus alerts](./images/openshift/alerts-openshift.png)
+
+Alert routing and notifications are beyond the scope of this guide.

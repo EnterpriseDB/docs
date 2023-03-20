@@ -1,0 +1,96 @@
+---
+title: 'Configuring Cohesity DataProtect for PostgreSQL'
+description: 'Walkthrough on configuring Cohesity DataProtect for PostgreSQL'
+---
+
+Implementing Cohesity DataProtect for PostgreSQL with EDB Postgres Advanced Server requires the following components:
+
+- EDB Postgres Advanced Server 
+- Cohesity Backup Appliance
+- Cohesity Linux Agent 
+- Cohesity PostgreSQL Agent 
+
+### Prerequisites
+
+- A running EDB Postgres Advanced Server instance
+- Cohesity Backup Appliance installed and running on VMware
+- Cohesity Linux and PostgreSQL agents installed on the same machine as your EDB Postgres Advanced Server database
+- The user account of the PostgreSQL instance must have database admin privileges
+- Login information for the Cohesity Web interface
+- Credentials that are used to access the EDB Postgres Advanced Server database
+- Java 1.8 or higher version is installed on the PostgreSQL nodes
+- Cohesity PostgreSQL Agent scripts path, `/opt/cohesity/postgres/scripts`, obtained during Cohesity PostgreSQL Agent installation
+
+### Configure Cohesity DataProtect for PostgreSQL for EDB Postgres Advanced Server
+
+**Register and Manage the EDB Postgres Advanced Server Source:**
+
+1. Log on to the Cohesity console at the IP address that was used to create your VMware Cohesity Backup Appliance with the format: `https://ipaddress/login`, and when the Cohesity Dashboard appears login with your Cohesity credentials.
+
+   ![Cohesity Login Credentials](Images/CohesityLoginCredentials.png)
+
+2. You will then be presented with the Cohesity Dashboard.
+
+   ![Cohesity Dashboard](Images/CohesityDashboard.png)
+
+3. From the main Dashboard screen select `Data Protection` and then select `Sources` on the left-hand side.
+
+
+4. On the Sources page, click on the `Register` button on the top right side and click on the `Universal Data Adapter` option.
+
+   ![Cohesity Source Registration](Images/CohesityRegisterSource.png)
+
+
+5. Step through the Universal Data Adapter screens by clicking `Next` until you get to the Register Universal Data Adapter screen.
+
+
+6. Once on the Register Universal Data Adapter screen, input the specific source information in order for the source to be protected.
+
+- **Source Type**: For EDB Postgres Advanced Server, Source Type will be PostgreSQL.
+- **Hostnames/IP Addresses**: Hostname or IP Address of the specific database to register.
+- **Script Directory Path**: This path is defined during the installation of the Cohesity Postgres Agent.  It will be displayed at the bottom of the installation scripts when the download is complete, and it is the location of where the scripts are located: `/opt/cohesity/postgres/scripts`.
+- In the **App Authentication** section, enter the admin username and password for the user who has admin privileges on your database to perform a backup.
+
+
+!!! Note Instead of password-based authentication, if you want to use kerberos authentication, then leave the username and password fields blank.
+!!!
+
+   ![Cohesity Universal Data Adapter Information](Images/CohesityUniversalDataAdapterInformation.png)
+
+7. Enable `Custom Options`, a new form will appear called `Global Source Registration Arguments` where some more information will be needed to properly register an EDB Postgres Advanced Server database.
+
+   ![Cohesity Global Source Registration](Images/CohesityGlobalSourceRegistration.png)
+
+8. In the Global Source Registration Arguments field enter the following information with the same syntax:
+`--source-name=cohesitypostgres --postgres-user=enterprisedb --host=172.24.113.13 --port=5444 --pg-bin=/usr/edb/as14/bin`
+
+- -- **source-name:** A unique name to identify the EDB Postgres Advanced Server cluster.
+- -- **postgres-user:** Specifies the user account to start the database.
+- -- **host:** The IP address of the EDB Postgres Advanced Server instance.
+- -- **port:** The port the EDB Postgres Advanced Server is listening on.  If it is not specified the default port 5432 is used.
+- -- **pg-bin:** The directory path to the EDB Postgres Advanced Server binaries, for example `/usr/edb/as14/bin`.
+
+9. Click `Register` and your source will be created and ready to backup.
+
+### Configuring EDB Postgres Advanced Server
+
+Set up WAL archiving on the EDB Postgres Advanced Server server by using the steps below. WAL archiving prepares Postgresql/EDB Postgres Advanced Server database servers for backup/recovery operations and is a precondition for any backup/recovery tool to work with the database server.
+
+1.	Create a writeable `<archivedir>` directory at your desired location.
+
+2.	Set the required parameters in the `postgresql.conf` file to turn on WAL archiving:
+    ```
+    wal_level = archive
+    archive_mode = on
+    archive_timeout = 0
+    statement_timeout = 0
+    archive_command = test ! -f <archivedir>/%f && cp %p <archivedir>/%f
+    ```
+
+!!! Note Replace `<archivedir>` in the `archive_command` parameter with the location of the directory created in Step 1.
+!!!
+
+3.	Restart the PostgreSQL server.
+
+!!! Note When you run your first backup on the database, Cohesity will set archive_mode=on in postgresql.conf and restart the database if you have not already set archive_mode=on. 
+!!!

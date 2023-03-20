@@ -1,0 +1,120 @@
+---
+title: "Ref cursor support"
+
+---
+
+<div id="ref_cursor_support" class="registered_link"></div>
+
+The EDB Postgres Advanced Server Open Client Library supports the use of `REF CURSOR` as `OUT` parameters in PL/SQL procedures that are compatible with Oracle. Support is provided through the following APIs:
+
+-   `OCIBindByName`
+-   `OCIBindByPos`
+-   `OCIBindDynamic`
+-   `OCIStmtPrepare`
+-   `OCIStmtExecute`
+-   `OCIStmtFetch`
+-   `OCIAttrGet`
+
+The EDB OCL Connector also supports the `SQLT_RSET` data type.
+
+This example invokes a stored procedure that opens a cursor and returns a `REF CURSOR` as an output parameter. The code sample assumes that a PL/SQL procedure named `openCursor` (with an `OUT` parameter of type `REF CURSOR`) was created on the database server and that the required handles were allocated:
+
+```c
+char* openCursor = "begin \
+     openCursor(:cmdRefCursor); \
+   end;";
+OCIStmt* stmtOpenRefCursor;
+OCIStmt* stmtUseRefCursor;
+```
+
+Allocate handles for executing a stored procedure to open and use the `REF CURSOR`:
+
+```c
+/* Handle for the stored procedure to open the ref cursor */
+OCIHandleAlloc((dvoid *) envhp,
+               (dvoid **) &stmtOpenRefCursor,
+               OCI_HTYPE_STMT,
+               0,
+               (dvoid **) NULL));
+```
+
+```c
+/* Handle for using the Ref Cursor */
+OCIHandleAlloc((dvoid *) envhp,
+               (dvoid **) &stmtUseRefCursor,
+               OCI_HTYPE_STMT,
+               0,
+               (dvoid **) NULL));
+```
+
+Then, prepare the PL/SQL block that's used to open the `REF CURSOR`:
+
+```c
+OCIStmtPrepare(stmtOpenRefCursor,
+                 errhp,
+                 (text *) openCursor,
+                 (ub4) strlen(openCursor),
+                 OCI_NTV_SYNTAX,
+                 OCI_DEFAULT));
+```
+
+Bind the PL/SQL `openCursor OUT` parameter:
+
+```c
+OCIBindByPos(stmtOpenRefCursor,
+                 &bndplrc1,
+                 errhp,
+                 1,
+                 (dvoid*) &stmtUseRefCursor,
+                         /* the returned ref cursor */
+                 0,
+                 SQLT_RSET,
+                      /* SQLT_RSET type representing cursor */
+                 (dvoid *) 0,
+                 (ub2 *) 0,
+                 (ub2) 0,
+                 (ub4) 0,
+                 (ub4 *) 0,
+                 OCI_DEFAULT));
+```
+
+Use the `stmtOpenRefCursor` statement handle to call the `openCursor` procedure:
+
+```c
+OCIStmtExecute(svchp,
+                 stmtOpenRefCursor,
+                 errhp,
+                 1,
+                 0,
+                 0,
+                 0,
+                 OCI_DEFAULT);
+```
+
+At this point, the `stmtUseRefCursor` statement handle contains the reference to the cursor. To obtain the information, define output variables for the ref cursor:
+
+```c
+/* Define the output variables for the ref cursor */
+  OCIDefineByPos(stmtUseRefCursor,
+                   &defnEmpNo,
+                   errhp,
+                  (ub4) 1,
+                  (dvoid *) &empNo,
+                  (sb4) sizeof(empNo),
+                  SQLT_INT,
+                  (dvoid *) 0,
+                  (ub2 *)0,
+                  (ub2 *)0,
+                  (ub4) OCI_DEFAULT));
+```
+
+Then, fetch the first row of the result set into the target variables:
+
+```c
+/* Fetch the cursor data */
+  OCIStmtFetch(stmtUseRefCursor,
+                  errhp,
+                  (ub4) 1,
+                  (ub4) OCI_FETCH_NEXT,
+                  (ub4) OCI_DEFAULT))
+```

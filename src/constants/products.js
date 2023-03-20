@@ -23,7 +23,7 @@ export const products = {
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
   livecompare: { name: "LiveCompare" },
-  "Migration Overview": { name: "Migration Overview" },
+  "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
     name: "Migration Portal",
     iconName: IconNames.EDB_MIGRATION_PORTAL,
@@ -46,7 +46,8 @@ export const products = {
   pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pgd: { name: "EDB Postgres Distributed" },
+  pgd: { name: "EDB Postgres Distributed (PGD)" },
+  pge: { name: "EDB Postgres Extended Server" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   pglogical: { name: "pglogical" },
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },
@@ -56,4 +57,6 @@ export const products = {
   },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
+  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
+  tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
 };

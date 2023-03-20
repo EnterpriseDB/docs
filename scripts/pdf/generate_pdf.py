@@ -28,6 +28,16 @@ def main(args):
     with open(mdx_file, "w") as output:
         resource_search_paths = {doc_path, *combine_mdx(files, output)}
 
+    output = run(
+            [
+                "node",
+                "--max-old-space-size=4096",
+                BASE_DIR / "cleanup_combined_markdown.mjs",
+                mdx_file
+            ]
+        )
+    output.check_returncode()
+
     # TODO: Pick up refactoring from this point
     title = get_title(doc_path) or product
 
@@ -170,7 +180,8 @@ def combine_mdx(files, output):
 
     for item in files:
         resource_search_paths.add(item.filename.parent)
-        front_matter, content = parse_mdx(item.filename)
+        front_matter, content, lines_before_content = parse_mdx(item.filename)
+        output.write(f"\n<span data-original-path='{str(item.filename)}:{lines_before_content}'></span>\n\n")
         write_front_matter(front_matter, item.chapter, output)
         write_content(content, output)
 
@@ -180,19 +191,13 @@ def combine_mdx(files, output):
 def write_front_matter(front_matter, chapter, output):
     title_marker = "title: "
 
-    print("---", file=output)
-
     for line in [
         line for line in front_matter.split(os.linesep) if title_marker in line
     ]:
         title = strip_quotes(line.replace(title_marker, ""))
-        print(f'{chapter}{"&nbsp;" * 10}{title}', file=output)
+        print(f'# {chapter}{"&nbsp;" * 10}{title}', file=output)
 
-    print("---", file=output)
     output.write(os.linesep)
-
-
-RE_MD_HEADER = re.compile(r"^#+\s")
 
 
 def write_content(content, output):
@@ -200,9 +205,7 @@ def write_content(content, output):
     for line in content.split(os.linesep):
         if "toctree" in line:
             break
-        # TODO: Use a more robust mechanism such as remark to handle increasing
-        # heading depth
-        lines.append(RE_MD_HEADER.sub(r"#\g<0>", line) + os.linesep)
+        lines.append(line + os.linesep)
     output.writelines(lines)
     output.write(os.linesep)
 
@@ -215,7 +218,7 @@ def filter_path(path):
     if path.is_dir() and not path.match("*images*"):
         return True
     elif path.suffix in [".mdx", ".md"]:
-        _, content = parse_mdx(path)
+        _, content, _ = parse_mdx(path)
         no_content = content == "" or (
             len(content.split(os.linesep)) == 1 and "StubCards" in content
         )
@@ -226,7 +229,11 @@ def filter_path(path):
 
 def parse_mdx(mdx_file):
     front_matter, _, content = mdx_file.read_text().partition("---")[2].partition("---")
-    return front_matter.strip(), content.strip()
+    lines_before_content = front_matter.count('\n') + 1
+    for c in content:
+        if not c.isspace(): break
+        if c == '\n': lines_before_content += 1
+    return front_matter.strip(), content.strip(), lines_before_content
 
 def load_nav_index(path):
     try:

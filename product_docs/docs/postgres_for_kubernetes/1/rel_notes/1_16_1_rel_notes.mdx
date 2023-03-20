@@ -1,0 +1,58 @@
+---
+title: "EDB Postgres for Kubernetes 1.16.1 release notes"
+navTitle: "Version 1.16.1"
+---
+
+This release of EDB Postgres for Kubernetes includes the following:
+
+|      Type      |                                                                                  Description                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Upstream merge | Merged with community CloudNativePG 1.16. See the community [Release Notes](https://cloudnative-pg.io/documentation/1.16/release_notes/v1.16/).                                    |
+
+## Important changes to our upgrade policy
+We are adopting a new policy to support the last two minor versions of the product, in line with the CloudNativePG community.
+
+As a result, we are introducing the following head versions in the new OLM channels in OpenShift to manage the update streams for EDB Postgres for Kubernetes:
+
+* `fast`: the latest available patch release for the latest available minor release
+* `stable-v1.16`: the latest available patch release of the 1.16 minor release
+* `stable-v1.15`: the latest available patch release of the 1.15 minor release
+
+Prior to this release, the only channel that we were supporting was the `stable` channel. This channel is now obsolete. However, for backward compatibility it is currently set as an alias of the `stable-v1.15` channel. It will be removed once version 1.15 reaches End of Life.
+
+## Important information about upgrading to a 1.16.x operator version on Openshift
+
+We have made a change to the way conditions are represented in the status of
+the operator in version 1.16.0 and onward. This change could cause an operator
+upgrade to hang on Openshift if one of the old conditions are set during the
+upgrade process because of the way the Operator Lifecycle Manager checks new
+CRDs against existing CRs.
+
+Prior to installing 1.16.x on Openshift, if you are upgrading from a 1.15.x (or
+earlier) version of the operator, we recommend uninstalling the existing
+version of the operator, then deleting all of the old conditions out of the
+statuses of all existing EDB Postgres for Kubernetes clusters.
+This will have no effect on the operability of your existing EDB Postgres for
+Kubernetes clusters.
+
+To remove the existing conditions run:
+
+```bash
+while IFS=' ' read  NS CLUSTER; do
+  kubectl -n ${NS} patch --type='json' ${CLUSTER} --subresource=status -p='[{"op": "remove", "path": "/status/conditions"}]';
+done < <(kubectl get cluster -A --no-headers=true -o jsonpath='{range .items[*]}{.metadata.namespace}{" cluster/"}{.metadata.name}{"\n"}{end}')
+```
+
+!!! Important
+    The kubectl command must be version 1.24 or higher.
+    If you get the output `The request is invalid` it means that the target cluster
+    didn't have any condition on it.
+
+This command will remove all of the conditions from all of the EDB Postgres for
+Kubernetes clusters in your Openshift cluster.
+Once the command completes, you can safely install version 1.16.x.
+
+If you have already tried to upgrade to 1.16.x from 1.15.x (or earlier) and
+the install of 1.16.x shows as "Pending" and the earlier version shows as
+"Cannot update", uninstall both versions of the operator and
+run the command that removes the statuses.

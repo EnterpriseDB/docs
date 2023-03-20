@@ -5,6 +5,8 @@ const gracefulFs = require("graceful-fs");
 
 const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
+const { replacePathVersion } = require("./src/constants/gatsby-utils.js");
+
 const ANSI_BLUE = "\033[34m";
 const ANSI_GREEN = "\033[32m";
 const ANSI_STOP = "\033[0m";
@@ -16,9 +18,7 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 /******** Sourcing *********/
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
-  ark: { name: "ark", path: "product_docs/docs/ark" },
   bart: { name: "bart", path: "product_docs/docs/bart" },
-  bdr: { name: "bdr", path: "product_docs/docs/bdr" },
   biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
   postgres_for_kubernetes: {
     name: "postgres_for_kubernetes",
@@ -28,12 +28,12 @@ const sourceToPluginConfig = {
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
+  pge: { name: "pge", path: "product_docs/docs/pge" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
     name: "hadoop_data_adapter",
     path: "product_docs/docs/hadoop_data_adapter",
   },
-  harp: { name: "harp", path: "product_docs/docs/harp" },
   jdbc_connector: {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
@@ -72,11 +72,16 @@ const sourceToPluginConfig = {
   },
   pem: { name: "pem", path: "product_docs/docs/pem" },
   pgbouncer: { name: "pgbouncer", path: "product_docs/docs/pgbouncer" },
-  pglogical: { name: "pglogical", path: "product_docs/docs/pglogical" },
+  pg_extensions: {
+    name: "pg_extensions",
+    path: "advocacy_docs/pg_extensions",
+  },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
+  tde: { name: "tde", path: "product_docs/docs/tde" },
+  tpa: { name: "tpa", path: "product_docs/docs/tpa" },
 };
 
 const externalSourcePlugins = () => {
@@ -201,8 +206,14 @@ module.exports = {
           allSitePage: { nodes: allPages },
           allMdx: { nodes: allMdxNodes },
         }) => {
+          const knownPaths = new Set(allPages.map((p) => p.path));
           const mapPathToTime = allMdxNodes.reduce((acc, node) => {
-            acc[node.fields.path] = { lastmod: node.fields.mtime };
+            if (knownPaths.has(node.fields.path))
+              acc[node.fields.path] = { lastmod: node.fields.mtime };
+            else
+              acc[replacePathVersion(node.fields.path)] = {
+                lastmod: node.fields.mtime,
+              };
             return acc;
           }, {});
 
@@ -281,6 +292,7 @@ module.exports = {
                 postgresql: "sql",
                 sh: "shell",
                 "c++": "cpp",
+                console: "shell-session",
               },
             },
           },

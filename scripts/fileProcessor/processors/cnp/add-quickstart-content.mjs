@@ -3,7 +3,7 @@ const additionalContent = `<!-- section below inserted by fileProcessor/processo
 !!! Tip "Live demonstration"
     Don't want to install anything locally just yet? Try a demonstration directly in your browser:
 
-    [Cloud Native PostgreSQL Operator Interactive Quickstart](interactive_demo)
+    [EDB Postgres for Kubernetes Operator Interactive Quickstart](interactive_demo)
 
 <!-- end inserted section -->`;
 

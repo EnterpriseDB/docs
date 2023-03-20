@@ -34,14 +34,31 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (parentNode, navLinks) => {
+const getChildren = (parentNode, navLinks, navigationOrder) => {
+  const order = (a, b) => {
+    const navPosA = navigationOrder?.findIndex(
+      (item) =>
+        item.toLowerCase() ===
+        a.fields.path.split("/").slice(-2)[0].toLowerCase(),
+    );
+    const navPosB = navigationOrder?.findIndex(
+      (item) =>
+        item.toLowerCase() ===
+        b.fields.path.split("/").slice(-2)[0].toLowerCase(),
+    );
+    if (navigationOrder && navPosA >= 0 && navPosB >= 0)
+      return navPosA - navPosB;
+    if (navigationOrder && navPosA >= 0) return -1;
+    if (navigationOrder && navPosB >= 0) return 1;
+    return a.fields.path.localeCompare(b.fields.path);
+  };
   return navLinks
     .filter(
       (node) =>
         node.fields.path.includes(parentNode.fields.path) &&
         node.fields.depth === parentNode.fields.depth + 1,
     )
-    .sort((a, b) => a.fields.path.localeCompare(b.fields.path));
+    .sort(order);
 };
 
 const TileModes = {
@@ -49,7 +66,7 @@ const TileModes = {
   Simple: "simple",
   Full: "full",
 };
-const Tiles = ({ mode, mdx, navLinks }) => {
+const Tiles = ({ mode, mdx, navLinks, navigationOrder }) => {
   if (mode === TileModes.None) return null;
 
   if (!mode) {
@@ -58,7 +75,7 @@ const Tiles = ({ mode, mdx, navLinks }) => {
   }
 
   if (Object.values(TileModes).includes(mode)) {
-    const tiles = getChildren(mdx, navLinks).map((child) => {
+    const tiles = getChildren(mdx, navLinks, navigationOrder).map((child) => {
       if (mode === "simple") return child;
 
       return {
@@ -76,14 +93,15 @@ const EditButton = ({ githubEditLink }) => (
   <a
     href={githubEditLink || "#"}
     className="btn btn-sm btn-primary px-4 text-nowrap"
+    title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
   >
-    Edit this page
+    Suggest edits
   </a>
 );
 
 const FeedbackButton = ({ githubIssuesLink }) => (
   <a
-    href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
+    href={githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"}
     target="_blank"
     rel="noreferrer"
     className="btn btn-sm btn-primary px-4 text-nowrap"
@@ -112,6 +130,9 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description,
     katacodaPanel,
     indexCards,
+    navigation,
+    originalFilePath,
+    editTarget,
     prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
@@ -121,7 +142,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage: isIndexPage,
   };
 
-  const showToc = !!mdx.tableOfContents.items;
+  const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
@@ -129,11 +150,18 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
-  const editOrFeedbackButton = path.includes("/cloud_native_postgresql/") ? (
-    <FeedbackButton githubIssuesLink={githubIssuesLink} />
-  ) : (
-    <EditButton githubEditLink={githubEditLink} />
-  );
+  const editOrFeedbackButton =
+    editTarget === "none" ? (
+      <FeedbackButton githubIssuesLink={githubIssuesLink} />
+    ) : (
+      <EditButton
+        githubEditLink={
+          editTarget === "originalFilePath" && originalFilePath
+            ? originalFilePath.replace(/\/blob\//, "/edit/")
+            : githubEditLink
+        }
+      />
+    );
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
@@ -161,7 +189,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles mode={indexCards} mdx={mdx} navLinks={navLinks} />
+              <Tiles
+                mode={indexCards}
+                mdx={mdx}
+                navLinks={navLinks}
+                navigationOrder={navigation}
+              />
             </Col>
 
             {showToc && (
@@ -186,7 +219,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             Could this page be better?{" "}
             <a
               href={
-                githubIssuesLink + "&template=problem-with-topic.md&labels=bug"
+                githubIssuesLink +
+                "&template=problem-with-topic.yaml&labels=bug"
               }
             >
               Report a problem
@@ -195,7 +229,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <a
               href={
                 githubIssuesLink +
-                "&template=suggest-addition-to-topic.md&labels=enhancement"
+                "&template=suggest-addition-to-topic.yaml&labels=enhancement"
               }
             >
               suggest an addition
