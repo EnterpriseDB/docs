@@ -101,7 +101,7 @@ const EditButton = ({ githubEditLink }) => (
 
 const FeedbackButton = ({ githubIssuesLink }) => (
   <a
-    href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
+    href={githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"}
     target="_blank"
     rel="noreferrer"
     className="btn btn-sm btn-primary px-4 text-nowrap"
@@ -219,7 +219,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             Could this page be better?{" "}
             <a
               href={
-                githubIssuesLink + "&template=problem-with-topic.md&labels=bug"
+                githubIssuesLink +
+                "&template=problem-with-topic.yaml&labels=bug"
               }
             >
               Report a problem
@@ -228,7 +229,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <a
               href={
                 githubIssuesLink +
-                "&template=suggest-addition-to-topic.md&labels=enhancement"
+                "&template=suggest-addition-to-topic.yaml&labels=enhancement"
               }
             >
               suggest an addition
