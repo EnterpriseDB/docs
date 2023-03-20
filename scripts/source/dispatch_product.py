@@ -10,7 +10,7 @@ parser.add_argument("workspace", help="GitHub workplace path", type=str)
 args = parser.parse_args()
 
 commands = {
-    "EnterpriseDB/cloud-native-postgresql": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/cloud-native-postgres": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
     "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
     "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",

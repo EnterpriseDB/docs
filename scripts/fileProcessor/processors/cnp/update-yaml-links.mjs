@@ -9,20 +9,26 @@ import visit from "unist-util-visit";
 import isAbsoluteUrl from "is-absolute-url";
 
 export const process = async (filename, content) => {
-
   const processor = unified()
     .use(remarkParse)
     .use(remarkStringify, { emphasis: "*", bullet: "-", fences: true })
     .use(admonitions, {
-      tag: "!!!", icons: "none", infima: true, customTypes: {
-        seealso: "note", hint: "tip", interactive: "interactive",
-      }
+      tag: "!!!",
+      icons: "none",
+      infima: true,
+      customTypes: {
+        seealso: "note",
+        hint: "tip",
+        interactive: "interactive",
+      },
     })
     .use(remarkFrontmatter)
     .use(mdx)
     .use(linkRewriter);
 
-  const output = await processor.process(toVFile({ path: filename, contents: content }));
+  const output = await processor.process(
+    toVFile({ path: filename, contents: content }),
+  );
 
   return {
     newFilename: filename,
@@ -32,12 +38,11 @@ export const process = async (filename, content) => {
 
 function linkRewriter() {
   return (tree) => {
-
     // link rewriter:
     // - only links to .yaml files in samples dir
     // - make relative to parent (because gatsby URL paths are always directories)
     visit(tree, "link", (node) => {
-      if (isAbsoluteUrl(node.url) || node.url[0] === '/') return;
+      if (isAbsoluteUrl(node.url) || node.url[0] === "/") return;
       if (!node.url.includes(".yaml")) return;
       node.url = node.url.replace(/^(?:\.\/)?samples\//, "../samples/");
     });
