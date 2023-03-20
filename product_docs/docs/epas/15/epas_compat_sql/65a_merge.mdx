@@ -15,17 +15,18 @@ WHEN MATCHED THEN
 merge_update_clause merge_insert_clause
 
 -- merge_update_clause
-WHEN MATCHED THEN UPDATE SET COL = VALUE, ... WHERE <<WHERE_CONDITION>>
-DELETE WHERE <<WHERE_CONDITION>>
+WHEN MATCHED THEN 
+   UPDATE SET column = value, ... WHERE where_condition
+   DELETE WHERE where_condition
 
 -- merge_insert_clause
-WHEN NOT MATCHED THEN INSERT [(COL_LIST)] VALUES (VAL_LIST) WHERE 
-<<WHERE_CONDITION>> 
+WHEN NOT MATCHED THEN 
+   INSERT [(col_list)] VALUES (val_list) WHERE where_condition 
 ```
 
 ## Description
 
-`MERGE` allows you to select rows from one or more sources for update or insertion into a table or view. You can specify conditions to determine whether to UPDATE or INSERT into the target table or view. You can also specify conditional UPDATE and INSERT statement using the WHERE clause in the MERGE statement.
+`MERGE` allows you to select rows from one or more sources for update or insertion into a table or view. You can specify conditions to determine whether to UPDATE or INSERT into the target table or view. You can also do conditional UPDATE and INSERT using the WHERE clause in the MERGE statement.
 
 It allows you to combine multiple operations and avoid multiple INSERT, UPDATE, and DELETE DML statements.
 
@@ -56,27 +57,27 @@ For more information, see [MERGE statement](https://www.postgresql.org/docs/curr
 
 `when_clause`
   
-  At least one WHEN clause is required. Specify merge_update_clause and merge_insert_clause.
+ At least one WHEN clause is required. Specifies conditional merge_update_clause and merge_insert_clause.
 
 `merge_update_clause`
 
- Specifies the new column values of the target table. It performs this update if the condition of the ON clause is true. 
+ Specifies the new column values of the target table. It performs this update if the join_condition of the ON clause is true. 
 
  Specify the where_condition if you want the database to execute the update operation only if the specified condition is true. The condition can refer to either the data source or the target table. If the condition is not true, then the database skips the update operation when merging the row into the table.
 
- Specify the DELETE where_clause to clean up data in a table while populating or updating it. The only rows affected by this clause are those rows in the destination table that are updated by the merge operation. The DELETE WHERE condition evaluates the updated value, not the original value that was evaluated by the UPDATE SET ... WHERE condition. If a row of the destination table meets the DELETE condition but is not included in the join defined by the ON clause, then it is not deleted. Any delete triggers defined on the target table will be activated for each row deletion.
+ Specify the DELETE where_condition to clean up data in a table while populating or updating it. The only rows affected by this clause are those rows in the target table that are updated by the merge operation. The DELETE WHERE condition evaluates the updated value, not the original value that was evaluated by the UPDATE SET ... WHERE condition. If a row of the target table meets the DELETE condition but is not included in the join defined by the ON clause, then it is not deleted. 
 
  You can specify this clause by itself or with the merge_insert_clause. If you specify both, then they can be in either order.
 
 `merge_insert_clause`
 
-The merge_insert_clause specifies values to insert into the column of the target table if the condition of the ON clause is false. If the insert clause is executed, then all insert triggers defined on the target table are activated. If you omit the column list after the INSERT keyword, then the number of columns in the target table must match the number of values in the VALUES clause.
+ The merge_insert_clause specifies values to insert into the column of the target table if the condition of the ON clause is false. If you omit the column list after the INSERT keyword, then the number of columns in the target table must match the number of values in the VALUES clause.
 
-To insert all of the source rows into the table, you can use a constant filter predicate in the ON clause condition. An example of a constant filter predicate is ON (0=1). Oracle Database recognizes such a predicate and makes an unconditional insert of all source rows into the table. This approach is different from omitting the merge_update_clause. In that case, the database still must perform a join. With constant filter predicate, no join is performed.
+ To insert all of the source rows into the table, you can use a constant filter predicate in the ON clause condition. An example of a constant filter predicate is `ON (0=1)`. It recognizes such a predicate and makes an unconditional insert of all source rows into the table. This approach is different from omitting the merge_update_clause. In that case, the database still must perform a join. With constant filter predicate, no join is performed.
 
-Specify the where_clause if you want Oracle Database to execute the insert operation only if the specified condition is true. The condition can refer only to the data source table. Oracle Database skips the insert operation for all rows for which the condition is not true.
+ Specify the where_clause if you want the database to execute the insert operation only if the specified condition is true. The condition can refer only to the data source table. Database skips the insert operation for all rows for which the condition is not true.
 
-You can specify this clause by itself or with the merge_update_clause. If you specify both, then they can be in either order.
+ You can specify this clause by itself or with the merge_update_clause. If you specify both, then they can be in either order.
  
 
 ## Examples
@@ -140,4 +141,19 @@ WHEN MATCHED THEN
     UPDATE SET balance = s.delta WHERE balance > 0
 WHEN NOT MATCHED AND s.sid >= 5 THEN
     INSERT VALUES (s.sid, s.delta);
+```
+
+This example shows how to use where condition for update and delete statements, and also WHEN MATCHED THEN DELETE:
+
+```sql
+MERGE INTO target t
+USING source s
+ON (t.tid = s.sid)
+WHEN MATCHED THEN
+    UPDATE SET t.balance = t.balance + 100 WHERE t.balance = 20
+    DELETE WHERE t.balance = 30
+WHEN NOT MATCHED THEN
+    INSERT VALUES (s.sid, s.delta)
+WHEN MATCHED THEN
+   DELETE;
 ```
