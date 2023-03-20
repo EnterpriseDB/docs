@@ -4,7 +4,7 @@ title: "Limitations"
 
 This section covers design limitations of EDB Postgres Distributed (PGD), that should be taken into account when planning your deployment.
 
-## Limits on nodes
+## Limitations related to the number of nodes
 
 - PGD can run hundreds of nodes assuming adequate hardware and network. However, for mesh-based deployments, we generally don’t recommend running more than 48 nodes in one cluster. If extra read scalability is needed beyond the 48 node limit, subscriber only nodes can be added without adding connections to the mesh network.
 
@@ -12,7 +12,8 @@ This section covers design limitations of EDB Postgres Distributed (PGD), that s
 
 - The minimum recommended number of nodes in a group is three to provide fault tolerance for PGD's consensus mechanism. With just two nodes, consensus would fail if one of the nodes was unresponsive. Consensus is required for some PGD operations such as distributed sequence generation. For more information about the consensus mechanism used by EDB Postgres Distributed, see [Architectural details](../architectures/#architecture-details).
 
-## Limitations of multiple databases on a single instance
+
+## Limitations related to multiple databases on a single instance
 
 Support for using PGD for multiple databases on the same Postgres instance is deprecated beginning with PGD 5 and will no longer be supported with PGD 6. As we extend the capabilities of the product, the additional complexity introduced operationally and functionally is no longer viable in a multi-database design.
 
@@ -36,6 +37,42 @@ While it is still possible to host up to ten databases in a single instance, thi
 
 - CLI and OTEL integration (new with v5) assumes one database. 
 
+## Limitations related to CAMO
+
+CAMO (Commit At Most Once)[durability/camo] is a feature that aims to prevent applications committing more than once. If this feature is used, there are a range of limitations on it that should be taken into account when planning. 
+
+-  CAMO is designed to query the results of a recently failed COMMIT on
+the origin node, so in case of disconnection, code the application
+to immediately request the transaction status from the CAMO partner.
+Have as little delay as possible after the failure before
+requesting the status. Applications must not rely on CAMO decisions
+being stored for longer than 15 minutes.
+
+-  If the application forgets the global identifier assigned, for example
+as a result of a restart, there's no easy way to recover
+it. Therefore, we recommend that applications wait for outstanding
+transactions to end before shutting down.
+
+-  For the client to apply proper checks, a transaction protected by CAMO
+can't be a single statement with implicit transaction control. You also can't
+use CAMO with a transaction-controlling procedure or
+in a `DO` block that tries to start or end transactions.
+
+- CAMO resolves commit status but doesn't yet resolve pending
+notifications on commit. CAMO and Eager replication options don't
+allow the `NOTIFY` SQL command or the `pg_notify()` function.
+They also don't allow `LISTEN` or `UNLISTEN`.
+
+- When replaying changes, CAMO transactions may detect conflicts just
+the same as other transactions. If timestamp conflict detection is used,
+the CAMO transaction uses the timestamp of the prepare on the origin
+node, which is before the transaction becomes visible on the origin
+node itself.
+
+- CAMO is not currently compatible with transaction streaming. Please
+ensure to disable transaction streaming when planning to use
+CAMO. This can be configured globally or in the PGD node group, see
+[Transaction Streaming Configuration](../transaction-streaming#configuration).
 
 ## Other limitations
 
