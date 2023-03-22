@@ -150,22 +150,27 @@ Run the [`tpaexec configure`](/tpa/latest/tpaexec-configure/) command to generat
 tpaexec configure democluster \
   --architecture PGD-Always-ON \
   --platform docker \
-  --epas \
+  --edb-postgres-advanced 15 \
+  --redwood \
   --location-names dc1 \
   --active-locations dc1 \
-  --data-nodes-per-location 3 \
   --no-git \
   --hostnames-unsorted
 ```
 
-We included options to specify using Docker, a single location, and three data nodes running [EDB Postgres Advanced Server](/epas/latest/). By default, PGD also configures two [PGD Proxy](routing/proxy/) nodes and a [Barman](backup#physical-backup) node for backup. Rocky Linux is the default image for all nodes.
+We specify the PGD-Always-ON architecture (`--architecture PGD-Always-ON`): this sets up the configuration for [PGD 5's Always On architectures](/pgd/latest/architectures/). As part of the default architecture, 
+this configures our cluster with three data nodes, co-hosting three [PGD Proxy](routing/proxy/) servers, along with a [Barman](backup#physical-backup) node for backup.
+
+We specify using Docker (`--platform docker`). By default, TPA configures Rocky Linux as the default image for all nodes.
 
 !!! Note Deployment platforms
     Numerous other Linux platforms are supported as deployment targets for PGD - view [the EDB Postgres Distributed compatibility table](https://www.enterprisedb.com/resources/platform-compatibility) for details.
 
     Observe that we don't have to deploy PGD to the same platform we're using to run TPA!
 
-We set the notional location of the nodes to `dc1` using `--location-names`. We then activate the PGD proxies in that location using `--active-locations` set to the same location.
+We specify that the data nodes will be running [EDB Postgres Advanced Server v15](/epas/latest/) (`--edb-postgres-advanced 15`) with Oracle compatibility (`--redwood`). 
+
+We set the notional location of the nodes to `dc1` using `--location-names`. We then activate the PGD proxies in that location using `--active-locations dc1` set to the same location.
 
 By default, TPA commits configuration changes to a Git repository. For this example, we don't need to do that so we pass the `--no-git` flag.
 
@@ -183,6 +188,7 @@ less democluster/config.yml
       tpaexec configure --architecture PGD-Always-ON --help
       ``` 
     - More details on PGD-Always-ON configuration options in [Deploying with TPA](tpa)
+    - [PGD-Always-ON](architecture-PGD-Always-ON/) in the Trusted Postgres Architect documentation
     - [`tpaexec configure`](/tpa/latest/tpaexec-configure/) in the Trusted Postgres Architect documentation
     - [Docker platform](/tpa/latest/platform-docker/) in the Trusted Postgres Architect documentation
 
@@ -204,10 +210,10 @@ Since we specified Docker as the platform, TPA creates a Docker image, container
 With configuration in place and infrastructure provisioned, we can now [deploy](/tpa/latest/tpaexec-deploy/) the distributed cluster.
 
 ```shell
-tpaexec deploy democluster -e backup_wait_timeout=100
+tpaexec deploy democluster
 ```
 
-TPA applies the configuration, installing the needed packages and setting up the actual EDB Postgres Distributed cluster. The `backup_wait_timeout` setting ensures that the deployment successfully waits for the first backup to complete.
+TPA applies the configuration, installing the needed packages and setting up the actual EDB Postgres Distributed cluster.
 
 !!! SeeAlso "Further reading"
     - [`tpaexec deploy`](/tpa/latest/tpaexec-deploy/) in the Trusted Postgres Architect documentation
@@ -228,7 +234,7 @@ __OUTPUT__
 [root@kaboom ~]# 
 ```
 
-You will see that you are logged in as `root` on `kaboom` {/* admin@kaboom for AWS */}
+You will see that you are logged in as `root` on `kaboom`.
 
 You will now need to adopt the identity of the `enterprisedb` user. This user is pre-configured and authorized to connect to the cluster's nodes.
 
@@ -289,24 +295,23 @@ And similarly, display the proxy connection nodes with `pgd show-proxies`:
 
 ```console
 enterprisedb@kaboom:~ $ pgd show-proxies
-Proxy Group        Listen Addresses Listen Port
------ -----        ---------------- -----------
-kapok dc1_subgroup [0.0.0.0]        6432
-kaput dc1_subgroup [0.0.0.0]        6432
+Proxy  Group        Listen Addresses Listen Port
+-----  -----        ---------------- -----------
+kaboom dc1_subgroup [0.0.0.0]        6432
+kaftan dc1_subgroup [0.0.0.0]        6432
+kaolin dc1_subgroup [0.0.0.0]        6432
 ```
 
 The proxies provide high availability connections to the cluster of data nodes for applications. You can connect to the proxies and in turn to the database with the command `psql -h kapok,kaput -p 6432 bdrdb`.
 
 ```
-enterprisedb@kaboom:~ $ psql -h kapok,kaput -p 6432 bdrdb
+enterprisedb@kaboom:~ $ psql -h kaboom,kaftan,kaolin -p 6432 bdrdb
 psql (15.2.0, server 15.2.0)
 SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
 Type "help" for help.
 
 bdrdb=#
 ```
-
-_To be continued_
 
 ## Deprovisioning the cluster
 
