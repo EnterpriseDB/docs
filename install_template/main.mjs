@@ -1,28 +1,150 @@
 import fs from "fs/promises";
 import { existsSync as fileExists } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import nunjucks from "nunjucks";
 import prettier from "prettier";
-import yaml from "yaml";
+import loadProductConfig from "./lib/config.mjs";
 
-nunjucks.configure("templates", { throwOnUndefined: true, autoescape: false });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+nunjucks.configure(path.join(__dirname, "templates"), { throwOnUndefined: true, autoescape: false });
 
 /**
  * Loop through the config.yaml file and generate docs for every product/platform/supported version combination found.
  * @returns void
  */
 const run = async () => {
-  const config = yaml.parse(await fs.readFile("config.yaml", "utf8"));
+  const products = await loadProductConfig(path.resolve(__dirname, "config.yaml"));
 
-  config.products.forEach((product) => {
-    product.platforms.forEach((platform) => {
-      platform["supported versions"].forEach((version) => {
-        renderDoc(product, platform, version);
-      });
-    });
-  });
+  for (let product of products) {
+    for (let prodVersion in product.cpuArchitecturesForVersion) {
+      const prodVersionDetail = product.cpuArchitecturesForVersion[prodVersion];
+      renderProdIndex(product, prodVersion, prodVersionDetail);
+      for (let arch in prodVersionDetail) {
+        const osArchDetail = prodVersionDetail[arch];
+        renderArchIndex(product, prodVersion, arch, osArchDetail);
+        for (let os of osArchDetail) {
+          renderDoc(product, {name: os.name, arch}, prodVersion);
+        }
+      }
+    }
+  }
 
   return;
+};
+
+
+const transientLog = (message) => {
+  if (process.stdout.clearLine) {
+    process.stdout.clearLine();
+    process.stdout.write("\r" + message);
+  } else {
+    console.log(message);
+  }
+};
+
+
+const normalizeOSName = (name, version, display_name) => {
+  if (version) return name + " " + version;
+
+  const platformTransformations = [
+    [/Rocky\/Alma Linux 8/, "AlmaLinux 8 or Rocky Linux 8"],
+    [/ LTS .+/, ""],
+    [/SUSE Linux Enterprise Server/, "SLES"],
+  ];
+
+  if (display_name)
+    return platformTransformations.reduce(
+      (result, trans) => result.replace(trans[0], trans[1]),
+      display_name,
+    );
+
+  return name;
+};
+
+/**
+ * Composes the code needed to render an index page for a product, given just a product, a product + version, or a product + version + OS list.
+ * @param product The product we are generating an index for
+ * @param version The version of the product to generate docs for
+ * @param osArchitectures Collection of supported CPU architectures for Linux installs
+ * @returns void
+ */
+const renderProdIndex = (product, version, osArchitectures) => {
+  console.log(
+    `Starting index render for ${product.name}`
+  );
+
+  const template = findTemplate(
+    product.name,
+    version,
+    null,
+    null,
+    "index",
+  );
+
+  if (template === false) {
+    return;
+  }
+
+  console.log(`  using template "${template}"`);
+
+  const context = {
+    product: { name: product.name, version: version },
+    osArchitectures,
+    outputType: "index",
+  };
+
+  try {
+    writeDoc(template, context);
+  } catch (error) {
+    console.error("[ERROR] An exception occurred. Details below:");
+    console.error(error);
+    process.exit(1);
+  }
+};
+
+/**
+ * Composes the code needed to render an index page for a product, given just a product, a product + version, or a product + version + OS list.
+ * @param product The product we are generating an index for
+ * @param version The version of the product to generate docs for
+ * @param osArchitecture Specific CPU architecture for linux installs
+ * @param osVersions OS versions supported for this architecture
+ * @returns void
+ */
+const renderArchIndex = (product, version, osArchitecture, osVersions) => {
+  console.log(
+    `Starting index render for ${product.name} on Linux ${ osArchitecture }`,
+  );
+
+  const template = findTemplate(
+    product.name,
+    version,
+    osArchitecture,
+    null,
+    "index",
+  );
+
+  if (template === false) {
+    return;
+  }
+
+  console.log(`  using template "${template}"`);
+
+  const context = {
+    product: { name: product.name, version: version },
+    arch: osArchitecture,
+    osVersions,
+    outputType: "index",
+  };
+
+  try {
+    writeDoc(template, context);
+  } catch (error) {
+    console.error("[ERROR] An exception occurred. Details below:");
+    console.error(error);
+    process.exit(1);
+  }
 };
 
 /**
@@ -74,51 +196,35 @@ const findTemplate = (
   productVersion,
   platformName,
   platformArch,
+  suffix,
 ) => {
   const basePath = "products/" + formatStringForFile(productName);
   const formattedPlatform = formatStringForFile(platformName);
 
-  // Check if a file exists for the specific product version, platform, and architecture
-  const fullFilename = constructTemplatePath(basePath, [
-    `v${productVersion}`,
-    formattedPlatform,
-    platformArch,
-  ]);
-  if (fileExists("templates/" + fullFilename)) {
-    return fullFilename;
+  const possibilities = [
+    // Check if a file exists for the specific product version, platform, and architecture
+    platformArch && constructTemplatePath(basePath, [
+      `v${productVersion}`,
+      formattedPlatform,
+      platformArch,
+      suffix,
+    ]),
+    // Check if a file exists for the specific product version and platform
+    constructTemplatePath(basePath, [`v${productVersion}`, formattedPlatform, suffix]),
+    // check if a file exists for a specific platform and architecture
+    platformArch && constructTemplatePath(basePath, [formattedPlatform, platformArch, suffix]),
+    // check if a file exists for a specific platform
+    constructTemplatePath(basePath, [formattedPlatform, suffix]),
+  ].filter((p) => !!p);
+
+  for (let templateFilename of possibilities) {
+    if (fileExists(path.join(__dirname, "templates", templateFilename))) return templateFilename;
   }
 
-  // Check if a file exists for the specific product version and platform
-  const versionPlatformFilename = constructTemplatePath(basePath, [
-    `v${productVersion}`,
-    formattedPlatform,
-  ]);
-  if (fileExists("templates/" + versionPlatformFilename)) {
-    return versionPlatformFilename;
-  }
-
-  // check if a file exists for a specific platform and architecture
-  const platformArchFilename = constructTemplatePath(basePath, [
-    formattedPlatform,
-    platformArch,
-  ]);
-  if (fileExists("templates/" + platformArchFilename)) {
-    return platformArchFilename;
-  }
-
-  // check if a file exists for a specific platform
-  const platformFilename = constructTemplatePath(basePath, [formattedPlatform]);
-  if (fileExists("templates/" + platformFilename)) {
-    return platformFilename;
-  }
-
-  console.error(
+  console.log(
     `[ERROR] no template could be found\n` +
-      "  Please add one of the following files:\n" +
-      `  ${fullFilename}\n` +
-      `  ${versionPlatformFilename}\n` +
-      `  ${platformArchFilename}\n` +
-      `  ${platformFilename}\n`,
+      "  Please add one of the following files:\n  " +
+      possibilities.join("\n  "),
   );
 
   return false;
@@ -131,7 +237,7 @@ const findTemplate = (
  * @returns a string formatted for file names
  */
 const formatStringForFile = (string) => {
-  return string.toLowerCase().replace(/ /g, "-");
+  return string?.toLowerCase().replace(/[ /]/g, "-");
 };
 
 /**
@@ -142,7 +248,7 @@ const formatStringForFile = (string) => {
  *          e.g. "products/product-name/first-part_second_last-part.njk"
  */
 const constructTemplatePath = (basePath, filenameParts) => {
-  return path.join(basePath, filenameParts.join("_") + ".njk");
+  return path.join(basePath, filenameParts.filter(p => p != null && p.length).join("_") + ".njk");
 };
 
 /**
@@ -178,13 +284,14 @@ const writeDoc = (template, context) => {
     [
       formatStringForFile(context.product.name),
       context.product.version,
-      formatStringForFile(context.platform.name),
-      context.platform.arch,
-    ].join("_") + ".mdx";
+      formatStringForFile(context.platform?.name),
+      context.platform?.arch || context.arch,
+      context.outputType,
+    ].filter(p => p != null && p.length).join("_") + ".mdx";
 
   console.log(`  writing ${filename}`);
 
-  fs.writeFile(`renders/${filename}`, render);
+  fs.writeFile(path.join(__dirname, "renders", filename), render);
 };
 
 run();
