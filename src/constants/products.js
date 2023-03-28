@@ -11,7 +11,7 @@ export const products = {
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
-  epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
+  pgd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
@@ -46,7 +46,7 @@ export const products = {
   pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pgd: { name: "EDB Postgres Distributed" },
+  pgd: { name: "EDB Postgres Distributed (PGD)" },
   pge: { name: "EDB Postgres Extended Server" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   pglogical: { name: "pglogical" },

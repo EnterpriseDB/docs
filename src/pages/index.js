@@ -55,25 +55,21 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/epas/latest/"
-                  >
-                    EDB Postgres Advanced Server <br />
-                    Version 15
+                  <Link className="homepage-headling-link" to="/pgd/latest/">
+                    EDB Postgres Distributed <br />
+                    Version 5
                   </Link>
                 </h3>
                 <p>
-                  EDB Postgres Advanced Server 15.2.0, which is built on
-                  open-source PostgreSQL 15.2, includes compatibility with
-                  Oracle and enhanced security, administration, and performance
-                  features.
+                  EDB Postgres Distributed 5.0 uniquely solves the problem of
+                  planned downtime and unplanned outages for enterprises running
+                  business-critical applications.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/epas/latest/epas_rel_notes/epas15_2_0_rel_notes/"
+                      to="/pgd/latest/rel_notes/pgd_5.0.0_rel_notes/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -92,21 +88,19 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/pg_extensions/"
-                  >
-                    New Postgres extensions <br />
-                    and tools
+                  <Link className="homepage-headling-link" to="/tde/latest">
+                    New security feature
                   </Link>
                 </h3>
                 <p>
-                  • EDB Advanced Storage Pack <br />
-                  • EDB Postgres Tuner <br />• EDB LDAP Sync
+                  Transparent Data Encryption (TDE) extends Postgres with robust
+                  security and performance capabilities for enterprises. TDE
+                  significantly hardens data security and mitigates risks for
+                  large enterprises.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/pg_extensions/">
+                    <Link className="btn-sm ml-2" to="/tde/latest">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -229,7 +223,7 @@ const Page = () => (
             headingText="High Availability"
           >
             <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
+              EDB Postgres Distributed (PGD)
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">

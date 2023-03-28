@@ -19,7 +19,7 @@ annotation.
 
 ## External Backup Adapter
 
-The `external-backup-adapter` add-on provides a generic way to integrate
+The external backup adapter add-ons provide a generic way to integrate
 EDB Postgres for Kubernetes in a third-party tool for backups through
 customizable ways to identify via labels and/or annotations:
 
@@ -28,7 +28,18 @@ customizable ways to identify via labels and/or annotations:
 -   the Pod running the PostgreSQL instance that has been selected for the backup
     (a standby or, if not available, the primary)
 
-The add-on allows you to define the names of the annotations that will contain
+You can choose between two add-ons that only differ from each other for the way
+they allow you to configure the adapter for your backup system:
+
+-   `external-backup-adapter`: in case you want to customize the behavior at the
+    operator's configuration level via either a config map or a secret - and share
+    it with all the Postgres clusters that are managed by the operator's deployment
+    (see [the `external-backup-adapter` section below](#the-external-backup-adapter-add-on))
+-   `external-backup-adapter-cluster`: in case you want to customize the behavior
+    of the adapter at the Postgres cluster level, through a specific annotation
+    (see [the `external-backup-adapter-cluster` section below](#the-external-backup-adapter-cluster-add-on))
+
+Such add-ons allow you to define the names of the annotations that will contain
 the commands to be run before or after taking a backup in the pod selected by
 the operator.
 
@@ -37,8 +48,6 @@ to coordinate itself with a PostgreSQL cluster, or a set of them.
 
 Recovery simply relies on the operator to reconcile the cluster from an
 existing PVC group.
-
-The above behavior can be customized at the [operator's level configuration](operator_conf.md).
 
 !!! Important
     The External Backup Adapter is not a tool to perform backups. It simply
@@ -49,54 +58,29 @@ The above behavior can be customized at the [operator's level configuration](ope
 
 ### Customizing the adapter
 
-The adapter can be entirely configured at operator's level, as YAML content,
-via the `EXTERNAL_BACKUP_ADDON_CONFIGURATION` field in the operator's
-`ConfigMap`/`Secret`. For more information, please refer to the provided
-sample file or the example below:
+As mentioned above, the adapter can be configured in two ways, which then
+determines the actual `add-on` you need to use in your `Cluster` resource.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: postgresql-operator-controller-manager-config
-  namespace: postgresql-operator-system
-data:
-  # ...
-  EXTERNAL_BACKUP_ADDON_CONFIGURATION: |
-    electedResourcesDecorators:
-      - key: "app.example.com/elected"
-        metadataType: "label"
-        value: "true"
-    
-    excludedResourcesDecorators:
-      - key: "app.example.com/excluded"
-        metadataType: "label"
-        value: "true"
-      - key: "app.example.com/excluded-reason"
-        metadataType: "annotation"
-        value: "Not necessary for backup"
-    
-    backupInstanceDecorators:
-      - key: "app.example.com/hasHooks"
-        metadataType: "label"
-        value: "true"
+If you are planning to define the same behavior for all the Postgres `Cluster`
+resources managed by the operator, we recommend that you use the
+`external-backup-adapter` add-on, and configure the annotations/labels in the
+operator's configuration.
 
-    preBackupHookConfiguration:
-      container:
-        key: "app.example.com/pre-backup-container"
-      command:
-        key: "app.example.com/pre-backup-command"
-      onError:
-        key: "app.example.com/pre-backup-on-error"
-    
-    postBackupHookConfiguration:
-      container:
-        key: "app.example.com/post-backup-container"
-      command:
-        key: "app.example.com/post-backup-command"
-```
+If you are planning to have different behaviors for a subset of the Postgres
+`Cluster` resources that you have, we recommend that you use the
+`external-backup-adapter-cluster` add-on.
 
-Each section is explained below.
+Both add-ons share the same capabilities in terms of customization, which needs
+to be defined as a YAML object having the following keys:
+
+-   `electedResourcesDecorators`
+-   `excludedResourcesDecorators`
+-   `backupInstanceDecorators`
+-   `preBackupHookConfiguration`
+-   `postBackupHookConfiguration`
+
+Each section is explained below. Further down you'll find the instructions on
+how to customize each of the two add-ons, with some examples.
 
 #### The `electedResourcesDecorators` section
 
@@ -181,34 +165,163 @@ The following fields must be provided:
   is a fixed value and cannot be configured. Will be saved in the annotations. To
   decorate the pod with hooks refer to: `instanceWithHookDecorators`
 
+### The `external-backup-adapter` add-on
+
+The `external-backup-adapter` add-on can be entirely configured at operator's
+level via the `EXTERNAL_BACKUP_ADDON_CONFIGURATION` field in the operator's
+`ConfigMap`/`Secret`.
+
+For more information, please refer to the provided sample file at the end of
+this section, or the example below:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-operator-controller-manager-config
+  namespace: postgresql-operator-system
+data:
+  # ...
+  EXTERNAL_BACKUP_ADDON_CONFIGURATION: |-
+    electedResourcesDecorators:
+      - key: "app.example.com/elected"
+        metadataType: "label"
+        value: "true"
+    excludedResourcesDecorators:
+      - key: "app.example.com/excluded"
+        metadataType: "label"
+        value: "true"
+      - key: "app.example.com/excluded-reason"
+        metadataType: "annotation"
+        value: "Not necessary for backup"
+    backupInstanceDecorators:
+      - key: "app.example.com/hasHooks"
+        metadataType: "label"
+        value: "true"
+    preBackupHookConfiguration:
+      container:
+        key: "app.example.com/pre-backup-container"
+      command:
+        key: "app.example.com/pre-backup-command"
+      onError:
+        key: "app.example.com/pre-backup-on-error"
+    postBackupHookConfiguration:
+      container:
+        key: "app.example.com/post-backup-container"
+      command:
+        key: "app.example.com/post-backup-command"
+```
+
+The add-on can be activated by adding the following annotation to the `Cluster`
+resource:
+
+```yaml
+k8s.enterprisedb.io/addons: '["external-backup-adapter"]'
+```
+
+### The `external-backup-adapter-cluster` add-on
+
+The `external-backup-adapter-cluster` add-on must be configured in each
+`Cluster` resource you intend to use it through the
+`k8s.enterprisedb.io/externalBackupAdapterClusterConfig` annotation - which
+accepts the YAML object as content - as outlined in the following example:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+  annotations:
+    "k8s.enterprisedb.io/addons": '["external-backup-adapter-cluster"]'
+    "k8s.enterprisedb.io/externalBackupAdapterClusterConfig": |-
+      electedResourcesDecorators:
+        - key: "app.example.com/elected"
+          metadataType: "label"
+          value: "true"
+      excludedResourcesDecorators:
+        - key: "app.example.com/excluded"
+          metadataType: "label"
+          value: "true"
+        - key: "app.example.com/excluded-reason"
+          metadataType: "annotation"
+          value: "Not necessary for backup"
+      backupInstanceDecorators:
+        - key: "app.example.com/hasHooks"
+          metadataType: "label"
+          value: "true"
+      preBackupHookConfiguration:
+        container:
+          key: "app.example.com/pre-backup-container"
+        command:
+          key: "app.example.com/pre-backup-command"
+        onError:
+          key: "app.example.com/pre-backup-on-error"
+      postBackupHookConfiguration:
+        container:
+          key: "app.example.com/post-backup-container"
+        command:
+          key: "app.example.com/post-backup-command"
+spec:
+  instances: 3
+  storage:
+    size: 1Gi
+```
+
+### About the fencing annotation
+
+If the configured external backup adapter backs up annotations, the fencing
+annotation will be set by the pre-backup hook and persist to the restored
+cluster. After restoring the cluster, you will need to manually remove the
+fencing annotation from the `Cluster` object to fix this.
+
+This can be done with the `cnp` plugin for kubectl:
+
+```shell
+kubectl cnp fencing off <cluster-name>
+```
+
+Or, if you don't have the `cnp` plugin, you can remove the fencing annotation
+manually with the following command:
+
+```shell
+kubectl annotate cluster <cluster-name> k8s.enterprisedb.io/fencedInstances-
+```
+
+Please refer to the [fencing documentation](fencing.md) for more information.
+
 ### Limitations
 
 As far as the backup part is concerned, currently, the EDB Postgres for
-Kubernetes integration with `external-backup-adapter` supports **cold backups**
-only. These are also referred to as **offline backups**. This means that the
-selected replica is temporarily fenced so that external-backup-adapter can take
-a physical snapshot of the PVC group - namely the `PGDATA` volume and, where
-available, the WAL volume.
+Kubernetes integration with `external-backup-adapter` and
+`external-backup-adapter-cluster` supports **cold backups** only. These are
+also referred to as **offline backups**. This means that the selected replica
+is temporarily fenced so that `external-backup-adapter` and
+`external-backup-adapter-cluster` can take a physical snapshot of the PVC group -
+namely the `PGDATA` volume and, where available, the WAL volume.
 
 In this short timeframe, the standby cannot accept read-only connections.
 If no standby is available - usually because we're in a single instance cluster -
 and the annotation `k8s.enterprisedb.io/snapshotAllowColdBackupOnPrimary` is
-set to true, `external-backup-adapter` will temporarily fence the primary,
-causing downtime in terms of read-write operations. This use case is normally
-left to development environments.
+set to true, `external-backup-adapter` and `external-backup-adapter-cluster`
+will temporarily fence the primary, causing downtime in terms of read-write
+operations. This use case is normally left to development environments.
 
 #### Full example of YAML file
 
-Here is a full example of YAML content to be placed in the
-`EXTERNAL_BACKUP_ADDON_CONFIGURATION` option as part of the
-the [operator's configuration process described above](#customizing-the-adapter).
+Here is a full example of YAML content to be placed in either:
+
+-   the `EXTERNAL_BACKUP_ADDON_CONFIGURATION` option as part of the
+    the operator's configuration process described above for the
+    `external-backup-adapter` add-on, or
+-   in the `k8s.enterprisedb.io/externalBackupAdapterClusterConfig` annotation
+    for the `external-backup-adapter-cluster` add-on
 
 !!! Hint
-    Copy the content below and paste it inside the `ConfigMap` or `Secret`
-    that you use to configure the operator, making sure you use the `|`
-    character that [YAML reserves for literals](https://yaml.org/spec/1.2.2/#812-literal-style),
-    as well as proper indentation. Use the comments to help you
-    customize the options for your tool.
+    Copy the content below and paste it inside the `ConfigMap` or `Secret` that
+    you use to configure the operator or the annotation in the `Cluster`, making
+    sure you use the `|` character that [YAML reserves for literals](https://yaml.org/spec/1.2.2/#812-literal-style),
+    as well as proper indentation. Use the comments to help you customize the
+    options for your tool.
 
 ```yaml
 # An array of labels and/or annotations that will be placed

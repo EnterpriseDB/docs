@@ -206,14 +206,16 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     }
   >
     <Dropdown.Item
-      href={githubIssuesLink + "&template=documentation-feedback.md"}
+      href={githubIssuesLink + "&template=problem-with-topic.yaml"}
       target="_blank"
       rel="noreferrer"
     >
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
+      href={
+        githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"
+      }
       target="_blank"
       rel="noreferrer"
     >
