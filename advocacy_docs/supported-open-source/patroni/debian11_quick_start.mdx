@@ -1,9 +1,9 @@
 ---
-title: 'Quick start on Debian 10'
+title: 'Quick start on Debian 11'
 description: "A walkthrough: setup a demo cluster using Patroni and etcd"
 ---
 
-This walks you through the various steps to create an highly available **demo** cluster (using **EDB Postgres Advanced Server** version 14 on Debian 10) where the etcd hosts will be called **etcd1**, **etcd2** and **etcd3**, and the two EPAS nodes in _Streaming Replication_ are **pg-patroni1** and **pg-patroni2**.
+This walks you through the various steps to create an highly available **demo** cluster (using **EDB Postgres Advanced Server** or **EDB Postgres Extended Server** version 15 on Debian 11) where the etcd hosts will be called **etcd1**, **etcd2** and **etcd3**, and the two database nodes in _Streaming Replication_ are **pg-patroni1** and **pg-patroni2**.
 
 ![Demo diagram](images/etcd-demo.png)
 
@@ -13,32 +13,48 @@ This walks you through the various steps to create an highly available **demo** 
 
 See [Etcd](installing_etcd) to install and set up etcd.
 
-## EDB Postgres Advanced Server
+## EDB Postgres Advanced or Extended Server
 
-More information about installing EDB Postgres Advanced Server using the EDB repository can be found in [EDB docs](https://www.enterprisedb.com/docs/epas/latest/epas_inst_linux/installing_epas_using_edb_repository).
+On both **pg-patroni1** and **pg-patroni2** hosts, install the Postgres flavor you'd like. More information about installing [EDB Postgres Advanced Server](/epas/latest/installing/linux_x86_64/) or [EDB Postgres Extended Server](/pge/latest/installing/linux_x86_64/) using the EDB repository can be found in EDB docs.
 
-On both **pg-patroni1** and **pg-patroni2** hosts, install EPAS:
+To follow this guide, depending on the Postgres flavor you chose, let us define some environment variables.
+
+For **EDB Postgres Advanced Server**, use the following commands:
 
 ```bash
-$ sudo apt-get install -y wget gnupg2 apt-transport-https
-$ sudo sh -c 'echo "deb [arch=amd64] https://apt.enterprisedb.com/$(lsb_release -cs)-edb/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/edb-$(lsb_release -cs).list'
-
-#  Replace '<USERNAME>' and '<PASSWORD>' below with your username and password for the EDB repositories
-$ sudo sh -c 'echo "machine apt.enterprisedb.com login <USERNAME> password <PASSWORD>" > /etc/apt/auth.conf.d/edb.conf'
-$ wget -q -O - https://<USERNAME>:<PASSWORD>@apt.enterprisedb.com/edb-deb.gpg.key | sudo apt-key add -
-
-$ sudo apt-get update
-$ sudo apt-get -y install edb-as14-server
-$ sudo systemctl disable edb-as@14-main.service
+export PGPORT=5444
+export PGUSER=enterprisedb
+export PGGROUP=enterprisedb
+export PGDATA="/var/lib/edb-as/15/main"
+export PGBIN="/usr/lib/edb-as/15/bin"
+export PGSOCKET="/var/run/edb-as"
 ```
 
-Patroni will bootstrap (create) the initial EPAS cluster and be in charge of starting the service, so be sure `systemctl` is disabled for the EPAS service.
-
-Remove the EPAS cluster created during the installation:
+For **EDB Postgres Extended Server**, use the following commands:
 
 ```bash
-$ sudo systemctl stop edb-as@14-main.service
-$ sudo rm -fr /var/lib/edb-as/14/main
+export PGPORT=5432
+export PGUSER=postgres
+export PGGROUP=postgres
+export PGDATA="/var/lib/edb-pge/15/data"
+export PGBIN="/usr/lib/edb-pge/15/bin"
+export PGSOCKET="/var/run/edb-pge"
+```
+
+Patroni will bootstrap (create) the initial Postgres cluster and be in charge of starting the service, so be sure `systemctl` is disabled and remove the Postgres cluster created during the installation:
+
+
+```bash
+$ sudo systemctl stop edb-as@15-main.service
+$ sudo systemctl disable edb-as@15-main.service
+$ sudo rm -fr /var/lib/edb-as/15/main
+```
+or
+
+```bash
+$ sudo systemctl stop edb-pge-15.service
+$ sudo systemctl disable edb-pge-15.service
+$ sudo rm -fr /var/lib/edb-pge/15/data
 ```
 
 ## Watchdog
@@ -47,25 +63,16 @@ Patroni will be the component interacting with the watchdog device. Set the perm
 
 ```bash
 $ cat <<EOF | sudo tee /etc/udev/rules.d/99-watchdog.rules
-KERNEL=="watchdog", OWNER="enterprisedb", GROUP="enterprisedb"
+KERNEL=="watchdog", OWNER="$PGUSER", GROUP="$PGGROUP"
 EOF
 $ sudo sh -c 'echo "softdog" >> /etc/modules-load.d/softdog.conf'
 $ sudo modprobe softdog
-$ sudo chown enterprisedb: /dev/watchdog
+$ sudo chown $PGUSER:$PGGROUP /dev/watchdog
 ```
 
 ## Patroni
 
 On both **pg-patroni1** and **pg-patroni2** hosts, install Patroni and its dependencies for etcd, following the steps in [Installing Patroni](installing_patroni).
-
-While EPAS has been installed from EDB repository, Patroni can be installed from the [PostgreSQL](https://www.postgresql.org/download/linux/ubuntu/) **apt** repository:
-
-```bash
-$ sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-$ wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-$ sudo apt-get update
-$ sudo apt-get -y install patroni
-```
 
 Let us now define the Patroni configuration in `/etc/patroni.yml`:
 
@@ -123,23 +130,23 @@ bootstrap:
         - createdb
 
 postgresql:
-  listen: "0.0.0.0:5444"
-  connect_address: "$MY_IP:5444"
-  data_dir: "/var/lib/edb-as/14/main"
-  bin_dir: "/usr/lib/edb-as/14/bin"
+  listen: "0.0.0.0:$PGPORT"
+  connect_address: "$MY_IP:$PGPORT"
+  data_dir: $PGDATA
+  bin_dir: $PGBIN
   pgpass: /tmp/pgpass0
   authentication:
     replication:
       username: replicator
       password: confidential
     superuser:
-      username: enterprisedb
+      username: $PGUSER
       password: my-super-password
     rewind:
       username: rewind_user
       password: rewind_password
   parameters:
-    unix_socket_directories: "/var/run/edb-as,/tmp"
+    unix_socket_directories: "$PGSOCKET,/tmp"
 
 watchdog:
   mode: required
@@ -156,13 +163,13 @@ EOF
 
 Except for `$MY_IP` and `$MY_NAME` which are related to the local host, the `patroni.yml` configuration should be the same on all Patroni nodes.
 
-Patroni expects to find the `postgres` binary in the `bin_dir` location while the EPAS binary is called `edb-postgres`. Create a symbolic link to let Patroni find that binary:
+Patroni expects to find the `postgres` binary in the `bin_dir` location while the **EDB Postgres Advanced Server** binary is called `edb-postgres`. Create a symbolic link to let Patroni find that binary:
 
 ```bash
-$ sudo ln -s /usr/lib/edb-as/14/bin/edb-postgres /usr/lib/edb-as/14/bin/postgres
+$ sudo ln -s /usr/lib/edb-as/15/bin/edb-postgres /usr/lib/edb-as/15/bin/postgres
 ```
 
-Depending on the Patroni installation source, create the [systemd file](https://github.com/zalando/patroni/blob/master/extras/startup-scripts/patroni.service) if not done during the installation and start the Patroni service:
+Depending on the Patroni installation source, a [systemd file](https://github.com/zalando/patroni/blob/master/extras/startup-scripts/patroni.service) might have already been created. Let us now define our own with the accurate system user, group and configuration path:
 
 ```bash
 $ cat <<EOF | sudo tee /etc/systemd/system/patroni.service
@@ -172,8 +179,8 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-User=enterprisedb
-Group=enterprisedb
+User=$PGUSER
+Group=$PGGROUP
 EnvironmentFile=-/etc/patroni_env.conf
 ExecStart=patroni /etc/patroni.yml
 ExecReload=/bin/kill -s HUP \$MAINPID
@@ -190,28 +197,36 @@ $ sudo systemctl enable patroni
 $ sudo systemctl start patroni
 ```
 
-First, start the Patroni service on **pg-patroni1** so it becomes the leader of our PostgreSQL cluster, and then start **pg-patroni2**.
+Start the Patroni service first on **pg-patroni1** so it becomes the leader of our Postgres cluster, and then start **pg-patroni2**.
 
 To list the members of the cluster, use the `patronictl` command:
 
 ```bash
 $ patronictl -c /etc/patroni.yml list
-+ Cluster: demo-cluster-1 (7114936110138668110) ----+----+-----------+
++ Cluster: demo-cluster-1 (7104275668989116902) ----+----+-----------+
 | Member      | Host            | Role    | State   | TL | Lag in MB |
 +-------------+-----------------+---------+---------+----+-----------+
-| pg-patroni1 | 192.168.121.105 | Leader  | running |  1 |           |
-| pg-patroni2 | 192.168.121.229 | Replica | running |  1 |         0 |
+| pg-patroni1 | 192.168.121.61  | Leader  | running |  1 |           |
+| pg-patroni2 | 192.168.121.135 | Replica | running |  1 |         0 |
 +-------------+-----------------+---------+---------+----+-----------+
 ```
 
 The Patroni REST API is available on port `8008`.
 
+With **EDB Postgres Advanced Server**, now that the database cluster is running, some other systemd dependencies might need a reset. To do so, use the following commands:
+
+```bash
+$ sudo systemctl restart edb-as15-pgagent.service
+$ sudo systemctl reset-failed
+```
+
 ## HAProxy
 
-For the purpose of this demo, let us install HAProxy on both **pg-patroni1** and **pg-patroni2** hosts:
+For the purpose of this example, let us install HAProxy on both **pg-patroni1** and **pg-patroni2** hosts:
 
 ```bash
 $ sudo apt-get install -y haproxy
+$ sudo systemctl stop haproxy
 $ sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bck
 $ cat <<EOF | sudo tee /etc/haproxy/haproxy.cfg
 global
@@ -237,8 +252,8 @@ listen read-write
     option httpchk OPTIONS /read-write
     http-check expect status 200
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-    server pg-patroni1 pg-patroni1:5444 maxconn 100 check port 8008
-    server pg-patroni2 pg-patroni2:5444 maxconn 100 check port 8008
+    server pg-patroni1 pg-patroni1:$PGPORT maxconn 100 check port 8008
+    server pg-patroni2 pg-patroni2:$PGPORT maxconn 100 check port 8008
 
 listen read-only
     balance roundrobin
@@ -246,8 +261,8 @@ listen read-only
     option httpchk OPTIONS /replica
     http-check expect status 200
     default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-    server pg-patroni1 pg-patroni1:5444 maxconn 100 check port 8008
-    server pg-patroni2 pg-patroni2:5444 maxconn 100 check port 8008
+    server pg-patroni1 pg-patroni1:$PGPORT maxconn 100 check port 8008
+    server pg-patroni2 pg-patroni2:$PGPORT maxconn 100 check port 8008
 EOF
 
 $ sudo systemctl enable haproxy
