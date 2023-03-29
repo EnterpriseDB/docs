@@ -277,6 +277,7 @@ const generateContext = (product, platform, version) => {
  * @param context An object passed into the nunjucks template which will be used to render some variable content.
  */
 const writeDoc = (template, context) => {
+  context.leafTemplatePath = template;
   const render = prettier.format(nunjucks.render(template, context), {
     parser: "mdx",
   });
