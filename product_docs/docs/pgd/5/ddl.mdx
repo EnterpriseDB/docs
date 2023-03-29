@@ -8,7 +8,7 @@ redirects:
 DDL stands for data definition language, the subset of the SQL
 language that creates, alters, and drops database objects.
 
-For operational convenience and correctness, BDR replicates most DDL
+For operational convenience and correctness, PGD replicates most DDL
 actions, with these exceptions:
 
 -   Temporary or unlogged relations
@@ -27,9 +27,9 @@ In the default replication set, DDL is replicated to all nodes by default.
 To replicate DDL, you must add a DDL replication filter to the
 replication set. See [DDL replication filtering](repsets/#ddl-replication-filtering).
 
-BDR is significantly different from standalone PostgreSQL when it
+PGD is significantly different from standalone PostgreSQL when it
 comes to DDL replication. Treating it the same is the most
-common issue with BDR.
+common issue with PGD.
 
 The main difference from table replication is that DDL replication doesn't
 replicate the result of the DDL but the statement itself. This works
@@ -71,32 +71,32 @@ parameters.
 SET bdr.ddl_replication = off;
 ```
 
-When set, it makes BDR skip both the global locking and the replication
+When set, it makes PGD skip both the global locking and the replication
 of executed DDL commands. You must then run the DDL manually on all nodes.
 
 !!! Warning
     Executing DDL manually on each node without global locking can
-    cause the whole BDR group to stop replicating if conflicting DDL or DML
+    cause the whole PGD group to stop replicating if conflicting DDL or DML
     executes concurrently.
 
 The `bdr.ddl_replication` parameter can be set only by the bdr_superuser,
 by superuser, or in the `config` file.
 
-## Executing DDL on BDR systems
+## Executing DDL on PGD systems
 
-A BDR group isn't the same as a standalone PostgreSQL server. It's
+A PGD group isn't the same as a standalone PostgreSQL server. It's
 based on asynchronous multi-master replication without central
 locking and without a transaction coordinator. This has important implications
 when executing DDL.
 
-DDL that executes in parallel continues to do so with BDR. DDL execution
+DDL that executes in parallel continues to do so with PGD. DDL execution
 respects the parameters that affect parallel operation on each node as it
 executes, so you might notice differences in the settings between nodes.
 
 Prevent the execution of conflicting DDL, otherwise DDL replication
 causes errors and the replication stops.
 
-BDR offers three levels of protection against those problems:
+PGD offers three levels of protection against those problems:
 
 `ddl_locking = 'dml'` is the best option for operations, usable when you execute
 DDL from only one node at a time. This isn't the default, but we recommend
@@ -120,19 +120,19 @@ function.
 
 ## DDL locking details
 
-Two kinds of locks enforce correctness of replicated DDL with BDR.
+Two kinds of locks enforce correctness of replicated DDL with PGD.
 
 The first kind is known as a global DDL lock and is used only when `ddl_locking = on`.
 A global DDL lock prevents any other DDL from executing on the cluster while
 each DDL statement runs. This ensures full correctness in the general case but
-is too strict for many simple cases. BDR acquires a global lock on
+is too strict for many simple cases. PGD acquires a global lock on
 DDL operations the first time in a transaction where schema changes are made.
 This effectively serializes the DDL-executing transactions in the cluster. In
 other words, while DDL is running, no other connection on any node can run
 another DDL command, even if it affects different tables.
 
-To acquire a lock on DDL operations, the BDR node executing DDL contacts the
-other nodes in a BDR group and asks them to grant it the exclusive right to
+To acquire a lock on DDL operations, the PGD node executing DDL contacts the
+other nodes in a PGD group and asks them to grant it the exclusive right to
 execute DDL. The lock request is sent by the regular replication stream, and the
 nodes respond by the replication stream as well. So it's important that nodes (or
 at least a majority of the nodes) run without much replication
@@ -158,8 +158,8 @@ Relation DML locks affect only one relation at a time. Relation DML
 locks ensure that no DDL executes while there are changes in the queue that
 might cause replication to halt with an error.
 
-To acquire the global DML lock on a table, the BDR node executing the DDL
-contacts all other nodes in a BDR group, asking them to lock the table
+To acquire the global DML lock on a table, the PGD node executing the DDL
+contacts all other nodes in a PGD group, asking them to lock the table
 against writes and waiting while all pending changes to that table are drained.
 Once all nodes are fully caught up, the originator of the DML lock is free
 to perform schema changes to the table and replicate them to the other nodes.
@@ -180,13 +180,13 @@ down node from the configuration.
 If a DDL statement isn't replicated, no global locks are acquired.
 
 Locking behavior is specified by the `bdr.ddl_locking` parameter, as
-explained in [Executing DDL on BDR systems](#executing-ddl-on-bdr-systems):
+explained in [Executing DDL on PGD systems](#executing-ddl-on-pgd-systems):
 
 -   `ddl_locking = on` takes global DDL lock and, if needed, takes relation DML lock.
 -   `ddl_locking = dml` skips global DDL lock and, if needed, takes relation DML lock.
 -   `ddl_locking = off` skips both global DDL lock and relation DML lock.
 
-Some BDR functions make DDL changes. For those functions,
+Some PGD functions make DDL changes. For those functions,
 DDL locking behavior applies. This is noted in the docs for each function.
 
 Thus, `ddl_locking = dml` is safe only when you can guarantee that
@@ -204,10 +204,10 @@ If these serialization failures occur, the DDL might reexecute.
 
 DDL replication isn't active on logical standby nodes until they are promoted.
 
-Some BDR management functions act like DDL, meaning that they
+Some PGD management functions act like DDL, meaning that they
 attempt to take global locks, and their actions are replicated if DDL
 replication is active. The full list of replicated functions is listed in
-[BDR functions that behave like DDL](#bdr-functions-that-behave-like-ddl).
+[PGD functions that behave like DDL](#pgd-functions-that-behave-like-ddl).
 
 DDL executed on temporary tables never need global locks.
 
@@ -220,7 +220,7 @@ Monitoring of global DDL locks and global DML locks is shown in
 ## Minimizing the impact of DDL
 
 Good operational advice for any database, these points become even more
-important with BDR:
+important with PGD:
 
 -   To minimize the impact of DDL, make transactions performing DDL short,
     don't combine them with lots of row changes, and avoid long
@@ -251,7 +251,7 @@ INDEX CONCURRENTLY`, noting that DDL replication must be disabled for the whole
 session because `CREATE INDEX CONCURRENTLY` is a multi-transaction command.
 Avoid `CREATE INDEX` on production systems
 since it prevents writes while it executes.
-`REINDEX` is replicated in versions up to 3.6 but not with BDR 3.7 or later.
+`REINDEX` is replicated in versions up to 3.6 but not with PGD 3.7 or later.
 Avoid using `REINDEX` because of the AccessExclusiveLocks it holds.
 
 Instead, use `REINDEX CONCURRENTLY` (or `reindexdb --concurrently`),
@@ -284,7 +284,7 @@ holding any global locks. You can disable all of these timeouts by setting
 their values to zero.
 
 Once the DDL operation has committed on the originating node, you can't cancel or abort it. 
-The BDR group must wait for it to apply successfully on
+The PGD group must wait for it to apply successfully on
 other nodes that confirmed the global lock and for them to acknowledge replay.
 For this reason, keep DDL transactions short and fast.
 
@@ -297,7 +297,7 @@ In case the node comes back up, it releases all the global
 locks that it holds.
 
 If it stays down for a long time (or indefinitely),
-remove the node from the BDR group to release the global locks. This
+remove the node from the PGD group to release the global locks. This
 is one reason for executing emergency DDL using the `SET` command as
 the bdr_superuser to update the `bdr.ddl_locking` value.
 
@@ -319,12 +319,12 @@ Not all commands can be replicated automatically. Such commands
 are generally disallowed, unless DDL replication is turned off
 by turning `bdr.ddl_replication` off.
 
-BDR prevents some DDL statements from running when it's active on a
+PGD prevents some DDL statements from running when it's active on a
 database. This protects the consistency of the system by disallowing
 statements that can't be replicated correctly or for which replication
 isn't yet supported. 
 
-If a statement isn't permitted under BDR, you can often find
+If a statement isn't permitted under PGD, you can often find
 another way to do the same thing. For example, you can't do an `ALTER TABLE`,
 which adds a column with a volatile default value. But generally you can
 rephrase that as a series of independent `ALTER TABLE` and `UPDATE` statements
@@ -334,10 +334,10 @@ Generally unsupported statements are prevented from being
 executed, raising a `feature_not_supported` (SQLSTATE `0A000`) error.
 
 Any DDL that references or relies on a temporary object can't
-be replicated by BDR and throws an error if executed with DDL replication
+be replicated by PGD and throws an error if executed with DDL replication
 enabled.
 
-## BDR DDL command handling matrix
+## PGD DDL command handling matrix
 
 The following table describes the utility or DDL commands that are allowed, the ones that
 are replicated, and the type of global lock they take when they're replicated.
@@ -579,7 +579,7 @@ subcommands aren't supported.
 
 #### ALTER TABLE disallowed commands
 
-Some variants of `ALTER TABLE` currently aren't allowed on a BDR node:
+Some variants of `ALTER TABLE` currently aren't allowed on a PGD node:
 
 -   `ADD COLUMN ... DEFAULT (non-immutable expression)` &mdash; This is not allowed because
     it currently results in different data on different nodes. See
@@ -619,7 +619,7 @@ ALTER TABLE foo
   ADD expiry_date timestamptz DEFAULT timestamp '2100-01-01 00:00:00' NOT NULL;
 ```
 
-Starting in BDR 3.7.4, you can add certain types of constraints, such as `CHECK` and
+Starting in PGD 3.7.4, you can add certain types of constraints, such as `CHECK` and
 `FOREIGN KEY` constraints, without taking a DML lock. But
 this requires a two-step process of first creating a `NOT VALID` constraint
 and then validating the constraint in a separate transaction with the `ALTER TABLE ... VALIDATE CONSTRAINT` 
@@ -699,7 +699,7 @@ restricted.
 
 ```sql
 ALTER TABLE sample ALTER COLUMN col2 TYPE VARCHAR(64);
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a PGD node
 ```
 
 To give an example with nontext types, consider col3 above with type
@@ -708,7 +708,7 @@ fails in a similar manner as above.
 
 ```sql
 ALTER TABLE sample ALTER COLUMN col3 TYPE bigint;
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a BDR node
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE that rewrites table data may not affect replicated tables on a PGD node
 ```
 
 In both of these failing cases, there's an automatic assignment
@@ -769,7 +769,7 @@ SET bdr.ddl_replication TO FALSE;
 ALTER TABLE sample ALTER COLUMN col3 TYPE TEXT;
 -- conversion from TEXT back to BIGINT fails
 ALTER TABLE sample ALTER COLUMN col3 TYPE BIGINT;
-ERROR:  ALTER TABLE ... ALTER COLUMN TYPE which cannot be automatically cast to new type may not affect replicated tables on a BDR node
+ERROR:  ALTER TABLE ... ALTER COLUMN TYPE which cannot be automatically cast to new type may not affect replicated tables on a PGD node
 RESET bdr.ddl_replication;
 ```
 
@@ -839,7 +839,7 @@ sequences, some options have no effect.
 ### CREATE TABLE
 
 Generally `CREATE TABLE` is supported, but `CREATE TABLE WITH OIDS` isn't
-allowed on a BDR node.
+allowed on a PGD node.
 
 <div id='bdr_ddl_allowed_CreateTableAsStmt'></div>
 
@@ -907,15 +907,15 @@ the global DML lock when `bdr.truncate_locking` is set to `on`.
 ### Role manipulation statements
 
 Users are global objects in a PostgreSQL instance, which means they span
-multiple databases while BDR operates on an individual database level. This means
+multiple databases while PGD operates on an individual database level. This means
 that role manipulation statement handling needs extra thought.
 
-BDR requires that any roles that are referenced by any replicated DDL must
+PGD requires that any roles that are referenced by any replicated DDL must
 exist on all nodes. The roles don't have to have the same grants,
 password, and so on, but they must exist.
 
-BDR replicates role manipulation statements if `bdr.role_replication` is
-enabled (default) and role manipulation statements are run in a BDR-enabled
+PGD replicates role manipulation statements if `bdr.role_replication` is
+enabled (default) and role manipulation statements are run in a PGD-enabled
 database.
 
 The role manipulation statements include the following:
@@ -938,7 +938,7 @@ In general, either:
     tools like Ansible, Puppet, and Chef or explicitly replicated by
     `bdr.replicate_ddl_command(...)`.
 
--   Configure the system so that exactly one BDR-enabled database
+-   Configure the system so that exactly one PGD-enabled database
     on the PostgreSQL instance has `bdr.role_replication = on` and run all
     role management DDL on that database.
 
@@ -946,19 +946,19 @@ We recommended that you run all role management commands in one
 database.
 
 If role replication is turned off, then the administrator must ensure that
-any roles used by DDL on one node also exist on the other nodes. Otherwise BDR apply
+any roles used by DDL on one node also exist on the other nodes. Otherwise PGD apply
 stalls with an error until the role is created on the other nodes.
 
 !!! Note 
-    BDR doesn't capture and replicate role management statements when they
-    run on a non-BDR-enabled database in a BDR-enabled PostgreSQL instance.
+    PGD doesn't capture and replicate role management statements when they
+    run on a non-PGD-enabled database in a PGD-enabled PostgreSQL instance.
     For example, if you have DBs 'bdrdb' (bdr group member) and 'postgres' (bare db),
     and `bdr.role_replication = on`, then a `CREATE USER` run in `bdrdb` is
     replicated, but a `CREATE USER` run in `postgres` isn't.
 
 ### Restricted DDL workarounds
 
-Some of the limitations of BDR DDL operation handling can be worked around.
+Some of the limitations of PGD DDL operation handling can be worked around.
 Often splitting up the operation into smaller changes can produce the desired
 result that either isn't allowed as a single statement or requires excessive
 locking.
@@ -973,7 +973,7 @@ This involves a two-step process.
 
 Execute these steps in two different transactions. Both these
 steps take DDL lock only on the table and hence can be run even when one
-or more nodes are down. But to validate a constraint, BDR must
+or more nodes are down. But to validate a constraint, PGD must
 ensure that:
 -  All nodes in the cluster see the `ADD CONSTRAINT` command. 
 -  The node validating the constraint applied replication changes from all other nodes prior to 
@@ -982,7 +982,7 @@ ensure that:
 So even though the new mechanism doesn't need all nodes
 to be up while validating the constraint, it still requires that all
 nodes applied the `ALTER TABLE .. ADD CONSTRAINT ... NOT VALID`
-command and made enough progress. BDR waits for a consistent
+command and made enough progress. PGD waits for a consistent
 state to be reached before validating the constraint.
 
 The new facility requires the cluster to run with Raft protocol
@@ -1006,8 +1006,8 @@ separate transactions:
 ```
 
 This approach splits schema changes and row changes into separate transactions that
-BDR can execute and results in consistent data across all nodes in a
-BDR group.
+PGD can execute and results in consistent data across all nodes in a
+PGD group.
 
 For best results, batch the update into chunks so that you don't update more than
 a few tens or hundreds of thousands of rows at once. You can do this using
@@ -1095,9 +1095,9 @@ ALTER TYPE contact_method ADD VALUE 'email';
 SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
 ```
 
-### BDR functions that behave like DDL
+### PGD functions that behave like DDL
 
-The following BDR management functions act like DDL. This means that, if DDL
+The following PGD management functions act like DDL. This means that, if DDL
 replication is active and DDL filter settings allow it, they
 attempt to take global locks and their actions are replicate. For detailed
 information, see the documentation for the individual functions.
