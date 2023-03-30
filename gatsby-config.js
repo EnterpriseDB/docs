@@ -356,5 +356,6 @@ module.exports = {
         skipIndexing: process.env.INDEX_ON_BUILD !== "true",
       },
     },
+
   ],
 };
