@@ -346,6 +346,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
