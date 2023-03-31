@@ -1,0 +1,300 @@
+---
+title: "Exploring failover handling with PGD"
+navTitle: "Exploring failover"
+description: >
+  An exploration of how PGD handles failover between data nodes
+---
+
+## Failover
+
+With a high availability cluster the ability to failover is crucial to the overall resilience of the cluster. When the lead data nodes stops working, for whatever reason, applications need to be able to continue working with the database with little or no interruption. For PGD, that means directing application to the new lead data node which takes over automatically. This is where PGD Proxy comes into play. It works with the cluster and directs traffic to the lead data node automatically.
+
+In this exercise, we are going to create an application which sends data to the database regularly. Then we are going to first softly switch lead data node by requesting a change through PGD-cli. And then we are going to forcibly shut down a database instance and see how PGD handles that.
+
+## Installing xpanes
+
+You will be using xpanes, a utility which allows you to quickly create multiple terminal sessions which you can quickly switch between. It is not installed by default, so you will have to install it. For this exercise, we will be launching xpanes from the system where you ran tpaexec to configure your quick start cluster.
+
+Assuming the system is running Ubuntu, you will want to run this:
+
+```
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:greymd/tmux-xpanes
+sudo apt update
+sudo apt install tmux-xpanes
+```
+
+These are the installation instructions from [the xpanes repository](https://github.com/greymd/tmux-xpanes) which also contains installation instructions for other systems, if you are not on Ubuntu.
+
+## Connecting to the four servers
+
+With xpanes imstalled, you can now create an SSH session with all four servers by running:
+
+```
+cd democluster
+xpanes -d -c "ssh -F ssh_config {}" "kaboom" "kaolin" "kaftan" "kapok"
+```
+
+That means that when run, there will be four panes. The four panes will be connected to kaboom, kaolin, kaftan and kapok and logged in as the root user on each. We need this privilege so we can easily stop and start services later in the exercise.
+
+![4 SSH Sessions showing numbers](images/4sshsessions.png)
+
+To switch the focus between the panes, type control-b followed by q and the number of the pane you want to focus on. Use Control-b q 3 to move the focus to the bottom right pane.
+
+This should be the kapok host. This is the server responsible for performing backups. We are going to use this as the base of operations for our "application". We can use barman's credentials to connect to the database servers and proxies:
+
+```
+sudo -iu barman
+psql -h kaboom -p 6432 bdrdb
+```
+
+This gets us connected to the proxy on the kaboom host, which also runs a Postgres instance as part of the cluster. 
+
+The next step is to create the table our application will be writing to:
+
+```
+drop table if exists ping cascade;
+CREATE TABLE ping (id SERIAL PRIMARY KEY, node TEXT, timestamp TEXT) ;
+select bdr.alter_sequence_set_kind('ping_id_seq', 'galloc');
+```
+
+There's a few things to unpack here. We start by dropping the `ping` table. Next we recreate the 'ping' table with a id primary key and two text fields for a node and timestamp. The third line sets PGD's BDR sequence control for the ping_id field so that it will use a globally allocated range sequence ([galloc](sequences/#globally-allocated-range-sequences)) so id generation on the nodes does not collide. Our table is now ready, but let us quickly check.
+
+Type Control-b q 0 to move to the top left pane.
+
+You are now on the "kaboom" server. Become the `enterprisedb` user on here so you can easily connect to the database.
+
+```
+sudo -iu enterprisedb
+```
+
+You can now connect to the local database by running:
+
+```
+psql bdrdb
+```
+
+This goes directly to the local database instance on kaboom. Use `\dt` to view the available tables:
+
+```
+bdrdb=# \dt
+bdrdb=# \dt                      
+       List of relations         
+ Schema | Name | Type  | Owner    
+--------+------+-------+-------- 
+ public | ping | table | barman   
+(1 row)
+```
+
+Running `\d ping` will show that the DDL to create ping is on the kaboom server. 
+
+If you want to be double sure, exit the psql console and run:
+
+```
+psql -h kaftan bdrdb
+```
+
+Run `\dt` and `\d ping` and you will see the same results.
+
+Now exit the psql console on kaftan and log back into kaboom's server with `psql bdrdb`.
+
+## Setting up a monitor
+
+We want to monitor the activity of the ping table. Enter this SQL to display the 10 most recent entries:
+
+```
+select * from ping order by timestamp desc limit 10;
+```
+
+That will run once. To make it keep running use the `\watch` command in the shell which executes the last query at regular intervals. We want to see this updating every second so enter `\watch 1`.
+
+There's nothing there yet. Let's change that.
+
+## Creating pings
+
+Return to the barman host, kapok, by entering Control-b q 3.
+
+This session will still be logged into the database proxy. Exit it with Control-D.
+
+Our application is very simple. It will write a new ping, as quickly as it can, to the ping table after getting the node it is writing to and a timestamp for the ping.
+
+In the shell, enter (or copy and paste) this:
+
+```
+while true; do psql -h kaboom,kaftan,kaolin -p 6432 bdrdb -c "INSERT INTO ping(node, timestamp) select node_name, current_timestamp from bdr.local_node_summary;"; done
+```
+
+In a more readable form, that is:
+
+```
+while true; 
+    do psql -h kaftan,kaolin,kaboom -p 6432 bdrdb -c \
+        "INSERT INTO ping(node, timestamp) select node_name, current_timestamp from bdr.local_node_summary;"
+    done
+```
+
+In a constant loop, we call the psql command, telling it to connect to any of the three proxies as hosts, giving the proxy port and selecting the bdrdb database. We also pass a command which inserts two values into the ping table. One of the values comes  from `bdr.local_node_summary` which contains the name of the node we are actually connected to, the other value is the current time.
+
+Once the loop is running, new entries will appear in the table. You will see them in the top left pane where you set up the monitor.
+
+We can now move to testing failover.
+
+## Switching Leader
+
+For this part of the process we switch to another host, kaftan - which should be in the lower left corner. Type Control-b q 2 to switch focus to it. 
+
+Run:
+
+```
+sudo -iu enterprisedb
+```
+
+To gain appropriate privileges, specifically to run `pgd`, the PGD command line interface. This allows you to send a `switchover` command to the cluster group to change leader. Run this command:
+
+```
+pgd switchover --group-name dc1_subgroup --node-name kaolin
+```
+
+The group name value is based on the location given, way back in the quick start when you configured this cluster. Each location gets its own subgroup so it can be managed independently of other locations, or clusters. The node name is the host name for another data node in that subgroup.
+
+You will see one of two responses:
+
+```
+Error: "kaolin" is already a write leader
+```
+
+This means kaolin has already been elected leader so switching will have no effect. You do want to have an effect so you'll want to retry the switchover to another host substituting kaboom or kaftan as the node-name.
+
+The other response is 
+
+```
+switchover is complete
+```
+
+If you look in the top left pane, you'll see the inserts from our script switching and being written to the node you just switched to. You may also notice in the lower right pane an error as an inflight update is cancelled by the switch. The script then continues writing.
+
+## Losing a node
+
+Being able to switch leader is useful for planned maintenance; we tell the cluster to change configuration. What about when unexpected changes happen? We'll create that scenario now.
+
+In the lower left pane, set the leader back to kaolin.
+
+```
+pgd switchover --group-name dc1_subgroup --node-name kaolin
+```
+
+Then change focus to the top right pane with control-b q 1. This is the session on the kaolin host.
+
+Now turn off the Postgres server by running:
+
+```
+sudo systemctl stop postgres.service
+```
+
+In the top left pane, you'll see the monitored table switch from kaolin to another node as the cluster subgroup picks a new leader. The script in the lower right pane may show some errors as updates are cancelled but as soon as a new leader is elected, it starts routing traffic to that leader.
+
+## Finding the node's state
+
+Switch to the lower left pane with control-b q 2 and run:
+
+```
+pgd show-nodes
+```
+
+You will see something like:
+
+```
+Node   Node ID    Group        Type Current State Target State Status Seq ID                                                             
+----   -------    -----        ---- ------------- ------------ ------ ------                                                             
+kaboom 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up 3                                                                  
+kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up 2                                                                  
+kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Unreachable 1                                                                  
+```
+
+
+
+If we bring back the Postgres service on kaolin, by switching back to the top right pane with control-b q 1 and running:
+
+```
+sudo systemctl start postgres.service
+```
+
+Nothing will apparently change. Although the database service is back up and running, the cluster is not holding an election and so the leader remains in place. Switch to the lower left pane with control-b q 2 and run:
+
+```
+pgd show-nodes
+```
+
+and now you will see:
+
+```
+Node   Node ID    Group        Type Current State Target State Status Seq ID                                                                  
+----   -------    -----        ---- ------------- ------------ ------ ------                                                                  
+kaboom 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up     3
+                                                                       
+kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up     2
+                                                                       
+kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Up     1
+```
+
+With kaolin back in service, you can, if you wish, make it leader again by running:
+
+```
+pgd switchover --group-name dc1_subgroup --name-name kaolin
+```
+
+This would return kaolin to write lead and the application's updates would follow.
+
+## Proxy failover
+
+Proxies can also failover. To experience this, make sure you are still focussed on the lower left pane and run:
+
+```
+pgd show-proxies
+```
+
+You will see:
+
+```
+Proxy  Group        Listen Addresses Listen Port
+-----  -----        ---------------- -----------
+kaboom dc1_subgroup [0.0.0.0]        6432
+kaftan dc1_subgroup [0.0.0.0]        6432
+kaolin dc1_subgroup [0.0.0.0]        6432
+```
+
+Exit the enterprisedb user by tying `exit` and return to the admin/root shell. You can now stop the proxy service on this node by running:
+
+```
+sudo systemctl stop pgd-proxy.service
+```
+
+You should see a brief error appear in the lower right window as the script switches to another proxy. The write leader doesn't change though, so the switch of proxy is not reflected in the top left pane where the monitor query is running.
+
+Bring the proxy service on kaftan back by running:
+
+```
+sudo systemctl start pgd-proxy.service
+```
+
+## Other scenarios
+
+This example uses the quick start configuration of three data nodes and one backup node. You can configure a cluster to have two data nodes and a witness node which is less resilient to a node failing, or five data nodes which is much more resilient to a node failing. With this configuration you can explore how failover works for your applications. With clusters with multiple locations, the same basic rules apply; taking a server down elects a new write leader and that in turn is pointed to by proxies. 
+
+## Further reading
+
+* Read more about the management capabilities of [PGD cli](../cli/).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
