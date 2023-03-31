@@ -11,7 +11,7 @@ export const products = {
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
-  epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
+  pgd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
