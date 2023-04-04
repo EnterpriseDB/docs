@@ -152,6 +152,10 @@ const Page = () => (
               EDB Advanced Storage Pack
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              EDB Failover Slots
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_tuner">
               EDB Postgres Tuner
             </IndexCardLink>
