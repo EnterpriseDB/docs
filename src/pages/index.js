@@ -233,6 +233,9 @@ const Page = () => (
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
+            </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
               pglogical 2
