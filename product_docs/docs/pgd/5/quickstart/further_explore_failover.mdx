@@ -54,7 +54,10 @@ That means that when run, there will be four panes. The four panes will be conne
 
 ![4 SSH Sessions showing numbers](images/4sshsessions.png)
 
-To switch the focus between the panes, type control-b followed by q and the number of the pane you want to focus on. Use Control-b q 3 to move the focus to the bottom right pane.
+To switch the focus between the panes, you can use Control-b and the cursor keys to navigate between them.
+Or you can type control-b followed by q and the number of the pane you want to immediately focus on. We'll show both in here.
+
+Use Control-b cursor-down Control-b cursor-right (or Control-b q 3) to move the focus to the bottom right pane.
 
 This should be the kapok host. This is the server responsible for performing backups. We are going to use this as the base of operations for our "application". We can use barman's credentials to connect to the database servers and proxies:
 
@@ -70,12 +73,11 @@ The next step is to create the table our application will be writing to:
 ```
 drop table if exists ping cascade;
 CREATE TABLE ping (id SERIAL PRIMARY KEY, node TEXT, timestamp TEXT) ;
-select bdr.alter_sequence_set_kind('ping_id_seq', 'galloc');
 ```
 
-There's a few things to unpack here. We start by dropping the `ping` table. Next we recreate the 'ping' table with a id primary key and two text fields for a node and timestamp. The third line sets PGD's BDR sequence control for the ping_id field so that it will use a globally allocated range sequence ([galloc](sequences/#globally-allocated-range-sequences)) so id generation on the nodes does not collide. Our table is now ready, but let us quickly check.
+There's a few things to unpack here. We start by dropping the `ping` table. Next we recreate the 'ping' table with a id primary key and two text fields for a node and timestamp. Our table is now ready, but let us quickly check.
 
-Type Control-b q 0 to move to the top left pane.
+Type Control-b cursor-left Control-b cursor up (or Control-b q 0) to move to the top left pane.
 
 You are now on the "kaboom" server. Become the `enterprisedb` user on here so you can easily connect to the database.
 
@@ -115,15 +117,29 @@ Indexes:
     "ping_pkey" PRIMARY KEY, btree (id)
 ```
                                                          
-If you want to be sure, exit the psql console and run:
+If you want to be sure that this table is replicated, we can connect to another node in the cluster and look. The `\c` command in psql lets you connect to another server, so to connect to the kaftan node, run:
 
 ```shell
-psql -h kaftan bdrdb
+\c - - kaftan
 ```
 
-Run `\dt` and `\d ping` and you will see the same results on the kaftan node.
+You will see a login message similar to this:
 
-Now exit the psql console on kaftan and log back into kaboom's server with `psql bdrdb`.
+```console
+psql.bin (15.2.0 (Debian 15.2.0-2.buster), server 15.2.0 (Debian 15.2.0-2.buster)) SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off) 
+You are now connected to database "bdrdb" as user "enterprisedb" on host "kaftan" (address "10.33.25.233") at port "5444".
+bdrdb=#
+```
+
+Run `\dt` and `\d ping` and you will see the same results as the kaboom node on the kaftan node.
+
+Now run:
+
+```shell
+\c - - kaboom
+```
+
+To reconnect to the kaboom node.
 
 ## Setting up a monitor
 
@@ -133,13 +149,17 @@ We want to monitor the activity of the ping table. Enter this SQL to display the
 select * from ping order by timestamp desc limit 10;
 ```
 
-That will run once. To make it keep running use the `\watch` command in the shell which executes the last query at regular intervals. We want to see this updating every second so enter `\watch 1`.
+That will run once. To make it keep running use the `\watch` command in the shell which executes the last query at regular intervals. We want to see this updating every second so enter 
+
+```shell
+\watch 1
+```
 
 There's nothing there yet. Let's change that.
 
 ## Creating pings
 
-Return to the barman host, kapok, by entering Control-b q 3.
+Return to the barman host, kapok, by entering Control-b cursor-down Control-b cursor-right (or Control-b q 3).
 
 This session will still be logged into the database proxy. Exit it with Control-D.
 
@@ -168,7 +188,7 @@ We can now move to testing failover.
 
 ## Switching Leader
 
-For this part of the process we switch to another host, kaftan - which should be in the lower left corner. Type Control-b q 2 to switch focus to it. 
+For this part of the process we switch to another host, kaftan - which should be in the lower left corner. Type Control-b cursor-left (or Control-b q 2) to switch focus to it. 
 
 Run:
 
@@ -198,7 +218,13 @@ The other response is
 switchover is complete
 ```
 
-If you look in the top left pane, you'll see the inserts from our script switching and being written to the node you just switched to. You may also notice in the lower right pane an error as an inflight update is cancelled by the switch. The script then continues writing.
+If you look in the top left pane, you'll see the inserts from our script switching and being written to the node you just switched to. 
+
+!!!Info Observe the id number
+Notice that the id number is being generated is from a completely different range of values too. That's because the system transparently made the sequence generating the ID a global sequence. Read more about global sequences and how they work in [Sequences](sequences/).
+!!!
+
+You may also notice in the lower right pane an error as an inflight update is cancelled by the switch. The script then continues writing.
 
 
 ## Losing a node
@@ -211,7 +237,7 @@ In the lower left pane, set the leader to - or back to - kaolin.
 pgd switchover --group-name dc1_subgroup --node-name kaolin
 ```
 
-Then change focus to the top right pane with control-b q 1. This is the session on the kaolin host.
+Then change focus to the top right pane with Control-b cursor-up Control-b cursor-right (or Control-b q 1). This is the session on the kaolin host.
 
 Now turn off the Postgres server by running:
 
@@ -223,7 +249,7 @@ In the top left pane, you'll see the monitored table switch from kaolin to anoth
 
 ## Finding the node's state
 
-Switch to the lower left pane with control-b q 2 and run:
+Switch to the lower left pane with Control-b cursor-down Control-b cursor-left (or Control-b q 2) and run:
 
 ```shell
 pgd show-nodes
@@ -241,13 +267,13 @@ kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Unreachable 1
 
 
 
-If we bring back the Postgres service on kaolin, by switching back to the top right pane with control-b q 1 and running:
+If we bring back the Postgres service on kaolin, by switching back to the top right pane with Control-b cursor-up Control-b cursor-right (or Control-b q 1) and running:
 
 ```shell
 sudo systemctl start postgres.service
 ```
 
-Nothing will apparently change. Although the database service is back up and running, the cluster is not holding an election and so the leader remains in place. Switch to the lower left pane with control-b q 2 and run:
+Nothing will apparently change. Although the database service is back up and running, the cluster is not holding an election and so the leader remains in place. Switch to the lower left pane with Control-b cursor-down Control-b cursor-left (or Control-b q 2) and run:
 
 ```shell
 pgd show-nodes
