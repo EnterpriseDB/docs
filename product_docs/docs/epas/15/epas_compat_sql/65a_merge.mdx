@@ -11,12 +11,14 @@ title: "MERGE"
 ```sql
 MERGE INTO target_table_name [ target_alias ]
 USING data_source [ source_alias ] ON ( join_condition )
--- merge_update_clause
+merge_update_clause merge_insert_clause
+
+-- where merge_update_clause is
 WHEN MATCHED THEN 
    UPDATE SET column = value, ... [ WHERE where_condition ]
-   [ DELETE [ WHERE where_condition ] ]
+   [ DELETE WHERE where_condition ]
 
--- merge_insert_clause
+-- and merge_insert_clause is
 WHEN NOT MATCHED THEN 
    INSERT [(col_list)] VALUES (val_list) [ WHERE where_condition ] 
 ```
@@ -25,7 +27,7 @@ WHEN NOT MATCHED THEN
 
 `MERGE` allows you to select rows from one or more sources for update or insertion into a table. You specify the join condition to determine whether to update or insert into the target table. You specify conditional UPDATE and INSERT statements using the WHERE clause in the MERGE statement.
 
-It allows you to combine multiple operations and avoid multiple INSERT, UPDATE, and DELETE DML statements.
+`MERGE` provides a single SQL statement that can conditionally INSERT, UPDATE, or DELETE rows, a task which would otherwise require multiple procedural language statements.
 
 For more information, see [MERGE statement](https://www.postgresql.org/docs/current/sql-merge.html).
 
@@ -99,56 +101,40 @@ INSERT INTO source VALUES (5, 300);
 INSERT INTO source VALUES (6, 600);
 ```
 
-This example shows how to use the WHERE condition for conditional UPDATE and INSERT statements in the MERGE statement:
+This example shows how to UPDATE and INSERT rows on the target table using the MERGE statement:
 
 ```sql
-BEGIN;
+MERGE INTO target t
+USING source s
+ON (t.tid = s.sid)
+WHEN MATCHED THEN
+    UPDATE SET balance = s.delta
+WHEN NOT MATCHED THEN
+    INSERT VALUES (s.sid, s.delta);
+```
+
+This example shows how to UPDATE, INSERT, and conditionally DELETE rows on the target table using MERGE statement:
+
+```sql
+MERGE INTO target t
+USING source s
+ON (t.tid = s.sid)
+WHEN MATCHED THEN
+    UPDATE SET t.balance = t.balance + 100
+    DELETE WHERE sid = 1
+WHEN NOT MATCHED THEN
+    INSERT VALUES (s.sid, s.delta);
+```
+
+This example shows how to UPDATE, INSERT, and DELETE rows on the target table conditionally using the MERGE statement:
+
+```sql
 MERGE INTO target t
 USING source s
 ON (t.tid = s.sid)
 WHEN MATCHED THEN
     UPDATE SET balance = s.delta WHERE balance = 0
+    DELETE WHERE sid = 1
 WHEN NOT MATCHED THEN
     INSERT VALUES (s.sid, s.delta) WHERE s.sid >= 5;
-```
-
-This example shows how to use PostgreSQL style UPDATE and conditional INSERT in the MERGE statement:
-
-```sql
-BEGIN;
-MERGE INTO target t
-USING source s
-ON (t.tid = s.sid)
-WHEN MATCHED AND balance > 0 THEN
-    UPDATE SET balance = s.delta
-WHEN NOT MATCHED THEN
-    INSERT VALUES (s.sid, s.delta) WHERE s.sid >= 5;
-```
-
-This example shows how to use conditional UPDATE and PostgreSQL style UPDATE in the MERGE statement:
-
-```sql
-BEGIN;
-MERGE INTO target t
-USING source s
-ON (t.tid = s.sid)
-WHEN MATCHED THEN
-    UPDATE SET balance = s.delta WHERE balance > 0
-WHEN NOT MATCHED AND s.sid >= 5 THEN
-    INSERT VALUES (s.sid, s.delta);
-```
-
-This example shows how to use the WHERE condition for UPDATE and DELETE statements, and also WHEN MATCHED THEN DELETE:
-
-```sql
-MERGE INTO target t
-USING source s
-ON (t.tid = s.sid)
-WHEN MATCHED THEN
-    UPDATE SET t.balance = t.balance + 100 WHERE t.balance = 20
-    DELETE WHERE t.balance = 30
-WHEN NOT MATCHED THEN
-    INSERT VALUES (s.sid, s.delta)
-WHEN MATCHED THEN
-   DELETE;
 ```
