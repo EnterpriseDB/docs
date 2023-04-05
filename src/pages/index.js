@@ -152,6 +152,10 @@ const Page = () => (
               EDB Advanced Storage Pack
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              EDB Failover Slots
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_tuner">
               EDB Postgres Tuner
             </IndexCardLink>
@@ -228,6 +232,9 @@ const Page = () => (
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
@@ -345,6 +352,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
