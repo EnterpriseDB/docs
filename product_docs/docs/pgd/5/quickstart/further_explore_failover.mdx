@@ -163,7 +163,13 @@ There's nothing there yet. Let's change that.
 
 Return to the barman host, kapok, by entering Control-b cursor-down Control-b cursor-right (or Control-b q 3).
 
-This session will still be logged into the database proxy. Exit it with Control-D.
+This session should still be logged into the psql session. As we want to run a shell script we need to exit psql, so press Control-d.
+
+You will now get to the shell and your prompt should read:
+
+`barman@kapok:~$`
+
+If it says `admin@kapok` or `root@kapok` run `sudo -iu barman` to become the barman user again.
 
 Our application is very simple. It will write a new ping, as quickly as it can, to the ping table after getting the node it is writing to and a timestamp for the ping.
 
@@ -188,7 +194,7 @@ Once the loop is running, new entries will appear in the table. You will see the
 
 We can now move to testing failover.
 
-## Switching Leader
+## Displaying the write leader
 
 For this part of the process we switch to another host, kaftan - which should be in the lower left corner. Type Control-b cursor-left (or Control-b q 2) to switch focus to it. 
 
@@ -198,23 +204,43 @@ Run:
 sudo -iu enterprisedb
 ```
 
-To gain appropriate privileges, specifically to run `pgd`, the PGD command line interface. This allows you to send a `switchover` command to the cluster group to change leader. Run this command:
+To gain appropriate privileges, specifically to run `pgd`, the PGD command line interface. 
+
+You now want to see the state of the cluster. Run:
+
+```shell
+pgd show-groups
+```
+
+And you'll see output like this:
+
+```console
+Group        Group ID   Type   Parent Group Location Raft Routing Write Leader
+-----        --------   ----   ------------ -------- ---- ------- ------------
+democluster  1935823863 global                       true false
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom
+```
+
+There are two groups, the global group `democluster` which includes all the subgroups and the `dc1_subgroup` which is the data cluster we are working with right now. That group name value is derived from the location given, way back in the quick start when you configured this cluster. Each location gets its own subgroup so it can be managed independently of other locations, or clusters.
+
+If you skip to the right of the table, you can see that the current write leader for the group, the server where all the proxies send their updates, is kaboom.
+
+Let's change that. You can send a `switchover` command to the cluster group to change leader. Run this command:
 
 ```shell
 pgd switchover --group-name dc1_subgroup --node-name kaolin
 ```
+The node name is the host name for another data node in our dc1_subgroup group.
 
-The group name value is based on the location given, way back in the quick start when you configured this cluster. Each location gets its own subgroup so it can be managed independently of other locations, or clusters. The node name is the host name for another data node in that subgroup.
-
-You will see one of two responses:
+You will see one of two responses. If, when you ran show-groups command, it showed kaolin as the write leader, you'll see:
 
 ```console
 Error: "kaolin" is already a write leader
 ```
 
-This means kaolin has already been elected leader so switching will have no effect. You do want to have an effect so you'll want to retry the switchover to another host substituting kaboom or kaftan as the node-name.
+This means kaolin was already been elected write leader so switching will have no effect. For this exercise, you do want to have an effect so you'll want to retry the switchover to another host substituting kaboom or kaftan as the node-name.
 
-The other response is 
+Selecting a host that wasn't the current write leader means that you'll see the other response: 
 
 ```console
 switchover is complete
@@ -249,7 +275,7 @@ sudo systemctl stop postgres.service
 
 In the top left pane, you'll see the monitored table switch from kaolin to another node as the cluster subgroup picks a new leader. The script in the lower right pane may show some errors as updates are cancelled but as soon as a new leader is elected, it starts routing traffic to that leader.
 
-## Finding the node's state
+## Showing node states
 
 Switch to the lower left pane with Control-b cursor-down Control-b cursor-left (or Control-b q 2) and run:
 
@@ -267,9 +293,42 @@ kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up          2
 kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Unreachable 1 
 ```
 
+The kaolin node it down and updates are going to a different write leader.
 
 
-If we bring back the Postgres service on kaolin, by switching back to the top right pane with Control-b cursor-up Control-b cursor-right (or Control-b q 1) and running:
+## Monitoring lag
+
+While kaolin is down, the logical replication at the heart of PGD is tracking how far out of sync kaolin is with the cluster.  To see that for yourself, run:
+
+```shell
+psql bdrdb -c "select * from bdr.node_replication_rates;"
+```
+
+This will display the current replication rates between servers.
+
+```console
+ peer_node_id | target_name | sent_lsn  | replay_lsn |   replay_lag    | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interval
+--------------+-------------+-----------+------------+-----------------+------------------+-----------------+------------+------------------
+   2710197610 | kaboom      | 0/769F650 | 0/769F650  | 00:00:00        |                0 | 0 bytes         |       1861 | 00:00:00
+              | kaolin      | 0/7656648 | 0/7656648  | 00:03:07.252266 |           299016 | 292 kB          |            | 
+(2 rows)
+ ```
+
+Looking at this output we can see kaolin has a three minute replay lag and around 292kB of data to catch up on if it came back now. The longer kaolin is down, the larger the replay lag will get. If you rerun the monitoring command you'll see the numbers will have gone up.
+
+```console
+ peer_node_id | target_name | sent_lsn  | replay_lsn |   replay_lag    | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interval
+--------------+-------------+-----------+------------+-----------------+------------------+-----------------+------------+------------------
+   2710197610 | kaboom      | 0/76B1D28 | 0/76B1D28  | 00:00:00        |                0 | 0 bytes         |       1743 | 00:00:00
+              | kaolin      | 0/7656648 | 0/7656648  | 00:03:53.045704 |           374496 | 366 kB          |            |
+(2 rows)
+```
+
+Another 46 seconds have passed and the lag has grown by 74kB. Let's bring back the node and see how the system recovers.
+
+## Restarting a node
+
+You can bring back the Postgres service on kaolin by switching back to the top right pane with Control-b cursor-up Control-b cursor-right (or Control-b q 1) and running:
 
 ```shell
 sudo systemctl start postgres.service
@@ -291,13 +350,33 @@ kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up     2
 kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Up     1
 ```
 
-With kaolin back in service, you can, if you wish, make it leader again by running:
+As soon as kaolin is back in the cluster, it begins synchronizing with the cluster. It does that by catching up on that replay data. Run:
+
+```shell
+psql bdrdb -c "select * from bdr.node_replication_rates;"
+```
+
+And the output will look like this:
+
+```plain
+ peer_node_id | target_name | sent_lsn  | replay_lsn | replay_lag | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interval
+--------------+-------------+-----------+------------+------------+------------------+-----------------+------------+------------------
+   2710197610 | kaboom      | 0/8092938 | 0/8092938  | 00:00:00   |                0 | 0 bytes         |       2321 | 00:00:00
+   2111777360 | kaolin      | 0/8092938 | 0/8092938  | 00:00:00   |                0 | 0 bytes         |     337426 | 00:00:00
+(2 rows)
+```
+
+As you can see, there's no replay lag now, as kaolin has completely caught up automatically.
+
+With kaolin fully back in service, you can leave everything as it is. There is no need to change which server is write leader and the failover mechanism is always ready to bring another server up to write leader when needed.
+
+You can, if you wish, make kaolin leader again by running:
 
 ```shell
 pgd switchover --group-name dc1_subgroup --node-name kaolin
 ```
 
-This would return kaolin to write lead and the application's updates would follow.
+This returns kaolin to write lead. The application's updates would follow as the proxies track the write leader.
 
 ## Proxy failover
 
@@ -338,6 +417,7 @@ This example uses the quick start configuration of three data nodes and one back
 ## Further reading
 
 * Read more about the management capabilities of [PGD cli](../cli/).
+* Learn more about [monitoring replication using SQL](../monitoring/sql/#monitoring-replication-peers).
 
 
 
