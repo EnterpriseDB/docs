@@ -55,21 +55,21 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/pgd/latest/">
-                    EDB Postgres Distributed <br />
-                    Version 5
+                  <Link className="homepage-headling-link" to="/pem/latest/">
+                    Postgres Enterprise Manager (PEM)
                   </Link>
                 </h3>
                 <p>
-                  EDB Postgres Distributed 5.0 uniquely solves the problem of
-                  planned downtime and unplanned outages for enterprises running
-                  business-critical applications.
+                  See the newly expanded content describing how to manage the
+                  self-signed SSL certificates PEM uses for secure connections
+                  to the Apache httpd server and between the database server and
+                  PEM agents.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/pgd/latest/rel_notes/pgd_5.0.0_rel_notes/"
+                      to="/pem/latest/certificates/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -88,19 +88,26 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/tde/latest">
-                    New security feature
+                  <Link
+                    className="homepage-headling-link"
+                    to="/pg_extensions/pg_failover_slots/"
+                  >
+                    New PG Failover Slots extension
                   </Link>
                 </h3>
                 <p>
-                  Transparent Data Encryption (TDE) extends Postgres with robust
-                  security and performance capabilities for enterprises. TDE
-                  significantly hardens data security and mitigates risks for
-                  large enterprises.
+                  If you have logical replication publications on Postgres
+                  databases that are also part of a streaming replication
+                  architecture, PG Failover Slots avoids the need for you to
+                  reseed your logical replication tables when a new standby gets
+                  promoted to primary.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/tde/latest">
+                    <Link
+                      className="btn-sm ml-2"
+                      to="/pg_extensions/pg_failover_slots/"
+                    >
                       Find out more &rarr;
                     </Link>
                   </p>
