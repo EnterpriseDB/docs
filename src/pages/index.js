@@ -153,7 +153,7 @@ const Page = () => (
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/pg_failover_slots">
-              EDB Failover Slots
+              PG Failover Slots
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/pg_tuner">
