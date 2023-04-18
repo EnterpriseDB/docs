@@ -96,11 +96,10 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
-                  If you have logical replication publications on Postgres
-                  databases that are also part of a streaming replication
-                  architecture, PG Failover Slots avoids the need for you to
-                  reseed your logical replication tables when a new standby gets
-                  promoted to primary.
+                  Learn how you can avoid the need to reseed logical replication 
+                  tables when a new standby gets promoted to primary by using 
+                  the PG Failover slots extension in your streaming replication 
+                  architecture.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
