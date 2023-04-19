@@ -55,7 +55,7 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/pem/latest/">
+                  <Link className="homepage-headling-link" to="/pem/latest/certificates">
                     Postgres Enterprise Manager (PEM)
                   </Link>
                 </h3>
