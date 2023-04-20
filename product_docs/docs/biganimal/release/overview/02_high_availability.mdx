@@ -7,7 +7,7 @@ redirects:
 BigAnimal supports three cluster types: 
 - Single node
 - Standard high availability
-- Extreme high availability (beta)
+- Extreme high availability (Preview)
 
 You choose the type of cluster you want on the [Create Cluster](https://portal.biganimal.com/create-cluster) page in the [BigAnimal](https://portal.biganimal.com) portal.  
 
@@ -17,8 +17,7 @@ Postgres distribution and version support varies by cluster type.
 | --------------------- | ---------------- | ------------------------------ |
 | PostgreSQL            | 11–15            | Single node, high availability |
 | Oracle Compatible     | 11–15            | Single node, high availability |
-| Oracle Compatible     | 12–14            | Extreme high availability      |
-| PostgreSQL Compatible | 12-14            | Extreme high availability      |
+| Oracle Compatible     | 14–15            | Extreme high availability      |
 
 ## Single node
 
@@ -32,7 +31,7 @@ In case of unrecoverable failure of the primary, a restore from a backup is requ
 
 The high availability option is provided to minimize downtime in cases of failures. High-availability clusters&mdash;one *primary* and one or two *standby replicas*&mdash;are configured automatically, with standby replicas staying up to date through physical streaming replication. 
 
-If read-only workloads are enabled, then standby replicas serve the read-only workoads. In a two-node cluster, the single standby replica serves read-only workloads. In a three-node cluster, both standby replicas serve read-only workloads. The connections are made to the two standby replicas randomly and on a per-connection basis. 
+If read-only workloads are enabled, then standby replicas serve the read-only workloads. In a two-node cluster, the single standby replica serves read-only workloads. In a three-node cluster, both standby replicas serve read-only workloads. The connections are made to the two standby replicas randomly and on a per-connection basis. 
 
 In cloud regions with availability zones, clusters are provisioned across zones to provide fault tolerance in the face of a datacenter failure.
 
@@ -54,15 +53,31 @@ To ensure write availability, BigAnimal disables synchronous replication during 
 
 Since BigAnimal replicates to only one node synchronously, some standby replicas in three-node clusters might experience replication lag. Also, if you override the BigAnimal synchronous replication configuration, then the standby replicas are inconsistent. 
 
+## Extreme high availability (Preview)
 
-## Extreme high availability (beta)
+For use cases where high availability across regions is a major concern, a cluster deployment with extreme high availability enabled can provide two data group with three data nodes each, plus a witness group, for a true active-active solution. Extreme-high-availability clusters offer the ability to deploy a cluster across multiple regions or a single region. Extreme-high-availability clusters are powered by [EDB Postgres Distributed](/pgd/latest/) using multi-master logical replication.
 
-Extreme-high-availability clusters are powered by EDB Postgres Distributed, a logical replication platform that delivers more advanced cluster management compared to a physical replication-based system. 
+Extreme-high-availability clusters are only Oracle compatible. 
 
-You can deploy extreme-high-availability clusters with either PostgreSQL or Oracle compatibility. 
+Extreme-high-availability clusters are configured according to *data groups*. EDB Postgres Distributed (PGD) clusters create a PGD global group, which contains one or two data groups. Your data groups can be made up of a combination of data nodes and witness nodes. One of these data nodes is the leader at any given time, while the rest are shadow nodes. 
 
-Extreme-high-availability clusters deploy four data-hosting BDR nodes across two availability zones (A and B in the diagram). One of these nodes is the leader at any given time (A.1 in the diagram). The rest are typically referred to as *shadow* nodes. At any time, the HARP router can promote any shadow node to leadership. The third availability zone (C) contains one node called the *witness*. This node doesn't host data. It exists only for management purposes, to support operations that require consensus in case of an availability-zone failure.
+The witness node/witness group doesn't host data but exists for management purposes, supporting operations that require a consensus, for example, in case of an availability zone failure. 
 
-The EDB Postgres Distributed router (HARP) routes all application traffic to the leader node, which acts as the principal write target to reduce the potential for data conflicts. HARP leverages a distributed consensus model to determine availability of the BDR nodes in the cluster. On failure or unavailability of the leader, HARP elects a new leader and redirects application traffic. Together with the core capabilities of BDR, this mechanism of routing application traffic to the leader node enables fast failover and switchover without risk of data loss. 
+The following are the possible node configurations for one data group:
 
-![BigAnimal Cluster4](images/Extreme-HA-Diagram-2x.png)
+- 2 data nodes + 1 local witness node
+   ![2 data + 1 local witness](images/SingleDataGroup-1.png)
+- 3 data nodes
+   ![3 data nodes](images/SingleDataGroup-2.png)
+
+If you're looking for a true active-active solution that protects against regional failures, select a two-data-group configuration. The following are the possible configurations for two data groups:
+
+- 3 data nodes + 3 data nodes, 1 witness group in a different region 
+   ![3 data nodes + 3 data nodes, 1 witness group in a different region ](images/2DataGroups-1.png)
+
+- 2 data nodes + 1 witness node, 2 data nodes + 1 witness node, and 1 witness group in a different region
+   ![2 data nodes + 1 witness node, 2 data nodes + 1 witness node, and 1 witness group in a different region](images/2DataGroups-2.png)
+
+For instructions on creating an extreme-high-availability cluster, see [Creating an extreme-high-availability cluster](../getting_started/creating_a_cluster/creating_an_eha_cluster).
+
+If you want to restore an extreme-high-availability cluster, you can restore only one data group at a time. If you want to restore the second data group to the same cluster, you need to manually enter its details. For instructions, see [Perform an extreme-high-availability cluster restore](../using_cluster/04_backup_and_restore/#perform-an-extreme-high-availability-cluster-restore).
