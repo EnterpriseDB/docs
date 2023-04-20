@@ -1,0 +1,56 @@
+---
+title: Configuring PG Failover Slots
+navTitle: Configuring
+---
+
+You must add the extension to `shared_preload_libraries` on both the primary instance as well as any standby that's used for high availability (failover or switchover) purposes.
+
+You can configure the behavior of PG Failover Slots using the following configuration options in `postgresql.conf`. The configuration options have the prefix `pg_failover_slots.`, for example, `pg_failover_slots.synchronize_slot_names`.
+
+## synchronize_slot_names
+Option that allows you to set the logical slots to synchronize to this physical standby. 
+
+Select slots to synchronize by using a slot filter. These slot filters can match a specifically named slot, slots with names matching an SQL LIKE expression, or the name of a plugin that a slot is using. Define slot filters as a `key:value` pair, where the key can be one of:
+
+* `name` &mdash; Match an exact slot name, for example, `name:my_slot`.
+* `name_like` &mdash; Match any slot name that matches an SQL LIKE expressions, for example, `name_like:change_%`.
+* `plugin` &mdash; Match any slot using a named plugin, for example, `plugin:test_decoding`.
+
+Where you don't specify a key, the system defaults to interpreting it as a `name`. So `my_slot` is equivalent to `name:my_slot`.
+
+You can combine slot filters in a comma-separated string value. Setting `my_slot,name_like:change_%,plugin:test_decoding` synchronizes the slot named `my_slot`, any slot whose name began with `change_`, and any slot that used the `test_decoding` plugin.
+
+If `pg_failover_slots.synchronize_slot_names` is set to an empty string, no slots are synchronized.
+
+The default value for `pg_failover_slots.synchronize_slot_names` is `name_like:%`, which matches all logical replication slots and synchronizes all slots.
+
+## drop_extra_slots
+Controls what happens to extra slots on the standby that aren't found on the primary using the `pg_failover_slots.synchronize_slot_names` filter. When set to `true` (the default), they are dropped. Otherwise, they're retained.
+
+## primary_dsn
+Specifies the connection string to use to connect to the primary when fetching slot information.
+
+If empty (the default), then it uses the same connection string as `primary_conninfo`.
+
+!!!Note 
+   You can't use `primary_conninfo` if there's a password field in the connection string. The password gets obfuscated by PostgreSQL, and PG Failover Slots can't actually see the password. In this case, you must configure `pg_failover_slots.primary_dsn`.
+
+## standby_slot_names
+Ensures that the failover-candidate streaming physical replicas received and flushed all changes before they ever become visible to any subscribers. This option guarantees that a commit can't vanish on failover to a standby for the consumer of a logical slot.
+
+Replication slots whose names are included in the comma-separated `pg_failover_slots.standby_slot_names` list are treated specially by the walsender on the primary.
+
+Logical replication walsenders ensure that all local changes are sent and flushed to the replication slots in `pg_failover_slots.standby_slot_names` before the walsender sends those changes for the logical replication slots. Effectively, it provides a synchronous replication barrier between the named list of slots and all the consumers of logically decoded streams from walsender.
+
+You can list any replication slot in `pg_failover_slots.standby_slot_names`. Both logical and physical slots work, but it's generally used for physical slots.
+
+Without this safeguard, two anomalies are possible where a commit can be received by a subscriber and then vanish from the provider on failover because the failover candidate didn't received it yet:
+
+- For one or more subscribers, the subscriber might have applied the change, but the new provider might execute new transactions that conflict with the received change, as it never happened as far as the provider is concerned.
+
+- For two or more subscribers, at the time of failover, not all subscribers applied the change. The subscribers now have inconsistent and irreconcilable states because the subscribers that didn't receive the commit have no way to get it now.
+
+Setting `pg_failover_slots.standby_slot_names` causes subscribers to lag behind the provider if the provider's failover-candidate replicas aren't keeping up, by design. Monitoring is thus essential.
+
+## standby_slots_min_confirmed
+Controls how many of the `pg_failover_slots.standby_slot_names` have to confirm before data is sent through the logical replication slots. Setting `-1` (the default) specifies to wait for all entries in `pg_failover_slots.standby_slot_names`.

@@ -35,7 +35,7 @@ You can use both of these approaches in a rolling manner.
 ### Rolling upgrade considerations
 
 While the cluster is going through a rolling upgrade, mixed versions of software
-are running in the cluster. For example, suppose nodeA has BDR 3.7.16, while
+are running in the cluster. For example, suppose nodeA has PGD 3.7.16, while
 nodeB and nodeC has 4.1.0. In this state, the replication and group
 management uses the protocol and features from the oldest version (3.7.16
 in this example), so any new features provided by the newer version
@@ -43,12 +43,12 @@ that require changes in the protocol are disabled. Once all nodes are
 upgraded to the same version, the new features are enabled.
 
 Similarly, when a cluster with WAL-decoder-enabled nodes is going through a
-rolling upgrade, WAL decoder on a higher version of BDR node produces LCRs
-with a higher pglogical version. WAL decoder on a lower version of a BDR node
-produces LCRs with a lower pglogical version. As a result, WAL senders on a higher
-version of BDR nodes aren't expected to use LCRs due to a mismatch in protocol
-versions. On a lower version of BDR nodes, WAL senders can continue to use
-LCRs. Once all the BDR nodes are on the same BDR version, WAL senders use
+rolling upgrade, WAL decoder on a higher version of PGD node produces LCRs
+with a higher pglogical version. WAL decoder on a lower version of PGD node
+produces LCRs with lower pglogical version. As a result, WAL senders on a higher
+version of PGD nodes are not expected to use LCRs due to a mismatch in protocol
+versions. On a lower version of PGD nodes, WAL senders may continue to use
+LCRs. Once all the PGD nodes are on the same PGD version, WAL senders use
 LCRs.
 
 A rolling upgrade starts with a cluster with all nodes at a prior release.
@@ -98,13 +98,12 @@ newer and same release of Postgres. This is especially true for any
 new DDL syntax that was added to a newer release of Postgres.
 
 !!! Note
-    `bdr_init_physical` makes a byte-by-byte of the source node
+    `bdr_init_physical` makes a byte-by-byte copy of the source node
     so you can't use it while upgrading from one major Postgres version
     to another. In fact, currently `bdr_init_physical` requires that even the
-    BDR version of the source and the joining node be exactly the same.
-    You can't use it for rolling upgrades by way of joining a new node method. Instead, use a logical join.
 
-<!--Is this meant to say "byte-by-byte copy"? It looks like there's a missing word. -->
+    PGD version of the source and the joining node be exactly the same.
+    You can't be use it for rolling upgrades by way of joining a new node method. Instead, use a logical join.
 
 ### Upgrading a CAMO-enabled cluster
 
@@ -112,11 +111,33 @@ Upgrading a CAMO-enabled cluster requires upgrading CAMO groups one by one while
 disabling the CAMO protection for the group being upgraded and reconfiguring it
 using the new [commit scope](../durability/commit-scopes)-based settings.
 
+The following approach is recommended for upgrade two BDR nodes, that
+constitute a CAMO pair, to PGD 5.0:
+
+- Ensure `bdr.enable_camo` remains `off` for transactions on any of
+  the two nodes or redirect clients away from the two nodes. Removing
+  the CAMO pairing while attempting to use CAMO will lead to errors
+  and prevent further transactions.
+- Uncouple the pair by deconfiguring CAMO either by resetting
+  `bdr.camo_origin_for` and `bdr.camo_parter_of` (when upgrading from
+  BDR 3.7.x) or by using `bdr.remove_camo_pair` (on BDR 4.x).
+- Upgrade the two nodes to PGD 5.0
+- Create a dedicated node group for the two nodes and move them into
+  that node group.
+- Create a [Commit Scope](../durability/commit-scopes) for this node
+  group and thus the pair of nodes to use CAMO.
+- Reactivate CAMO protection again by either setting a
+  `default_commit_scope` or by changing the clients to explicitly set
+  `bdr.commit_scope` (instead of `bdr.enable_camo`) for their sessions
+  or transactions.
+- If necessary, allow clients to connect to the CAMO protected nodes,
+  again.
+
 ## Upgrade preparation
 
 Each major release of the software contains several changes that might affect
 compatibility with previous releases. These might affect the Postgres
-configuration, deployment scripts, as well as applications using BDR. We
+configuration, deployment scripts, as well as applications using PGD. We
 recommend considering these changes and making any needed adjustments in advance of the upgrade.
 
 See individual changes mentioned in the [release notes](../rel_notes/) and any version-specific upgrade notes.
@@ -176,8 +197,8 @@ which you can use to do [in-place Postgres major version upgrades](bdr_pg_upgrad
 
 ## Upgrade check and validation
 
-After you upgrade your BDR node, you can verify the current
-version of the BDR4 binary like this:
+After you upgrade your PGD node, you can verify the current
+version of BDR binary like this:
 
 ```sql
 SELECT bdr.bdr_version();

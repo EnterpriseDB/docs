@@ -55,21 +55,21 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/pgd/latest/">
-                    EDB Postgres Distributed <br />
-                    Version 5
+                  <Link className="homepage-headling-link" to="/pem/latest/certificates">
+                    Postgres Enterprise Manager (PEM)
                   </Link>
                 </h3>
                 <p>
-                  EDB Postgres Distributed 5.0 uniquely solves the problem of
-                  planned downtime and unplanned outages for enterprises running
-                  business-critical applications.
+                  See the newly expanded content describing how to manage the
+                  self-signed SSL certificates PEM uses for secure connections
+                  to the Apache httpd server and between the database server and
+                  PEM agents.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/pgd/latest/rel_notes/pgd_5.0.0_rel_notes/"
+                      to="/pem/latest/certificates/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -88,19 +88,25 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/tde/latest">
-                    New security feature
+                  <Link
+                    className="homepage-headling-link"
+                    to="/pg_extensions/pg_failover_slots/"
+                  >
+                    New PG Failover Slots extension
                   </Link>
                 </h3>
                 <p>
-                  Transparent Data Encryption (TDE) extends Postgres with robust
-                  security and performance capabilities for enterprises. TDE
-                  significantly hardens data security and mitigates risks for
-                  large enterprises.
+                  Learn how you can avoid the need to reseed logical replication 
+                  tables when a new standby gets promoted to primary by using 
+                  the PG Failover slots extension in your streaming replication 
+                  architecture.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/tde/latest">
+                    <Link
+                      className="btn-sm ml-2"
+                      to="/pg_extensions/pg_failover_slots/"
+                    >
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -150,6 +156,10 @@ const Page = () => (
 
             <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
               EDB Advanced Storage Pack
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              PG Failover Slots
             </IndexCardLink>
 
             <IndexCardLink to="/pg_extensions/pg_tuner">
@@ -228,6 +238,9 @@ const Page = () => (
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
@@ -345,6 +358,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
