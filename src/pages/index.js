@@ -55,21 +55,24 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/pem/latest/certificates">
-                    Postgres Enterprise Manager (PEM)
+                  <Link
+                    className="homepage-headling-link"
+                    to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
+                  >
+                    Multi-region extreme high availability in preview in
+                    BigAnimal
                   </Link>
                 </h3>
                 <p>
-                  See the newly expanded content describing how to manage the
-                  self-signed SSL certificates PEM uses for secure connections
-                  to the Apache httpd server and between the database server and
-                  PEM agents.
+                  You can now create multi-writer clusters that span BigAnimal
+                  regions to maximize availability, performance, and resiliency
+                  to zonal or regional failures.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/pem/latest/certificates/"
+                      to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
                     >
                       Find out more &rarr;
                     </Link>
@@ -96,9 +99,9 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
-                  Learn how you can avoid the need to reseed logical replication 
-                  tables when a new standby gets promoted to primary by using 
-                  the PG Failover slots extension in your streaming replication 
+                  Learn how you can avoid the need to reseed logical replication
+                  tables when a new standby gets promoted to primary by using
+                  the PG Failover slots extension in your streaming replication
                   architecture.
                 </p>
                 <div className="d-flex align-items-center">
