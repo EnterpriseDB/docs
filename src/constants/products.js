@@ -12,6 +12,7 @@ export const products = {
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
   pgd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
+  pge: { name: "EDB Postgres Extended Server", iconName: IconNames.POSTGRESQL },
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
@@ -33,11 +34,11 @@ export const products = {
     iconName: IconNames.EDB_MIGRATION_TOOLKIT,
   },
   mongo_data_adapter: {
-    name: "Mongo Data Adapter",
+    name: "Mongo Foreign Data Wrapper",
     iconName: IconNames.CONNECT,
   },
   mysql_data_adapter: {
-    name: "MySQL Data Adapter",
+    name: "MySQL Foreign Data Wrapper",
     iconName: IconNames.CONNECT,
   },
   net_connector: { name: ".NET Connector", iconName: IconNames.CONNECT },
