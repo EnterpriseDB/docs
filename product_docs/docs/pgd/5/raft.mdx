@@ -1,0 +1,183 @@
+---
+title: Raft and Raft subgroups
+---
+
+## PGD and Raft
+
+PGD is based on a global Raft model where clusters have a single Raft group spanning all the data nodes in the PGD cluster. A Raft leader is elected by the cluster and propagates the state of the cluster to all the other nodes in the cluster. 
+
+!!! Note
+Raft is an industry accepted algorithm for making decisions though achieving “consensus” from a group of separate nodes within a distributed system. 
+!!!
+
+It is essential for certain operations in the cluster that the Raft leader – such as adding and removing nodes and allocating ranges for [galloc](sequences/#pdg-global-sequences) sequences – is both established and maintained. 
+
+To do this requires that the majority of the nodes in the cluster be reachable by any potential Raft leader node.
+
+It also means that one half of the nodes in the cluster, plus one additional node must be able to reach each other. So, in a global cluster with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
+
+Having established a Raft leader, the cluster can then go on to select write leaders, the database node to which all write traffic is automatically dispatched to through the pgd proxies, in each location. This too requires that the global Raft group be able to achieve consensus to select the write leader in each location, and in turn inform the pgd-proxy instances to direct their updates to that node. 
+
+If the write leader in a location goes out of service, as part of the failover process all the remaining nodes will elect a new write leader for that location and the pgd proxies for that location will forward traffic to the new write leader. 
+
+This is a simple and effective technique, which happily manages the appearance and disappearance of nodes. But there are situations where it is possible to lose the ability to failover from one node to another while the location itself is healthy.
+
+## Quorum failure
+
+In this scenario, there are two locations each with datacenters with the same number of nodes in them. PGD would bring all the nodes together with Raft to select write leaders in each location. In each location there are three data nodes, making a resilient local cluster.
+
+With an odd number of nodes in each location, the clusters could allow a local majority to make decisions. But all of the locations nodes work together to make decisions like that. Most of the time, this will work well.
+
+But consider if connectivity to one location was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus algorithm can become quorate, and without that, it is unable to make decisions and elect leaders.
+
+While the write leader may persist for a time, at some point a new leader will need to be selected and it's at that point that the lack of consensus would become noticable.
+
+## Previous solutions
+
+One previous solution to this problem has been to add an extra datacenter with a witness node which could provide consensus when a location was offline. This does require the addition of a location which is not affected by either location being down. But that would also mean when the East DC was cut off, the global cluster still had the West DC (3 nodes) and Central DC (1 node) to come to a consensus, with 4 nodes out of a global 7 voting. The reverse is also true if West DC was cut off, East DC and Central DC would still have sufficient nodes to elect leaders.
+
+Its a simple solution, but it does require that extra datacenter and server to manage things.
+
+Another previous solution was to add an external Raft consensus layer using etcd (https://etcd.io). This layer would be used exclusively by the proxy nodes to decide on which node at that location would be the write leader. This solution required both additional software and at least three nodes running etcd at each location. It is also no longer supported with PGD5.
+
+## The Raft subgroup solution
+
+Introduced in PGD5, the subgroup raft option allows the subgroups within a PGD cluster to elect the leaders they need independently. These devolved Raft subgroups still take part in top-level decision-making in the cluster, but are able to work independently when needed.
+
+A Raft subgroup will elect it's own write leader. The subgroup will also have its own Raft leader working alongside the global group leader.
+
+With subgroups able to make their own Raft consensus, it  means no more need for extra, redundant resources on standby for when the unlikely but possible loss of a region happens.
+
+## Creating Raft subgroups with TPA
+
+The TPAexec configure command will automatically enable Raft subgroups if the locations are set in active-locations.
+
+### Example
+
+In this example, a two location cluster with three data nodes in each location will be created. The nodes in each location will be part of a PGD Raft subgroup for the location. 
+
+The cluster's name is `bdrgroup` which will also be the name of the top-level group.
+
+The cluster's two locations will be `us_east` and `us_west`, respectively.
+
+Each location will have four nodes. Three data nodes and a barman backup node. The three data nodes will also co-host pgd proxy.
+
+To create this configuration
+
+
+```
+tpaexec configure bdrgroup --architecture PGD-Always-ON --location-names us_east us_west --data-nodes-per-location 3 --epas 15 --no-redwood --active-locations us_east us_west --hostnames-from hostnames.txt 
+```
+
+Where `hostnames.txt` contains:
+
+```
+east1
+east2
+east3
+eastbarman
+west1
+west2
+west3
+westbarman
+```
+
+The generated config.yml file has a bdr_node_groups section which contains the top-level group (`bdrgroup`) and the two subgroups (`us_east_subgroup` and `us_west_subgroup`). Each of those subgroups has a location set (`us_east` and `us_west`) and two other options set to true, `enable_raft` which activates the subgroup Raft in the subgroup and `enable_proxy_routing` which enables the pgd_proxy routers to route traffic to the subgroup’s write leader. Here is an example, generated by the sample tpaexec command:
+
+
+```
+cluster_vars:
+  apt_repository_list: []
+  bdr_database: bdrdb
+  bdr_node_group: bdrgroup
+  bdr_node_groups:
+  - name: bdrgroup
+  - name: us_east_subgroup
+    options:
+      enable_proxy_routing: true
+      enable_raft: true
+      location: us_east
+    parent_group_name: bdrgroup
+  - name: us_west_subgroup
+    options:
+      enable_proxy_routing: true
+      enable_raft: true
+      location: us_west
+    parent_group_name: bdrgroup
+  bdr_version: '5'
+```
+
+For any node instance, in entry in the instances list, you will find `bdr_child_group`  in the variables section, set to the subgroup the node belongs to. Here is an example, generated by the sample tpaexec command:
+
+```
+instances:
+- Name: east1
+  backup: eastbarman
+  location: us_east
+  node: 1
+  role:
+  - bdr
+  - pgd-proxy
+  vars:
+    bdr_child_group: us_east_subgroup
+    bdr_node_options:
+      route_priority: 100
+```
+
+## Working with Raft subgroups
+
+You can view the status of your nodes and subgroups with the [pgd](cli/index) cli command.
+
+### Viewing nodes with pgd
+
+The pgd command's `show-nodes`
+```shell
+$pgd show-nodes
+__OUTPUT__
+Node     Node ID    Node Group Type Current State Target State Status Seq ID 
+----     -------    ---------- ---- ------------- ------------ ------ ------ 
+east1    916860695  US_East    data ACTIVE        ACTIVE       Up     1      
+east2    2241077170 US_East    data ACTIVE        ACTIVE       Up     2      
+east3    1093023575 US_East    data ACTIVE        ACTIVE       Up     3      
+west1    1668243030 US_West    data ACTIVE        ACTIVE       Up     4      
+west2    2311995928 US_West    data ACTIVE        ACTIVE       Up     5      
+west3    4162758468 US_West    data ACTIVE        ACTIVE       Up     6      
+```
+
+Viewing groups (and subgroups) with pgd
+
+To show the groups in a PGD deployment, along with their names and attributes, use the PGD cli command `show-groups.`
+
+```
+$pgd show-groups
+Group    Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----    --------   ----   ------------ -------- ---- ------- ------------ 
+bdrgroup 1360502012 global                       true false                 
+US_East  1806884964 data   bdrgroup     US_East  true true    east2     
+US_West  3098768667 data   bdrgroup     US_West  true true    west1     
+```
+
+
+Migrating to Raft subgroups without TPA
+
+A number of configuration steps need to be taken to enable Raft subgroups to an existing cluster.
+
+A “top-level” group needs to be defined for all nodes in the PGD cluster. Use bdr.create_node_group
+A subgroup needs to be created for each location. Use bdr_create_node_group
+Each location’s subgroup should be added to the “top-level” group. Use bdr.join_node_group(), bdr.switch_node_group() or bdr.alter_node_group().
+Each node at each location should be added to their location’s subgroup. Use bdr.join_node_group(), bdr.switch_node_group() or bdr.alter_node_group().
+Each of the location’s subgroups should be altered to enable Raft for the location. Use `bdr.alter_node_group_option()` setting the `enable_raft` option to true.
+
+#### Enable subgroup Raft node group:
+
+```sql
+SELECT bdr.alter_node_group_option('$group_name', 'enable_raft', 'true');
+```
+
+####Disable subgroup Raft for a node group:.
+
+```sql
+SELECT bdr.alter_node_group_option('$group_name', 'enable_raft', ‘false’);
+```
+
+
