@@ -76,6 +76,7 @@ const sourceToPluginConfig = {
     name: "pg_extensions",
     path: "advocacy_docs/pg_extensions",
   },
+  "CloudNativePG": { name: "CloudNativePG", path:"advocacy_docs/supported-open-source/cloud_native_pg"},
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
