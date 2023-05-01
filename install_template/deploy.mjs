@@ -7,12 +7,15 @@ import loadProductConfig from "./lib/config.mjs";
 
 nunjucks.configure("templates", { throwOnUndefined: true, autoescape: false });
 
-// script takes one _optional_ parameter: the base directory to write output to.
-// if not specified, defaults to ../product_docs/docs
-// if relative (as is the default), this path is interpreted relative to the location of this script
+// script takes two _optional_ parameters: the base directory to write output to for versioned products (defaults to ../product_docs/docs), 
+// and the base directory to write output to for unversioned products (defaults to ../advocacy_docs).
+// if relative (as are the defaults), these paths are interpreted relative to the location of this script
+// unversioned products are currently identified by the prefix "advocacy_docs/"
 const args = process.argv.slice(2);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const destPath = path.resolve(__dirname, args[0] || "../product_docs/docs");
+const destPathUnversioned = path.resolve(__dirname, args[1] || "../advocacy_docs");
+const unversionedPrefix = "advocacy_docs/";
 
 /**
  * Loop through the config.yaml file and generate docs for every product/platform/supported version combination found.
@@ -110,7 +113,9 @@ const moveRender = async (srcFilepath) => {
     return { note: `Skipping (missing deployPath?): ${path.basename(srcFilepath)}`, };
   }
 
-  const destFilepath = path.resolve(__dirname, destPath, integralDeploymentPath);
+  const destFilepath = integralDeploymentPath.startsWith(unversionedPrefix) 
+    ? path.resolve(__dirname, destPathUnversioned, integralDeploymentPath.substring(unversionedPrefix.length))
+    : path.resolve(__dirname, destPath, integralDeploymentPath);
   try {
     await fs.mkdir(path.dirname(destFilepath), { recursive: true });
     await fs.writeFile(destFilepath, srcContent, "utf8");
