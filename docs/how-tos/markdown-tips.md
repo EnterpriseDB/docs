@@ -8,15 +8,16 @@ Links:
 
 Exceptions:
 
-Style guide links:
 ### Style guide for EDB contributors
 
-Our style guide provides comprehensive information about our technical writing standards. See [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide). However, for developers, this list of rules summarizes most of what you need to know. Your text will be edited by a technical editor, but following these rules reduces the amount of time the editor needs to spend on unnecessary issues.
+Our style guide provides comprehensive information about our technical writing standards. See the [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide). However, for developers, this list of rules summarizes most of what you need to know. Your text will be edited by a technical editor, but following these rules reduces the amount of time the editor needs to spend on unnecessary issues.
 
 | Topic        | Guideline         | Notes 
 |--------------|-------------------|-----------------------------------|
-| Contractions | Use contractions. |
-| Future tense | Don't use except when referring to a future release, for example, "This feature will be deprecated in a future release. | Search your file for the word "will" and revise to a simple form of present tense. | 
+| Contractions | Use contractions. |                                   |
+| Future tense | Don't use except when referring to a future release, for example, "This feature will be deprecated in a future release. | Search your file for the word "will" and revise to a simple form of present tense. |
+| Modal verbs  | Don't use (or use rarely). Modal verbs introduce uncertainty. | Search your file for "should," "could," or "would." Revise to eliminate these words: could -> can or might; should/would -> delete and change verb form. |
+
 
 
 ## Ordering of files
