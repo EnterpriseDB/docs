@@ -59,6 +59,10 @@ export const products = {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  query_advisor: {
+    name: "EDB Query Advisor",
+    iconName: IconNames.POSTGRESQL,
+  },
   CloudNativePG: { name: "CloudNativePG" },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
