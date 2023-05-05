@@ -102,7 +102,9 @@ const moveDoc = async (product, platform, prodVersion) => {
  * @returns object {success: 'message', note: 'observation', warn: 'warning or error', context: {additional}}
  */
 const moveRender = async (srcFilepath) => {
-  const [srcContent, integralDeploymentPath] = await readSource(srcFilepath);
+  const [srcContent, integralDeploymentPath, error, errorContext] = await readSource(srcFilepath);
+
+  if (error) return { warn: error, context: errorContext};
 
   if (!integralDeploymentPath) {
     return { note: `Skipping (missing deployPath?): ${path.basename(srcFilepath)}`, };
@@ -137,16 +139,31 @@ const formatStringForFile = (string) => {
 /**
  * Reads the source mdx file, parse out the deployment path and filename from the MDX frontmatter
  * @param srcPath the path + name of the mdx file to read
- * @returns [full contents, the relative deployment path], undefined on error
+ * @returns [full contents, the relative deployment path, error, context]
  */
 const readSource = async (srcPath) => {
   const frontmatterRE = /^(?<open>---\s*?\n)(?<yaml>.+?\n)(?<close>---\s*?\n)/s;
 
   try {
     let src = await fs.readFile(srcPath, "utf8");
-    const frontmatter = yaml.parseDocument(
-      src.match(frontmatterRE)?.groups?.yaml,
-    );
+    const frontmatterYaml = src.match(frontmatterRE)?.groups?.yaml;
+    if (!frontmatterYaml)
+    {
+      return [null, null, "No frontmatter", {path: srcPath}];
+    }
+    const frontmatter = yaml.parseDocument(frontmatterYaml);
+    if (frontmatter.errors.length)
+    {
+      const combinedErrors = frontmatter.errors
+        .map(
+          (error) => `${srcPath}:${error.linePos[0].line + 1}:${
+            error.linePos[0].col
+          }
+  ${error.message}`,
+        )
+        .join("\n");
+      return [null, null, combinedErrors];
+    }
 
     const deployPath = frontmatter.contents.get("deployPath");
     const redirects = frontmatter.contents.get("redirects");
@@ -183,10 +200,8 @@ const readSource = async (srcPath) => {
     return [src, deployPath];
   } catch (e) {
     if (e?.code === "ENOENT")
-      console.log("not found: " + e.path);
-    else
-      console.log(srcPath, e);
-    return [null, null];
+      return [null, null, "not found: ", e.path];
+    return [null, null, srcPath, e];
   }
 };
 
