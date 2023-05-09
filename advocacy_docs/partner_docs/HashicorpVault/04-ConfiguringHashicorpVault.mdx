@@ -1,0 +1,142 @@
+---
+title: 'Configuration'
+description: 'Walkthrough on configuring the integration'
+---
+
+Implementing Hashicorp Vault with EDB Postgres Advanced Server 15.2 requires the following components installed on the same system:
+
+- EDB Postgres Advanced Server version 15.2 
+- Hashicorp Vault version 1.13.2+ent or 1.12.6+ent
+- [Pykmip](https://pypi.org/project/PyKMIP/#files)
+- Python 
+
+## Prerequisites
+
+- A running EDB Postgres Advanced Server version 15.2 instance.
+- Hashicorp Vault installed and deployed per your VM environment
+
+## Configure Hashicorp Vault KMIP Secrets Engine
+
+!!! Note
+    When you are configuring Vault commands and if at any point you receive this error message “Get "https://127.0.0.1:8200/v1/sys/seal-status": http: server gave HTTP response to HTTPS client” you need to issue this in your command line export VAULT_ADDR="http://127.0.0.1:8200".
+
+1. After your Hashicorp Vault configuration is installed and deployed per the guidelines in the [Hashicorp documentation](https://developer.hashicorp.com/vault/tutorials/getting-started/getting-started-install), you will then need to enable the kmip capabilities.
+
+2. Assume root user.
+
+3. When you are the root user, type ‘vault secrets enable kmip’ in the command line.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault secrets enable kmip
+Success! Enabled the kmip secrets engine at: kmip/
+```
+
+4. Next you will need to configure the Hashicorp Vault secrets engine with the desired kmip listener address.
+
+5. Enter `vault write kmip/config listen_addrs=0.0.0.0:5696` in the command line.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault write kmip/config listen_addrs=0.0.0.0:5696
+Success! Data written to: kmip/config
+```
+
+6. Next you will need to define the Scopes and Roles to determine what allowed operations a role can perform.
+
+7. Enter `vault write -f kmip/scope/*scope_name*` in the command line.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault write -f kmip/scope/edb
+Success! Data written to: kmip/scope/edb
+```
+8. If you ever need to view your scopes you have created you can enter `vault list kmip/scope` in the command line.
+
+9. Next you will need to define the role for that scope and what operations they are allowed to do.
+
+10. Enter `vault write kmip/scope/*scope_name*/role/*role_name* operation_all=true` in the command line.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault write kmip/scope/edb/role/admin operation_all=true
+Success! Data written to: kmip/scope/edb/role/admin
+```
+
+11. You can read your scope and role with this command `vault read kmip/scope/*scope_name*/role/*role_name*`
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault read kmip/scope/edb/role/admin
+Key                    Value
+---                    -----
+operation_all          true
+tls_client_key_bits    0
+tls_client_key_type    n/a
+tls_client_ttl         0s
+```
+
+## Generate Client Certificates
+
+After a scope and role have been created you will need to generate client certificates that will be used within your pykmip.conf file for key management.  These certificates can be used to establish communication with Hashicorp Vault’s KMIP Server.
+
+1. Generate the client certificate, this will provide the CA Chain, the private key and the certificate.
+
+2. Enter `vault write -f -field=certificate \ kmip/scope/*scope_name*/role/*role_name*/credential/generate > *certificate_name*.pem`.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# vault write -f -field=certificate \ kmip/scope/edb/role/admin/credential/generate > kmip-cert.pem
+```
+
+3. To view your certificates you can type `cat *certificate_name*.pem*` in the command line and this will return the certificates from Hashicorp Vault.
+```bash
+root@ip-172-31-46-134:/home/ubuntu# cat kmip-cert.pem 
+```
+
+4. You will need to separate the individual certificates into .pem files so they can be used in your pykmip.conf file.
+
+5. Create a key.pem file which will contain the private key in the certificate chain.
+```bash
+ubuntu@ip-172-31-46-134:/tmp$ cat key.pem 
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIIbpRtITDlQ5DpFtuRXWpWdV0fRdZ6vnBYJQmMKCR/iZoAoGCCqGSM49
+AwEHoUQDQgAE3+Kp/PXqTMDCINKIbeNI34qQ47Pd7lttkN2Pgfl7LhLt8uLlAmLX
+wmmW4klCuDzRdSBvtdcA5LguWrSBimKXDw==
+-----END EC PRIVATE KEY-----
+```
+
+6. Create a cert.pem file which will contain the first certificate in the certificate chain.
+```bash
+ubuntu@ip-172-31-46-134:/tmp$ cat cert.pem 
+-----BEGIN CERTIFICATE-----
+MIIBwjCCAWegAwIBAgIUJEpQl3OQKZL5pT7pkOKbBuafBwYwCgYIKoZIzj0EAwIw
+KjEoMCYGA1UEAxMfdmF1bHQta21pcC1kZWZhdWx0LWludGVybWVkaWF0ZTAeFw0y
+MzAzMzAyMjE1MjhaFw0yMzA0MTMyMjE1NThaMCAxDjAMBgNVBAsTBWZUZWNDMQ4w
+DAYDVQQDEwU1R0VhTjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABN/iqfz16kzA
+wiDSiG3jSN+KkOOz3e5bbZDdj4H5ey4S7fLi5QJi18JpluJJQrg80XUgb7XXAOS4
+Llq0gYpilw+jdTBzMA4GA1UdDwEB/wQEAwIDqDATBgNVHSUEDDAKBggrBgEFBQcD
+AjAMBgNVHRMBAf8EAjAAMB0GA1UdDgQWBBQle1YJXy2VX699fQoR7NcMT06/OTAf
+BgNVHSMEGDAWgBSSBDXnwdExsaSbT/vgqDHm4zG6STAKBggqhkjOPQQDAgNJADBG
+AiEAk7Vo1HpS1D+C3OyBXqHGlCOD3p4HnMeStGaBB/Cqn2cCIQDul2Vxal7lCeDN
+Xlg2U8LToGCBEvf1quZU7T8ZQkbQCA==
+-----END CERTIFICATE-----
+```
+
+7. Create a ca.pem file which will contain the last two certificates in the certificate chain.
+```bash
+ubuntu@ip-172-31-46-134:/tmp$ cat ca.pem 
+-----BEGIN CERTIFICATE-----
+MIIBrTCCAVKgAwIBAgIUEvo9Bh4qNPVYvQC2wttR5vD9KTQwCgYIKoZIzj0EAwIw
+HTEbMBkGA1UEAxMSdmF1bHQta21pcC1kZWZhdWx0MB4XDTIzMDMwMTE5MjgyN1oX
+DTMzMDIyNjE5Mjg1N1owKjEoMCYGA1UEAxMfdmF1bHQta21pcC1kZWZhdWx0LWlu
+dGVybWVkaWF0ZTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCNpmJK8lrNg1AVl
+s5ge5tfIhaCq4Vgom3tbRnIhmqDKIjnJa1QQtGXl+aY8sa3Uckabu7F73Qlmx2uG
+yO7qzXqjYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1Ud
+DgQWBBSSBDXnwdExsaSbT/vgqDHm4zG6STAfBgNVHSMEGDAWgBSS2fzAT5gtJFl+
+csFk43spGfJR3zAKBggqhkjOPQQDAgNJADBGAiEAgmLt1YGJfma0tjbs8crQTfXt
+RkbhctXSJQOqR3ejM/8CIQCZY4LIgwBhOE95gw1xAv4onclSk/ZaUxDQCXBeh60i
+lg==
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIBoDCCAUWgAwIBAgIUAZ/BGjgU/gvnzlVC9WEPxUcb0howCgYIKoZIzj0EAwIw
+HTEbMBkGA1UEAxMSdmF1bHQta21pcC1kZWZhdWx0MB4XDTIzMDMwMTE5MjgyN1oX
+DTMzMDIyNjE5Mjg1N1owHTEbMBkGA1UEAxMSdmF1bHQta21pcC1kZWZhdWx0MFkw
+EwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzQCEnid/sExfxBpki2suGc3pE0wVQt31
+Wtg16m9l0mLj3qZFdRCAHJKpoY6RT5X81/gkhhEjVBR3Hi3C3C6J+KNjMGEwDgYD
+VR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFJLZ/MBPmC0k
+WX5ywWTjeykZ8lHfMB8GA1UdIwQYMBaAFJLZ/MBPmC0kWX5ywWTjeykZ8lHfMAoG
+CCqGSM49BAMCA0kAMEYCIQCoeQmZmYeViGcm2qtm9vjPs4SLEHVbDjG17zZ1euW6
+IgIhAMb3y3xRXwddt2ejaow1GytysRz4LoxC3B5dLn1LoCpI
+-----END CERTIFICATE-----
+```
+
+Now that you have all of the required Certificates you are ready to use Hashicorp Vault Secrets Engine with EDB Postgres Advanced Server version 15.2.
