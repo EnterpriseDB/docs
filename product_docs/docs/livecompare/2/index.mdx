@@ -21,10 +21,9 @@ By default, the comparison set includes all tables in the database. LiveCompare 
 
 Each database comparison is called a *comparison session*. When the program starts for the first time, it starts a new session and starts comparing table by table. In standalone mode, once all tables are compared, the program stops and generates all reports. You can start and stop LiveCompare without losing context information, so you can run it at convenient times.
 
-Each table comparison operation is called a *comparison round*. If the table is too big, LiveCompare splits the table into multiple comparison rounds that are also executed in parallel, alongside other tables that are being
-carried on by other workers at the same time.
+Each table comparison operation is called a *comparison round*. If the table is too big, LiveCompare splits the table into multiple comparison rounds that are also executed in parallel, alongside other tables that are being carried on by other workers at the same time.
 
-In standalone mode, the initial comparison round for a table starts from the beginning of the table (oldest existing PK) to the end of the table (newest existing PK). New rows inserted after the round starts are ignored. LiveCompare sorts the PK columns to get min and max PK from each table. For each PK column that's unsortable, LiveCompare casts its content to `string`. In PostgreSQL you achieve this by using `::text`. In Oracle, use `to_char`.
+In standalone mode, the initial comparison round for a table starts from the beginning of the table (oldest existing PK) to the end of the table (newest existing PK). New rows inserted after the round starts are ignored. LiveCompare sorts the PK columns to get min and max PK from each table. For each PK column that's unsortable, LiveCompare casts its content to `string`. In PostgreSQL, you achieve this by using `::text`. In Oracle, use `to_char`.
 
 When executing the comparison algorithm, each worker requires N+1 database connections, where N is the number of databases being compared. The extra required connection is to an output/reporting database, where the program cache is kept too, enabling you to stop and resume a comparison session.
 
@@ -37,25 +36,24 @@ You can potentially use LiveCompare to ensure logical data integrity at the row 
 -   Database technology migration (Oracle x Postgres).
 -   Server migration or upgrade (old server x new server).
 -   Physical replication (primary x standby).
--   After failover incidents, for example to compare the new primary data against the old, isolated primary data
--   In case of an unexpected split-brain situation after a failover. If the old primary wasn't properly fenced and the application wrote data into it, it's possible to use LiveCompare to know exactly which data is present in the old primary and isn't present in the new primary. If desired, the DBA can use the DML script that LiveCompare generates to apply those data into the new primary.
+-   After failover incidents, for example to compare the new primary data against the old, isolated primary data.
+-   In case of an unexpected split-brain situation after a failover. If the old primary wasn't properly fenced and the application wrote data into it, it's possible to use LiveCompare to know exactly the data that's present in the old primary and isn't present in the new primary. If they want, the DBA can use the DML script that LiveCompare generates to apply those data into the new primary.
 -   Logical replication. Three kinds of logical replication technologies are supported: Postgres native logical replication, pglogical, and EDB Postgres Distributed (PGD, formerly known as BDR).
 
 ## Comparison performance
 
 LiveCompare is optimized for use on production systems and has various parameters for tuning. Comparison rounds are read-only workloads. An example use case compared 43,109,165 rows in 6 tables in 9m 17s with 4 connections and 4 workers, giving comparison performance of approximately 77k rows per second, or 1 billion rows in &lt;4 hours.
 
-This use case can be considered a general use case. For low-load, testing, migration, and other specific scenarios, it might be possible to improve speed by changing the `data_fetch_mode` setting to use server-side cursors. Each kind of server-side cursors, in our experiments, provides an increase in performance on
-use cases involving either small or large tables.
+This use case is a general use case. For low-load, testing, migration, and other specific scenarios, you might be able to improve speed by changing the `data_fetch_mode` setting to use server-side cursors. In our experiments, each kind of server-side cursors provides an increase in performance on use cases involving either small or large tables.
 
 ## Security considerations for the user
 
-For PostgreSQL 13 and older, LiveCompare requires a user that can read all data being compared. PostgreSQL 14 introduced a new role, pg_read_all_data, that can be used for LiveCompare.
+For PostgreSQL 13 and earlier, LiveCompare requires a user that can read all data being compared. PostgreSQL 14 introduced a new role, pg_read_all_data, that can be used for LiveCompare.
 
-When `logical_replication_mode = bdr`, LiveCompare requires a user with the bdr_superuser role. When `logical_replication_mode = pglogical`, LiveCompare requires a user that with the `pglogical_superuser` role.
+When `logical_replication_mode = bdr`, LiveCompare requires a user with the bdr_superuser role. When `logical_replication_mode = pglogical`, LiveCompare requires a user with the `pglogical_superuser` role.
 
 To apply the DML scripts in PGD, all divergent connections (potentially all data connections) require a user with the bdr_superuser role to disable `bdr.xact_replication`.
 
 If PGD is being used, LiveCompare associates all fixed rows with a replication origin called `bdr_local_only_origin`. LiveCompare also applies the DML with the transaction datetime far in the past, so if there are any PGD conflicts with real DML being executed on the database, LiveCompare DML always loses the conflict.
 
-With the default setting of `difference_fix_start_query`, the transaction in apply scripts changes role to the owner of the table to prevent database users from gaining access to the role applying fixes by writing malicious triggers. As a result, the user for the divergent connection needs to have the ability to switch role to the table owner.
+With the default setting of `difference_fix_start_query`, the transaction in apply scripts changes role to the owner of the table to prevent database users from gaining access to the role applying fixes by writing malicious triggers. As a result, the user for the divergent connection needs to be able to switch role to the table owner.
