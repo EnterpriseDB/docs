@@ -14,11 +14,16 @@ Raft is an industry accepted algorithm for making decisions though achieving “
 
 It is essential for certain operations in the cluster that the Raft leader – such as adding and removing nodes and allocating ranges for [galloc](sequences/#pdg-global-sequences) sequences – is both established and maintained. 
 
-To do this requires that the majority of the nodes in the cluster be reachable by any potential Raft leader node.
-
 It also means that one half of the nodes in the cluster, plus one additional node must be able to reach each other. So, in a global cluster with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
 
-Having established a Raft leader, the cluster can then go on to select write leaders, the database node to which all write traffic is automatically dispatched to through the pgd proxies, in each location. This too requires that the global Raft group be able to achieve consensus to select the write leader in each location, and in turn inform the pgd-proxy instances to direct their updates to that node. 
+## Raft and routing
+
+One function that uses Raft is proxy routing which, when enabled, ensures that a data-node in each region is selected as the write leader for the region and that all the pgd proxy nodes in that region direct their traffic to the write leader.
+
+!!! Note Proxy routing
+Proxy routing is default in many configurations of PGD but is not mandatory; clusters can be configured without proxy-routing where the decision on which data node to write to is left to applications. 
+
+Proxy routing also requires that the global Raft group be able to achieve consensus to select the write leader in each location, and in turn inform the pgd-proxy instances to direct their updates to that node. 
 
 ![6 Node Global Raft](images/6NodeGlobalRaft.png)
 
@@ -26,30 +31,31 @@ If the write leader in a location goes out of service, as part of the failover p
 
 This is a simple and effective technique, which happily manages the appearance and disappearance of nodes. But there are situations where it is possible to lose the ability to failover from one node to another while the location itself is healthy.
 
-## Quorum failure
+## Proxy routing and quorum failure
 
-In this scenario, there are two locations each with datacenters with the same number of nodes in them. PGD would bring all the nodes together with Raft to select write leaders in each location. In each location there are three data nodes, making a resilient local cluster.
+In this scenario, there are two locations each with data centers with the same number of nodes in them. PGD would bring all the nodes together with Raft to select write leaders in each location. In each location there are three data nodes, making a resilient local cluster.
 
-With an odd number of nodes in each location, the clusters could allow a local majority to make decisions. But all of the locations nodes work together to make decisions like that. Most of the time, this will work well.
+With an odd number of nodes in each location, the clusters could allow a local majority to make decisions. But with Raft, all of the locations nodes work together to make decisions like that. Most of the time, this will work well.
 
-But consider if connectivity to one location was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus algorithm can become quorate, and without that, it is unable to make decisions and elect leaders.
+But consider if connectivity between the locations was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus algorithm can become quorate, and without that, it is unable to make decisions and elect leaders. Normal asynchronous transactions can carry on but operations that use Raft will be blocked. Critically though, with proxies will be unable to elect a new write leader.
 
-While the write leader may persist for a time, at some point a new leader will need to be selected and it's at that point that the lack of consensus would become noticable.
+While the write leader may persist for a time, at some point a new leader will need to be selected and it's at that point that the lack of consensus would become very noticeable.
 
-## Previous solutions
+## Alternative solutions
 
-One previous solution to this problem has been to add an extra datacenter with a witness node which could provide consensus when a location was offline. This does require the addition of a location which is not affected by either location being down. But that would also mean when the East DC was cut off, the global cluster still had the West DC (3 nodes) and Central DC (1 node) to come to a consensus, with 4 nodes out of a global 7 voting. The reverse is also true if West DC was cut off, East DC and Central DC would still have sufficient nodes to elect leaders.
+One solution to this problem has been to add an extra data center with a witness node which could provide consensus when a location was offline. This does require the addition of a location which is not affected by either location being down. But that would also mean when the East DC was cut off, the global cluster still had the West DC (3 nodes) and Central DC (1 node) to come to a consensus, with 4 nodes out of a global 7 voting. The reverse is also true if West DC was cut off, East DC and Central DC would still have sufficient nodes to perform Raft operations and elect leaders.
 
-Its a simple solution, but it does require that extra datacenter and server to manage things.
+Its a simple solution which also addresses other Raft operations, but it does require that extra data center and server to manage things.
 
-Another previous solution was to add an external Raft consensus layer using etcd (https://etcd.io). This layer would be used exclusively by the proxy nodes to decide on which node at that location would be the write leader. This solution required both additional software and at least three nodes running etcd at each location. It is also no longer supported with PGD5.
+A previous alternative solution was to add an external Raft consensus layer using etcd (https://etcd.io). This layer would be used exclusively by the proxy nodes to decide on which node at that location would be the write leader. This solution required both additional software and at least three nodes running etcd at each location. It is also no longer supported with PGD5.
 
 ## The Raft subgroup solution
 
-Introduced in PGD5, the subgroup raft option allows the subgroups within a PGD cluster to elect the leaders they need independently. These devolved Raft subgroups still take part in top-level decision-making in the cluster, but are able to work independently when needed.
+Introduced in PGD5, the subgroup raft option allows the subgroups within a PGD cluster to elect the leaders they need independently. These devolved Raft subgroups still take part in top-level decision-making in the cluster for other operations, but are able to elect write leaders independently.
 
-A Raft subgroup will elect it's own write leader. The subgroup will also have its own Raft leader working alongside the global group leader.
-With subgroups able to make their own Raft consensus, it  means no more need for extra, redundant resources on standby for when the unlikely but possible loss of a region happens.
+A Raft subgroup will elect it's own write leader. The subgroup will also have its own Raft leader, managing write leader elections, working alongside the global group leader, managing all other Raft operations.
+
+With subgroups able to make their own Raft consensus for write leader elections, it means no less need for extra, redundant resources on standby for situations when the unlikely but possible loss of a region happens. With Raft subgroups electing their own write leaders, applications can continue connecting through the proxies. If you wish for Raft operations to continue in this scenario, you will still need to consider adding an extra location with a witness node.
 
 ## More
 
