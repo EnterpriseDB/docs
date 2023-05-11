@@ -276,14 +276,12 @@ Don't use a font treatement to emphasize a point in the text. If text needs extr
 | Element                        | Font treatment    |
 |--------------------------------|-------------------|
 | User input in code (variables) | Angle brackets    |
-| User names                     | No font treatment |
-| Command names, utility names, file names, path names | Courier (backticks) |
+| Command names, parameters, functions, utility names, file names, path names | Courier (backticks) |
 <!--Deciding on utility names -->
 | Interface elements such as controls, options, and tabs | Bold |
 | Page, window, or screen names  | No font treatment |
 | Menus and menu items           | Bold. Use > to denote menu hierarchy: **File > Save**. Don't include ellipses if present in menu item name. |
-| Roles                          | No font treatment |
-| Permissions                    | No font treatment |
+| Roles, user names, permissions | No font treatment |
 | Keys (such as Press **Enter**) | Bold              |
 | First use of new term          | Italic, then define |
 
