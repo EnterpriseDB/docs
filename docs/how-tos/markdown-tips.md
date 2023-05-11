@@ -16,13 +16,22 @@ Our style guide provides comprehensive information about our technical writing s
 |--------------|-------------------|-----------------------------------|
 | Contractions | Use contractions. |                                   |
 | Future tense | Don't use except when referring to a future release, for example, "This feature will be deprecated in a future release. | Search your file for the word "will" and revise to a simple form of present tense. |
-| Modal verbs  | Don't use (or use rarely). Modal verbs introduce uncertainty. | Search your file for "should," "could," or "would." Revise to eliminate these words: could -> can or might; should/would -> delete and change verb form. |
+| Modal verbs  | Don't use (or use rarely). Modal verbs introduce uncertainty. | Search your file for "should," "could," and "would." Revise to eliminate these words: could -> can or might; should/would -> delete and change verb form. |
+| "May"        | Replace with "can" or "might." |  |
+| Serial (Oxford) comma | Use the serial comma (for example: this, that, and the other) |  |
+| Semi-colons  | Don't use semi-colons. Use two sentences instead. |  |
+| Latin expressions | Don't use.   | Search for etc, i.e., e.g. and spell out or revise to eliminate |
 
+We also don't refer to the documentation in terms of its structure, which we call "documenting the documentation." Don't use words like chapter, topic, or section. For example:
 
+- This topic is about...
+  Instead, start talking about the feature or functionality. 
+- See the xyz section...
+  Instead, write, "See \[section name\].
 
 ## Ordering of files
 
-By default, the items in the left nav are sorted alphabetically by file name. This can be done with a numerical prefix. The titles of each page are used for the names in the left nav. Historically, this was the only way to control the order of the topics in the PDFs. This is no longer required and instead you can specify the order of topics in the frontmatter of the index file using the navigation option. For example:
+By default, the items in the left nav are sorted alphabetically by file name. You can accomplish this with a numerical prefix. The titles of each page are used for the names in the left nav. Historically, this was the only way to control the order of the topics in the PDFs. This is no longer required. Instead, you can specify the order of topics in the front matter of the index file using the navigation option. For example:
 
 ```
 ---
@@ -36,7 +45,7 @@ navigation:
 
 # MDX format
 
-Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
+Format documentation as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
 
 ## Front matter
 
@@ -60,7 +69,7 @@ description: Everything you need to know about Postgres
 ---
 ```
 
-The `navTitle` is used for the left navigation so it can take up less space. It's also used in cards.
+The `navTitle` is used for the left navigation so the text can take up less space. It's also used in cards.
 
 The `description` is used in cards as well.
 
@@ -69,7 +78,7 @@ You can also use `navigation` to specify [file ordering](#ordering_of_files).
 
 ## Redirects
 
-The app is concerned with two different types of redirects that you can define in frontmatter.
+The app is concerned with two different types of redirects that you can define in front matter.
 
 ### Internal redirects (in Docs 2.0)
 
@@ -87,7 +96,7 @@ redirects:
 
 In this case, both `/old_path` and `/another_old_path` redirect to the current path of `great_file.mdx`. This encoding is useful for setting up redirects when moving a file around within Docs. Redirects created with `redirects` are permanent (301).
 
-These paths can be absolute, starting with the root of the site. Or they can relative to the file that contains them. For example, for `/file/at/path/`:
+These paths can be absolute, starting with the root of the site. Or, they can be relative to the file that contains them. For example, for `/file/at/path/`:
 
 - Absolute: `/path/to/file/` &mdash; Redirects requests for `/path/to/file` to `/file/at/path/`.
 - Relative: `former_child/` &mdash; Redirects requests for `/file/at/path/former_child/` to `/file/at/path/`.
@@ -110,19 +119,21 @@ This front matter is a generated list of redirects for Docs 1.0 to Docs 2.0 (thi
 
 #### `legacyRedirects`
 
-If you need to set up a redirect from Docs 1.0 to Docs 2.0 manually, this is the place to do it. If the `legacyRedirectsGenerated` front matter doesn't include the redirect you need, add it here.
+If you need to manually set up a redirect from Docs 1.0 to Docs 2.0, this is the place to do it. If the `legacyRedirectsGenerated` front matter doesn't include the redirect you need, add it here.
 
 ## Markdown styling
 
-All of these files use Markdown for styling. The options for what you can do are [here](https://github.com/EnterpriseDB/docs/blob/master/advocacy_docs/playground/1/01_examples/index.mdx)
+All of these files use Markdown for styling. The options for what you can do are [here](https://github.com/EnterpriseDB/docs/blob/master/advocacy_docs/playground/1/01_examples/index.mdx).
+
+For more details on most of these topics, see the [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide).
 
 ## Headings
 
 Use headings to create a hierarchy for readers to navigate to more easily find information.
 
-Headings are denoted by two to four number signs (#) followed by one space. Enter an extra line break between the heading and the text content. EDB docs use Heading 2 (##), Heading 3 (###) and Heading 4 (####). Use Heading 4 sparingly.
+Headings are denoted by two to four number signs (#) followed by one space. Enter an extra line break between the heading and the text content. EDB docs use Heading 2 (##), Heading 3 (###) and Heading 4 (####). Use Heading 4 sparingly. 
 
-All headers in Docs result in anchors, which are IDs that you can link to directly. They are formed by using the  header text, using hyphens in place of spaces. This mechanism is handy for providing quick access to definitions and allowing search results to link directly to the relevant section of a page.
+All headers in Docs result in anchors, which are IDs that you can link to directly. You form them by using a number sign followed by the header text and hyphens in place of spaces. This mechanism is handy for providing quick access to definitions and allowing search results to link directly to the relevant section of a page.
 
 ### `# H1` - Not used in Docs
 
@@ -130,17 +141,18 @@ In Markdown, a single number sign signifies the page title (one per file). Howev
 
 ### `## H2` 
 
-Use an H2 section head to indicate a sub-topic in the page's overall topic.
+Use an H2 section head to indicate a subtopic in the page's overall topic.
    
 In Docs, H2 headers generate an entry in the right-hand table of contents, allowing the reader to quickly scan the outline of the page and jump to a relevant section.
 
 ### `### H3`
 
-Use an H3 subsection head to break up sections into logically distinct thoughts or concepts. Also useful for definition lists (e.g., a glossary).
+Use an H3 section head to break up sections into logically distinct thoughts or concepts. Also useful for definition lists (e.g., a glossary).
    
 ### `#### H4`
 
 If you find yourself needing to use this level heading, consider breaking the topic into multiple pages or otherwise reorganizing your information.
+
 ## Linking
 
 Markdown supports two different syntaxes for links. In Docs, we use inline links exclusively. The syntax is:
@@ -149,10 +161,7 @@ Markdown supports two different syntaxes for links. In Docs, we use inline links
 
 The URL can be absolute (`https://example.com/path/to/page`) or relative (`/epas/latest/page`, `../sibling`). For links within docs, use relative links. However, avoid complicated path walking if possible. For example, use `/pem/latest/page` instead of `../../..page`).
 
-More stuff about this in style guide
 ## Lists
-
-Stuff about this in style guide
 
 Lists appear with an indent by default. If you format a list with no indent, Markdown formats the list with an indent on the page. For example, the first list item in the example below appears with an indent on the page. 
 
@@ -164,11 +173,13 @@ If you want to make a nested list, don't use tab to indent. Press space three ti
 ```
 
 ## Tables
-Stuff about this in style guide
-## Inline code
-Use inline code <code>`code`</code> for keywords, verbatim expressions, etc. Markdown between the backtics won't be rendered, so there's no need to escape special characters. To inclue a backtick within inline code, use more than one backtic to enclode it: <code>``code `code` code``</code>.
 
-More stuff about this in style guide
+See the [EdB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide).
+
+## Inline code
+
+Use inline code <code>`code`</code> for keywords, verbatim expressions, and so on. Markdown between the backtics won't be rendered, so there's no need to escape special characters. To include a backtick within inline code, use more than one backtic to enclode it: <code>``code `code` code``</code>.
+
 ## Code blocks
 
 ````markdown
@@ -178,25 +189,23 @@ select 'a block of code' as result;
 ```
 ````
 
-Use blocks of code for complete commands (even if only a single line), and all multi-line code or command listings. Specify a language tag (such as `sql`) at the opening "fence" (```` ``` ````) to indicate the type of code being listed and enable syntax highlighting for that block. Supported languages: https://prismjs.com/#supported-languages
+Use blocks of code for complete commands (even if only a single line) and all multi-line code or command listings. Specify a language tag (such as `sql`) at the opening "fence" (```` ``` ````) to indicate the type of code being listed and enable syntax highlighting for that block. Supported languages: https://prismjs.com/#supported-languages
 
 Some code blocks consist of code or commands followed by program output. Use the special sequence `__OUTPUT__` (on a line by itself) to visually separate the output and prevent it from being syntax-highlighted.
-
-More stuff about this in style guide
 
 ### Code block style guidelines
 
 Readability is king. It might be code, but its target is a human reader, not a machine. To that end, pay attention to how code appears, and take time to reformat or reorganize it when its meaning becomes difficult to grasp.
 
-Try to avoid mixing `__OUTPUT__` and multiple, consecutive code blocks. When possible, divide a sequence of commands into discrete steps. You can then show the output of each. When multiple commands are effectively "atomic" (e.g., two steps always performed together, the output of one command fed directly into the next, etc.), then describe their purpose before showing them together - as they would be typed / entered - and list the output of both together. 
+Try to avoid mixing `__OUTPUT__` and multiple, consecutive code blocks. When possible, divide a sequence of commands into discrete steps. You can then show the output of each. When multiple commands are effectively "atomic" (for example, two steps always performed together or the output of one command fed directly into the next), then describe their purpose before showing them together in the code block, and list the output of both together. 
 
-Use these three conventions in these docs for shell code blocks:
+Use these conventions in these docs for shell code blocks:
 
-1. Don't lead with a prompt, such as `$` or `#`. If the user copies and pastes a code example that includes a prompt, a "command not found" or no-op occurs, both which are confusing.
+- Don't lead with a prompt, such as `$` or `#`. If the user copies and pastes a code example that includes a prompt, a "command not found" or no-op occurs, both of which are confusing.
 
-2. Separate command output from the commands by using `__OUTPUT__` (described above).
+- Separate command output from the commands by using `__OUTPUT__` (see [Code blocks](#code-blocks)).
 
-3. Break long lines in a consistent and visually appealing fashion to aid in reading long commands. About 70 characters is a good rule of thumb. With more than two lines, you might as well go with one parameter per line. Use line continuation characters to accomplish this (for example, [windows](https://superuser.com/questions/150116/how-can-i-insert-a-new-line-in-a-cmd-exe-command), [linux](https://unix.stackexchange.com/questions/571301/when-to-use-line-continuation-character-and-when-not/571313#571313)).
+- Break long lines in a consistent and visually appealing fashion to aid in reading long commands. About 70 characters is a good rule of thumb. With more than two lines, you might as well go with one parameter per line. Use line continuation characters to accomplish this (for example, [windows](https://superuser.com/questions/150116/how-can-i-insert-a-new-line-in-a-cmd-exe-command), [linux](https://unix.stackexchange.com/questions/571301/when-to-use-line-continuation-character-and-when-not/571313#571313)).
 
 ## Admonitions (notes, warnings, etc.)
 
@@ -207,7 +216,7 @@ If you need to draw attention to information, consider using an admonition:
     This is text you want the reader to notice.
 ```
 
-Admonitions begin with the `!!!` signifier. Next comes a (case-insensitive) type which is one of:
+Admonitions begin with the `!!!` signifier. Next comes a case-insensitive type, which is one of:
 
 - important
 - tip
@@ -224,7 +233,7 @@ There are several [aliases](https://github.com/elviswolcott/remark-admonitions#u
 - seealso => note
 - hint => tip
 
-Titles are optional. If you don't include one, the admonition will default to the type name ("Important", "Tip", etc.).
+Titles are optional. If you don't include one, the admonition will default to the type name ("Important", "Tip", and so on).
 
 Indent the body of the admonition four spaces. The body lines up with the first letter of the admonition type.
 
@@ -242,22 +251,39 @@ For examples of what you can do with admonitions, see [this demo](https://github
 
 ## Inserting images
 
-Don't use HTML to insert images in your content. Instead, use Markdown syntax that begins with an exclamation mark, followed by a title in brackets, and the image file path in parentheses. For example:
+Don't use HTML to insert images in your content. Instead, use Markdown syntax that begins with an exclamation mark, followed by a title in brackets and the image file path in parentheses. For example:
 
 ```text
 ![Comparison with Oracle Call Interface](../images/oracle_call_interface.png)
 ```
-The image title, Comparison with Oracle Call Interface, appears when hovering over the image. Use a descriptive and concise title for accessibility purposes.
+The image title, Comparison with Oracle Call Interface, appears online when you hover over the image. Use a descriptive and concise title for accessibility purposes.
 
 The image file path depends on the location of your Markdown content. In the example, the image's file path, `../images/oracle_call_interface.png`, leads out of its folder (../) and into the images folder (images/), where `oracle_call_interface.png` is located. Your path must lead to the `images` folder where your image is located.
 
 ## Using HTML 
 
-HTML use in Markdown documents is limited. An example is in the partners for the landing; it needed HTML to work correctly.
+HTML use in Markdown documents is limited. An example is in the partners for the landing. It needed HTML to work correctly.
+<!-- I don't know what this means -->
 
-You can use HTML to create line breaks in tables.: `</br>`
+You can use HTML to create line breaks in tables: `</br>`
+
 We also use character references where needed, such as `&mdash;` (em-dash), `&ndash;` (en-dash), and `&lt;` (less-than sign, used to correspond with a > closing bracket).
+
 ## Font treatments
 
-Bold and italic
+Don't use a font treatement to emphasize a point in the text. If text needs extra attention, put it in an admonition. Using italic or bold to emphasize a word or phrase isn't appropriate in technical documentation.
+
+| Element                        | Font treatment    |
+|--------------------------------|-------------------|
+| User input in code (variables) | Angle brackets    |
+| User names                     | No font treatment |
+| Command names, utility names, file names, path names | Courier (backticks) |
+<!--Deciding on utility names -->
+| Interface elements such as controls, options, and tabs | Bold |
+| Page, window, or screen names  | No font treatment |
+| Menus and menu items           | Bold. Use > to denote menu hierarchy: **File > Save**. Don't include ellipses if present in menu item name. |
+| Roles                          | No font treatment |
+| Permissions                    | No font treatment |
+| Keys (such as Press **Enter**) | Bold              |
+| First use of new term          | Italic, then define |
 
