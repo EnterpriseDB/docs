@@ -24,6 +24,10 @@ const sourceToPluginConfig = {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
   },
+  postgres_distributed_for_kubernetes: {
+    name: "postgres_distributed_for_kubernetes",
+    path: "product_docs/docs/postgres_distributed_for_kubernetes",
+  },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
