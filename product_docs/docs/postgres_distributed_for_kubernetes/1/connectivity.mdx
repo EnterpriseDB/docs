@@ -1,0 +1,161 @@
+---
+title: 'Connectivity'
+originalFilePath: 'src/connectivity.md'
+---
+
+This section provides information about secure network communications within a
+PGD Cluster, covering the following topics:
+
+-   [services](#services)
+-   [domain names resolution](#domain-names-resolution) using fully qualified domain names (FQDN)
+-   [TLS configuration](#tls-configuration)
+
+\!!! Notice
+    Although the above topics might seem unrelated to each other, they all
+    participate in the configuration of the PGD resources to make them universally
+    identifiable and accessible over a secure network.
+
+## Services
+
+Resources in a PGD Cluster are accessible through Kubernetes services.
+Every PGDGroup manages several of them, namely:
+
+-   one service per node, used for internal communications (*node service*)
+-   a *group service*, to reach any node in the group, used primarily by PG4K-PGD
+    to discover a new group in the cluster
+-   a *proxy service*, to enable applications to reach the write leader of the
+    group, transparently using PGD proxy
+
+![Basic architecture of an EDB Postgres Distributed for Kubernetes PGD group](./images/pg4k-pgd-basic-architecture.png)
+
+Each service is generated from a customizable template in the `.spec.connectivity`
+section of the manifest.
+
+All services must be reachable using their fully qualified domain name (FQDN)
+from all the PGD nodes in all the Kubernetes clusters (see below in this
+section).
+
+PG4K-PGD provides a service templating framework that gives you the
+availability to easily customize services at the following 3 levels:
+
+Node Service Template
+:   Each PGD node is reachable using a service which can be configured in the
+    `.spec.connectivity.nodeServiceTemplate` section.
+
+Group Service Template
+:   Each PGD group has a group service that is a single entry point for the
+    whole group and that can be configured in the
+    `.spec.connectivity.groupServiceTemplate` section.
+
+Proxy Service Template
+:   Each PGD group has a proxy service to reach the group write leader through
+    the PGD proxy, and can be configured in the `.spec.connectivity.proxyServiceTemplate`
+    section. This is the entry-point service for the applications.
+
+You can use templates to create a LoadBalancer service, and/or to add arbitrary
+annotations and labels to a service in order to integrate with other components
+available in the Kubernetes system (i.e. to create external DNS names or tweak
+the generated load balancer).
+
+## Domain names resolution
+
+PG4K-PGD ensures that all resources in a PGD Group have a fully qualified
+domain name (FQDN) by adopting a convention that uses the PGD Group name as a prefix
+for all of them.
+
+As a result, it expects that you define the domain name of the PGD Group. This
+can be done through the `.spec.connectivity.dns` section which controls how the
+FQDN for the resources are generated, with  two fields:
+
+-   `domain`: domain name to be used by all the objects in the PGD group (mandatory);
+-   `hostSuffix`: suffix to be added to each service in the PGD group (optional).
+
+## TLS Configuration
+
+<!-- TODO: Improve the narrative in this section -->
+
+PG4K-PGD requires that resources in a PGD Cluster communicate over a secure
+connection. It relies on PostgreSQL's native support for [SSL connections](https://www.postgresql.org/docs/current/libpq-ssl.html)
+to encrypt client/server communications using TLS protocols for increased
+security.
+
+Currently, PG4K-PGD requires that [cert-manager](https://cert-manager.io/) is installed.
+Cert-manager has been chosen as the tool to provision dynamic certificates,
+given that it is widely recognized as the de facto standard in a Kubernetes
+environment.
+
+The `spec.connectivity.tls` section describes how the communication between the
+nodes should happen:
+
+-   `mode` is an enumeration describing how the server certificates are verified
+    during PGD group nodes communication. It accepts the following values, as
+    documented in ["SSL Support"](https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS)
+    from the PostgreSQL documentation:
+
+    -   `verify-full`
+    -   `verify-ca`
+    -   `required`
+
+-   `serverCert` defines the server certificates used by the PGD group nodes to
+    accept requests.
+    The clients validate this certificate depending on the passed TLS mode;
+    refer to the previous point for the accepted values.
+
+-   `clientCert` defines the `streaming_replica` user certificate that will
+    be used by the nodes to authenticate each other.
+
+### Server TLS Configuration
+
+The server certificate configuration is specified in `.spec.connectivity.tls.serverCert.certManager`
+section of the PGDGroup custom resource.
+
+The following assumptions have been made for this section to work:
+
+-   An issuer `.spec.connectivity.tls.serverCert.certManager.issuerRef` is available
+    for the domain `.spec.connectivity.dns.domain` and any other domain used by
+    `.spec.connectivity.tls.serverCert.certManager.altDnsNames`
+-   There is a secret containing the public certificate of the CA
+    used by the issuer `.spec.connectivity.tls.serverCert.caCertSecret`
+
+The `.spec.connectivity.tls.serverCert.certManager` is used to create a per node
+cert-manager certificate request
+The resulting certificate will be used by the underlying Postgres instance
+to terminate TLS connections.
+
+The operator will add the following altDnsNames to the certificate:
+
+-   `$node$hostSuffix.$domain`
+-   `$groupName$hostSuffix.$domain`
+
+!!! Important
+    It's your responsibility to add in `.spec.connectivity.tls.serverCert.certManager.altDnsNames`
+    any name required from the underlying networking architecture
+    (e.g., load balancers used by the user to reach the nodes).
+
+### Client TLS Configuration
+
+The operator requires client certificates to be dynamically provisioned
+via cert-manager (recommended approach) or pre-provisioned via secrets.
+
+#### Dynamic provisioning via Cert-manager
+
+The client certificates configuration is managed by `.spec.connectivity.tls.clientCert.certManager`
+section of the PGDGroup custom resource.
+The following assumptions have been made for this section to work:
+
+-   An issuer `.spec.connectivity.tls.clientCert.certManager.issuerRef` is available
+    and will sign a certificate with the common name `streaming_replica`
+-   There is a secret containing the public certificate of the CA
+    used by the issuer `.spec.connectivity.tls.clientCert.caCertSecret`
+
+The operator will use the configuration under `.spec.connectivity.tls.clientCert.certManager`
+to create a certificate request per the `streaming_replica` Postgres user.
+The resulting certificate will be used to secure communication between the nodes.
+
+#### Pre-provisioned certificates via secrets
+
+Alternatively, you can specify a secret containing the pre-provisioned
+client certificate for the streaming replication user through the
+`.spec.connectivity.tls.clientCert.preProvisioned.streamingReplica.secretRef` option.
+The certificate lifecycle in this case is managed entirely by a third party,
+either manually or automated, by simply updating the content of the secret.
