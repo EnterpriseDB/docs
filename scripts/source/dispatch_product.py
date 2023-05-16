@@ -11,6 +11,7 @@ args = parser.parse_args()
 
 commands = {
     "EnterpriseDB/cloud-native-postgres": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/pg4k-pgd": f"{args.workspace}/destination/scripts/source/process-pgd4k-docs.sh {args.workspace}/source {args.workspace }/destination",
     "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
     "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
