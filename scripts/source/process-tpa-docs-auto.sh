@@ -8,11 +8,17 @@ then
   exit 1
 fi
 
-
-# Get the TPAexec tree into /tmp/tpaexecforimport
 SOURCE_CHECKOUT="/tmp/tpaexecforimport"
 rm -rf $SOURCE_CHECKOUT
-git clone https://github.com/EnterpriseDB/tpaexec.git $SOURCE_CHECKOUT
+
+if [ -z $2 ]
+then
+# Get the TPAexec tree into /tmp/tpaexecforimport
+  git clone https://github.com/EnterpriseDB/tpaexec.git $SOURCE_CHECKOUT
+else
+  # Get specific branch of the TPAexec tree into /tmp/tpaexecforimport
+  git clone -b $2 https://github.com/EnterpriseDB/tpaexec.git $SOURCE_CHECKOUT
+fi
 
 # convert inputs to actual directory names, in case a relative path is passed in.
 DESTINATION_CHECKOUT=`cd $1 && pwd`
