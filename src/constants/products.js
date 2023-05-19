@@ -55,6 +55,10 @@ export const products = {
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },
   postgresql: { name: "PostgreSQL", iconName: IconNames.POSTGRESQL_MONO },
+  postgres_distributed_for_kubernetes: {
+    name: "EDB Postgres Distributed for Kubernetes",
+    iconName: IconNames.KUBERNETES,
+  },
   postgres_for_kubernetes: {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
