@@ -122,6 +122,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             navigation
             showInteractiveBadge
             hideToC
+            hideKBLink
             katacodaPages {
               scenario
               account
@@ -494,6 +495,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideToC: Boolean
       hideVersion: Boolean
+      hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
     }
