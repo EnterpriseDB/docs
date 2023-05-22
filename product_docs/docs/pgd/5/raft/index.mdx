@@ -4,8 +4,6 @@ title: Proxies, Raft and Raft subgroups
 
 ---
 
-## PGD and Raft
-
 PGD is based on a global Raft model where clusters have a single Raft group spanning all the data nodes in the PGD cluster. A Raft leader is elected by the cluster and propagates the state of the cluster to all the other nodes in the cluster. 
 
 !!! Hint What is Raft?
@@ -16,53 +14,25 @@ It is essential for certain operations in the cluster that the Raft leader – s
 
 It also means that one half of the nodes in the cluster, plus one additional node must be able to reach each other. So, in a global cluster with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
 
-## Raft and routing
+## Raft and proxy routing
 
-One function that uses Raft is proxy routing which, when enabled, ensures that a data-node in each region is selected as the write leader for the region and that all the pgd proxy nodes in that region direct their traffic to the write leader.
+One function that also uses Raft is proxy routing. Proxy routing requires that the proxies are able to coordinate writing to a data node within their group of nodes. This data node is the write leader. If the write leader goes offline, the proxies need to be able to switch to a new write leader, selected by the data nodes, to maintain continuity for connected applications.
 
-!!! Note Proxy routing
-Proxy routing is default in many configurations of PGD but is not mandatory; clusters can be configured without proxy-routing where the decision on which data node to write to is left to applications. 
-!!!
+Proxy routing can be configured in a number of ways in PGD 5, but the recommended configurations are "global" and "local" routing.
 
-Proxy routing also requires that the global Raft group be able to achieve consensus to select the write leader in each location, and in turn inform the pgd-proxy instances to direct their updates to that node. 
+Global routing uses the top-level group, also known as the global group, to manage the proxy routing. All nodes in the group are eligible to become write leader for all proxies. Connections to proxies within the global group will be routed to data nodes within the global group.
 
-![6 Node Global Raft](images/6NodeGlobalRaft.png)
+Local routing uses the subgroups, often mapped to locations, to manage the proxy routing within the group. This allows subgroups to have their own Raft leader for proxy routing and, in turn, own write leader. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
 
-If the write leader in a location goes out of service, as part of the failover process all the remaining nodes will elect a new write leader for that location and the pgd proxies for that location will forward traffic to the new write leader. 
+## Raft subgroups
 
-This is a simple and effective technique, which happily manages the appearance and disappearance of nodes. But there are situations where it is possible to lose the ability to failover from one node to another while the location itself is healthy.
+In previous versions of PGD, local routing relied on the global Raft which powers decision making between nodes in the cluster. But issues could occur if connectivity between the subgroups was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus can become quorate, and without that, it would be unable to make decisions and elect leaders. While normal asynchronous transactions can carry on, operations that use Raft will be blocked, ready to recover when connectivity is restored. The proxies, though, will be unable to elect a new write leader.
 
-## Proxy routing and quorum failure
+To address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD cluster to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other clusters or the global Raft consensus. 
 
-In this scenario, there are two locations each with data centers with the same number of nodes in them. PGD would bring all the nodes together with Raft to select write leaders in each location. In each location there are three data nodes, making a resilient local cluster.
-
-With an odd number of nodes in each location, the clusters could allow a local majority to make decisions. But with Raft, all of the locations nodes work together to make decisions like that. Most of the time, this will work well.
-
-But consider if connectivity between the locations was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus algorithm can become quorate, and without that, it is unable to make decisions and elect leaders. Normal asynchronous transactions can carry on but operations that use Raft will be blocked. Critically though, with proxies will be unable to elect a new write leader.
-
-While the write leader may persist for a time, at some point a new leader will need to be selected and it's at that point that the lack of consensus would become very noticeable.
-
-## Alternative solutions
-
-One solution to this problem has been to add an extra data center with a witness node which could provide consensus when a location was offline. This does require the addition of a location which is not affected by either location being down. But that would also mean when the East DC was cut off, the global cluster still had the West DC (3 nodes) and Central DC (1 node) to come to a consensus, with 4 nodes out of a global 7 voting. The reverse is also true if West DC was cut off, East DC and Central DC would still have sufficient nodes to perform Raft operations and elect leaders.
-
-Its a simple solution which also addresses other Raft operations, but it does require that extra data center and server to manage things.
-
-A previous alternative solution was to add an external Raft consensus layer using etcd (https://etcd.io). This layer would be used exclusively by the proxy nodes to decide on which node at that location would be the write leader. This solution required both additional software and at least three nodes running etcd at each location. It is also no longer supported with PGD5.
-
-## The Raft subgroup solution
-
-Introduced in PGD5, the subgroup raft option allows the subgroups within a PGD cluster to elect the leaders they need independently. These devolved Raft subgroups still take part in top-level decision-making in the cluster for other operations, but are able to elect write leaders independently.
-
-A Raft subgroup will elect it's own write leader. The subgroup will also have its own Raft leader, managing write leader elections, working alongside the global group leader, managing all other Raft operations.
-
-With subgroups able to make their own Raft consensus for write leader elections, it means no less need for extra, redundant resources on standby for situations when the unlikely but possible loss of a region happens. With Raft subgroups electing their own write leaders, applications can continue connecting through the proxies. If you wish for Raft operations to continue in this scenario, you will still need to consider adding an extra location with a witness node.
 
 ## More
 
 * [Raft subgroups and TPA](01_raft_subgroups_and_tpa) shows how Raft subgroups can be enabled in PGD when deploying with Trusted Postgres Architect
 * [Raft subgroups and PGD CLI](02_raft_subgroups_and_pgd_cli) shows how PGD's Cli reports on the presence and status of Raft subgroups
 * [Migrating to Raft subgroups](03_migrating_to_raft_subgroups) is a guide to migrating existing clusters and enabling Raft subgroups without TPA
-
-
-
