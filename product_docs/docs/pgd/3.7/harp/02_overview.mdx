@@ -59,8 +59,8 @@ Postgres instance:
 
 ![HARP Unit](images/ha-unit.png)
 
-The consensus layer is an external entity where Harp Manager maintains 
-information it learns about its assigned Postgres node, and HARP Proxy 
+The consensus layer is an external entity where Harp Manager maintains
+information it learns about its assigned Postgres node, and HARP Proxy
 translates this information to a valid Postgres node target. Because Proxy
 obtains the node target from the consensus layer, several such instances can
 exist independently.
@@ -80,8 +80,8 @@ In either case, each unit consists of the following elements:
 * A HARP Proxy service that directs traffic to the proper lead master node,
   as derived from the consensus layer
 
-Not every application stack has access to additional node resources 
-specifically for the Proxy component, so it can be combined with the 
+Not every application stack has access to additional node resources
+specifically for the Proxy component, so it can be combined with the
 application server to simplify the stack.
 
 This is a typical design using two BDR nodes in a single data center organized in a lead master/shadow master configuration:
@@ -99,8 +99,8 @@ When managing a EDB Postgres Distributed cluster, HARP maintains at most one lea
 defined location. This is referred to as the lead master. Other BDR
 nodes that are eligible to take this position are shadow master state until they take the leader role.
 
-Applications can contact the current leader only through the proxy service. 
-Since the consensus layer requires quorum agreement before conveying leader 
+Applications can contact the current leader only through the proxy service.
+Since the consensus layer requires quorum agreement before conveying leader
 state, proxy services direct traffic to that node.
 
 At a high level, this mechanism prevents simultaneous application interaction with
@@ -167,10 +167,10 @@ The arrangement of the work units is such that their organization must follow th
 2. The contents of the consensus layer dictate the prescriptive role of all
    operational work units.
 
-This arrangement delegates cluster quorum responsibilities to the consensus layer, 
-while HARP leverages it for critical role assignments and key/value storage. 
-Neither storage nor retrieval succeeds if the consensus layer is inoperable 
-or unreachable, thus preventing rogue Postgres nodes from accepting 
+This arrangement delegates cluster quorum responsibilities to the consensus layer,
+while HARP leverages it for critical role assignments and key/value storage.
+Neither storage nor retrieval succeeds if the consensus layer is inoperable
+or unreachable, thus preventing rogue Postgres nodes from accepting
 connections.
 
 As a result, the consensus layer generally exists outside of HARP or HARP-managed nodes for maximum safety. Our reference diagrams show this separation, although it isn't required.
@@ -193,11 +193,11 @@ The following diagram shows the current and standard representation:
 
 ![BDR Always-On Reference Architecture](images/bdr-ao-spec.png)
 
-In this diagram, HARP Manager exists on BDR Nodes 1-4. The initial state 
-of the cluster is that BDR Node 1 is the lead master of DC A, and BDR 
+In this diagram, HARP Manager exists on BDR Nodes 1-4. The initial state
+of the cluster is that BDR Node 1 is the lead master of DC A, and BDR
 Node 3 is the lead master of DC B.
 
-This configuration results in any HARP Proxy resource in DC A connecting to BDR Node 1 
+This configuration results in any HARP Proxy resource in DC A connecting to BDR Node 1
 and the HARP Proxy resource in DC B connecting to BDR Node 3.
 
 !!! Note
@@ -227,6 +227,47 @@ location: dcb
 
 This applies to any HARP Proxy nodes that are designated in those respective
 data centers as well.
+
+### Health check
+
+HARP exposes liveness probe for both `harp-manager` and `harp-proxy` services and a readiness probe for `harp-proxy` service only. These are HTTP probes and will start a HTTP server within the respective service if enabled.
+
+
+#### Liveness probes
+
+Liveness probe returns `UP` with http status code `200 (OK)` if the service is up and running and a connection refused error if the service is down but will never return `DOWN`. This is due to the fact that the http server listening for probes request is stopped if the `harp-manager` and `harp-proxy` services are not up. Below are the endpoints for the liveness probe for the respective services.
+```
+/probes/manager/is_live
+/probes/proxy/is_live
+```
+
+#### Readiness probe
+
+Readiness probes is available for `harp-proxy` only. It returns `UP` with http status code `200 (OK)` if the proxy is up and is able to successfully execute the sql query (`select 1`) through itself i.e using the hostname and port of proxy node exposed for client applications. It would return `DOWN` with http status code `500 (Internal Server Error)` in the following scenarios.
+* The HARP Proxy cannot establish a TCP connection to the DCS
+* The DCS reports that there is no current write leader available
+* The HARP Proxy cannot establish a TCP connection to the current write leader
+* The TLS certificate on the current write leader is expired
+
+Having that said, it is important to know that once started proxy always remains in ready state even if this probe return `DOWN` because the proxy can recover itself automatically (self heal) once problematic conditions are resolved on BDR or DCS side. If `harp-proxy` service is down then, similar to liveness probe this probe too would return connection refused error. Below is the endpoint for readiness probe.
+```
+/probes/proxy/is_ready
+```
+
+!!! Note
+    Proxy would execute the SQL query only when the readiness endpoint is
+    requested even though probes are enabled.
+
+#### Probes configuration
+
+The configuration to enable health check probes is simple and needs to be defined in the local config file of the respective HARP services. Since this can be enabled for both `harp-manager` and `harp-proxy` service the configs are defined at root level and not under any particular service in config file. Below is a sample config.
+```
+probes:
+  enable: true
+  http_port: 8080
+```
+
+The hostname for HTTP server is the hostname of the HARP node (`harp-manager` or `harp-proxy`) itself.
 
 ### BDR 3.7 compatibility
 
