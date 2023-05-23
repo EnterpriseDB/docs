@@ -122,6 +122,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             navigation
             showInteractiveBadge
             hideToC
+            hideKBLink
             katacodaPages {
               scenario
               account
@@ -143,6 +144,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               platform
               indexCards
               showInteractiveBadge
+              hideKBLink
               hideVersion
               displayBanner
             }
@@ -494,6 +496,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideToC: Boolean
       hideVersion: Boolean
+      hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
     }
@@ -520,6 +523,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       editTarget: EditTargets
       showInteractiveBadge: Boolean
       hideVersion: Boolean
+      hideKBLink: Boolean
       displayBanner: String
     }
   `;
