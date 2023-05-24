@@ -90,6 +90,7 @@ const sourceToPluginConfig = {
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
+  ha_arch: { name: "ha_arch", path: "advocacy_docs/ha_arch" },
 };
 
 const externalSourcePlugins = () => {

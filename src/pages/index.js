@@ -250,6 +250,9 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pglogical2/">
               pglogical 2
             </IndexCardLink>
+            <IndexCardLink to="/ha_arch/">
+              Reference HA Architectures
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
