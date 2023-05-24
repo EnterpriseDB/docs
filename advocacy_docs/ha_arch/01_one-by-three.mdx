@@ -1,0 +1,66 @@
+---
+title: "One by Three Architecture"
+navTitle: "One by Three"
+---
+
+<div id="one_by_three_overview" class="registered_link"></div>
+
+---
+
+The **One by Three** architecture consists of **two Postgres nodes** arranged in a **Physical Streaming Replication** relationship with a **single Witness node** to achieve **High Availability**. It can survive a single node outage and perform **Automated Failover** within the single **Availability Zone** where it is located. The recommended **Barman** backup service is located in a **Shared Node** resource with the Witness in order to reduce costs.
+
+Since this architecture is located in a single Availability Zone, we strongly recommend copying the contents of the Barman node to a tertiary location for safety. In the event of an Availability Zone outage, this offsite backup will be necessary to rebuild the database, resulting in a fairly **high RTO** and a potentially **high RPO** as well. We only recommend this architecture for non-Production systems due to its general lack of Zone or Region resiliency.
+
+## Diagram
+
+![](images/1x3.png)
+
+## RADAR Chart
+
+![](images/1x3-radar.png)
+
+* **RPO** - High
+  - Cannot survive Zone outage
+  - Asynchronous by default
+  - No dedicated offsite backup
+* **RTO** - Medium-High
+  - Automatic failover enabled within Zone
+  - Physical streaming replication failover speeds
+  - Zone outage requires full site restoration
+* **Latency** - Low
+  - Asynchronous by default
+  - No cross-Zone or Region traffic
+* **Cost** - Low
+  - Lowest node count
+  - No extra Availability Zones necessary
+* **Resilience** - Low
+  - Can only survive a single node outage
+* **OLTP** - Medium
+  - Relatively low node count for read distribution
+  - Asynchronous commit times by default
+* **OLAP** - Medium-High
+  - Few nodes to replicate
+  - Least latency between Nodes
+
+## Variants
+
+### Postgres Distributed Variant
+
+When using EDB Postgres Distributed, the One by Three architecture adds an additional **Proxy** resource. Accessing Postgres through the Proxy component substantially **improves RTO**, at a slightly increased cost due to licensing. All nodes in this variant are always writable, and the Proxy determines which should be the principal write target in order to reduce the risk of write conflicts.
+
+![](images/1x3-pgd.png)
+
+### Synchronous Replication Variant
+
+It is possible to moderately **improve RPO** for the One by Three design by using **Synchronous Replication**. While this also slightly increases write latency, it also mitigates the loss of committed transactions. A single offline Replica would normally interrupt write traffic on the Primary, so this variant also replaces the Witness with a Postgres Synchronous Replica.
+
+![](images/1x3-sync.png)
+
+### PgPool Variant
+
+PgPool is commonly used to distribute read and write traffic to different targets. This variant of the One by Three design incorporates a PgPool node for slightly **improved Scalability**. The Witness node may also be replaced with a Postgres Replica and added to the Read Pool to further increase read scalability.
+
+![](images/1x3-pool.png)
+
+---
+
