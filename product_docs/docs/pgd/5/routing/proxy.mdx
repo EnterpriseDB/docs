@@ -55,6 +55,62 @@ The PostgreSQL C client library (libpq) allows you to specify multiple host name
 
 However, if the PGD Proxy instance is accessible but doesn't have access to the write leader, or the write leader for a given instance doesn't exist (that is, because there's no write leader for the given PGD group), the connection simply fails. No other hosts in the multi-host connection string is tried. This behavior is consistent with the behavior of PostgreSQL client libraries with other proxies like HAProxy or pgbouncer.
 
+### Proxy health check
+
+If enabled proxy exposes following two http health check endpoints that can be used as liveness and readiness probes in HA deployments. These endpoints are http `GET` requests and do not require a request body.
+```
+/health/is-live
+/health/is-ready
+```
+
+
+#### Configuration
+
+By default the proxy health check is disabled. It can be enabled by simply adding the config `http.enable = true` under `proxy` section in the `pgd-proxy-config.yml` file as shown below.
+```
+  proxy:
+	  name: proxy-a1
+	  endpoint: "host=proxy-a1 port=6432 dbname=bdrdb user=pgdproxy "
+	  http:
+  	  enable: true
+```
+
+Default http server address is `:8080` with timeout `10s`. Below is a sample config to set the custom values of host, port and timeout.
+```
+  proxy:
+	  name: proxy-a1
+	  endpoint: "host=proxy-a1 port=6432 dbname=bdrdb user=pgdproxy "
+	  http:
+  	  enable: true
+  	  host: "0.0.0.0" # default is ":8080"
+  	  port: 8080
+	    probes:
+  	    timeout: 10s
+```
+
+The `proxy.endpoint` parameter is used by readiness check which try to connect to the proxy server using this endpoint. Host and port given in the endpoint should be of proxy (e.g. host=proxy-a1 port=6432). Please note this is different from cluster endpoints where host and port are of the backend BDR server. User and database could be the same as per setup though.
+
+The `proxy.probes.timeout` is used by readiness check. Readiness probe will return false if proxy doesn't return the result of query `select 1` within this time period. This value should be set based on failover time which varies from 1s to 25s and retry attempts to avoid false positives.
+
+Proxy user (`pgdproxy` in above example) should have the database login access and its password set up in `~/.pgpass` file. If cluster is setup through TPAExec, it creates the `pgdproxy` user as an OS user as well as database user with `bdr_superuser` role and have it password set in the `pgpass` file.
+
+#### Liveness check
+
+Liveness check either return `true` with http status code `200 (OK)` or an error but never `false`. This is due to the fact that Proxy service exits immediately effectively stopping http server if it finds a critical error on startup that cannot be recovered or prevents further operations.
+
+#### Readiness check
+
+Readiness check returns `true` with http status code `200 (OK)` if the proxy is up and running. It returns `false` with http status code `500 (Internal Server Error)` if SQL query (`select 1`) fails through the given proxy's endpoint. It will return `false` in the following scenarios.
+* Proxy detects that the Raft leader is not available and `consensus_grace_period` has expired.
+* Proxy detects that the write leader is not available.
+* Proxy cannot establish a TCP connection to the current write leader
+* The TLS certificate on the current write leader is expired
+
+Having that said, it is important to know that once started proxy always remains in available state even if these probes return false because the proxy can recover itself automatically (self heal) once the BDR side or connectivity issues are resolved.
+
+!!! Note
+    Proxy would execute the SQL query only when the readiness endpoint is requested and not on periodic basis.
+
 ## Managing PGD Proxy
 
 PGD CLI provides a few commands to manage proxies in a PGD cluster, such as `create-proxy`, `delete-proxy`, `set-proxy-options`, and `show-proxies`. See [PGD CLI](../cli/command_ref) for more information.
