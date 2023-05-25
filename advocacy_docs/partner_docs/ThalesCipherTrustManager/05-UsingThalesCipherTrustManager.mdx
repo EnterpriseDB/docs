@@ -11,7 +11,7 @@ After you have configured all of the Thales Certificates, as stated in the Confi
 To implement Thales CipherTrust Manger with EDB Postgres Advanced Server 15.2 you must ensure that you have the following downloaded to your system:
 - Python
 - [pykmip](https://pypi.org/project/PyKMIP/#files)
-- edb_tde_kmip_client.py
+- edb_tde_kmip_client.py downloaded from your EDB Repos access
 
 All of the `.pem` files that you created in the Configuring section, `key.pem`, `cert.pem` and `ca.pem`, need to be copied to the system where your EDB Postgres Advanced Server 15.2 instance is installed.  For our example, all of the `.pem` files and the `edb_tde_kmip_client.py` program are in the `/tmp/` directory.
 
@@ -34,10 +34,11 @@ ubuntu@ip-172-31-46-134:/tmp$ cat pykmip.conf
 [client]
 host=127.0.0.1
 port=5696
+username=testuser123     
+password=Adminedb@123
 keyfile=/tmp/key.pem
 certfile=/tmp/cert.pem
 ca_certs=/tmp/ca.pem
-#cert_reqs=CERT_REQUIRED
 ```
 
 !!! Note
@@ -64,7 +65,7 @@ ca_certs=/tmp/ca.pem
 ```
 3. Navigate back to Thales CipherTrust Manager, and select `Keys` on the navigation bar.
 
-4. Check that the key you created, in this case `edbtestkey` has been created.
+4. Check that the key you created, in this case `edbtestkey`, has been created.
     ![Thales CipherTrust Manager Check Key Creation](Images/ThalesCheckKeys.png)
 
 ## Verify Encryption and Decryption
@@ -93,13 +94,19 @@ secret
 
 After you have completed the above steps you will be able to export the **PGDATAKEYWRAPCMD** and **PGDATAKEYUNWRAPCMD** to wrap and unwrap your encryption key and initialize your database.
 
-1. Login to your EDB Postgres Advanced Server system.
+1. Login to your EDB Postgres Advanced Server system as enterprisedb user, `sudo su - enterprisedb`.
 
-2. Navigate to the `/bin` directory where your executables live, for example `/usr/lib/edb-as/15/bin` would be the executables directory for an Ubuntu system.
+2. Navigate to the `/bin` directory where your executables live. In our example it is `/usr/lib/edb-as/15/bin`.
 
-3. `export PGDATAKEYWRAPCMD='python3 /tmp/edb_tde_kmip_client.py encrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=key_ouput_here --out-file=%p --variant=thales’`
+3. Type: `export PGDATAKEYWRAPCMD='python3 /tmp/edb_tde_kmip_client.py encrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=key_ouput_here --out-file=%p --variant=thales’`
 
-4. `export PGDATAKEYUNWRAPCMD='python3 /tmp/edb_tde_kmip_client.py decrypt  --pykmip-config-file=/tmp/pykmip.conf   --key-uid=key_output_here  --in-file=%p --variant=thales’`
+4. Type: `export PGDATAKEYUNWRAPCMD='python3 /tmp/edb_tde_kmip_client.py decrypt  --pykmip-config-file=/tmp/pykmip.conf   --key-uid=key_output_here  --in-file=%p --variant=thales’`
+
+```bash
+enterprisedb@ip-172-31-46-134:/usr/lib/edb-as/15/bin$ export PGDATAKEYWRAPCMD='python3 /tmp/edb_tde_kmip_client.py encrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=72cb431904fe4dd0a77207b03bff7755be6265cd7f6f463bb0e59023ec5456f4 --out-file=%p --variant=thales'
+
+enterprisedb@ip-172-31-46-134:/usr/lib/edb-as/15/bin$ export PGDATAKEYUNWRAPCMD='python3 /tmp/edb_tde_kmip_client.py decrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=72cb431904fe4dd0a77207b03bff7755be6265cd7f6f463bb0e59023ec5456f4 --in-file=%p --variant=thales'
+```
 
 5. Perform your initdb per your database requirements, for example: `./initdb -D dd12 -y`.
 
@@ -211,6 +218,39 @@ After you have completed the above steps you will be able to export the **PGDATA
 ```
 
 7. Start your database and navigate to your `/data` directory to view the postgresql.conf file to ensure that your `data_encryption_key_unwrap_command` that you set with your `export PGDATAUNWRAPCMD` is present under the Authentication section.
+```bash
+# - Authentication -
+
+#authentication_timeout = 1min          # 1s-600s
+#password_encryption = scram-sha-256    # scram-sha-256 or md5
+#db_user_namespace = off
+
+# GSSAPI using Kerberos
+#krb_server_keyfile = 'FILE:${sysconfdir}/krb5.keytab'
+#krb_caseins_users = off
+
+# - SSL -
+
+#ssl = off
+#ssl_ca_file = ''
+#ssl_cert_file = 'server.crt'
+#ssl_crl_file = ''
+#ssl_crl_dir = ''
+#ssl_key_file = 'server.key'
+#ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL' # allowed SSL ciphers
+#ssl_prefer_server_ciphers = on
+#ssl_ecdh_curve = 'prime256v1'
+#ssl_min_protocol_version = 'TLSv1.2'
+#ssl_max_protocol_version = ''
+#ssl_dh_params_file = ''
+#ssl_passphrase_command = ''
+#ssl_passphrase_command_supports_reload = off
+
+# - Data Encryption -
+
+data_encryption_key_unwrap_command = 'python3 /tmp/edb_tde_kmip_client.py decrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=72cb431904fe4dd0a77207b03bff7755be6265cd7f6f463bb0e59023ec5456f4 --in-file=%p --variant=thale'
+
+```
 
 For more information on how TDE is incorporated with EDB Postgres Advanced Server visit the [EDB Transparent Data Encryption](https://www.enterprisedb.com/docs/tde/latest/) documentation.
 
