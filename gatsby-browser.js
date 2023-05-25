@@ -10,6 +10,13 @@ exports.onRouteUpdate = ({ location }) => scrollToAnchor(location);
  * @param {Number} [mainNavHeight] - the height of any persistent nav -> document.querySelector(`nav`)
  */
 function scrollToAnchor(location, mainNavHeight = 0) {
+  // left nav: scroll
+  const navItem = document.querySelector(".sidebar .active");
+  if (navItem) navItem.scrollIntoView({ block: "nearest" });
+  // right-nav: scroll
+  const toc = document.querySelector(".toc-sticky .active");
+  if (toc) toc.scrollIntoView({ block: "nearest" });
+
   // Check for location so build does not fail
   if (location && location.hash) {
     try {
