@@ -172,7 +172,6 @@ module.exports = {
     "gatsby-plugin-sass",
     "gatsby-plugin-react-helmet",
     "gatsby-transformer-sharp",
-    "gatsby-transformer-json",
     "gatsby-plugin-catch-links",
     "gatsby-plugin-sharp",
     {
@@ -284,6 +283,7 @@ module.exports = {
             options: {
               linkImagesToOriginal: false,
               showCaptions: false,
+              maxWidth: 1080,
             },
           },
           {
