@@ -156,6 +156,7 @@ const treeNodeToNavNode = (treeNode, withItems = false) => {
     iconName: frontmatter?.iconName,
     description: frontmatter?.description,
     interactive: interactive,
+    childCount: treeNode.children.length,
   };
   if (withItems) navNode.items = [];
   return navNode;
