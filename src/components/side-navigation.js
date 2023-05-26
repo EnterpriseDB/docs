@@ -1,4 +1,5 @@
 import React from "react";
+import { useScrollRestoration } from "gatsby";
 import { DarkModeToggle, Link, Logo } from "./";
 
 const DocsLink = () => (
@@ -52,9 +53,11 @@ const SideNavigation = ({
   footer = true,
   hideKBLink = false,
 }) => {
+  const scrollRestoration = useScrollRestoration("navigation-sidebar");
+
   return (
     <nav className={`sidebar d-block bg-${background} border-right`}>
-      <div className="sidebar-sticky pl-4 pr-4 pb-4">
+      <div className="sidebar-sticky pl-4 pr-4 pb-4" {...scrollRestoration}>
         <LogoLink />
         {children}
         {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}
