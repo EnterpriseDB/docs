@@ -230,43 +230,54 @@ data centers as well.
 
 ### Health check
 
-HARP exposes liveness probe for `harp-manager` and `harp-proxy` services and a readiness probe for `harp-proxy` service only. These are HTTP probes and HARP will start a HTTP server within the respective service if enabled. Both the probes are http `GET` requests and do not require a request body.
-
-
-#### Liveness probes
-
-Liveness probe returns `UP` with http status code `200 (OK)` if the service is up and running and a connection refused error if the service is down but will never return `DOWN`. This is due to the fact that the http server listening for probes request is stopped if the requested `harp-manager` or `harp-proxy` service is down. Below are the endpoints for the liveness probe for the respective services.
+HARP exposes the following liveness and readiness health check endpoints. These are HTTP endpoints and if enabled HARP will start a HTTP server within the respective service. Both the endpoints are HTTP `GET` requests and do not require a request body. Below are the endpoints for the both the health checks.
 ```
-/probes/manager/is_live
-/probes/proxy/is_live
+/health/is-live
+/health/is-ready
 ```
 
-#### Readiness probe
 
-Readiness probes is available for `harp-proxy` only. It returns `UP` with http status code `200 (OK)` if the proxy is up and is able to successfully execute the SQL query (`select 1`) through itself i.e using the hostname and port of proxy node exposed for client applications. It would return `DOWN` with http status code `500 (Internal Server Error)` in the following scenarios.
+#### Liveness
+
+Liveness endpoint returns `true` with HTTP status code `200 (OK)` if the service is up and a connection refused error if the service is down but will never return `false`. This is due to the fact that the HTTP server listening for probes request is stopped if the corresponding HARP service is down. This endpoint is exposed for `harp-manager` and `harp-proxy` services.
+
+#### Readiness
+
+Readiness endpoint is exposed for `harp-proxy` only. It returns `true` with HTTP status code `200 (OK)` if the proxy is up and is able to successfully query the backend Postgres through itself i.e using the host and port of proxy node exposed for client applications. It would return `false` with HTTP status code `500 (Internal Server Error)` in the following scenarios.
 * The HARP Proxy cannot establish a TCP connection to the DCS
 * The DCS reports that there is no current write leader available
 * The HARP Proxy cannot establish a TCP connection to the current write leader
 * The TLS certificate on the current write leader is expired
 
-Having that said, it is important to know that once started proxy always remains in available state even if this probe return `DOWN` because the proxy can recover itself automatically (self heal) once the BDR or DCS side issues are resolved. If `harp-proxy` service is down then, similar to liveness probe this probe too would return connection refused error. Below is the endpoint for readiness probe.
-```
-/probes/proxy/is_ready
-```
+Having that said, it is important to know that once started proxy always remains in available state even if this endpoint return `false` because the proxy can recover itself automatically (self heal) once the BDR or DCS side issues are resolved. If `harp-proxy` service is down then, this too would return connection refused error.
 
 !!! Note
-    Proxy would execute the SQL query only when the readiness endpoint is requested.
+    Proxy would query backend database only when the readiness endpoint is requested and not on periodic basis.
 
-#### Probes configuration
+#### Configuration
 
-The configuration to enable health check probes is simple and needs to be defined in the local config file of the respective HARP service. Since this can be enabled for both `harp-manager` and `harp-proxy` service the configs are defined at root level and not under any particular service in config file. Below is a sample config.
+By default the health check is disabled. It can be enabled by simply adding the config `http.enable: true` in the local config file `config.yml` as shown below.
 ```
-probes:
+http:
   enable: true
-  http_port: 8080
 ```
 
-The address used for HTTP server is `:http_port`.
+Default HTTP server address is `:8080`. Below is a sample config to set the custom values for host, port and other config parameters.
+```
+http:
+  enable: true #default false
+  host: "" # default is ":8080"
+  port: 8080
+  secure: false #default false
+  cert_file: "/etc/tpa/server.crt"
+  key_file: "/etc/tpa/server.key"
+  probes:
+    timeout: 10s
+```
+
+To enable secure communication over the HTTP endpoints set the config parameter `http.secure` to `true` and provide cert and key file paths in config parameters `cert_file` and `key_file` respectively.
+
+The `http.probes.timeout` is used by readiness check. This check will return `false` if proxy doesn't return the response from backend Postgres within this time period. This value should be set based on failover time which varies from 1s to 25s and retry attempts to avoid false positives.
 
 ### BDR 3.7 compatibility
 
