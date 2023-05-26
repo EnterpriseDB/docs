@@ -1,9 +1,11 @@
 import React from "react";
 import { Link } from "./";
 import { useScrollRestoration } from "gatsby";
+import { useLocation } from "@reach/router";
 
 const TableOfContents = ({ toc }) => {
   const scrollRestoration = useScrollRestoration("header-navigation-sidebar");
+  const hash = useLocation().hash;
 
   return (
     <ul
@@ -19,7 +21,7 @@ const TableOfContents = ({ toc }) => {
           <li key={item.title}>
             <Link
               className={`d-block py-2 align-middle ${
-                window.location.hash === item.url ? "active" : ""
+                hash === item.url ? "active" : ""
               }`}
               to={item.url}
             >
