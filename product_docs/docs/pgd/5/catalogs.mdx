@@ -312,8 +312,8 @@ This table identifies the local node in the current database of the current Post
 
 ### `bdr.local_node_summary`
 
-A view containing the same information as [`bdr.node_summary`](#bdrnode_summary) but only for the
-local node.
+A view containing the same information as [`bdr.node_summary`](#bdrnode_summary)
+(plus `pub_repsets` and `sub_repsets`), but only for the local node.
 
 ### `bdr.local_sync_status`
 
@@ -330,21 +330,6 @@ Information about status of either subscription or table synchronization process
 | sync_status       | char   | Current state of the synchronization                     |
 | sync_remote_relid | oid    | ID of the synchronized table (if any) on the upstream    |
 | sync_end_lsn      | pg_lsn | Position at which the synchronization state last changed |
-
-### `bdr.network_path_info`
-
-A catalog view that stores user-defined information on network costs between node locations.
-
-#### `bdr.network_path_info` columns
-
-| Name            | Type    | Description                                |
-| --------------- | ------- | ------------------------------------------ |
-| node_group_name | name    | Name of the PGD group                      |
-| node_region1    | text    | Node region name, from bdr.node_location   |
-| node_region2    | text    | Node region name, from bdr.node_location   |
-| node_location1  | text    | Node location name, from bdr.node_location |
-| node_location2  | text    | Node location name, from bdr.node_location |
-| network_cost    | numeric | Node location name, from bdr.node_location |
 
 ### `bdr.node`
 
@@ -419,8 +404,9 @@ This catalog table lists all the PGD node groups.
 | node_group_num_writers          | int      | Number of writers to use for subscriptions backing this node group                            |
 | node_group_enable_wal_decoder   | bool     | Whether the group has enable_wal_decoder set                                                  |
 | node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
-| node_group_location             | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
-| node_group_enable_proxy_routing | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
+| node_group_location             | name     | Name of the location associated with the node group                                           |
+| node_group_enable_proxy_routing | bool     | Whether the node group allows routing from `pgd-proxy`                                        |
+| node_group_enable_raft          | bool     | Whether the node group allows Raft Consensus                                                  |
 
 ### `bdr.node_group_replication_sets`
 
@@ -450,19 +436,6 @@ local node (as opposed to global view of per-node configuration).
 | applied_state | oid  | Internal ID of the node state                                           |
 | ddl_epoch     | int8 | Last epoch number processed by the node                                 |
 | slot_name     | name | Name of the slot used to connect to that node (NULL for the local node) |
-
-### `bdr.node_location`
-
-A catalog view that stores user-defined information on node locations.
-
-#### `bdr.node_location` Columns
-
-| Name            | Type | Description                 |
-| --------------- | ---- | --------------------------- |
-| node_group_name | name | Name of the PGD group       |
-| node_id         | oid  | ID of the node              |
-| node_region     | text | User-supplied region name   |
-| node_location   | text | User-supplied location name |
 
 ### `bdr.node_log_config`
 
@@ -501,23 +474,6 @@ purposes. See also [Monitoring](monitoring).
 | peer_replay_time        | timestamptz | Latest replay time of peer seen by the reporting node                                |
 | last_update_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
 | last_update_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
-
-### `bdr.node_pre_commit`
-
-Used internally on a node configured as a Commit At Most Once (CAMO)
-partner. Shows the decisions a CAMO partner took on transactions in
-the last 15 minutes.
-
-#### `bdr.node_pre_commit` columns
-
-| Name           | Type        | Description                                    |
-| -------------- | ----------- | ---------------------------------------------- |
-| origin_node_id | oid         | OID of the node where the transaction executed |
-| origin_xid     | oid         | Transaction ID on the remote origin node       |
-| decision       | char        | 'c' for commit, 'a' for abort                  |
-| local_xid      | xid         | Transaction ID on the local node               |
-| commit_ts      | timestamptz | Commit timestamp of the transaction            |
-| decision_ts    | timestamptz | Decision time                                  |
 
 ### `bdr.node_replication_rates`
 
@@ -724,36 +680,6 @@ A simple view to show all the changes to schemas win PGD.
 ### `bdr.sequence_alloc`
 
 A view to see the allocation details for galloc sequences.
-
-#### `bdr.sequence_alloc` columns
-
-| Name                | Type        | Description                                      |
-| ------------------- | ----------- | ------------------------------------------------ |
-| seqid               | regclass    | The ID of the sequence                           |
-| seq_chunk_size      | bigint      | A sequence number for the chunk within its value |
-| seq_allocated_up_to | bigint      |                                                  |
-| seq_nallocs         | bigint      |                                                  |
-| seq_last_alloc      | timestamptz | Last sequence allocated                          |
-
-### `bdr.schema_changes`
-
-A simple view to show all the changes to schemas in PGD.
-
-#### `bdr.schema_changes` columns
-
-| Name                     | Type         | Description               |
-| ------------------------ | ------------ | ------------------------- |
-| schema_changes_ts        | timestampstz | The ID of the trigger     |
-| schema_changes_change    | char         | A flag of change type     |
-| schema_changes_classid   | oid          | Class ID                  |
-| schema_changes_objectid  | oid          | Object ID                 |
-| schema_changes_subid     | smallint     | The subscription          |
-| schema_changes_descr     | text         | The object changed        |
-| schema_changes_addrnames | text\[]      | Location of schema change |
-
-### `bdr.sequence_alloc`
-
-A view to see the sequences allocated.
 
 #### `bdr.sequence_alloc` columns
 
@@ -1256,11 +1182,6 @@ An internal catalog table holding state per DDL epoch.
 | epoch_consume_timeout | timestamptz | Timeout of this epoch                                                    |
 | epoch_consumed        | boolean     | Switches to true as soon as the local node has fully processed the epoch |
 | epoch_consumed_lsn    | boolean     | LSN at which the local node has processed the epoch                      |
-
-
-### `bdr.internal_node_pre_commit`
-
-Internal catalog table. Use the `bdr.node_pre_commit` view.
 
 ### `bdr.sequence_kind`
 
