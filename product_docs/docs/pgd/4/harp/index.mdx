@@ -244,26 +244,27 @@ data centers as well.
 
 ### Health check
 
-HARP exposes the following liveness and readiness health check endpoints. These are HTTP endpoints and if enabled HARP will start a HTTP server within the respective service. Both the endpoints are HTTP `GET` requests and do not require a request body. Below are the endpoints for the both the health checks.
+HARP exposes the following liveness and readiness health check APIs. These are HTTP(s) APIs and if enabled HARP will start a HTTP server within the respective service. Both the APIs are HTTP(s) `GET` requests and do not require a request body.
 ```
-/health/is-live
-/health/is-ready
+GET /health/is-live
+GET /health/is-ready
 ```
 
 
 #### Liveness
 
-Liveness endpoint returns `true` with HTTP status code `200 (OK)` if the service is up and a connection refused error if the service is down but will never return `false`. This is due to the fact that the HTTP server listening for probes request is stopped if the corresponding HARP service is down. This endpoint is exposed for `harp-manager` and `harp-proxy` services.
+Liveness endpoint returns `true` with HTTP status code `200 (OK)` if the HARP service is up and a connection refused error if the service is down but will never return `false`. This is due to the fact that the HTTP server listening for request is stopped if the corresponding HARP service is down. This API is exposed for `harp-manager` and `harp-proxy` services.
 
 #### Readiness
 
-Readiness endpoint is exposed for `harp-proxy` only. It returns `true` with HTTP status code `200 (OK)` if the proxy is up and is able to successfully query the backend Postgres through itself i.e using the host and port of proxy node exposed for client applications. It would return `false` with HTTP status code `500 (Internal Server Error)` in the following scenarios.
+Readiness endpoint is exposed for `harp-proxy` only. On the execution of this API, proxy executes server check query through its own listening address and port (default 6432), like any normal customer application. The query is executed on the current write leader if it is available. If that query returns successfully then API returns `true` with HTTP status code `200 (OK)` to HTTP client  else `false` with HTTP status code `500 (Internal Server Error)`. It would return `false` in the following scenarios.
 * The HARP Proxy cannot establish a TCP connection to the DCS
-* The DCS reports that there is no current write leader available
+* The DCS reports that there is no write leader available
+* The DCS reports that it is unhealthy like no Raft leader
 * The HARP Proxy cannot establish a TCP connection to the current write leader
 * The TLS certificate on the current write leader is expired
 
-Having that said, it is important to know that once started proxy always remains in available state even if this endpoint return `false` because the proxy can recover itself automatically (self heal) once the BDR or DCS side issues are resolved. If `harp-proxy` service is down then, this too would return connection refused error.
+It is important to know that once started proxy always remains in available state even if this endpoint return `false` because the proxy can recover itself automatically (self heal) once the BDR or DCS side issues are resolved. If `harp-proxy` service is down then, this too would return connection refused error.
 
 !!! Note
     Proxy would query backend database only when the readiness endpoint is requested and not on periodic basis.
@@ -289,7 +290,6 @@ http:
     timeout: 10s
 ```
 
-To enable secure communication over the HTTP endpoints set the config parameter `http.secure` to `true` and provide cert and key file paths in config parameters `cert_file` and `key_file` respectively.
+To enable HTTPS for the health check APIs set the config parameter `http.secure` to `true`. If enabled, the `cert_file` and `key_file` config parameters become mandatory and expect server certificate and key file paths respectively.
 
-The `http.probes.timeout` is used by readiness check. This check will return `false` if proxy doesn't return the response from backend Postgres within this time period. This value should be set based on failover time which varies from 1s to 25s and retry attempts to avoid false positives.
-
+The `http.probes.timeout` is used by readiness check. This check will return `false` if proxy does not return the response from backend Postgres within this time period. This value should be set based on failover time which varies from 1s to 25s and retry attempts to avoid false positives.
