@@ -376,6 +376,7 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/HPEGreenlake">
               HPE Greenlake
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
               Imperva Data Security Fabric
             </IndexCardLink>
