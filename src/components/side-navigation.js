@@ -57,7 +57,7 @@ const SideNavigation = ({
 
   return (
     <nav className={`sidebar d-block bg-${background} border-right`}>
-      <div className="sidebar-sticky pl-4 pr-4 pb-4" {...scrollRestoration}>
+      <div className="sidebar-sticky pl-3 pr-3 pb-4" {...scrollRestoration}>
         <LogoLink />
         {children}
         {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}

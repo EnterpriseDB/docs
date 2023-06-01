@@ -45,16 +45,16 @@ Patroni bootstraps (creates) the initial Postgres cluster and is in charge of st
 
 
 ```bash
-$ sudo systemctl stop edb-as@15-main.service
-$ sudo systemctl disable edb-as@15-main.service
-$ sudo rm -fr /var/lib/edb-as/15/main
+sudo systemctl stop edb-as@15-main.service
+sudo systemctl disable edb-as@15-main.service
+sudo rm -fr /var/lib/edb-as/15/main
 ```
 or
 
 ```bash
-$ sudo systemctl stop edb-pge-15.service
-$ sudo systemctl disable edb-pge-15.service
-$ sudo rm -fr /var/lib/edb-pge/15/data
+sudo systemctl stop edb-pge-15.service
+sudo systemctl disable edb-pge-15.service
+sudo rm -fr /var/lib/edb-pge/15/data
 ```
 
 ## Watchdog
@@ -62,12 +62,12 @@ $ sudo rm -fr /var/lib/edb-pge/15/data
 Patroni is the component interacting with the watchdog device. Set the permissions of the software watchdog on both `pg-patroni1` and `pg-patroni2` hosts:
 
 ```bash
-$ cat <<EOF | sudo tee /etc/udev/rules.d/99-watchdog.rules
+cat <<EOF | sudo tee /etc/udev/rules.d/99-watchdog.rules
 KERNEL=="watchdog", OWNER="$PGUSER", GROUP="$PGGROUP"
 EOF
-$ sudo sh -c 'echo "softdog" >> /etc/modules-load.d/softdog.conf'
-$ sudo modprobe softdog
-$ sudo chown $PGUSER:$PGGROUP /dev/watchdog
+sudo sh -c 'echo "softdog" >> /etc/modules-load.d/softdog.conf'
+sudo modprobe softdog
+sudo chown $PGUSER:$PGGROUP /dev/watchdog
 ```
 
 ## Patroni
@@ -77,10 +77,10 @@ On both `pg-patroni1` and `pg-patroni2` hosts, install Patroni and its dependenc
 Define the Patroni configuration in `/etc/patroni.yml`:
 
 ```bash
-$ CLUSTER_NAME="demo-cluster-1"
-$ MY_NAME=$(hostname --short)
-$ MY_IP=$(hostname -I | awk ' {print $1}')
-$ cat <<EOF | sudo tee /etc/patroni.yml
+CLUSTER_NAME="demo-cluster-1"
+MY_NAME=$(hostname --short)
+MY_IP=$(hostname -I | awk ' {print $1}')
+cat <<EOF | sudo tee /etc/patroni.yml
 scope: $CLUSTER_NAME
 namespace: /db/
 name: $MY_NAME
@@ -170,13 +170,13 @@ EOF
 Patroni expects to find the `postgres` binary in the `bin_dir` location, while the EDB Postgres Advanced Server binary is called `edb-postgres`. Create a symbolic link to let Patroni find that binary:
 
 ```bash
-$ sudo ln -s /usr/lib/edb-as/15/bin/edb-postgres /usr/lib/edb-as/15/bin/postgres
+sudo ln -s /usr/lib/edb-as/15/bin/edb-postgres /usr/lib/edb-as/15/bin/postgres
 ```
 
 Depending on the Patroni installation source, a [systemd file](https://github.com/zalando/patroni/blob/master/extras/startup-scripts/patroni.service) might already have been created. Define your own file with the accurate system user, group, and configuration path:
 
 ```bash
-$ cat <<EOF | sudo tee /etc/systemd/system/patroni.service
+cat <<EOF | sudo tee /etc/systemd/system/patroni.service
 [Unit]
 Description=Runners to orchestrate a high-availability Postgres
 After=syslog.target network.target
@@ -195,10 +195,9 @@ Restart=no
 [Install]
 WantedBy=multi-user.target
 EOF
-
-$ sudo systemctl daemon-reload
-$ sudo systemctl enable patroni
-$ sudo systemctl start patroni
+sudo systemctl daemon-reload
+sudo systemctl enable patroni
+sudo systemctl start patroni
 ```
 
 Start the Patroni service first on `pg-patroni1` so it becomes the leader of your Postgres cluster, and then start `pg-patroni2`.
@@ -206,7 +205,8 @@ Start the Patroni service first on `pg-patroni1` so it becomes the leader of you
 To list the members of the cluster, use the `patronictl` command:
 
 ```bash
-$ patronictl -c /etc/patroni.yml list
+patronictl -c /etc/patroni.yml list
+__OUTPUT__
 + Cluster: demo-cluster-1 (7104275668989116902) ----+----+-----------+
 | Member      | Host            | Role    | State   | TL | Lag in MB |
 +-------------+-----------------+---------+---------+----+-----------+
@@ -220,8 +220,8 @@ The Patroni REST API is available on port `8008`.
 With EDB Postgres Advanced Server, after the database cluster is running, some other systemd dependencies might need a reset. Use the following commands to perform the resets:
 
 ```bash
-$ sudo systemctl restart edb-as15-pgagent.service
-$ sudo systemctl reset-failed
+sudo systemctl restart edb-as15-pgagent.service
+sudo systemctl reset-failed
 ```
 
 ## HAProxy
@@ -229,10 +229,10 @@ $ sudo systemctl reset-failed
 For the purpose of this example, install HAProxy on both `pg-patroni1` and `pg-patroni2` hosts:
 
 ```bash
-$ sudo apt-get install -y haproxy
-$ sudo systemctl stop haproxy
-$ sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bck
-$ cat <<EOF | sudo tee /etc/haproxy/haproxy.cfg
+sudo apt-get install -y haproxy
+sudo systemctl stop haproxy
+sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bck
+cat <<EOF | sudo tee /etc/haproxy/haproxy.cfg
 global
     maxconn 100
 
@@ -268,15 +268,15 @@ listen read-only
     server pg-patroni1 pg-patroni1:$PGPORT maxconn 100 check port 8008
     server pg-patroni2 pg-patroni2:$PGPORT maxconn 100 check port 8008
 EOF
-
-$ sudo systemctl enable haproxy
-$ sudo systemctl start haproxy
+sudo systemctl enable haproxy
+sudo systemctl start haproxy
 ```
 
 There are two sections: read-write, using port `5000`, and read-only, using port `5001`. All Postgres hosts are included in both sections because they are all potential candidates to be either primary or standby. For HAProxy to know the role each host currently has, it queries the Patroni REST API:
 
 ```bash
-$ curl -s http://pg-patroni1:8008
+curl -s http://pg-patroni1:8008
+__OUTPUT__
 {
   "state": "running",
   "postmaster_start_time": "2022-06-30 07:45:55.427895+00:00",
@@ -312,13 +312,16 @@ $ curl -s http://pg-patroni1:8008
 You can now use port `5000` and port `5001` to choose between read-write or read-only connections:
 
 ```bash
-$ psql -U admin -d postgres -h pg-patroni1 -p 5000 -c "SELECT pg_is_in_recovery();"
+psql -U admin -d postgres -h pg-patroni1 -p 5000 -c "SELECT pg_is_in_recovery();"
+__OUTPUT__
  pg_is_in_recovery
 -------------------
  f
 (1 row)
-
-$ psql -U admin -d postgres -h pg-patroni1 -p 5001 -c "SELECT pg_is_in_recovery();"
+```
+```bash
+psql -U admin -d postgres -h pg-patroni1 -p 5001 -c "SELECT pg_is_in_recovery();"
+__OUTPUT__
  pg_is_in_recovery
 -------------------
  t

@@ -99,17 +99,14 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
-                  Learn how you can avoid the need to reseed logical replication
-                  tables when a new standby gets promoted to primary by using
-                  the PG Failover slots extension in your streaming replication
-                  architecture.
+                  Use these topics to quickly evaluate and deploy EDB Postgres
+                  Distributed. They'll get you up and running with a fully
+                  configured EDB Postgres Distributed cluster using the same
+                  tools that you'll use to deploy to production.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link
-                      className="btn-sm ml-2"
-                      to="/pg_extensions/pg_failover_slots/"
-                    >
+                    <Link className="btn-sm ml-2" to="/pgd/latest/quickstart/">
                       Find out more &rarr;
                     </Link>
                   </p>
