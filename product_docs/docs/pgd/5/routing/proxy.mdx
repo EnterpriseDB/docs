@@ -48,69 +48,28 @@ Note: In this case, if the grace period is kept too high then writes will contin
 
 Having said that, most of the time, upon loss of the current Raft leader the new Raft leader gets elected by BDR within a few seconds provided more than half of the nodes (quorum) are still up. Hence, if the Raft leader is down but the write leader is still up then proxy can be configured to allow routing by keeping `consensus_grace_period` to a non-zero, positive value. The proxy will wait for the Raft leader to get elected during this period before stopping routing. This may be helpful in some cases where availability is more important.
 
-### Proxy health check
-
-PGD Proxy provides the following HTTP(s) health check API endpoints. These APIs are `GET` requests and do not require a request body.
-```
-GET /health/is-live
-GET /health/is-ready
-```
-
-#### Liveness
-
-Liveness check either return `true` with HTTP status code `200 (OK)` or an error but never `false`. This is due to the fact that Proxy service exits immediately effectively stopping HTTP server if it finds a critical error on startup that cannot be recovered or prevents further operations.
-
-#### Readiness
-
-On receiving this request, proxy checks if it can successfully route traffic through the `proxy.endpoint`. If the check returns successfully then API returns `true` with HTTP status code `200 (OK)` else `false` with HTTP status code `500 (Internal Server Error)`. It will return `false` in the following scenarios.
-* Proxy detects that the Raft leader is not available and `consensus_grace_period` has expired.
-* Proxy detects that the write leader is not available.
-* Proxy cannot establish a TCP connection to the current write leader
-* The TLS certificate on the current write leader is expired
-
-It is important to know that once started proxy always remains in available state even if this check return false because the proxy can recover itself automatically (self heal) once the BDR cluster or connectivity is restored.
-
-!!! Note
-    Proxy will perform the readiness check against the backend Postgres only when the readiness endpoint is requested and not on periodic basis.
-
-#### Configuration
-
-By default the proxy health check is disabled. It can be enabled by adding the config `proxy.http.enable: true` in the `pgd-proxy-config.yml` file as shown below.
-```
-  proxy:
-	  name: proxy-a1
-	  endpoint: "host=proxy-a1 port=6432 dbname=bdrdb user=pgdproxy "
-	  http:
-  	    enable: true
-```
-
-Default HTTP server address is `:8080` with timeout `10s`. Below is a sample config to set the custom values of host, port and other configs.
-```
-  proxy:
-	  name: proxy-a1
-	  endpoint: "host=proxy-a1 port=6432 dbname=bdrdb user=pgdproxy "
-	  http:
-  	    enable: true
-  	    host: "0.0.0.0"
-  	    port: 8080
-        secure: false
-        cert_file: "/etc/tpa/server.crt"
-        key_file: "/etc/tpa/server.key"
-	    probes:
-  	      timeout: 10s
-```
-
-The `proxy.endpoint` parameter is used by readiness API endpoint which try to connect to the proxy server using this endpoint. Host and port given in the endpoint should be of proxy (e.g. host=proxy-a1 port=6432). Please note this is different from cluster endpoints where host and port are of the backend BDR server. User and database could be the same as per setup though. Proxy user (`pgdproxy` in above example) should have the database login access and its password set up in `~/.pgpass` file. If cluster is setup through TPAExec, it creates the `pgdproxy` user as an OS user as well as database user with `bdr_superuser` role and have it password set in the `pgpass` file.
-
-To enable HTTPS set the config parameter `proxy.http.secure: true`. If enabled, the `cert_file` and `key_file` config parameters become mandatory and expect server certificate and key file paths respectively.
-
-The `proxy.http.probes.timeout` is used by readiness API endpoint. Readiness probe will return `false` if proxy does not receive the response from backend Postgres within this time period. This value should be set based on failover time and retry attempts to avoid false positives.
-
 ## Managing PGD Proxy
 
 PGD CLI provides a few commands to manage proxies in a PGD cluster, such as `create-proxy`, `delete-proxy`, `set-proxy-options`, and `show-proxies`. See [PGD CLI](../cli/command_ref) for more information.
 
 See [Connection management](../routing) for more information on the PGD side of configuration and management of PGD Proxy.
+
+### Proxy health check
+
+PGD Proxy provides the following HTTP(s) health check API endpoints. These APIs are `GET` requests and do not require a request body. See [Configurations](installing_proxy#configuring-health-check) for more details about enabling and configuring this.
+
+```
+GET /health/is-ready
+GET /health/is-live
+```
+
+#### Readiness
+
+On receiving valid request, proxy checks if it can successfully route connections to the current write leader. If the check returns successfully then API returns `true` with HTTP status code `200 (OK)` else `false` with HTTP status code `500 (Internal Server Error)`.
+
+#### Liveness
+
+Liveness check either return `true` with HTTP status code `200 (OK)` or an error but never `false`. This is due to the fact that Proxy service exits immediately effectively stopping HTTP server if it finds a critical error on startup that cannot be recovered or prevents further operations.
 
 ## Proxy log location
 
