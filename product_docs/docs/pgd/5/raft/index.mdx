@@ -14,23 +14,27 @@ It is essential for certain operations in the cluster that the Raft leader – s
 
 It also means that one half of the nodes in the top-level group, plus one additional node must be able to reach each other. So, in a top-level group with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
 
-## Raft and proxy routing
+## Proxy routing
 
 One function that also uses Raft is proxy routing. Proxy routing requires that the proxies are able to coordinate writing to a data node within their group of nodes. This data node is the write leader. If the write leader goes offline, the proxies need to be able to switch to a new write leader, selected by the data nodes, to maintain continuity for connected applications.
 
 Proxy routing can be configured on a per node group basis in PGD 5, but the recommended configurations are "global" and "local" routing.
 
-Global routing uses the top-level group to manage the proxy routing. All nodes in the group are eligible to become write leader for all proxies. Connections to proxies within the top-level group will be routed to data nodes within the top-level group.
+## Global routing
 
-Local routing uses the subgroups, often mapped to locations, to manage the proxy routing within the subgroup. This allows subgroups to have their own Raft leader for proxy routing and, in turn, own write leader. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
+Global routing uses the top-level group to manage the proxy routing. All nodes in the group are eligible to become write leader for all proxies. Connections to proxies within the top-level group will be routed to data nodes within the top-level group. 
 
-## Raft subgroups
+With global routing there is only one write leader for the entire top-level group.
 
-In previous versions of PGD, HARP manager elected the write-leader and relied on the top-level Raft which powers decision making between nodes in the group. But issues could occur if connectivity between the subgroups was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus can become quorate, and without that, it would be unable to make decisions and elect leaders. 
+## Local routing
 
-While normal asynchronous transactions can carry on, operations that use Raft will be blocked, ready to recover when connectivity is restored. The harp-manager, though, will be unable to elect a new write leader. To support local routing without dependency on top-level Raft, an etcd cluster had to be setup in every location providing local consensus.
+Local routing uses subgroups, often mapped to locations, to manage the proxy routing within the subgroup. Local routing is often used for geographical separation of writes and it is important for them to continue routing even when the top-level consensus is lost. 
 
-To address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD top-level group to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other clusters or the top-level Raft consensus. 
+That's because PGD allows queries and asynchronous data manipulation (DMLs) to work even when the top-level consensus is lost. But using the top-level consensus, as is the case with global routing, would mean that new write leaders could not be elected when that consensus was lost. Local groups cannot rely on the top level consensus (not without adding an independent consensus mechanism and its added complexity).
+
+To elegantly address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD top-level group to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other subgroups or the top-level Raft consensus. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
+
+With local routing, there is a write leader for each subgroup.
 
 
 ## More
