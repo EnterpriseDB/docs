@@ -93,9 +93,9 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/pg_extensions/pg_failover_slots/"
+                    to="/pgd/latest/quickstart/"
                   >
-                    New PG Failover Slots extension
+                    EDB Postgres Distributed quick start topics
                   </Link>
                 </h3>
                 <p>
