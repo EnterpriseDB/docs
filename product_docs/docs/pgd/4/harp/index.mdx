@@ -244,51 +244,17 @@ data centers as well.
 
 ### Health check
 
-HARP provides the following liveness and readiness health check APIs. These are HTTP(s) APIs and if enabled HARP will start a HTTP server within the respective service. Both the API  endpoints are HTTP(s) `GET` requests and do not require a request body.
+HARP provides the following HTTP(S) health check API endpoints. These APIs are `GET` requests and do not require a request body. See [Configurations](04_configuration#health-check-api-settings) for more details about enabling and configuring this.
+
 ```
-GET /health/is-live
 GET /health/is-ready
+GET /health/is-live
 ```
-
-#### Liveness
-
-Liveness endpoint returns `true` with HTTP status code `200 (OK)` if the HARP service is up and a connection refused error if the service is down but will never return `false`. This is due to the fact that the HTTP server listening for request is stopped if the corresponding HARP service is down. This API endpoint is available for `harp-manager` and `harp-proxy` services.
 
 #### Readiness
 
-Readiness endpoint is available for `harp-proxy` only. On receiving this request, proxy executes server check query through its own listening address and port (default 6432), like any client application. The query is executed on the current write leader if it is available. If the query returns successfully then API returns `true` with HTTP status code `200 (OK)` to HTTP client  else `false` with HTTP status code `500 (Internal Server Error)`. It would return `false` in the following scenarios.
-* The HARP Proxy cannot establish a TCP connection to the DCS
-* The DCS reports that there is no write leader available
-* The DCS reports that it is unhealthy like no Raft leader
-* The HARP Proxy cannot establish a TCP connection to the current write leader
-* The TLS certificate on the current write leader is expired
+Readiness endpoint is available for `harp-proxy` only. On receiving a valid request, proxy checks if it can successfully route connections to the current write leader. If the check returns successfully then API returns `true` with HTTP status code `200 (OK)` else `false` with HTTP status code `500 (Internal Server Error)`.
 
-It is important to know that once started proxy always remains in available state even if this endpoint return `false` because the proxy can recover itself automatically (self heal) once the BDR or DCS side issues are resolved. If `harp-proxy` service is down then, this too would return connection refused error.
+#### Liveness
 
-!!! Note
-    Proxy will perform the readiness check against the backend Postgres only when the readiness endpoint is requested and not on periodic basis.
-
-#### Configuration
-
-By default the health check is disabled. It can be enabled by simply adding the config `http.enable: true` in the local config file `config.yml` as shown below.
-```
-http:
-  enable: true
-```
-
-Default HTTP server address is `:8080`. Below is a sample config to set the custom values for host, port, and other config parameters.
-```
-http:
-  enable: true #default false
-  host: ""
-  port: 8080
-  secure: false
-  cert_file: "/etc/tpa/server.crt"
-  key_file: "/etc/tpa/server.key"
-  probes:
-    timeout: 10s
-```
-
-To enable HTTPS for the health check APIs set the config parameter `http.secure` to `true`. If enabled, the `cert_file` and `key_file` config parameters become mandatory and expect server certificate and key file paths respectively.
-
-The `http.probes.timeout` is used by readiness API endpoint. This check will return `false` if proxy does not receive the response from backend Postgres within this time period. This value should be set based on failover time and retry attempts to avoid false positives.
+Liveness check either return `true` with HTTP status code `200 (OK)` or an error but never `false`. This is because the HTTP server listening for request is automatically stopped if the corresponding HARP service fails to start or exits. This API endpoint is available for `harp-manager` and `harp-proxy` services.
