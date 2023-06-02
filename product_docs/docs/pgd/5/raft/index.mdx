@@ -4,7 +4,7 @@ title: Proxies, Raft and Raft subgroups
 
 ---
 
-PGD is based on a global Raft model where clusters have a single Raft group spanning all the data nodes in the PGD cluster. A Raft leader is elected by the cluster and propagates the state of the cluster to all the other nodes in the cluster. 
+PGD manages its metadata using a  Raft model where a top-level group spans all the data nodes in the PGD cluster. A Raft leader is elected by the top-level group and propagates the state of the top-level group to all the other nodes in the group. 
 
 !!! Hint What is Raft?
 Raft is an industry accepted algorithm for making decisions though achieving “consensus” from a group of separate nodes within a distributed system. 
@@ -12,28 +12,30 @@ Raft is an industry accepted algorithm for making decisions though achieving “
 
 It is essential for certain operations in the cluster that the Raft leader – such as adding and removing nodes and allocating ranges for [galloc](sequences/#pdg-global-sequences) sequences – is both established and maintained. 
 
-It also means that one half of the nodes in the cluster, plus one additional node must be able to reach each other. So, in a global cluster with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
+It also means that one half of the nodes in the top-level group, plus one additional node must be able to reach each other. So, in a top-level group with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
 
 ## Raft and proxy routing
 
 One function that also uses Raft is proxy routing. Proxy routing requires that the proxies are able to coordinate writing to a data node within their group of nodes. This data node is the write leader. If the write leader goes offline, the proxies need to be able to switch to a new write leader, selected by the data nodes, to maintain continuity for connected applications.
 
-Proxy routing can be configured in a number of ways in PGD 5, but the recommended configurations are "global" and "local" routing.
+Proxy routing can be configured on a per node group basis in PGD 5, but the recommended configurations are "global" and "local" routing.
 
-Global routing uses the top-level group, also known as the global group, to manage the proxy routing. All nodes in the group are eligible to become write leader for all proxies. Connections to proxies within the global group will be routed to data nodes within the global group.
+Global routing uses the top-level group to manage the proxy routing. All nodes in the group are eligible to become write leader for all proxies. Connections to proxies within the top-level group will be routed to data nodes within the top-level group.
 
-Local routing uses the subgroups, often mapped to locations, to manage the proxy routing within the group. This allows subgroups to have their own Raft leader for proxy routing and, in turn, own write leader. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
+Local routing uses the subgroups, often mapped to locations, to manage the proxy routing within the subgroup. This allows subgroups to have their own Raft leader for proxy routing and, in turn, own write leader. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
 
 ## Raft subgroups
 
-In previous versions of PGD, local routing relied on the global Raft which powers decision making between nodes in the cluster. But issues could occur if connectivity between the subgroups was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus can become quorate, and without that, it would be unable to make decisions and elect leaders. While normal asynchronous transactions can carry on, operations that use Raft will be blocked, ready to recover when connectivity is restored. The proxies, though, will be unable to elect a new write leader.
+In previous versions of PGD, HARP manager elected the write-leader and relied on the top-level Raft which powers decision making between nodes in the group. But issues could occur if connectivity between the subgroups was completely cut off. With a total number of reachable nodes reduced to half of what it was, there is no way that the Raft consensus can become quorate, and without that, it would be unable to make decisions and elect leaders. 
 
-To address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD cluster to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other clusters or the global Raft consensus. 
+While normal asynchronous transactions can carry on, operations that use Raft will be blocked, ready to recover when connectivity is restored. The harp-manager, though, will be unable to elect a new write leader. To support local routing without dependency on top-level Raft, an etcd cluster had to be setup in every location providing local consensus.
+
+To address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD top-level group to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other clusters or the top-level Raft consensus. 
 
 
 ## More
 
 * [Raft subgroups and TPA](01_raft_subgroups_and_tpa) shows how Raft subgroups can be enabled in PGD when deploying with Trusted Postgres Architect.
 * [Raft subgroups and PGD CLI](02_raft_subgroups_and_pgd_cli) shows how PGD's Cli reports on the presence and status of Raft subgroups.
-* [Migrating to Raft subgroups](03_migrating_to_raft_subgroups) is a guide to migrating existing clusters and enabling Raft subgroups without TPA.
+* [Migrating to Raft subgroups](03_migrating_to_raft_subgroups) is a guide to migrating existing installations and enabling Raft subgroups without TPA.
 * [Raft elections in depth](04_raft_elections_in_depth) looks at how the write leader is elected using Raft in detail.
