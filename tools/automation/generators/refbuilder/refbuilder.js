@@ -3,6 +3,7 @@ const path = require("path");
 const parseArgs = require('minimist');
 const marked = require('marked');
 const frontmatter = require('front-matter');
+const crypto = require('crypto');
 
 var argv = parseArgs(process.argv.slice(2));
 
@@ -13,7 +14,12 @@ if (argv.source == undefined) {
 
 const outputFile = path.join(argv.source, "index.mdx");
 
-fs.writeFileSync(outputFile, processDirectory(argv.source, ""))
+const oldFileContent=fs.readFileSync(outputFile);
+const newContent=processDirectory(argv.source, "")
+
+if(oldFileContent!=newContent) {
+    fs.writeFileSync(outputFile, newContent);
+}
 
 function processDirectory(sourceDir, prefix) {
     // Get basic stats for this directory
