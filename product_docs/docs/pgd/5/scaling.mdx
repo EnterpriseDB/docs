@@ -4,13 +4,13 @@ redirects:
   - ../bdr/scaling
 ---
 
-AutoPartition allows tables to be split into several partitions, either
-by RANGE or HASH and let them grow easily to large sizes by automatic
-partitioning management. This capability uses features of PGD
+AutoPartition allows you to split tables into several partitions, either
+by RANGE or HASH. It lets tables grow easily to large sizes using automatic
+partitioning management. This capability uses features of PGD,
 such as low-conflict locking of creating and dropping partitions.
 
 You can create new partitions regularly and then drop them when the
-data retention period expires. This applies only to RANGE partitions.
+data retention period expires. Creating new partitions applies only to RANGE partitions.
 All HASH partitions are created in advance and can't be dropped.
 
 PGD management is primarily accomplished by functions that can be called by SQL.
@@ -34,30 +34,33 @@ An ERROR is raised if the table isn't RANGE or HASH partitioned or a multi-colum
 partition key is used.
 
 By default, AutoPartition manages partitions globally. In other words, when a
-partition is created on one node, the same partition is also created on all
-other nodes in the cluster. So all partitions are consistent and guaranteed to
-be available. For this, AutoPartition makes use of Raft. You can change this behavior
-by passing `managed_locally` as `true`. In that case, all partitions
-are managed locally on each node. This is useful for the case when the
-partitioned table isn't a replicated table and hence it might not be necessary
-or even desirable to have all partitions on all nodes. For example, the
-built-in `bdr.conflict_history` table isn't a replicated table and is
-managed by AutoPartition locally. Each node creates partitions for this table
-locally and drops them once they are old enough.
+partition is created on one node, the same partition is created on all
+other nodes in the cluster. Using the default makes all partitions consistent and guaranteed to
+be available. For this capability, AutoPartition makes use of Raft. 
 
-You can't later change tables marked as `managed_locally` to be managed
+You can change this behavior by setting `managed_locally` to `true`. In that case, all partitions
+are managed locally on each node. Managing partitions locally is useful when the
+partitioned table isn't a replicated table, in which case you might not need or want
+to have all partitions on all nodes. For example, the
+built-in `bdr.conflict_history` table isn't a replicated table. It's
+managed by AutoPartition locally. Each node creates partitions for this table
+locally and drops them once they're old enough.
+
+Also consider:
+
+-  You can't later change tables marked as `managed_locally` to be managed
 globally and vice versa.
 
-Activities are performed only when the entry is marked `enabled = on`.
+-  Activities are performed only when the entry is marked `enabled = on`.
 
-You aren't expected to manually create or drop partitions for tables
+-  We recommend that you don't manually create or drop partitions for tables
 managed by AutoPartition. Doing so can make the AutoPartition metadata
 inconsistent and might cause it to fail.
 
 `bdr.autopartition()` takes different actions based on whether the
 parent table is partitioned by RANGE or HASH.
 
-### RANGE Partitioned Tables
+### RANGE-partitioned tables
 
 A new partition is added for every `partition_increment` range of values, with
 lower and upper bound `partition_increment` apart. For tables with a partition
@@ -114,14 +117,14 @@ bound of the partition. The partition is either migrated to the secondary
 tablespace or dropped if either of the given period expires, relative to the
 upper bound.
 
-### HASH Partitioned Tables
+### HASH-partitioned tables
 
-A number of HASH partitions as indicated by `hash_partitions_total` parameter
-are created in advance when the underlying table is a HASH partitioned
-table. The data retention strategy does not apply for HASH partitioned
-tables. Also, dynamic partition creation is not applicable for HASH
-partitioned tables as all desired partitions are created in advance and
-they are never dropped.
+The `hash_partitions_total` parameter determines the number of HASH partitions that
+are created in advance when the underlying table is a HASH-partitioned
+table. The data retention strategy doesn't apply for HASH-partitioned
+tables. Also, dynamic partition creation doesn't apply for HASH-partitioned tables,
+as all desired partitions are created in advance and
+are never dropped.
 
 ### Configure AutoPartition
 
@@ -151,8 +154,8 @@ bdr.autopartition(relation regclass,
 -   `partition_autocreate_expression` &mdash; Used to detect if it's time to create new partitions.
 -   `minimum_advance_partitions` &mdash; The system attempts to always have at
     least `minimum_advance_partitions` partitions.
--   `maximum_advance_partitions` &mdash; Number of partitions to be created in a single
-    go once the number of advance partitions falls below `minimum_advance_partitions`.
+-   `maximum_advance_partitions` &mdash; Number of partitions to create in a single
+    go after the number of advance partitions falls below `minimum_advance_partitions`.
 -   `data_retention_period` &mdash; Interval until older partitions are dropped, if
     defined. This value must be greater than `migrate_after_period`.
 -   `managed_locally` &mdash; If true, then the partitions are managed locally.
@@ -216,7 +219,7 @@ bdr.drop_autopartition(relation regclass);
 
 ### Wait for partition creation
 
-Irrespective of whether RANGE or HASH partitioning is used, partition
+Whether RANGE or HASH partitioning is used, partition
 creation is an asynchronous process. AutoPartition provides a set of
 functions to wait for the partition to be created, locally or on all
 nodes.
@@ -243,8 +246,7 @@ bdr.autopartition_wait_for_partitions(relation regclass, upperbound text);
 #### Parameters
 
 -   `relation` &mdash; Name or Oid of a table.
--   `upperbound` &mdash; Partition key column value. Ignore for HASH
-    partitioned tables.
+-   `upperbound` &mdash; Partition key column value. Ignore for HASH-partitioned tables.
 
 #### Synopsis
 
@@ -255,8 +257,7 @@ bdr.autopartition_wait_for_partitions_on_all_nodes(relation regclass, upperbound
 #### Parameters
 
 -   `relation` &mdash; Name or Oid of a table.
--   `upperbound` &mdash; Partition key column value. Ignored for HASH
-    partitioned tables.
+-   `upperbound` &mdash; Partition key column value. Ignored for HASH-partitioned tables.
 
 ### Find partition
 
@@ -321,22 +322,22 @@ bdr.autopartition_create_partition(relname regclass,
 
 -   `relname` &mdash; Name or Oid of the parent table to attach to.
 -   `partname` &mdash; Name of the new AutoPartition.
--   `lowerb` &mdash; The lower bound of the partition.
--   `upperb` &mdash; The upper bound of the partition.
+-   `lowerb` &mdash; Lower bound of the partition.
+-   `upperb` &mdash; Upper bound of the partition.
 -   `nodes` &mdash; List of nodes that the new partition resides on.
     This parameter is internal to PGD and reserved for future use.
 
 ### Notes
 
 This is an internal function used by AutoPartition for partition
-management and users are recommended to NOT use the function directly.
+management. We recommend that you don't use the function directly.
 
 
 ### Drop one AutoPartition
 
 AutoPartition uses an internal function
 `bdr.autopartition_drop_partition` to drop a partition that's no longer
-required as per the data retention policy. If the partitioned
+required, as per the data retention policy. If the partitioned
 table was successfully dropped, the function returns `true`.
 
 #### Synopsis
@@ -351,7 +352,7 @@ bdr.autopartition_drop_partition(relname regclass)
 
 ### Notes
 
-This places a DDL lock on the parent table, before using DROP TABLE on the
-chosen partition table. This is an internal function used by
-AutoPartition for partition management and users are recommended to NOT
+This function places a DDL lock on the parent table before using `DROP TABLE` on the
+chosen partition table. This function is an internal function used by
+AutoPartition for partition management. We recommend that you don't
 use the function directly.
