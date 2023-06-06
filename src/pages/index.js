@@ -374,8 +374,8 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HPEGreenlake">
-              HPE Greenlake
+            <IndexCardLink to="/partner_docs/HPE">
+              HPE
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
               Imperva Data Security Fabric
