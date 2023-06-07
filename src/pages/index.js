@@ -304,6 +304,7 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+            <IndexCardLink to="/transporter/latest">EDB Transporter</IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">

@@ -257,5 +257,6 @@ const iconNames = {
   NOT_FOUND: "color/NotFound",
   SERVER_ERROR: "color/ServerError",
   SUN: "color/Sun",
+  EDB_TRANSPORTER: "Migration",
 };
 export default iconNames;
