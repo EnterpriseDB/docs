@@ -77,5 +77,9 @@ export const products = {
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
+  transporter: {
+    name: "EDB Transporter",
+    iconName: IconNames.EDB_TRANSPORTER,
+  },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
 };
