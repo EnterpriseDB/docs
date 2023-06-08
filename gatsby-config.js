@@ -24,10 +24,15 @@ const sourceToPluginConfig = {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
   },
+  postgres_distributed_for_kubernetes: {
+    name: "postgres_distributed_for_kubernetes",
+    path: "product_docs/docs/postgres_distributed_for_kubernetes",
+  },
   edb_plus: { name: "edb_plus", path: "product_docs/docs/edb_plus" },
   efm: { name: "efm", path: "product_docs/docs/efm" },
   epas: { name: "epas", path: "product_docs/docs/epas" },
   pgd: { name: "pgd", path: "product_docs/docs/pgd" },
+  pge: { name: "pge", path: "product_docs/docs/pge" },
   eprs: { name: "eprs", path: "product_docs/docs/eprs" },
   hadoop_data_adapter: {
     name: "hadoop_data_adapter",
@@ -75,10 +80,16 @@ const sourceToPluginConfig = {
     name: "pg_extensions",
     path: "advocacy_docs/pg_extensions",
   },
+  CloudNativePG: {
+    name: "CloudNativePG",
+    path: "advocacy_docs/supported-open-source/cloud_native_pg",
+  },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
+  tde: { name: "tde", path: "product_docs/docs/tde" },
+  tpa: { name: "tpa", path: "product_docs/docs/tpa" },
 };
 
 const externalSourcePlugins = () => {
@@ -160,7 +171,6 @@ module.exports = {
     "gatsby-plugin-sass",
     "gatsby-plugin-react-helmet",
     "gatsby-transformer-sharp",
-    "gatsby-transformer-json",
     "gatsby-plugin-catch-links",
     "gatsby-plugin-sharp",
     {
@@ -168,7 +178,7 @@ module.exports = {
       options: {
         headers: {
           "/*": isProduction ? [] : ["X-Robots-Tag: noindex"],
-          "/static/*.pdf": ["X-Robots-Tag: noindex"],
+          "/static/*/*.pdf": ["X-Robots-Tag: noindex"],
         },
       },
     },
@@ -272,6 +282,7 @@ module.exports = {
             options: {
               linkImagesToOriginal: false,
               showCaptions: false,
+              maxWidth: 1080,
             },
           },
           {
@@ -289,6 +300,7 @@ module.exports = {
                 postgresql: "sql",
                 sh: "shell",
                 "c++": "cpp",
+                console: "shell-session",
               },
             },
           },

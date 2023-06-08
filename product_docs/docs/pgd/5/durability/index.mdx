@@ -1,0 +1,301 @@
+---
+title: Durability and performance options
+
+navigation:
+ - commit-scopes
+ - group-commit
+ - camo
+ - lag-control
+
+redirects:
+  - /pgd/latest/bdr/durability/
+  - /pgd/latest/choosing_durability/
+---
+
+## Overview
+
+EDB Postgres Distributed allows you to choose from several replication
+configurations based on your durability, consistency, availability, and
+performance needs using *commit scopes*.
+
+In its basic configuration, EDB Postgres Distributed uses asynchronous
+replication. However, commit scopes can change both the default and the 
+per-transaction behavior. It's also possible to configure the legacy Postgres
+synchronous replication using standard `synchronous_standby_names` in the same
+way as the built-in physical or logical replication. However, commit scopes 
+provide much more flexibility and control over the replication behavior.
+
+The different synchronization settings affect three properties of interest
+to applications that are related but can all be implemented individually:
+
+-   Durability: Writing to multiple nodes increases crash resilience
+    and allows you to recover the data after a crash and restart.
+-   Visibility: With the commit confirmation to the client, the database
+    guarantees immediate visibility of the committed transaction on some
+    sets of nodes.
+-   Conflict handling: Conflicts can be handled optimistically
+    postcommit, with conflicts resolved when the transaction is replicated
+    based on commit timestamps. Or, they can be handled pessimistically
+    precommit. The client can rely on the transaction to eventually be
+    applied on all nodes without further conflicts or get an abort, directly
+    informing the client of an error.
+
+Commit scopes allow two ways of controlling durability of the transaction:
+
+-   [Group commit](group-commit). This option controls which and how many nodes
+    have to reach a consensus before the transaction is considered to be committable
+    and at what stage of replication it can be considered committed. This option also
+    allows you to control the visibility ordering of the transaction.
+-   [CAMO](camo). This option is a variant of group commit in which the client is part of the
+    consensus.
+-   [Lag control](lag-control). This option controls how far behind nodes can 
+    be in terms of replication before allowing commit to proceed.
+
+Postgres provides [physical streaming replication](https://www.postgresql.org/docs/current/warm-standby.html#STREAMING-REPLICATION)
+(PSR), which is unidirectional but offers a [synchronous variant](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION).
+For backward compatibility, PGD still supports configuring synchronous
+replication with `synchronous_commit` and `synchronous_standby_names`. See
+[Legacy synchronous replication](#legacy-synchronous-replication-using-pgd),
+but consider using [group commit](group-commit) instead.
+
+## Terms and definitions
+
+PGD nodes take different roles during the replication of a transaction.
+These are implicitly assigned per transaction and are unrelated even for
+concurrent transactions.
+
+* The *origin* is the node that receives the transaction from the
+  client or application. It's the node processing the transaction
+  first, initiating replication to other PGD nodes and responding back
+  to the client with a confirmation or an error.
+
+* A *partner* node is a PGD node expected to confirm transactions
+  according to group commit requirements.
+
+* A *commit group* is the group of all PGD nodes involved in the
+  commit, that is, the origin and all of its partner nodes, which can be
+  just a few or all peer nodes.
+
+## Comparison
+
+Most options for synchronous replication available to
+PGD allow for different levels of synchronization, offering different
+tradeoffs between performance and protection against node or network
+outages.
+
+The following table summarizes what a client can expect from a peer
+node replicated to after receiving a COMMIT confirmation from
+the origin node the transaction was issued to. The Mode column takes
+on different meaning depending on the variant. For PSR and legacy
+synchronous replication with PGD, it refers to the
+`synchronous_commit` setting. For commit scopes, it refers to the
+confirmation requirements of the
+[commit scope configuration](commit-scopes#configuration).
+
+| Variant             | Mode                  | Received | Visible | Durable |
+|---------------------|-----------------------|----------|---------|---------|
+| PSR Async           | off (default)         | no       | no      | no      |
+| PGD Async           | off (default)         | no       | no      | no      |
+| PGD Lag Control     | 'ON received' nodes   | no       | no      | no      |
+| PGD Lag Control     | 'ON replicated' nodes | no       | no      | no      |
+| PGD Lag Control     | 'ON durable' nodes    | no       | no      | no      |
+| PGD Lag Control     | 'ON visible' nodes    | no       | no      | no      |
+| PSR Sync            | remote_write (2)      | yes      | no      | no (1)  |
+| PSR Sync            | on (2)                | yes      | no      | yes     |
+| PSR Sync            | remote_apply (2)      | yes      | yes     | yes     |
+| PGD Group Commit    | 'ON received' nodes   | yes      | no      | no      |
+| PGD Group Commit    | 'ON replicated' nodes | yes      | no      | no      |
+| PGD Group Commit    | 'ON durable' nodes    | yes      | no      | yes     |
+| PGD Group Commit    | 'ON visible' nodes    | yes      | yes     | yes     |
+| PGD CAMO            | 'ON received' nodes   | yes      | no      | no      |
+| PGD CAMO            | 'ON replicated' nodes | yes      | no      | no      |
+| PGD CAMO            | 'ON durable' nodes    | yes      | no      | yes     |
+| PGD CAMO            | 'ON visible' nodes    | yes      | yes     | yes     |
+| PGD Legacy Sync (3) | remote_write (2)      | yes      | no      | no      |
+| PGD Legacy Sync (3) | on (2)                | yes      | yes     | yes     |
+| PGD Legacy Sync (3) | remote_apply (2)      | yes      | yes     | yes     |
+
+*(1) Written to the OS, durable if the OS remains running and only
+Postgres crashes.*
+
+*(2) Unless switched to local mode (if allowed) by setting
+`synchronous_replication_availability` to `async'`, otherwise the
+values for the asynchronous PGD default apply.*
+
+*(3) Consider using Group Commit instead.*
+
+Reception ensures the peer operating normally can
+eventually apply the transaction without requiring any further
+communication, even in the face of a full or partial network
+outage. A crash of a peer node might still require retransmission of
+the transaction, as this confirmation doesn't involve persistent
+storage. All modes considered synchronous provide this protection.
+
+Visibility implies the transaction was applied remotely. All other
+clients see the results of the transaction on all nodes, providing
+this guarantee immediately after the commit is confirmed by the origin
+node. Without visibility, other clients connected might not see the
+results of the transaction and experience stale reads.
+
+Durability relates to the peer node's storage and provides protection
+against loss of data after a crash and recovery of the peer node.
+This can either relate to the reception of the data (as with physical
+streaming replication) or to visibility (as with group commit).
+The former eliminates the need for retransmissions after
+a crash, while the latter ensures visibility is maintained across
+restarts.
+
+## Internal timing of operations
+
+For a better understanding of how the different modes work, it's
+helpful to realize PSR and PGD apply transactions
+differently.
+
+With physical streaming replication, the order of operations is:
+
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes and issues a write.
+-   Peer flushes the received changes to disk.
+-   Peer applies changes, making the transaction visible locally.
+
+With PGD, the order of operations is different:
+
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible locally.
+-   Peer persists the transaction by flushing to disk.
+
+For group commit, CAMO, and eager, the origin node waits for
+a certain number of confirmations prior to making the transaction
+visible locally. The order of operations is:
+
+-   Origin flushes a prepare or precommit record to WAL.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible locally.
+-   Peer persists the transaction by flushing to disk.
+-   Origin commits and makes the transaction visible locally.
+
+The following table summarizes the differences.
+
+| Variant          | Order of apply vs persist | Replication before or after commit |
+|:-----------------|:-------------------------:|:----------------------------------:|
+| PSR              |       persist first       |  after WAL flush of commit record  |
+| PGD Async        |        apply first        |  after WAL flush of commit record  |
+| PGD Lag Control  |        apply first        |  after WAL flush of commit record  |
+| PGD Group Commit |        apply first        |      before COMMIT on origin       |
+| PGD CAMO         |        apply first        |      before COMMIT on origin       |
+
+## Configuration
+
+You configure commit scopes using an SQL function just like other administration
+operations in PGD.
+
+For example, you might define a basic commit scope that does group commit on a majority
+of nodes in the example_group PGD group:
+
+```sql
+SELECT bdr.add_commit_scope(
+  commit_scope_name := 'example_scope',
+  origin_node_group := 'example_group',
+  rule := 'ANY MAJORITY (example_group) GROUP COMMIT',
+  wait_for_ready := true
+);
+```
+
+You can then use the commit scope either by setting the configuration variable (GUC)
+`bdr.commit_scope` either per transaction or globally to that commit scope:
+
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'example_scope';
+...
+COMMIT;
+```
+
+You can also set the default commit scope for a given PGD group:
+
+```sql
+SELECT bdr.alter_node_group_option(
+  node_group_name := 'example_group',
+  config_key := 'default_commit_scope',
+  config_value := 'example_scope'
+);
+```
+
+The `default_commit_scope` is checked in the group tree that the given origin
+node belongs to from bottom to top. The `default_commit_scope` can't be set to
+the special value `local`, which means there's no way for the commit scope to use
+the `bdr.commit_scope` configuration parameter.
+<!--Please check the above edit. It was hard to make sense of the sententenc. -->
+
+For full details of the commit scope language with all the options described,
+see [Commit scopes](commit-scopes).
+
+### Postgres configuration parameters
+
+The following table provides an overview of the configuration
+settings that you must set to a non-default value (req) and those that are
+optional (opt) but affecting a specific variant.
+
+| Setting (GUC)                        | Group Commit | Lag Control | PSR (1) | Legacy Sync |
+|--------------------------------------|:------------:|:-----------:|:-------:|:-----------:|
+| synchronous_standby_names            |     n/a      |     n/a     |   req   |     req     |
+| synchronous_commit                   |     n/a      |     n/a     |   opt   |     opt     |
+| synchronous_replication_availability |     n/a      |     n/a     |   opt   |     opt     |
+| bdr.commit_scope                     |     opt      |     opt     |   n/a   |     n/a     |
+
+## Planned shutdown and restarts
+
+When using group commit with receive confirmations, take care
+with planned shutdown or restart. By default, the apply queue is consumed
+prior to shutting down. However, in the `immediate` shutdown mode, the queue
+is discarded at shutdown, leading to the stopped node "forgetting"
+transactions in the queue. A concurrent failure of the origin node can
+lead to loss of data, as if both nodes failed.
+
+To ensure the apply queue gets flushed to disk, use either
+`smart` or `fast` shutdown for maintenance tasks. This approach maintains the
+required synchronization level and prevents loss of data.
+
+## Legacy synchronous replication using PGD
+
+!!! Note
+    Consider using [group commit](group-commit) instead.
+
+### Usage
+
+To enable synchronous replication using PGD, you need to add the application
+name of the relevant PGD peer nodes to
+`synchronous_standby_names`. The use of `FIRST x` or `ANY x` offers
+some flexibility if this doesn't conflict with the requirements of
+non-PGD standby nodes.
+
+Once you've added it, you can configure the level of synchronization per
+transaction using `synchronous_commit`, which defaults to `on`. This setting means that
+adding the application name to to `synchronous_standby_names` already enables synchronous
+replication. Setting `synchronous_commit` to `local` or `off` turns
+off synchronous replication.
+
+Due to PGD applying the transaction before persisting it, the
+values `on` and `remote_apply` are equivalent for logical
+replication.
+
+### Migration to commit scopes
+
+You configure the group commit feature of PGD independent of
+`synchronous_commit` and `synchronous_standby_names`. Instead, the
+`bdr.commit_scope` GUC allows you to select the scope per transaction. And
+instead of configuring `synchronous_standby_names` on each node
+individually, group commit uses globally synchronized commit scopes.
+
+!!! Note
+    While the grammar for `synchronous_standby_names` and commit
+    scopes looks similar, the former
+    doesn't account for the origin node, but the latter does.
+    Therefore, for example, `synchronous_standby_names = 'ANY 1 (..)'`
+    is equivalent to a commit scope of `ANY 2 (...)`. This choice
+    makes reasoning about majority easier and reflects that the origin
+    node also contributes to the durability and visibility of the
+    transaction.

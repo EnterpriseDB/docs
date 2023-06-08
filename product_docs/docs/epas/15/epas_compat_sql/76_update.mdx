@@ -1,0 +1,129 @@
+---
+title: "UPDATE"
+---
+
+## Name
+
+`UPDATE` &mdash; Update rows of a table.
+
+## Synopsis
+
+```sql
+edb=# \h UPDATE 
+Command:     UPDATE
+Description: update rows of a table
+Syntax:
+[ WITH [ RECURSIVE ] with_query [, ...] ]
+UPDATE [ <optimizer_hint> ][ ONLY ] <table_name>[@<dblink> ] [ * ] [ [ AS ] alias ]
+    SET { { <column_name> = { <expression> | DEFAULT } |
+            ( <column_name> [, ...] ) = [ ROW ] ( { expression | DEFAULT } [, ...] ) |
+            ( <column_name> [, ...] ) = ( sub-SELECT )
+          } [, ...] |
+          ROW = <row_or_record_var>
+        }
+    [ FROM <from_item> [, ...] ]
+    [ WHERE <condition> | WHERE CURRENT OF <cursor_name> ]
+    [ RETURNING <return_expression> [, ...]
+      { INTO { <record> | <variable> [, ...] }
+      | BULK COLLECT INTO <collection> [, ...] } ]
+
+URL: https://www.postgresql.org/docs/15/sql-update.html
+     https://www.enterprisedb.com/docs
+```
+
+## Description
+
+`UPDATE` changes the values of the specified columns in all rows that satisfy the condition. You need to mention only the columns you want to modify in the `SET` clause. Columns not explicitly modified retain their values.
+
+`SET ROW` enables us to update a target record using a record type variable or row type objects. The record or row used, must have compatible data types with the table's columns in order.
+
+You can specify the `RETURNING INTO { record | variable [, ...] }` clause only in an SPL program. In addition, the result set of the `UPDATE` command must not return more than one row. Otherwise an exception is thrown. If the result set is empty, then the contents of the target record or variables are set to null.
+
+In an SPL program, you can specify the `RETURNING BULK COLLECT INTO collection [, ...]` clause only if you use the `UPDATE` command. If you specify more than one collection as the target of the `BULK COLLECT INTO` clause, then each collection must consist of a single scalar field. That is, `collection` can't be a record. The result set of the `UPDATE` command can contain zero or more rows. `return_expression` evaluated for each row of the result set becomes an element in `collection` starting with the first element. Any existing rows in `collection` are deleted. If the result set is empty, then `collection` is empty.
+
+You need the `UPDATE` privilege on the table to update it. You also need the `SELECT` privilege to any table whose values are read in `expression` or `condition`.
+
+## Parameters
+
+`optimizer_hint`
+
+ Comment-embedded hints to the optimizer for selecting an execution plan.
+
+`table`
+
+ The name (optionally schema-qualified) of the table to update.
+
+`dblink`
+
+ Database link name identifying a remote database. See the [`CREATE DATABASE LINK` command](21_create_public_database_link#create_public_database_link) for information on database links.
+
+`column`
+
+ The name of a column in the table.
+
+`expression`
+
+ An expression to assign to the column. The expression can use the old values of this and other columns in the table.
+
+`DEFAULT`
+
+ Set the column to its default value, which is null if you don't assign a default expression to it.
+
+`condition`
+
+ An expression that returns a value of type `BOOLEAN`. Update only rows for which this expression returns true.
+
+`return_expression`
+
+ An expression that can include one or more columns from the table. If a column name from the table is specified in `return_expression`, the value substituted for the column when `return_expression` is evaluated is determined as follows:
+
+-   If the column specified in `return_expression` is assigned a value in the `UPDATE` command, then the assigned value is used when evaluating `return_expression`.
+
+-   If the column specified in `return_expression` isn't assigned a value in the `UPDATE` command, then the column’s current value in the affected row is used when evaluating `return_expression`.
+
+`record`
+
+ A record whose field to assign the evaluated `return_expression`. The first `return_expression` is assigned to the first field in `record`, the second `return_expression` is assigned to the second field in `record`, and so on. The number of fields in `record` must exactly match the number of expressions, and the fields must be type-compatible with their assigned expressions.
+
+`variable`
+
+ A variable to which to assign the evaluated `return_expression`. If more than one `return_expression` and `variable` are specified, the first `return_expression` is assigned to the first `variable`, the second `return_expression` is assigned to the second `variable`, and so on. The number of variables specified following the `INTO` keyword must exactly match the number of expressions following the `RETURNING` keyword, and the variables must be type-compatible with their assigned expressions.
+
+`collection`
+
+ A collection in which an element is created from the evaluated `return_expression`. There can be either:
+ 
+ -  A single collection, which can be a collection of a single field or a collection of a record type
+ -  More than one collection, in which case each collection must consist of a single field 
+ 
+ The number of return expressions must match in number and order the number of fields in all specified collections. Each corresponding `return_expression` and `collection` field must be type-compatible.
+
+## Examples
+
+Change the location to `AUSTIN` for department `20` in the `dept` table:
+
+```sql
+UPDATE dept SET loc = 'AUSTIN' WHERE deptno = 20;
+```
+
+For all employees with `job = SALESMAN` in the `emp` table, update the salary by 10%, and increase the commission by 500:
+
+```sql
+UPDATE emp SET sal = sal * 1.1, comm = comm + 500 WHERE job = 'SALESMAN';
+```
+
+
+`SET ROW` example:
+
+```sql
+CREATE TABLE db1425_t1(a INT, b INT);
+INSERT INTO db1425_t1 VALUES(1,2);
+
+DECLARE   
+	TYPE rec IS RECORD (x INT, y INT);
+    	rec_var rec;    
+BEGIN    
+	rec_var = row(1000, 1000);
+	UPDATE db1425_t1 SET ROW=rec_var WHERE a = 1;   
+END;
+```

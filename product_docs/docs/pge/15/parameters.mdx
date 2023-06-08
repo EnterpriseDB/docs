@@ -1,0 +1,147 @@
+---
+navTitle: Configuration parameters
+title: Configuration parameters (GUCs)
+originalFilePath: parameters.md
+
+---
+
+These Grand Unified Configuration (GUC) configuration parameters are available with EDB Postgres Extended Server. 
+
+## Backend parameters
+
+Backend parameters introduce a test probe point infrastructure for injecting sleeps or errors into PostgreSQL and extensions.
+
+Any `PROBE_POINT` defined throughout the Postgres code code marks important code paths. These probe points might be activated to signal the current backend or to elog(...) a `LOG`/`ERROR`/`FATAL`/`PANIC`. They might also, or instead, add a delay at that point in the code.
+
+Unless explicitly activated, probe points have no effect and add only a single optimizer-hinted branch, so they're safe on hot paths.
+
+When an active probe point is hit and the counter is satisfied, after any specified sleep interval, a log message is always emitted at `DEBUG1` or higher.
+
+### `pg2q.probe_point`
+
+The name of a `PROBE_POINT` in the code of 2ndQPostgres or in an extension that defines a `PROBE_POINT`. This parameter isn't validated. If a nonexistent probe point is named, it's never hit.
+
+Only one probe point can be active. This isn't a list, and attempting to supply a list means nothing matches.
+
+Probe points generally have a unique name, given as the argument to the `PROBE_POINT` macro in the code where it's defined. It's also possible to use the same `PROBE_POINT` name where multiple code paths trigger the same action of interest. A probe fires when either path is taken.
+
+### `pg2q.probe_counter`
+
+You might need to act on a probe only after a loop is run for the number of times specified with this parameter. In such cases, set this GUC to the number of iterations at which point the probe point fires, and reset the counter.
+
+The default value is `1`, meaning the probe points always fire when the name matches.
+
+### `pg2q.probe_sleep`
+
+Sleep for `pg2q.probe_sleep` milliseconds after hitting the probe point. Then fire the action in `pg2q.probe_action`.
+
+### `pg2q.probe_action`
+
+Action to take when the named `pg2q.probe_point` is hit. Available actions are:
+
+-   `sleep` &mdash; Emit a `DEBUG` message with the probe name.
+-   `log` &mdash; Emit a `LOG` message with the probe name.
+-   `error` &mdash; `elog(ERROR, ...)` to raise an `ERROR` condition.
+-   `fatal`&mdash; `elog(FATAL, ...)`.
+-   `panic` &mdash; `elog(PANIC, ...)`, which generally then calls `abort()` and delivers a `SIGABRT` (signal 6) to cause the backend to core dump. The probe point tries to set the core file limit to enable core dumps if the hard ulimit permits.
+-   `sigint`, `sigterm`, `sigquit`, `sigkill`: Deliver the named signal to the backend that hit the probe point.
+
+### `pg2q.probe_backend_pid`
+
+If nonzero, the probe sleep and action are skipped for backends other than the backend with this ID.
+
+## `server_2q_version_num` and `server_2q_version`
+
+The `server_2q_version_num` and `server_2q_version` configuration parameters allow the 2ndQuadrant-specific version number and version substring, respectively, to be accessible to external modules.
+
+## Table-level compression control option
+
+You can set the table-level option `compress_tuple_target` to decide when to trigger compression on a tuple. Previously, you used the `toast_tuple_target` (or the compile time default) to decide whether to compress a tuple. However, this was detrimental when a tuple is large enough and has a good compression ratio but not large enough to cross the toast threshold. 
+
+<!-- Deleted this sentence as it doesn't seem like it belongs in doc about the new feature: We wouldn't compress such tuples, thus wasting a potentially good opportunity. -->
+
+## `pg2q.max_tuple_field_size` 
+
+Restricts the maximum uncompressed size of the internal representation of any one field that can be written to a table, in bytes.
+
+The default `pg2q.max_tuple_field_size` is is 1073740799 bytes, which is 1024 bytes less than 1 GiB. This value is slightly less than the 1 GiB maximum field size usually imposed by PostgreSQL. This margin helps prevent cases where tuples are committed to disk but can't then be processed by logical decoding output plugins and sent to downstream servers.
+
+Set `pg2q.max_tuple_field_size` to `1GB` or `11073741823` to disable the feature.
+
+If your application doesn't rely on inserting large fields, consider setting `pg2q.max_tuple_field_size` to a much smaller value, such as 100MB or even less. Among other issues, large fields can:
+
+-  Cause surprising application behavior 
+-  Increase memory consumption for the database engine during queries and replication 
+-  Slow down logical replication
+
+While this parameter is enabled, oversized fields cause queries that `INSERT` or `UPDATE` an oversized field to fail with an `ERROR` such as:
+
+```
+ERROR: field big_binary_field_name in row is larger than pg2q.max_tuple_field_size
+DETAIL: New or updated row in relation some_table has field big_binary_field_name
+    (attno=2) with size 8161 bytes which exceeds limit 1073740799B configured
+    in pg2q.max_tuple_field_size
+SQLSTATE: 53400 configuration_limit_exceeded
+```
+
+Only the superuser can set `pg2q.max_tuple_field_size`. You can use a `SECURITY DEFINER` function wrapper if you want to allow a non-superuser to set it.
+
+If you change `pg2q.max_tuple_field_size`, fields larger than the current `pg2q.max_tuple_field_size` that are already on disk don't change. You can `SELECT` them as usual. Any `UPDATE` that affects tuples with oversized fields fails, even if the oversized field isn't modified, unless the new tuple created by the update operation satisfies the currently active size limits.
+
+A `DELETE` operation doesn't check the field-size limit.
+
+The limit isn't enforced on the text-representation size for I/O of fields because doing so also prevents PostgreSQL from creating and processing temporary in-memory json objects larger than the limit.
+
+The limit isn't enforced for temporary tuples in tuplestores, such as set-returning functions, CTEs, and views. Size checks are deliberately not enforced for any `MATERIALIZED VIEW` either.
+
+!!! WARNING
+    `pg2q.max_tuple_field_size` is enforced for `pg_restore`. If a
+    database contains oversized tuples, it does a `pg_dump` as usual. However, a
+    subsequent `pg_restore` fails with the error shown previously. To work around
+    this, restore the dump with `pg2q.max_tuple_field_size` overridden in
+    connection options using `PGOPTIONS` or the `options` connection-parameter
+    string. For example:
+
+    ```
+        PGOPTIONS='-c pg2q.max_tuple_field_size=11073741823' pg_restore ...
+    ```
+
+Data type specifics:
+
+-   For a `bytea` field, the size used is the decoded binary size. It isn't the text-representation size in hex or octal escape form, that is, the `octet_length()` of the field.
+
+    Assuming `bytea_output = 'hex'`, the maximum size of the I/O representation is `2 * pg2q.max_tuple_field_size + 2` bytes.
+
+-   For a `text`, `json`, or `xml` field, the measured size is the number of bytes of text in the current database encoding (the `octet_length()` of the field), not the number of characters. In UTF-8 encodings, one character usually consumes one byte but might consume six or more bytes for some languages and scripts.
+
+-   For a `jsonb` field, the measured size is that of the PostgreSQL internal jsonb-encoded datatype representation, the text representation of the json document. In some cases the `jsonb` representation for larger json documents is smaller than the text representation. This means that it's possible to insert json documents with text representations larger than any given `pg2q.max_tuple_field_size`, although it's uncommon.
+
+-   Extension-defined data type behavior depends on the implementation of the data type.
+
+    The field size used for this limit is the size reported by them `pg_column_size()` function, minus the 4 bytes of header PostgreSQL adds to variable-length data types, when used on a literal of the target data type. For example:
+
+    ```
+    demo=> SELECT pg_column_size(BYTEA '\x00010203040506070809') - 4;
+    14
+    ```
+
+    For example, to see the computed size of the jsonb field, use:
+
+    ```
+    SELECT pg_column_size(JSONB '{"my_json_document": "yes"}') - 4;
+    ```
+
+    Due to TOAST compression ,`pg_column_size()` often reports smaller
+    values when called on existing on-disk fields. Also, the header for
+    shorter values on disk might be 1 byte instead of 4.
+
+## `pg2q.max_tuple_size` 
+
+Restricts the maximum size of a single tuple that can be written to a table. This value is the total row width, including the uncompressed width of all potentially compressible or external-storage-capable field values. Field headers count against the size, but fixed row headers don't.
+
+Many PostgreSQL operations, such as logical replication, work on whole rows, as do many applications. You can use this setting to impose a limit on the maximum row size you consider reasonable for your application to prevent inadvertent creation of oversized rows that might pose operational issues.
+
+When applied to an `UPDATE` of existing tuples, `pg2q.max_tuple_size` isn't enforced as strictly as `pg2q.max_tuple_field_size`. It doesn't count the full size of unmodified values in columns with storage other than `PLAIN`.
+
+!!! WARNING
+    `pg2q.max_tuple_size` is enforced for `pg_restore`. See the caveat for `pg2q.max_tuple_field_size`.

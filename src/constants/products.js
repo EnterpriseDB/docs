@@ -3,15 +3,15 @@ import IconNames from "../components/icon/iconNames";
 export const products = {
   bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
   barman: { name: "Barman" },
-  bdr: {
-    name: "BDR (Bi-Directional Replication)",
-    iconName: IconNames.HIGH_AVAILABILITY,
-  },
   biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
   epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
-  epd: { name: "EDB Postgres Distributed", iconName: IconNames.EDB_EPAS },
+  pgd: {
+    name: "EDB Postgres Distributed (PGD)",
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
+  pge: { name: "EDB Postgres Extended Server", iconName: IconNames.POSTGRESQL },
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
@@ -33,27 +33,43 @@ export const products = {
     iconName: IconNames.EDB_MIGRATION_TOOLKIT,
   },
   mongo_data_adapter: {
-    name: "Mongo Data Adapter",
+    name: "Mongo Foreign Data Wrapper",
     iconName: IconNames.CONNECT,
   },
   mysql_data_adapter: {
-    name: "MySQL Data Adapter",
+    name: "MySQL Foreign Data Wrapper",
     iconName: IconNames.CONNECT,
   },
   net_connector: { name: ".NET Connector", iconName: IconNames.CONNECT },
   ocl_connector: { name: "OCL Connector", iconName: IconNames.CONNECT },
   odbc_connector: { name: "ODBC Connector", iconName: IconNames.CONNECT },
   pem: { name: "Postgres Enterprise Manager", iconName: IconNames.EDB_PEM },
+  Patroni: { name: "Patroni" },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pgd: { name: "EDB Postgres Distributed" },
+  pg_failover_slots: {
+    name: "PG Failover Slots",
+    iconName: IconNames.POSTGRESQL,
+  },
+  "pglogical 2": { name: "Pglogical 2" },
   pgpool: { name: "PgPool-II", iconName: IconNames.POSTGRESQL },
-  pglogical: { name: "pglogical" },
   postgis: { name: "PostGIS", iconName: IconNames.GLOBE },
+  postgresql: { name: "PostgreSQL", iconName: IconNames.POSTGRESQL_MONO },
+  postgres_distributed_for_kubernetes: {
+    name: "EDB Postgres Distributed for Kubernetes",
+    iconName: IconNames.KUBERNETES,
+  },
   postgres_for_kubernetes: {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  query_advisor: {
+    name: "EDB Query Advisor",
+    iconName: IconNames.POSTGRESQL,
+  },
+  CloudNativePG: { name: "CloudNativePG" },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
+  tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
+  tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
 };

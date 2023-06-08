@@ -72,10 +72,11 @@ function cleanup() {
   return (tree, file) => {
     const docsLocations = /product_docs\/docs|advocacy_docs/;
     const thisProductPath = path.dirname(file.path).split(docsLocations)[1];
-    const thisUnversionedProductPath = thisProductPath.replace(
-      /\/([^\/]+)\/[\d.]+/,
+    const isVersioned = file.path.includes("product_docs/")
+    const thisUnversionedProductPath = isVersioned ? thisProductPath.replace(
+      /\/([^\/]+)\/[^\/]+/,
       "/$1/latest/",
-    );
+    ) : thisProductPath;
 
     const thisProductUrl = docsUrl + thisProductPath;
     const thisUnversionedProductUrl = docsUrl + thisUnversionedProductPath;
@@ -154,10 +155,10 @@ function cleanup() {
             currentOriginalPath = originalPath
               .split(basePath)[1]
               .replace(/(?:(?<=^|\/)index\.mdx|\.mdx?)$/, "");
-            currentUnversionedOriginalPath = currentOriginalPath.replace(
-              /\/([^\/]+)\/[\d.]+\//,
+            currentUnversionedOriginalPath = isVersioned ? currentOriginalPath.replace(
+              /\/([^\/]+)\/[^\/]+\//,
               "/$1/latest/",
-            );
+            ) : currentOriginalPath;
             currentSubpageSlugger.reset();
             const siblings = ancestors[ancestors.length - 1].children;
             const idx = siblings.indexOf(node);
@@ -295,7 +296,10 @@ function cleanup() {
     );
 
     // it is possible the root index won't be present (if empty) - special case this (for EPAS)
-    if (!mapOrigPathToSlugs[thisProductPath]) {
+    if (
+      !mapOrigPathToSlugs[thisProductPath] &&
+      !mapOrigPathToSlugs[thisProductPath + "/"]
+    ) {
       const slugMap =
         (mapOrigPathToSlugs[thisUnversionedProductPath] =
         mapOrigPathToSlugs[thisProductPath] =

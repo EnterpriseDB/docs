@@ -1,0 +1,704 @@
+---
+title: Monitoring through SQL
+---
+
+EDB Postgres Distributed provides several monitoring and statistics views that
+are specific to its distributed nature. The standard Postgres monitoring
+is also useful for monitoring EDB Postgres Distributed.
+
+## Monitoring overview
+
+A PGD group consists of multiple servers, often referred to as nodes. Monitor all of the
+nodes to ensure the health of the whole group.
+
+The bdr_monitor role can execute the `bdr.monitor` functions to provide an
+assessment of PGD health using one of three levels:
+
+-   `OK` &mdash; Often shown as green.
+-   `WARNING` &mdash; Often shown as yellow.
+-   `CRITICAL` &mdash; Often shown as red.
+-   `UNKNOWN` &mdash; For unrecognized situations, often shown as red.
+
+PGD also provides dynamic catalog views that show the instantaneous state of various
+internal metrics. It also provides metadata catalogs that store the configuration
+defaults and configuration changes the user requests. Some of those views
+and tables are accessible by bdr_monitor or bdr_read_all_stats, but some contain
+user or internal information that has higher security requirements.
+
+PGD allows you to monitor each of the nodes individually or to monitor the
+whole group by access to a single node. If you want to monitor each node individually, 
+connect to each node and issue monitoring requests. If you want to monitor
+the group from a single node, then use the views starting with `bdr.group` since these
+requests make calls to other nodes to assemble a group-level information set.
+
+If you were granted access to the `bdr.run_on_all_nodes()` function by
+bdr_superuser, then you can make your own calls to all nodes.
+
+## Monitoring node join and removal
+
+By default, the node management functions wait for the join or part
+operation to complete. You can turn waiting off using the respective
+`wait_for_completion` function argument. If waiting is turned off,
+then to see when a join or part operation finishes,
+check the node state indirectly using `bdr.node_summary` and
+`bdr.event_summary`.
+
+When called, the helper function `bdr.wait_for_join_completion()` causes
+a PostgreSQL session to pause until all outstanding node join operations
+area complete.
+
+This example shows the output of a `SELECT` query from `bdr.node_summary`. It
+indicates that two nodes are active and another one is joining.
+
+```
+# SELECT node_name, interface_connstr, peer_state_name,
+#     node_seq_id, node_local_dbname
+# FROM bdr.node_summary;
+-[ RECORD 1 ]-----+-----------------------------------------
+node_name         | node1
+interface_connstr | host=localhost dbname=postgres port=7432
+peer_state_name   | ACTIVE
+node_seq_id       | 1
+node_local_dbname | postgres
+-[ RECORD 2 ]-----+-----------------------------------------
+node_name         | node2
+interface_connstr | host=localhost dbname=postgres port=7433
+peer_state_name   | ACTIVE
+node_seq_id       | 2
+node_local_dbname | postgres
+-[ RECORD 3 ]-----+-----------------------------------------
+node_name         | node3
+interface_connstr | host=localhost dbname=postgres port=7434
+peer_state_name   | JOINING
+node_seq_id       | 3
+node_local_dbname | postgres
+```
+
+Also, the table [`bdr.node_catchup_info`](../catalogs/#bdrnode_catchup_info) gives information
+on the catch-up state, which can be relevant to joining nodes or parting nodes.
+
+When a node is parted, some nodes in the cluster might not receive
+all the data from that parting node. So parting a node creates a temporary slot from
+a node that already received that data and can forward it.
+
+The `catchup_state` can be one of the following:
+
+```
+10 = setup
+20 = start
+30 = catchup
+40 = done
+```
+
+## Monitoring Replication Peers
+
+You use two main views for monitoring of replication activity:
+
+-   [`bdr.node_slots`](../catalogs/#bdrnode_slots) for monitoring outgoing replication
+-   [`bdr.subscription_summary`](../catalogs/#bdrsubscription_summary) for monitoring incoming replication
+
+You can also obtain most of the information provided by `bdr.node_slots` by querying
+the standard PostgreSQL replication monitoring views
+[`pg_catalog.pg_stat_replication`](https://www.postgresql.org/docs/current/static/monitoring-stats.html#PG-STAT-REPLICATION-VIEW)
+and
+[`pg_catalog.pg_replication_slots`](https://www.postgresql.org/docs/current/view-pg-replication-slots.html).
+
+Each node has one PGD group slot that must never have a connection to it
+and is very rarely be marked as active. This is normal and doesn't imply
+something is down or disconnected. See [Replication slots created by PGD`](../nodes/#replication-slots-created-by-pgd).
+
+### Monitoring outgoing replication
+
+You can use another view for monitoring of outgoing replication activity:
+
+-   [`bdr.node_replication_rates`](../catalogs/#bdrnode_replication_rates) for monitoring outgoing replication
+
+The `bdr.node_replication_rates` view gives an overall picture of the outgoing
+replication activity along with the catchup estimates for peer nodes,
+specifically.
+
+```
+# SELECT * FROM bdr.node_replication_rates;
+-[ RECORD 1 ]----+-----------
+peer_node_id     | 112898766
+target_name      | node1
+sent_lsn         | 0/28AF99C8
+replay_lsn       | 0/28AF99C8
+replay_lag       | 00:00:00
+replay_lag_bytes | 0
+replay_lag_size  | 0 bytes
+apply_rate       | 822
+catchup_interval | 00:00:00
+-[ RECORD 2 ]----+-----------
+peer_node_id     | 312494765
+target_name      | node3
+sent_lsn         | 0/28AF99C8
+replay_lsn       | 0/28AF99C8
+replay_lag       | 00:00:00
+replay_lag_bytes | 0
+replay_lag_size  | 0 bytes
+apply_rate       | 853
+catchup_interval | 00:00:00
+```
+
+The `apply_rate` refers to the rate in bytes per second. It's the rate
+at which the peer is consuming data from the local node. The `replay_lag` when
+a node reconnects to the cluster is immediately set to zero. This information will be
+fixed in a future release. As a workaround, we recommend using the `catchup_interval`
+column that refers to the time required for the peer node to catch up to the
+local node data. The other fields are also available from the `bdr.node_slots`
+view.
+<!--Okay to refer to something not working as expected in the text? -->
+
+!!! Note
+    This catalog is present only when the bdr-enteprise extension is installed.
+
+Administrators can query `bdr.node_slots` for outgoing replication from the
+local node. It shows information about replication status of all other nodes
+in the group that are known to the current node as well as any additional
+replication slots created by PGD on the current node.
+
+```
+# SELECT node_group_name, target_dbname, target_name, slot_name, active_pid,
+#     catalog_xmin, client_addr, sent_lsn, replay_lsn, replay_lag,
+#     replay_lag_bytes, replay_lag_size
+# FROM bdr.node_slots;
+-[ RECORD 1 ]---+----------------------------
+node_group_name | bdrgroup
+target_dbname   | postgres
+target_name     | node3
+slot_name       | bdr_postgres_bdrgroup_node3
+active_pid      | 15089
+catalog_xmin    | 691
+client_addr     | 127.0.0.1
+sent_lsn        | 0/23F7B70
+replay_lsn      | 0/23F7B70
+replay_lag      | [NULL]
+replay_lag_bytes| 120
+replay_lag_size | 120 bytes
+-[ RECORD 2 ]---+----------------------------
+node_group_name | bdrgroup
+target_dbname   | postgres
+target_name     | node2
+slot_name       | bdr_postgres_bdrgroup_node2
+active_pid      | 15031
+catalog_xmin    | 691
+client_addr     | 127.0.0.1
+sent_lsn        | 0/23F7B70
+replay_lsn      | 0/23F7B70
+replay_lag      | [NULL]
+replay_lag_bytes| 84211
+replay_lag_size | 82 kB
+```
+
+Because PGD is a mesh network, to get the full view of lag in the
+cluster, you must execute this query on all nodes participating.
+
+`replay_lag_bytes` reports the difference in WAL positions between the local
+server's current WAL write position and `replay_lsn`, the last position
+confirmed replayed by the peer node. `replay_lag_size` is a human-readable
+form of the same. It's important to understand that WAL usually contains a lot
+of writes that aren't replicated but still count in `replay_lag_bytes`,
+including, for example:
+
+-  `VACUUM` activity
+-  Index changes 
+-  Writes associated with other databases on the same node
+-  Writes for tables that are not part of a replication set
+
+So the lag in bytes reported here isn't the amount of
+data that must be replicated on the wire to bring the peer node up to date,
+only the amount of server-side WAL that must be processed.
+
+Similarly, `replay_lag` isn't a measure of how long the peer node takes to
+catch up or how long it takes to replay from its current position to the
+write position at the time `bdr.node_slots` was queried. It measures the delay
+between when the peer confirmed the most recent commit and the current
+wall-clock time. We suggest that you monitor `replay_lag_bytes` and `replay_lag_size`
+or `catchup_interval` in `bdr.node_replication_rates`, as this column is set to
+zero immediately after the node reconnects.
+
+The lag in both bytes and time doesn't advance while logical replication is
+streaming a transaction. It changes only when a commit is replicated. So the lag 
+tends to "sawtooth," rising as a transaction is streamed and then falling again
+as the peer node commits it, flushes it, and sends confirmation. The reported
+LSN positions "stair-step" instead of advancing smoothly, for similar
+reasons.
+
+When replication is disconnected (`active` = `'f'`), the `active_pid` column
+is `NULL`, as is `client_addr` and the other fields that make sense only
+with an active connection. The `state` field is `'disconnected'`. The
+`_lsn` fields are the same as the `confirmed_flush_lsn`, since that's the
+last position that the client is known for certain to have replayed to and saved.
+The `_lag` fields show the elapsed time between the most recent confirmed
+flush on the client and the current time. The `_lag_size` and `_lag_bytes`
+fields report the distance between `confirmed_flush_lsn` and the local
+server's current WAL insert position.
+
+!!! Note
+    It's normal for `restart_lsn` to be behind the other `lsn` columns.
+    This doesn't indicate a problem with replication or a peer node lagging. The
+    `restart_lsn` is the position that PostgreSQL's internal logical decoding must
+    be reading WAL at if interrupted. It generally reflects the position of the
+    oldest transaction that's not yet replicated and flushed. A very old
+    `restart_lsn` can make replication slow to restart after disconnection and
+    force retention of more WAL than is desirable, but it's otherwise harmless.
+    If you're concerned, look for very long-running transactions and forgotten
+    prepared transactions.
+
+### Monitoring incoming replication
+
+You can monitor incoming replication (also called subscriptions) by querying
+the `bdr.subscription_summary` view. This query shows the list of known subscriptions
+to other nodes in the EDB Postgres Distributed cluster and the state of the replication worker:
+
+```
+# SELECT node_group_name, origin_name, sub_enabled, sub_slot_name,
+#     subscription_status
+# FROM bdr.subscription_summary;
+-[ RECORD 1 ]-------+----------------------------
+node_group_name     | bdrgroup
+origin_name         | node2
+sub_enabled         | t
+sub_slot_name       | bdr_postgres_bdrgroup_node1
+subscription_status | replicating
+-[ RECORD 2 ]-------+----------------------------
+node_group_name     | bdrgroup
+origin_name         | node3
+sub_enabled         | t
+sub_slot_name       | bdr_postgres_bdrgroup_node1
+subscription_status | replicating
+```
+
+### Monitoring WAL senders using LCR
+
+If the [decoding worker](../nodes#decoding-worker) is enabled, you can monitor information about the
+current logical change record (LCR) file for each WAL sender 
+using the function [bdr.wal_sender_stats](../functions#bdrwal_sender_stats). For example:
+
+```
+postgres=# SELECT * FROM bdr.wal_sender_stats();
+   pid   | is_using_lcr |       decoder_slot_name       |              lcr_file_name
+---------+--------------+-------------------------------+------------------------------------------
+ 2059904 | f            |                               |
+ 2059909 | t            | bdr_postgres_bdrgroup_decoder | 0000000000000000000000140000000000000000
+ 2059916 | t            | bdr_postgres_bdrgroup_decoder | 0000000000000000000000140000000000000000
+(3 rows)
+```
+
+If `is_using_lcr` is `FALSE`, `decoder_slot_name`/`lcr_file_name` is `NULL`.
+This is the case if the decoding worker isn't enabled or the WAL sender is
+serving a [logical standby](../nodes#logical-standby-nodes).
+
+Also, you can monitor information about the decoding worker using the function
+[bdr.get_decoding_worker_stat](../functions#bdrget_decoding_worker_stat). For example:
+
+```
+postgres=# SELECT * FROM bdr.get_decoding_worker_stat();
+   pid   | decoded_upto_lsn | waiting | waiting_for_lsn
+---------+------------------+---------+-----------------
+ 1153091 | 0/1E5EEE8        | t       | 0/1E5EF00
+(1 row)
+```
+
+## Monitoring PGD replication workers
+
+All PGD workers show up in the system view `bdr.stat_activity`,
+which has the same columns and information content as
+[pg_stat_activity](https://www.postgresql.org/docs/current/monitoring-stats.html#PG-STAT-ACTIVITY-VIEW).
+So this view offers these insights into the state of a PGD system:
+
+-   The wait_event column has enhanced information, if
+    the reason for waiting is related to PGD.
+-   The `query` column is blank in PGD workers, except
+    when a writer process is executing DDL.
+
+The `bdr.workers` view shows PGD worker-specific details that aren't
+available from `bdr.stat_activity`.
+
+The view `bdr.event_summary` shows the last error (if any) reported by any worker
+that has a problem continuing the work. This information is persistent, so
+it's important to note the time of the error and not just its existence.
+Most errors are transient, and PGD workers will retry
+the failed operation.
+
+## Monitoring PGD writers
+
+Another system view, `bdr.writers`, monitors writer activities.
+This view shows only the current status of writer workers. It includes:
+
+-   `sub_name` to identify the subscription that the writer belongs to
+-   `pid` of the writer process
+-   `streaming_allowed` to know if the writer supports applying
+    in-progress streaming transactions
+-   `is_streaming` to know if the writer is currently applying a
+    streaming transaction
+-   `commit_queue_position` to check the position of the writer in the
+    commit queue
+
+PGD honors commit ordering by following the same commit order as
+happened on the origin. In case of parallel writers, multiple writers
+might apply different transactions at the same time. The
+`commit_queue_position` shows the order in which they will commit. Value `0`
+means that the writer is the first one to commit. Value `-1` means that
+the commit position isn't yet known, which can happen for a streaming
+transaction or when the writer isn't currently applying any transaction.
+
+## Monitoring global locks
+
+The global lock, which is currently used only for DDL replication, is a heavyweight
+lock that exists across the whole PGD group.
+
+There are currently two types of global locks:
+
+-   DDL lock, used for serializing all DDL operations on permanent
+    (not temporary) objects (that is, tables) in the database
+-   DML relation lock, used for locking out writes to relations during DDL
+    operations that change the relation definition
+
+You can create either or both entry types for the same transaction, depending on
+the type of DDL operation and the value of the `bdr.ddl_locking` setting.
+
+Global locks held on the local node are visible in the [`bdr.global_locks`](../catalogs#bdrglobal_locks) view. 
+This view shows the type of the lock. For
+relation locks, it shows the relation that's being locked, the PID holding the
+lock (if local), and whether the lock was globally granted. In case
+of global advisory locks, `lock_type` column shows `GLOBAL_LOCK_ADVISORY`, and
+`relation` column shows the advisory keys on which the lock is acquired.
+
+This example shows the output of `bdr.global_locks` while running an
+`ALTER TABLE` statement with `bdr.ddl_locking = on`:
+
+```
+# SELECT lock_type, relation, pid FROM bdr.global_locks;
+-[ RECORD 1 ]--------------
+lock_type | GLOBAL_LOCK_DDL
+relation  | [NULL]
+pid       | 15534
+-[ RECORD 2 ]--------------
+lock_type | GLOBAL_LOCK_DML
+relation  | someschema.sometable
+pid       | 15534
+```
+
+See [Catalogs](../catalogs) for details on all fields, including lock
+timing information.
+
+## Monitoring conflicts
+
+Replication [conflicts](../consistency/conflicts) can arise when multiple nodes make
+changes that affect the same rows in ways that can interact with each other.
+Monitor the PGD system to identify conflicts and, where possible, make application changes to eliminate the conflicts or make them less frequent.
+
+By default, all conflicts are logged to `bdr.conflict_history`. Since this log
+contains full details of conflicting data, the rows are protected by
+row-level security to ensure they're visible only by
+owners of replicated tables. Owners should expect conflicts and analyze them
+to see which, if any, might be considered as problems to resolve.
+
+For monitoring purposes, use `bdr.conflict_history_summary`, which doesn't
+contain user data. This example shows a query to count the number of conflicts
+seen in the current day using an efficient query plan:
+
+```sql
+SELECT count(*)
+FROM bdr.conflict_history_summary
+WHERE local_time > date_trunc('day', current_timestamp)
+  AND local_time < date_trunc('day', current_timestamp + '1 day');
+```
+
+## Apply statistics
+
+PGD collects statistics about replication apply, both for each subscription
+and for each table.
+
+Two monitoring views exist: `bdr.stat_subscription` for subscription statistics
+and `bdr.stat_relation` for relation statistics. These views both provide:
+
+-   Number of INSERTs/UPDATEs/DELETEs/TRUNCATEs replicated
+-   Block accesses and cache hit ratio
+-   Total I/O time for read/write
+-   Number of in-progress transactions streamed to file
+-   Number of in-progress transactions streamed to writers
+-   Number of in-progress streamed transactions committed/aborted
+
+For relations only, `bdr.stat_relation` also includes:
+
+-   Total time spent processing replication for the relation
+-   Total lock wait time to acquire lock (if any) for the relation (only)
+
+For subscriptions only, `bdr.stat_subscription` includes:
+
+-   Number of COMMITs/DDL replicated for the subscription
+-   Number of times this subscription has connected upstream
+
+Tracking of these statistics is controlled by the PGD GUCs
+`bdr.track_subscription_apply` and `bdr.track_relation_apply`,
+respectively.
+
+The following shows the example output from these:
+
+```sql
+# SELECT sub_name, nconnect, ninsert, ncommit, nupdate, ndelete, ntruncate, nddl
+FROM bdr.stat_subscription;
+-[ RECORD 1 ]----------------------------------
+sub_name  | bdr_regression_bdrgroup_node1_node2
+nconnect  | 3
+ninsert   | 10
+ncommit   | 5
+nupdate   | 0
+ndelete   | 0
+ntruncate | 0
+nddl      | 2
+```
+
+In this case, the subscription connected three times to the upstream, inserted
+10 rows, and performed two DDL commands inside five transactions.
+
+You can reset the stats counters for these views to zero using the functions
+`bdr.reset_subscription_stats` and `bdr.reset_relation_stats`.
+
+## Standard PostgreSQL statistics views
+
+Statistics on table and index usage are normally updated by the downstream
+master. This is essential for the correct function of
+[autovacuum](https://www.postgresql.org/docs/current/static/routine-vacuuming.html).
+If there are no local writes on the downstream master and statistics haven't been
+reset, these two views show corresponding results between
+upstream and downstream:
+
+-   `pg_stat_user_tables`
+-   `pg_statio_user_tables`
+
+!!! Note
+    We don't necessarily expect the upstream table statistics to
+    be *similar* to the downstream ones. We only expect them to *change*
+    by the same amounts. Consider the example of a table whose statistics
+    show 1M inserts and 1M updates. When a new node joins the PGD group,
+    the statistics for the same table in the new node show 1M inserts
+    and zero updates. However, from that moment, the upstream and
+    downstream table statistics change by the same amounts because
+    all changes on one side are replicated to the other side.
+
+Since indexes are used to apply changes, the identifying indexes on the
+downstream side might appear more heavily used with workloads that perform
+`UPDATE` and `DELETE` than non-identifying indexes are.
+
+The built-in index monitoring views are:
+
+-   `pg_stat_user_indexes`
+-   `pg_statio_user_indexes`
+
+All these views are discussed in detail in the
+[PostgreSQL documentation on the statistics views](http://www.postgresql.org/docs/current/static/monitoring-stats.html#MONITORING-STATS-VIEWS-TABLE).
+
+## Monitoring PGD versions
+
+PGD allows running different Postgres versions as well as different
+BDR extension versions across the nodes in the same cluster. This capability is useful for
+upgrading.
+
+The view `bdr.group_versions_details` uses the function
+`bdr.run_on_all_nodes()` to retrieve Postgres and BDR extension versions from all 
+nodes at the same time. For example:
+
+```sql
+bdrdb=# SELECT node_name, postgres_version, bdr_version
+        FROM bdr.group_versions_details;
+ node_name | postgres_version | bdr_version
+-----------+------------------+-------------
+ node1     | 15.2.0           | 5.0.0
+ node2     | 15.2.0           | 5.0.0
+```
+
+The recommended setup is to try to have all nodes running the same (and
+latest) versions as soon as possible. We recommend
+that the cluster doesn't run different versions of the  BDR extension for too long.
+
+For monitoring purposes, we recommend the following alert levels:
+
+-   status=UNKNOWN, message=This node is not part of any PGD group
+-   status=OK, message=All nodes are running same PGD versions
+-   status=WARNING, message=There is at least 1 node that is not accessible
+-   status=WARNING, message=There are node(s) running different PGD versions
+    when compared to other nodes
+
+The described behavior is implemented in the function
+`bdr.monitor_group_versions()`, which uses PGD version
+information returned from the view `bdr.group_version_details`
+to provide a cluster-wide version check. For example:
+
+```sql
+bdrdb=# SELECT * FROM bdr.monitor_group_versions();
+ status |                message
+--------+-----------------------------------------
+ OK     | All nodes are running same BDR versions
+```
+
+## Monitoring Raft consensus
+
+Raft consensus must be working cluster-wide at all times. The impact
+of running a EDB Postgres Distributed cluster without Raft consensus working might be as
+follows:
+
+-   The replication of PGD data changes might still work correctly.
+-   Global DDL/DML locks doesn't work.
+-   Galloc sequences eventually run out of chunks.
+-   Eager replication doesn't work.
+-   Cluster maintenance operations (join node, part node, promote standby)
+    are still allowed, but they might not finish (hanging instead).
+-   Node statuses might not be correctly synced among the PGD nodes.
+-   PGD group replication slot doesn't advance LSN and thus keeps WAL files on
+    disk.
+
+The view `bdr.group_raft_details` uses the functions
+`bdr.run_on_all_nodes()` and `bdr.get_raft_status()` to retrieve Raft
+consensus status from all nodes at the same time. For example:
+
+```sql
+bdrdb=# SELECT node_id, node_name, state, leader_id
+FROM bdr.group_raft_details;
+  node_id   | node_name | node_group_name |     state     | leader_id
+------------+-----------+-----------------+---------------+------------
+ 1148549230 | node1     | top_group       | RAFT_LEADER   | 1148549230
+ 3367056606 | node2     | top_group       | RAFT_FOLLOWER | 1148549230
+```
+
+Raft consensus is working correctly if all of these
+conditions are met:
+
+-   A valid state (`RAFT_LEADER` or `RAFT_FOLLOWER`) is defined on all
+    nodes.
+-   Only one of the nodes is the `RAFT_LEADER`.
+-   The `leader_id` is the same on all rows and must match the `node_id`
+    of the row where `state = RAFT_LEADER`.
+
+From time to time, Raft consensus starts a new election to define a
+new `RAFT_LEADER`. During an election, there might be an intermediary
+situation where there's no `RAFT_LEADER`, and some of the nodes consider
+themselves as `RAFT_CANDIDATE`. The whole election can't take longer
+than `bdr.raft_election_timeout` (by default it's set to 6 seconds). If
+the query above returns an in-election situation, then wait for
+`bdr.raft_election_timeout`, and run the query again. If after
+`bdr.raft_election_timeout` has passed and some the listed conditions are
+still not met, then Raft consensus isn't working.
+
+Raft consensus might not be working correctly on only a single node.
+For example, one of the nodes doesn't recognize the current leader and
+considers itself as a `RAFT_CANDIDATE`. In this case, it's important to
+make sure that:
+
+-   All PGD nodes are accessible to each other through both regular and
+    replication connections (check file `pg_hba.conf`).
+-   PGD versions are the same on all nodes.
+-   `bdr.raft_election_timeout` is the same on all nodes.
+
+In some cases, especially if nodes are geographically distant from each
+other or network latency is high, the default value of
+`bdr.raft_election_timeout` (6 seconds) might not be enough. If Raft
+consensus is still not working even after making sure everything is
+correct, consider increasing `bdr.raft_election_timeout` to 30
+seconds on all nodes. For PGD 3.6.11 and later, setting
+`bdr.raft_election_timeout` requires only a server reload.
+
+Given how Raft consensus affects cluster operational tasks, and also as
+Raft consensus is directly responsible for advancing the group slot,
+monitoring alert levels are defined as follows:
+
+-   status=UNKNOWN, message=This node is not part of any PGD group
+-   status=OK, message=Raft Consensus is working correctly
+-   status=WARNING, message=There is at least 1 node that is not accessible
+-   status=WARNING, message=There are node(s) as RAFT_CANDIDATE, an
+    election might be in progress
+-   status=WARNING, message=There is no RAFT_LEADER, an election might be
+    in progress
+-   status=CRITICAL, message=There is a single node in Raft Consensus
+-   status=CRITICAL, message=There are node(s) as RAFT_CANDIDATE while a
+    RAFT_LEADER is defined
+-   status=CRITICAL, message=There are node(s) following a leader different
+    than the node set as RAFT_LEADER
+
+The described behavior is implemented in the function
+`bdr.monitor_group_raft()`, which uses Raft consensus status
+information returned from the view `bdr.group_raft_details`
+to provide a cluster-wide Raft check. For example:
+
+```sql
+bdrdb=# SELECT * FROM bdr.monitor_group_raft();
+node_group_name | status |               message
+----------------|--------+-------------------------------------
+myroup          | OK     | Raft Consensus is working correctly
+```
+
+## Monitoring replication slots
+
+Each PGD node keeps:
+
+-   One replication slot per active PGD peer
+-   One group replication slot
+
+For example:
+
+```sql
+bdrdb=# SELECT slot_name, database, active, confirmed_flush_lsn
+FROM pg_replication_slots ORDER BY slot_name;
+        slot_name         | database | active | confirmed_flush_lsn
+--------------------------+----------+--------+---------------------
+ bdr_bdrdb_bdrgroup       | bdrdb    | f      | 0/3110A08
+ bdr_bdrdb_bdrgroup_node2 | bdrdb    | t      | 0/31F4670
+ bdr_bdrdb_bdrgroup_node3 | bdrdb    | t      | 0/31F4670
+ bdr_bdrdb_bdrgroup_node4 | bdrdb    | t      | 0/31F4670
+```
+
+Peer slot names follow the convention `bdr_<DATABASE>_<GROUP>_<PEER>`,
+while the PGD group slot name follows the convention
+`bdr_<DATABASE>_<GROUP>`. You can access the group slot using the function
+`bdr.local_group_slot_name()`.
+
+Peer replication slots must be active on all nodes at all times.
+If a peer replication slot isn't active, then it might mean either:
+
+-   The corresponding peer is shut down or not accessible.
+-   PGD replication is broken.
+
+Grep the log file for `ERROR` or `FATAL`, and also check `bdr.event_summary` on
+all nodes. The root cause might be, for example, an incompatible DDL was
+executed with DDL replication disabled on one of the nodes.
+
+The PGD group replication slot is, however, inactive most of the time. PGD
+maintains this slot and advances its LSN when all other peers already
+consumed the corresponding transactions. Consequently, it's not necessary to
+monitor the status of the group slot.
+
+The function `bdr.monitor_local_replslots()` provides a summary of whether all
+PGD node replication slots are working as expected. For example:
+
+```sql
+bdrdb=# SELECT * FROM bdr.monitor_local_replslots();
+ status |                    message
+--------+-------------------------------------------------
+ OK     | All BDR replication slots are working correctly
+```
+
+One of the following status summaries is returned:
+
+-   `UNKNOWN`: `This node is not part of any BDR group`
+-   `OK`: `All BDR replication slots are working correctly`
+-   `OK`: `This node is part of a subscriber-only group`
+-   `CRITICAL`: `There is at least 1 BDR replication slot which is inactive`
+-   `CRITICAL`: `There is at least 1 BDR replication slot which is missing`
+
+## Monitoring transaction COMMITs
+
+By default, PGD transactions commit only on the local node. In that case,
+transaction `COMMIT` is processed quickly.
+
+You can use PGD with standard PostgreSQL synchronous replication. 
+PGD also provides two new transaction commit modes: CAMO and eager
+replication. Each of these modes adds robustness
+features, though at the expense of additional latency at `COMMIT`.
+You can monitor the additional time at `COMMIT` dynamically using the
+`bdr.stat_activity` catalog, where processes report different `wait_event`
+states. A transaction in `COMMIT` waiting for confirmations from one or
+more synchronous standbys reports a `SyncRep` wait event, whereas the
+two new modes report `EagerRep`.

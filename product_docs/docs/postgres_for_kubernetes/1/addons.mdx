@@ -6,7 +6,8 @@ originalFilePath: 'src/addons.md'
 EDB Postgres for Kubernetes supports add-ons that can be enabled on a
 per-cluster basis. These add-ons are:
 
-1.  [Velero](#velero)
+1.  [External backup adapter](#external-backup-adapter)
+2.  [Velero](#velero)
 
 !!! Info
     If you are planning to use Velero in OpenShift, please refer to the
@@ -16,9 +17,389 @@ All add-ons will automatically be available to the operator and to be used will
 need to be enabled at the cluster level via the `k8s.enterprisedb.io/addons`
 annotation.
 
+## External Backup Adapter
+
+The external backup adapter add-ons provide a generic way to integrate
+EDB Postgres for Kubernetes in a third-party tool for backups through
+customizable ways to identify via labels and/or annotations:
+
+-   which PVC group to backup
+-   which PVCs to exclude, in case the cluster has one or more active replicas
+-   the Pod running the PostgreSQL instance that has been selected for the backup
+    (a standby or, if not available, the primary)
+
+You can choose between two add-ons that only differ from each other for the way
+they allow you to configure the adapter for your backup system:
+
+-   `external-backup-adapter`: in case you want to customize the behavior at the
+    operator's configuration level via either a config map or a secret - and share
+    it with all the Postgres clusters that are managed by the operator's deployment
+    (see [the `external-backup-adapter` section below](#the-external-backup-adapter-add-on))
+-   `external-backup-adapter-cluster`: in case you want to customize the behavior
+    of the adapter at the Postgres cluster level, through a specific annotation
+    (see [the `external-backup-adapter-cluster` section below](#the-external-backup-adapter-cluster-add-on))
+
+Such add-ons allow you to define the names of the annotations that will contain
+the commands to be run before or after taking a backup in the pod selected by
+the operator.
+
+As a result, any third-party backup tool for Kubernetes can rely on the above
+to coordinate itself with a PostgreSQL cluster, or a set of them.
+
+Recovery simply relies on the operator to reconcile the cluster from an
+existing PVC group.
+
+!!! Important
+    The External Backup Adapter is not a tool to perform backups. It simply
+    provides a generic interface that any third-party backup tool in the Kubernetes
+    space can use. Such tools are responsible for safely storing the PVC
+    and/or the content, and make it available at recovery time together with
+    all the necessary resource definitions of your Kubernetes cluster.
+
+### Customizing the adapter
+
+As mentioned above, the adapter can be configured in two ways, which then
+determines the actual `add-on` you need to use in your `Cluster` resource.
+
+If you are planning to define the same behavior for all the Postgres `Cluster`
+resources managed by the operator, we recommend that you use the
+`external-backup-adapter` add-on, and configure the annotations/labels in the
+operator's configuration.
+
+If you are planning to have different behaviors for a subset of the Postgres
+`Cluster` resources that you have, we recommend that you use the
+`external-backup-adapter-cluster` add-on.
+
+Both add-ons share the same capabilities in terms of customization, which needs
+to be defined as a YAML object having the following keys:
+
+-   `electedResourcesDecorators`
+-   `excludedResourcesDecorators`
+-   `backupInstanceDecorators`
+-   `preBackupHookConfiguration`
+-   `postBackupHookConfiguration`
+
+Each section is explained below. Further down you'll find the instructions on
+how to customize each of the two add-ons, with some examples.
+
+#### The `electedResourcesDecorators` section
+
+This section allows you to configure an array of labels and/or annotations that
+will be put on every elected PVC group.
+
+Each element of the array must have the following fields:
+
+`key`
+: the name of the key for the label or annotation
+
+`metadataType`
+: the type of metadata, either `"label"` or `"annotation"`
+
+`value`
+: the value that will be assigned to the label or annotation
+
+#### The `excludedResourcesDecorators` section
+
+This section allows you to configure an array of labels and/or annotations that
+will be placed on every excluded pod and PVC.
+
+Each element of the array must have the same fields as the
+`electedResourcesDecorators` section above.
+
+#### The `backupInstanceDecorators` section
+
+This section allows you to configure an array of labels and/or annotations that
+will be placed on the instance that has been selected for the backup by the operator
+and which contains the hooks to be run.
+
+Each element of the array must have the same fields as the
+`electedResourcesDecorators` section above.
+
+#### The `preBackupHookConfiguration` section
+
+This section allows you to control the names of the annotations in which the
+operator will place the name of the container, the command to run before taking
+the backup, and the command to run in case of error/abort on the third-party
+tool side. Such metadata will be applied on the instance that's been selected by
+the operator for the backup (see `backupInstanceDecorators` above).
+
+The following fields must be provided:
+
+`container`
+: Specifies where to place the information about the container
+  that will run the pre-backup command. The container name is a fixed value and
+  cannot be configured. Will be saved in the annotations. To decorate the pod
+  with hooks refer to: `instanceWithHookDecorators`
+
+`command`
+: Specifies where to place the information about the command that
+  will be executed before the backup is taken. The command that will be
+  executed is a fixed value and cannot be configured. Will be saved in the
+  annotations. To decorate the pod with hooks refer to:
+  `instanceWithHookDecorators`
+
+`onError`
+: Specifies where to place the information about the command that
+  will be executed in case of an error. The command that will be executed is a
+  fixed value and cannot be configured. Will be saved in the annotations. To
+  decorate the pod with hooks refer to: `instanceWithHookDecorators`
+
+#### The `postBackupHookConfiguration` section
+
+This section allows you to control the names of the annotations in which the
+operator will place the name of the container and the command to run after taking
+the backup. Such metadata will be applied on the instance that's been selected by
+the operator for the backup (see `backupInstanceDecorators` above).
+
+The following fields must be provided:
+
+`container`
+: Specifies where to place the information about the container
+  that will run the post-backup command. The container name is a fixed value
+  and cannot be configured. Will be saved in the annotations. To decorate the pod
+  with hooks refer to: `instanceWithHookDecorators`
+
+`command`
+: Specifies where to place the information about the command that
+  will be executed after the backup is taken. The command that will be executed
+  is a fixed value and cannot be configured. Will be saved in the annotations. To
+  decorate the pod with hooks refer to: `instanceWithHookDecorators`
+
+### The `external-backup-adapter` add-on
+
+The `external-backup-adapter` add-on can be entirely configured at operator's
+level via the `EXTERNAL_BACKUP_ADDON_CONFIGURATION` field in the operator's
+`ConfigMap`/`Secret`.
+
+For more information, please refer to the provided sample file at the end of
+this section, or the example below:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-operator-controller-manager-config
+  namespace: postgresql-operator-system
+data:
+  # ...
+  EXTERNAL_BACKUP_ADDON_CONFIGURATION: |-
+    electedResourcesDecorators:
+      - key: "app.example.com/elected"
+        metadataType: "label"
+        value: "true"
+    excludedResourcesDecorators:
+      - key: "app.example.com/excluded"
+        metadataType: "label"
+        value: "true"
+      - key: "app.example.com/excluded-reason"
+        metadataType: "annotation"
+        value: "Not necessary for backup"
+    backupInstanceDecorators:
+      - key: "app.example.com/hasHooks"
+        metadataType: "label"
+        value: "true"
+    preBackupHookConfiguration:
+      container:
+        key: "app.example.com/pre-backup-container"
+      command:
+        key: "app.example.com/pre-backup-command"
+      onError:
+        key: "app.example.com/pre-backup-on-error"
+    postBackupHookConfiguration:
+      container:
+        key: "app.example.com/post-backup-container"
+      command:
+        key: "app.example.com/post-backup-command"
+```
+
+The add-on can be activated by adding the following annotation to the `Cluster`
+resource:
+
+```yaml
+k8s.enterprisedb.io/addons: '["external-backup-adapter"]'
+```
+
+### The `external-backup-adapter-cluster` add-on
+
+The `external-backup-adapter-cluster` add-on must be configured in each
+`Cluster` resource you intend to use it through the
+`k8s.enterprisedb.io/externalBackupAdapterClusterConfig` annotation - which
+accepts the YAML object as content - as outlined in the following example:
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+  annotations:
+    "k8s.enterprisedb.io/addons": '["external-backup-adapter-cluster"]'
+    "k8s.enterprisedb.io/externalBackupAdapterClusterConfig": |-
+      electedResourcesDecorators:
+        - key: "app.example.com/elected"
+          metadataType: "label"
+          value: "true"
+      excludedResourcesDecorators:
+        - key: "app.example.com/excluded"
+          metadataType: "label"
+          value: "true"
+        - key: "app.example.com/excluded-reason"
+          metadataType: "annotation"
+          value: "Not necessary for backup"
+      backupInstanceDecorators:
+        - key: "app.example.com/hasHooks"
+          metadataType: "label"
+          value: "true"
+      preBackupHookConfiguration:
+        container:
+          key: "app.example.com/pre-backup-container"
+        command:
+          key: "app.example.com/pre-backup-command"
+        onError:
+          key: "app.example.com/pre-backup-on-error"
+      postBackupHookConfiguration:
+        container:
+          key: "app.example.com/post-backup-container"
+        command:
+          key: "app.example.com/post-backup-command"
+spec:
+  instances: 3
+  storage:
+    size: 1Gi
+```
+
+### About the fencing annotation
+
+If the configured external backup adapter backs up annotations, the fencing
+annotation will be set by the pre-backup hook and persist to the restored
+cluster. After restoring the cluster, you will need to manually remove the
+fencing annotation from the `Cluster` object to fix this.
+
+This can be done with the `cnp` plugin for kubectl:
+
+```shell
+kubectl cnp fencing off <cluster-name>
+```
+
+Or, if you don't have the `cnp` plugin, you can remove the fencing annotation
+manually with the following command:
+
+```shell
+kubectl annotate cluster <cluster-name> k8s.enterprisedb.io/fencedInstances-
+```
+
+Please refer to the [fencing documentation](fencing.md) for more information.
+
+### Limitations
+
+As far as the backup part is concerned, currently, the EDB Postgres for
+Kubernetes integration with `external-backup-adapter` and
+`external-backup-adapter-cluster` supports **cold backups** only. These are
+also referred to as **offline backups**. This means that the selected replica
+is temporarily fenced so that `external-backup-adapter` and
+`external-backup-adapter-cluster` can take a physical snapshot of the PVC group -
+namely the `PGDATA` volume and, where available, the WAL volume.
+
+In this short timeframe, the standby cannot accept read-only connections.
+If no standby is available - usually because we're in a single instance cluster -
+and the annotation `k8s.enterprisedb.io/snapshotAllowColdBackupOnPrimary` is
+set to true, `external-backup-adapter` and `external-backup-adapter-cluster`
+will temporarily fence the primary, causing downtime in terms of read-write
+operations. This use case is normally left to development environments.
+
+#### Full example of YAML file
+
+Here is a full example of YAML content to be placed in either:
+
+-   the `EXTERNAL_BACKUP_ADDON_CONFIGURATION` option as part of the
+    the operator's configuration process described above for the
+    `external-backup-adapter` add-on, or
+-   in the `k8s.enterprisedb.io/externalBackupAdapterClusterConfig` annotation
+    for the `external-backup-adapter-cluster` add-on
+
+!!! Hint
+    Copy the content below and paste it inside the `ConfigMap` or `Secret` that
+    you use to configure the operator or the annotation in the `Cluster`, making
+    sure you use the `|` character that [YAML reserves for literals](https://yaml.org/spec/1.2.2/#812-literal-style),
+    as well as proper indentation. Use the comments to help you customize the
+    options for your tool.
+
+```yaml
+# An array of labels and/or annotations that will be placed
+# on the elected PVC group
+electedResourcesDecorators:
+  - key: "backup.example.com/elected"
+    metadataType: "label"
+    value: "true"
+
+# An array of labels and/or annotations that will be placed
+# on every excluded pod and PVC
+excludedResourcesDecorators:
+  - key: "backup.example.com/excluded"
+    metadataType: "label"
+    value: "true"
+  - key: "backup.example.com/excluded-reason"
+    metadataType: "annotation"
+    value: "Not necessary for backup"
+
+# An array of labels and/or annotations that will be placed
+# on the instance pod that's been selected for the backup by
+# the operator and which contains the hooks.
+# At least one element is required
+backupInstanceDecorators:
+  - key: "backup.example.com/hasHooks"
+    metadataType: "label"
+    value: "true"
+
+# The pre-backup hook configuration allows you to control the names
+# of the annotations in which the operator will place the container
+# name, the command to run before taking the backup, and the command
+# to run in case of error/abort on the third-party tool side.
+# Such metadata will be applied on the instance that's been selected
+# by the operator for the backup (see `backupInstanceDecorators`)
+preBackupHookConfiguration:
+  # Where to place the information about the container that will run
+  # the pre-backup command. The container name is a fixed value and
+  # cannot be configured. Will be saved in the annotations.
+  # To decorate the pod with the hooks refer to: instanceWithHookDecorators
+  container:
+    key: "app.example.com/pre-backup-container"
+  # Where to place the information about the command that will be
+  # executed before the backup is taken. The command is a fixed value
+  # and cannot be configured. Will be saved in the annotations.
+  # To decorate the pod with the hooks refer to: instanceWithHookDecorators
+  command:
+    key: "app.example.com/pre-backup-command"
+  # Where to place the information about the command that will be
+  # executed in case of an error on the third-party tool side.
+  # The command is a fixed value and cannot be configured.
+  # Will be saved in the annotations.
+  # To decorate the pod with the hooks refer to: instanceWithHookDecorators
+  onError:
+    key: "app.example.com/pre-backup-on-error"
+
+# The post-backup hook configuration allows you to control the names
+# of the annotations in which the operator will place the container
+# name and the command to run after taking the backup.
+# Such metadata will be applied on the instance that's been selected by
+# the operator for the backup (see `backupInstanceDecorators`).
+postBackupHookConfiguration:
+  # Where to place the information about the container that will run
+  # the post-backup command. The container name is a fixed value and
+  # cannot be configured. Will be saved in the annotations.
+  # To decorate the pod with hooks refer to: instanceWithHookDecorators
+  container:
+    key: "app.example.com/post-backup-container"
+  # Where to place the information about the command that will be
+  # executed after the backup is taken. The command is a fixed value
+  # and cannot be configured. Will be saved in the annotations.
+  # To decorate the pod with hooks refer to: instanceWithHookDecorators
+  command:
+    key: "app.example.com/post-backup-command"
+```
+
 ## Velero
 
-Velero is an open-source tool to safely back up and restores, perform disaster
+Velero is an open-source tool to safely back up, restore, perform disaster
 recovery, and migrate Kubernetes cluster resources and persistent volumes. For
 more information, see the [Velero documentation](https://velero.io/docs/latest/).
 To enable Velero compatibility with an EDB Postgres for Kubernetes Cluster, add
@@ -56,16 +437,18 @@ Velero to run the commands to prepare the Postgres instance to be backed up.
 ### Limitations
 
 As far as the backup part is concerned, currently, the EDB Postgres for
-Kubernetes integration with Velero supports **cold backups** only. These are also
-referred to as **offline backups**. This means that the selected replica is
-temporarily fenced so that Velero can take a physical snapshot of the `PGDATA`
-volume and, where available, the WAL volume.
-In this short timeframe, the standby cannot accept read-only connections.
-If no standby is available - usually because we're in a single instance cluster
+Kubernetes integration with Velero supports **cold backups** only. These are
+also referred to as **offline backups**. This means that the selected replica
+is temporarily fenced so that external-backup-adapter can take a physical
+snapshot of the PVC group - namely the `PGDATA` volume and, where available,
+the WAL volume.
 
--   Velero will temporarily fence the primary, causing downtime in terms of
-    read-write operations. This use case is normally left to development
-    environments.
+In this short timeframe, the standby cannot accept read-only connections.
+If no standby is available - usually because we're in a single instance cluster -
+and the annotation `k8s.enterprisedb.io/snapshotAllowColdBackupOnPrimary` is
+set to true, Velero will temporarily fence the primary, causing downtime in
+terms of read-write operations. This use case is normally left to development
+environments.
 
 In terms of recovery, the integration with Velero supports snapshot recovery
 only. No Point-in-Time Recovery (PITR) is available at the moment with the

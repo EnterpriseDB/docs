@@ -1,0 +1,98 @@
+---
+title: "Installing PGD Proxy"
+navTitle: "Installing PGD Proxy"
+---
+
+## Installing PGD Proxy
+
+You can use two methods to install and configure PGD Proxy to manage a Postgres Distributed cluster. The recommended way to install and configure PGD Proxy is to use the EDB Trusted Postgres Architect (TPA) utility for cluster deployment and management.
+
+### Installing through TPA
+
+If the PGD cluster is being deployed through TPA, then TPA installs and configures PGD Proxy automatically as per the recommended architecture. If you want to install PGD Proxy on any other node in a PGD cluster, then you need to attach the `pgd-proxy` role to that instance in the TPA configuration file. Also set the `bdr_child_group` parameter before deploying, as this example shows. See [Trusted Postgres Architect](../tpa) for more information.
+
+```yaml
+- Name: proxy-a1
+  location: a
+  node: 4
+  role:
+  - pgd-proxy
+  vars:
+    bdr_child_group: group_a
+  volumes:
+  - device_name: /dev/sdf
+    volume_type: none
+```
+
+#### Configuration
+
+PGD Proxy connects to the PGD database for its internal operations, like getting proxy options and getting write leader details. Therefore, it needs a list of endpoints/dsn to connect to PGD nodes. PGD Proxy expects these configurations in a local config file `pgd-proxy-config.yml`. Following is a working example of the `pgd-proxy-config.yml` file:
+
+```yaml
+log-level: debug
+cluster:
+  name: cluster-name
+  endpoints:
+    - "host=bdr-a1 port=5432 dbname=bdrdb user=pgdproxy "
+    - "host=bdr-a3 port=5432 dbname=bdrdb user=pgdproxy "
+    - "host=bdr-a2 port=5432 dbname=bdrdb user=pgdproxy "
+  proxy:
+    name: "proxy-a1"
+```
+
+By default, in the cluster created through TPA, `pgd-proxy-config.yml` is located in the `/etc/edb/pgd-proxy` directory. PGD Proxy searches for `pgd-proxy-config.yml` in the following locations. Precedence order is high to low.
+
+  1. `/etc/edb/pgd-proxy` (default)
+  2. `$HOME/.edb/pgd-proxy`
+
+If you rename the file or move it to another location, specify the new name and location using the optional `-f` or `--config-file` flag when starting a service. See the [sample service file](#pgd-proxy-service).
+
+You can set the log level for the PGD Proxy service using the top-level config parameter `log-level`, as shown in the sample config. The valid values for `log-level` are `debug`, `info`, `warn` and  `error`.
+
+`cluster.endpoints` and `cluster.proxy.name` are mandatory fields in the config file. PGD Proxy always tries to connect to the first endpoint in the list. If it fails, it tries the next endpoint, and so on.
+
+PGD Proxy uses endpoints given in the local config file only at proxy startup. After that, PGD Proxy retrieves the list of actual endpoints (route_dsn) from the PGD Proxy catalog. Therefore, the node option `route_dsn` must be set for each PGD Proxy node. See [route_dsn](../routing#configuration) for more information.
+
+#### PGD Proxy user
+
+The database user specified in the endpoint doesn’t need to be a superuser. Typically, in the TPA environment, `pgdproxy` is an OS user as well as a database user with the `bdr_superuser` role.
+
+#### PGD Proxy service
+
+We recommend running PGD Proxy as a systemd service. The `pgd-proxy` service unit file is located at `/etc/systemd/system/pgd-proxy.service` by default. Following is the sample service file created by TPA:
+
+```text
+[Unit]
+Description=PGD Proxy
+
+[Service]
+Type=simple
+User=pgdproxy
+Group=pgdproxy
+Restart=on-failure
+RestartSec=1s
+ExecStart=/usr/bin/pgd-proxy -f /etc/edb/pgd-proxy/pgd-proxy-config.yml
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=pgd-proxy
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Use these commands to manage the `pgd-proxy` service:
+
+```sh
+systemctl status pgd-proxy
+systemctl stop pgd-proxy
+systemctl restart pgd-proxy
+```
+
+### Installing manually
+
+You can manually install PGD Proxy on any Linux machine using `.deb` and `.rpm` packages available from the PGD repository. The package name is `edb-pgd5-proxy`. For example:
+
+```sh
+# for Debian
+sudo apt-get install edb-pgd5-proxy
+```

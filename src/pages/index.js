@@ -47,7 +47,9 @@ const Page = () => (
             <div className="col-sm mb-3 mr-1">
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
-                  <span className="badge-text font-weight-bold">Demo</span>
+                  <span className="badge-text font-weight-bold">
+                    What's new
+                  </span>
                 </div>
               </div>
 
@@ -55,28 +57,23 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                    to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
                   >
-                    Demonstration of Oracle SQL <br />
-                    compatibility in EDB BigAnimal
+                    Multi-region extreme high availability in preview in
+                    BigAnimal
                   </Link>
                 </h3>
                 <p>
-                  EDB BigAnimal lets you run Oracle SQL queries in the cloud via
-                  EDB Postgres Advanced Server. Watch the video, or load up psql
-                  and follow along.
+                  You can now create multi-writer clusters that span BigAnimal
+                  regions to maximize availability, performance, and resiliency
+                  to zonal or regional failures.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
-                      className="btn btn-info btn-sm"
-                      to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
+                      className="btn-sm ml-2"
+                      to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
                     >
-                      Watch demo
-                    </Link>
-                  </p>
-                  <p>
-                    <Link className="btn-sm ml-2" to="/biganimal/latest/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -87,7 +84,7 @@ const Page = () => (
               <div className="mb-2">
                 <div className="new-thing-header" aria-roledescription="badge">
                   <span className="badge-text font-weight-bold">
-                    Interactive Demo
+                    What's new
                   </span>
                 </div>
               </div>
@@ -96,31 +93,20 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/postgres_for_kubernetes/latest/interactive_demo/"
+                    to="/pgd/latest/quickstart/"
                   >
-                    Install, Configure and Deploy PostgreSQL <br />
-                    with Kubernetes
+                    EDB Postgres Distributed quick start topics
                   </Link>
                 </h3>
                 <p>
-                  Want to see what it takes to get the EDB Postgres for
-                  Kubernetes Operator up and running? Try in the browser now, no
-                  downloads required.
+                  Use these topics to quickly evaluate and deploy EDB Postgres
+                  Distributed. They'll get you up and running with a fully
+                  configured EDB Postgres Distributed cluster using the same
+                  tools that you'll use to deploy to production.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link
-                      className="btn btn-info btn-sm"
-                      to="/postgres_for_kubernetes/latest/interactive_demo/"
-                    >
-                      Try it now
-                    </Link>
-                  </p>
-                  <p>
-                    <Link
-                      className="btn-sm ml-2"
-                      to="/postgres_for_kubernetes/latest/"
-                    >
+                    <Link className="btn-sm ml-2" to="/pgd/latest/quickstart/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -141,25 +127,51 @@ const Page = () => (
               PostGIS
             </IndexCardLink>
 
+            <IndexCardLink to="/pge/latest">
+              EDB Postgres Extended Server
+            </IndexCardLink>
+
             <IndexCardLink to="/supported-open-source/postgresql/">
               PostgreSQL
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Extensions and tools
+              Security
+            </span>
+
+            <IndexCardLink to="/tde/latest">
+              Transparent Data Encryption
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Extensions and Tools
             </span>
 
             <IndexCardLink to="/pg_extensions/">
               Supported Postgres extensions
             </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
               EDB Advanced Storage Pack
             </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/ldap_sync">
-              EDB LDAP Sync
-            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_tuner">
               EDB Postgres Tuner
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/query_advisor">
+              EDB Query Advisor
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              PG Failover Slots
+            </IndexCardLink>
+
+            <IndexCardLink to="/epas/latest/language_pack">
+              Language Pack
             </IndexCardLink>
           </IndexCard>
 
@@ -175,7 +187,7 @@ const Page = () => (
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
               className="nested-link"
             >
-              Oracle SQL Compatiblity
+              Oracle SQL Compatibility
               <span className="new-thing" title="Interactive Demo">
                 Demo
               </span>
@@ -225,11 +237,14 @@ const Page = () => (
             headingText="High Availability"
           >
             <IndexCardLink to="/pgd/latest">
-              EDB Postgres Distributed
+              EDB Postgres Distributed (PGD)
             </IndexCardLink>
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
@@ -291,6 +306,12 @@ const Page = () => (
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
@@ -299,8 +320,8 @@ const Page = () => (
               Backup
             </span>
             <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-            Cohesity DataProtect for PostgreSQL
-              </IndexCardLink>
+              Cohesity DataProtect for PostgreSQL
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
@@ -331,16 +352,19 @@ const Page = () => (
               Other
             </span>
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
-            Chemaxon JChem PostgreSQL Cartridge
-              </IndexCardLink>
+              Chemaxon JChem PostgreSQL Cartridge
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-            Esri ArcGIS Pro and Esri ArcGIS Enterprise
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-            Imperva Data Security Fabric
-              </IndexCardLink>
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption

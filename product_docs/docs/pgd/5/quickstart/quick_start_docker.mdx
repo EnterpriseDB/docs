@@ -1,0 +1,351 @@
+---
+title: "Deploying an EDB Postgres Distributed example cluster on Docker"
+navTitle: "Deploying on Docker"
+description: >
+  A quick demonstration of deploying a PGD architecture using TPA on Docker
+redirects:
+  - /pgd/latest/quick_start_docker/
+---
+
+
+This quick start uses TPA to set up PGD with an Always On Single Location architecture using local Docker containers.
+
+## Introducing TPA and PGD
+
+We created TPA to make installing and managing various Postgres configurations easily repeatable. TPA orchestrates creating and deploying Postgres. In this quick start, you install TPA first. If you already have TPA installed, you can skip those steps. You can use TPA to deploy various configurations of Postgres clusters.
+
+PGD is a multi-master replicating implementation of Postgres designed for high performance and availability. The installation of PGD is orchestrated by TPA. You will use TPA to generate a configuration file for a PGD demonstration cluster. 
+
+This cluster uses local Docker containers to host the cluster's nodes: three replicating database nodes, three cohosted connection proxies, and one backup node. You can then use TPA to provision and deploy the required configuration and software to each node.
+
+This configuration of PGD isn't suitable for production use but can be valuable for testing the functionality and behavior of PGD clusters. You might also find it useful when familiarizing yourself with PGD commands and APIs to prepare for deployment on cloud, VM, or Linux hosts. 
+
+!!! Note
+This set of steps is specifically for Ubuntu 22.04 LTS on Intel/AMD processors.  
+!!!
+
+## Prerequisites
+
+To complete this example, you need a system with enough RAM and free storage. You also need `curl` and Docker installed. 
+
+### RAM requirements
+
+You need a minimum of 4GB of RAM on the system. You need this much RAM because you will be running four containers, three of which will be hosting Postgres databases. 
+
+### Free disk space
+
+You need at least 5GB of free storage, accessible by Docker, to deploy the cluster described by this example. A bit more is probably wise.
+
+###  The curl utility
+
+You will download and run scripts during this quick start using the `curl` utilty which might not be installed by default. To ensure that `curl` is installed, run:
+
+```shell
+sudo apt update
+sudo apt install curl
+```
+
+### Docker Engine
+
+You will use Docker containers as the target platform for this PGD deployment. Install Docker Engine:
+
+```shell
+sudo apt update
+sudo apt install docker.io
+```
+
+!!! Important Running as a non-root user
+    Once Docker Engine is installed, be sure to add your user to the Docker group:
+
+    ```shell
+    sudo usermod -aG docker <username>
+    newgrp docker
+    ```
+
+
+## Preparation
+
+### EDB account
+
+To install both TPA and PGD, you'll need an EDB account. 
+
+[Sign up for a free EDB account](https://www.enterprisedb.com/accounts/register) if you don't already have one. Signing up gives you a trial subscription to EDB's software repositories. 
+
+After you are registered, go to the [EDB Repos 2.0](https://www.enterprisedb.com/repos-downloads) page, where you can obtain your repo token. 
+
+On your first visit to this page, select **Request Access** to generate your repo token. Copy the token using the **Copy Token** icon, and store it safely. 
+
+### Setting environment variables
+
+First, set the `EDB_SUBSCRIPTION_TOKEN` environment variable to the value of your EDB repo token, obtained in the [EDB account](#edb-account) step.
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-repo-token>
+```
+
+You can add this to your `.bashrc` script or similar shell profile to ensure it's always set.
+
+### Configure the repository
+
+All the software needed for this example is available from the Postgres Distributed package repository. The following command downloads and runs a script to configure the Postgres Distributed repository. This repository also contains the TPA packages.
+
+```shell
+curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/postgres_distributed/setup.deb.sh" | sudo -E bash
+``` 
+
+!!! Tip "Troubleshooting repo access"
+    The script should produce output starting with:
+    ```text
+    Executing the  setup script for the 'enterprisedb/postgres_distributed' repository ...
+    ```
+    If it produces no output or an error, double-check that you entered your token correctly. It the problem persists, [contact Support](https://support.enterprisedb.com) for assistance.
+
+## Installing Trusted Postgres Architect (TPA)
+
+You'll use TPA to provision and deploy PGD. If you previously installed TPA, you can move on to the [next step](#installing-pgd-using-tpa). You'll find full instructions for installing TPA in the [Trusted Postgres Architect documentation](/tpa/latest/INSTALL/), which we've also included here.
+
+### Linux environment
+
+[TPA supports several distributions of Linux](/tpa/latest/INSTALL/) as a host platform. These examples are written for Ubuntu 22.04, but steps are similar for other supported platforms.
+
+!!! Important
+    If the Linux host platform you're using is running [cgroups](https://en.wikipedia.org/wiki/Cgroups) v2, you need to disable it and enable cgroups v1 while using TPA to deploy to Docker. 
+    
+    To check for cgroup v2, run:
+
+    ```shell
+    mount | grep cgroup | head -1
+    ```
+
+    If you do **not** see a line beginning:
+    
+    `tmpfs on /sys/fs/cgroup type tmpfs`
+
+    Then you need to to disable cgroup v2. To do this, run:
+
+    ```shell
+    echo 'GRUB_CMDLINE_LINUX=systemd.unified_cgroup_hierarchy=false' | sudo tee /etc/default/grub.d/cgroup.cfg
+    ```
+
+    Then update the grub bootloader and reboot by running:
+
+    ```shell
+    sudo update-grub
+    sudo reboot    
+    ```
+
+
+### Install the TPA package
+
+```shell
+sudo apt install tpaexec
+```
+
+### Configuring TPA
+
+You now need to configure TPA, which configures TPA's Python environment. Call `tpaexec` with the command `setup`:
+
+```shell
+sudo /opt/EDB/TPA/bin/tpaexec setup
+export PATH=$PATH:/opt/EDB/TPA/bin
+```
+
+You can add the `export` command to your shell's profile.
+
+### Testing the TPA installation
+
+You can verify TPA is correctly installed by running `selftest`:
+
+```shell
+tpaexec selftest
+```
+TPA is now installed.
+
+## Installing PGD using TPA
+
+### Generating a configuration file
+
+Run the [`tpaexec configure`](/tpa/latest/tpaexec-configure/) command to generate a configuration folder: 
+
+```shell-session
+tpaexec configure democluster \
+  --architecture PGD-Always-ON \
+  --platform docker \
+  --edb-postgres-advanced 15 \
+  --redwood \
+  --location-names dc1 \
+  --pgd-proxy-routing global \
+  --no-git \
+  --hostnames-unsorted
+```
+
+You specify the PGD-Always-ON architecture (`--architecture PGD-Always-ON`), which
+sets up the configuration for [PGD 5's Always On
+architectures](../architectures/). As part of the default architecture,
+it configures your cluster with three data nodes, cohosting three [PGD
+Proxy](../routing/proxy/) servers, along with a [Barman](../backup#physical-backup)
+node for backup.
+
+Specify that you're using Docker (`--platform docker`). By default, TPA configures Rocky
+Linux as the default image for all nodes.
+
+!!! Note Deployment platforms
+    Other Linux platforms are supported as deployment targets for PGD. See [the EDB Postgres Distributed compatibility table](https://www.enterprisedb.com/resources/platform-compatibility) for details.
+
+    Observe that you don't have to deploy PGD to the same platform you're using to run TPA!
+
+Specify that the data nodes will be running [EDB Postgres Advanced Server v15](/epas/latest/) (`--edb-postgres-advanced 15`) with Oracle compatibility (`--redwood`). 
+
+You set the notional location of the nodes to `dc1` using `--location-names`. You then set `--pgd-proxy-routing` to `global` so that proxy routing can route traffic to all nodes in the cluster.
+
+By default, TPA commits configuration changes to a Git repository. For this example, you don't need to do that, so pass the `--no-git` flag.
+
+Finally, you ask TPA to generate repeatable hostnames for the nodes by passing `--hostnames-unsorted`. Otherwise, it selects hostnames at random from a predefined list of suitable words.
+
+This command creates a subdirectory in the current working directory called `democluster`. It contains the `config.yml` configuration file TPA uses to create the cluster. You can view it using:
+
+```shell
+less democluster/config.yml
+```
+
+!!! SeeAlso "Further reading"
+    - View the full set of available options by running:
+      ```shell
+      tpaexec configure --architecture PGD-Always-ON --help
+      ``` 
+    - More details on PGD-Always-ON configuration options in [Deploying with TPA](../tpa)
+    - [PGD-Always-ON](/tpa/latest/architecture-PGD-Always-ON/) in the Trusted Postgres Architect documentation
+    - [`tpaexec configure`](/tpa/latest/tpaexec-configure/) in the Trusted Postgres Architect documentation
+    - [Docker platform](/tpa/latest/platform-docker/) in the Trusted Postgres Architect documentation
+
+### Provisioning the cluster
+
+Next, allocate the resources needed to run the configuration you just created using the [`tpaexec provision`](/tpa/latest/tpaexec-provision/) command:
+   
+```shell
+tpaexec provision democluster
+```
+
+Since you specified Docker as the platform, TPA creates a Docker image, containers, networks, and so on.
+
+!!! SeeAlso "Further reading"
+    - [`tpaexec provision`](/tpa/latest/tpaexec-provision/) in the Trusted Postgres Architect documentation
+
+### Deploying the cluster
+
+With configuration in place and infrastructure provisioned, you can now [deploy](/tpa/latest/tpaexec-deploy/) the distributed cluster:
+
+```shell
+tpaexec deploy democluster
+```
+
+TPA applies the configuration, installing the needed packages and setting up the actual EDB Postgres Distributed cluster.
+
+!!! SeeAlso "Further reading"
+    - [`tpaexec deploy`](/tpa/latest/tpaexec-deploy/) in the Trusted Postgres Architect documentation
+   
+## Connecting to the cluster
+
+You're now ready to log into one of the nodes of the cluster with SSH and then connect to the database. Part of the configuration process set up SSH logins for all the nodes, complete with keys. To use the SSH configuration, you need to be in the `democluster` directory created by the `tpaexec configure` command earlier:
+
+```shell
+cd democluster
+```
+
+From there, you can run `ssh -F ssh_config <hostname>` to establish an SSH connection. You will connect to kaboom, the first database node in the cluster:
+
+```shell
+ssh -F ssh_config kaboom
+__OUTPUT__
+[root@kaboom ~]# 
+```
+
+Notice that you're logged in as `root` on `kaboom`.
+
+You now need to adopt the identity of the enterprisedb user. This user is preconfigured and authorized to connect to the cluster's nodes.
+
+```shell
+sudo -iu enterprisedb
+__OUTPUT__
+enterprisedb@kaboom:~ $
+```
+
+You can now run the `psql` command to access the `bdrdb` database:
+
+```shell
+psql bdrdb
+__OUTPUT__
+psql (15.2.0, server 15.2.0)
+Type "help" for help.
+
+bdrdb=#
+```
+
+You're directly connected to the Postgres database running on the kaboom node and can start issuing SQL commands.
+
+To leave the SQL client, enter `exit`.
+
+### Using PGD CLI
+
+The `pgd` utility, also known as the PGD CLI, lets you control and manage your Postgres Distributed cluster. It's already installed on the node. 
+
+You can use it to check the cluster's health by running `pgd check-health`:
+
+```console
+pgd check-health
+__OUTPUT__
+Check      Status Message
+-----      ------ -------
+ClockSkew  Ok     All BDR node pairs have clockskew within permissible limit
+Connection Ok     All BDR nodes are accessible
+Raft       Ok     Raft Consensus is working correctly
+Replslots  Ok     All BDR replication slots are working correctly
+Version    Ok     All nodes are running same BDR versions
+enterprisedb@kaboom:~ $
+```
+
+Or, you can use `pgd show-nodes` to ask PGD to show you the data-bearing nodes in the cluster:
+
+```console
+pgd show-nodes
+__OUTPUT__
+Node   Node ID    Group        Type Current State Target State Status Seq ID
+----   -------    -----        ---- ------------- ------------ ------ ------
+kaboom 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up     1
+kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up     3
+kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Up     2
+enterprisedb@kaboom:~ $
+```
+
+Similarly, use `pgd show-proxies` to display the proxy connection nodes:
+
+```console
+pgd show-proxies
+__OUTPUT__
+Proxy  Group       Listen Addresses Listen Port
+-----  -----       ---------------- -----------
+kaboom democluster [0.0.0.0]        6432
+kaftan democluster [0.0.0.0]        6432
+kaolin democluster [0.0.0.0]        6432
+```
+
+The proxies provide high-availability connections to the cluster of data nodes for applications. You can connect to the proxies and, in turn, to the database with the command `psql -h kaboom,kaftan,kaolin -p 6432 bdrdb`:
+
+```
+psql -h kaboom,kaftan,kaolin -p 6432 bdrdb
+__OUTPUT__
+psql (15.2.0, server 15.2.0)
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+bdrdb=#
+```
+
+
+## Explore your cluster
+
+* [Connect to your database](connecting_applications) to applications
+* [Explore failover](further_explore_failover) with hands-on exercises
+* [Understand conflicts](further_explore_conflicts) by creating and monitoring them
+* [Next steps](next_steps) in working with your cluster
+

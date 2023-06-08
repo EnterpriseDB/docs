@@ -122,6 +122,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             navigation
             showInteractiveBadge
             hideToC
+            hideKBLink
             katacodaPages {
               scenario
               account
@@ -143,6 +144,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               platform
               indexCards
               showInteractiveBadge
+              hideKBLink
               hideVersion
               displayBanner
             }
@@ -299,21 +301,16 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${docsRepoUrl}/commits/${branch}/product_docs/docs${fileUrlSegment}`;
+  const githubFileLink = `${docsRepoUrl}/blob/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
   const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
-  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=Feedback%20on%20${encodeURIComponent(
-    fileUrlSegment,
-  )}`;
-
+  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=${encodeURIComponent(
+    `Feedback on ${doc.fields.product} ${doc.fields.version} - "${doc.frontmatter.title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
-
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
-  actions.createPage({
-    path: path,
-    component: require.resolve(`./src/templates/${template}`),
-    context: {},
-  });
 
   actions.createPage({
     path: path,
@@ -325,7 +322,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       prevNext,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
-      githubFileLink: githubFileLink,
+      githubFileLink: githubFileHistoryLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
       isIndexPage: isIndexPage,
@@ -382,18 +379,14 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   const fileUrlSegment =
     removeTrailingSlash(doc.fields.path) +
     (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${advocacyDocsRepoUrl}/commits/${branch}/advocacy_docs${fileUrlSegment}`;
+  const githubFileLink = `${advocacyDocsRepoUrl}/blob/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${advocacyDocsRepoUrl}/commits/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
   const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
-  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=Regarding%20${encodeURIComponent(
-    fileUrlSegment,
-  )}`;
-
-  // workaround for https://github.com/gatsbyjs/gatsby/issues/26520
-  actions.createPage({
-    path: doc.fields.path,
-    component: require.resolve("./src/templates/learn-doc.js"),
-    context: {},
-  });
+  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=${encodeURIComponent(
+    `Regarding "${doc.frontmatter.title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
 
   actions.createPage({
     path: doc.fields.path,
@@ -405,7 +398,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       navLinks: navLinks,
       prevNext,
       navTree,
-      githubFileLink: githubFileLink,
+      githubFileLink: githubFileHistoryLink,
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
       isIndexPage: isIndexPage,
@@ -503,6 +496,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideToC: Boolean
       hideVersion: Boolean
+      hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
     }
@@ -529,6 +523,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       editTarget: EditTargets
       showInteractiveBadge: Boolean
       hideVersion: Boolean
+      hideKBLink: Boolean
       displayBanner: String
     }
   `;

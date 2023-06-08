@@ -1,0 +1,103 @@
+---
+title: 'Tips and FAQs'
+description: "Various tips and frequently asked questions"
+---
+
+## Connection strings
+
+PostgreSQL [client libraries](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING) like `libpq` and `jdbc` support client-connection failover. The connection string contains multiple servers, for example, `host=srv1,srv2`. The client library loops over the available hosts to find a connection that's available and capable of read-write or read-only operations. This configuration allows clients to follow the primary cluster during a switchover.
+
+Example:
+
+```bash
+psql "host=srv1,srv2 dbname=postgres user=admin target_session_attrs=read-write" -c "SELECT pg_is_in_recovery();"
+__OUTPUT__
+ pg_is_in_recovery
+-------------------
+ f
+(1 row)
+```
+```
+psql "host=srv1,srv2 dbname=postgres user=admin target_session_attrs=read-only" -c "SELECT pg_is_in_recovery();"
+__OUTPUT__
+ pg_is_in_recovery
+-------------------
+ t
+(1 row)
+```
+
+---
+
+## VIP & Keepalived
+
+When using multiple HAProxy instances and you need a way to decide which proxy host to connect to, the easiest solution is to use Keepalived and a VIP (virtual IP).
+
+### RHEL8 example
+
+This example shows installing and configuring on RHEL8.
+
+First, install Keepalived on each hosts running HAProxy:
+
+```bash
+sudo dnf install -y keepalived
+sudo cp /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf.bck
+```
+
+For this example, use `192.168.121.121` as the virtual IP. Configure Keepalived:
+
+```bash
+VIP=192.168.121.121
+MY_IP=$(hostname -I | awk ' {print $1}')
+DEVICE=$(ip -br address | grep $MY_IP | awk '{print $1}')
+cat <<EOF | sudo tee /etc/keepalived/keepalived.conf
+global_defs {
+  vrrp_garp_master_delay 3
+  vrrp_garp_master_repeat 4
+  vrrp_garp_master_refresh 60
+  vrrp_garp_master_refresh_repeat 4
+}
+vrrp_instance patroni {
+  state BACKUP
+  interface $DEVICE
+  virtual_router_id 100
+  priority 100
+  advert_int 1
+  virtual_ipaddress {
+    $VIP
+  }
+  authentication {
+    auth_type PASS
+    auth_pass secret
+  }
+}
+EOF
+```
+
+Configure the firewall if needed:
+
+```bash
+sudo firewall-cmd --add-rich-rule='rule protocol value="vrrp" accept' --permanent
+sudo firewall-cmd --reload
+```
+
+Finally, enable and start the Keepalived service:
+
+```bash
+sudo systemctl enable keepalived
+sudo systemctl start keepalived
+```
+
+Once started, the virtual IP is attached to one of the hosts. To verify, try to reach it:
+
+```bash
+ping -c 3 $VIP
+__OUTPUT__
+PING 192.168.121.121 (192.168.121.121) 56(84) bytes of data.
+64 bytes from 192.168.121.121: icmp_seq=1 ttl=64 time=0.196 ms
+64 bytes from 192.168.121.121: icmp_seq=2 ttl=64 time=0.410 ms
+64 bytes from 192.168.121.121: icmp_seq=3 ttl=64 time=0.322 ms
+
+--- 192.168.121.121 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2052ms
+rtt min/avg/max/mdev = 0.196/0.309/0.410/0.087 ms
+```

@@ -127,9 +127,26 @@ const Tiles = ({ mode, node }) => {
   if (!node || !node.items) return null;
 
   if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
-    const tiles = node.items.map((n) => getCards(n, mode === "simple" ? 0 : 1));
+    const decks = {};
+    let currentDeckName = "";
+    for (let item of node.items) {
+      if (!item.path) {
+        currentDeckName = item.title;
+      } else {
+        decks[currentDeckName] = decks[currentDeckName] || [];
+        decks[currentDeckName].push(getCards(item, mode === "simple" ? 0 : 1));
+      }
+    }
 
-    return <CardDecks cards={tiles} cardType={mode} />;
+    return Object.keys(decks).map((deckName) => {
+      return (
+        <CardDecks
+          cards={decks[deckName]}
+          cardType={mode}
+          deckTitle={deckName}
+        />
+      );
+    });
   }
   return null;
 };
@@ -189,14 +206,16 @@ const FeedbackDropdown = ({ githubIssuesLink }) => (
     }
   >
     <Dropdown.Item
-      href={githubIssuesLink + "&template=documentation-feedback.md"}
+      href={githubIssuesLink + "&template=problem-with-topic.yaml"}
       target="_blank"
       rel="noreferrer"
     >
       Report a problem
     </Dropdown.Item>
     <Dropdown.Item
-      href={githubIssuesLink + "&template=product-feedback.md&labels=feedback"}
+      href={
+        githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"
+      }
       target="_blank"
       rel="noreferrer"
     >
@@ -265,7 +284,7 @@ const DocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation>
+        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
           <LeftNav
             navTree={navTree}
             path={path}
@@ -308,16 +327,9 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
-          {navTree.displayBanner === "edbcloud" ? (
+          {navTree.displayBanner ? (
             <div class="alert alert-warning mt-3" role="alert">
-              EDB Cloud is currently in Preview. If you would like to sign up,
-              see{" "}
-              <a
-                className="pl-1 font-weight-bold"
-                href="https://resources.enterprisedb.com/postgres-database-as-a-service-dbaas-cloud-postgresql"
-              >
-                EDB Cloud Preview Signup.
-              </a>
+              {navTree.displayBanner}
             </div>
           ) : null}
 

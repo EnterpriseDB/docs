@@ -1,4 +1,5 @@
 import React from "react";
+import { useScrollRestoration } from "gatsby";
 import { DarkModeToggle, Link, Logo } from "./";
 
 const DocsLink = () => (
@@ -30,12 +31,14 @@ const FooterItem = ({ url, children }) => (
   </li>
 );
 
-const SideNavigationFooter = () => (
+const SideNavigationFooter = ({ hideKBLink = false }) => (
   <ul className="list-unstyled mt-0">
     <hr />
-    <FooterItem url="https://support.enterprisedb.com/support/s/">
-      Knowledge Base and Technical Alerts
-    </FooterItem>
+    {!hideKBLink && (
+      <FooterItem url="https://support.enterprisedb.com/support/s/">
+        Knowledge Base and Technical Alerts
+      </FooterItem>
+    )}
     <FooterItem url="https://www.enterprisedb.com/contact">
       Contact Us
     </FooterItem>
@@ -44,13 +47,20 @@ const SideNavigationFooter = () => (
   </ul>
 );
 
-const SideNavigation = ({ children, background = "light", footer = true }) => {
+const SideNavigation = ({
+  children,
+  background = "light",
+  footer = true,
+  hideKBLink = false,
+}) => {
+  const scrollRestoration = useScrollRestoration("navigation-sidebar");
+
   return (
     <nav className={`sidebar d-block bg-${background} border-right`}>
-      <div className="sidebar-sticky pl-4 pr-4 pb-4">
+      <div className="sidebar-sticky pl-3 pr-3 pb-4" {...scrollRestoration}>
         <LogoLink />
         {children}
-        {footer && <SideNavigationFooter />}
+        {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}
       </div>
     </nav>
   );

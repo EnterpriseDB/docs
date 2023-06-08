@@ -1,0 +1,90 @@
+---
+title: "Application schema upgrades"
+---
+
+Similar to the upgrade of EDB Postgres Distributed, there are two
+approaches to upgrading the application schema. The simpler option is to
+stop all applications affected, preform the schema upgrade, and restart the
+application upgraded to use the new schema variant. This approach
+imposes some downtime.
+
+To eliminate this downtime, EDB Postgres Distributed offers useful tools to
+perform a rolling application schema upgrade.
+
+The following recommendations and tips reduce the impact of the
+application schema upgrade on the cluster.
+
+### Rolling application schema upgrades
+
+By default, DDL will automatically be sent to all nodes. You can control this behavior
+manually, as described in
+[DDL Replication](../ddl/). You can use this approach
+to create differences between database schemas across nodes.
+
+PGD is designed to allow replication to continue even with minor
+differences between nodes. These features are designed to allow
+application schema migration without downtime or to allow logical
+standby nodes for reporting or testing.
+
+!!! Warning
+    You must manage rolling application schema upgrades outside of PGD.
+
+    Careful scripting is required to make this work correctly
+    on production clusters. Extensive testing is advised.
+
+See [Replicating between nodes with differences](../appusage/) for details.
+
+When one node runs DDL that adds a new table, nodes that haven't
+yet received the latest DDL need to handle the extra table.
+In view of this, the appropriate setting for rolling schema upgrades
+is to configure all nodes to apply the `skip` resolver in case of a
+`target_table_missing` conflict. Perform this configuration before adding tables to any
+node. This setting is intended to be permanent.
+
+Execute the following query **separately on each node**. Replace `node1` with the actual
+node name.
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('node1',
+		'target_table_missing', 'skip');
+```
+
+When one node runs DDL that adds a column to a table, nodes that haven't
+yet received the latest DDL need to handle the extra columns.
+In view of this, the appropriate setting for rolling schema
+upgrades is to configure all nodes to apply the `ignore` resolver in
+case of a `target_column_missing` conflict. Perform this before adding columns to
+one node. This setting is intended to be
+permanent.
+
+Execute the following query **separately on each node**. Replace `node1` with the actual
+node name.
+
+```sql
+SELECT bdr.alter_node_set_conflict_resolver('node1',
+		'target_column_missing', 'ignore');
+```
+
+When one node runs DDL that removes a column from a table, nodes that
+haven't yet received the latest DDL need to handle the missing column.
+This situation causes a `source_column_missing` conflict, which uses
+the `use_default_value` resolver. Thus, columns that don't
+accept NULLs and don't have a DEFAULT value require a two-step process:
+
+1. Remove the NOT NULL constraint, or add a DEFAULT value for a column
+   on all nodes.
+2. Remove the column.
+
+You can remove constraints in a rolling manner.
+There's currently no supported way for handling adding table
+constraints in a rolling manner, one node at a time.
+
+When one node runs a DDL that changes the type of an existing column,
+depending on the existence of binary coercibility between the current
+type and the target type, the operation might not rewrite the underlying
+table data. In that case, it's only a metadata update of the
+underlying column type. Rewriting a table is normally restricted.
+However, in controlled DBA environments, you can change
+the type of a column to an automatically castable one by adopting
+a rolling upgrade for the type of this column in a non-replicated
+environment on all the nodes, one by one. See [ALTER TABLE](../ddl/#alter-table) for more details.
