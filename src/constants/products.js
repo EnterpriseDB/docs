@@ -4,14 +4,18 @@ export const products = {
   bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
   barman: { name: "Barman" },
   biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
+  "EDB Advanced Storage Pack": { name: "EDB Advanced Storage Pack" },
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
+  "EDB LDAP Sync": { name: "EDB LDAP Sync" },
   epas: { name: "EDB Postgres Advanced Server", iconName: IconNames.EDB_EPAS },
   pgd: {
     name: "EDB Postgres Distributed (PGD)",
     iconName: IconNames.HIGH_AVAILABILITY,
   },
   pge: { name: "EDB Postgres Extended Server", iconName: IconNames.POSTGRESQL },
+  "EDB Postgres Tuner": { name: "EDB Postgres Tuner" },
+
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
@@ -47,7 +51,7 @@ export const products = {
   Patroni: { name: "Patroni" },
   pgBackRest: { name: "pgBackRest" },
   pgbouncer: { name: "PgBouncer", iconName: IconNames.POSTGRESQL },
-  pg_failover_slots: {
+  "PG Failover Slots": {
     name: "PG Failover Slots",
     iconName: IconNames.POSTGRESQL,
   },
