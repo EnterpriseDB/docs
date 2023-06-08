@@ -1,0 +1,24 @@
+---
+title: Raft elections in depth
+---
+
+The selection of a write leader in PGD relies on PGD's Raft mechanism. The Raft mechanism is completely internal to PGD's BDR Postgres extension and operates transparently. The nodes within a group will automatically begin by establishing a Raft leader within the nodes of the group. 
+
+## Node interaction
+
+With the Raft leader established, the leader then queries the catalog to see if a write leader for proxy routing has been designated.
+
+If no write leader is designated, the Raft leader takes steps to designate a new write leader. The process starts by querying all the nodes in the group to establish their state. The resulting list of nodes is then filtered for ineligible nodes (e.g. witness nodes) and prioritized. The first/top entry on the list is then set as the new write leader in the Raft log.
+
+## Proxy interaction
+
+All proxies will initially connect any data node in their group. This allows them to query the catalog for the current write leader and begin routing connections to that node.
+
+They connect to the Raft leader and listen for changes to the catalog entry for write leader.
+
+When notified of a change in write leader, they reconfigure routing and send connections to the new write leader.
+
+Both the Node and Proxy interaction are shown on the following sequence diagram. Two nodes and one proxy are involved, coordinating which node will be write leader and the proxy waiting to learn which node is write leader.
+
+![Sequence Diagram](images/PGD5sequencediagram.png)
+
