@@ -110,7 +110,7 @@ function processRow(currentState, row, nextRow) {
             } else {
                 currentState.output.push(`</thead>`)
                 currentState.output.push(`<tbody>`)
-                currentState.output.push(composeRow(row));
+                currentState.output.push(composeRow(row,nextRow.length==0,currentState));
             }
             currentState.rowState = 5
             return;
@@ -121,9 +121,9 @@ function processRow(currentState, row, nextRow) {
                 return;
             }
             if (row.length == 1) {
-                currentState.output.push(composeHeadingRow(row));
+                currentState.output.push(composeHeadingRow(row,currentState));
             } else {
-                currentState.output.push(composeRow(row, nextRow.length == 0));
+                currentState.output.push(composeRow(row, nextRow.length == 0,currentState));
             }
             currentState.rowState = 5
             return;
@@ -134,15 +134,31 @@ function processRow(currentState, row, nextRow) {
     return;
 }
 
-function composeRow(row, lastRow) {
+function composeRow(row, lastRow, currentState) {
     let output = []
     output.push("<tr>")
     let fullName = row[0];
     let trimmedName = fullName.trimStart()
     let spaceDiff = fullName.length - trimmedName.length
+    let lookupName=fullName.replace(" ","_")
+    if(spaceDiff<=1) { // Root element, update state
+        currentState.lastRoot=lookupName;
+    } else {
+        lookupName=currentState.lastRoot+"."+trimmedName.replace(" ","_");
+    }
+
+    let url=productToURL[lookupName];
+
+    if(url==undefined) {
+        currentState.unmapped.push(lookupName);
+    }
+
+    if(url=="undefined") { // This lets you not set a URL and not get nagged at
+        url=undefined;
+    }
     trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
 
-    output.push(composeCell(true, false, false, true, false, trimmedName, lastRow, false));
+    output.push(composeCell(true, false, false, true, false, trimmedName, lastRow, false,url));
     output.push(composeCell(true, true, false, true, false, row[5], lastRow, true));
     for (let i = 6; i < 14; i++) {
         if (row[i] == "TRUE") {
@@ -160,8 +176,15 @@ function composeHeadingRow(row) {
     return `<tr><td rowspan="1" colspan="14" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: none; background-color: lightgrey; padding: 2px 3px;">${row[0]}</td></tr>\n`;
 }
 
-function composeCell(left, right, bold, middleAlign, green, value, lastRow, centered) {
-    return `<td style="${_composeCell(left, right, bold, middleAlign, false, lastRow, green, centered, false)}">${value}</td>`;
+function composeCell(left, right, bold, middleAlign, green, value, lastRow, centered,url) {
+    var cellValue=value;
+
+    if(url!=undefined) {
+        cellValue=`<a href="${url}">${value}</a>`;
+    }
+
+    return `<td style="${_composeCell(left, right, bold, middleAlign, false, lastRow, green, centered, false)}">${cellValue}</td>`;
+    
 }
 
 function composeHeading(left, right, bold, middleAlign, value, alwaysSplit) {
@@ -224,6 +247,8 @@ function _composeCell(left, right, bold, middleAlign, top, bottom, green, center
     return options.join(" ");
 }
 
+var productToURL={};
+
 async function processExtensions(auth) {
     var argv = parseArgs(_argv.slice(2));
 
@@ -235,8 +260,10 @@ async function processExtensions(auth) {
     const templateFile = join(argv.source, "index.mdx.in");
     const templateFileContent = await fs.readFile(templateFile);
 
+    const extensionsFile= join(argv.source, "extensionrefs.json");
+    const extensionsContent = await fs.readFile(extensionsFile);
 
-
+    productToURL=JSON.parse(extensionsContent);
 
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -251,7 +278,7 @@ async function processExtensions(auth) {
     }
 
 
-    var currentState = { done: false, output: [templateFileContent], rowState: 0 };
+    var currentState = { done: false, output: [templateFileContent], rowState: 0, lastRoot:"", unmapped: [] };
 
     for (var i = 0; i < rows.length; i++) {
         processRow(currentState, rows[i], rows[i + 1])
@@ -261,6 +288,13 @@ async function processExtensions(auth) {
     const outputFile = join(argv.source, "index.mdx");
 
     await fs.writeFile(outputFile,currentState.output.join(""));
+
+    if (currentState.unmapped.length>0) {
+        console.log("Unmapped products - add to extensionrefs.json");
+        currentState.unmapped.forEach(element => {
+            console.log(`"${element}":"https:",`);
+        });
+    }
 
 }
 
