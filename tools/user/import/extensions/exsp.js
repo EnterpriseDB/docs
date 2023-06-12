@@ -158,13 +158,13 @@ function composeRow(row, lastRow, currentState) {
     }
     trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
 
-    output.push(composeCell(true, false, false, true, false, trimmedName, lastRow, false,url));
-    output.push(composeCell(true, true, false, true, false, row[5], lastRow, true));
+    output.push(composeCell(true, false, false, true,  trimmedName, lastRow, false,url));
+    output.push(composeCell(true, true, false, true, row[5], lastRow, true));
     for (let i = 6; i < 14; i++) {
         if (row[i] == "TRUE") {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, true, `✓`, lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `<span style="color:green">✓</span>`, lastRow, true));
         } else {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, false, `–`, lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         }
     }
     output.push("</tr>\n")
@@ -173,17 +173,17 @@ function composeRow(row, lastRow, currentState) {
 }
 
 function composeHeadingRow(row) {
-    return `<tr><td rowspan="1" colspan="14" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: none; background-color: lightgrey; padding: 2px 3px;">${row[0]}</td></tr>\n`;
+    return `<tr><td rowspan="1" colspan="14" style="font-weight: bold; border-left: 1px solid; border-right: 1px solid; border-top: 1px solid; border-bottom: 1px ridge ; padding: 2px 3px;">${row[0]}</td></tr>\n`;
 }
 
-function composeCell(left, right, bold, middleAlign, green, value, lastRow, centered,url) {
+function composeCell(left, right, bold, middleAlign, value, lastRow, centered,url) {
     var cellValue=value;
 
     if(url!=undefined) {
         cellValue=`<a href="${url}">${value}</a>`;
     }
 
-    return `<td style="${_composeCell(left, right, bold, middleAlign, false, lastRow, green, centered, false)}">${cellValue}</td>`;
+    return `<td style="${_composeCell(left, right, bold, middleAlign, false, lastRow, centered, false)}">${cellValue}</td>`;
     
 }
 
@@ -194,10 +194,10 @@ function composeHeading(left, right, bold, middleAlign, value, alwaysSplit) {
         displayValue = splitValue.join("<br/>");
     }
 
-    return `<th style="${_composeCell(left, right, bold, middleAlign, true, true, false, true, true)}">${displayValue}</th>`;
+    return `<th style="${_composeCell(left, right, bold, middleAlign, true, true, true, true)}">${displayValue}</th>`;
 }
 
-function _composeCell(left, right, bold, middleAlign, top, bottom, green, centered, bottomAlign) {
+function _composeCell(left, right, bold, middleAlign, top, bottom, centered, bottomAlign) {
 
     let options = [];
 
@@ -225,13 +225,9 @@ function _composeCell(left, right, bold, middleAlign, top, bottom, green, center
     }
 
     if (bottom) {
-        options.push("border-bottom: solid 1px; border-color: black;")
+        options.push("border-bottom: solid 1px;")
     } else {
         options.push("border-bottom: none;")
-    }
-
-    if (green) {
-        options.push("color:green;")
     }
 
     if (centered) {
