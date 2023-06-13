@@ -7,46 +7,91 @@ The CNP kubectl plugin provides an easy way for benchmarking a PostgreSQL deploy
 
 Benchmarking is focused on two aspects:
 
--   the **database**, by relying on  [pgbench](https://www.postgresql.org/docs/current/pgbench.html)
+-   the **database**, by relying on [pgbench](https://www.postgresql.org/docs/current/pgbench.html)
 -   the **storage**, by relying on [fio](https://fio.readthedocs.io/en/latest/fio_doc.html)
 
 !!! IMPORTANT
-    `pgbench` and `fio` must be run in a staging or pre-production environment. Do not use these plugins in a production environment, as it might have catastrophic consequences on your databases and the other workloads/applications that run in the same shared environment.
+    `pgbench` and `fio` must be run in a staging or pre-production environment.
+    Do not use these plugins in a production environment, as it might have
+    catastrophic consequences on your databases and the other
+    workloads/applications that run in the same shared environment.
 
 ### pgbench
 
-The kubectl CNP plugin command `pgbench` executes a user-defined pgbench job on an existing Postgres Cluster.
-The command also accepts the `--dry-run` flag, this will output the job manifest without applying it.
+The `kubectl` CNP plugin command `pgbench` executes a user-defined `pgbench` job
+against an existing Postgres Cluster.
 
-Example usage:
+Through the `--dry-run` flag you can generate the manifest of the job for later
+modification/execution.
+
+A common command structure with `pgbench` is the following:
 
 ```shell
 kubectl cnp pgbench \
   -n <namespace> <cluster-name> \
-  --pgbench-job-name <pgbench-job> \
+  --job-name <pgbench-job> \
   --db-name <db-name> \
+  -- <pgbench options>
+```
+
+!!! IMPORTANT
+    Please refer to the [`pgbench` documentation](https://www.postgresql.org/docs/current/pgbench.html)
+    for information about the specific options to be used in your jobs.
+
+This example creates a job called `pgbench-init` that initializes for `pgbench`
+OLTP-like purposes the `app` database in a `Cluster` named `cluster-example`,
+using a scale factor of 1000:
+
+```shell
+kubectl cnp pgbench \
+  --job-name pgbench-init \
+  cluster-example \
+  -- --initialize --scale 1000
+```
+
+!!! Note
+    This will generate a database with 100000000 records, taking approximately 13GB
+    of space on disk.
+
+You can see the progress of the job with:
+
+```shell 
+kubectl logs jobs/pgbench-run
+```
+
+The following example creates a job called `pgbench-run` executing `pgbench`
+against the previously initialized database for 30 seconds, using a single
+connection:
+
+```shell
+kubectl cnp pgbench \
+  --job-name pgbench-run \
+  cluster-example \
   -- --time 30 --client 1 --jobs 1
 ```
 
-Example of how to run `pgbench` against a `Cluster` named `cluster-example` in the `pgbench` namespace:
+The next example runs `pgbench` against an existing database by using the
+`--db-name` flag and the `pgbench` namespace:
 
 ```shell
 kubectl cnp pgbench \
-   -n pgbench cluster-example \
-   --pgbench-job-name pgbench-job \
-   -- --time 30 --client 1 --jobs 1
-
-```
-
-Example of how to run `pgbench` on an existing database by using the `--db-name` flag and
-the `pgbench` namespace:
-
-```shell
-kubectl cnp pgbench \
-  -n pgbench cluster-example \
   --db-name pgbench \
-  --pgbench-job-name pgbench-job \
+  --job-name pgbench-job \
+  cluster-example \
   -- --time 30 --client 1 --jobs 1
+```
+
+If you want to run a `pgbench` job on a specific worker node, you can use
+the `--node-selector` option. Suppose you want to run the previous
+initialization job on a node having the `workload=pgbench` label, you can run:
+
+```shell
+kubectl cnp pgbench \
+  --db-name pgbench \
+  --job-name pgbench-init \
+  --node-selector workload=pgbench \
+  cluster-example \
+  -- --initialize --scale 1000
 ```
 
 The job status can be fetched by running:
@@ -54,8 +99,8 @@ The job status can be fetched by running:
 ```
 kubectl get job/pgbench-job -n <namespace>
 
-NAME               COMPLETIONS   DURATION   AGE
-pgbench-job-name   1/1           15s        41s
+NAME       COMPLETIONS   DURATION   AGE
+job-name   1/1           15s        41s
 ```
 
 Once the job is completed the results can be gathered by executing:
@@ -66,23 +111,24 @@ kubectl logs job/pgbench-job -n <namespace>
 
 ### fio
 
-The kubectl CNP plugin command `fio` executes a fio job with default values and read operations.
-The command also accepts a `--dry-run` flag, this will output the fio manifest without applying it.
+The kubectl CNP plugin command `fio` executes a fio job with default values
+and read operations.
+Through the `--dry-run` flag you can generate the manifest of the job for later
+modification/execution.
 
 !!! Note
-    The kubectl plugin command `fio` will create a deployment with predefined fio job values using a ConfigMap.
-    If you want to provide custom job values, we recommend generating a manifest using the `--dry-run` flag
-    and providing your custom job values in the generated ConfigMap.
+    The kubectl plugin command `fio` will create a deployment with predefined
+    fio job values using a ConfigMap. If you want to provide custom job values, we
+    recommend generating a manifest using the `--dry-run` flag and providing your
+    custom job values in the generated ConfigMap.
 
-Example usage:
-
-default
+Example of default usage:
 
 ```shell
 kubectl cnp fio <fio-name>
 ```
 
-with values
+Example with custom values:
 
 ```shell
 kubectl cnp fio <fio-name> \
@@ -91,8 +137,8 @@ kubectl cnp fio <fio-name> \
   --pvcSize <size>
 ```
 
-Example of how to run the `fio` command against a `StorageClass` named `standard` and `pvcSize: 2Gi` in the `fio` 
-namespace:
+Example of how to run the `fio` command against a `StorageClass` named
+`standard` and `pvcSize: 2Gi` in the `fio` namespace:
 
 ```shell
 kubectl cnp fio fio-job \
