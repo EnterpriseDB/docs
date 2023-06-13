@@ -3,13 +3,6 @@ title: 'Backup and Recovery'
 originalFilePath: 'src/backup_recovery.md'
 ---
 
-EDB Postgres for Kubernetes natively supports **online/hot backup** of PostgreSQL
-clusters through continuous physical backup and WAL archiving.
-This means that the database is always up (no downtime required)
-and that you can recover at any point in time from the first
-available base backup in your system. The latter is normally
-referred to as "Point In Time Recovery" (PITR).
-
 The operator can orchestrate a continuous backup infrastructure
 that is based on the [Barman](https://pgbarman.org) tool. Instead
 of using the classical architecture with a Barman server, which
@@ -33,8 +26,7 @@ as it is composed of a community PostgreSQL image and the latest
 A backup is performed from a primary or a designated primary instance in a
 `Cluster` (please refer to
 [replica clusters](replica_cluster.md)
-for more information about designated primary instances), or alternatively
-on a [standby](#backup-from-a-standby).
+for more information about designated primary instances).
 
 ## Cloud provider support
 
@@ -187,7 +179,7 @@ Specifically, the EDB Postgres for Kubernetes cluster can directly point to a lo
 MinIO Gateway as an endpoint, using previously created credentials and service.
 
 MinIO secrets will be used by both the PostgreSQL cluster and the MinIO instance.
-Therefore, you must create them in the same namespace:
+Therefore you must create them in the same namespace:
 
 ```sh
 kubectl create secret generic minio-creds \
@@ -655,66 +647,6 @@ WALs, including the one requested by PostgreSQL.
 When PostgreSQL will request the archiving of a WAL that has
 already been archived by the instance manager as an optimization,
 that archival request will be just dismissed with a positive status.
-
-## Backup from a standby
-
-Taking a base backup requires to scrape the whole data content of the
-PostgreSQL instance on disk, possibly resulting in I/O contention with the
-actual workload of the database.
-
-For this reason, EDB Postgres for Kubernetes allows you to take advantage of a
-feature which is directly available in PostgreSQL: **backup from a standby**.
-
-By default, backups will run on the most aligned replica of a `Cluster`. If
-no replicas are available, backups will run on the primary instance.
-
-!!! Info
-    Although the standby might not always be up to date with the primary,
-    in the time continuum from the first available backup to the last
-    archived WAL this is normally irrelevant. The base backup indeed
-    represents the starting point from which to begin a recovery operation,
-    including PITR. Similarly to what happens with
-    [`pg_basebackup`](https://www.postgresql.org/docs/current/app-pgbasebackup.html),
-    when backing up from a standby we do not force a switch of the WAL on the
-    primary. This might produce unexpected results in the short term (before
-    `archive_timeout` kicks in) in deployments with low write activity.
-
-If you prefer to always run backups on the primary, you can set the backup
-target to `primary` as outlined in the example below:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: Cluster
-metadata:
-  [...]
-spec:
-  backup:
-    target: "primary"
-```
-
-When the backup target is set to `prefer-standby`, such policy will ensure
-backups are run on the most up-to-date available secondary instance, or if no
-other instance is available, on the primary instance.
-
-By default, when not otherwise specified, target is automatically set to take
-backups from a standby.
-
-The backup target specified in the `Cluster` can be overridden in the `Backup`
-and `ScheduledBackup` types, like in the following example:
-
-```yaml
-apiVersion: postgresql.k8s.enterprisedb.io/v1
-kind: Backup
-metadata:
-  [...]
-spec:
-  cluster:
-    name: [...]
-  target: "primary"
-```
-
-In the previous example, EDB Postgres for Kubernetes will invariably choose the primary
-instance even if the `Cluster` is set to prefer replicas.
 
 ## Recovery
 
