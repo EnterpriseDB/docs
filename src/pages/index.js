@@ -170,7 +170,7 @@ const Page = () => (
               PG Failover Slots
             </IndexCardLink>
 
-            <IndexCardLink to="/latest/language_pack">
+            <IndexCardLink to="/language_pack/latest/">
               Language Pack
             </IndexCardLink>
           </IndexCard>
