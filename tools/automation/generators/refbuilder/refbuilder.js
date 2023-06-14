@@ -12,14 +12,27 @@ if (argv.source == undefined) {
     process.exit(1);
 }
 
-const outputFile = path.join(argv.source, "index.mdx");
+let globalMap={};
 
-const oldFileContent=fs.readFileSync(outputFile);
+const productMarker="product_docs/docs";
+
+
+const outputFile = path.join(argv.source, "index.mdx");
+let oldFileContent=""
+if (fs.existsSync(outputFile)) {
+    oldFileContent=fs.readFileSync(outputFile);
+}
+
 const newContent=processDirectory(argv.source, "")
 
 if(oldFileContent!=newContent) {
     fs.writeFileSync(outputFile, newContent);
+    const jsonOutputFile = path.join(argv.source,"index.json");
+    fs.writeFileSync(jsonOutputFile,JSON.stringify(globalMap));
 }
+
+
+
 
 function processDirectory(sourceDir, prefix) {
     // Get basic stats for this directory
@@ -124,7 +137,11 @@ function parse(prefix, filepath) {
             if (rootIsHeading && element.depth == firstIndex) {
                 buffer = buffer.concat(`### [${element.text}](${itemCleaned}#${anchorize(element.text)})\n`);
             } else {
-                buffer = buffer.concat(`${"  ".repeat(element.depth - firstIndex - (rootIsHeading ? 1 : 0))} * [${element.text}](${itemCleaned}#${anchorize(element.text)})\n`);
+                //console.log(element.text,filepath,element.depth,firstIndex,rootIsHeading)
+                let shortname=anchorize(element.text)
+                buffer = buffer.concat(`${"  ".repeat(element.depth - firstIndex - (rootIsHeading ? 1 : 0))} * [${element.text}](${itemCleaned}#${shortname})\n`);
+                globalMap[shortname]=makeAbsoluteReferenceLink(filepath,shortname);
+                //console.log(globalmap);
             }
         }
     });
@@ -133,4 +150,11 @@ function parse(prefix, filepath) {
 
 function anchorize(text) {
     return text.toLowerCase().replace(/[\.`]/g, '').replace(/\s/g, '-');
+}
+
+function makeAbsoluteReferenceLink(filepath,shortname) {
+    let parsed=path.parse(filepath);
+    let cleanFilename=path.join(parsed.dir,parsed.name);
+    let referenceBase=cleanFilename.slice(cleanFilename.indexOf(productMarker)+productMarker.length).replace(/\/[0-9]+\//,"/latest/")
+    return `${referenceBase}#${shortname}`;
 }
