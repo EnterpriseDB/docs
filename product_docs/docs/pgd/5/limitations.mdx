@@ -2,47 +2,131 @@
 title: "Limitations"
 ---
 
-This section covers design limitations of EDB Postgres Distributed (PGD), that should be taken into account when planning your deployment.
+Take these EDB Postgres Distributed (PGD) design limitations
+into account when planning your deployment.
 
-## Limits on nodes
+## Nodes 
 
-- PGD can run hundreds of nodes assuming adequate hardware and network. However, for mesh-based deployments, we generally don’t recommend running more than 48 nodes in one cluster. If extra read scalability is needed beyond the 48 node limit, subscriber only nodes can be added without adding connections to the mesh network.
+- PGD can run hundreds of nodes, assuming adequate hardware and network. However,
+  for mesh-based deployments, we generally don’t recommend running more than 48
+  nodes in one cluster. If you need extra read scalability beyond the 48-node
+  limit, you can add subscriber-only nodes without adding connections to the
+  mesh network.
 
-- PGD currently has a hard limit of no more than 1000 active nodes, as this is the current maximum Raft connections allowed.
+- PGD currently has a hard limit of no more than 1000 active nodes, as this is
+  the current maximum Raft connections allowed.
 
-- The minimum recommended number of nodes in a group is three to provide fault tolerance for PGD's consensus mechanism. With just two nodes, consensus would fail if one of the nodes was unresponsive. Consensus is required for some PGD operations such as distributed sequence generation. For more information about the consensus mechanism used by EDB Postgres Distributed, see [Architectural details](../architectures/#architecture-details).
+- The minimum recommended number of nodes in a group is three to provide fault
+  tolerance for PGD's consensus mechanism. With just two nodes, consensus would
+  fail if one of the nodes were unresponsive. Consensus is required for some PGD
+  operations, such as distributed sequence generation. For more information about
+  the consensus mechanism used by EDB Postgres Distributed, see [Architectural
+  details](../architectures/#architecture-details).
 
-## Limitations of multiple databases on a single instance
 
-Support for using PGD for multiple databases on the same Postgres instance is deprecated beginning with PGD 5 and will no longer be supported with PGD 6. As we extend the capabilities of the product, the additional complexity introduced operationally and functionally is no longer viable in a multi-database design.
+## Multiple databases on single instances
 
-It is best practice and recommended that only one database per PGD instance be configured. The deployment automation with TPA and the tooling such as the CLI and proxy already codify that recommendation. 
+Support for using PGD for multiple databases on the same Postgres instance is
+**deprecated** beginning with PGD 5 and will no longer be supported with PGD 6. As
+we extend the capabilities of the product, the added complexity introduced
+operationally and functionally is no longer viable in a multi-database design.
 
-While it is still possible to host up to ten databases in a single instance, this incurs many immediate risks and current limitations:
+It's best practice and we recommend that you configure only one database per PGD instance. 
 
-- Administrative commands need to be executed for each database if PGD configuration changes are needed, which increases risk for potential inconsistencies and errors.
+The deployment automation with TPA and the tooling such as the CLI
+and proxy already codify that recommendation. 
 
-- Each database needs to be monitored separately, adding overhead.
+While it's still possible to host up to 10 databases in a single instance,
+doing so incurs many immediate risks and current limitations:
 
-- TPAexec assumes one database; additional coding is needed by customers or PS in a post-deploy hook to set up replication for additional databases.
+- If PGD configuration changes are needed, you must execute administrative commands 
+  for each database. Doing so increases the risk for potential
+  inconsistencies and errors.
 
-- PGD-Proxy works at the Postgres instance level, not at the database level, meaning the leader node will be the same for all databases.
+- You must monitor each database separately, adding overhead.
 
-- Each additional database increases the resource requirements on the server. Each one needs its own set of worker processes maintaining replication (e.g.  logical workers, WAL senders, and WAL receivers). Each one also needs its own set of connections to other instances in the replication cluster. This might severely impact performance of all databases.
+- TPAexec assumes one database. Additional coding is needed by customers or PS
+  in a post-deploy hook to set up replication for additional databases.
 
-- When rebuilding or adding a node, the physical initialization method (“bdr_init_physical”) for one database can only be used for one node, all other databases will have to be initialized by logical replication, which can be problematic for large databases because of the time it might take.
+- PGD Proxy works at the Postgres instance level, not at the database level,
+  meaning the leader node is the same for all databases.
 
-- Synchronous replication methods (e.g. CAMO, Group Commit) won’t work as expected. Since the Postgres WAL is shared between the databases, a synchronous commit confirmation may come from any database, not necessarily in the right order of commits.
+- Each additional database increases the resource requirements on the server.
+  Each one needs its own set of worker processes maintaining replication, for example,
+  logical workers, WAL senders, and WAL receivers. Each one also needs its own
+  set of connections to other instances in the replication cluster. These needs might
+  severely impact performance of all databases.
+
+- When rebuilding or adding a node, you can use the physical initialization method
+  (`bdr_init_physical`) for one database only for one node. You must initialize all
+  other databases by logical replication, which can
+  be problematic for large databases because of the time it might take.
+
+- Synchronous replication methods, for example, CAMO, Group Commit, won’t work as
+  expected. Since the Postgres WAL is shared between the databases, a
+  synchronous commit confirmation can come from any database, not necessarily in
+  the right order of commits.
 
 - CLI and OTEL integration (new with v5) assumes one database. 
 
+## CAMO
+
+[Commit At Most Once](durability/camo) (CAMO) is a feature that aims to prevent
+applications committing more than once. If you use this feature, take 
+these limitations into account when planning:
+
+-  CAMO is designed to query the results of a recently failed COMMIT on
+the origin node. So, in case of disconnection, code the application
+to immediately request the transaction status from the CAMO partner.
+Have as little delay as possible after the failure before
+requesting the status. Applications must not rely on CAMO decisions
+being stored for longer than 15 minutes.
+
+-  If the application forgets the global identifier assigned, for example,
+as a result of a restart, there's no easy way to recover
+it. Therefore, we recommend that applications wait for outstanding
+transactions to end before shutting down.
+
+-  For the client to apply proper checks, a transaction protected by CAMO
+can't be a single statement with implicit transaction control. You also can't
+use CAMO with a transaction-controlling procedure or
+in a `DO` block that tries to start or end transactions.
+
+- CAMO resolves commit status but doesn't resolve pending
+notifications on commit. CAMO and Eager replication options don't
+allow the `NOTIFY` SQL command or the `pg_notify()` function.
+They also don't allow `LISTEN` or `UNLISTEN`.
+
+- When replaying changes, CAMO transactions might detect conflicts just
+the same as other transactions. If timestamp-conflict detection is used,
+the CAMO transaction uses the timestamp of the prepare-on-the-origin
+node, which is before the transaction becomes visible on the origin
+node itself.
+
+- CAMO isn't currently compatible with transaction streaming.
+Be sure to disable transaction streaming when planning to use
+CAMO. You can configure this option globally or in the PGD node group. See
+[Transaction streaming configuration](../transaction-streaming#configuration).
 
 ## Other limitations
 
-This is a (non-comprehensive) list of other limitations that are expected and are by design. They are not expected to be resolved in the future and should be taken under consideration when planning your deployment.
+This (noncomprehensive) list includes other limitations that are expected and
+are by design. We don't expect to resolve them in the future. 
+Consider these limitations when planning your deployment:
 
--   Replacing a node with its physical standby doesn't work for nodes that use CAMO/Eager/Group Commit. Combining physical standbys and EDB Postgres Distributed isn't recommended, even if possible.
+-   Replacing a node with its physical standby doesn't work for nodes that use
+    CAMO/Eager/Group Commit. We don't recommend combining physical standbys and EDB Postgres
+    Distributed, even if it's possible.
 
--   A `galloc` sequence might skip some chunks if the sequence is created in a rolled back transaction and then created again with the same name. This can also occur if it is created and dropped when DDL replication isn't active and then it is created again when DDL replication is active. The impact of the problem is mild, because the sequence guarantees aren't violated. The sequence skips only some initial chunks. Also, as a workaround you can specify the starting value for the sequence as an argument to the `bdr.alter_sequence_set_kind()` function.
+-   A `galloc` sequence might skip some chunks if you create the sequence in a
+    rolled back transaction and then create it again with the same name. Skipping chunks can
+    also occur if you create and drop the sequence when DDL replication isn't active
+    and then you create it again when DDL replication is active. The impact of
+    the problem is mild because the sequence guarantees aren't violated. The
+    sequence skips only some initial chunks. Also, as a workaround, you can
+    specify the starting value for the sequence as an argument to the
+    `bdr.alter_sequence_set_kind()` function.
 
--   Legacy synchronous replication uses a mechanism for transaction confirmation different from the one used by CAMO, Eager, and Group Commit. The two are not compatible and must not be used together.
+-   Legacy synchronous replication uses a mechanism for transaction confirmation
+    different from the one used by CAMO, Eager, and Group Commit. The two aren't compatible, 
+    so don't use them together.

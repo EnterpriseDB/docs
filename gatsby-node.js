@@ -100,6 +100,26 @@ exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
 };
 
 exports.createPages = async ({ actions, graphql, reporter }) => {
+  const toolPath = path.join(
+    __dirname,
+    "tools",
+    "automation",
+    "generators",
+    "refbuilder",
+  );
+  command = `cd ${toolPath};npm install;node ${path.join(
+    toolPath,
+    "refbuilder.js",
+  )} --source ${path.join(
+    __dirname,
+    "product_docs",
+    "docs",
+    "pgd",
+    "5",
+    "reference",
+  )}`;
+  execSync(command);
+
   const result = await graphql(`
     query {
       allMdx {
@@ -539,6 +559,8 @@ exports.onPreBootstrap = () => {
 
   `);
 };
+
+exports.onPreBuild = () => {};
 
 exports.onPostBuild = async ({ reporter, pathPrefix }) => {
   realFs.copyFileSync(

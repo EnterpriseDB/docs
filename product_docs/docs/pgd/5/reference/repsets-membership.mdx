@@ -1,0 +1,98 @@
+---
+title: Replication set membership
+indexdepth: 2
+---
+
+
+## `bdr.replication_set_add_table`
+
+This function adds a table to a replication set.
+
+This adds a table to a replication set and starts replicating changes
+from this moment (or rather transaction commit). Any existing data the table
+might have on a node isn't synchronized.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+### Synopsis
+
+```sql
+bdr.replication_set_add_table(relation regclass,
+                              set_name name DEFAULT NULL,
+                              columns text[] DEFAULT NULL,
+                              row_filter text DEFAULT NULL)
+```
+
+### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `set_name` &mdash; Name of the replication set. If NULL (the default), then the PGD
+     group default replication set is used.
+-   `columns` &mdash; Reserved for future use (currently does nothing and must be NULL).
+-   `row_filter` &mdash; SQL expression to be used for filtering the replicated rows.
+    If this expression isn't defined (that is, set to NULL, the default) then all rows are sent.
+
+The `row_filter` specifies an expression producing a Boolean result, with NULLs.
+Expressions evaluating to True or Unknown replicate the row. A False value
+doesn't replicate the row. Expressions can't contain subqueries or refer to
+variables other than columns of the current row being replicated. You can't reference system
+columns.
+
+`row_filter` executes on the origin node, not on the target node. This puts an
+additional CPU overhead on replication for this specific table but
+completely avoids sending data for filtered rows. Hence network
+bandwidth is reduced and overhead on the target node is applied.
+
+`row_filter` never removes `TRUNCATE` commands for a specific table.
+You can filter away `TRUNCATE` commands at the replication set level.
+
+You can replicate just some columns of a table. See
+[Replicating between nodes with differences](appusage).
+
+### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a `DML` global lock on the relation that's being
+added to the replication set if the `row_filter` isn't NULL. Otherwise
+it takes just a `DDL` global lock.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
+## `bdr.replication_set_remove_table`
+
+This function removes a table from the replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+### Synopsis
+
+```sql
+bdr.replication_set_remove_table(relation regclass,
+                                 set_name name DEFAULT NULL)
+```
+
+### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `set_name` &mdash; Name of the replication set. If NULL (the default), then the PGD
+     group default replication set is used.
+
+### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a `DDL` global lock.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
