@@ -359,6 +359,9 @@ const Page = () => (
               Hashicorp Vault
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Hashicorp Vault Transit Secrets Engine
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
               Imperva Data Security Fabric
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
@@ -379,12 +382,6 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/HPE">
               HPE
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Hashicorp Vault Transit Secrets Engine
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
