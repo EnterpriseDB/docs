@@ -381,6 +381,9 @@ const Page = () => (
               HPE
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Hashicorp Vault Transit Secrets Engine
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
               Imperva Data Security Fabric
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
