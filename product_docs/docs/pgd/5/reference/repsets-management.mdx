@@ -1,0 +1,197 @@
+---
+title: Replication set management
+indexdepth: 2
+---
+
+!!! Note Replication management and DDL
+With the exception of `bdr.alter_node_replication_sets`, the following
+functions are considered to be `DDL`. DDL replication and global locking
+apply to them, if that's currently active. See [DDL replication](ddl).
+!!!
+
+## `bdr.create_replication_set`
+
+This function creates a replication set.
+
+Replication of this command is affected by DDL replication configuration
+including DDL filtering settings.
+
+### Synopsis
+
+```sql
+bdr.create_replication_set(set_name name,
+                           replicate_insert boolean DEFAULT true,
+                           replicate_update boolean DEFAULT true,
+                           replicate_delete boolean DEFAULT true,
+                           replicate_truncate boolean DEFAULT true,
+                           autoadd_tables boolean DEFAULT false,
+                           autoadd_existing boolean DEFAULT true)
+```
+
+### Parameters
+
+-   `set_name` &mdash; Name of the new replication set. Must be unique across the PGD
+     group.
+-   `replicate_insert` &mdash; Indicates whether to replicate inserts into tables in this
+    replication set.
+-   `replicate_update` &mdash; Indicates whether to replicate updates of tables in this
+    replication set.
+-   `replicate_delete` &mdash; Indicates whether to replicate deletes from tables in this
+    replication set.
+-   `replicate_truncate` &mdash; Indicates whether to replicate truncates of tables in this
+    replication set.
+-   `autoadd_tables` &mdash; Indicates whether to replicate newly created (future) tables 
+    to this replication set
+-   `autoadd_existing` &mdash; Indicates whether to add all existing user tables 
+    to this replication set. This parameter has an effect only if `autoadd_tables` is
+    set to `true`.
+
+### Notes
+
+By default, new replication sets don't replicate DDL or PGD administration
+function calls. See [ddl filters](repsets#ddl-replication-filtering) for how to set
+up DDL replication for replication sets. A preexisting DDL filter
+is set up for the default group replication set that replicates all DDL and admin
+function calls. It's created when the group is created but can be dropped
+in case you don't want the PGD group default replication set to replicate
+DDL or the PGD administration function calls.
+
+This function uses the same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a `DDL` global lock.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
+## `bdr.alter_replication_set`
+
+This function modifies the options of an existing replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+### Synopsis
+
+```sql
+bdr.alter_replication_set(set_name name,
+                          replicate_insert boolean DEFAULT NULL,
+                          replicate_update boolean DEFAULT NULL,
+                          replicate_delete boolean DEFAULT NULL,
+                          replicate_truncate boolean DEFAULT NULL,
+                          autoadd_tables boolean DEFAULT NULL)
+```
+
+### Parameters
+
+-   `set_name` &mdash; Name of an existing replication set.
+-   `replicate_insert` &mdash; Indicates whether to replicate inserts into tables in this
+    replication set.
+-   `replicate_update` &mdash; Indicates whether to replicate updates of tables in this
+    replication set.
+-   `replicate_delete` &mdash; Indicates whether to replicate deletes from tables in this
+    replication set.
+-   `replicate_truncate` &mdash; Indicates whether to replicate truncates of tables in this
+    replication set.
+-   `autoadd_tables` &mdash; Indicates whether to add newly created (future) tables to this replication set.
+
+Any of the options that are set to NULL (the default) remain the same as
+before.
+
+### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a `DDL` global lock.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
+## `bdr.drop_replication_set`
+
+This function removes an existing replication set.
+
+Replication of this command is affected by DDL replication configuration,
+including DDL filtering settings.
+
+### Synopsis
+
+```sql
+bdr.drop_replication_set(set_name name)
+```
+
+### Parameters
+
+-   `set_name` &mdash; Name of an existing replication set.
+
+### Notes
+
+This function uses the same replication mechanism as `DDL` statements. This means
+the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a `DDL` global lock.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
+!!! Warning
+    Don't drop a replication set that's being used by at least
+    another node, because doing so stops replication on that
+    node. If that happens, unsubscribe the affected node
+    from that replication set.
+    For the same reason, don't drop a replication set with
+    a join operation in progress when the node being joined
+    is a member of that replication set. Replication set membership is
+    checked only at the beginning of the join.
+    This happens because the information on replication set usage is
+    local to each node, so that you can configure it on a node before
+    it joins the group.
+
+You can manage replication set subscription for a node using `alter_node_replication_sets`.
+
+## `bdr.alter_node_replication_sets`
+
+This function changes the replication sets a node publishes and is subscribed to.
+
+### Synopsis
+
+```sql
+bdr.alter_node_replication_sets(node_name name,
+                                set_names text[])
+```
+
+### Parameters
+
+-   `node_name` &mdash; The node to modify. Currently has to be local node.
+-   `set_names` &mdash; Array of replication sets to replicate to the specified
+    node. An empty array results in the use of the group default replication set.
+
+### Notes
+
+This function is executed only on the local node and isn't replicated in any manner.
+
+The replication sets listed aren't checked for existence,
+since this function is designed to execute before the node joins. Be careful
+to specify replication set names correctly to avoid errors.
+
+This allows for calling the function not only on the node that's part of the
+PGD group but also on a node that hasn't joined any group yet. This approach limits
+the data synchronized during the join. However, the schema is
+always fully synchronized without regard to the replication sets setting.
+All tables are copied across, not just the ones specified
+in the replication set. You can drop unwanted tables by referring to
+the `bdr.tables` catalog table. These might be removed automatically in later
+versions of PGD. This is currently true even if the [ddl filters](repsets#ddl-replication-filtering)
+configuration otherwise prevent replication of DDL.
+
+The replication sets that the node subscribes to after this call are published
+by the other nodes for actually replicating the changes from those nodes to
+the node where this function is executed.
+

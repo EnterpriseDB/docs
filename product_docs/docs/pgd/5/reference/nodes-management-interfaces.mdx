@@ -1,0 +1,555 @@
+---
+navTitle: Node management interfaces
+title: Node management interfaces
+indexdepth: 2
+---
+
+You can add and remove nodes dynamically using the SQL interfaces.
+
+## `bdr.create_node`
+
+This function creates a node.
+
+### Synopsis
+
+```sql
+bdr.create_node(node_name text, local_dsn text)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of the new node. Only one node is allowed per
+      database. Valid node names consist of lowercase letters, numbers,
+      hyphens, and underscores.
+-   `local_dsn` &mdash; Connection string to the node.
+
+### Notes
+
+This function creates a record for the local node with the associated
+public connection string. There can be only one local record, so once it's
+created, the function reports an error if run again.
+
+This function is a transactional function. You can roll it back and the
+changes made by it are visible to the current transaction.
+
+The function holds lock on the newly created bdr node until the end of
+the transaction.
+
+## `bdr.drop_node`
+
+Drops a node.
+
+!!! Warning
+    This function isn't intended for regular use. Execute it only
+    if instructed by Technical Support.
+
+This function removes the metadata for a given node from the local
+database. The node can be either:
+
+-   The local node, in which case all the node metadata is removed,
+    including information about remote nodes.
+-   A remote node, in which case only metadata for that specific
+    node is removed.
+
+### Synopsis
+
+```sql
+bdr.drop_node(node_name text, cascade boolean DEFAULT false, force boolean DEFAULT false)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of an existing node.
+-   `cascade` &mdash; Deprecated, will be removed in the future.
+-   `force` &mdash; Circumvents all sanity checks and forces the removal of
+      all metadata for the given PGD node despite a possible danger of
+      causing inconsistencies. Only Technical Support uses a forced node drop
+      in case of emergencies related to
+      parting.
+
+### Notes
+
+Before you run this, part the node using `bdr.part_node()`.
+
+This function removes metadata for a given node from the local database. The node
+can be the local node, in which case all the node metadata are removed,
+including information about remote nodes. Or it can be the remote node, in
+which case only metadata for that specific node is removed.
+
+!!! Note
+    PGD4 can have a maximum of 1024 node records (both ACTIVE and PARTED)
+    at one time because each node has a unique sequence number
+    assigned to it, for use by snowflakeid and timeshard sequences.
+    PARTED nodes aren't automatically cleaned up. If this
+    becomes a problem, you can use this function to remove those records.
+
+## `bdr.create_node_group`
+
+This function creates a PGD group with the local node as the only member of the group.
+
+### Synopsis
+
+```sql
+bdr.create_node_group(node_group_name text,
+                      parent_group_name text DEFAULT NULL,
+                      join_node_group boolean DEFAULT true,
+                      node_group_type text DEFAULT NULL)
+```
+
+### Parameters
+
+-   `node_group_name` &mdash; Name of the new PGD group. As with the node
+      name, valid group names must consist of only lowercase letters, numbers,
+      and underscores.
+-   `parent_group_name` &mdash; The name of the parent group for the subgroup.
+-   `join_node_group` &mdash; This parameter helps a node to decide whether to join
+     the group being created by it. The default value is `true`. This is used
+     when a node is creating a shard group that it doesn't want to join.
+     This can be `false` only if you specify `parent_group_name`.
+-   `node_group_type` &mdash; The valid values are `NULL`, `subscriber-only`, `datanode`,
+     `read coordinator`, and `write coordinator`. `subscriber-only` type is
+     used to create a group of nodes that receive changes only from the
+     fully joined nodes in the cluster, but they never send replication
+     changes to other nodes. See [Subscriber-only groups](#subscriber-only-groups) for more details.
+     `Datanode` implies that the group represents a shard, whereas the other
+     values imply that the group represents respective coordinators.
+     Except `subscriber-only`, the other values are reserved for future use.
+     `NULL` implies a normal general-purpose node group is created.
+
+### Notes
+
+This function passes a request to the local consensus worker that's running for
+the local node.
+
+The function isn't transactional. The creation of the group is a background
+process, so once the function finishes, you can't roll back the changes.
+Also, the changes might not be immediately visible to the current transaction.
+You can call `bdr.wait_for_join_completion` to wait until they are.
+
+The group creation doesn't hold any locks.
+
+## `bdr.alter_node_group_config`
+
+This function changes the configuration parameters of an existing PGD group.
+Options with NULL value (default for all of them) aren't modified.
+
+### Synopsis
+
+```sql
+bdr.alter_node_group_config(node_group_name text,
+                            insert_to_update boolean DEFAULT NULL,
+                            update_to_insert boolean DEFAULT NULL,
+                            ignore_redundant_updates boolean DEFAULT NULL,
+                            check_full_tuple boolean DEFAULT NULL,
+                            apply_delay interval DEFAULT NULL,
+                            check_constraints boolean DEFAULT NULL,
+                            num_writers int DEFAULT NULL,
+							              enable_wal_decoder boolean DEFAULT NULL,
+							              streaming_mode text DEFAULT NULL,
+                            default_commit_scope text DEFAULT NULL)
+```
+
+### Parameters
+
+-   `node_group_name` &mdash; Name of an existing PGD group. The local node must be part
+      of the group.
+-   `insert_to_update` &mdash; Reserved for backward compatibility.
+-   `update_to_insert` &mdash; Reserved for backward compatibility.
+      This option is deprecated and will be disabled or removed in future
+      versions of PGD. Use `bdr.alter_node_set_conflict_resolver` instead.
+-   `ignore_redundant_updates` &mdash; Reserved for backward compatibility.
+-   `check_full_tuple` &mdash; Reserved for backward compatibility.
+-   `apply_delay` &mdash; Reserved for backward compatibility.
+-   `check_constraints` &mdash; Whether the apply process checks the constraints
+      when writing replicated data.
+      This option is deprecated and will be disabled or removed in future
+      versions of PGD.
+-   `num_writers` &mdash; Number of parallel writers for subscription backing
+     this node group. -1 means the default (as specified by the
+     GUC `bdr.writers_per_subscription`) is used. Valid values
+     are either -1 or a positive integer.
+-   `enable_wal_decoder` &mdash; Enables/disables the decoding worker process.
+      You can't enable the decoding worker process if `streaming_mode` is
+      already enabled.
+-   `streaming_mode` &mdash; Enables/disables streaming of large transactions.
+     When set to `off`, streaming is disabled. When set to any other value,
+     large transactions are decoded while they're still in progress, and the
+     changes are sent to the downstream. If the value is set to `file`,
+     then the incoming changes of streaming transactions are stored in a file
+     and applied only after the transaction is committed on upstream. If the
+     value is set to `writer`, then the incoming changes are directly sent to
+     one of the writers, if available. If parallel apply is disabled or no
+     writer is free to handle streaming transaction, then the changes are
+     written to a file and applied after the transaction is committed. If the
+     value is set to `auto`, PGD tries to intelligently pick between
+     `file` and `writer`, depending on the transaction property and available
+     resources. You can't enable `streaming_mode` if the WAL
+     decoder is already enabled.
+
+     For more details, see [Transaction streaming](transaction-streaming).
+
+-   `default_commit_scope` &mdash; The commit scope to use by default,
+     initially the `local` commit scope. This applies only to the
+     top-level node group. You can use individual rules for different
+     origin groups of the same commit scope. See
+     [Origin groups](durability/commit-scopes/#origin-groups) for more details.
+
+### Notes
+
+This function passes a request to the group consensus mechanism to change
+the defaults. The changes made are replicated globally using the consensus
+mechanism.
+
+The function isn't transactional. The request is processed in the background
+so you can't roll back the function call. Also, the changes might not be
+immediately visible to the current transaction.
+
+This function doesn't hold any locks.
+
+!!! Warning
+    When you use this function to change the `apply_delay` value, the
+    change doesn't apply to nodes that are already members of the
+    group.
+    This restriction has little consequence on production
+    use because this value normally isn't used outside of testing.
+
+## `bdr.join_node_group`
+
+This function joins the local node to an already existing PGD group.
+
+### Synopsis
+
+```sql
+bdr.join_node_group (
+    join_target_dsn text,
+    node_group_name text DEFAULT NULL,
+    pause_in_standby boolean DEFAULT false,
+    wait_for_completion boolean DEFAULT true,
+    synchronize_structure text DEFAULT 'all'
+)
+```
+
+### Parameters
+
+-   `join_target_dsn` &mdash; Specifies the connection string to an existing (source) node
+     in the PGD group you want to add the local node to.
+-   `node_group_name` &mdash; Optional name of the PGD group. Defaults to NULL, which
+    tries to detect the group name from information present on the source
+    node.
+-   `pause_in_standby` &mdash; Optionally tells the join process to join only as a
+    logical standby node, which can be later promoted to a full member.
+-   `wait_for_completion` &mdash; Wait for the join process to complete before
+    returning. Defaults to `true`.
+-   `synchronize_structure` &mdash; Set the kind of structure (schema) synchronization
+    to do during the join. Valid options are `all`, which synchronizes
+    the complete database structure, and `none`, which doesn't synchronize any
+    structure. However, it still synchronizes data.
+
+If `wait_for_completion` is specified as `false`,
+this is an asynchronous call that returns as soon as the joining procedure starts.
+You can see progress of the join in logs and the
+`bdr.event_summary` information view or by calling the
+`bdr.wait_for_join_completion()` function after `bdr.join_node_group()` returns.
+
+### Notes
+
+This function passes a request to the group consensus mechanism by way of the node
+that the `join_target_dsn` connection string points to.
+The changes made are replicated globally by the consensus mechanism.
+
+The function isn't transactional. The joining process happens in the
+background and you can't roll it back. The changes are visible only
+to the local transaction if `wait_for_completion` was set to `true` or by calling
+`bdr.wait_for_join_completion` later.
+
+Node can be part of only a single group, so you can call this function only once
+on each node.
+
+Node join doesn't hold any locks in the PGD group.
+
+## `bdr.switch_node_group`
+
+This function switches the local node from its current subgroup to another subgroup within the same existing PGD node group.
+
+### Synopsis
+
+```sql
+bdr.switch_node_group (
+    node_group_name text,
+    wait_for_completion boolean DEFAULT true
+)
+```
+
+### Parameters
+
+-   `node_group_name` &mdash; Name of the PGD group or subgroup.
+-   `wait_for_completion` &mdash; Wait for the switch process to complete before
+    returning. Defaults to `true`.
+
+If `wait_for_completion` is specified as `false`,
+this is an asynchronous call that returns as soon as the switching procedure starts.
+You can see progress of the switch in logs and the
+`bdr.event_summary` information view or by calling the
+`bdr.wait_for_join_completion()` function after `bdr.switch_node_group()` returns.
+
+### Notes
+
+This function passes a request to the group consensus mechanism.
+The changes made are replicated globally by the consensus mechanism.
+
+The function isn't transactional. The switching process happens in the
+background and you can't roll it back. The changes are visible only
+to the local transaction if `wait_for_completion` was set to `true` or by calling
+`bdr.wait_for_join_completion` later.
+
+The local node changes membership from its current subgroup to another subgroup within the same PGD node group without needing to part the cluster. The node's kind must match that of existing nodes within the target subgroup.
+
+Node switching doesn't hold any locks in the PGD group.
+
+Restrictions: Currently, the function only allows switching between a subgroup and its PGD node group. To effect a move between subgroups it is necessary to make two separate calls: 1) switch from subgroup to node group and, 2) switch from node group to other subgroup.
+
+
+## `bdr.promote_node`
+
+This function promotes a local logical standby node to a full member of the PGD group.
+
+### Synopsis
+
+```sql
+bdr.promote_node(wait_for_completion boolean DEFAULT true)
+```
+
+### Notes
+
+This function passes a request to the group consensus mechanism to change
+the defaults. The changes made are replicated globally by the consensus
+mechanism.
+
+The function isn't transactional. The promotion process happens in the
+background, and you can't roll it back. The changes are visible only
+to the local transaction if `wait_for_completion` was set to `true` or by calling
+`bdr.wait_for_join_completion` later.
+
+The promotion process holds lock against other promotions. This lock doesn't
+block other `bdr.promote_node` calls but prevents the background process of
+promotion from moving forward on more than one node at a time.
+
+## `bdr.wait_for_join_completion`
+
+This function waits for the join procedure of a local node to finish.
+
+### Synopsis
+
+```sql
+bdr.wait_for_join_completion(verbose_progress boolean DEFAULT false)
+```
+
+### Parameters
+
+-   `verbose_progress` &mdash; Optionally prints information about individual steps
+    taken during the join procedure.
+
+### Notes
+
+This function waits until the checks state of the local node reaches the target
+state, which was set by `bdr.create_node_group`, `bdr.join_node_group`, or
+`bdr.promote_node`.
+
+## `bdr.part_node`
+
+Removes (parts) the node from the PGD group but doesn't remove data
+from the node.
+
+You can call the function from any active node in the PGD group, including
+the node that you're removing. However, once the
+node is parted, it can't part other nodes in the cluster.
+
+!!! Note
+    If you're parting the local node, you must set `wait_for_completion`
+    to `false`. Otherwise, it reports an error.
+
+!!! Warning
+    This action is permanent. If you want to temporarily halt replication
+    to a node, see `bdr.alter_subscription_disable()`.
+
+### Synopsis
+
+```sql
+bdr.part_node (
+    node_name text,
+	wait_for_completion boolean DEFAULT true,
+	force boolean DEFAULT false
+)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of an existing node to part.
+-   `wait_for_completion` &mdash; If `true`, the function doesn't return until the
+    node is fully parted from the cluster. Otherwise the function
+    starts the parting procedure and returns immediately without waiting.
+    Always set to `false` when executing on the local node or when using `force`.
+-   `force` &mdash; Forces removal of the node on the local node. This sets the
+    node state locally if consensus can't be reached or if the node parting
+    process is stuck.
+
+!!! Warning
+    Using `force = true` can leave the PGD group in an inconsistent
+    state. Use it only to recover from failures in which you can't
+    remove the node any other way.
+
+### Notes
+
+This function passes a request to the group consensus mechanism to part
+the given node. The changes made are replicated globally by the consensus
+mechanism. The parting process happens in the background, and you can't
+roll it back. The changes made by the parting process are visible only to
+the local transaction if `wait_for_completion` was set to `true`.
+
+With `force` set to `true`, on consensus failure, this function sets the
+state of the given node only on the local node. In such a case, the function is
+transactional (because the function changes the node state) and you can
+roll it back. If the function is called on a node that is already in process of
+parting with `force` set to `true`, it also marks the given node as
+parted locally and exits. This is useful only when the consensus can't be
+reached on the cluster (that is, the majority of the nodes are down) or if the
+parting process is stuck. But it's important to take into
+account that when the parting node that was receiving writes, the parting process
+can take a long time without being stuck. The other nodes need to resynchronize
+any missing data from the given node. The force parting completely skips this
+resynchronization and can leave the other nodes in an inconsistent state.
+
+The parting process doesn't hold any locks.
+
+## `bdr.alter_node_interface`
+
+This function changes the connection string (`DSN`) of a specified node.
+
+### Synopsis
+
+```sql
+bdr.alter_node_interface(node_name text, interface_dsn text)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of an existing node to alter.
+-   `interface_dsn` &mdash; New connection string for a node.
+
+### Notes
+
+Run this function and make the changes only on the local node. This means that you normally execute it on every node in the
+PGD group, including the node that is being changed.
+
+This function is transactional. You can roll it back, and the changes are
+visible to the current transaction.
+
+The function holds lock on the local node.
+
+## `bdr.alter_subscription_enable`
+
+This function enables either the specified subscription or all the subscriptions of the
+local PGD node. This is also known as resume subscription.
+No error is thrown if the subscription is already enabled.
+Returns the number of subscriptions affected by this operation.
+
+### Synopsis
+
+```sql
+bdr.alter_subscription_enable(
+    subscription_name name DEFAULT NULL,
+    immediate boolean DEFAULT false
+)
+```
+
+### Parameters
+
+-   `subscription_name` &mdash; Name of the subscription to enable. If NULL
+     (the default), all subscriptions on the local node are enabled.
+-   `immediate` &mdash; This currently has no effect.
+
+### Notes
+
+This function isn't replicated and affects only local node subscriptions
+(either a specific node or all nodes).
+
+This function is transactional. You can roll it back, and the current transaction can see any catalog changes. The subscription workers are started
+by a background process after the transaction has committed.
+
+## `bdr.alter_subscription_disable`
+
+This function disables either the specified subscription or all the
+subscriptions of the local PGD node. Optionally, it can also immediately stop
+all the workers associated with the disabled subscriptions. This is also known as pause
+subscription. No error is thrown if the subscription is already disabled.
+Returns the number of subscriptions affected by this operation.
+
+### Synopsis
+
+```sql
+bdr.alter_subscription_disable(
+    subscription_name name DEFAULT NULL,
+    immediate boolean DEFAULT false,
+    fast boolean DEFAULT true
+)
+```
+
+### Parameters
+
+-   `subscription_name` &mdash; Name of the subscription to disable. If NULL
+     (the default), all subscriptions on the local node are disabled.
+-   `immediate` &mdash; Used to force the action immediately, stopping
+     all the workers associated with the disabled subscription. When this option is
+     `true`, you can't run this function inside of the transaction block.
+-   `fast` &mdash; This argument influences the behavior of `immediate`.
+     If set to `true` (the default) it stops all the workers associated with the
+     disabled subscription without waiting for them to finish current work.
+
+### Notes
+
+This function isn't replicated and affects only local node subscriptions
+(either a specific subscription or all subscriptions).
+
+This function is transactional. You can roll it back, and the current transaction can see any catalog changes.
+However, the timing of the subscription
+worker stopping depends on the value of `immediate`. If set to `true`, the
+workers receive the stop without waiting for the `COMMIT`. If the `fast`
+argument is set to `true`, the interruption of the workers doesn't wait for
+current work to finish.
+
+## `bdr.alter_node_group_option`
+
+Modify the PGD node group routing configuration
+
+### Synopsis
+
+```sql
+bdr.alter_node_group_option(node_group_name text,
+    config_key text,
+    config_value text);
+```
+
+### Parameters
+
+-   `node_group_name` &mdash; Name of the group to be changed.
+-   `config_key` &mdash; Key of the option in the node group to be changed.
+-   `config_value` &mdash; New value to be set for the given key.
+
+
+## `bdr.alter_node_option`
+
+Modify the PGD node routing configuration
+
+### Synopsis
+
+```sql
+bdr.alter_node_option(node_name text,
+    config_key text,
+    config_value text);
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of the node to be changed.
+-   `config_key` &mdash; Key of the option in the node to be changed.
+-   `config_value` &mdash; New value to be set for the given key.
