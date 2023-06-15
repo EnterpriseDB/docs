@@ -55,21 +55,24 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/pgd/latest/">
-                    EDB Postgres Distributed <br />
-                    Version 5
+                  <Link
+                    className="homepage-headling-link"
+                    to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
+                  >
+                    Multi-region extreme high availability in preview in
+                    BigAnimal
                   </Link>
                 </h3>
                 <p>
-                  EDB Postgres Distributed 5.0 uniquely solves the problem of
-                  planned downtime and unplanned outages for enterprises running
-                  business-critical applications.
+                  You can now create multi-writer clusters that span BigAnimal
+                  regions to maximize availability, performance, and resiliency
+                  to zonal or regional failures.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/pgd/latest/rel_notes/pgd_5.0.0_rel_notes/"
+                      to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
                     >
                       Find out more &rarr;
                     </Link>
@@ -88,19 +91,22 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link className="homepage-headling-link" to="/tde/latest">
-                    New security feature
+                  <Link
+                    className="homepage-headling-link"
+                    to="/pgd/latest/quickstart/"
+                  >
+                    EDB Postgres Distributed quick start topics
                   </Link>
                 </h3>
                 <p>
-                  Transparent Data Encryption (TDE) extends Postgres with robust
-                  security and performance capabilities for enterprises. TDE
-                  significantly hardens data security and mitigates risks for
-                  large enterprises.
+                  Use these topics to quickly evaluate and deploy EDB Postgres
+                  Distributed. They'll get you up and running with a fully
+                  configured EDB Postgres Distributed cluster using the same
+                  tools that you'll use to deploy to production.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/tde/latest">
+                    <Link className="btn-sm ml-2" to="/pgd/latest/quickstart/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -154,6 +160,14 @@ const Page = () => (
 
             <IndexCardLink to="/pg_extensions/pg_tuner">
               EDB Postgres Tuner
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/query_advisor">
+              EDB Query Advisor
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              PG Failover Slots
             </IndexCardLink>
 
             <IndexCardLink to="/epas/latest/language_pack">
@@ -228,6 +242,9 @@ const Page = () => (
             <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
             <IndexCardLink to="/repmgr/latest">
               Replication Manager (repmgr)
+            </IndexCardLink>
+            <IndexCardLink to="/supported-open-source/patroni/">
+              Patroni
             </IndexCardLink>
             <IndexCardLink to="/slony/latest">Slony (Deprecated)</IndexCardLink>
             <IndexCardLink to="/supported-open-source/pglogical2/">
@@ -345,6 +362,9 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption

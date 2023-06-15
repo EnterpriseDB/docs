@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import nunjucks from "nunjucks";
 import yaml from "yaml";
-import isMatch from "lodash.ismatch";
+import loadProductConfig from "./lib/config.mjs";
 
 nunjucks.configure("templates", { throwOnUndefined: true, autoescape: false });
 
@@ -19,16 +19,20 @@ const destPath = path.resolve(__dirname, args[0] || "../product_docs/docs");
  * @returns void
  */
 const run = async () => {
-  const config = yaml.parse(
-    await fs.readFile(path.resolve(__dirname, "config.yaml"), "utf8"),
-  );
+  const products = await loadProductConfig(path.resolve(__dirname, "config.yaml"));
 
   let results = [];
 
-  for (const product of config.products) {
-    for (const platform of product.platforms) {
-      for (const version of platform["supported versions"]) {
-        results.push(await moveDoc(product, platform, version));
+  for (let product of products) {
+    for (let prodVersion in product.cpuArchitecturesForVersion) {
+      const prodVersionDetail = product.cpuArchitecturesForVersion[prodVersion];
+      results.push(await moveIndex({product, prodVersion}));
+      for (let arch in prodVersionDetail) {
+        const osArchDetail = prodVersionDetail[arch];
+        results.push(await moveIndex({product, prodVersion, arch}));
+        for (let os of osArchDetail) {
+          results.push(await moveDoc(product, {name: os.name, arch}, prodVersion));
+        }
       }
     }
   }
@@ -40,138 +44,73 @@ const run = async () => {
   console.log(
     `${
       results.filter((r) => r.note && /^Skipping/.test(r.note)).length
-    } files skipped`,
+    } files skipped 
+${ results.filter((r) => !!r.success).length} files deployed`,
   );
 
   return;
 };
 
 /**
- * Composes the code needed to copy a document for a product/platform/version combination.
- * @param product The product name we are generating a template for
- * @param platform The platform and architecture we are generating docs for (e.g. { name: Centos 7, arch: x86_64 })
- * @param version The version of the product to generate docs for
+ * Copies a generated index document for a product/(optional)architecture/version combination.
+ * @param product The product name we are deploying docs for
+ * @param prodVersion The version of the product to deploy docs for
+ * @param arch The CPU architecture for a sub-index
  * @returns object {success: 'message', note: 'observation', warn: 'warning or error', context: {additional}}
  */
-const moveDoc = async (product, platform, version) => {
-  /*
-      console.log(
-        `Copying install guide for ${product.name} ${version} on ${platform.name} ${platform.arch}`,
-      );
-    */
+const moveIndex = async ({product, prodVersion, arch}) => {
+  const product_stub = formatStringForFile(product.name);
+  const srcFilename =
+    [
+      product_stub,
+      prodVersion,
+      arch,
+      "index"
+    ].filter((p) => !!p).join("_") + ".mdx";
 
-  const context = generateContext(product, platform, version);
+  const srcFilepath = path.resolve(__dirname, "renders", srcFilename);
 
-  const product_stub = formatStringForFile(context.product.name);
+  return await moveRender(srcFilepath);
+};
+
+/**
+ * Copies a generated document for a product/platform/version combination.
+ * @param product The product name we are deploying docs for
+ * @param platform The platform and architecture we are deploying docs for (e.g. { name: Centos 7, arch: x86_64 })
+ * @param prodVersion The version of the product to deploy docs for
+ * @returns object {success: 'message', note: 'observation', warn: 'warning or error', context: {additional}}
+ */
+const moveDoc = async (product, platform, prodVersion) => {
+  const product_stub = formatStringForFile(product.name);
 
   const srcFilename =
     [
       product_stub,
-      context.product.version,
-      formatStringForFile(context.platform.name),
-      context.platform.arch,
+      prodVersion,
+      formatStringForFile(platform.name),
+      platform.arch,
     ].join("_") + ".mdx";
 
   const srcFilepath = path.resolve(__dirname, "renders", srcFilename);
 
-  const prefix = {
-    rhel_8_x86_64: "01",
-    other_linux8_x86_64: "02",
-    rhel_7_x86_64: "03",
-    centos_7_x86_64: "04",
-    sles_15_x86_64: "05",
-    sles_12_x86_64: "06",
-    "ubuntu_22.04_x86_64": "06b",
-    "ubuntu_20.04_x86_64": "07",
-    "ubuntu_18.04_x86_64": "07a",
-    debian_11_x86_64: "07b",
-    debian_10_x86_64: "08",
-    rhel_8_ppc64le: "09",
-    rhel_7_ppc64le: "10",
-    sles_15_ppc64le: "11",
-    sles_12_ppc64le: "12",
-  };
+  return await moveRender(srcFilepath);
+};
 
-  switch (product_stub) {
-    case "hadoop-foreign-data-wrapper":
-    case "mongodb-foreign-data-wrapper":
-    case "mysql-foreign-data-wrapper":
-      prefix["sles_12_x86"] = "07";
-      prefix["sles_12_x86_64"] = "07";
-      prefix["rhel_8_ppc64le"] = "13";
-      prefix["rhel_7_ppc64le"] = "15";
-      prefix["sles_12_ppc64le"] = "19";
-      prefix["sles_15_ppc64le"] = "17";
-      break;
-    case "edb-ocl-connector":
-      prefix["sles_15_x86_64"] = "03";
-      prefix["sles_12_x86_64"] = "04";
-      prefix["sles_15_ppc64le"] = "09";
-      prefix["sles_12_ppc64le"] = "10";
-      prefix["ubuntu_22.04_x86_64"] = "05";
-      prefix["ubuntu_20.04_x86_64"] = "05a";
-      prefix["ubuntu_18.04_x86_64"] = "05b";
-      prefix["debian_11_x86_64"] = "06";
-      prefix["debian_10_x86_64"] = "06a";
-      prefix["debian_9_x86_64"] = "06b";
-      break;
+/**
+ * Copies a document at a given source path
+ * @param srcFilepath The path to the generated mdx file
+ * @returns object {success: 'message', note: 'observation', warn: 'warning or error', context: {additional}}
+ */
+const moveRender = async (srcFilepath) => {
+  const [srcContent, integralDeploymentPath, error, errorContext] = await readSource(srcFilepath);
+
+  if (error) return { warn: error, context: errorContext};
+
+  if (!integralDeploymentPath) {
+    return { note: `Skipping (missing deployPath?): ${path.basename(srcFilepath)}`, };
   }
 
-  const expand_arch = {
-    ppcle: "ibm_power_ppc64le",
-    x86: "x86_amd64",
-    x86_64: "x86_amd64",
-    ppc64le: "ibm_power_ppc64le",
-  };
-
-  const plat = [
-    context.platform.name.toLowerCase().replace(/ /g, "_"),
-    context.platform.arch,
-  ].join("_");
-
-  const product_prefix = {
-    "failover-manager": "03",
-    "migration-toolkit": "05",
-    "hadoop-foreign-data-wrapper": "05",
-    "mongodb-foreign-data-wrapper": "04",
-    "mysql-foreign-data-wrapper": "04",
-    "edb-pgpool-ii": "01",
-    "edb-pgpool-ii-extensions": "pgpoolext",
-    postgis: "01a",
-    "edb-jdbc-connector": "04",
-    "edb-ocl-connector": "04",
-    "edb-odbc-connector": "03",
-    "edb-pgbouncer": "01",
-  };
-
-  const fmtArchPath = (ctx) => expand_arch[ctx.platform.arch];
-  const fmtArchFilename = (ctx) => ctx.platform.arch.replace(/_?64/g, "");
-
-  const [srcContent, integralDeploymentPath] = await readSource(srcFilepath);
-
-  // prettier-ignore
-  const destFilename = integralDeploymentPath || match(context,   
-    when({product: {name: "xdb", version: 99}, platform: {name: "MS-DOS 4.0"}}, 
-      (ctx) => `xdb/99/installing/${fmtArchPath(ctx)}/xdb_centos7_${fmtArchFilename(ctx)}.mdx`),
-    );
-
-  function match(context, ...conditions) {
-    for (let test of conditions) {
-      const result = test(context);
-      if (result !== false && result !== null) return result;
-    }
-    return null;
-  }
-
-  function when(pattern, resultFn) {
-    return (ctx) => isMatch(ctx, pattern) && resultFn(ctx);
-  }
-
-  if (!destFilename) {
-    return { note: `Skipping (no mapping): ${srcFilename}`, context };
-  }
-
-  const destFilepath = path.resolve(__dirname, destPath, destFilename);
+  const destFilepath = path.resolve(__dirname, destPath, integralDeploymentPath);
   try {
     await fs.mkdir(path.dirname(destFilepath), { recursive: true });
     await fs.writeFile(destFilepath, srcContent, "utf8");
@@ -198,49 +137,33 @@ const formatStringForFile = (string) => {
 };
 
 /**
- * Creates a filename based on the filenameParts passed in, and appends to to a base path
- * @param basePath A file path formatted string which will be used as a prefix to the generated filename. e.g "products/product-name/"
- * @param filenameParts An array of strings to combine into a template name. e.g. ["first-part", "second", "last-part"]
- * @returns A file path which refers to the expected location of a nunjucks template, with each filename part seperated by an underscore.
- *          e.g. "products/product-name/first-part_second_last-part.njk"
- */
-const constructTemplatePath = (basePath, filenameParts) => {
-  return path.join(basePath, filenameParts.join("_") + ".njk");
-};
-
-/**
- * Creates the context object used by nunjucks templates
- * @param product The product to render docs for, from the config.
- * @param platform The platform to render docs for, from the config.
- * @param version The version of the product to render docs for
- * @returns a context object.
- */
-const generateContext = (product, platform, version) => {
-  return {
-    product: {
-      name: product.name,
-      version: version,
-    },
-    platform: {
-      name: platform.name,
-      arch: platform.arch,
-    },
-  };
-};
-
-/**
  * Reads the source mdx file, parse out the deployment path and filename from the MDX frontmatter
  * @param srcPath the path + name of the mdx file to read
- * @returns [full contents, the relative deployment path], undefined on error
+ * @returns [full contents, the relative deployment path, error, context]
  */
 const readSource = async (srcPath) => {
   const frontmatterRE = /^(?<open>---\s*?\n)(?<yaml>.+?\n)(?<close>---\s*?\n)/s;
 
   try {
     let src = await fs.readFile(srcPath, "utf8");
-    const frontmatter = yaml.parseDocument(
-      src.match(frontmatterRE)?.groups?.yaml,
-    );
+    const frontmatterYaml = src.match(frontmatterRE)?.groups?.yaml;
+    if (!frontmatterYaml)
+    {
+      return [null, null, "No frontmatter", {path: srcPath}];
+    }
+    const frontmatter = yaml.parseDocument(frontmatterYaml);
+    if (frontmatter.errors.length)
+    {
+      const combinedErrors = frontmatter.errors
+        .map(
+          (error) => `${srcPath}:${error.linePos[0].line + 1}:${
+            error.linePos[0].col
+          }
+  ${error.message}`,
+        )
+        .join("\n");
+      return [null, null, combinedErrors];
+    }
 
     const deployPath = frontmatter.contents.get("deployPath");
     const redirects = frontmatter.contents.get("redirects");
@@ -263,9 +186,10 @@ const readSource = async (srcPath) => {
     }
 
     for (let i = 0; i < redirects?.items?.length; ++i) {
-      redirects.items[i].value = redirects.items[i].value
-        .replace(/^\/?/, "/")
-        .replace(/\.mdx$/, "");
+      if (/\.mdx$/.test(redirects.items[i].value))
+        redirects.items[i].value = redirects.items[i].value
+          .replace(/^\/?/, "/")
+          .replace(/\.mdx$/, "");
     }
 
     src = src.replace(
@@ -275,7 +199,9 @@ const readSource = async (srcPath) => {
 
     return [src, deployPath];
   } catch (e) {
-    console.log(srcPath, e);
+    if (e?.code === "ENOENT")
+      return [null, null, "not found: ", e.path];
+    return [null, null, srcPath, e];
   }
 };
 

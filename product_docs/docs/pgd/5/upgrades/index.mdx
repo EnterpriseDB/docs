@@ -3,200 +3,223 @@ title: "Upgrading"
 ---
 
 Because EDB Postgres Distributed consists of multiple software components,
-the upgrade strategy depends partially on which components are being upgraded.
+the upgrade strategy depends partially on the components that are being upgraded.
 
-In general it's possible to upgrade the cluster with almost zero downtime, by
-using an approach called Rolling Upgrade where nodes are upgraded one by one, and
+In general, you can upgrade the cluster with almost zero downtime by
+using an approach called rolling upgrade. Using this approach, nodes are upgraded one by one, and
 the application connections are switched over to already upgraded nodes.
 
-Ii's also possible to stop all nodes, perform the upgrade on all nodes and
-only then restart the entire cluster, just like with a standard PostgreSQL setup.
+You can also stop all nodes, perform the upgrade on all nodes, and
+only then restart the entire cluster. This approach is the same as with a standard PostgreSQL setup.
 This strategy of upgrading all nodes at the same time avoids running with
-mixed versions of software and therefore is the simplest, but obviously incurs
-some downtime and is not recommended unless the Rolling Upgrade is not possible
+mixed versions of software and therefore is the simplest. However, it incurs
+some downtime and we don't recommend it  unless you can't perform the rolling upgrade
 for some reason.
 
-To upgrade an EDB Postgres Distributed cluster, perform the following steps:
+To upgrade an EDB Postgres Distributed cluster:
 
 1. Plan the upgrade.
 2. Prepare for the upgrade.
 3. Upgrade the server software.
 4. Check and validate the upgrade.
 
-## Upgrade Planning
+## Upgrade planning
 
-There are broadly two ways to upgrade each node.
+There are broadly two ways to upgrade each node:
 
-* Upgrading nodes in-place to the newer software version, see [Rolling Server Software Upgrades](#rolling-server-software-upgrades).
-* Replacing nodes with ones that have the newer version installed, see [Rolling Upgrade Using Node Join](#rolling-upgrade-using-node-join).
+* Upgrade nodes in place to the newer software version. See [Rolling server software upgrades](#rolling-server-software-upgrades).
+* Replace nodes with ones that have the newer version installed. See [Rolling upgrade using node join](#rolling-upgrade-using-node-join).
 
-Both of these approaches can be done in a rolling manner.
+You can use both of these approaches in a rolling manner.
 
-### Rolling Upgrade considerations
+### Rolling upgrade considerations
 
 While the cluster is going through a rolling upgrade, mixed versions of software
-are running in the cluster. For example, nodeA has PGD 3.7.16, while
+are running in the cluster. For example, suppose nodeA has PGD 3.7.16, while
 nodeB and nodeC has 4.1.0. In this state, the replication and group
 management uses the protocol and features from the oldest version (3.7.16
-in case of this example), so any new features provided by the newer version
-which require changes in the protocol are disabled. Once all nodes are
-upgraded to the same version, the new features are automatically enabled.
+in this example), so any new features provided by the newer version
+that require changes in the protocol are disabled. Once all nodes are
+upgraded to the same version, the new features are enabled.
 
-Similarly, when a cluster with WAL decoder enabled nodes is going through a
+Similarly, when a cluster with WAL-decoder-enabled nodes is going through a
 rolling upgrade, WAL decoder on a higher version of PGD node produces LCRs
-with a higher pglogical version and WAL decoder on a lower version of PGD node
+with a higher pglogical version. WAL decoder on a lower version of PGD node
 produces LCRs with lower pglogical version. As a result, WAL senders on a higher
 version of PGD nodes are not expected to use LCRs due to a mismatch in protocol
-versions while on a lower version of PGD nodes, WAL senders may continue to use
+versions. On a lower version of PGD nodes, WAL senders may continue to use
 LCRs. Once all the PGD nodes are on the same PGD version, WAL senders use
 LCRs.
 
-A rolling upgrade starts with a cluster with all nodes at a prior release,
-then proceeds by upgrading one node at a time to the newer release, until
-all nodes are at the newer release. There should never be more than two versions
-of any component running at the same time, which means the new upgrade must not
-be initiated until the previous upgrade process has fully finished on all nodes.
+A rolling upgrade starts with a cluster with all nodes at a prior release.
+It then proceeds by upgrading one node at a time to the newer release, until
+all nodes are at the newer release. More than two versions
+of any component must never be running at the same time. This requirement means that you must not start the new upgrade until the previous upgrade process fully finishes on all nodes.
 
-An upgrade process may take an extended period of time when the user decides
-caution is required to reduce business risk, though it's not recommended
-to run the mixed versions of the software indefinitely.
+An upgrade process can take more time when 
+caution is required to reduce business risk. However, we don't recommend
+running the mixed versions of the software indefinitely.
 
-While Rolling Upgrade can be used for upgrading major version of the software
-it is not supported to mix PostgreSQL, EDB Postgres Extended and
-EDB Postgres Advanced Server in one cluster, so this approach cannot
-be used to change the Postgres variant.
+While you can use a rolling upgrade for upgrading a major version of the software,
+we don't support mixing PostgreSQL, EDB Postgres Extended, and
+EDB Postgres Advanced Server in one cluster. So you can't use this approach 
+to change the Postgres variant.
 
 !!! Warning
-    Downgrades of the EDB Postgres Distributed are *not* supported and require
-    manual rebuild of the cluster.
+    Downgrades of the EDB Postgres Distributed aren't supported. They require
+    that you manually rebuild the cluster.
 
-### Rolling Server Software Upgrades
+### Rolling server software upgrades
 
-A rolling upgrade is the process where the [Server
-Software Upgrade](#server-software-upgrade) process is performed on each node in the
-cluster one after another, while keeping the remainder of the cluster
-operational.
+A rolling upgrade is the process where the [server
+software upgrade](#server-software-upgrade) process is performed on each node in the
+cluster one after another while keeping the rest of the cluster
+operating.
 
 The actual procedure depends on whether the Postgres component is being
-upgraded to a new major version or not.
+upgraded to a new major version.
 
-During the upgrade process, the application can be switched over to a node
-which is currently not being upgraded to provide continuous availability of
+During the upgrade process, you can switch the application over to a node
+that's currently not being upgraded to provide continuous availability of
 the database for applications.
 
-### Rolling Upgrade Using Node Join
+### Rolling upgrade using node join
 
-The other method of upgrade of the server software, is to join a new node
+The other method to upgrade the server software is to join a new node
 to the cluster and later drop one of the existing nodes running
 the older version of the software.
 
-For this approach, the procedure is always the same, however because it
-includes node join, the potentially large data transfer is required.
+For this approach, the procedure is always the same. However, because it
+includes node join, a potentially large data transfer is required.
 
-Care must be taken to not use features that are available only in
-the newer Postgres versions, until all nodes are upgraded to the
+Take care not to use features that are available only in
+the newer Postgres versions until all nodes are upgraded to the
 newer and same release of Postgres. This is especially true for any
-new DDL syntax that may have been added to a newer release of Postgres.
+new DDL syntax that was added to a newer release of Postgres.
 
 !!! Note
-    `bdr_init_physical` makes a byte-by-byte of the source node
-    so it cannot be used while upgrading from one major Postgres version
+    `bdr_init_physical` makes a byte-by-byte copy of the source node
+    so you can't use it while upgrading from one major Postgres version
     to another. In fact, currently `bdr_init_physical` requires that even the
-    PGD version of the source and the joining node is exactly the same.
-    It cannot be used for rolling upgrades via joining a new node method. Instead, a logical join must be used.
 
-### Upgrading a CAMO-Enabled Cluster
+    PGD version of the source and the joining node be exactly the same.
+    You can't be use it for rolling upgrades by way of joining a new node method. Instead, use a logical join.
 
-Upgrading CAMO-Enabled Cluster requires upgrading CAMO groups one by one, while
+### Upgrading a CAMO-enabled cluster
+
+Upgrading a CAMO-enabled cluster requires upgrading CAMO groups one by one while
 disabling the CAMO protection for the group being upgraded and reconfiguring it
-using the new [Commit Scope](../durability/commit-scopes) based settings.
+using the new [commit scope](../durability/commit-scopes)-based settings.
 
-## Upgrade Preparation
+The following approach is recommended for upgrade two BDR nodes, that
+constitute a CAMO pair, to PGD 5.0:
 
-Each major release of the software contains several changes that may affect
-compatibility with previous releases. These may affect the Postgres
+- Ensure `bdr.enable_camo` remains `off` for transactions on any of
+  the two nodes or redirect clients away from the two nodes. Removing
+  the CAMO pairing while attempting to use CAMO will lead to errors
+  and prevent further transactions.
+- Uncouple the pair by deconfiguring CAMO either by resetting
+  `bdr.camo_origin_for` and `bdr.camo_parter_of` (when upgrading from
+  BDR 3.7.x) or by using `bdr.remove_camo_pair` (on BDR 4.x).
+- Upgrade the two nodes to PGD 5.0
+- Create a dedicated node group for the two nodes and move them into
+  that node group.
+- Create a [Commit Scope](../durability/commit-scopes) for this node
+  group and thus the pair of nodes to use CAMO.
+- Reactivate CAMO protection again by either setting a
+  `default_commit_scope` or by changing the clients to explicitly set
+  `bdr.commit_scope` (instead of `bdr.enable_camo`) for their sessions
+  or transactions.
+- If necessary, allow clients to connect to the CAMO protected nodes,
+  again.
+
+## Upgrade preparation
+
+Each major release of the software contains several changes that might affect
+compatibility with previous releases. These might affect the Postgres
 configuration, deployment scripts, as well as applications using PGD. We
-recommend to consider and possibly adjust in advance of the upgrade.
+recommend considering these changes and making any needed adjustments in advance of the upgrade.
 
-Please see individual changes mentioned in [release notes](../rel_notes/) and any version
-specific upgrade notes in this topic.
+See individual changes mentioned in the [release notes](../rel_notes/) and any version-specific upgrade notes.
 
-## Server Software Upgrade
+## Server software upgrade
 
-The upgrade of EDB Postgres Distributed on individual nodes happens in-place.
-There is no need for backup and restore when upgrading the PGD extension.
+Upgrading EDB Postgres Distributed on individual nodes happens in place.
+You don't need to back up and restore when upgrading the BDR extension.
 
-### BDR Extension Upgrade
+### BDR extension upgrade
 
-BDR extension upgrade process consists of a few simple steps:
+The BDR extension upgrade process consists of a few steps.
 
 #### Stop Postgres
 
 During the upgrade of binary packages, it's usually best to stop the running
-Postgres server first to ensure that mixed versions don't get loaded in case
-of unexpected restart during the upgrade.
+Postgres server first. Doing so ensures that mixed versions don't get loaded in case
+of an unexpected restart during the upgrade.
 
-#### Upgrade Packages
+#### Upgrade packages
 
-The first step in the upgrade is to install the new version of the BDR packages, which
-installs both the new binary and the extension SQL script. This step is operating system-specific.
+The first step in the upgrade is to install the new version of the BDR packages. This installation
+installs both the new binary and the extension SQL script. This step is specific to the operating system.
 
 #### Start Postgres
 
-Once packages are upgraded the Postgres instance can be started, the BDR
-extension is automatically upgraded upon start when the new binaries
-detect older version of the extension.
+Once packages are upgraded, you can start the Postgres instance. The BDR
+extension is upgraded upon start when the new binaries
+detect the older version of the extension.
 
-### Postgres Upgrade
+### Postgres upgrade
 
-The process of in-place upgrade of Postgres highly depends on whether you are
-upgrading to new minor version of Postgres of to new major version of Postgres.
+The process of in-place upgrade of Postgres depends on whether you're
+upgrading to new minor version of Postgres or to a new major version of Postgres.
 
-#### Minor Version Postgres Upgrade
+#### Minor version Postgres upgrade
 
 Upgrading to a new minor version of Postgres is similar to [upgrading
 the BDR extension](#bdr-extension-upgrade). Stopping Postgres, upgrading packages,
 and starting Postgres again is typically all that's needed.
 
-However, sometimes additional steps like re-indexing may be recommended for
-specific minor version upgrades. Refer to the Release Notes of the
-specific version of Postgres you are upgrading to.
+However, sometimes more steps, like reindexing, might be recommended for
+specific minor version upgrades. Refer to the release notes of the 
+version of Postgres you're upgrading to.
 
-#### Major Version Postgres Upgrade
+#### Major version Postgres upgrade
 
-Upgrading to a new major version of Postgres is a more complicated process.
+Upgrading to a new major version of Postgres is more complicated than upgrading to a minor version.
 
 EDB Postgres Distributed provides a `bdr_pg_upgrade` command line utility,
-which can be used to do a [In-place Postgres Major Version Upgrades](bdr_pg_upgrade).
+which you can use to do [in-place Postgres major version upgrades](bdr_pg_upgrade).
 
 !!! Note
-    When upgrading to new major version of any software, including Postgres, the
-    BDR extension and others, it's always important to ensure the compatibility
-    of your application with the target version of a given software.
+    When upgrading to a new major version of any software, including Postgres, the
+    BDR extension, and others, it's always important to ensure the compatibility
+    of your application with the target version of the software you're upgrading.
 
-## Upgrade Check and Validation
+## Upgrade check and validation
 
-After this procedure, your PGD node is upgraded. You can verify the current
-version of PGD4 binary like this:
+After you upgrade your PGD node, you can verify the current
+version of BDR binary like this:
 
 ```sql
 SELECT bdr.bdr_version();
 ```
 
-Always check the [monitoring](../monitoring) after upgrade of a node to confirm
+Always check the [monitoring](../monitoring) after upgrading a node to confirm
 that the upgraded node is working as expected.
 
-## Moving from HARP to PGD-Proxy
+## Moving from HARP to PGD Proxy
 
 HARP can for a time coexist with the new
-[Connection management](../routing) configuration.
+[connection management](../routing) configuration. This means you can:
 
-This means you can upgrade whole pre-5 cluster to PGD 5 cluster, setup
-the connection routing, replace the HARP Proxy with PGD-Proxy, move application
-connections to PGD-Proxy instances and removed the HARP Manager from all servers.
+-  Upgrade a whole pre-5 cluster to a PGD 5 cluster. 
+-  Set up the connection routing. 
+-  Replace the HARP Proxy with PGD Proxy. 
+-  Move application connections to PGD Proxy instances.
+-  Remove the HARP Manager from all servers.
 
-It's highly recommended to do this as soon as possible after upgrading nodes to
-PGD 5 as HARP is not certified for long term use with PGD 5.
+We strongly recommend doing this as soon as possible after upgrading nodes to
+PGD 5. HARP isn't certified for long-term use with PGD 5.
 
-TPA provides some useful tools for this and will eventually provide single
-command upgrade path between PGD 4 and PGD 5.
+TPA provides some useful tools for this and will eventually provide a single-command 
+upgrade path between PGD 4 and PGD 5.

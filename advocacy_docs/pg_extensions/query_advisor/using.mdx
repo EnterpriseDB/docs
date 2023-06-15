@@ -1,0 +1,94 @@
+---
+title: Using EDB Query Advisor
+navTitle: Using
+---
+
+EDB Query Advisor defines functions and views.
+
+## Functions
+
+### query_advisor_index_recommendations(min_filter, min_selectivity)
+This function performs a global index suggestion. 
+
+By default, only predicates filtering at least 1000 rows and 30% of the rows in average are considered. You can use the `min_filter` and `min_selectivity` parameters to override the default. 
+
+The function generates the one- and two-column index candidates based on the predicates it collects. It replans all related workload queries in the presence of the hypothetical index with respect to each candidate. It recommends the list of indexes that bring the most value to the workload. It also shows the estimated index size and percentage cost reduction in the workload queries. You can decide, based on the size and benefit ratio, which indexes are the most useful for you.
+
+For example:
+
+```sql
+# running as postgres user
+select * from query_advisor_index_recommendations(0,0);
+__OUTPUT__
+|                             index                             | estimated_size_in_bytes | estimated_pct_cost_reduction |
++---------------------------------------------------------------+-------------------------+------------------------------+
+| CREATE INDEX ON nation USING btree (n_name);                  | 8192                    | 14.619857                    |
+| CREATE INDEX ON supplier USING btree (s_suppkey,s_nationkey); | 933888                  | 0.63003576                   |
+| CREATE INDEX ON partsupp USING btree (ps_suppkey);            | 50159616                | 13.254544                    |
+(3 rows)
+```
+
+### query_advisor_qualstat
+This function returns the counts for every qualifier identified by the expression hash. This hash identifies each expression.
+
+|    Qualifier     |                                                                                     Description                                                                                      |     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --- |
+| userid           | ID of the user who executed the query.                                                                                                                                              |     |
+| dbid             | ID of the database in which the query was executed.                                                                                                                            |     |
+| lrelid, lattnum  | ID of the relation and attribute number of the VAR on the left side, if any.                                                                                                   |     |
+| opno             | ID of the operator used in the expression.                                                                                                                                           |     |
+| rrelid, rattnum  | ID of the relation and attribute number of the VAR on the right side, if any.                                                                                                  |     |
+| qualid           | Normalized identifier of the parent AND expression, if any. This identifier is computed excluding the constants. This qualifier is useful for identifying predicates that are used together. |     |
+| uniquequalid     | Unique identifier of the parent AND expression, if any. This identifier is computed including the constants.                                                                       |     |
+| qualnodeid       | Normalized identifier of this simple predicate. This identifier is computed excluding the constants.                                                                                 |     |
+| uniquequalnodeid | Unique identifier of this simple predicate. This identifier is computed including the constants.                                                                                     |     |
+| occurrences       | Number of times this predicate was invoked, that is, number of related query execution.                                                                                              |     |
+| execution_count  | Number of times this predicate was executed, that is, the number of rows it processed.                                                                                          |     |
+| nbfiltered       | Number of tuples this predicate discarded.                                                                                                                                           |     |
+| queryid          | Query identifier.                                                                                                                                                   |     |
+| eval_typ         | The evaluation type: `f` for a predicate evaluated after a scan or `i` for an index predicate.                                                                                           |     |
+
+For example:
+
+```
+# running as postgres user
+select * from query_advisor_qualstats();
+__OUTPUT__
+| userid | dbid | lrelid | lattnum | opno | rrelid | rattnum | qualid | uniquequalid | qualnodeid | uniquequalnodeid | occurrence | execution_count | nbfiltered | min_err_estimate_ratio | max_err_estimate_ratio | mean_err_estimate_ratio | stddev_err_estimate_ratio | min_err_estimate_num | max_err_estimate_num | mean_err_estimate_num | stddev_err_estimate_num |       queryid        | eval_type |
++--------+------+--------+---------+------+--------+---------+--------+--------------+------------+------------------+------------+-----------------+------------+------------------------+------------------------+-------------------------+---------------------------+----------------------+----------------------+-----------------------+-------------------------+----------------------+-----------+
+| 10     | 5    | 16501  | 1       | 96   |        |         |        |              | 262905824  | 262905824        | 1          | 3000000         | 2999997    | 3                      | 3                      | 3                       | 0                         | 2                    | 2                    | 2                     | 0                       | -3469822585968758916 | f         |
+
+```
+                       
+### query_advisor_workload_queries
+Returns all the stored query texts.
+
+### query_advisor_qualstats_memory_usage
+Returns the percentage usage of the workload and qualifier hash table.
+
+### query_advisor_qualstats_reset
+Resets the internal counters and forgets about every encountered qualifier and workload entry.
+
+## Views
+The extension defines the following views on top of the `pg_qualstats` function. 
+
+### query_advisor_qualstat
+Filters calls to `query_advisor_qualstats()` by the current database.
+
+### query_advisor_qualstats_pretty
+Performs the appropriate joins to display a readable, aggregated form for every attribute from the query_advisor_qualstats view.
+
+For example:
+
+```
+# running as ro user
+
+select * from query_advisor_qualstats_pretty;
+__OUTPUT__
+ left_schema |    left_table    | left_column |   operator   | right_schema | right_table | right_column | occurrences | execution_count | nbfiltered
+------------+------------------+-------------+--------------+--------------+-------------+--------------+------------+-----------------+------------
+ public     | pgbench_accounts | aid         | pg_catalog.= |              |             |              |          5 |         5000000 |    4999995
+ public     | pgbench_tellers  | tid         | pg_catalog.= |              |             |              |         10 |        10000000 |    9999990
+ public     | pgbench_branches | bid         | pg_catalog.= |              |             |              |         10 |         2000000 |    1999990
+ public     | t1               | id          | pg_catalog.= | public       | t2          | id_t1        |          1 |           10000 |       9999
+```

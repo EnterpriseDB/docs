@@ -284,7 +284,7 @@ const DocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation>
+        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
           <LeftNav
             navTree={navTree}
             path={path}
@@ -327,16 +327,9 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
-          {navTree.displayBanner === "edbcloud" ? (
+          {navTree.displayBanner ? (
             <div class="alert alert-warning mt-3" role="alert">
-              EDB Cloud is currently in Preview. If you would like to sign up,
-              see{" "}
-              <a
-                className="pl-1 font-weight-bold"
-                href="https://resources.enterprisedb.com/postgres-database-as-a-service-dbaas-cloud-postgresql"
-              >
-                EDB Cloud Preview Signup.
-              </a>
+              {navTree.displayBanner}
             </div>
           ) : null}
 
