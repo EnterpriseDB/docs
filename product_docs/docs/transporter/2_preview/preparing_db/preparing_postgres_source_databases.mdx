@@ -1,83 +1,79 @@
 ---
-title: "Preparing Postgres Source Databases"
+title: "Preparing Postgres source databases"
 ---
 
 <div id="preparing_postgres_sources" class="registered_link"></div>
 
-Configuring Postgres for EDB Transporter requires administrative privileges. A CDC migration role with limited privileges
-is created for data migration.
+Configuring Postgres for EDB Transporter requires administrative privileges. Create a change data capture (CDC) migration role with limited privileges for data migration.
 
-SQL statements in this guidance should be executed with `psql` or a similar client.
+Execute SQL statements with psql or a similar client.
+<!--What is this command doing?-->
 
 ```
-# You will be promted for the password associated with `PG_USERNAME`
 psql -h $PG_HOST -p $PG_PORT -U $PG_USERNAME -d $PG_DB_NAME
 ```
 
-Reference:
- - `PG_DB_NAME`: The name of the Postgres database to connect to
- - `PG_HOST`: The Postgres database host
- - `PG_PORT`: The Postgres database port
- - `PG_USERNAME`: An administrative user capable of creating roles, granting roles, altering ownership of tables-to-migrate, and creating a replication slot
+Where: 
+ - `PG_DB_NAME` is the name of the Postgres database to connect to.
+ - `PG_HOST` is the Postgres database host.
+ - `PG_PORT` is the Postgres database port.
+ - `PG_USERNAME` is an administrative user who can create and grant roles, alter ownership of tables to migrate, and create a replication slot.
 
-## Postgres Configuration
+This command prompts you for the password associated with `PG_USERNAME`.
 
-### 1. Verify Postgres Configuration
+## Postgres configuration
 
-A few configuration entries for Postgres should be verified or set.
+To perform Postgres configuration:
+1. [Verify Postgres configuration](#verify_postgres_configuration).
+1. [Create new roles and grant acccess for CDC migration](#create_new_roles_and_grant_acccess_for_cdc_migration).
+1. [Grant `SELECT` on source tables to the CDC migration role](#grant_select_on_source_tables_to_the_cdc_migration_role).
+1. [Create a logical replication slot](#create_a_logical_replication_slot)
 
-1. Ensure the `wal_level` is configured as `logical`.
+### Verify Postgres configuration
 
-The CDC migration process leverages Postgres logical decoding. Setting this to `logical` enables logical decoding of the Postgres Write-Ahead-Log (WAL).
+Verify or set these configuration entries for Postgres.
 
-2. Ensure `max_wal_senders` configured appropriately
+1. Ensure `wal_level` is configured as `logical`.
 
-`max_wal_senders` should be set to at least `1` if EDB Transporter migration is the first streaming
-client for your database. Other streaming clients may be present and you should consult your DBA
-for the appropriate value for streaming client connectivity.
+    The CDC migration process leverages Postgres logical decoding. Setting `wal_level` to `logical` enables logical decoding of the Postgres write-ahead log (WAL).
 
-3. Ensure `max_replication_slots` configured appropriately
+2. Ensure `max_wal_senders` is configured appropriately.
 
-`max_replication_slots` must be at least `1` for the CDC migration process. This value may be
-higher if your organization makes use of Postgres replication capabilities.
+    If EDB Transporter migration is the first streaming client for your database, set `max_wal_senders` to at least `1`. Other streaming clients might be present. Consult your DBA for the appropriate value for streaming client connectivity.
 
-Please see the [Postgres replication documentation](https://www.postgresql.org/docs/current/runtime-config-replication.html)
-for more information.
+3. Ensure `max_replication_slots` is configured appropriately.
 
-4. Ensure `max_wal_size` configured to ensure adequate WAL LSN lifetime
+    `max_replication_slots` must be at least `1` for the CDC migration process. This value can be higher if your organization uses Postgres replication.
 
-The `max_wal_size` value should be large enough that production traffic is generating
-mostly timed-checkpoints and not requested-checkpoints based on WAL size.
+    See the [Postgres replication documentation](https://www.postgresql.org/docs/current/runtime-config-replication.html) for more information.
 
-Additionally, the streaming migration process requires changes to be available in the WAL until
-they can be streamed to durable message storage in EDB Transporter's cloud infrastructure. Setting
-`max_wal_size` too small can not only impact performance but interfere with the migration process by allowing
-Postgres LSNs to be dropped from the WAL before they can be streamed.
+4. Ensure `max_wal_size` is configured for adequate WAL LSN lifetime.
 
-Please see this [EDB blog post on tuning](https://www.enterprisedb.com/blog/tuning-maxwalsize-postgresql) `max_wal_size`.
+    Set the `max_wal_size` value large enough that production traffic is generating mostly timed checkpoints and not requested checkpoints based on WAL size.
 
-Please see the [Postgres WAL documentation](https://www.postgresql.org/docs/current/wal-configuration.html)
-for more information.
+    The streaming migration process also requires changes to be available in the WAL until they can be streamed to durable message storage in EDB Transporter's cloud infrastructure. Setting `max_wal_size` too small can affect performance. It can also interfere with the migration process by allowing Postgres LSNs to be dropped from the WAL before they can be streamed.
 
-#### Config Validation Script
+    For more information, see this [EDB blog post on tuning `max_wal_size`](https://www.enterprisedb.com/blog/tuning-maxwalsize-postgresql) and the [Postgres WAL documentation](https://www.postgresql.org/docs/current/wal-configuration.html).
 
-CDCReader installation comes with a helper script that will validate the Postgres configuration and help you identify any issues. Once you have configured the database, it is recommended to run the script and ensure all checks are passed.
+#### Config validation script
+
+CDCReader installation comes with a helper script that validates the Postgres configuration and helps you identify any issues. After you configure the database, we recommend running the script and ensuring all checks passed.
+
+Run the script without arguments to print the usage:
 
 ```
-# Run the script without arguments to print the usage.
 /opt/cdcreader/postgresConfigValidation.sh
 ```
 
-### 2. Create New Roles and Grant Acccess for CDC Migration
+### Create new roles and grant acccess for CDC migration
 
-First create a new role for CDC Migration with the `LOGIN` and `REPLICATION` abilities granted.
+First, create a new role for CDC Migration with `LOGIN` and `REPLICATION` abilities granted:
 
 ```
 CREATE ROLE $MIGRATION_ROLE WITH REPLICATION LOGIN PASSWORD $MIGRATION_ROLE_PASSWORD;
 ```
 
-`$MIGRATION_ROLE` needs to own the source tables in order to autocreate Postgres Publications. Because the source tables are already owned by another role, we create a role / user which can act as the new owner and grant this "replication group" role to
-both the current table owner and also to `$MIGRATION_ROLE`.
+`$MIGRATION_ROLE` needs to own the source tables to autocreate Postgres publications. Because the source tables are already owned by another role, you create a role/user that can act as the new owner and grant the specified replication group role to both the current table owner and also to `$MIGRATION_ROLE`:
 
 ```
 CREATE ROLE $REPLICATION_GROUP;
@@ -85,43 +81,49 @@ GRANT $REPLICATION_GROUP TO $MIGRATION_ROLE;
 GRANT $REPLICATION_GROUP TO $ORIGINAL_OWNER;
 ALTER TABLE $TABLE_NAME OWNER TO $REPLICATION_GROUP
 ```
-Reference:
- - `$MIGRATION_ROLE`: The name of the Postgres role / user to be used for CDC migration database access
- - `$ORIGINAL_OWNER`: The original production owner of the table
- - `$REPLICATION_GROUP`: The name of a role used to own the source tables to be migrated -- for Publication autocreation
 
-### 3. Grant `SELECT` on Source Tables to the CDC Migration Role
+Where:
 
-The new `$MIGRATION_ROLE` needs `SELECT` access to source tables. Access can be granted across a schema
-or on a table-by-table basis.
+ - `$MIGRATION_ROLE` is the name of the Postgres role or user to use for CDC migration database access.
+ - `$ORIGINAL_OWNER` is the original production owner of the table.
+ - `$REPLICATION_GROUP` is the name of a role used to own the source tables to migrate for publication autocreation.
+
+### Grant `SELECT` on source tables to the CDC migration role
+
+The new `$MIGRATION_ROLE` needs `SELECT` access to source tables. You can grant access across a schema
+or for each table.
+
+For an entire schema's tables, use this command:
 
 ```
--- For an entire schema's tables
 ALTER DEFAULT PRIVILEGES IN SCHEMA $DB_SCHEMA GRANT SELECT ON TABLES to $MIGRATION_ROLE
+```
 
--- Table by table
+For each table, use:
+
+```
 GRANT SELECT ON $TABLE_NAME TO $MIGRATION_ROLE
 ```
 
-Reference:
- - `$DB_SCHEMA`: The database schema name for the tables to be migrated
- - `$MIGRATION_ROLE`: The name of the Postgres role / user to be used for CDC migration database access
- - `$TABLE_NAME`: The name of an individual table to be migrated
+Where:
+ - `$DB_SCHEMA` is the database schema name for the tables to migrate.
+ - `$MIGRATION_ROLE` is the name of the Postgres role or user to use for CDC migration database access.
+ - `$TABLE_NAME` is the name of a table to migrate.
 
-### 4. Create a Logical Replication Slot
+### Create a logical replication slot
 
-The CDC migration process for Postgres sources leverages logical decoding and the publication/subscription mechanism. To use Postgres as a source we'll need to create a replication slot for our CDC migration role.
+The CDC migration process for Postgres sources leverages logical decoding and the publication/subscription mechanism. To use Postgres as a source, you need to create a replication slot for your CDC migration role:
 
 ```
 PERFORM pg_create_logical_replication_slot('$MIGRATION_ROLE',  'pgoutput');
 ```
 
-Reference:
- - `$MIGRATION_ROLE`: The name of the Postgres role / user to be used for CDC migration database access
- - `pgoutput`: The logical decoding plugin used by EDB Transporter, supplied by Postgres.
+Where:
+ - `$MIGRATION_ROLE` is the name of the Postgres role or user to use for CDC migration database access.
+ - `pgoutput` is the logical decoding plugin  supplied by Postgres that EDB Transporter uses.
 
-## More Information
+## More information
 
- After completing the preparation outlined in this guide your database is ready for CDC migration.
+Your database is ready for CDC migration.
 
- For additional information, feel free to reference the [Debezium Postgres Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) documentation.
+For more information, see the [Debezium Postgres Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) documentation.
