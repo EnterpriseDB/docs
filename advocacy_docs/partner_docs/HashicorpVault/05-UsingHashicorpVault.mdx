@@ -3,31 +3,103 @@ title: 'Using'
 description: 'Walkthrough of example usage scenarios'
 ---
 
-After you have configured Hashicorp Vault Transit Secrets Engine as stated in the Configuring section, you will be able to then encrypt your EDB Postgres Advanced Server database.
+After you have configured all of the Hashicorp Vault keys as stated in the Configuring section, you will be able to use them in conjunction with EDB Postgres Advanced Server 15.2.
 
 !!! Note
-    It is important to note that this doc is intended for versions 15.2 and above of EDB Postgres Advanced Server or versions 15 and above of EDB Postgres Extended Server as this version supports Transparent Data Encryption (TDE).
+    It is important to note that this doc is intended for versions 15.2 and above of EDB Postgres Advanced Server as this version supports Transparent Data Encryption (TDE).
 
-After the Hashicorp Vault Transit secrets engine is configured and a user/machine has a Vault token with the proper permissions, this was configured during your install and setup of Transit Secrets Engine, it can use this secrets engine to encrypt a key.
+Before you can implement Hashicorp Vault Secrets Engine with your EDB Postgres Advanced Server instance, you must ensure that you have the following downloaded to your system:
+- Python
+- [pykmip](https://pypi.org/project/PyKMIP/#files)
+- edb_tde_kmip_client.py downloaded from your EDB Repos access
+
+All of the `.pem` files that you created need to be on the system where your EDB Postgres Advanced Server 15.2 instance is installed.  For our example in this guide, all of the `.pem` files and the `edb_tde_kmip_client.py` program are in the `/tmp/` directory.
+
+## Create pykmip.conf File
+
+1. On your system where you have your EDB Postgres Advanced Server 15.2 instance, navigate to the directory where you have saved your `.pem` files and the `edb_tde_kmip_client.py` client.
+
+2. In that directory create a file called `pykmip.conf` and input the following:
+- Host
+- Port
+- Keyfile
+- Certfile
+- Ca_certs
+
+For example:
+```bash
+ubuntu@ip-172-31-46-134:/tmp$ cat pykmip.conf 
+[client]
+host=127.0.0.1
+port=5696
+keyfile=/tmp/key.pem
+certfile=/tmp/cert.pem
+ca_certs=/tmp/ca.pem
+#cert_reqs=CERT_REQUIRED
+```
+
+!!! Note
+    For more information on the pykmip.conf file and the contents of it you can visit the [pykmip documentation](https://pykmip.readthedocs.io/en/latest/client.html).
+
+## Create a Key on Hashicorp Vault Secrets Engine
+
+1. On your system where you have your EDB Postgres Advanced Server 15.2 instance, assume root user to create the key on the Hashicorp Vault Secrets Engine.
+
+2. Type `python3` and then input the following, making adjustments per your system setup and directory paths:
+
+```bash
+>>> from kmip.pie import client
+>>> from kmip import enums
+>>> c = client.ProxyKmipClient(config_file='/tmp/pykmip.conf')
+>>> c.open()
+>>> key_id = c.create(enums.CryptographicAlgorithm.AES, 128, name='edbtestkey')
+    (`edbtestkey` is the name that we chose for our TDE master key. Alter this per your naming requirements.)
+>>> c.activate(key_id)
+>>> key_id
+>>> 'key_output_shows_here'
+>>> c.close()
+
+```
+3. If this runs without error then your key has been successfully created.  You cannot view keys that you create in Hashicorp Vault.
+
+## Verify Encryption and Decryption
+
+To ensure that your key that you created will be able to encrypt and decrypt data, run the following two commands as the root user on your system where you have your EDB Postgres Advanced Server 15.2 instance.
+
+1. `printf secret | python3 /tmp/edb_tde_kmip_client.py encrypt --out-file=test.bin --pykmip-config-file=/tmp/pykmip.conf  --key-uid='key_output_here’ --variant=pykmip`
+- Location of the KMIP Client: /tmp/edb_tde_kmip_client.py
+- Output file: test.bin
+- Location of pykmip configuration file: /tmp/pykmip.conf
+- Encrypted Key Output: TDE key output
+- Variant: Allows compatibility with KMIP servers
+
+2. `python3 /tmp/edb_tde_kmip_client.py decrypt --in-file=test.bin --pykmip-config-file=/tmp/pykmip.conf --key-uid='key_output_here' --variant=pykmip`
+
+3. If this is successful it should produce the output of **secret**.
+
+```bash
+root@ip-172-31-46-134:/etc/vault.d# printf secret | python3 /tmp/edb_tde_kmip_client.py encrypt --out-file=test.bin --pykmip-config-file=/tmp/pykmip.conf --key-uid='nfTCV2Cp5sffhQuRrOVfgCUyu8qh9kwd' --variant=pykmip
+root@ip-172-31-46-134:/etc/vault.d# python3 /tmp/edb_tde_kmip_client.py decrypt --in-file=test.bin --pykmip-config-file=/tmp/pykmip.conf --key-uid='nfTCV2Cp5sffhQuRrOVfgCUyu8qh9kwd' --variant=pykmip
+Secret
+root@ip-172-31-46-134:/etc/vault.d# 
+```
 
 ## Perform initdb for the Database
 
-After you have enabled Hashicorp Vault Transit Secrets Engine and created a key, you will be able to export the PGDATAKEYWRAPCMD and PGDATAKEYUNWRAPCMD to wrap and unwrap your encryption key and initialize your database.
+After you have completed the above steps you will be able to export the PGDATAKEYWRAPCMD and PGDATAKEYUNWRAPCMD to wrap and unwrap your encryption key and initialize your database.
 
-1. Login to your EDB Postgres Advanced Server system as the database superuser, for example `sudo su - enterprisedb`.
+1. Login to your EDB Postgres Advanced Server system as enterprisedb user, `sudo su - enterprisedb`.
 
 2. Navigate to the `/bin` directory where your executables live. In our example it is `/usr/lib/edb-as/15/bin`.
 
-3. Type: `export PGDATAKEYWRAPCMD='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > %p'`
+3. Type: `export PGDATAKEYWRAPCMD='python3 /tmp/edb_tde_kmip_client.py encrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=key_ouput_here --out-file=%p --variant=pykmip’`
 
-4. Type: `export PGDATAKEYUNWRAPCMD='cat %p | vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- | base64 --decode'`
+4. Type: `export PGDATAKEYUNWRAPCMD='python3 /tmp/edb_tde_kmip_client.py decrypt  --pykmip-config-file=/tmp/pykmip.conf   --key-uid=key_output_here  --in-file=%p --variant=pykmip’`
 
 ```bash
-root@ip-172-31-50-151:/usr/lib/edb-pge/15/bin# su - enterprisedb
+enterprisedb@ip-172-31-46-134:/usr/lib/edb-as/15/bin$ export PGDATAKEYWRAPCMD='python3 /tmp/edb_tde_kmip_client.py encrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=nfTCV2Cp5sffhQuRrOVfgCUyu8qh9kwd --out-file=%p --variant=pykmip'
 
-enterprisedb@ip-172-31-50-151:~$ export PGDATAKEYWRAPCMD='base64 | vault write -field=ciphertext transit/encrypt/pg-tde-master-1 plaintext=- > %p'
-
-enterprisedb@ip-172-31-50-151:~$ export PGDATAKEYUNWRAPCMD='cat %p | vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- | base64 --decode'
+enterprisedb@ip-172-31-46-134:/usr/lib/edb-as/15/bin$ export PGDATAKEYUNWRAPCMD='python3 /tmp/edb_tde_kmip_client.py decrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=nfTCV2Cp5sffhQuRrOVfgCUyu8qh9kwd --in-file=%p --variant=pykmip'
 ```
 5. Perform your initdb per your database requirements, for example: `./initdb -D dd12 -y`.
 
@@ -169,8 +241,8 @@ Success. You can now start the database server using:
 ```bash
 # - Authentication -
 
-#authentication_timeout = 1min		# 1s-600s
-#password_encryption = scram-sha-256	# scram-sha-256 or md5
+#authentication_timeout = 1min          # 1s-600s
+#password_encryption = scram-sha-256    # scram-sha-256 or md5
 #db_user_namespace = off
 
 # GSSAPI using Kerberos
@@ -196,22 +268,10 @@ Success. You can now start the database server using:
 
 # - Data Encryption -
 
-data_encryption_key_unwrap_command = 'cat %p | vault write -field=plaintext transit/decrypt/pg-tde-master-1 ciphertext=- | base64 --decode'
+data_encryption_key_unwrap_command = 'python3 /tmp/edb_tde_kmip_client.py decrypt --pykmip-config-file=/tmp/pykmip.conf --key-uid=nfTCV2Cp5sffhQuRrOVfgCUyu8qh9kwd --in-file=%p --variant=pykmip'
 
 ```
-## Encrypt Plaintext Data
 
-Hashicorp Vault Transit Secrets Engine can also encrypt some plaintext data.  However any plaintext data needs to be base64-encoded.  This is a requirement as Hashicorp Vault does not require that the plaintext data is "text", it could also be another type of file.
-
-```bash
-enterprisedb@ip-172-31-50-151:~$ export VAULT_TOKEN="hvs.D9lfoRBZYtdJY2t3lG3f6yUa"
-enterprisedb@ip-172-31-50-151:~$ vault write transit/encrypt/pg-tde-master-1 plaintext=$(echo "my secret data" | base64)
-Key            Value
----            -----
-ciphertext     vault:v1:/laUa+i1RVs4kFDD+a6Dmm+mJvVuo8jW0JHWISlzEe/ur/nUlfswEyYShA==
-key_version    1
-```
-As an added note, Hashicorp Vault does not store any data, that is up to the database user.  For any more information on Hashicorp Vault Transit Secrets Engine visit the [Hashicorp](https://developer.hashicorp.com/vault/docs/secrets/transit) documentation.
 
 For more information on how TDE is incorporated with EDB Postgres Advanced Server visit the [EDB Transparent Data Encryption](https://www.enterprisedb.com/docs/tde/latest/) documentation.
 
