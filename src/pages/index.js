@@ -181,7 +181,7 @@ const Page = () => (
               to="/biganimal/latest/free_trial/"
               className="nested-link"
             >
-              Free Trial
+              Quick Start
             </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
