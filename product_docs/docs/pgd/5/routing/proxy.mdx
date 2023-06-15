@@ -40,6 +40,7 @@ PGD Proxy provides the consensus_grace_period proxy option that can be used to c
 
 The main purpose of this option is to allow users to configure the write behavior when the Raft leader is lost. When the Raft leader isn't present in the cluster, it's not always guaranteed that the current write leader seen by the proxy is the correct one. In some cases, like network partition in the following example, it is possible that the two write leaders may be seen by two different proxies attached to the same group increasing the chances of write conflicts. If this isn't the desired behavior, then the previously mentioned `consensus_grace_period` can be set to 0s. This setting configures the proxy to stop routing and closes existing open connections immediately when it detects the Raft leader is lost.
 
+
 #### Network partition example
 
 Consider a 3-data node group with a proxy on each data node. In this case, if the current write leader gets network partitioned or isolated, then the data nodes present in the majority partition elects a new write leader. If `consensus_grace_period` is set to a non-zero value, say `10s`, then the proxy present on the previous write leader continues to route writes for this duration.
@@ -47,6 +48,12 @@ Consider a 3-data node group with a proxy on each data node. In this case, if th
 Note that in this case, if the grace period is kept too high, then writes continue to happen on the two write leaders. This condition increases the chances of write conflicts.
 
 Having said that, most of the time, upon loss of the current Raft leader, the new Raft leader gets elected by BDR within a few seconds if more than half of the nodes (quorum) are still up. Hence, if the Raft leader is down but the write leader is still up, then proxy can be configured to allow routing by keeping `consensus_grace_period` to a non-zero, positive value. The proxy waits for the Raft leader to get elected during this period before stopping routing. This might be helpful in some cases where availability is more important.
+
+### Multi-host connection strings
+
+The PostgreSQL C client library (libpq) allows you to specify multiple host names in a single connection string for simple failover. This is also supported by client libraries (drivers) in some other programming languages. It works well for failing over across PGD Proxy instances that are down or inaccessible. 
+
+However, if the PGD Proxy instance is accessible but does not have access to the write leader or the write leader for given instance does not exist (i.e. because there is no write leader for the given PGD group), the connection will simply fail and no other hosts in the multi-host connection string will be tried. This is consistent with behavior of PostgreSQL client library with other proxies like HAProxy or pgbouncer.
 
 ## Managing PGD Proxy
 
