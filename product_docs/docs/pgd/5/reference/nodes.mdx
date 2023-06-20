@@ -1,0 +1,131 @@
+---
+navTitle: Node management 
+title: Node management
+indexdepth: 3
+---
+
+## List of node states
+
+-   `NONE`: Node state is unset when the worker starts, expected to be set quickly
+    to the current known state.
+-   `CREATED`: `bdr.create_node()` was executed, but the node isn't a
+    member of any EDB Postgres Distributed cluster yet.
+-   `JOIN_START`: `bdr.join_node_group()` begins to join the local node to an
+    existing EDB Postgres Distributed cluster.
+-   `JOINING`: The node join has started and is currently at the initial sync phase,
+    creating the schema and data on the node.
+-   `CATCHUP`: Initial sync phase is completed. Now the join is at the last step
+    of retrieving and applying transactions that were performed on the upstream
+    peer node since the join started.
+-   `STANDBY`:  Node join finished, but hasn't yet started to broadcast changes.
+    All joins spend some time in this state, but if defined as a logical standby,
+    the node continues in this state.
+-   `PROMOTE`: Node was a logical standby and we just called `bdr.promote_node` to
+    move the node state to `ACTIVE`. These two `PROMOTE`states have to be coherent
+    to the fact that only one node can be with a state higher than `STANDBY` but
+    lower than `ACTIVE`.
+-   `PROMOTING`: Promotion from logical standby to full PGD node is in progress.
+-   `ACTIVE`: The node is a full PGD node and is currently `ACTIVE`. This is the
+    most common node status.
+-   `PART_START`: Node was `ACTIVE` or `STANDBY` and we just called `bdr.part_node`
+    to remove the node from the EDB Postgres Distributed cluster.
+-   `PARTING`: Node disconnects from other nodes and plays no further part in
+    consensus or replication.
+-   `PART_CATCHUP`: Nonparting nodes synchronize any missing data from the
+    recently parted node.
+-   `PARTED`: Node parting operation is now complete on all nodes.
+
+Only one node at a time can be in either of the states PROMOTE or PROMOTING.
+
+## Node-management commands
+
+PGD also provides a command-line utility for adding nodes to the PGD group using
+physical copy (`pg_basebackup`) of an existing node and for converting a
+physical standby of an existing node to a new node in the PGD group.
+
+### `bdr_init_physical`
+
+This is a regular command that's added to PostgreSQL's bin directory.
+
+You must specify a data directory. If this data directory is empty,
+use the `pg_basebackup -X stream` to fill the directory
+using a fast block-level copy operation.
+
+If the specified data directory isn't empty, this is used as the
+base for the new node. If the data directory is already active as a
+physical standby node, you need to stop the standby before running
+`bdr_init_physical`, which manages Postgres. Initially it
+waits for catchup and then promotes to a master node before joining the PGD
+group. The `--standby` option, if used, turns the existing
+physical standby into a logical standby node. It refers to the end state
+of the new PGD node, not the starting state of the specified data directory.
+
+This command drops all PostgreSQL-native logical replication
+subscriptions from the database (or disables them when the `-S` option is
+used) as well as any replication origins and slots.
+
+#### Synopsis
+
+```shell
+bdr_init_physical [OPTION] ...
+```
+
+#### Options
+
+##### General options
+
+-   `-D, --pgdata=DIRECTORY` &mdash; The data directory to use for the new node. It
+    can be either an empty or nonexistent directory or a directory populated using the
+    `pg_basebackup -X stream` command (required).
+-   `-l, --log-file=FILE` &mdash; Use FILE for logging. The default is
+    `bdr_init_physical_postgres.log`.
+-   `-n, --node-name=NAME` &mdash; The name of the newly created node (required).
+-   `--replication-sets=SETS` &mdash; The name of a comma-separated list of replication
+    set names to use. All replication sets are used if not specified.
+-   `--standby` &mdash; Create a logical standby (receive-only node) rather than full
+    send/receive node.
+-   `--node-group-name` &mdash; Group to join. Defaults to the same group as source node.
+-   `-s, --stop` &mdash; Stop the server once the initialization is done.
+-   `-v` &mdash; Increase logging verbosity.
+-   `-L` &mdash; Perform selective pg_basebackup when used with an
+    empty/nonexistent data directory (-D option). This is a feature of
+    EDB Postgres Extended Server only.
+-   `-S` &mdash; Instead of dropping logical replication subscriptions, disable
+    them.
+
+##### Connection options
+
+-   `-d, --remote-dsn=CONNSTR` &mdash; Connection string for remote node (required).
+-   `--local-dsn=CONNSTR` &mdash; Connection string for local node (required).
+
+##### Configuration files override
+
+-   `--hba-conf` &mdash; Path to the new `pg_hba.conf`.
+-   `--postgresql-conf` &mdash; Path to the new `postgresql.conf`.
+-   `--postgresql-auto-conf` &mdash; Path to the new `postgresql.auto.conf`.
+
+#### Notes
+
+The replication set names specified in the command don't affect the data that
+exists in the data directory before the node joins the PGD group. This is true
+whether `bdr_init_physical` makes its own base backup or an existing base backup
+is being promoted to a new PGD node. Thus the `--replication-sets` option
+affects only the data published and subscribed to after the node joins the PGD node
+group. This behavior is different from the way replication sets are used in a
+logical join, as when using `bdr.join_node_group()`.
+
+The operator can truncate unwanted tables after the join completes.
+Refer to the `bdr.tables` catalog to determine replication set membership and
+identify tables that aren't members of any subscribed-to replication set. We
+strongly recommend that you truncate the tables rather than drop them, because:
+
+-   DDL replication sets aren't necessarily the same as row (DML) replication
+    sets, so you might inadvertently drop the table on other nodes.
+-   If you later want to add the table to a replication set and you dropped
+    it on some subset of nodes, you need to re-create it only
+    on those nodes without creating DDL conflicts before you can add it to
+    any replication sets.
+
+It's simpler and safer to truncate your nonreplicated tables, leaving them
+present but empty.
+

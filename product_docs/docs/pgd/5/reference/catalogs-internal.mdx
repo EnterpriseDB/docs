@@ -1,0 +1,142 @@
+---
+title: Internal catalogs and views
+redirects: 
+  - ../bdr/catalogs
+indexdepth: 3
+---
+Catalogs and views are presented here in alphabetical order.
+
+### `bdr.ddl_epoch`
+
+An internal catalog table holding state per DDL epoch.
+
+#### `bdr.ddl_epoch` columns
+
+| Name                  | Type        | Description                                                              |
+| --------------------- | ----------- | ------------------------------------------------------------------------ |
+| ddl_epoch             | int8        | Monotonically increasing epoch number                                    |
+| origin_node_id        | oid         | Internal node ID of the node that requested creation of this epoch       |
+| epoch_consume_timeout | timestamptz | Timeout of this epoch                                                    |
+| epoch_consumed        | boolean     | Switches to true as soon as the local node has fully processed the epoch |
+| epoch_consumed_lsn    | boolean     | LSN at which the local node has processed the epoch                      |
+
+
+### `bdr.event_history`
+
+Internal catalog table that tracks cluster membership events for a given PGD
+node. Specifically, it tracks:
+
+* Node joins (to the cluster)
+* Raft state changes (i.e. whenever the node changes its role in the consensus
+protocol - leader, follower or candidate to leader) - see [Monitoring Raft Consensus](../monitoring/sql#monitoring-raft-consensus)
+* Whenever a worker has errored out (see [bdr.workers](#bdrworkers)
+and [Monitoring PGD Replication Workers](../monitoring/sql#monitoring-pgd-replication-workers))
+
+#### `bdr.event_history` columns
+
+| Name           | Type        | Description                                                                         |
+| -------------- | ----------- | ----------------------------------------------------------------------------------- |
+| event_node_id  | oid         | The ID of the node to which the event refers to                                     |
+| event_type     | int         | The type of the event (a node, raft or worker related event)                        |
+| event_sub_type | int         | The sub-type of the event, i.e. if it's a join, a state change or an error          |
+| event_source   | text        | The name of the worker process where the event was sourced                          |
+| event_time     | timestamptz | The timestamp at which the event occurred                                           |
+| event_text     | text        | A textual representation of the event (e.g. the error of the worker)                |
+| event_detail   | text        | A more detailed description of the event (for now, only relevant for worker errors) |
+
+### `bdr.event_summary`
+
+A view of the `bdr.event_history` catalog that display the information in a more
+human-friendly format. Specifically, it displays the event types and sub-types
+as textual representations, rather than integers.
+
+### `bdr.node_config`
+
+An internal catalog table with per node configuration options.
+
+#### `bdr.node_config` columns
+
+| Name                    | Type     | Description                              |
+| ----------------------- | -------- | ---------------------------------------- |
+| node_id                 | oid      | The node id                              |
+| node_route_priority     | int      | Priority assigned to this node           |
+| node_route_fence        | boolean  | Switch to fence this node               |
+| node_route_writes       | boolean  | Switch to allow writes                   |
+| node_route_reads        | boolean  | Switch to allow reads                    |
+| node_route_dsn          | text     | The interface of this node               |
+
+### `bdr.node_group_config`
+
+An internal catalog table with per node group configuration options.
+
+#### `bdr.node_group_config` columns
+
+| Name                    | Type     | Description                              |
+| ----------------------- | -------- | ---------------------------------------- |
+| node_group_id           | oid      | The node group id                        |
+| route_writer_max_lag    | bigint   | Maximum write lag accepted               |
+| route_reader_max_lag    | bigint   | Maximum read lag accepted                |
+| route_writer_wait_flush | boolean  | Switch if we need to wait for the flush  |
+
+### `bdr.node_group_routing_config_summary`
+
+Per node group routing configuration options.
+
+### `bdr.node_group_routing_info`
+
+An internal catalog table holding current routing information for a proxy.
+
+#### `bdr.node_group_routing_info` columns
+
+| Name                 | Type     | Description                            |
+| -------------------- | -------- | -------------------------------------- |
+| node_group_id        | oid      | The node group id tha this proxy uses  |
+| write_node_id        | oid      | Current write node                     |
+| prev_write_node_id   | oid      | Previous write node                    |
+| read_node_ids        | oid[]    | List of read nodes IDs                 |
+
+### `bdr.node_group_routing_summary`
+
+A view of `bdr.node_group_routing_info` catalog which shows the information in more friendly way
+
+### `bdr.node_routing_config_summary`
+
+Per node routing configuration options.
+
+### `bdr.proxy_config`
+
+An internal catalog table holding proxy specific configurations.
+
+#### `bdr.proxy_config` columns
+
+| Name                   | Type     | Description                                                              |
+| ---------------------- | -------- | ------------------------------------------------------------------------ |
+| proxy_name             | name     | The name of the proxy                                                    |
+| node_group_id          | oid      | The node group id that this proxy uses                                    |
+| listen_port            | int      | Port that the proxy uses                                                 |
+| max_client_conn        | int      | Number of maximum client connections that the proxy accepts              |
+| max_server_conn        | int      | Number of maximum connections that the server accepts                    |
+| server_conn_timeout    | interval | Timeout for the server connections                                       |
+| server_conn_keepalive  | interval | Interval between the server connection keep alive                        |
+| fallback_group_timeout | interval | Timeout needed for the fallback                                           |
+| fallback_group_ids     | oid[]    | List of group IDs to be used for the fallback                            |
+| listen_addrs           | text[]   | Listen address                                                           |
+
+
+### `bdr.proxy_config_summary`
+
+Per proxy instance specific configuration options.
+
+
+### `bdr.sequence_kind`
+
+An internal state table storing the type of each non-local sequence. We recommend the view
+`bdr.sequences` for diagnostic purposes.
+
+#### `bdr.sequence_kind` columns
+
+| Name    | Type | Description                                                 |
+| ------- | ---- | ----------------------------------------------------------- |
+| seqid   | oid  | Internal OID of the sequence                                |
+| seqkind | char | Internal sequence kind ('l'=local,'t'=timeshard,'s'=snowflakeid,'g'=galloc) |
+

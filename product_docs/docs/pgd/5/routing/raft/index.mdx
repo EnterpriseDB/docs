@@ -1,0 +1,45 @@
+---
+
+title: Proxies, Raft and Raft subgroups
+
+---
+
+PGD manages its metadata using a  Raft model where a top-level group spans all the data nodes in the PGD installation. A Raft leader is elected by the top-level group and propagates the state of the top-level group to all the other nodes in the group. 
+
+!!! Hint What is Raft?
+Raft is an industry accepted algorithm for making decisions though achieving “consensus” from a group of separate nodes within a distributed system. 
+!!!
+
+It is essential for certain operations – such as adding and removing nodes and allocating ranges for [galloc](../../sequences/#pgd-global-sequences) sequences – in the top-level group that a Raft leader is both established and connected.   
+
+It also means that an absolute majority of nodes in the top-level group (one half of them plus one) must be able to reach each other. So, in a top-level group with five nodes, at least three of the nodes must be reachable by each other to establish a Raft leader.
+
+## Proxy routing
+
+One function that also uses Raft is proxy routing. Proxy routing requires that the proxies are able to coordinate writing to a data node within their group of nodes. This data node is the write leader. If the write leader goes offline, the proxies need to be able to switch to a new write leader, selected by the data nodes, to maintain continuity for connected applications.
+
+Proxy routing can be configured on a per node group basis in PGD 5, but the recommended configurations are "global" and "local" routing.
+
+## Global routing
+
+Global routing uses the top-level group to manage the proxy routing. All writable data nodes (not witness or subscribe only nodes) in the group are eligible to become write leader for all proxies. Connections to proxies within the top-level group will be routed to data nodes within the top-level group. 
+
+With global routing there is only one write leader for the entire top-level group.
+
+## Local routing
+
+Local routing uses subgroups, often mapped to locations, to manage the proxy routing within the subgroup. Local routing is often used for geographical separation of writes and it is important for them to continue routing even when the top-level consensus is lost. 
+
+That's because PGD allows queries and asynchronous data manipulation (DMLs) to work even when the top-level consensus is lost. But using the top-level consensus, as is the case with global routing, would mean that new write leaders could not be elected when that consensus was lost. Local groups cannot rely on the top level consensus (not without adding an independent consensus mechanism and its added complexity).
+
+To elegantly address this, PGD 5 introduced subgroup Raft support. This allows the subgroups within a PGD top-level group to elect the leaders they need independently by forming devolved Raft groups which are able to elect write leaders independent of other subgroups or the top-level Raft consensus. Connections to proxies within the subgroup will then route to data nodes within the subgroup. 
+
+With local routing, there is a write leader for each subgroup.
+
+
+## More
+
+* [Raft subgroups and TPA](01_raft_subgroups_and_tpa) shows how Raft subgroups can be enabled in PGD when deploying with Trusted Postgres Architect.
+* [Raft subgroups and PGD CLI](02_raft_subgroups_and_pgd_cli) shows how PGD's Cli reports on the presence and status of Raft subgroups.
+* [Migrating to Raft subgroups](03_migrating_to_raft_subgroups) is a guide to migrating existing installations and enabling Raft subgroups without TPA.
+* [Raft elections in depth](04_raft_elections_in_depth) looks at how the write leader is elected using Raft in detail.

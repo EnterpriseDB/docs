@@ -1,0 +1,353 @@
+---
+title: Global sequence management interfaces
+navTitle: Global sequence management
+indexdepth: 3
+rootisheading: true
+---
+
+PGD provides an interface for converting between a standard PostgreSQL sequence
+and the PGD global sequence.
+
+The following functions are considered to be `DDL`, so DDL replication
+and global locking applies to them.
+
+## Sequence functions
+
+### `bdr.alter_sequence_set_kind`
+
+Allows the owner of a sequence to set the kind of a sequence.
+Once set, `seqkind` is visible only by way of the `bdr.sequences` view.
+In all other ways, the sequence appears as a normal sequence.
+
+PGD treats this function as `DDL`, so DDL replication and global locking applies,
+if it's currently active. See [DDL Replication](ddl).
+
+#### Synopsis
+
+```sql
+bdr.alter_sequence_set_kind(seqoid regclass, seqkind text)
+```
+
+#### Parameters
+
+-   `seqoid` &mdash; Name or Oid of the sequence to alter.
+-   `seqkind` &mdash; `local` for a standard PostgreSQL sequence, `snowflakeid` or
+     `galloc` for globally unique PGD sequences, or `timeshard` for legacy
+     globally unique sequence.
+
+#### Notes
+
+When changing the sequence kind to `galloc`, the first allocated range for that
+sequence uses the sequence start value as the starting point. When there are
+existing values that were used by the sequence before it was changed to `galloc`,
+we recommend moving the starting point so that the newly generated
+values don't conflict with the existing ones using the following command:
+
+```sql
+ALTER SEQUENCE seq_name START starting_value RESTART
+```
+
+This function uses the same replication mechanism as `DDL` statements. This means
+that the replication is affected by the [ddl filters](repsets#ddl-replication-filtering)
+configuration.
+
+The function takes a global `DDL` lock. It also locks the sequence locally.
+
+This function is transactional. You can roll back the effects with the
+`ROLLBACK` of the transaction. The changes are visible to the current
+transaction.
+
+Only the owner of the sequence can execute the `bdr.alter_sequence_set_kind` function
+unless `bdr.backwards_compatibility` is
+set is set to 30618 or lower.
+
+### `bdr.extract_timestamp_from_snowflakeid`
+
+This function extracts the timestamp component of the `snowflakeid` sequence.
+The return value is of type timestamptz.
+
+#### Synopsis
+```sql
+bdr.extract_timestamp_from_snowflakeid(snowflakeid bigint)
+```
+
+#### Parameters
+ - `snowflakeid` &mdash; Value of a snowflakeid sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_nodeid_from_snowflakeid`
+
+This function extracts the nodeid component of the `snowflakeid` sequence.
+
+#### Synopsis
+```sql
+bdr.extract_nodeid_from_snowflakeid(snowflakeid bigint)
+```
+
+#### Parameters
+ - `snowflakeid` &mdash; Value of a snowflakeid sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_localseqid_from_snowflakeid`
+
+This function extracts the local sequence value component of the `snowflakeid` sequence.
+
+#### Synopsis
+```sql
+bdr.extract_localseqid_from_snowflakeid(snowflakeid bigint)
+```
+
+#### Parameters
+ - `snowflakeid` &mdash; Value of a snowflakeid sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.timestamp_to_snowflakeid`
+
+This function converts a timestamp value to a dummy snowflakeid sequence value.
+
+This is useful for doing indexed searches or comparisons of values in the
+snowflakeid column and for a specific timestamp.
+
+For example, given a table `foo` with a column `id` that's using a `snowflakeid`
+sequence, we can get the number of changes since yesterday midnight like this:
+
+```
+SELECT count(1) FROM foo WHERE id > bdr.timestamp_to_snowflakeid('yesterday')
+```
+
+A query formulated this way uses an index scan on the column `id`.
+
+#### Synopsis
+```sql
+bdr.timestamp_to_snowflakeid(ts timestamptz)
+```
+
+#### Parameters
+ - `ts` &mdash; Timestamp to use for the snowflakeid sequence generation.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_timestamp_from_timeshard`
+
+This function extracts the timestamp component of the `timeshard` sequence.
+The return value is of type timestamptz.
+
+#### Synopsis
+
+```sql
+bdr.extract_timestamp_from_timeshard(timeshard_seq bigint)
+```
+
+#### Parameters
+
+-   `timeshard_seq` &mdash; Value of a timeshard sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_nodeid_from_timeshard`
+
+This function extracts the nodeid component of the `timeshard` sequence.
+
+#### Synopsis
+
+```sql
+bdr.extract_nodeid_from_timeshard(timeshard_seq bigint)
+```
+
+#### Parameters
+
+-   `timeshard_seq` &mdash; Value of a timeshard sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_localseqid_from_timeshard`
+
+This function extracts the local sequence value component of the `timeshard` sequence.
+
+#### Synopsis
+
+```sql
+bdr.extract_localseqid_from_timeshard(timeshard_seq bigint)
+```
+
+#### Parameters
+
+-   `timeshard_seq` &mdash; Value of a timeshard sequence.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.timestamp_to_timeshard`
+
+This function converts a timestamp value to a dummy timeshard sequence value.
+
+This is useful for doing indexed searches or comparisons of values in the
+timeshard column and for a specific timestamp.
+
+For example, given a table `foo` with a column `id` that's using a `timeshard`
+sequence, we can get the number of changes since yesterday midnight like this:
+
+```
+SELECT count(1) FROM foo WHERE id > bdr.timestamp_to_timeshard('yesterday')
+```
+
+A query formulated this way uses an index scan on the column `id`.
+
+#### Synopsis
+
+```sql
+bdr.timestamp_to_timeshard(ts timestamptz)
+```
+
+#### Parameters
+
+-   `ts` &mdash; Timestamp to use for the timeshard sequence generation.
+
+#### Notes
+
+This function executes only on the local node.
+
+## KSUUID v2 Functions
+
+Functions for working with `KSUUID` v2 data, K-Sortable UUID data. See also [KSUUID in the sequences documentation](/sequences/#ksuuids).
+
+### `bdr.gen_ksuuid_v2`
+
+This function generates a new `KSUUID` v2 value using the value of timestamp passed as an
+argument or current system time if NULL is passed.
+If you want to generate KSUUID automatically using the system time, pass a NULL argument.
+
+The return value is of type UUID.
+
+#### Synopsis
+
+```sql
+bdr.gen_ksuuid_v2(timestamptz)
+```
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.ksuuid_v2_cmp`
+
+This function compares the `KSUUID` v2 values.
+
+It returns 1 if the first value is newer, -1 if the second value is lower, or zero if they
+are equal.
+
+#### Synopsis
+
+```sql
+bdr.ksuuid_v2_cmp(uuid, uuid)
+```
+
+#### Parameters
+
+-   `UUID` &mdash; `KSUUID` v2 to compare.
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.extract_timestamp_from_ksuuid_v2`
+
+This function extracts the timestamp component of `KSUUID` v2.
+The return value is of type timestamptz.
+
+#### Synopsis
+
+```sql
+bdr.extract_timestamp_from_ksuuid_v2(uuid)
+```
+
+#### Parameters
+
+-   `UUID` &mdash; `KSUUID` v2 value to extract timestamp from.
+
+#### Notes
+
+This function executes only on the local node.
+
+## KSUUID v1 functions
+
+Functions for working with `KSUUID` v1 data, K-Sortable UUID data(v1). Deprecated - See [KSUUID in the sequences documentation](/sequences/#ksuuids) for details.
+
+
+### `bdr.gen_ksuuid`
+
+This function generates a new `KSUUID` v1 value, using the current system time.
+The return value is of type UUID.
+
+#### Synopsis
+
+```sql
+bdr.gen_ksuuid()
+```
+
+#### Notes
+
+This function executes only on the local node.
+
+### `bdr.uuid_v1_cmp`
+
+This function compares the `KSUUID` v1 values.
+
+It returns 1 if the first value is newer, -1 if the second value is lower, or zero if they
+are equal.
+
+#### Synopsis
+
+```sql
+bdr.uuid_v1_cmp(uuid, uuid)
+```
+
+#### Notes
+
+This function executes only on the local node.
+
+#### Parameters
+
+-   `UUID` &mdash; `KSUUID` v1 to compare.
+
+### `bdr.extract_timestamp_from_ksuuid`
+
+This function extracts the timestamp component of `KSUUID` v1 or `UUIDv1` values.
+The return value is of type timestamptz.
+
+#### Synopsis
+
+```sql
+bdr.extract_timestamp_from_ksuuid(uuid)
+```
+
+#### Parameters
+
+-   `UUID` &mdash; `KSUUID` v1 value to extract timestamp from.
+
+#### Notes
+
+This function executes on the local node.
+
+
+
+
+
+
+

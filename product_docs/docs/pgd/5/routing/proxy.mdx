@@ -26,7 +26,7 @@ Upon starting, PGD Proxy connects to one of the endpoints given in the local con
 Endpoints given in the config file are used only at startup. After that, actual endpoints are taken from the PGD catalog's `route_dsn` field in `bdr.node_routing_config_summary`.
 
 
-PGD manages write leader election. PGD Proxy interacts with PGD to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to the current write leader. PGD Proxy disconnects all existing client connections on write leader change or when write leader is unavailable. Write leader election is a Raft-backed activity and is subject to Raft leader availability. Proxy will close the new client connections if write leader is unavailable.
+PGD manages write leader election. PGD Proxy interacts with PGD to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to the current write leader. PGD Proxy disconnects all existing client connections on write leader change or when write leader is unavailable. Write leader election is a Raft-backed activity and is subject to Raft leader availability. PGD Proxy closes the new client connections if write leader is unavailable.
 
 PGD Proxy responds to write leader change events that can be categorized into two modes of operation: *failover* and *switchover*.
 
@@ -34,19 +34,26 @@ Automatic transfer of write leadership from the current write leader node to a n
 
 User-controlled, manual transfer of write leadership from the current write leader to a new target leader is called switchover. Switchover is triggered through the [PGD CLI switchover](../cli/command_ref/pgd_switchover) command. The command is submitted to PGD, which attempts to elect the given target node as the new write leader. Similar to failover, PGD Proxy closes existing client connections and redirects new client connections to the newly elected write leader. This is useful during server maintenance, for example, if the current write leader node needs to be stopped for maintenance like a server update or OS patch update.
 
-### Consensus Grace Period
+### Consensus grace period
 
-PGD Proxy provides the consensus_grace_period proxy option that can be used to configure the routing behavior upon loss of a Raft leader. Proxy will continue to route to the current write leader (if it is available) for this duration. If the new Raft leader is not elected during this period, the proxy will stop routing. If set to `0s` proxy will stop routing immediately.
+PGD Proxy provides the consensus_grace_period proxy option that can be used to configure the routing behavior upon loss of a Raft leader. PGD Proxy continues to route to the current write leader (if it's available) for this duration. If the new Raft leader isn't elected during this period, the proxy stops routing. If set to `0s`, PGD Proxy stops routing immediately.
 
-The main purpose of this option is to allow users to configure the write behaviour when the Raft leader is lost. When the Raft leader is not present in the cluster it is not always guaranteed that the current write leader seen by the proxy is the correct one. In some cases, like network partition in the following example, it is possible that the two write leaders may be seen by two different proxies attached to the same group increasing the chances of write conflicts. If this is not the desired behavior then the previously mentioned  consensus_grace_period can be set to 0s. This setting configures the proxy to stop routing and close existing open connections immediately when it detects the Raft leader is lost.
+The main purpose of this option is to allow users to configure the write behavior when the Raft leader is lost. When the Raft leader isn't present in the cluster, it's not always guaranteed that the current write leader seen by the proxy is the correct one. In some cases, like network partition in the following example, it is possible that the two write leaders may be seen by two different proxies attached to the same group increasing the chances of write conflicts. If this isn't the desired behavior, then the previously mentioned `consensus_grace_period` can be set to 0s. This setting configures the proxy to stop routing and closes existing open connections immediately when it detects the Raft leader is lost.
+
 
 #### Network partition example
 
-Consider a 3 data node group with a proxy on each data node. In this case, if the current write leader gets network partitioned or isolated then the data nodes present in the majority partition will elect a new write leader. If `consensus_grace_period` is set to a non-zero value say `10s` then the proxy present on the previous write leader will continue to route writes for this duration.
+Consider a 3-data node group with a proxy on each data node. In this case, if the current write leader gets network partitioned or isolated, then the data nodes present in the majority partition elects a new write leader. If `consensus_grace_period` is set to a non-zero value, say `10s`, then the proxy present on the previous write leader continues to route writes for this duration.
 
-Note: In this case, if the grace period is kept too high then writes will continue to happen on the two write leaders increasing the chances of write conflicts.
+Note that in this case, if the grace period is kept too high, then writes continue to happen on the two write leaders. This condition increases the chances of write conflicts.
 
-Having said that, most of the time, upon loss of the current Raft leader the new Raft leader gets elected by BDR within a few seconds provided more than half of the nodes (quorum) are still up. Hence, if the Raft leader is down but the write leader is still up then proxy can be configured to allow routing by keeping `consensus_grace_period` to a non-zero, positive value. The proxy will wait for the Raft leader to get elected during this period before stopping routing. This may be helpful in some cases where availability is more important.
+Having said that, most of the time, upon loss of the current Raft leader, the new Raft leader gets elected by BDR within a few seconds if more than half of the nodes (quorum) are still up. Hence, if the Raft leader is down but the write leader is still up, then proxy can be configured to allow routing by keeping `consensus_grace_period` to a non-zero, positive value. The proxy waits for the Raft leader to get elected during this period before stopping routing. This might be helpful in some cases where availability is more important.
+
+### Multi-host connection strings
+
+The PostgreSQL C client library (libpq) allows you to specify multiple host names in a single connection string for simple failover. This is also supported by client libraries (drivers) in some other programming languages. It works well for failing over across PGD Proxy instances that are down or inaccessible. 
+
+However, if the PGD Proxy instance is accessible but does not have access to the write leader or the write leader for given instance does not exist (i.e. because there is no write leader for the given PGD group), the connection will simply fail and no other hosts in the multi-host connection string will be tried. This is consistent with behavior of PostgreSQL client library with other proxies like HAProxy or pgbouncer.
 
 ## Managing PGD Proxy
 
