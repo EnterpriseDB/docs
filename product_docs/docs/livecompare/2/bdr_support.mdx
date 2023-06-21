@@ -5,24 +5,7 @@ originalFilePath: bdr_support.md
 
 ---
 
-You can use LiveCompare against EDB Postgres Distributed (PGD, formerly known as BDR) nodes as well as non-PGD nodes.
 
-Setting `logical_replication_mode = bdr` makes the tool assume that all databases being compared belong to the same PGD cluster. Then you can specify node names as connections and replication sets to filter tables.
-
-For example, suppose you can connect to any node in the PGD cluster, which we'll refer to as the initial connection. By initially connecting to this node, LiveCompare can check PGD metadata and retrieve connection information from all other nodes.
-
-Now suppose you want to compare three PGD nodes. As LiveCompare can connect to any node starting from the initial connection, you don't need to define `dsn` or any connection information for the data connections. You only need to
-define `node_name`. LiveCompare searches in PGD metadata about the connection information for that node and then connects to the node.
-
-For LiveCompare to connect to all other nodes by fetching PGD metadata, LiveCompare must be able to connect to
-them using the same DSN from the PGD view `bdr.node_summary` in the field `interface_connstr`. In this case, we recommend running LiveCompare on the same machine as the initial connection as the postgres user. If that's not possible, then define the `dsn` attribute in all data connections.
-
-You can also specify replication sets as table filters. LiveCompare uses PGD metadata to build the table list, considering only tables that belong to the replication sets you defined in the `replication_sets` setting.
-
-For example, you can create an `.ini` file to compare three PGD nodes:
-
-```ini
-[General Settings]
 logical_replication_mode = bdr
 max_parallel_workers = 4
 
@@ -45,16 +28,16 @@ dsn = port=5432 dbname=liveoutput user=postgres
 replication_sets = set_name = 'bdrgroup'
 ```
 
-You can also tell LiveCompare to compare all active nodes in the PGD cluster. To do so:
+You can also compare all active nodes in the PGD cluster with LiveCompare. 
+To compare all active nodes, perform the following steps:
 
-1. Under `General Settings`, enable `all_bdr_nodes = on`.
-1. Under `Initial Connection`, specify an initial connection.
+1.  Under  `General Settings`, enable  `all_bdr_nodes = on`.
+2.  Under  `Initial Connection`, specify an initial connection.
 
-Additional data connections aren't required.
+Additional data connections are not required.
 
 For example:
-
-```ini
+```
 [General Settings]
 logical_replication_mode = bdr
 max_parallel_workers = 4
@@ -69,10 +52,8 @@ dsn = port=5432 dbname=liveoutput user=postgres
 [Table Filter]
 replication_sets = set_name = 'bdrgroup'
 ```
-
-When `all_bdr_nodes = on`, LiveCompare uses the `Initial Connection` setting to fetch the list of all PGD nodes. While additional data connections aren't required, if set, they're appended to the list of data connections. For example, you can compare a whole PGD cluster against a single Postgres connection, which is useful in migration projects:
-
-```ini
+When  `all_bdr_nodes = on`, LiveCompare uses the  `Initial Connection`  setting to fetch the list of all PGD nodes. Additional data connections are not required. If additional data connections are set, they are appended to the list of data connections. For example, you can compare a whole PGD cluster with a single Postgres connection, which is useful in migration projects:
+```
 [General Settings]
 logical_replication_mode = bdr
 max_parallel_workers = 4
@@ -90,61 +71,62 @@ dsn = port=5432 dbname=liveoutput user=postgres
 [Table Filter]
 replication_sets = set_name = 'bdrgroup'
 ```
-
-The settings `node_name` and `replication_sets` are supported for the following technologies:
+The settings  `node_name`  and  `replication_sets`  are supported for the following technologies:
 
 -   PGD 1, 2, 3, and 4
 -   pglogical 2 and 3
 
-To enable pglogical metadata fetch instead of PGD, set `logical_replication_mode = pglogical` instead of `logical_replication_mode = bdr`.
+To enable pglogical metadata fetch instead of PGD, set  `logical_replication_mode = pglogical`  instead of  `logical_replication_mode = bdr`.
 
 ## PGD witness nodes
 
-Using replication sets in PGD, you can configure specific tables to include in the PGD replication. You can also specify the nodes to receive data from these tables by configuring the node to subscribe to the replication
-set the table belongs to. This setting allows for different architectures such as PGD sharding and the use of PGD witness nodes.
+Using replication sets in PGD, you can configure specific tables and include them in the PGD replication. You can also specify the nodes to receive data from these tables.  You must configure the node to subscribe to the replication set that the table belongs to. This setting allows for different architectures, such as PGD sharding and using PGD witness nodes.
 
-A PGD witness is a regular PGD node that doesn't replicate any DML from other nodes. The purpose of the witness is to provide quorum in Raft Consensus voting. (For details on the PGD witness node, see [Witness nodes](/pgd/latest/nodes/#witness-nodes) in the PGD documentation.) Replication set configuration determines whether the witness replicates DDLs. This means that there are two types of PGD witnesses:
+A PGD witness node is a regular PGD node that does not replicate any DML from other nodes. The purpose of the PGD witness node is to provide quorum in Raft Consensus voting. (For details about the PGD witness node, see  [Witness nodes](https://www.enterprisedb.com/docs/pgd/latest/nodes/#witness-nodes)  in the PGD documentation.) 
 
--   A completely empty node, without any data nor tables
+There are two types of PGD witness nodes:
+
+-   A completely empty node without any data nor tables
 -   A node that replicates DDL from other nodes, so it has empty tables
 
-In the first case, even if the PGD witness is included in the comparison (either manually under `[Connections]` or using `all_bdr_nodes = on`), because the witness doesn't have any tables, the following message is logged:
+Replication set configuration determines whether the PGD witness node replicates DDLs. 
+
+In the first case, even if the PGD witness node is included in the comparison (either manually under  `[Connections]`  or using  `all_bdr_nodes = on`), because the PGD witness node does not have any tables, the following message is logged:
 
 ```
 Table public.tbl does not exist on connection node1
 ```
-
-In the second case, the table exists on the PGD witness. However, it's not correct to report data missing on the witness as divergences. So, for each table, LiveCompare checks the following information on each node included in the comparison:
+In the second case, the table exists on the PGD witness node. However, it is not correct to report data missing on the PGD witness node as divergences. So, for each table, LiveCompare checks the following information on each node included in the comparison:
 
 -   The replication sets that the node subscribes to
 -   The replication sets that the table is associated with
--   The replication sets, if any, you defined in the filter `replication_sets` under `Table Filter`
+-   The replication sets, if any, you defined in the filter  `replication_sets`  under  `Table Filter`
 
-If the intersection among all three lists of replication sets is empty, which is the case for the PGD witness, then LiveCompare logs this message:
-
+If the intersection among all three lists of replication sets is empty, which is the case for the PGD witness node, then LiveCompare logs the following message:
 ```
 Table public.tbl is not subscribed on connection node1
 ```
-
-In both cases, the comparison for that table proceeds on the nodes where the table exists, and the table is replicated according to the replication sets configuration.
+In both cases, the comparison for that table proceeds on the nodes where the table exists, and the table is replicated according to the replication set's configuration.
 
 ## Differences in a PGD cluster
 
-LiveCompare makes changes only to the local node. It's important that corrective changes don't get replicated to other nodes.
+LiveCompare makes changes only to the local node. It is important that corrective changes do not get replicated to other nodes.
 
-When `logical_replication_mode = bdr`, LiveCompare first checks if a replication origin called `bdr_local_only_origin` already exists. (You can configure the name of the replication origin by adjusting the setting `difference_fix_replication_origin`.) If a replication origin called `bdr_local_only_origin` doesn't exist, then LiveCompare creates it on all PGD connections.
+When  `logical_replication_mode = bdr`, LiveCompare first checks if a replication origin called  `bdr_local_only_origin`  already exists. (You can configure the name of the replication origin by adjusting the setting  `difference_fix_replication_origin`.) 
 
-!!! Important
-    PGD 3.6.18 introduced the new preexisting `bdr_local_only_origin` replication origin to use for applying local-only transactions. If LiveCompare is connected to PGD 3.6.18, it doesn't create this replication origin.
+If a replication origin called  `bdr_local_only_origin`  does not exist, then LiveCompare creates it on all PGD connections.
 
-LiveCompare generates apply scripts considering the following:
+##### Important
 
--   Set the current transaction to use the replication origin `bdr_local_only_origin`, so any DML executed has `xmin` associated with `bdr_local_only_origin`.
+PGD 3.6.18 introduced the new pre-existing  `bdr_local_only_origin`  replication origin to use for applying local-only transactions. If LiveCompare is connected to PGD 3.6.18, it does not create this replication origin.
+
+LiveCompare generates application scripts considering the following:
+
+-   Set the current transaction to use the replication origin  `bdr_local_only_origin`, so any DML executed has  `xmin`  associated with  `bdr_local_only_origin`.
 -   Set the current transaction datetime to be far in the past, so if there are any PGD conflicts with real DML being executed on the database, LiveCompare DML always loses the conflict.
 
-After applying a LiveCompare fix script to a PGD node, you can get exactly the rows that were inserted or updated by LiveCompare using the following query. Replace `mytable` with the name of any table.
-
-```postgresql
+After applying a LiveCompare fix script to a PGD node, you can get the rows that were inserted or updated by LiveCompare using the following query. Replace  `mytable`  with the name of any table.
+```
 with lc_origin as (
     select roident
     from pg_replication_origin
@@ -155,26 +137,25 @@ from mytable t
 inner join lc_origin r
 on r.roident = bdr.pg_xact_origin(t.xmin);
 ```
-
 Deleted rows are no longer visible.
 
-LiveCompare requires at least a PostgreSQL user with bdr_superuser privileges to properly fetch metadata.
+LiveCompare requires at least a PostgreSQL user with `bdr_superuser` privileges to fetch metadata.
 
-All of these steps involving replication origins applied only to the output script if the PostgreSQL user has bdr_superuser or PostgreSQL superuser privileges. Otherwise, LiveCompare generates fixes without associating any replication origin. (Transaction replication is still disabled using `SET LOCAL bdr.xact_replication = off`.) However, we recommend using a replication origin when applying the DML scripts. Otherwise, LiveCompare has the same precedence as a regular user application regarding conflict resolution. Also, as there isn't any replication origin associated with the fix, you can't use the query to list all rows fixed by LiveCompare.
+All these steps involve replication origins applied only to the output script if the PostgreSQL user has `bdr_superuser` or PostgreSQL superuser privileges. Otherwise, LiveCompare generates fixes without associating any replication origin. (Transaction replication is still disabled using  `SET LOCAL bdr.xact_replication = off`.) However, we recommend using a replication origin when applying the DML scripts. Otherwise, LiveCompare has the same precedence as a regular user application regarding conflict resolution. Also, as there is no replication origin associated with the fix, you cannot use the query to list all rows fixed by LiveCompare.
 
 Between PGD 3.6.18 and PGD 3.7.0, the following functions are used:
 
--   `bdr.difference_fix_origin_create()`: Executed by LiveCompare to create the replication origin specified in `difference_fix_replication_origin` (by default, set to `bdr_local_only_origin`), if this replication origin doesn't exist.
--   `bdr.difference_fix_session_setup()`: Included in the generated DML script so the transaction is associated with the replication origin specified in `difference_fix_replication_origin`.
+-   `bdr.difference_fix_origin_create()`: Executed by LiveCompare to create the replication origin specified in  `difference_fix_replication_origin`  (by default, set to  `bdr_local_only_origin`), if this replication origin doesn't exist.
+-   `bdr.difference_fix_session_setup()`: Included in the generated DML script so the transaction is associated with the replication origin specified in  `difference_fix_replication_origin`.
 -   `bdr.difference_fix_xact_set_avoid_conflict()`: Included in the generated DML script so the transaction is set far in the past (`2010-01-01`). The fix transaction applied by LiveCompare always loses any conflict.
 
-These functions require a bdr_superuser rather than a PostgreSQL superuser. Starting with PGD 3.7.0, those functions are deprecated. In that case, if running as a PostgreSQL superuser, LiveCompare uses the following functions to perform the same actions:
+These functions require a `bdr_superuser` rather than a PostgreSQL superuser. Starting with PGD 3.7.0, those functions are deprecated. In that case, if running as a PostgreSQL superuser, LiveCompare uses the following functions to perform the same actions:
 
 -   `pg_replication_origin_create(origin_name)`;
 -   `pg_replication_origin_session_setup()`;
 -   `pg_replication_origin_xact_setup()`.
 
-If a PostgreSQL superuser isn't being used, then LiveCompare includes only the following in the generated DML transaction:
+If a PostgreSQL superuser is not being used, then LiveCompare includes only the following information in the generated DML transaction:
 
 ```
 SET LOCAL bdr.xact_replication = off;
@@ -182,20 +163,19 @@ SET LOCAL bdr.xact_replication = off;
 
 ## Conflicts in PGD
 
-LiveCompare has an execution mode called `conflicts`. This execution mode is specific for PGD clusters. It works only in PGD 3.6, PGD 3.7, PGD 4, and PGD 5 clusters.
+LiveCompare has an execution mode called  `conflicts`. This execution mode is specific for PGD clusters. It works only in PGD 3.6, PGD 3.7, PGD 4, and PGD 5 clusters.
 
-While `compare` mode is used to compare all content of tables as a whole, `conflicts` mode focuses just in tuples/tables that are related to existing conflicts that are registered in `bdr.apply_log`, in case of PGD 3.6, or in
-`bdr.conflict_history`, in case of PGD 3.7, PGD 4, and PGD 5.
+While  the `compare`  mode is used to compare all content of tables as a whole,  the `conflicts`  mode focuses on tuples or tables that are related to existing conflicts registered in  `bdr.apply_log`, in case of PGD 3.6, or in  `bdr.conflict_history`, in case of PGD 3.7, PGD 4, and PGD 5.
 
-`conflicts` execution mode is expected to run much faster than `compare` mode because it inspects only specific tuples from specific tables. However, it's not as complete as `compare` mode for the same reason.
+The `conflicts`  execution mode is expected to run much faster than  the `compare`  mode because it inspects only specific tuples from specific tables. However, it is not as complete as the  `compare`  mode for the same reason.
 
 The main objective of this execution mode is to check that the automatic conflict resolution that's being done by PGD is consistent among nodes, that is, after PGD resolves conflicts, the cluster is in a consistent state.
 
-Although, for the general use case, automatic conflict resolution ensures cluster consistency, there are a few known cases where automatic conflict resolution can result in divergent tuples among nodes. So the `conflicts` execution mode from LiveCompare can help with checking and ensuring consistency, providing a good balance between time and result.
+For a general use case, the automatic conflict resolution ensures cluster consistency. However, there are a few known cases where the automatic conflict resolution can result in divergent tuples among nodes. Hence, the  `conflicts`  execution mode from LiveCompare can help in checking and ensuring consistency, providing a good balance between time and result.
 
 ### Conflict example
 
-Suppose on `node3`, you execute the following query:
+Suppose on  `node3`, you execute the following query:
 
 ```
 SELECT c.reloid::regclass,
@@ -211,8 +191,7 @@ FROM bdr.conflict_history c
 INNER JOIN bdr.subscription_summary s
 ON s.sub_id = c.sub_id;
 ```
-
-You can see the following conflict in `bdr.conflict_history`:
+You can see the following conflict in  `bdr.conflict_history`:
 
 ```
 reloid              | tbl
@@ -225,8 +204,9 @@ apply_tuple         |
 conflict_type       | delete_missing
 conflict_resolution | skip
 ```
+This conflict indicates that when the  `DELETE` command arrived from  `node2`  to  `node3`, there was no row with  `b = 3`  in the `tbl` table . However, the  `INSERT` command might have arrived from  `node1`  to  `node3`  later, which then added the row with  `b = 3`  to  `node3`. The following snippet indicates the current situation on  `node3`:
 
-This conflict means that when the `DELETE` arrived from `node2` to `node3`, there was no row with `b = 3` in table `tbl`. However, the `INSERT` might have arrived from `node1` to `node3` later, which then added the row with `b = 3` to `node3`. So this is the current situation on `node3`:
+s
 
 ```
 bdrdb=# SELECT * FROM tbl WHERE b = 3;
