@@ -3,9 +3,11 @@ import { Link } from "./";
 import { useScrollRestoration } from "gatsby";
 import { useLocation } from "@reach/router";
 
-const TableOfContents = ({ toc }) => {
+const TableOfContents = ({ toc, deepToC }) => {
   const scrollRestoration = useScrollRestoration("header-navigation-sidebar");
   const hash = useLocation().hash;
+
+  console.log(`${deepToC}`);
 
   return (
     <ul
@@ -21,12 +23,30 @@ const TableOfContents = ({ toc }) => {
           <li key={item.title}>
             <Link
               className={`d-block py-2 align-middle ${
-                hash === item.url ? "active" : ""
-              }`}
+                deepToC ? "font-italic" : ""
+              } ${hash === item.url ? "active" : ""}`}
               to={item.url}
             >
               {item.title}
             </Link>
+            {deepToC && (
+              <ul className="list-unstyled pl-4 lh-8">
+                {item.items
+                  .filter((subitem) => subitem.title)
+                  .map((subitem) => (
+                    <li key={subitem.title}>
+                      <Link
+                        className={`d-block py-1 align-middle ${
+                          hash === subitem.url ? "active" : ""
+                        }`}
+                        to={subitem.url}
+                      >
+                        {subitem.title}
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+            )}
           </li>
         ))}
     </ul>
