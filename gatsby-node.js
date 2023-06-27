@@ -107,7 +107,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     "generators",
     "refbuilder",
   );
-  command = `cd ${toolPath};npm install;node ${path.join(
+  command = `cd ${toolPath};npm ci;node ${path.join(
     toolPath,
     "refbuilder.js",
   )} --source ${path.join(
