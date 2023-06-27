@@ -325,6 +325,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
               Commvault Backup &amp; Recovery
             </IndexCardLink>
+             <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
               Repostor Data Protector for PostgresSQL
             </IndexCardLink>
