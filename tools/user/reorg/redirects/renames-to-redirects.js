@@ -17,11 +17,16 @@ const baseBranch = args[0] || "origin/develop";
 
 // first bit of this script is synchronous - there's absolutely nothing we can do until git gives us the list of renames,
 // and I don't feel like dealing with the crufty old exec() interface
+// Note that it's entirely possible for the list of renames to have the same
+// files listed multiple times, forming a chain - that gets handled later
+// For when I inevitably forget why I did it this way:
+// - https://git-scm.com/docs/gitrevisions
+// - https://git-scm.com/docs/git-log
 let branch = "";
 let renames = [];
 try {
   branch = execSync("git rev-parse --abbrev-ref HEAD", {cwd: basePath}).toString().trim();
-  renames = execSync(`git diff --name-status ${baseBranch} ${branch}`, {cwd: basePath}).toString()
+  renames = execSync(`git log --diff-filter=R --name-status --pretty=format: ${baseBranch}..${branch}`, {cwd: basePath}).toString()
     .split('\n')
     .filter(l => l.startsWith("R") && l.endsWith(".mdx"))
     .map(l => l.split('\t').slice(1));
@@ -45,16 +50,24 @@ const run = async () => {
     // 2. strip trailing index.mdx
     // 3. strip trailing .mdx
     // 4. strip trailing / 
-    return fsPath.replace(/^advocacy_docs|^product_docs\/docs|index\.mdx$|\.mdx$/g, '').replace(/\/$/, '');
+    return fsPath.replace(/^advocacy_docs|^product_docs\/docs|\/index\.mdx$|\.mdx$/g, '').replace(/\/$/, '');
   };
 
+  const mapRenames = {};
   const mapCurrentPathToRedirect = {};
   for (const [before, after] of renames)
   {
+    // handle chains of renames such that when:
+    // b->c
+    // a->b
+    // mapCurrentPathToRedirect[c] = a 
+    mapRenames[before] = after;
+    const key = mapRenames[after] || after;
+
     const oldUrlPath = fsPathToURLPath(before);
     const newUrlPath = fsPathToURLPath(after);
     const redirectPath = path.relative(newUrlPath, oldUrlPath);
-    mapCurrentPathToRedirect[after] = redirectPath;
+    mapCurrentPathToRedirect[key] = redirectPath;
   }
 
   const sourceFiles = await glob([path.resolve(basePath, "product_docs/**/*.mdx"), path.resolve(basePath, "advocacy_docs/**/*.mdx")]);
