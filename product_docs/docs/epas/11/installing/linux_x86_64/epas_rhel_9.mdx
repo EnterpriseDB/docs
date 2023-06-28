@@ -1,0 +1,149 @@
+---
+navTitle: RHEL 9 or OL 9
+title: Installing EDB Postgres Advanced Server on RHEL 9 or OL 9 x86_64
+# This topic is generated from templates. If you have feedback on it, instead of
+# editing the page and creating a pull request, please enter a GitHub issue and
+# the documentation team will update the templates accordingly.
+
+redirects:
+  - /epas/11/epas_inst_linux/installing_epas_using_edb_repository/x86_amd64/epas_rhel9_x86
+---
+
+## Prerequisites
+
+Before you begin the installation process:
+
+- Set up the EDB repository
+
+  Setting up the repository is a one-time task. If you have already set up your repository, you don't need to perform this step.
+
+  To determine if your repository exists, enter this command:
+
+  `dnf repolist | grep enterprisedb`
+
+  If no output is generated, the repository isn't installed.
+
+  To set up the EDB repository:
+
+  1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+
+  1. Select the button that provides access to the EDB repo.
+
+  1. Select the platform and software that you want to download.
+
+- Install the EPEL repository
+
+  ```shell
+  sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+  ```
+
+- If you are also installing PostGIS, enable additional repositories to resolve dependencies:
+  ```shell
+  ARCH=$( /bin/arch ) subscription-manager repos --enable "codeready-builder-for-rhel-9-${ARCH}-rpms"
+  ```
+  !!!note
+  If you are using a public cloud RHEL image, `subscription manager` may not be enabled and enabling it may incur unnecessary charges. Equivalent packages may be available under a different name such as `codeready-builder-for-rhel-9-rhui-rpms`. Consult the documentation for the RHEL image you are using to determine how to install `codeready-builder`.
+
+## Install the package
+
+```shell
+sudo dnf -y install edb-as<xx>-server
+```
+
+Where `<xx>` is the version of the EDB Postgres Advanced server you are installing. For example, if you are installing version 11, the package name would be `edb-as11-server`.
+
+To install an individual component:
+
+```shell
+sudo dnf -y install <package_name>
+```
+
+Where `package_name` can be any of the available packages from the [available package list](/epas/11/installing/linux_install_details/rpm_packages/).
+
+Installing the server package creates an operating system user named enterprisedb. The user is assigned a user ID (UID) and a group ID (GID). The user has no default password. Use the `passwd` command to assign a password for the user. The default shell for the user is `bash` and the user's home directory is `/var/lib/edb/as11`.
+
+## Initial configuration
+
+This section steps you through getting started with your cluster including logging in, ensuring the installation and initial configuration was successful, connecting to your cluster, and creating the user password.
+
+First you need to initialize and start the database cluster. The `edb-as-11-setup` script creates a cluster in Oracle-compatible mode with the `edb` sample database in the cluster. To create a cluster in Postgres mode, see [Initializing the cluster in Postgres mode](../linux_install_details/managing_an_advanced_server_installation/#initializing-the-cluster-in-postgres-mode).
+
+```shell
+sudo PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as11/bin/edb-as-11-setup initdb
+
+sudo systemctl start edb-as-11
+```
+
+To work in your cluster, login as the enterprisedb user. Connect to the database server using the psql command line client (although you can use a client of your choice with the appropriate connection string).
+
+```shell
+sudo su - enterprisedb
+
+psql edb
+```
+
+The server runs with the `peer` or `ident` permission by default. You can change the authentication method by modifying the `pg_hba.conf` file.
+
+Before changing the authentication method, assign a password to the database superuser, enterprisedb. For more information on changing the authentication, see [modifying the pg_hba.conf file](/epas/latest/epas_guide/03_database_administration/01_configuration_parameters/01_setting_new_parameters/#modifying-the-pg_hbaconf-file).
+
+```sql
+ALTER ROLE enterprisedb IDENTIFIED BY password;
+```
+
+## Experiment
+
+Now you are ready to create and connect to a database, create a table, insert data in a table, and view the data from the table.
+
+First let's create a database to hold human resource information named `hr` using psql.
+
+```sql
+# running in psql
+CREATE DATABASE hr;
+__OUTPUT__
+CREATE DATABASE
+```
+
+Connect to the `hr` database inside psql.
+
+```
+\c hr
+__OUTPUT__
+psql (15.2.0, server 15.2.0)
+You are now connected to database "hr" as user "enterprisedb".
+```
+
+Create columns to hold department numbers, unique department names, and locations.
+
+```
+CREATE TABLE public.dept (deptno numeric(2) NOT NULL CONSTRAINT dept_pk
+PRIMARY KEY, dname varchar(14) CONSTRAINT dept_dname_uq UNIQUE, loc
+varchar(13));
+__OUTPUT__
+CREATE TABLE
+```
+
+Insert values into the `dept` table.
+
+```
+INSERT INTO dept VALUES (10,'ACCOUNTING','NEW YORK');
+__OUTPUT__
+INSERT 0 1
+```
+
+```
+INSERT into dept VALUES (20,'RESEARCH','DALLAS');
+__OUTPUT__
+INSERT 0 1
+```
+
+View what is in the table by selecting the values from the table.
+
+```
+SELECT * FROM dept;
+__OUTPUT__
+deptno  |   dname    |   loc
+--------+------------+----------
+10      | ACCOUNTING | NEW YORK
+20      | RESEARCH   | DALLAS
+(2 rows)
+```
