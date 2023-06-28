@@ -22,9 +22,13 @@ const TableOfContents = ({ toc, deepToC }) => {
         .map((item) => (
           <li key={item.title}>
             <Link
-              className={`d-block py-2 align-middle ${
-                deepToC ? "font-weight-normal" : ""
-              } ${hash === item.url ? "active" : ""}`}
+              className={`d-block py-2 align-middle  ${
+                hash === item.url
+                  ? "active"
+                  : deepToC
+                  ? "font-weight-normal"
+                  : ""
+              }`}
               to={item.url}
             >
               {item.title}
@@ -36,8 +40,10 @@ const TableOfContents = ({ toc, deepToC }) => {
                   .map((subitem) => (
                     <li key={subitem.title}>
                       <Link
-                        className={`d-block py-1 align-middle font-weight-lighter ${
-                          hash === subitem.url ? "active" : ""
+                        className={`d-block py-1 align-middle  ${
+                          hash === subitem.url
+                            ? "active"
+                            : "font-weight-lighter"
                         }`}
                         to={subitem.url}
                       >
