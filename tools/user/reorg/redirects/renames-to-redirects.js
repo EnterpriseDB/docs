@@ -108,10 +108,7 @@ ${error.message}`
   }
 
   let redirects = frontmatter.contents.get("redirects");
-
-  if (sourcePath === "/workspace/docs/product_docs/docs/epas/15/database_administration/01_configuration_parameters/03_configuration_parameters_by_functionality/01_top_performance_related_parameters/05_checkpoint_segments.mdx")
-    console.log("\n\n\n!!! found it\n\n\n");
-
+  
   // create section if needed
   if (redirectPath && !redirects?.items)
   {
