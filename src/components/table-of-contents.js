@@ -7,8 +7,6 @@ const TableOfContents = ({ toc, deepToC }) => {
   const scrollRestoration = useScrollRestoration("header-navigation-sidebar");
   const hash = useLocation().hash;
 
-  console.log(`${deepToC}`);
-
   return (
     <ul
       className="list-unstyled border-left pl-4 lh-12 toc-sticky pt-3"
