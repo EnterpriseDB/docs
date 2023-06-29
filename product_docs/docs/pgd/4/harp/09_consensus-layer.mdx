@@ -142,3 +142,56 @@ instance_defaults:
 The `harp_location` override might also be necessary to favor specific node 
 groupings when using cloud providers such as Amazon that favor availability
 zones in regions over traditional data centers.
+
+## Leadership consensus storage
+
+### Leader elections
+
+The process of selecting a leader begins with the startup of the first HARP manager:
+
+* Starts Postgres on the node
+* Reads the Postgres status (including any data on replication lag)
+* Queries the current leader (there should be none)
+* Stores the leadership request in the DCS
+* If the leadership request in not rejected, store the leader lease in the DCS
+* Refresh the leader lease (on a configurable interval, default is 500ms)
+
+Once established, subsequent HARP manager instances startup in a similar fashion:
+
+* Start Postgres on the node
+* Reads the Postgres status (including any data on replication lag)
+* Queries the current leader (there should be one existing)
+* As there is a leader, assume a shadow role and monitor the leader lease
+* If the lease expires, follow the path of the first HARP manager instance to claim leadership
+
+When HARP Proxy instances are started, they configure themselves with this logic:
+
+* Subscribe to and watch for key changes in the DCS
+* If the leader changes, reconfigure routing
+
+The sequence of events is shown in the diagram below:
+
+![Sequence Diagram](images/HARPsequencediagram.png)
+
+### Detection and recovery
+
+When partitions in availability zones (AZ) occur, the process detailed in Leader elections leads to the following behaviors:
+
+* **Partition of all AZ**s
+  * Leader lease expires
+  * No leader can be elected, routing stops
+
+
+* **Partition of a AZ not containing the write leader**
+  * Normal operations will continue as long as the write leader has a majority.
+
+
+* **Recovery**
+  * If no leader exists
+    * Wait for consensus to be re-established
+    * Elect a new leader
+    * Start routing
+  * Replication will replay outstanding transactions kept in replications slots
+ 
+
+

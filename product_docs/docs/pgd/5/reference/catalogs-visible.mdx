@@ -1,12 +1,44 @@
 ---
-title: Catalogs and views
+title: User visible catalogs and views
 redirects: 
   - ../bdr/catalogs
-
+indexdepth: 3
 ---
 Catalogs and views are presented here in alphabetical order.
 
-## User-visible catalogs and views
+### `bdr.camo_decision_journal`
+
+A persistent journal of decisions resolved by a CAMO partner node
+after a failover, in case `bdr.logical_transaction_status` was
+invoked. Unlike `bdr.node_pre_commit`, this doesn't cover
+transactions processed under normal operational conditions (i.e., both
+nodes of a CAMO pair are running and connected). Entries in this journal
+aren't ever cleaned up automatically. This is a diagnostic
+tool that the system doesn't depend on.
+
+#### `bdr.camo_decision_journal` columns
+
+| Name           | Type        | Description                                    |
+| -------------- | ----------- | ---------------------------------------------- |
+| origin_node_id | oid         | OID of the node where the transaction executed |
+| origin_xid     | oid         | Transaction ID on the remote origin node       |
+| decision       | char        | 'c' for commit, 'a' for abort                  |
+| decision_ts    | timestamptz | Decision time                                  |
+
+### `bdr.commit_scopes`
+
+Catalog storing all possible commit scopes that you can use for
+`bdr.commit_scope` to enable group commit.
+
+#### `bdr.commit_scopes`  columns
+
+|          Name                  | Type | Description                              |
+|--------------------------------|------|----------------------------------------- |
+| commit_scope_id                | oid  | ID of the scope to be referenced         |
+| commit_scope_name              | name | Name of the scope to be referenced       |
+| commit_scope_origin_node_group | oid  | Node group for which the rule applies, referenced by ID |
+| sync_scope_rule                | text | Definition of the scope                  |
+
 
 ### `bdr.conflict_history`
 
@@ -17,7 +49,7 @@ The default data retention period is 30 days.
 Access to this table is possible by any table owner, who can see all
 conflicts for the tables they own, restricted by row-level security.
 
-For details, see [Logging conflicts to a table](consistency/conflicts).
+For details, see [Logging conflicts to a table](../consistency/conflicts).
 
 #### `bdr.conflict_history` columns
 
@@ -75,24 +107,6 @@ A persistent storage for the internal Raft-based KV store used by
 | kv_ttl       | int         | Time to live for the value in milliseconds       |
 | kv_expire_ts | timestamptz | Expiration timestamp (`kv_create_ts` + `kv_ttl`) |
 
-### `bdr.camo_decision_journal`
-
-A persistent journal of decisions resolved by a CAMO partner node
-after a failover, in case `bdr.logical_transaction_status` was
-invoked. Unlike `bdr.node_pre_commit`, this doesn't cover
-transactions processed under normal operational conditions (i.e., both
-nodes of a CAMO pair are running and connected). Entries in this journal
-aren't ever cleaned up automatically. This is a diagnostic
-tool that the system doesn't depend on.
-
-#### `bdr.camo_decision_journal` columns
-
-| Name           | Type        | Description                                    |
-| -------------- | ----------- | ---------------------------------------------- |
-| origin_node_id | oid         | OID of the node where the transaction executed |
-| origin_xid     | oid         | Transaction ID on the remote origin node       |
-| decision       | char        | 'c' for commit, 'a' for abort                  |
-| decision_ts    | timestamptz | Decision time                                  |
 
 ### `bdr.crdt_handlers`
 
@@ -107,7 +121,7 @@ This table lists merge ("handlers") functions for all CRDT data types.
 
 ### `bdr.ddl_replication`
 
-This view lists DDL replication configuration as set up by current [DDL filters](repsets#ddl-replication-filtering).
+This view lists DDL replication configuration as set up by current [DDL filters](../repsets#ddl-replication-filtering).
 
 #### `bdr.ddl_replication` columns
 
@@ -220,23 +234,23 @@ A view containing active global locks on this node. The [`bdr.global_locks`](#bd
 exposes PGD's shared-memory lock state tracking, giving administrators greater
 insight into PGD's global locking activity and progress.
 
-See [Monitoring global locks](monitoring/sql#monitoring-global-locks)
+See [Monitoring global locks](../monitoring/sql#monitoring-global-locks)
 for more information about global locking.
 
 #### `bdr.global_locks` columns
 
 | Name                       | Type        | Description                                                       |
 | -------------------------- | ----------- | ----------------------------------------------------------------- |
-| `origin_node_id`           | oid         | The OID of the node where the global lock has originated          |
-| `origin_node_name`         | name        | Name of the node where the global lock has originated             |
-| `lock_type`                | text        | Type of the lock (DDL or DML)                                     |
-| `relation`                 | text        | Locked relation name (for DML locks) or keys (for advisory locks) |
-| `pid`                      | int4        | PID of the process holding the lock                               |
-| `acquire_stage`            | text        | Internal state of the lock acquisition process                    |
-| `waiters`                  | int4        | List of backends waiting for the same global lock                 |
-| `global_lock_request_time` | timestamptz | Time this global lock acquire was initiated by origin node        |
-| `local_lock_request_time`  | timestamptz | Time the local node started trying to acquire the local lock      |
-| `last_state_change_time`   | timestamptz | Time `acquire_stage` last changed                                 |
+| origin_node_id           | oid         | The OID of the node where the global lock has originated          |
+| origin_node_name         | name        | Name of the node where the global lock has originated             |
+| lock_type                | text        | Type of the lock (DDL or DML)                                     |
+| relation                 | text        | Locked relation name (for DML locks) or keys (for advisory locks) |
+| pid                      | int4        | PID of the process holding the lock                               |
+| acquire_stage            | text        | Internal state of the lock acquisition process                    |
+| waiters                  | int4        | List of backends waiting for the same global lock                 |
+| global_lock_request_time | timestamptz | Time this global lock acquire was initiated by origin node        |
+| local_lock_request_time  | timestamptz | Time the local node started trying to acquire the local lock      |
+| last_state_change_time   | timestamptz | Time `acquire_stage` last changed                                 |
 
 Column details:
 
@@ -270,6 +284,93 @@ Column details:
 -   `last_state_change_time`: The timestamp at which the
     `bdr.global_locks.acquire_stage` field last changed for this global lock
     entry.
+
+
+### `bdr.group_camo_details`
+
+Uses `bdr.run_on_all_nodes` to gather CAMO-related information from all nodes.
+
+#### `bdr.group_camo_details` columns
+
+| Name                       | Type | Description                                                                         |
+| -------------------------- | ---- | ----------------------------------------------------------------------------------- |
+| node_id                    | text | Internal node ID                                                                    |
+| node_name                  | text | Name of the node                                                                    |
+| camo_partner               | text | Node name of the camo partner                                                       |
+| is_camo_partner_connected  | text | Connection status                                                                   |
+| is_camo_partner_ready      | text | Readiness status                                                                    |
+| camo_transactions_resolved | text | Are there any pending and unresolved CAMO transactions                              |
+| apply_lsn                  | text | Latest position reported as replayed (visible)                                      |
+| receive_lsn                | text | Latest LSN of any change or message received (can go backwards in case of restarts) |
+| apply_queue_size           | text | Bytes difference between apply_lsn and receive_lsn                                  |
+
+
+### `bdr.group_raft_details`
+
+Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
+
+#### `bdr.group_raft_details` columns
+
+| Name             | Type | Description                    |
+| ---------------- | ---- | ------------------------------ |
+| node_id          | oid  | Internal node ID               |
+| node_name        | name | Name of the node               |
+| node_group_name  | name | Name of the group is part of   |
+| state            | text | Raft worker state on the node  |
+| leader_id        | oid  | Node id of the RAFT_LEADER     |
+| current_term     | int  | Raft election internal ID      |
+| commit_index     | int  | Raft snapshot internal ID      |
+| nodes            | int  | Number of nodes accessible     |
+| voting_nodes     | int  | Number of nodes voting         |
+| protocol_version | int  | Protocol version for this node |
+
+### `bdr.group_replslots_details`
+
+Uses `bdr.run_on_all_nodes` to gather PGD slot information from all nodes.
+
+#### `bdr.group_replslots_details` columns
+
+| Name            | Type     | Description                                                                     |
+| --------------- | -------- | ------------------------------------------------------------------------------- |
+| node_group_name | text     | Name of the PGD group                                                           |
+| origin_name     | text     | Name of the origin node                                                         |
+| target_name     | text     | Name of the target node                                                         |
+| slot_name       | text     | Slot name on the origin node used by this subscription                          |
+| active          | text     | Is the slot active (does it have a connection attached to it)                   |
+| state           | text     | State of the replication (catchup, streaming, ...) or 'disconnected' if offline |
+| write_lag       | interval | Approximate lag time for reported write                                         |
+| flush_lag       | interval | Approximate lag time for reported flush                                         |
+| replay_lag      | interval | Approximate lag time for reported replay                                        |
+| sent_lag_bytes  | int8     | Bytes difference between sent_lsn and current WAL write position                |
+| write_lag_bytes | int8     | Bytes difference between write_lsn and current WAL write position               |
+| flush_lag_bytes | int8     | Bytes difference between flush_lsn and current WAL write position               |
+| replay_lag_byte | int8     | Bytes difference between replay_lsn and current WAL write position              |
+
+### `bdr.group_subscription_summary`
+
+Uses `bdr.run_on_all_nodes` to gather subscription status from all nodes.
+
+#### `bdr.group_subscription_summary` columns
+
+| Name                       | Type | Description                                    |
+| -------------------------- | ---- | ---------------------------------------------- |
+| origin_node_name           | text | Name of the origin of the subscription         |
+| target_node_name           | text | Name of the target of the subscription         |
+| last_xact_replay_timestamp | text | Timestamp of the last replayed transaction     |
+| sub_lag_seconds            | text | Lag between now and last_xact_replay_timestamp |
+
+### `bdr.group_versions_details`
+
+Uses `bdr.run_on_all_nodes` to gather PGD information from all nodes.
+
+#### `bdr.group_versions_details` columns
+
+| Name             | Type | Description                    |
+| ---------------- | ---- | ------------------------------ |
+| node_id          | oid  | Internal node ID               |
+| node_name        | name | Name of the node               |
+| postgres_version | text | PostgreSQL version on the node |
+| bdr_version      | text | PGD version on the node        |
 
 ### `bdr.local_consensus_snapshot`
 
@@ -312,8 +413,7 @@ This table identifies the local node in the current database of the current Post
 
 ### `bdr.local_node_summary`
 
-A view containing the same information as [`bdr.node_summary`](#bdrnode_summary) but only for the
-local node.
+A view containing the same information as [`bdr.node_summary`](#bdrnode_summary) (plus `pub_repsets` and `sub_repsets`), but only for the local node.
 
 ### `bdr.local_sync_status`
 
@@ -330,21 +430,6 @@ Information about status of either subscription or table synchronization process
 | sync_status       | char   | Current state of the synchronization                     |
 | sync_remote_relid | oid    | ID of the synchronized table (if any) on the upstream    |
 | sync_end_lsn      | pg_lsn | Position at which the synchronization state last changed |
-
-### `bdr.network_path_info`
-
-A catalog view that stores user-defined information on network costs between node locations.
-
-#### `bdr.network_path_info` columns
-
-| Name            | Type    | Description                                |
-| --------------- | ------- | ------------------------------------------ |
-| node_group_name | name    | Name of the PGD group                      |
-| node_region1    | text    | Node region name, from bdr.node_location   |
-| node_region2    | text    | Node region name, from bdr.node_location   |
-| node_location1  | text    | Node location name, from bdr.node_location |
-| node_location2  | text    | Node location name, from bdr.node_location |
-| network_cost    | numeric | Node location name, from bdr.node_location |
 
 ### `bdr.node`
 
@@ -388,6 +473,10 @@ it can get it from a node that already has it(node_source_id) by forwarding.
 The records in this table persists until the node(node_id) is a member of
 the EDB Postgres Distributed cluster.
 
+### `bdr.node_catchup_info_details`
+
+A view of `bdr.node_catchup_info` catalog which shows info in more friendly way
+
 ### `bdr.node_conflict_resolvers`
 
 Currently configured conflict resolution for all known conflict types.
@@ -419,8 +508,9 @@ This catalog table lists all the PGD node groups.
 | node_group_num_writers          | int      | Number of writers to use for subscriptions backing this node group                            |
 | node_group_enable_wal_decoder   | bool     | Whether the group has enable_wal_decoder set                                                  |
 | node_group_streaming_mode       | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
-| node_group_location             | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
-| node_group_enable_proxy_routing | char     | Transaction streaming setting: 'O' - off, 'F' - file, 'W' - writer, 'A' - auto, 'D' - default |
+| node_group_location             | char     | Name of the location associated with the node group |
+| node_group_enable_proxy_routing | char     | Whether the node group allows routing from `pgd-proxy` |
+| node_group_enable_raft | bool | Whether the node group allows Raft Consensus |
 
 ### `bdr.node_group_replication_sets`
 
@@ -451,19 +541,6 @@ local node (as opposed to global view of per-node configuration).
 | ddl_epoch     | int8 | Last epoch number processed by the node                                 |
 | slot_name     | name | Name of the slot used to connect to that node (NULL for the local node) |
 
-### `bdr.node_location`
-
-A catalog view that stores user-defined information on node locations.
-
-#### `bdr.node_location` Columns
-
-| Name            | Type | Description                 |
-| --------------- | ---- | --------------------------- |
-| node_group_name | name | Name of the PGD group       |
-| node_id         | oid  | ID of the node              |
-| node_region     | text | User-supplied region name   |
-| node_location   | text | User-supplied location name |
-
 ### `bdr.node_log_config`
 
 A catalog view that stores information on the conflict logging configurations.
@@ -486,7 +563,7 @@ Every node in the cluster regularly broadcasts its progress every
 is 60000 ms, i.e., 1 minute). Expect N \* (N-1) rows in this relation.
 
 You might be more interested in the `bdr.node_slots` view for monitoring
-purposes. See also [Monitoring](monitoring).
+purposes. See also [Monitoring](../monitoring).
 
 #### `bdr.node_peer_progress` columns
 
@@ -501,23 +578,6 @@ purposes. See also [Monitoring](monitoring).
 | peer_replay_time        | timestamptz | Latest replay time of peer seen by the reporting node                                |
 | last_update_horizon_xid | oid         | Internal resolution horizon: all lower xids are known resolved on the reporting node |
 | last_update_horizon_lsn | pg_lsn      | Internal resolution horizon: same in terms of an LSN of the reporting node           |
-
-### `bdr.node_pre_commit`
-
-Used internally on a node configured as a Commit At Most Once (CAMO)
-partner. Shows the decisions a CAMO partner took on transactions in
-the last 15 minutes.
-
-#### `bdr.node_pre_commit` columns
-
-| Name           | Type        | Description                                    |
-| -------------- | ----------- | ---------------------------------------------- |
-| origin_node_id | oid         | OID of the node where the transaction executed |
-| origin_xid     | oid         | Transaction ID on the remote origin node       |
-| decision       | char        | 'c' for commit, 'a' for abort                  |
-| local_xid      | xid         | Transaction ID on the local node               |
-| commit_ts      | timestamptz | Commit timestamp of the transaction            |
-| decision_ts    | timestamptz | Decision time                                  |
 
 ### `bdr.node_replication_rates`
 
@@ -548,7 +608,7 @@ given node.
 This view contains information about replication slots used in the current
 database by PGD.
 
-See [Monitoring outgoing replication](monitoring/sql#monitoring-outgoing-replication)
+See [Monitoring outgoing replication](../monitoring/sql#monitoring-outgoing-replication)
 for guidance on the use and interpretation of this view's fields.
 
 #### `bdr.node_slots` columns
@@ -705,6 +765,7 @@ currently used by any node.
 | set_autoadd_tables | boolean | Indicates if new tables are automatically added to this replication set        |
 | set_autoadd_seqs   | boolean | Indicates if new sequences are automatically added to this replication set     |
 
+
 ### `bdr.schema_changes`
 
 A simple view to show all the changes to schemas win PGD.
@@ -724,36 +785,6 @@ A simple view to show all the changes to schemas win PGD.
 ### `bdr.sequence_alloc`
 
 A view to see the allocation details for galloc sequences.
-
-#### `bdr.sequence_alloc` columns
-
-| Name                | Type        | Description                                      |
-| ------------------- | ----------- | ------------------------------------------------ |
-| seqid               | regclass    | The ID of the sequence                           |
-| seq_chunk_size      | bigint      | A sequence number for the chunk within its value |
-| seq_allocated_up_to | bigint      |                                                  |
-| seq_nallocs         | bigint      |                                                  |
-| seq_last_alloc      | timestamptz | Last sequence allocated                          |
-
-### `bdr.schema_changes`
-
-A simple view to show all the changes to schemas in PGD.
-
-#### `bdr.schema_changes` columns
-
-| Name                     | Type         | Description               |
-| ------------------------ | ------------ | ------------------------- |
-| schema_changes_ts        | timestampstz | The ID of the trigger     |
-| schema_changes_change    | char         | A flag of change type     |
-| schema_changes_classid   | oid          | Class ID                  |
-| schema_changes_objectid  | oid          | Object ID                 |
-| schema_changes_subid     | smallint     | The subscription          |
-| schema_changes_descr     | text         | The object changed        |
-| schema_changes_addrnames | text\[]      | Location of schema change |
-
-### `bdr.sequence_alloc`
-
-A view to see the sequences allocated.
 
 #### `bdr.sequence_alloc` columns
 
@@ -907,36 +938,6 @@ local node has to other nodes.
 | last_xact_flush_lsn        | timestamptz | LSN of last transaction replayed on this subscription that's flushed durably to disk     |
 | last_xact_replay_timestamp | timestamptz | Timestamp of last transaction replayed on this subscription                              |
 
-### `bdr.replication_status`
-
-This view shows incoming replication status between the local node and
-all other nodes in the EDB Postgres Distributed cluster. We consider replication to be
-blocked when the subscription restarted from the same LSN at least
-twice and not a single transaction is yet applied after the current
-upstream connection was established. If the first transaction after
-restart is very big and still being applied, the `replication_blocked`
-result might be wrong.
-
-If this is a logical standby node, then only the status for its upstream
-node is shown. Similarly, replication status isn't shown for
-subscriber-only nodes since they never send replication changes to other
-nodes.
-
-#### `bdr.replication_status` columns
-
-| Column              | Type                     | Description                                                     |
-| ------------------- | ------------------------ | --------------------------------------------------------------- |
-| node_id             | oid                      | OID of the local node                                           |
-| node_name           | name                     | Name of the local node                                          |
-| origin_node_id      | oid                      | OID of the origin node                                          |
-| origin_node_name    | name                     | Name of the origin node                                         |
-| sub_id              | oid                      | OID of the subscription for this origin node                    |
-| sub_name            | name                     | Name of the subscription for this origin node                   |
-| connected           | boolean                  | Is this node connected to the origin node?                      |
-| replication_blocked | boolean                  | Is the replication currently blocked for this origin?           |
-| connect_time        | timestamp with time zone | Time when the current connection was established                |
-| disconnect_time     | timestamp with time zone | Time when the last connection was dropped                       |
-| uptime              | interval                 | Duration since the current connection is active for this origin |
 
 ### `bdr.tables`
 
@@ -958,6 +959,73 @@ in this table.
 | conflict_detection | text    | Conflict detection method used: row_origin (default), row_version or column_level |
 
 (\*) These columns are reserved for future use and should currently be NULL
+
+### `bdr.taskmgr_work_queue`
+
+Contains work items created and processed by task manager. The work items are created on
+only one node and processed on different nodes.
+
+#### `bdr.taskmgr_work_queue` columns
+
+| Column             | Type   | Description                                                                                                                 |
+| ------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| ap_wq_workid       | bigint | The unique ID of the work item                                                                                              |
+| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                           |
+| ap_wq_relname      | name   | Name of the relation the task belongs to                                                                                    |
+| ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item                                                                 |
+| ap_wq_partname     | name   | Name of the partition created by the workitem                                                                               |
+| ap_wq_work_category| char   | The work category can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition)|
+| ap_wq_work_sql     | text   | SQL query for the work item                                                                                                 |
+| ap_wq_work_depends | Oid\[] | OIDs of the nodes on which the work item depends                                                                            |
+
+### `bdr.taskmgr_workitem_status`
+
+The status of the work items that is updated locally on each node.
+
+#### `bdr.taskmgr_workitem_status` columns
+
+| Column            | Type        | Description                                                                        |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------- |
+| ap_wi_workid      | bigint      | The ID of the work item                                                            |
+| ap_wi_nodeid      | Oid         | OID of the node on which the work item is being processed                          |
+| ap_wi_status      | char        | The status can be either 'q' (Queued), 'c' (Complete), 'f' (Failed), 'u' (Unknown) |
+| ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
+| ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
+
+### `bdr.taskmgr_local_work_queue`
+
+Contains work items created and processed by the task manager. This is
+similar to `bdr.taskmgr_work_queue`, except that these work items are for
+locally managed tables. Each node creates and processes its own local work
+items, independent of other nodes in the cluster.
+
+#### `bdr.taskmgr_local_work_queue` columns
+
+| Column             | Type   | Description                                                                                                              |
+| ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| ap_wq_workid       | bigint | The unique ID of the work item                                                                                           |
+| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                        |
+| ap_wq_relname      | name   | Name of the relation the task belongs to                                                                                 |
+| ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item.                                                             |
+| ap_wq_partname     | name   | Name of the partition created by the workitem                                                                            |
+| ap_wq_work_category| char   | The categoty can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition)  |
+| ap_wq_work_sql     | text   | SQL query for the work item                                                                                              |
+| ap_wq_work_depends | Oid\[] | Always NULL                                                                                                              |
+
+### `bdr.taskmgr_local_workitem_status`
+
+The status of the work items for locally managed tables.
+
+#### `bdr.taskmgr_local_workitem_status` columns
+
+| Column            | Type        | Description                                                                        |
+| ----------------- | ----------- | ---------------------------------------------------------------------------------- |
+| ap_wi_workid      | bigint      | The ID of the work item                                                            |
+| ap_wi_nodeid      | Oid         | OID of the node on which the work item is being processed                          |
+| ap_wi_status      | char        | The status can be either 'q' (Queued), 'c' (Complete), 'f' (Failed), 'u' (Unknown) |
+| ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
+| ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
+
 
 ### `bdr.trigger`
 
@@ -1076,309 +1144,3 @@ instance is shown. Join on the current database to filter it.
 | task_first_registered             | timestamp with time zone | Timestamp when the first registration happened          |
 | since_first_registered            | interval                 | Interval since the first registration                   |
 
-### `bdr.taskmgr_work_queue`
-
-Contains work items created and processed by task manager. The work items are created on
-only one node and processed on different nodes.
-
-#### `bdr.taskmgr_work_queue` columns
-
-| Column             | Type   | Description                                                                                                                 |
-| ------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------- |
-| ap_wq_workid       | bigint | The unique ID of the work item                                                                                              |
-| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                           |
-| ap_wq_relname      | name   | Name of the relation the task belongs to                                                                                    |
-| ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item                                                                 |
-| ap_wq_partname     | name   | Name of the partition created by the workitem                                                                               |
-| ap_wq_work_category| char   | The work category can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition)|
-| ap_wq_work_sql     | text   | SQL query for the work item                                                                                                 |
-| ap_wq_work_depends | Oid\[] | OIDs of the nodes on which the work item depends                                                                            |
-
-### `bdr.taskmgr_workitem_status`
-
-The status of the work items that is updated locally on each node.
-
-#### `bdr.taskmgr_workitem_status` columns
-
-| Column            | Type        | Description                                                                        |
-| ----------------- | ----------- | ---------------------------------------------------------------------------------- |
-| ap_wi_workid      | bigint      | The ID of the work item                                                            |
-| ap_wi_nodeid      | Oid         | OID of the node on which the work item is being processed                          |
-| ap_wi_status      | char        | The status can be either 'q' (Queued), 'c' (Complete), 'f' (Failed), 'u' (Unknown) |
-| ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
-| ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
-
-### `bdr.taskmgr_local_work_queue`
-
-Contains work items created and processed by the task manager. This is
-similar to `bdr.taskmgr_work_queue`, except that these work items are for
-locally managed tables. Each node creates and processes its own local work
-items, independent of other nodes in the cluster.
-
-#### `bdr.taskmgr_local_work_queue` columns
-
-| Column             | Type   | Description                                                                                                              |
-| ------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| ap_wq_workid       | bigint | The unique ID of the work item                                                                                           |
-| ap_wq_ruleid       | int    | ID of the rule listed in autopartition_rules. Rules are specified using bdr.autopartition command                        |
-| ap_wq_relname      | name   | Name of the relation the task belongs to                                                                                 |
-| ap_wq_relnamespace | name   | Name of the tablespace specified in rule for this work item.                                                             |
-| ap_wq_partname     | name   | Name of the partition created by the workitem                                                                            |
-| ap_wq_work_category| char   | The categoty can be either 'c' (Create Partition), 'm' (Migrate Partition), 'd' (Drop Partition), 'a' (Alter Partition)  |
-| ap_wq_work_sql     | text   | SQL query for the work item                                                                                              |
-| ap_wq_work_depends | Oid\[] | Always NULL                                                                                                              |
-
-### `bdr.taskmgr_local_workitem_status`
-
-The status of the work items for locally managed tables.
-
-#### `bdr.taskmgr_local_workitem_status` columns
-
-| Column            | Type        | Description                                                                        |
-| ----------------- | ----------- | ---------------------------------------------------------------------------------- |
-| ap_wi_workid      | bigint      | The ID of the work item                                                            |
-| ap_wi_nodeid      | Oid         | OID of the node on which the work item is being processed                          |
-| ap_wi_status      | char        | The status can be either 'q' (Queued), 'c' (Complete), 'f' (Failed), 'u' (Unknown) |
-| ap_wi_started_at  | timestamptz | The start timestamptz of work item                                                 |
-| ap_wi_finished_at | timestamptz | The end timestamptz of work item                                                   |
-
-### `bdr.group_camo_details`
-
-Uses `bdr.run_on_all_nodes` to gather CAMO-related information from all nodes.
-
-#### `bdr.group_camo_details` columns
-
-| Name                       | Type | Description                                                                         |
-| -------------------------- | ---- | ----------------------------------------------------------------------------------- |
-| node_id                    | text | Internal node ID                                                                    |
-| node_name                  | text | Name of the node                                                                    |
-| camo_partner               | text | Node name of the camo partner                                                       |
-| is_camo_partner_connected  | text | Connection status                                                                   |
-| is_camo_partner_ready      | text | Readiness status                                                                    |
-| camo_transactions_resolved | text | Are there any pending and unresolved CAMO transactions                              |
-| apply_lsn                  | text | Latest position reported as replayed (visible)                                      |
-| receive_lsn                | text | Latest LSN of any change or message received (can go backwards in case of restarts) |
-| apply_queue_size           | text | Bytes difference between apply_lsn and receive_lsn                                  |
-
-### `bdr.commit_scopes`
-
-Catalog storing all possible commit scopes that you can use for
-`bdr.commit_scope` to enable group commit.
-
-#### `bdr.commit_scopes`  columns
-
-|          Name                  | Type | Description                              |
-|--------------------------------|------|----------------------------------------- |
-| commit_scope_id                | oid  | ID of the scope to be referenced         |
-| commit_scope_name              | name | Name of the scope to be referenced       |
-| commit_scope_origin_node_group | oid  | Node group for which the rule applies, referenced by ID |
-| sync_scope_rule                | text | Definition of the scope                  |
-
-### `bdr.group_raft_details`
-
-Uses `bdr.run_on_all_nodes` to gather Raft Consensus status from all nodes.
-
-#### `bdr.group_raft_details` columns
-
-| Name             | Type | Description                    |
-| ---------------- | ---- | ------------------------------ |
-| node_id          | oid  | Internal node ID               |
-| node_name        | name | Name of the node               |
-| node_group_name  | name | Name of the group is part of   |
-| state            | text | Raft worker state on the node  |
-| leader_id        | oid  | Node id of the RAFT_LEADER     |
-| current_term     | int  | Raft election internal ID      |
-| commit_index     | int  | Raft snapshot internal ID      |
-| nodes            | int  | Number of nodes accessible     |
-| voting_nodes     | int  | Number of nodes voting         |
-| protocol_version | int  | Protocol version for this node |
-
-### `bdr.group_replslots_details`
-
-Uses `bdr.run_on_all_nodes` to gather PGD slot information from all nodes.
-
-#### `bdr.group_replslots_details` columns
-
-| Name            | Type     | Description                                                                     |
-| --------------- | -------- | ------------------------------------------------------------------------------- |
-| node_group_name | text     | Name of the PGD group                                                           |
-| origin_name     | text     | Name of the origin node                                                         |
-| target_name     | text     | Name of the target node                                                         |
-| slot_name       | text     | Slot name on the origin node used by this subscription                          |
-| active          | text     | Is the slot active (does it have a connection attached to it)                   |
-| state           | text     | State of the replication (catchup, streaming, ...) or 'disconnected' if offline |
-| write_lag       | interval | Approximate lag time for reported write                                         |
-| flush_lag       | interval | Approximate lag time for reported flush                                         |
-| replay_lag      | interval | Approximate lag time for reported replay                                        |
-| sent_lag_bytes  | int8     | Bytes difference between sent_lsn and current WAL write position                |
-| write_lag_bytes | int8     | Bytes difference between write_lsn and current WAL write position               |
-| flush_lag_bytes | int8     | Bytes difference between flush_lsn and current WAL write position               |
-| replay_lag_byte | int8     | Bytes difference between replay_lsn and current WAL write position              |
-
-### `bdr.group_subscription_summary`
-
-Uses `bdr.run_on_all_nodes` to gather subscription status from all nodes.
-
-#### `bdr.group_subscription_summary` columns
-
-| Name                       | Type | Description                                    |
-| -------------------------- | ---- | ---------------------------------------------- |
-| origin_node_name           | text | Name of the origin of the subscription         |
-| target_node_name           | text | Name of the target of the subscription         |
-| last_xact_replay_timestamp | text | Timestamp of the last replayed transaction     |
-| sub_lag_seconds            | text | Lag between now and last_xact_replay_timestamp |
-
-### `bdr.group_versions_details`
-
-Uses `bdr.run_on_all_nodes` to gather PGD information from all nodes.
-
-#### `bdr.group_versions_details` columns
-
-| Name             | Type | Description                    |
-| ---------------- | ---- | ------------------------------ |
-| node_id          | oid  | Internal node ID               |
-| node_name        | name | Name of the node               |
-| postgres_version | text | PostgreSQL version on the node |
-| bdr_version      | text | PGD version on the node        |
-
-## Internal catalogs and views
-
-### `bdr.ddl_epoch`
-
-An internal catalog table holding state per DDL epoch.
-
-#### `bdr.ddl_epoch` columns
-
-| Name                  | Type        | Description                                                              |
-| --------------------- | ----------- | ------------------------------------------------------------------------ |
-| ddl_epoch             | int8        | Monotonically increasing epoch number                                    |
-| origin_node_id        | oid         | Internal node ID of the node that requested creation of this epoch       |
-| epoch_consume_timeout | timestamptz | Timeout of this epoch                                                    |
-| epoch_consumed        | boolean     | Switches to true as soon as the local node has fully processed the epoch |
-| epoch_consumed_lsn    | boolean     | LSN at which the local node has processed the epoch                      |
-
-
-### `bdr.internal_node_pre_commit`
-
-Internal catalog table. Use the `bdr.node_pre_commit` view.
-
-### `bdr.sequence_kind`
-
-An internal state table storing the type of each nonlocal sequence. We recommend the view
-`bdr.sequences` for diagnostic purposes.
-
-#### `bdr.sequence_kind` columns
-
-| Name    | Type | Description                                                 |
-| ------- | ---- | ----------------------------------------------------------- |
-| seqid   | oid  | Internal OID of the sequence                                |
-| seqkind | char | Internal sequence kind ('l'=local,'t'=timeshard,'s'=snowflakeid,'g'=galloc) |
-
-### `bdr.event_history`
-
-Internal catalog table that tracks cluster membership events for a given PGD
-node. Specifically, it tracks:
-
-* Node joins (to the cluster)
-* Raft state changes (i.e. whenever the node changes its role in the consensus
-protocol - leader, follower or candidate to leader) - see [Monitoring Raft Consensus](monitoring/sql#monitoring-raft-consensus)
-* Whenever a worker has errored out (see [bdr.workers](#bdrworkers)
-and [Monitoring PGD Replication Workers](monitoring/sql#monitoring-pgd-replication-workers))
-
-| Name           | Type        | Description                                                                         |
-| -------------- | ----------- | ----------------------------------------------------------------------------------- |
-| event_node_id  | oid         | The ID of the node to which the event refers to                                     |
-| event_type     | int         | The type of the event (a node, raft or worker related event)                        |
-| event_sub_type | int         | The sub-type of the event, i.e. if it's a join, a state change or an error          |
-| event_source   | text        | The name of the worker process where the event was sourced                          |
-| event_time     | timestamptz | The timestamp at which the event occurred                                           |
-| event_text     | text        | A textual representation of the event (e.g. the error of the worker)                |
-| event_detail   | text        | A more detailed description of the event (for now, only relevant for worker errors) |
-
-### `bdr.event_summary`
-
-A view of the `bdr.event_history` catalog that display the information in a more
-human-friendly format. Specifically, it displays the event types and sub-types
-as textual representations, rather than integers.
-
-### `bdr.node_catchup_info_details`
-
-A view of `bdr.node_catchup_info` catalog which shows info in more friendly way
-
-
-### `bdr.node_group_config`
-
-An internal catalog table with per node group configuration options.
-
-#### `bdr.node_group_config` columns
-
-| Name                    | Type     | Description                              |
-| ----------------------- | -------- | ---------------------------------------- |
-| node_group_id           | oid      | The node group id                        |
-| route_writer_max_lag    | bigint   | Maximum write lag accepted               |
-| route_reader_max_lag    | bigint   | Maximum read lag accepted                |
-| route_writer_wait_flush | boolean  | Switch if we need to wait for the flush  |
-
-### `bdr.node_group_routing_config_summary`
-
-Per node group routing configuration options.
-
-### `bdr.node_config`
-
-An internal catalog table with per node configuration options.
-
-#### `bdr.node_config` columns
-
-| Name                    | Type     | Description                              |
-| ----------------------- | -------- | ---------------------------------------- |
-| node_id                 | oid      | The node id                              |
-| node_route_priority     | int      | Priority assigned to this node           |
-| node_route_fence        | boolean  | Switch to fenxce this node               |
-| node_route_writes       | boolean  | Switch to allow writes                   |
-| node_route_reads        | boolean  | Switch to allow reads                    |
-| node_route_dsn          | text     | The interface of this node               |
-
-### `bdr.node_routing_config_summary`
-
-Per node routing configuration options.
-
-### `bdr.proxy_config`
-
-An internal catalog table holding proxy specific configurations.
-
-#### `bdr.proxy_config` columns
-
-| Name                   | Type     | Description                                                              |
-| ---------------------- | -------- | ------------------------------------------------------------------------ |
-| proxy_name             | name     | The name of the proxy                                                    |
-| node_group_id          | oid      | The node group id that this proxy uses                                    |
-| listen_port            | int      | Port that the proxy uses                                                 |
-| max_client_conn        | int      | Number of maximum client connections that the proxy accepts              |
-| max_server_conn        | int      | Number of maximum connections that the server accepts                    |
-| server_conn_timeout    | interval | Timeout for the server connections                                       |
-| server_conn_keepalive  | interval | Interval between the server connection keep alive                        |
-| fallback_group_timeout | interval | Timeout needed for the falback                                           |
-| fallback_group_ids     | oid[]    | List of group IDs to be used for the fallback                            |
-| listen_addrs           | text[]   | Listen address                                                           |
-
-
-### `bdr.proxy_config_summary`
-
-Per proxy instance specific configuration options.
-
-### `bdr.node_group_routing_info`
-
-An internal catalog table holding current routing information for a proxy.
-
-#### `bdr.node_group_routing_info` columns
-
-| Name                 | Type     | Description                            |
-| -------------------- | -------- | -------------------------------------- |
-| node_group_id        | oid      | The node group id tha this proxy uses  |
-| write_node_id        | oid      | Current write node                     |
-| prev_write_node_id   | oid      | Previous write node                    |
-| read_node_ids        | oid[]    | List of read nodes IDs                 |
-
-### `bdr.node_group_routing_summary`
-
-A view of `bdr.node_group_routing_info` catalog which shows info in more friendly way
