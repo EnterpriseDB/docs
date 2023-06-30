@@ -5,100 +5,77 @@ title: "EDB .NET Connector logging"
 
 <div id="advanced_server_net_connector_logging" class="registered_link"></div>
 
-EDB .NET Connector supports the use of logging to help resolve issues with the .NET Connector when used in your application. The connector uses classes in the `EnterpriseDB.EDBClient.Logging` namespace for logging.
+EDB .NET Connector supports the use of logging to help resolve issues with the .NET Connector when used in your application. EDB .NET Connector supports logging using the standard .NET Microsoft.Extensions.Logging package. For more information about Logging in .Net see [Logging in C# and .NET](https://learn.microsoft.com/en-us/dotnet/core/extensions/logging?tabs=command-line).
 
-## Console logging to standard error
+!!! Note
+    For versions earlier then 7.x, EDB .NET Connector had its own, custom logging API.
 
-`EnterpriseDB.EDBClient.Logging.ConsoleLoggingProvider` is a class that outputs error messages to `STDERR`. To use this class, include the following line in your application before using any of the EDB Postgres Advanced Server .NET Connector APIs.
+## Console logging provider
 
-`EnterpriseDB.EDBClient.Logging.EDBLogManager.Provider = new EnterpriseDB.EDBClient.Logging.ConsoleLoggingProvider(EDBLogLevel.Debug, true, true);`
+.NET logging API works with a variety of built-in and third-party logging providers. The console logging provider logs output to the console.
+
+### Console logging with EDBDataSource
+
+Create a `Microsoft.Extensions.Logging.LoggerFactory` and configure an `EDBDataSource` with it. Any use of connections opened through this data source will log via this logger factory.
+
+```text
+var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+
+var dataSourceBuilder = new EDBDataSourceBuilder(connectionString);
+dataSourceBuilder.UseLoggerFactory(loggerFactory);
+await using var dataSource = dataSourceBuilder.Build();
+
+await using var connection = await dataSource.OpenConnectionAsync();
+await using var command = new EDBCommand("SELECT 1", connection);
+_ = await command.ExecuteScalarAsync();
+```
+
+### Console logging without EDBDataSource
+
+Create a `Microsoft.Extensions.Logging.LoggerFactory` and configure EDB.NET Connector's logger factory globally using `EDBLoggingConfiguration.InitializeLogging` at the start of your program, before any other EDB.NET Connector API is used.
+
+```text
+var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+EDBLoggingConfiguration.InitializeLogging(loggerFactory);
+
+await using var conn = new EDBConnection(connectionString);
+await conn.OpenAsync();
+await using var command = new EDBCommand("SELECT 1", conn);
+_ = await command.ExecuteScalarAsync();
+```
+## Log levels
 
 The following log levels are available:
 
 -   Trace
 -   Debug
--   Info
--   Warn
+-   Information
+-   Warning
 -   Error
 -   Fatal
 
-## Writing a custom logger
-
-If the console logging provider doesn't meet your needs, you can write a custom logger by implementing the `EnterpriseDB.EDBClient.Logging.IEDBLoggingProvider` interface and extending the `EnterpriseDB.EDBClient.Logging.EDBLogger` class, for instance, writing your logs to a file. The following is a simple example of how to write a custom logger:
+This example shows how to change the log level to `Trace`:
 
 ```text
-public class MyLoggingProvider : IEDBLoggingProvider
-    {
-        string _logFile;
-        readonly EDBLogLevel _minLevel;
-        readonly bool _printLevel;
-        readonly bool _printConnectorId;
-
-        public MyLoggingProvider(string logFile, EDBLogLevel minLevel = EDBLogLevel.Info, bool printLevel = false, bool printConnectorId = false)
-        {
-            _logFile = logFile;
-            _minLevel = minLevel;
-            _printLevel = printLevel;
-            _printConnectorId = printConnectorId;
-        }
-
-        public EDBLogger CreateLogger(string name)
-        {
-            return new MyLogger(_logFile, _minLevel, _printLevel, _printConnectorId);
-        }
-    }
-
- class MyLogger : EDBLogger
-    {
-        string _logFile;
-        readonly EDBLogLevel _minLevel;
-        readonly bool _printLevel;
-        readonly bool _printConnectorId;
-
-        internal MyLogger(string logFile, EDBLogLevel minLevel, bool printLevel, bool printConnectorId)
-        {
-            _logFile = logFile;
-            _minLevel = minLevel;
-            _printLevel = printLevel;
-            _printConnectorId = printConnectorId;
-        }
-
-        public override bool IsEnabled(EDBLogLevel level) => level >= _minLevel;
-
-        public override void Log(EDBLogLevel level, int connectorId, string msg, Exception exception = null)
-        {
-            if (!IsEnabled(level))
-                return;
-
-
-            using (StreamWriter writer = new StreamWriter(_logFile, true))
-            {
-                var sb = new StringBuilder();
-                if (_printLevel)
-                {
-                    sb.Append(level.ToString().ToUpper());
-                    sb.Append(' ');
-                }
-
-                if (_printConnectorId && connectorId != 0)
-                {
-                    sb.Append("[");
-                    sb.Append(connectorId);
-                    sb.Append("] ");
-                }
-
-                sb.AppendLine(msg);
-
-                if (exception != null)
-                    sb.AppendLine(exception.ToString());
-
-                writer.Write(sb.ToString());
-            }
-
-        }
-    }
+var loggerFactory = LoggerFactory.Create(builder => builder
+.SetMinimumLevel(LogLevel.Trace
+.AddSimpleConsole()
+);
 ```
 
-To use this custom logger, put the following line in your application before using any of the EDB .NET Connector APIs:
+## Formatting the log output
 
-`EDBLogManager.Provider = new MyLoggingProvider(filepath, EDBLogLevel.Debug, true, true);`
+This example shows how to format your log output. Create a `LoggerFactory` to restrict each log message to a single line and add a date time to the log:
+
+```text
+var loggerFactory = LoggerFactory.Create(builder =>
+builder
+.SetMinimumLevel(LogLevel.Trace)
+.AddSimpleConsole(
+	options =>
+	{
+		options.SingleLine = true;
+		options.TimestampFormat = "yyyy/MM/dd HH:mm:ss ";
+	}
+	));
+```
