@@ -1,0 +1,60 @@
+---
+title: "After statement-level trigger"
+redirects:
+  - ../../../../../epas_compat_spl/13_triggers/07_trigger_examples/02_after_statement_level_trigger #generated for docs/epas/reorg-role-use-case-mode
+---
+
+<div id="after_statement_level_trigger" class="registered_link"></div>
+
+This example shows an after statement-level trigger. When an insert, update, or delete operation occurs on the `emp` table, a row is added to the `empauditlog` table recording the date, user, and action.
+
+```sql
+CREATE TABLE empauditlog (
+    audit_date      DATE,
+    audit_user      VARCHAR2(20),
+    audit_desc      VARCHAR2(20)
+);
+CREATE OR REPLACE TRIGGER emp_audit_trig
+    AFTER INSERT OR UPDATE OR DELETE ON emp
+DECLARE
+    v_action        VARCHAR2(20);
+BEGIN
+    IF INSERTING THEN
+        v_action := 'Added employee(s)';
+    ELSIF UPDATING THEN
+        v_action := 'Updated employee(s)';
+    ELSIF DELETING THEN
+        v_action := 'Deleted employee(s)';
+    END IF;
+    INSERT INTO empauditlog VALUES (SYSDATE, USER,
+        v_action);
+END;
+```
+
+In the following sequence of commands, two rows are inserted into the `emp` table using two `INSERT` commands. One `UPDATE` command updates the `sal` and `comm` columns of both rows. Then, one `DELETE` command deletes both rows.
+
+```sql
+INSERT INTO emp VALUES (9001,'SMITH','ANALYST',7782,SYSDATE,NULL,NULL,10);
+
+INSERT INTO emp VALUES (9002,'JONES','CLERK',7782,SYSDATE,NULL,NULL,10);
+
+UPDATE emp SET sal = 4000.00, comm = 1200.00 WHERE empno IN (9001, 9002);
+
+DELETE FROM emp WHERE empno IN (9001, 9002);
+
+SELECT TO_CHAR(AUDIT_DATE,'DD-MON-YY HH24:MI:SS') AS "AUDIT DATE",
+    audit_user, audit_desc FROM empauditlog ORDER BY 1 ASC;
+__OUTPUT__
+AUDIT DATE         AUDIT_USER           AUDIT_DESC
+------------------ -------------------- --------------------
+31-MAR-05 14:59:48 SYSTEM               Added employee(s)
+31-MAR-05 15:00:07 SYSTEM               Added employee(s)
+31-MAR-05 15:00:19 SYSTEM               Updated employee(s)
+31-MAR-05 15:00:34 SYSTEM               Deleted employee(s)
+```
+
+The contents of the `empauditlog` table show how many times the trigger was fired: 
+
+-  Once each for the two inserts
+-  Once for the update (even though two rows were changed)
+-  Once for the deletion (even though two rows were deleted)
