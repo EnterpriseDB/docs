@@ -42,6 +42,10 @@ const sourceToPluginConfig = {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
   },
+  language_pack: {
+    name: "language_pack",
+    path: "product_docs/docs/language_pack",
+  },
   livecompare: {
     name: "livecompare",
     path: "product_docs/docs/livecompare",

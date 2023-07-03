@@ -28,7 +28,7 @@ const newContent=processDirectory(argv.source, "")
 if(oldFileContent!=newContent) {
     fs.writeFileSync(outputFile, newContent);
     const jsonOutputFile = path.join(argv.source,"index.json");
-    fs.writeFileSync(jsonOutputFile,JSON.stringify(globalMap));
+    fs.writeFileSync(jsonOutputFile,JSON.stringify(globalMap,null,2));
 }
 
 
