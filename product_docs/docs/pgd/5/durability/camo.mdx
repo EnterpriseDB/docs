@@ -54,16 +54,15 @@ When the `DEGRADE ON ... TO ASYNC` clause is used in the commit scope, a node de
 
 This doesn't allow COMMIT status to be retrieved, but it does let you choose availability over consistency. This mode can tolerate a single-node failure. In case both nodes of a CAMO pair fail, they might choose incongruent commit decisions to maintain availability, leading to data inconsistencies.
 
-For a CAMO partner to switch to ready, it needs to be connected, and the estimated catchup interval needs to drop below the `timeout` value of `TO ASYNC`. You can check the current readiness status of a CAMO partner with `bdr.is_camo_partner_ready`, while `bdr.node_replication_rates` provides the current estimate of the catchup time.
+For a CAMO partner to switch to ready, it needs to be connected, and the estimated catchup interval needs to drop below the `timeout` value of `TO ASYNC`. You can check the current readiness status of a CAMO partner with [`bdr.is_camo_partner_ready()`](/pgd/latest/reference/functions#bdris_camo_partner_ready), while [`bdr.node_replication_rates`](/pgd/latest/reference/catalogs-visible#bdrnode_replication_rates) provides the current estimate of the catchup time.
 
-<!-- There's a sentence fragment in this paragraph that I don't how to resolve.  -->
 The switch from CAMO protected to asynchronous mode is only ever triggered by an actual CAMO transaction either because the commit exceeds the `timeout` value of `TO ASYNC` or, in case the CAMO partner is already known, disconnected at the time of commit. This switch is independent of the estimated catchup interval. If the CAMO pair is configured to require the current node to be the write lead of a group as configured through `enable_proxy_routing` node group option. See [Commit scopes](commit-scopes) for syntax. This can prevent a split brain situation due to an isolated node from switching to asynchronous mode. If `enable_proxy_routing` isn't set for the CAMO group, the origin node switches to asynchronous mode immediately.
 
 The switch from asynchronous mode to CAMO mode depends on the CAMO partner node, which initiates the connection. The CAMO partner tries to reconnect at least every 30 seconds. After connectivity is reestablished, it might therefore take up to 30 seconds until the CAMO partner connects back to its origin node. Any lag that accumulated on
 the CAMO partner further delays the switch back to CAMO protected mode.
 
 Unlike during normal CAMO operation, in asynchronous mode there's no added commit overhead. This can be problematic, as it allows the node to continuously process more transactions than the CAMO pair can normally process. Even if the CAMO partner eventually reconnects and applies transactions, its lag only ever increases
-in such a situation, preventing reestablishing the CAMO protection. To artificially throttle transactional throughput, PGD provides the `bdr.camo_local_mode_delay` setting, which allows you to delay a `COMMIT` in local mode by an arbitrary amount of time. We recommend measuring commit times in normal CAMO mode during expected workloads and configuring this delay accordingly. The default is 5 ms, which reflects a asynchronous network and a relatively quick CAMO partner response.
+in such a situation, preventing reestablishing the CAMO protection. To artificially throttle transactional throughput, PGD provides the [`bdr.camo_local_mode_delay`](/pgd/latest/reference/pgd-settings#bdrcamo_local_mode_delay) setting, which allows you to delay a `COMMIT` in local mode by an arbitrary amount of time. We recommend measuring commit times in normal CAMO mode during expected workloads and configuring this delay accordingly. The default is 5 ms, which reflects a asynchronous network and a relatively quick CAMO partner response.
 
 Consider the choice of whether to allow asynchronous mode in view of the architecture and the availability requirements. The following examples provide some detail.
 
@@ -109,76 +108,115 @@ CAMO relies on a retry loop and specific error handling on the client side. Ther
 
 The application must store the global transaction identifier only for the purpose of verifying the transaction status in case of disconnection during `COMMIT`. In particular, the application doesn't need another persistence layer. If the application fails, it needs only the information in the database to restart.
 
-### CAMO partner connection status
+To illustrate this, we have an example of a retry loop in a CAMO-aware client application, written in a C-like pseudo-code. It expects two DSNs `origin_dsn` and `partner_dsn` providing connection information. These usually are the same DSNs as used for the initial call to `bdr.create_node` and can be looked up in `bdr.node_summary`, column `interface_connstr`.
 
-The function `bdr.is_camo_partner_connected` allows checking the connection status of a CAMO partner node configured in pair mode. There currently is no equivalent for CAMO used with Eager Replication.
-
-#### Synopsis
-
-```sql
-bdr.is_camo_partner_connected()
+```
+PGconn *conn = PQconnectdb(origin_dsn);
 ```
 
-#### Return value
+The process starts connecting to the origin node. We now enter our loop:
 
-A Boolean value indicating whether the CAMO partner is currently connected to a WAL sender process on the local node and therefore can receive transactional data and send back confirmations.
-
-### CAMO partner readiness
-
-The function `bdr.is_camo_partner_ready` allows checking the readiness status of a CAMO partner node configured in pair mode. Underneath, this triggers the switch to and from local mode.
-
-#### Synopsis
-
-```sql
-bdr.is_camo_partner_ready()
+```
+loop {
+    PQexec(conn, "BEGIN");
 ```
 
-#### Return value
+We start our transaction and begin populating it with changes:
 
-A Boolean value indicating whether the CAMO partner can reasonably be expected to confirm transactions originating from the local node in a timely manner, that is, before `timeout` for `TO ASYNC` expires.
-
-!!! Note
-    This function queries the past or current state. A positive return value doesn't indicate whether the CAMO partner can confirm future transactions.
-
-### Fetch the CAMO partner
-
-This function shows the local node's CAMO partner (configured by pair mode).
-
-```sql
-bdr.get_configured_camo_partner()
+```
+    PQexec(conn, "INSERT INTO ...");
+    ...
 ```
 
-### Wait for consumption of the apply queue from the CAMO partner
+Once we are done, we need to make a record of the local node id and the transaction id. Both are available as parameters.
 
-The function `bdr.wait_for_camo_partner_queue` is a wrapper of `bdr.wait_for_apply_queue` defaulting to query the CAMO partner node. It returns an error if the local node isn't part of a CAMO pair.
-
-#### Synopsis
-
-```sql
-bdr.wait_for_camo_partner_queue()
+```
+    node_id = PQparameterStatus(conn, "bdr.local_node_id");
+    xid = PQparameterStatus(conn, "transaction_id");
 ```
 
-### Transaction status between CAMO nodes
+We are now ready to try and commit.
 
-This function enables a wait for CAMO transactions to be fully resolved.
-
-```sql
-bdr.camo_transactions_resolved()
+```
+    PQexec(conn, "COMMIT");
+    if (PQresultStatus(res) == PGRES_COMMAND_OK)
+        return SUCCESS;
 ```
 
-### Transaction status query function
+If the result is `PGRES_COMMAND_OK`, we are good and ready to move on. But if it isn't, we need to use CAMO to track the transaction to completion. The first question we need to ask is was the connection bad?
 
-To check the status of a transaction that was being committed when the node failed, the application must use this function:
-
-```sql
-bdr.logical_transaction_status(node_id OID, xid OID,
-                               require_camo_partner boolean)
+```
+    else if (PQstatus(res) == CONNECTION_BAD)
+    {
 ```
 
-With CAMO used in pair mode, use this function only on a node that's part of a CAMO pair. Along with Eager
-Replication, you can use it on all nodes.
+If it was a bad connection, then we can check on the CAMO partner node to see if the transaction made it there.
 
-In both cases, you must call the function within 15 minutes after the commit was issued. The CAMO partner must regularly purge such meta-information and therefore can't provide correct answers for older transactions.
+```
+        conn = PQconnectdb(partner_dsn);
+        if (!connectionEstablished())
+            panic();
+```
+
+If we can't connect to the partner node, there's not a lot we can do. So we should panic, or take similar actions.
+
+But if we can connect, we can use [`bdr.logical_transaction_status()`](/pgd/latest/reference/dc-functions#bdrlogical_transaction_status) to find out how the transaction did. We recorded the required values, node_id and xid - the transaction id, just before we committed the transaction.
+
+```
+        sql = "SELECT bdr.logical_transaction_status($node_id, $xid)";
+        txn_status = PQexec(conn, sql);
+        if (txn_status == "committed")
+            return SUCCESS;
+        else
+            continue;   // to retry the transaction on the partner
+    }
+```
+
+If the transaction reports it has been committed, then we can call this transaction a success. No more action is required. If, on the other hand, it does not report it has been committed, we should continue in the loop so the transaction can be retried on the partner node.
+
+```
+    else
+    {
+        if (isPermanentError())
+            return FAILURE;
+        else
+        {
+            sleep(increasing_retry_delay);
+
+            continue;
+        }
+    }
+}
+```
+
+If status of the transaction wasn't success or connection was bad, we check if the problem was a permanent error; if so, we should report a failure of the transaction. If not, it is still able to be retried and the code should sleep for a period of time that increases with each retry, and then retry the transaction.
+
+
+### Working with the CAMO partner
+
+The function [`bdr.is_camo_partner_connected()`](/pgd/latest/reference/functions#bdris_camo_partner_connected) allows checking the connection status of a CAMO partner node configured in pair mode. There currently is no equivalent for CAMO used with eager replication.
+
+To check that the CAMO partner is ready, use the function [`bdr.is_camo_partner_ready`](/pgd/latest/reference/functions#bdris_camo_partner_ready). Underneath, this triggers the switch to and from local mode.
+
+To find out more about the configured CAMO partner, use [`bdr.get_configured_camo_partner()`](/pgd/latest/reference/functions#bdrget_configured_camo_partner). This will returns the local node's CAMO partner.
+
+You can wait on the camo partner to process the queue with the function
+[`bdr.wait_for_camo_partner_queue()`](/pgd/latest/reference/functions#bdrwait_for_camo_partner_queue).
+This function is a wrapper of
+[`bdr.wait_for_apply_queue`](/pgd/latest/reference/functions#bdrwait_for_apply_queue),
+the difference being that
+[`bdr.wait_for_camo_partner_queue()`](/pgd/latest/reference/functions#bdrwait_for_camo_partner_queue)
+defaults to querying the CAMO partner node. It returns an error if the local
+node isn't part of a CAMO pair.
+
+To check the status of a transaction that was being committed when the node
+failed, the application must use the function
+[`bdr.logical_transaction_status`](/pgd/latest/reference/functions#bdrlogical_transaction_status).
+
+You pass this function the the node_id and transaction_id of the transaction you want to check
+on. With CAMO used in pair mode, you can only use this function on a node that's part of a CAMO pair. Along with Eager Replication, you can use it on all nodes.
+
+In all cases, you must call the function within 15 minutes after the commit was issued. The CAMO partner must regularly purge such meta-information and therefore can't provide correct answers for older transactions.
 
 Before querying the status of a transaction, this function waits for the receive queue to be consumed and fully applied. This mechanism prevents early negative answers for transactions that were received but not yet applied.
 
@@ -186,36 +224,6 @@ Despite its name, it's not always a read-only operation. If the status is unknow
 
 The client must not call this function before attempting to commit on the origin. Otherwise the transaction might be
 forced to roll back.
-
-#### Synopsis
-
-```sql
-bdr.logical_transaction_status(node_id OID, xid OID,
-                               require_camo_partner boolean DEFAULT true)
-```
-
-#### Parameters
-
-- `node_id` &mdash; The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the PQ parameter `bdr.local_node_id`.
-- `xid` &mdash; The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the PQ parameter `transaction_id`.
-- `require_camo_partner` &mdash; Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that was not a CAMO transaction.
-
-#### Return value
-
-The function returns one of these results:
-
-- `'committed'::TEXT` &mdash; The transaction was committed, is visible on both nodes of the CAMO pair, and is eventually replicated to all other PGD nodes. No need for the client to retry it.
-
-- `'aborted'::TEXT` &mdash; The transaction was aborted and isn't replicated to any other PGD node. The client needs to either retry it or escalate the failure to commit the transaction.
-
-- `'in progress'::TEXT` &mdash; The transaction is still in progress on this local node and wasn't committed or aborted yet. The transaction might be in the COMMIT phase, waiting for the CAMO partner to confirm or deny the commit. The recommended client reaction is to disconnect from the origin node and reconnect to the CAMO partner to query that instead. With a load balancer or proxy in between, where the client lacks control over which node gets queried, the client can only poll repeatedly until the status switches to either `'committed'` or `'aborted'`.
-
-  For Eager All-Node Replication, peer nodes yield this result for transactions that aren't yet committed or aborted. Even transactions not yet replicated (or not even started on the origin node) might yield an `in progress` result on a peer PGD node in this case. However, the client must not query the transaction
-  status prior to attempting to commit on the origin.
-
-- `'unknown'::TEXT` &mdash; The transaction specified is unknown, because either it's in the future, not replicated to that specific node yet, or too far in the past. The status of such a transaction isn't yet or is no longer known. This return value is a sign of improper use by the client.
-
-The client must be prepared to retry the function call on error.
 
 ### Connection pools and proxies
 
@@ -226,91 +234,6 @@ Take care to ensure that the application fetches the proper node id. When using 
 A client that isn't directly connected to the PGD nodes might not even notice a failover or switchover. But it can always use the `bdr.local_node_id` parameter to determine which node it's currently connected to. In the crucial situation of a disconnect during COMMIT, the proxy must properly forward that disconnect as an error to the client applying the CAMO protocol.
 
 For CAMO in `received` mode, a proxy that potentially switches between the CAMO pairs must use the `bdr.wait_for_camo_partner_queue` function to prevent stale reads.
-
-### Example
-
-This example shows what a retry loop of a CAMO-aware client application looks like in C-like pseudo-code. It expects two DSNs `origin_dsn` and `partner_dsn` providing connection information. These usually are the same DSNs as used for the initial call to `bdr.create_node` and can be looked up in `bdr.node_summary`, column
-`interface_connstr`.
-
-```shell
-PGconn *conn = PQconnectdb(origin_dsn);
-
-loop {
-    // start a transaction
-    PQexec(conn, "BEGIN");
-
-    // apply transactional changes
-    PQexec(conn, "INSERT INTO ...");
-    ...
-
-    // store a globally unique transaction identifier
-    node_id = PQparameterStatus(conn, "bdr.local_node_id");
-    xid = PQparameterStatus(conn, "transaction_id");
-
-    // attempt to commit
-    PQexec(conn, "COMMIT");
-    if (PQresultStatus(res) == PGRES_COMMAND_OK)
-        return SUCCESS;
-    else if (PQstatus(res) == CONNECTION_BAD)
-    {
-        // Re-connect to the partner
-        conn = PQconnectdb(partner_dsn);
-        // Check if successfully reconnected
-        if (!connectionEstablished())
-            panic();
-
-        // Check the attempted transaction's status
-        sql = "SELECT bdr.logical_transaction_status($node_id, $xid)";
-        txn_status = PQexec(conn, sql);
-        if (txn_status == "committed")
-            return SUCCESS;
-        else
-            continue;   // to retry the transaction on the partner
-    }
-    else
-    {
-        // The connection is intact, but the transaction failed for some
-        // other reason.  Differentiate between permanent and temporary
-        // errors.
-        if (isPermanentError())
-            return FAILURE;
-        else
-        {
-            // Determine an appropriate delay to back-off to account for
-            // temporary failures due to congestion, so as to decrease
-            // the overall load put on the servers.
-            sleep(increasing_retry_delay);
-
-            continue;
-        }
-    }
-}
-```
-
-This example needs to be extended with proper logic for connecting, including retries and error handling. If using a load balancer like PgBouncer, you can implement reconnecting by using `PQreset`. Ensure that the load balancer only ever redirects a client to a CAMO partner and not any other PGD node.
-
-In practice, we recommend an upper limit of retries. Depending on the actions performed in the transaction, other temporary errors might be possible. They need to be handled by retrying the transaction depending on the error code, similarly to the best practices on deadlocks or on serialization failures while in `SERIALIZABLE` isolation mode.
-
-## Interaction with DDL and global locks
-
-Transactions protected by CAMO can contain DDL operations. However, DDL uses global locks, which already provide some synchronization among nodes. See [DDL locking details](../ddl#ddl-locking-details) for more information.
-
-Combining CAMO with DDL imposes a higher latency and also increases the chance of global deadlocks. We therefore recommend using a relatively low `bdr.global_lock_timeout`, which aborts the DDL and therefore resolves a deadlock in a reasonable amount of time.
-
-### Nontransactional DDL
-
-The following DDL operations aren't allowed in a transaction block and therefore can't benefit from CAMO protection. For these, CAMO is automatically disabled internally:
-
-* All concurrent index operations (`CREATE`, `DROP`, and `REINDEX`)
-* `REINDEX DATABASE`, `REINDEX SCHEMA`, and `REINDEX SYSTEM`
-* `VACUUM`
-* `CLUSTER` without any parameter
-* `ALTER TABLE DETACH PARTITION CONCURRENTLY`
-* `ALTER TYPE [enum] ADD VALUE`
-* `ALTER SYSTEM`
-* `CREATE` and `DROP DATABASE`
-* `CREATE` and `DROP TABLESPACE`
-* `ALTER DATABASE [db] TABLESPACE`
 
 ## CAMO limitations
 

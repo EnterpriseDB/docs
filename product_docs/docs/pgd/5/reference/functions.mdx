@@ -973,3 +973,148 @@ bdr.lag_control()
 - `sample_interval` &mdash; Configured minimum time between lag samples and possible
   commit delay adjustments, in milliseconds.
 
+## CAMO functions
+
+CAMO requires that a client actively participates in the committing of a transaction by following the transactions progress. The functions listed here are used for that purpose and explained in the [CAMO](../durability/camo) section.
+
+### `bdr.is_camo_partner_connected`
+
+Allows checking of the connection status of a CAMO partner node configured in pair mode. There currently is no equivalent for CAMO used with eager replication.
+
+#### Synopsis
+
+```sql
+bdr.is_camo_partner_connected()
+```
+
+#### Return value
+
+A Boolean value indicating whether the CAMO partner is currently connected to a WAL sender process on the local node and therefore can receive transactional data and send back confirmations.
+
+### `bdr.is_camo_partner_ready`
+
+Allows checking of the readiness status of a CAMO partner node configured in pair mode. Underneath, this triggers the switch to and from local mode.
+
+#### Synopsis
+
+```sql
+bdr.is_camo_partner_ready()
+```
+
+#### Return value
+
+A Boolean value indicating whether the CAMO partner can reasonably be expected to confirm transactions originating from the local node in a timely manner, that is, before `timeout` for `TO ASYNC` expires.
+
+!!! Note
+    This function queries the past or current state. A positive return value doesn't indicate whether the CAMO partner can confirm future transactions.
+
+### `bdr.get_configured_camo_partner`
+
+This function shows the local node's CAMO partner (configured by pair mode).
+
+#### Synopsis
+
+```sql
+bdr.get_configured_camo_partner()
+```
+
+### `bdr.wait_for_camo_partner_queue`
+
+The function is a wrapper around `bdr.wait_for_apply_queue` defaulting to query the CAMO partner node. It returns an error if the local node isn't part of a CAMO pair.
+
+#### Synopsis
+
+```sql
+bdr.wait_for_camo_partner_queue()
+```
+
+### `bdr.camo_transactions_resolved`
+
+This function begins a wait for CAMO transactions to be fully resolved.
+
+#### Synopsis
+
+```sql
+bdr.camo_transactions_resolved()
+```
+
+### bdr.logical_transaction_status
+
+To check the status of a transaction that was being committed when the node failed, the application must use this function, passing as parameters the node id of the node the transaction originated from and the transaction id on the origin node. These values can be 
+
+
+#### Synopsis
+
+```sql
+bdr.logical_transaction_status(node_id OID, xid OID,
+                               require_camo_partner boolean DEFAULT true)
+```
+
+#### Parameters
+
+- `node_id` &mdash; The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `bdr.local_node_id`.
+- `xid` &mdash; The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `transaction_id`.
+- `require_camo_partner` &mdash; Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that was not a CAMO transaction.
+
+#### Return value
+
+The function returns one of these results:
+
+- `'committed'::TEXT` &mdash; The transaction was committed, is visible on both nodes of the CAMO pair, and is eventually replicated to all other PGD nodes. No need for the client to retry it.
+
+- `'aborted'::TEXT` &mdash; The transaction was aborted and isn't replicated to any other PGD node. The client needs to either retry it or escalate the failure to commit the transaction.
+
+- `'in progress'::TEXT` &mdash; The transaction is still in progress on this local node and wasn't committed or aborted yet. The transaction might be in the COMMIT phase, waiting for the CAMO partner to confirm or deny the commit. The recommended client reaction is to disconnect from the origin node and reconnect to the CAMO partner to query that instead. With a load balancer or proxy in between, where the client lacks control over which node gets queried, the client can only poll repeatedly until the status switches to either `'committed'` or `'aborted'`.
+
+  For eager all-node replication, peer nodes yield this result for transactions that aren't yet committed or aborted. Even transactions not yet replicated (or not even started on the origin node) might yield an `in progress` result on a peer PGD node in this case. However, the client must not query the transaction
+  status prior to attempting to commit on the origin.
+
+- `'unknown'::TEXT` &mdash; The transaction specified is unknown, because either it's in the future, not replicated to that specific node yet, or too far in the past. The status of such a transaction isn't yet or is no longer known. This return value is a sign of improper use by the client.
+
+The client must be prepared to retry the function call on error.
+
+## Commit Scope functions
+
+### `bdr.add_commit_scope`
+
+`bdr.add_commit_scope` creates a rule for the given commit scope name and origin node group. If the rule is the same for all nodes in the EDB Postgres Distributed cluster, invoking this function once for the top-level node group is enough to fully define the commit scope.
+
+Alternatively, you can invoke it multiple times with the same `commit_scope_name` but different origin node groups and rules for commit scopes that vary depending on the origin of the transaction.
+
+#### Synopsis
+
+```sql
+bdr.add_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME,
+    rule TEXT
+    wait_for_ready boolean DEFAULT true)
+```
+
+### `bdr.alter_commit_scope`
+
+`bdr.alter_commit_scope` allows you to change a specific rule for a single origin node group in a commit scope.
+
+#### Synopsis
+
+```sql
+bdr.alter_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME,
+    rule TEXT)
+```
+
+### `bdr.remove_commit_scope`
+
+Drops a single rule in a commit scope. If you define multiple rules for the commit scope, you must invoke this function once per rule to fully remove the entire commit scope.
+
+#### Synopsis
+
+```sql
+bdr.remove_commit_scope(
+    commit_scope_name NAME,
+    origin_node_group NAME)
+```
+
+!!! Note
+    Removing a commit scope that's still used as default by a node group isn't allowed.
