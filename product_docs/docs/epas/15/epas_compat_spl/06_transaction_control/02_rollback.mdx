@@ -1,0 +1,181 @@
+---
+title: "ROLLBACK"
+---
+
+<div id="rollback" class="registered_link"></div>
+
+The `ROLLBACK` command undoes all database updates made during the current transaction and ends the current transaction.
+
+```sql
+ROLLBACK [ WORK ];
+```
+
+You can use the `ROLLBACK` command in anonymous blocks, stored procedures, or functions. In an SPL program, it can appear in the executable section and the exception section.
+
+In this example, the exception section contains a `ROLLBACK` command. Even though the first two `INSERT` commands execute successfully, the third causes an exception that results in the rollback of all the `INSERT` commands in the anonymous block.
+
+```sql
+\set AUTOCOMMIT off
+SET edb_stmt_level_tx TO on;
+
+BEGIN
+    INSERT INTO dept VALUES (50, 'FINANCE', 'DALLAS');
+    INSERT INTO dept VALUES (60, 'MARKETING', 'CHICAGO');
+    INSERT INTO dept VALUES (70, 'HUMAN RESOURCES', 'CHICAGO');
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('SQLERRM: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE);
+END;
+
+SQLERRM: value too long for type character varying(14)
+SQLCODE: 22001
+
+SELECT * FROM dept;
+__OUTPUT__
+deptno  |   dname    |   loc
+--------+------------+----------
+     10 | ACCOUNTING | NEW YORK
+     20 | RESEARCH   | DALLAS
+     30 | SALES      | CHICAGO
+     40 | OPERATIONS | BOSTON
+(4 rows)
+```
+
+This example uses both `COMMIT` and `ROLLBACK`. First, the following stored procedure is created. It inserts a new employee.
+
+```sql
+\set AUTOCOMMIT off
+SET edb_stmt_level_tx TO on;
+
+CREATE OR REPLACE PROCEDURE emp_insert (
+    p_empno         IN emp.empno%TYPE,
+    p_ename         IN emp.ename%TYPE,
+    p_job           IN emp.job%TYPE,
+    p_mgr           IN emp.mgr%TYPE,
+    p_hiredate      IN emp.hiredate%TYPE,
+    p_sal           IN emp.sal%TYPE,
+    p_comm          IN emp.comm%TYPE,
+    p_deptno        IN emp.deptno%TYPE
+)
+IS
+BEGIN
+    INSERT INTO emp VALUES (
+        p_empno,
+        p_ename,
+        p_job,
+        p_mgr,
+        p_hiredate,
+        p_sal,
+        p_comm,
+        p_deptno);
+
+    DBMS_OUTPUT.PUT_LINE('Added employee...');
+    DBMS_OUTPUT.PUT_LINE('Employee # : ' || p_empno);
+    DBMS_OUTPUT.PUT_LINE('Name       : ' || p_ename);
+    DBMS_OUTPUT.PUT_LINE('Job        : ' || p_job);
+    DBMS_OUTPUT.PUT_LINE('Manager    : ' || p_mgr);
+    DBMS_OUTPUT.PUT_LINE('Hire Date  : ' || p_hiredate);
+    DBMS_OUTPUT.PUT_LINE('Salary     : ' || p_sal);
+    DBMS_OUTPUT.PUT_LINE('Commission : ' || p_comm);
+    DBMS_OUTPUT.PUT_LINE('Dept #     : ' || p_deptno);
+    DBMS_OUTPUT.PUT_LINE('----------------------');
+END;
+```
+
+This procedure has no exception section. Any errors are propagated up to the calling program.
+
+Then the following anonymous block runs. The `COMMIT` command is used after all calls to the `emp_insert` procedure and the `ROLLBACK` command in the exception section.
+
+```sql
+BEGIN
+    emp_insert(9601,'FARRELL','ANALYST',7902,'03-MAR-08',5000,NULL,40);
+    emp_insert(9602,'TYLER','ANALYST',7900,'25-JAN-08',4800,NULL,40);
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SQLERRM: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('An error occurred - roll back inserts');
+        ROLLBACK;
+END;
+__OUTPUT__
+Added employee...
+Employee # : 9601
+Name       : FARRELL
+Job        : ANALYST
+Manager    : 7902
+Hire Date  : 03-MAR-08 00:00:00
+Salary     : 5000
+Commission :
+Dept #     : 40
+----------------------
+Added employee...
+Employee # : 9602
+Name       : TYLER
+Job        : ANALYST
+Manager    : 7900
+Hire Date  : 25-JAN-08 00:00:00
+Salary     : 4800
+Commission :
+Dept #     : 40
+----------------------
+```
+
+The following `SELECT` command shows that employees Farrell and Tyler were successfully added:
+
+```sql
+SELECT * FROM emp WHERE empno > 9600;
+__OUTPUT__
+empno | ename  |  job   | mgr |     hiredate       |   sal   | comm | deptno
+------+--------+--------+-----+--------------------+---------+------+--------
+  9601| FARRELL| ANALYST|7902 | 03-MAR-08 00:00:00 | 5000.00 |      |   40
+  9602| TYLER  | ANALYST|7900 | 25-JAN-08 00:00:00 | 4800.00 |      |   40
+(2 rows)
+```
+
+Next, execute the following anonymous block:
+
+```sql
+BEGIN
+    emp_insert(9603,'HARRISON','SALESMAN',7902,'13-DEC-07',5000,3000,20);
+    emp_insert(9604,'JARVIS','SALESMAN',7902,'05-MAY-08',4800,4100,11);
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SQLERRM: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('An error occurred - roll back inserts');
+        ROLLBACK;
+END;
+__OUTPUT__
+Added employee...
+Employee # : 9603
+Name       : HARRISON
+Job        : SALESMAN
+Manager    : 7902
+Hire Date  : 13-DEC-07 00:00:00
+Salary     : 5000
+Commission : 3000
+Dept #     : 20
+----------------------
+SQLERRM: insert or update on table "emp" violates foreign key constraint
+"emp_ref_dept_fk"
+An error occurred - roll back inserts
+```
+
+A `SELECT` command run against the table produces the following:
+
+```sql
+SELECT * FROM emp WHERE empno > 9600;
+__OUTPUT__
+empno | ename  |  job   | mgr |     hiredate       |   sal   | comm | deptno
+------+--------+--------+-----+--------------------+---------+------+--------
+  9601| FARRELL| ANALYST|7902 | 03-MAR-08 00:00:00 | 5000.00 |      |   40
+  9602| TYLER  | ANALYST|7900 | 25-JAN-08 00:00:00 | 4800.00 |      |   40
+(2 rows)
+```
+
+The `ROLLBACK` command in the exception section successfully undoes the insert of employee Harrison. Employees Farrell and Tyler are still in the table as their inserts were made permanent by the `COMMIT` command in the first anonymous block.
+
+!!! Note
+    Executing a `COMMIT` or `ROLLBACK` in a plpgsql procedure throws an error if an Oracle-style SPL procedure is on the runtime stack.

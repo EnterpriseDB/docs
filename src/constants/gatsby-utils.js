@@ -255,8 +255,7 @@ const findPrevNextNavNodes = (navTree, currNode) => {
 
 const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
   if (!redirects) return;
-  for (let fromPath of redirects) {
-    if (!fromPath) continue;
+  redirects.forEach((fromPath) => {
     // allow relative paths in redirects
     fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
     if (fromPath !== toPath)
@@ -278,7 +277,7 @@ const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
           force: true,
         });
     }
-  }
+  });
 };
 
 const convertLegacyDocsPathToLatest = (fromPath) => {
