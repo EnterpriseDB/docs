@@ -1,0 +1,80 @@
+---
+title: Legacy synchronous replication using PGD
+navTitle: Legacy synchronous replication
+---
+
+!!! Warning Important
+Consider using [Group Commit](group-commit) instead.
+!!!
+
+Postgres provides [physical streaming
+replication](https://www.postgresql.org/docs/current/warm-standby.html#STREAMING-REPLICATION)
+(PSR), which is unidirectional but offers a [synchronous
+variant](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION).
+
+For backward compatibility, PGD still supports configuring synchronous
+replication with `synchronous_commit` and `synchronous_standby_names`. See
+[Legacy synchronous replication](#legacy-synchronous-replication-using-pgd), but
+consider using [Group Commit](group-commit) instead.
+
+### Usage
+
+To enable synchronous replication using PGD, you need to add the application
+name of the relevant PGD peer nodes to `synchronous_standby_names`. The use of
+`FIRST x` or `ANY x` offers some flexibility if this doesn't conflict with the
+requirements of non-PGD standby nodes.
+
+Once you've added it, you can configure the level of synchronization per
+transaction using `synchronous_commit`, which defaults to `on`. This setting
+means that adding the application name to to `synchronous_standby_names` already
+enables synchronous replication. Setting `synchronous_commit` to `local` or
+`off` turns off synchronous replication.
+
+Due to PGD applying the transaction before persisting it, the values `on` and
+`remote_apply` are equivalent for logical replication.
+
+### Comparison
+
+The following table summarizes what a client can expect from a peer node
+replicated to after receiving a COMMIT confirmation from the origin node the
+transaction was issued to. The Mode column takes on different meaning depending
+on the variant. For PSR and legacy synchronous replication with PGD, it refers
+to the `synchronous_commit` setting.
+
+| Variant             | Mode                  | Received | Visible | Durable |
+|---------------------|-----------------------|----------|---------|---------|
+| PSR Async           | off (default)         | no       | no      | no      |
+| PSR Sync            | remote_write (2)      | yes      | no      | no (3)  |
+| PSR Sync            | on (2)                | yes      | no      | yes     |
+| PSR Sync            | remote_apply (2)      | yes      | yes     | yes     |
+| PGD Legacy Sync (1) | remote_write (2)      | yes      | no      | no      |
+| PGD Legacy Sync (1) | on (2)                | yes      | yes     | yes     |
+| PGD Legacy Sync (1) | remote_apply (2)      | yes      | yes     | yes     |
+
+*(1) Consider using Group Commit instead.*
+
+*(2) Unless switched to local mode (if allowed) by setting
+`synchronous_replication_availability` to `async'`, otherwise the
+values for the asynchronous PGD default apply.*
+
+*(3) Written to the OS, durable if the OS remains running and only
+Postgres crashes.*
+
+### Migration to commit scopes
+
+You configure the Group Commit feature of PGD independent of
+`synchronous_commit` and `synchronous_standby_names`. Instead, the
+`bdr.commit_scope` GUC allows you to select the scope per transaction. And
+instead of configuring `synchronous_standby_names` on each node
+individually, Group Commit uses globally synchronized commit scopes.
+
+!!! Note
+While the grammar for `synchronous_standby_names` and commit
+scopes looks similar, the former
+doesn't account for the origin node, but the latter does.
+Therefore, for example, `synchronous_standby_names = 'ANY 1 (..)'`
+is equivalent to a commit scope of `ANY 2 (...)`. This choice
+makes reasoning about majority easier and reflects that the origin
+node also contributes to the durability and visibility of the
+transaction.
+!!!
