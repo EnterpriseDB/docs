@@ -94,6 +94,10 @@ const sourceToPluginConfig = {
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
+  wait_states: {
+    name: "wait_states",
+    path: "advocacy_docs/pg_extensions/wait_states",
+  },
 };
 
 const externalSourcePlugins = () => {

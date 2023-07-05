@@ -166,6 +166,10 @@ const Page = () => (
               EDB Query Advisor
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/wait_states">
+              EDB Wait States
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_failover_slots">
               PG Failover Slots
             </IndexCardLink>
