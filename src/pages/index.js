@@ -373,6 +373,19 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
             </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Security
+            </span>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
+            Thales CipherTrust Manager
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
+              Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
           </IndexCard>
         </div>
 
