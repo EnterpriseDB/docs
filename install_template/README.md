@@ -249,19 +249,20 @@ In particular, avoid the trap of setting a flag in a leaf template and then chec
 "RHEL 9 or OL 9": "rhel9",
 "RHEL 9": "rhel9",
 
-1. In the **templates/platformBase** folder, copy existing topics, such as **rhel-8-or-ol-8.njk**, and use the copied file to create a new version. 
+1. In the **templates/platformBase** folder, copy existing topics, such as **rhel-8-or-ol-8.njk**, and use the copied files to create new versions. 
    - Update the name to the next version, such as **rhel-9-or-ol-9.njk**. 
-   - Update content as necessary. For example, the file may include a reference to "latest-8.noarch.rpm" which should be updated to "latest-9.noarch.rpm". 
-   -The number of topics that need to be updated will vary, depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
+   - Update content as necessary. For example, the file may include a reference to "latest-8.noarch.rpm", which should be updated to "latest-9.noarch.rpm". 
+   -The number of topics that need to be updated will vary depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
 
 1. Update **templates/platformBase/ppc64le_index.njk** to add an entry in the navigation block in the front matter. For example, for RHEL 9, this entry was added:
    - {{productShortname}}_rhel_9
 
-1. Update **templates/platformBase/x86_64_index.njk** to add an entry in the navigation block in the front matter. For example, for RHEL 9, these entries were added:
+1. Update **templates/platformBase/x86_64_index.njk** to add entires in the navigation block in the front matter. For example, for RHEL 9, these entries were added:
    - {{productShortname}}_rhel_9
    - {{productShortname}}_other_linux_9
 
 1. In the **templates/products** folder, for each platform, copy existing topics, such as **rhel-8-or-ol-8.njk**, and use the copied file create a new version. 
    - Update the name to the next version, such as **rhel-9-or-ol-9.njk**. 
    - In each file, update the entry for `platformBaseTemplate` so it points to the appropriate template, either in the **templates/platformBase** folder or in the current **templates/products** folder. 
-   - Check content to determine if other references require updating. The number of topics that need to be updated will vary, depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
+   - Check content to determine if other references require updating. 
+   - The number of topics that need to be updated will vary depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
