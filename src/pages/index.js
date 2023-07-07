@@ -266,8 +266,9 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+            <IndexCardLink to="/lasso/latest">Lasso</IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard
