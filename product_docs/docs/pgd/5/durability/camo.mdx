@@ -57,8 +57,7 @@ This doesn't allow COMMIT status to be retrieved, but it does let you choose ava
 For a CAMO partner to switch to ready, it needs to be connected, and the estimated catchup interval needs to drop below the `timeout` value of `TO ASYNC`. You can check the current readiness status of a CAMO partner with `bdr.is_camo_partner_ready`, while `bdr.node_replication_rates` provides the current estimate of the catchup time.
 
 <!-- There's a sentence fragment in this paragraph that I don't how to resolve.  -->
-The switch from CAMO protected to asynchronous mode is only ever triggered by an actual CAMO transaction either because the commit exceeds the `timeout` value of `TO ASYNC` or, in case the CAMO partner is already
-known, disconnected at the time of commit. This switch is independent of the estimated catchup interval. If the CAMO pair is configured to require the current node to be the write lead of a group as configured through `enable_proxy_routing` node group option. See [Commit scopes](commit-scopes) for syntax. This can prevent a split brain situation due to an isolated node from switching to asynchronous mode. If `enable_proxy_routing` isn't set for the CAMO group, the origin node switches to asynchronous mode immediately.
+The switch from CAMO protected to asynchronous mode is only ever triggered by an actual CAMO transaction either because the commit exceeds the `timeout` value of `TO ASYNC` or, in case the CAMO partner is already known, disconnected at the time of commit. This switch is independent of the estimated catchup interval. If the CAMO pair is configured to require the current node to be the write lead of a group as configured through `enable_proxy_routing` node group option. See [Commit scopes](commit-scopes) for syntax. This can prevent a split brain situation due to an isolated node from switching to asynchronous mode. If `enable_proxy_routing` isn't set for the CAMO group, the origin node switches to asynchronous mode immediately.
 
 The switch from asynchronous mode to CAMO mode depends on the CAMO partner node, which initiates the connection. The CAMO partner tries to reconnect at least every 30 seconds. After connectivity is reestablished, it might therefore take up to 30 seconds until the CAMO partner connects back to its origin node. Any lag that accumulated on
 the CAMO partner further delays the switch back to CAMO protected mode.
@@ -112,7 +111,7 @@ The application must store the global transaction identifier only for the purpos
 
 ### CAMO partner connection status
 
-The function `bdr.is_camo_partner_connected` allows checking the connection status of a CAMO partner node configured in pair mode. There currently is no equivalent for CAMO used with eager replication.
+The function `bdr.is_camo_partner_connected` allows checking the connection status of a CAMO partner node configured in pair mode. There currently is no equivalent for CAMO used with Eager Replication.
 
 #### Synopsis
 
@@ -176,8 +175,8 @@ bdr.logical_transaction_status(node_id OID, xid OID,
                                require_camo_partner boolean)
 ```
 
-With CAMO used in pair mode, use this function only on a node that's part of a CAMO pair. Along with eager
-replication, you can use it on all nodes.
+With CAMO used in pair mode, use this function only on a node that's part of a CAMO pair. Along with Eager
+Replication, you can use it on all nodes.
 
 In both cases, you must call the function within 15 minutes after the commit was issued. The CAMO partner must regularly purge such meta-information and therefore can't provide correct answers for older transactions.
 
@@ -211,7 +210,7 @@ The function returns one of these results:
 
 - `'in progress'::TEXT` &mdash; The transaction is still in progress on this local node and wasn't committed or aborted yet. The transaction might be in the COMMIT phase, waiting for the CAMO partner to confirm or deny the commit. The recommended client reaction is to disconnect from the origin node and reconnect to the CAMO partner to query that instead. With a load balancer or proxy in between, where the client lacks control over which node gets queried, the client can only poll repeatedly until the status switches to either `'committed'` or `'aborted'`.
 
-  For eager all-node replication, peer nodes yield this result for transactions that aren't yet committed or aborted. Even transactions not yet replicated (or not even started on the origin node) might yield an `in progress` result on a peer PGD node in this case. However, the client must not query the transaction
+  For Eager All-Node Replication, peer nodes yield this result for transactions that aren't yet committed or aborted. Even transactions not yet replicated (or not even started on the origin node) might yield an `in progress` result on a peer PGD node in this case. However, the client must not query the transaction
   status prior to attempting to commit on the origin.
 
 - `'unknown'::TEXT` &mdash; The transaction specified is unknown, because either it's in the future, not replicated to that specific node yet, or too far in the past. The status of such a transaction isn't yet or is no longer known. This return value is a sign of improper use by the client.
@@ -220,7 +219,7 @@ The client must be prepared to retry the function call on error.
 
 ### Connection pools and proxies
 
-Consider the effect of connection pools and proxies when designing a CAMO cluster. A proxy might freely distribute transactions to all nodes in the commit group, that is, to both nodes of a CAMO pair or to all PGD nodes in case of eager all node replication).
+Consider the effect of connection pools and proxies when designing a CAMO cluster. A proxy might freely distribute transactions to all nodes in the commit group, that is, to both nodes of a CAMO pair or to all PGD nodes in case of Eager All-Node Replication).
 
 Take care to ensure that the application fetches the proper node id. When using session pooling, the client remains connected to the same node, so the node id remains constant for the lifetime of the client session. However, with finer-grained transaction pooling, the client needs to fetch the node id for every transaction (as in the example that follows.
 
@@ -315,17 +314,7 @@ The following DDL operations aren't allowed in a transaction block and therefore
 
 ## CAMO limitations
 
--  CAMO is designed to query the results of a recently failed `COMMIT` on the origin node, so in case of disconnection, code the application to immediately request the transaction status from the CAMO partner. Have as little delay as possible after the failure before requesting the status. Applications must not rely on CAMO decisions being stored for longer than 15 minutes.
-
--  If the application forgets the global identifier assigned, for example as a result of a restart, there's no easy way to recover it. Therefore, we recommend that applications wait for outstanding transactions to end before shutting down.
-
--  For the client to apply proper checks, a transaction protected by CAMO can't be a single statement with implicit transaction control. You also can't use CAMO with a transaction-controlling procedure or in a `DO` block that tries to start or end transactions.
-
-- CAMO resolves commit status but doesn't yet resolve pending notifications on commit. CAMO and eager replication options don't allow the `NOTIFY` SQL command or the `pg_notify()` function. They also don't allow `LISTEN` or `UNLISTEN`.
-
-- When replaying changes, CAMO transactions can detect conflicts just the same as other transactions. If timestamp conflict detection is used, the CAMO transaction uses the timestamp of the prepare on the origin node, which is before the transaction becomes visible on the origin node itself.
-
-- CAMO isn't currently compatible with transaction streaming. Be sure to disable transaction streaming when planning to use CAMO. YOu can configure this globally or in the PGD node group. See [Transaction streaming configuration](../transaction-streaming#configuration).
+CAMO limitations are covered on the [PGD limitations](../limitations/#camo) page.
 
 ## Performance implications
 

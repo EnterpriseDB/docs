@@ -166,11 +166,15 @@ const Page = () => (
               EDB Query Advisor
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/wait_states">
+              EDB Wait States
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_failover_slots">
               PG Failover Slots
             </IndexCardLink>
 
-            <IndexCardLink to="/epas/latest/language_pack">
+            <IndexCardLink to="/language_pack/latest/">
               Language Pack
             </IndexCardLink>
           </IndexCard>
@@ -181,7 +185,7 @@ const Page = () => (
               to="/biganimal/latest/free_trial/"
               className="nested-link"
             >
-              Free Trial
+              Quick Start
             </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
@@ -349,6 +353,19 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Security
+            </span>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
+              Thales CipherTrust Manager
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
+              Thales CipherTrust Transparent Encryption
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
             </span>
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
@@ -360,17 +377,11 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
               Hashicorp Vault Transit Secrets Engine
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
-            </IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/PureStorageFlashArray">
               Pure Storage FlashArray
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
-              Thales CipherTrust Transparent Encryption
             </IndexCardLink>
           </IndexCard>
         </div>

@@ -100,6 +100,26 @@ exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
 };
 
 exports.createPages = async ({ actions, graphql, reporter }) => {
+  const toolPath = path.join(
+    __dirname,
+    "tools",
+    "automation",
+    "generators",
+    "refbuilder",
+  );
+  command = `cd ${toolPath};npm ci;node ${path.join(
+    toolPath,
+    "refbuilder.js",
+  )} --source ${path.join(
+    __dirname,
+    "product_docs",
+    "docs",
+    "pgd",
+    "5",
+    "reference",
+  )}`;
+  execSync(command);
+
   const result = await graphql(`
     query {
       allMdx {
@@ -122,6 +142,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             navigation
             showInteractiveBadge
             hideToC
+            deepToC
             hideKBLink
             katacodaPages {
               scenario
@@ -311,6 +332,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
+  const deepToC = doc.frontmatter.deepToC != true ? false : true;
 
   actions.createPage({
     path: path,
@@ -495,6 +517,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
       hideToC: Boolean
+      deepToC: Boolean
       hideVersion: Boolean
       hideKBLink: Boolean
       displayBanner: String
@@ -539,6 +562,8 @@ exports.onPreBootstrap = () => {
 
   `);
 };
+
+exports.onPreBuild = () => {};
 
 exports.onPostBuild = async ({ reporter, pathPrefix }) => {
   realFs.copyFileSync(
