@@ -355,6 +355,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Security
             </span>
+            <IndexCardLink to="/partner_docs/HashicorpVault">
+              Hashicorp Vault
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
               Imperva Data Security Fabric
             </IndexCardLink>
