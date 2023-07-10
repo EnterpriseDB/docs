@@ -27,6 +27,31 @@ To use a stored procedure in your .NET application you must:
 
 This sample procedure prints the name of department 10. The procedure takes no parameters and returns no parameters. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
 
+```sql
+CREATE OR REPLACE PROCEDURE list_dept10
+IS
+  v_deptname VARCHAR2(30);
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Dept No: 10');
+  SELECT dname INTO v_deptname FROM dept WHERE deptno = 10;
+  DBMS_OUTPUT.PUT_LINE('Dept Name: ' || v_deptname);
+END;
+```
+
+When EDB Postgres Advanced Server has validated the stored procedure, it echoes `CREATE PROCEDURE`.
+
+### Using the EDBCommand object to execute a stored procedure
+
+The `CommandType` property of the `EDBCommand` object indicates the type of command being executed. The `CommandType` property is set to one of three possible `CommandType` enumeration values:
+
+-   Use the default `Text` value when passing a SQL string for execution.
+-   Use the `StoredProcedure` value, passing the name of a stored procedure for execution.
+-   Use the `TableDirect` value when passing a table name. This value passes back all records in the specified table.
+
+The `CommandText` property must contain a SQL string, stored procedure name, or table name, depending on the value of the `CommandType` property.
+
+The following example executes the stored procedure:
+
 ```cpp
 <% @ Page Language="C#" Debug="true"%>
 <% @Import Namespace="EnterpriseDB.EDBClient" %>
@@ -50,61 +75,6 @@ private void Page_Load(object sender, System.EventArgs e)
 	{
 		Response.Write(exp.ToString());
 	}
-}
-</script>
-```
-
-When EDB Postgres Advanced Server has validated the stored procedure, it echoes `CREATE PROCEDURE`.
-
-### Using the EDBCommand object to execute a stored procedure
-
-The `CommandType` property of the `EDBCommand` object indicates the type of command being executed. The `CommandType` property is set to one of three possible `CommandType` enumeration values:
-
--   Use the default `Text` value when passing a SQL string for execution.
--   Use the `StoredProcedure` value, passing the name of a stored procedure for execution.
--   Use the `TableDirect` value when passing a table name. This value passes back all records in the specified table.
-
-The `CommandText` property must contain a SQL string, stored procedure name, or table name, depending on the value of the `CommandType` property.
-
-The following example executes the stored procedure:
-
-```cpp
-<% @ Page Language="C#" Debug="true"%>
-<% @Import Namespace="EnterpriseDB.EDBClient" %>
-<% @Import Namespace="System.Data" %>
-<% @Import Namespace="System.Configuration" %>
-
-<script language="C#" runat="server" >
-
-private void Page_Load(object sender, System.EventArgs e)
-{
-  string strConnectionString = ConfigurationManager.AppSettings
-  ["DB_CONN_STRING"];
-  EDBConnection conn = new EDBConnection(strConnectionString);
-
-
-  try
-  {
-      conn.Open();
-
-      EDBCommand cmdStoredProc = new EDBCommand("list_dept10",conn);
-      cmdStoredProc.CommandType = CommandType.StoredProcedure;
-
-      cmdStoredProc.Prepare();
-      cmdStoredProc.ExecuteNonQuery();
-
-
-      Response.Write("Stored Procedure Executed Successfully");
-
-  }
-  catch(Exception exp)
-{
-      Response.Write(exp.ToString());
-  }
-  finally
-{
-      conn.Close();
-  }
 }
 </script>
 ```
@@ -191,83 +161,59 @@ The following example shows the process of executing a parameterized stored proc
 <% @Import Namespace="EnterpriseDB.EDBClient" %>
 <% @Import Namespace="System.Data" %>
 <% @Import Namespace="System.Configuration" %>
-
 <script language="C#" runat="server" >
-
 private void Page_Load(object sender, System.EventArgs e)
 {
-  string strConnectionString = ConfigurationManager.AppSettings
-  ["DB_CONN_STRING"];
-  EDBConnection conn = new EDBConnection(strConnectionString);
-
-  string empName    = "EDB";
-  string empJob     = "Manager";
-  double salary     = 1000;
-  double commission = 0.0;
-  int    deptno     = 20;
-  int    manager    = 7839;
-
-  try
-  {
-      conn.Open();
-
-      EDBCommand cmdStoredProc = new EDBCommand
-      ("emp_insert(:EmpName,:Job,:Salary,:Commission,:DeptNo,
-      :Manager)",conn);
-      cmdStoredProc.CommandType = CommandType.StoredProcedure;
-
-      cmdStoredProc.Parameters.Add(new EDBParameter
-      ("EmpName", EDBTypes.EDBDbType.Varchar));
-      cmdStoredProc.Parameters[0].Value = empName;
-
-      cmdStoredProc.Parameters.Add(new EDBParameter
-      ("Job", EDBTypes.EDBDbType.Varchar));
-      cmdStoredProc.Parameters[1].Value = empJob;
-
-      cmdStoredProc.Parameters.Add(new EDBParameter
-      ("Salary", EDBTypes.EDBDbType.Real));
-      cmdStoredProc.Parameters[2].Value = salary;
-
-      cmdStoredProc.Parameters.Add(new EDBParameter
-      ("Commission", EDBTypes.EDBDbType.Real));
-      cmdStoredProc.Parameters[3].Value = commission;
-
-      cmdStoredProc.Parameters.Add(new EDBParameter
-      ("DeptNo", EDBTypes.EDBDbType.Integer));
-      cmdStoredProc.Parameters[4].Value = deptno;
-
-      cmdStoredProc.Parameters.Add
-      (new EDBParameter("Manager", EDBTypes.EDBDbType.Integer));
-      cmdStoredProc.Parameters[5].Value = manager;
-
-      cmdStoredProc.Prepare();
-
-      cmdStoredProc.ExecuteNonQuery();
-
-      Response.Write("Following Information Inserted Successfully
-      <br>");
-      string  empInfo  = "Employee Name: " + empName + "<br>";
-      empInfo += "Job: " + empJob + "<br>";
-      empInfo += "Salary: " + salary + "<br>";
-      empInfo += "Commission: " + commission + "<br>";
-      empInfo += "Manager: " + manager + "<br>";
-
-      Response.Write(empInfo);
-
-  }
-
-  catch(Exception exp)
-{
-      Response.Write(exp.ToString());
-  }
-  finally
-{
-      conn.Close();
-  }
+	var strConnectionString = ConfigurationManager.AppSettings["DB_CONN_STRING"];
+	var empName    = "EDB";
+	var empJob     = "Manager";
+	var salary     = 1000.0;
+	var commission = 0.0;
+	var deptno     = 20;
+	var manager    = 7839;
+	try
+	{
+		await using var dataSource = EDBDataSource.Create(ConnectionString);
+		var conn = await dataSource.OpenConnectionAsync();
+		using var cmdStoredProc = new EDBCommand
+		("EMP_INSERT(:EmpName,:Job,:Salary,:Commission,:DeptNo,
+		:Manager)",conn);
+		cmdStoredProc.CommandType = CommandType.StoredProcedure;
+		cmdStoredProc.Parameters.Add(new EDBParameter
+		("EmpName", EDBTypes.EDBDbType.Varchar));
+		cmdStoredProc.Parameters[0].Value = empName;
+		cmdStoredProc.Parameters.Add(new EDBParameter
+		("Job", EDBTypes.EDBDbType.Varchar));
+		cmdStoredProc.Parameters[1].Value = empJob;
+		cmdStoredProc.Parameters.Add(new EDBParameter
+		("Salary", EDBTypes.EDBDbType.Real));
+		cmdStoredProc.Parameters[2].Value = salary;
+		cmdStoredProc.Parameters.Add(new EDBParameter
+		("Commission", EDBTypes.EDBDbType.Real));
+		cmdStoredProc.Parameters[3].Value = commission;
+		cmdStoredProc.Parameters.Add(new EDBParameter
+		("DeptNo", EDBTypes.EDBDbType.Integer));
+		cmdStoredProc.Parameters[4].Value = deptno;
+		cmdStoredProc.Parameters.Add
+		(new EDBParameter("Manager", EDBTypes.EDBDbType.Integer));
+		cmdStoredProc.Parameters[5].Value = manager;
+		await cmdStoredProc.PrepareAsync();
+		await cmdStoredProc.ExecuteNonQueryAsync();
+		Response.Write("Following Information Inserted Successfully<br>");
+		string  empInfo  = "Employee Name: " + empName + "<br>";
+		empInfo += "Job: " + empJob + "<br>";
+		empInfo += "Salary: " + salary + "<br>";
+		empInfo += "Commission: " + commission + "<br>";
+		empInfo += "Manager: " + manager + "<br>";
+		Response.Write(empInfo);
+		await conn.CloseAsync();
+	}
+	catch(Exception exp)
+	{
+		Response.Write(exp.ToString());
+	}
 }
-
 </script>
-
 ```
 
 Save the sample code in a file named `storedProcInParam.aspx` in a web root directory. 
