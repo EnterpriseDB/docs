@@ -174,7 +174,7 @@ const Page = () => (
               PG Failover Slots
             </IndexCardLink>
 
-            <IndexCardLink to="/language_pack/latest/">
+            <IndexCardLink to="/epas/latest/language_pack">
               Language Pack
             </IndexCardLink>
           </IndexCard>
@@ -185,7 +185,7 @@ const Page = () => (
               to="/biganimal/latest/free_trial/"
               className="nested-link"
             >
-              Quick Start
+              Free Trial
             </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
@@ -354,23 +354,12 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Security
+              Data Movement
             </span>
-            <IndexCardLink to="/partner_docs/HashicorpVault">
-              Hashicorp Vault
+             <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
-              Hashicorp Vault Transit Secrets Engine
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
-              Thales CipherTrust Manager
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
-              Thales CipherTrust Transparent Encryption
-            </IndexCardLink>
+            
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
