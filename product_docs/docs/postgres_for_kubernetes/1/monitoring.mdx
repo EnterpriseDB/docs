@@ -105,8 +105,12 @@ metrics, which can be classified in two major categories:
     -   number of `.ready` and `.done` files in the archive status folder
     -   requested minimum and maximum number of synchronous replicas, as well as
         the expected and actually observed values
+    -   number of distinct nodes accommodating the instances
+    -   timestamps indicating last failed and last available backup, as well
+        as the first point of recoverability for the cluster
     -   flag indicating if replica cluster mode is enabled or disabled
     -   flag indicating if a manual switchover is required
+    -   flag indicating if fencing is enabled or disabled
 
 -   Go runtime related metrics, starting with `go_*`
 
@@ -122,6 +126,14 @@ cnp_collector_collection_duration_seconds{collector="Collect.up"} 0.0031393
 # HELP cnp_collector_collections_total Total number of times PostgreSQL was accessed for metrics.
 # TYPE cnp_collector_collections_total counter
 cnp_collector_collections_total 2
+
+# HELP cnp_collector_fencing_on 1 if the instance is fenced, 0 otherwise
+# TYPE cnp_collector_fencing_on gauge
+cnp_collector_fencing_on 0
+
+# HELP cnp_collector_nodes_used NodesUsed represents the count of distinct nodes accommodating the instances. A value of '-1' suggests that the metric is not available. A value of '1' suggests that all instances are hosted on a single node, implying the absence of High Availability (HA). Ideally this value should match the number of instances in the cluster.
+# TYPE cnp_collector_nodes_used gauge
+cnp_collector_nodes_used 3
 
 # HELP cnp_collector_last_collection_error 1 if the last collection ended with error, 0 otherwise.
 # TYPE cnp_collector_last_collection_error gauge
@@ -164,7 +176,15 @@ cnp_collector_up{cluster="cluster-example"} 1
 
 # HELP cnp_collector_postgres_version Postgres version
 # TYPE cnp_collector_postgres_version gauge
-cnp_collector_postgres_version{cluster="cluster-example",full="13.4.0"} 13.4
+cnp_collector_postgres_version{cluster="cluster-example",full="15.3"} 15.3
+
+# HELP cnp_collector_last_failed_backup_timestamp The last failed backup as a unix timestamp
+# TYPE cnp_collector_last_failed_backup_timestamp gauge
+cnp_collector_last_failed_backup_timestamp 0
+
+# HELP cnp_collector_last_available_backup_timestamp The last available backup as a unix timestamp
+# TYPE cnp_collector_last_available_backup_timestamp gauge
+cnp_collector_last_available_backup_timestamp 1.63238406e+09
 
 # HELP cnp_collector_first_recoverability_point The first point of recoverability for the cluster as a unix timestamp
 # TYPE cnp_collector_first_recoverability_point gauge
@@ -174,6 +194,42 @@ cnp_collector_first_recoverability_point 1.63238406e+09
 # TYPE cnp_collector_lo_pages gauge
 cnp_collector_lo_pages{datname="app"} 0
 cnp_collector_lo_pages{datname="postgres"} 78
+
+# HELP cnp_collector_wal_buffers_full Number of times WAL data was written to disk because WAL buffers became full. Only available on PG 14+
+# TYPE cnp_collector_wal_buffers_full gauge
+cnp_collector_wal_buffers_full{stats_reset="2023-06-19T10:51:27.473259Z"} 6472
+
+# HELP cnp_collector_wal_bytes Total amount of WAL generated in bytes. Only available on PG 14+
+# TYPE cnp_collector_wal_bytes gauge
+cnp_collector_wal_bytes{stats_reset="2023-06-19T10:51:27.473259Z"} 1.0035147e+07
+
+# HELP cnp_collector_wal_fpi Total number of WAL full page images generated. Only available on PG 14+
+# TYPE cnp_collector_wal_fpi gauge
+cnp_collector_wal_fpi{stats_reset="2023-06-19T10:51:27.473259Z"} 1474
+
+# HELP cnp_collector_wal_records Total number of WAL records generated. Only available on PG 14+
+# TYPE cnp_collector_wal_records gauge
+cnp_collector_wal_records{stats_reset="2023-06-19T10:51:27.473259Z"} 26178
+
+# HELP cnp_collector_wal_sync Number of times WAL files were synced to disk via issue_xlog_fsync request (if fsync is on and wal_sync_method is either fdatasync, fsync or fsync_writethrough, otherwise zero). Only available on PG 14+
+# TYPE cnp_collector_wal_sync gauge
+cnp_collector_wal_sync{stats_reset="2023-06-19T10:51:27.473259Z"} 37
+
+# HELP cnp_collector_wal_sync_time Total amount of time spent syncing WAL files to disk via issue_xlog_fsync request, in milliseconds (if track_wal_io_timing is enabled, fsync is on, and wal_sync_method is either fdatasync, fsync or fsync_writethrough, otherwise zero). Only available on PG 14+
+# TYPE cnp_collector_wal_sync_time gauge
+cnp_collector_wal_sync_time{stats_reset="2023-06-19T10:51:27.473259Z"} 0
+
+# HELP cnp_collector_wal_write Number of times WAL buffers were written out to disk via XLogWrite request. Only available on PG 14+
+# TYPE cnp_collector_wal_write gauge
+cnp_collector_wal_write{stats_reset="2023-06-19T10:51:27.473259Z"} 7243
+
+# HELP cnp_collector_wal_write_time Total amount of time spent writing WAL buffers to disk via XLogWrite request, in milliseconds (if track_wal_io_timing is enabled, otherwise zero). This includes the sync time when wal_sync_method is either open_datasync or open_sync. Only available on PG 14+
+# TYPE cnp_collector_wal_write_time gauge
+cnp_collector_wal_write_time{stats_reset="2023-06-19T10:51:27.473259Z"} 0
+
+# HELP cnp_last_error 1 if the last collection ended with error, 0 otherwise.
+# TYPE cnp_last_error gauge
+cnp_last_error 0
 
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
 # TYPE go_gc_duration_seconds summary
@@ -191,7 +247,7 @@ go_goroutines 25
 
 # HELP go_info Information about the Go environment.
 # TYPE go_info gauge
-go_info{version="go1.17.1"} 1
+go_info{version="go1.20.5"} 1
 
 # HELP go_memstats_alloc_bytes Number of bytes allocated and still in use.
 # TYPE go_memstats_alloc_bytes gauge
@@ -301,9 +357,8 @@ go_threads 18
     field named `full`.
 
 !!! Note
-    `cnp_collector_first_recoverability_point` will be zero until
-    your first backup to the object store. This is separate from
-    the WAL archival.
+    `cnp_collector_first_recoverability_point` and `cnp_collector_last_available_backup_timestamp`
+    will be zero until your first backup to the object store. This is separate from the WAL archival.
 
 ### User defined metrics
 
@@ -387,7 +442,7 @@ data:
 ```
 
 A list of basic monitoring queries can be found in the
-[`default-monitoring.yaml` file](https://github.com/cloudnative-pg/cloudnative-pg/blob/main/config/manager/default-monitoring.yaml)
+[`default-monitoring.yaml` file](https://github.com/EnterpriseDB/cloud-native-postgres/blob/main/config/manager/default-monitoring.yaml)
 that is already installed in your EDB Postgres for Kubernetes deployment (see ["Default set of metrics"](#default-set-of-metrics)).
 
 #### Example of a user defined metric running on multiple databases
@@ -682,7 +737,8 @@ kubectl delete -f curl.yaml
     These resources are provided for illustration and experimentation, and do
     not represent any kind of recommendation for your production system
 
-In the [`samples/monitoring/`](https://github.com/EnterpriseDB/docs/tree/main/product_docs/docs/postgres_for_kubernetes/1/samples/monitoring) directory you will find a series of sample files for observability.
+In the [`doc/src/samples/monitoring/`](https://github.com/EnterpriseDB/cloud-native-postgres/tree/main/docs/src/samples/monitoring)
+directory you will find a series of sample files for observability.
 Please refer to [Part 4 of the quickstart](quickstart.md#part-4-monitor-clusters-with-prometheus-and-grafana)
 section for context:
 
