@@ -22,7 +22,7 @@ Following is an example of a strongly typed ref cursor:
 
 The following sample code creates a stored procedure called `refcur_inout_callee`. It specifies the data type of the ref cursor being passed as an OUT parameter. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
 
-```Text
+```sql
 CREATE OR REPLACE PROCEDURE
   refcur_inout_callee(v_refcur OUT SYS_REFCURSOR)
 IS
@@ -33,12 +33,11 @@ END;
 
 The following C# code uses the stored procedure to retrieve employee names from the `emp` table:
 
-```Text
+```cpp
 using System;
 using System.Data;
 using EnterpriseDB.EDBClient;
 using System.Configuration;
-
 namespace EDBRefCursor
 {
     class EmpRefcursor
@@ -46,43 +45,39 @@ namespace EDBRefCursor
         [STAThread]
         static void Main(string[] args)
         {
-            string strConnectionString =
+            var strConnectionString =
             ConfigurationManager.AppSettings["DB_CONN_STRING"];
-            EDBConnection conn = new EDBConnection(strConnectionString);
-            conn.Open();
             try
             {
-                EDBTransaction tran = conn.BeginTransaction();
-                EDBCommand command = new EDBCommand("refcur_inout_callee",
-                    conn);
+				await using var dataSource = EDBDataSource.Create(ConnectionString);
+				var conn = await dataSource.OpenConnectionAsync();
+                await using var tran = await connection.BeginTransactionAsync();
+                using var command = new EDBCommand("refcur_inout_callee", conn);
                 command.CommandType = CommandType.StoredProcedure;
                 command.Transaction = tran;
                 command.Parameters.Add(new EDBParameter("refCursor",
                     EDBTypes.EDBDbType.Refcursor, 10, "refCursor",
-
                 ParameterDirection.Output, false, 2, 2,
                     System.Data.DataRowVersion.Current, null));
-
-                command.Prepare();
-                command.Parameters[0].Value = null;
-
-                command.ExecuteNonQuery();
-                String cursorName = command.Parameters[0].Value.ToString();
+                await command.PrepareAsync();
+				command.Parameters[0].Value = null;
+				await command.ExecuteNonQueryAsync();
+                var cursorName = command.Parameters[0].Value.ToString();
                 command.CommandText = "fetch all in \"" + cursorName + "\"";
                 command.CommandType = CommandType.Text;
-
-                EDBDataReader reader =
-                    command.ExecuteReader(CommandBehavior.SequentialAccess);
-                int fc = reader.FieldCount;
-                while (reader.Read())
+                await using var reader = 
+					await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+                var fc = reader.FieldCount;
+                while (await reader.ReadAsync())
                 {
                     for (int i = 0; i < fc; i++)
                     {
                         Console.WriteLine(reader.GetString(i));
                     }
                 }
-                reader.Close();
-                tran.Commit();
+                await reader.CloseAsync();
+				await tran.CommitAsync();
+				await conn.CloseAsync();
             }
             catch (Exception ex)
             {
@@ -95,7 +90,7 @@ namespace EDBRefCursor
 
 The following .NET code snippet displays the result on the console:
 
-```Text
+```cpp
 for(int i = 0;i < fc; i++)
 {
     Console.WriteLine(reader.GetString(i));
