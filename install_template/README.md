@@ -261,7 +261,7 @@ In particular, avoid the trap of setting a flag in a leaf template and then chec
    - {{productShortname}}_rhel_9
    - {{productShortname}}_other_linux_9
 
-1. In the **templates/products** folder, for each platform, copy existing topics, such as **rhel-8-or-ol-8.njk**, and use the copied file create a new version. 
+1. In the **templates/products** folder, for each product, copy existing topics, such as **rhel-8-or-ol-8.njk**, and use the copied file create a new version. 
    - Update the name to the next version, such as **rhel-9-or-ol-9.njk**. 
    - In each file, update the entry for `platformBaseTemplate` so it points to the appropriate template, either in the **templates/platformBase** folder or in the current **templates/products** folder. 
    - Check content to determine if other references require updating. 
