@@ -215,7 +215,7 @@ See [Adding New Sources](README_ADDING_NEW_SOURCES.md) for a guide to choosing a
 
 ## Development
 
-All changes should have a pull request opened against the default branch, `develop`. To generate [#draft-deployments](Draft deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
+All changes should have a pull request opened against the default branch, `develop`. To generate [Draft deployments](#draft-deployments) for the branch, add the `deploy` label to the pull request: a new deployment at a unique URL will be produced every time changes are pushed to the branch. Note: GitHub must be able to merge the branch cleanly in order for this to work; if there are conflicts shown on the pull request, resolve them in order to obtain a new draft deployment.
 
 When a PR is merged into the `develop` branch, the result will be deployed to the [staging](#staging) environment.
 
