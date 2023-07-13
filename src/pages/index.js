@@ -354,22 +354,10 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Security
+              Data Movement
             </span>
-            <IndexCardLink to="/partner_docs/HashicorpVault">
-              Hashicorp Vault
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
-              Hashicorp Vault Transit Secrets Engine
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
-              Thales CipherTrust Manager
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
-              Thales CipherTrust Transparent Encryption
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
@@ -381,9 +369,7 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HPE">
-              HPE
-            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/HPE">HPE</IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
