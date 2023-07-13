@@ -174,7 +174,7 @@ const Page = () => (
               PG Failover Slots
             </IndexCardLink>
 
-            <IndexCardLink to="/epas/latest/language_pack">
+            <IndexCardLink to="/language_pack/latest/">
               Language Pack
             </IndexCardLink>
           </IndexCard>
@@ -185,7 +185,7 @@ const Page = () => (
               to="/biganimal/latest/free_trial/"
               className="nested-link"
             >
-              Free Trial
+              Quick Start
             </IndexCardLink>
             <IndexCardLink
               to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
@@ -356,10 +356,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Data Movement
             </span>
-             <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
               Precisely Connect CDC
             </IndexCardLink>
-            
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Other
@@ -370,9 +369,7 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HPE">
-              HPE
-            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/HPE">HPE</IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>
