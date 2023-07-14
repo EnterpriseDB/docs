@@ -1,0 +1,278 @@
+---
+title: "Working with resource groups"
+description: "How to use EDB Resource Manager to create and manage resource groups"
+---
+
+Use these data definition language commands to create and manage resource groups.
+
+## CREATE RESOURCE GROUP
+
+Use the `CREATE RESOURCE GROUP` command to create a new resource group.
+
+```sql
+CREATE RESOURCE GROUP <group_name>;
+```
+
+### Description
+
+The `CREATE RESOURCE GROUP` command creates a resource group with the specified name. You can then define resource limits on the group with the `ALTER RESOURCE GROUP` command. The resource group is accessible from all databases in the EDB Postgres Advanced Server instance.
+
+To use the `CREATE RESOURCE GROUP` command, you must have superuser privileges.
+
+### Parameters
+
+`group_name`
+
+The name of the resource group.
+
+### Example
+
+This example creates three resource groups named `resgrp_a`, `resgrp_b`, and `resgrp_c`:
+
+```sql
+edb=# CREATE RESOURCE GROUP resgrp_a;
+CREATE RESOURCE GROUP
+edb=# CREATE RESOURCE GROUP resgrp_b;
+CREATE RESOURCE GROUP
+edb=# CREATE RESOURCE GROUP resgrp_c;
+CREATE RESOURCE GROUP
+```
+
+This query shows the entries for the resource groups in the `edb_resource_group` catalog:
+
+```sql
+edb=# SELECT * FROM edb_resource_group;
+__OUTPUT__
+ rgrpname  | rgrpcpuratelimit | rgrpdirtyratelimit
+-----------+------------------+--------------------
+ resgrp_a  |                0 | 0
+ resgrp_b  |                0 | 0
+ resgrp_c  |                0 | 0
+(3 rows)
+```
+
+## ALTER RESOURCE GROUP
+
+Use the `ALTER RESOURCE GROUP` command to change the attributes of an existing resource group. The command syntax comes in three forms.
+
+This form renames the resource group:
+
+```sql
+ALTER RESOURCE GROUP <group_name> RENAME TO <new_name>;
+```
+
+This form assigns a resource type to the resource group:
+
+```sql
+ALTER RESOURCE GROUP <group_name> SET
+  <resource_type> { TO | = } { <value> | DEFAULT };
+```
+
+This form resets the assignment of a resource type to its default in the group:
+
+```sql
+ALTER RESOURCE GROUP <group_name> RESET <resource_type>;
+```
+
+### Description
+
+The `ALTER RESOURCE GROUP` command changes certain attributes of an existing resource group.
+
+The form with the `RENAME TO` clause assigns a new name to an existing resource group.
+
+The form with the `SET resource_type TO` clause assigns the specified literal value to a resource type. Or, when you specify `DEFAULT`, it resets the resource type. Resetting a resource type means that the resource group has no defined limit on that resource type.
+
+The form with the `RESET resource_type` clause resets the resource type for the group.
+
+To use the `ALTER RESOURCE GROUP` command, you must have superuser privileges.
+
+### Parameters
+
+`group_name`
+
+The name of the resource group to alter.
+
+`new_name`
+
+The new name to assign to the resource group.
+
+`resource_type`
+
+Specifies the type of resource to which to set a usage value.
+
+`value | DEFAULT`
+
+When `value` is specified, the literal value to assign to `resource_type`. Specify `DEFAULT` to reset the assignment of `resource_type` for the resource group.
+
+### Example
+
+These examples show the use of the `ALTER RESOURCE GROUP` command:
+
+```sql
+edb=# ALTER RESOURCE GROUP resgrp_a RENAME TO newgrp;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_b SET cpu_rate_limit = .5;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_b SET dirty_rate_limit = 6144;
+ALTER RESOURCE GROUP
+edb=# ALTER RESOURCE GROUP resgrp_c RESET cpu_rate_limit;
+ALTER RESOURCE GROUP
+```
+
+This query shows the results of the `ALTER RESOURCE GROUP` commands to the entries in the `edb_resource_group` catalog:
+
+```sql
+edb=# SELECT * FROM edb_resource_group;
+__OUTPUT__
+ rgrpname  | rgrpcpuratelimit | rgrpdirtyratelimit
+-----------+------------------+--------------------
+ newgrp    | 0                | 0
+ resgrp_b  | 0.5              | 6144
+ resgrp_c  | 0                | 0
+(3 rows)
+```
+
+## DROP RESOURCE GROUP
+
+Use the `DROP RESOURCE GROUP` command to remove a resource group.
+
+```sql
+DROP RESOURCE GROUP [ IF EXISTS ] <group_name>;
+```
+
+### Description
+
+The `DROP RESOURCE GROUP` command removes a resource group with the specified name.
+
+To use the `DROP RESOURCE GROUP` command, you must have superuser privileges.
+
+### Parameters
+
+`group_name`
+
+The name of the resource group to remove.
+
+`IF EXISTS`
+
+Don't throw an error if the resource group doesn't exist. Instead, issue a notice.
+
+### Example
+
+This example removes the resource group `newgrp`:
+
+```sql
+edb=# DROP RESOURCE GROUP newgrp;
+DROP RESOURCE GROUP
+```
+
+## Assigning a process to a resource group
+
+Use the `SET edb_resource_group TO group_name` command to assign the current process to a specified resource group:
+
+```sql
+edb=# SET edb_resource_group TO resgrp_b;
+SET
+edb=# SHOW edb_resource_group;
+__OUTPUT__
+ edb_resource_group
+--------------------
+ resgrp_b
+(1 row)
+```
+
+The resource type settings of the group take effect on the current process immediately. If you use the command to change the resource group assigned to the current process, the resource type settings of the newly assigned group take effect immediately.
+
+You can include processes in a resource group by default by assigning a default resource group to roles, databases, or an entire database server instance.
+
+You can assign a default resource group to a role using the `ALTER ROLE ... SET` command. For more information about the `ALTER ROLE` command, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/sql-alterrole.html).
+
+You can assign a default resource group to a database by using the `ALTER DATABASE ... SET` command. For more information about the `ALTER DATABASE` command, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/static/sql-alterdatabase.html).
+
+You can assign the entire database server instance a default resource group by setting the `edb_resource_group` configuration parameter in the `postgresql.conf` file:
+
+```ini
+# - EDB Resource Manager -
+#edb_max_resource_groups = 16           # 0-65536 (change requires restart)
+edb_resource_group = 'resgrp_b'
+```
+
+If you change `edb_resource_group` in the `postgresql.conf` file, reload the configuration file to make it take effect on the database server instance.
+
+## Removing a process from a resource group
+
+Set `edb_resource_group` to `DEFAULT` or use `RESET edb_resource_group` to remove the current process from a resource group:
+
+```sql
+edb=# SET edb_resource_group TO DEFAULT;
+SET
+edb=# SHOW edb_resource_group;
+__OUTPUT__
+ edb_resource_group
+--------------------
+(1 row)
+```
+
+To remove a default resource group from a role, use the `ALTER ROLE ... RESET` form of the `ALTER ROLE` command.
+
+To remove a default resource group from a database, use the `ALTER DATABASE ... RESET` form of the `ALTER DATABASE` command.
+
+To remove a default resource group from the database server instance, set the `edb_resource_group` configuration parameter to an empty string in the `postgresql.conf` file. Then, reload the configuration file.
+
+## Monitoring processes in resource groups
+
+After you create resource groups, you can get the number of processes actively using these resource groups from the view `edb_all_resource_groups`.
+
+The following are the columns in `edb_all_resource_groups`:
+
+-   **group_name.** Name of the resource group.
+-   **active_processes.** Number of active processes in the resource group.
+-   **cpu_rate_limit.** The value of the CPU rate limit resource type assigned to the resource group.
+-   **per_process_cpu_rate_limit.** The CPU rate limit that applies to an individual active process in the resource group.
+-   **dirty_rate_limit.** The value of the dirty rate limit resource type assigned to the resource group.
+-   **per_process_dirty_rate_limit.** The dirty rate limit that applies to an individual active process in the resource group.
+
+!!! Note
+    Columns `per_process_cpu_rate_limit` and `per_process_dirty_rate_limit` don't show the actual resource consumption used by the processes. They indicate how `EDB Resource Manager` sets the resource limit for an individual process based on the number of active processes in the resource group.
+
+This example shows `edb_all_resource_groups` when resource group `resgrp_a` contains no active processes, resource group `resgrp_b` contains two active processes, and resource group `resgrp_c` contains one active process:
+
+```sql
+edb=# SELECT * FROM edb_all_resource_groups ORDER BY group_name;
+__OUTPUT__
+-[ RECORD 1 ]-----------------+------------------
+ group_name                   | resgrp_a
+ active_processes             | 0
+ cpu_rate_limit               | 0.5
+ per_process_cpu_rate_limit   |
+ dirty_rate_limit             | 12288
+ per_process_dirty_rate_limit |
+-[ RECORD 2 ]-----------------+------------------
+ group_name                   | resgrp_b
+ active_processes             | 2
+ cpu_rate_limit               | 0.4
+ per_process_cpu_rate_limit   | 0.195694289022895
+ dirty_rate_limit             | 6144
+ per_process_dirty_rate_limit | 3785.92924684337
+-[ RECORD 3 ]-----------------+------------------
+ group_name                   | resgrp_c
+ active_processes             | 1
+ cpu_rate_limit               | 0.3
+ per_process_cpu_rate_limit   | 0.292342129631091
+ dirty_rate_limit             | 3072
+ per_process_dirty_rate_limit | 3072
+```
+
+The CPU rate limit and dirty rate limit settings that are assigned to these resource groups are:
+
+```sql
+edb=# SELECT * FROM edb_resource_group;
+__OUTPUT__
+ rgrpname  | rgrpcpuratelimit | rgrpdirtyratelimit
+-----------+------------------+--------------------
+ resgrp_a  | 0.5              | 12288
+ resgrp_b  | 0.4              | 6144
+ resgrp_c  | 0.3              | 3072
+(3 rows)
+```
+
+In the `edb_all_resource_groups` view, the `per_process_cpu_rate_limit` and `per_process_dirty_rate_limit` values are roughly the corresponding CPU rate limit and dirty rate limit divided by the number of active processes.
