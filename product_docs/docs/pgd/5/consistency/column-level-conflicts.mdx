@@ -190,32 +190,32 @@ By default, column-level conflict resolution picks the value with a higher times
 
 ## Notes
 
--   The attributes modified by an `UPDATE` are determined by comparing the old and new row in a trigger. This means that if the attribute doesn't change a value, it isn't detected as modified even if it's explicitly set. For example, `UPDATE t SET a = a` doesn't mark `a` as modified for any row. Similarly, `UPDATE t SET a = 1` doesn't mark `a` as modified for rows that are already set to `1`.
+-  The attributes modified by an `UPDATE` are determined by comparing the old and new row in a trigger. This means that if the attribute doesn't change a value, it isn't detected as modified even if it's explicitly set. For example, `UPDATE t SET a = a` doesn't mark `a` as modified for any row. Similarly, `UPDATE t SET a = 1` doesn't mark `a` as modified for rows that are already set to `1`.
 
--   For `INSERT` statements, there's no old row to compare the new one to, so all attributes are considered to be modified, and they are assigned a new timestamp. This condition applies even for columns that weren't included in the `INSERT` statement and received default values. PGD can detect the attributes that have a default value but can't know if it was included automatically or specified explicitly.
+-  For `INSERT` statements, there's no old row to compare the new one to, so all attributes are considered to be modified, and they are assigned a new timestamp. This condition applies even for columns that weren't included in the `INSERT` statement and received default values. PGD can detect the attributes that have a default value but can't know if it was included automatically or specified explicitly.
 
-    This situation effectively means column-level conflict resolution doesn't work for `INSERT-INSERT` conflicts even if the `INSERT` statements specify different subsets of columns. The newer row has timestamps that are all newer than the older row.
+   This situation effectively means column-level conflict resolution doesn't work for `INSERT-INSERT` conflicts even if the `INSERT` statements specify different subsets of columns. The newer row has timestamps that are all newer than the older row.
 
--   By treating the columns independently, it's easy to violate constraints in a way that isn't possible when all changes happen on the same node. Consider, for example, a table like this:
+-  By treating the columns independently, it's easy to violate constraints in a way that isn't possible when all changes happen on the same node. Consider, for example, a table like this:
 
-```sql
-CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, CHECK (a > b));
-INSERT INTO t VALUES (1, 1000, 1);
-```
+   ```sql
+   CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, CHECK (a > b));
+   INSERT INTO t VALUES (1, 1000, 1);
+   ```
 
-Assume one node does:
+   Assume one node does:
 
-```sql
-UPDATE t SET a = 100;
-```
+   ```sql
+   UPDATE t SET a = 100;
+   ```
 
-Another node concurrently does:
+   Another node concurrently does:
 
-```sql
-UPDATE t SET b = 500;
-```
+   ```sql
+   UPDATE t SET b = 500;
+   ```
 
-Each of those updates is valid when executed on the initial row and so passes on each node. But when replicating to the other node, the resulting row violates the `CHECK (A > b)` constraint, and the replication stops until the issue is resolved manually.
+   Each of those updates is valid when executed on the initial row and so passes on each node. But when replicating to the other node, the resulting row violates the `CHECK (A > b)` constraint, and the replication stops until the issue is resolved manually.
 
 -   The column storing timestamp mapping is managed automatically. Don't specify or override the value in your queries, as the results can be unpredictable. (The value is ignored where possible.)
 
