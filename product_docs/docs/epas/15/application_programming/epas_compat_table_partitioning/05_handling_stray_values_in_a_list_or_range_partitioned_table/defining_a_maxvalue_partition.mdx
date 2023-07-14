@@ -1,0 +1,86 @@
+---
+title: "Defining a MAXVALUE partition"
+---
+
+
+## Defining a MAXVALUE partition
+
+A `MAXVALUE` partition or subpartition captures any rows that don't fit into any other partition in a range-partitioned or subpartitioned table. If you don't include a `MAXVALUE` rule, any row that exceeds the maximum limit specified by the partitioning rules causes in an error. Each partition or subpartition can have its own `MAXVALUE` partition.
+
+The syntax of a `MAXVALUE` rule is:
+
+```sql
+PARTITION [<partition_name>] VALUES LESS THAN (MAXVALUE)
+```
+
+Where `partition_name` specifies the name of the partition that stores any rows that don't match the rules specified for other partitions.
+
+The last example created a range-partitioned table in which the data was partitioned based on the value of the `date` column. If you attempt to add a row with a `date` value that exceeds a date listed in the partitioning constraints, EDB Postgres Advanced Server reports an error.
+
+```sql
+edb=# INSERT INTO sales VALUES
+edb-#   (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
+ERROR:  no partition of relation "sales" found for row
+DETAIL:  Partition key of the failing row contains (date) = (01-MAR-13 00:00:00).
+```
+
+This `CREATE TABLE` command creates the same table but with a `MAXVALUE` partition. Instead of throwing an error, the server stores any rows that don't match the previous partitioning constraints in the `others` partition.
+
+```sql
+CREATE TABLE sales
+(
+  dept_no     number,
+  part_no     varchar2,
+  country     varchar2(20),
+  date        date,
+  amount      number
+)
+PARTITION BY RANGE(date)
+(
+  PARTITION q1_2012 VALUES LESS THAN('2012-Apr-01'),
+  PARTITION q2_2012 VALUES LESS THAN('2012-Jul-01'),
+  PARTITION q3_2012 VALUES LESS THAN('2012-Oct-01'),
+  PARTITION q4_2012 VALUES LESS THAN('2013-Jan-01'),
+  PARTITION others VALUES LESS THAN (MAXVALUE)
+);
+```
+
+To test the `MAXVALUE` partition, add a row with a value in the `date` column that exceeds the last date value listed in a partitioning rule. The server stores the row in the `others` partition.
+
+```sql
+INSERT INTO sales VALUES
+  (40, '3000x', 'IRELAND', '01-Mar-2013', '45000');
+```
+
+Query the contents of the `sales` table to confirm that the previously rejected row is now stored in the `sales_others` partition:
+
+```sql
+edb=# SELECT tableoid::regclass, * FROM sales;
+__OUTPUT__
+   tableoid    | dept_no | part_no | country  |        date        | amount
+---------------+---------+---------+----------+--------------------+--------
+ sales_q1_2012 |      10 | 4519b   | FRANCE   | 17-JAN-12 00:00:00 |  45000
+ sales_q1_2012 |      20 | 3788a   | INDIA    | 01-MAR-12 00:00:00 |  75000
+ sales_q1_2012 |      30 | 9519b   | CANADA   | 01-FEB-12 00:00:00 |  75000
+ sales_q2_2012 |      40 | 9519b   | US       | 12-APR-12 00:00:00 | 145000
+ sales_q2_2012 |      20 | 3788a   | PAKISTAN | 04-JUN-12 00:00:00 |  37500
+ sales_q2_2012 |      30 | 4519b   | CANADA   | 08-APR-12 00:00:00 | 120000
+ sales_q2_2012 |      40 | 3788a   | US       | 12-MAY-12 00:00:00 |   4950
+ sales_q3_2012 |      10 | 9519b   | ITALY    | 07-JUL-12 00:00:00 |  15000
+ sales_q3_2012 |      10 | 9519a   | FRANCE   | 18-AUG-12 00:00:00 | 650000
+ sales_q3_2012 |      10 | 9519b   | FRANCE   | 18-AUG-12 00:00:00 | 650000
+ sales_q3_2012 |      20 | 3788b   | INDIA    | 21-SEP-12 00:00:00 |   5090
+ sales_q3_2012 |      40 | 4788a   | US       | 23-SEP-12 00:00:00 |   4950
+ sales_q4_2012 |      40 | 4577b   | US       | 11-NOV-12 00:00:00 |  25000
+ sales_q4_2012 |      30 | 7588b   | CANADA   | 14-DEC-12 00:00:00 |  50000
+ sales_q4_2012 |      40 | 4788b   | US       | 09-OCT-12 00:00:00 |  15000
+ sales_q4_2012 |      20 | 4519a   | INDIA    | 18-OCT-12 00:00:00 | 650000
+ sales_q4_2012 |      20 | 4519b   | INDIA    | 02-DEC-12 00:00:00 |   5090
+ sales_others  |      40 | 3000x   | IRELAND  | 01-MAR-13 00:00:00 |  45000
+(18 rows)
+```
+
+EDB Postgres Advanced Server doesn't have a way to reassign the contents of a `MAXVALUE` partition or subpartition.
+
+-   You can't use the `ALTER TABLE… ADD PARTITION` statement to add a partition to a table with a `MAXVALUE` rule. However, you can use the `ALTER TABLE… SPLIT PARTITION` statement to split an existing partition.
+-   You can't use the `ALTER TABLE… ADD SUBPARTITION` statement to add a subpartition to a table with a `MAXVALUE` rule. However, you can split an existing subpartition with the `ALTER TABLE… SPLIT SUBPARTITION` statement.
