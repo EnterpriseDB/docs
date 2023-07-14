@@ -1,0 +1,147 @@
+---
+title: "Running a parallel direct path load"
+navTitle: "Parallel direct path load"
+description: "Describes how to run a parallel direct path load to distribute the loading process over two or more sessions"
+---
+
+<div id="parallel_direct_path_load" class="registered_link"></div>
+
+You can further improve the performance of a direct path load by distributing the loading process over two or more sessions running concurrently. Each session runs a direct path load into the same table.
+
+Since the same table is loaded from multiple sessions, the input records to load into the table must be divided among several data files. This way, each EDB\*Loader session uses its own data file, and the same record isn't loaded into the table more than once.
+
+The target table of a parallel direct path load is under the same restrictions as a direct path load run in a single session.
+
+The following are the restrictions on the target table of a direct path load:
+
+-   Triggers aren't permitted.
+-   Check constraints aren't permitted.
+-   Foreign key constraints on the target table referencing another table aren't permitted.
+-   Foreign key constraints on other tables referencing the target table aren't permitted.
+-   You must not partition the table.
+-   Rules can exist on the target table, but they aren't executed.
+
+In addition, you must specify the `APPEND` clause in the control file used by each EDB\*Loader session.
+
+To run a parallel direct path load, run EDB\*Loader in a separate session for each participant of the parallel direct path load. You must include the `DIRECT=TRUE` and `PARALLEL=TRUE` parameters when invoking each such EDB\*Loader session.
+
+Each EDB\*Loader session runs as an independent transaction. Aborting and rolling back changes of one of the parallel sessions doesn't affect the loading done by the other parallel sessions.
+
+!!! Note
+    In a parallel direct path load, each EDB\*Loader session reserves a fixed number of blocks in the target table using turns. Some of the blocks in the last allocated chunk might not be used, and those blocks remain uninitialized. A later use of the `VACUUM` command on the target table might show warnings about these uninitialized blocks, such as the following:
+
+```text
+WARNING: relation "emp" page 98264 is uninitialized --- fixing
+
+WARNING: relation "emp" page 98265 is uninitialized --- fixing
+
+WARNING: relation "emp" page 98266 is uninitialized --- fixing
+```
+
+This behavior is expected and doesn't indicate data corruption.
+
+Indexes on the target table aren't updated during a parallel direct path load. They are therefore marked as invalid after the load is complete. You must use the `REINDEX` command to rebuild the indexes.
+
+This example shows the use of a parallel direct path load on the `emp` table.
+
+!!! Note
+    If you attempt a parallel direct path load on the sample `emp` table provided with EDB Postgres Advanced Server, you must first remove the triggers and constraints referencing the `emp` table. In addition, the primary key column, `empno`, was expanded from `NUMBER(4)` to `NUMBER` in this example to allow for inserting more rows.
+
+This is the control file used in the first session:
+
+```sql
+LOAD DATA
+  INFILE    '/home/user/loader/emp_parallel_1.dat'
+  APPEND
+  INTO TABLE emp
+    FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+    TRAILING NULLCOLS
+  (
+    empno,
+    ename,
+    job,
+    mgr,
+    hiredate,
+    sal,
+    deptno,
+    comm
+  )
+```
+
+You must specify the `APPEND` clause in the control file for a parallel direct path load.
+
+This example invokes EDB\*Loader in the first session. You must specify the `DIRECT=TRUE` and `PARALLEL=TRUE` parameters.
+
+```shell
+$ /usr/edb/as14/bin/edbldr -d edb USERID=enterprisedb/password
+CONTROL=emp_parallel_1.ctl DIRECT=TRUE PARALLEL=TRUE
+WARNING: index maintenance will be skipped with PARALLEL load
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
+```
+
+The control file used for the second session appears as follows. It's the same as the one used in the first session, but it uses a different data file.
+
+```sql
+LOAD DATA
+  INFILE '/home/user/loader/emp_parallel_2.dat'
+  APPEND
+  INTO TABLE emp
+    FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+    TRAILING NULLCOLS
+  (
+    empno,
+    ename,
+    job,
+    mgr,
+    hiredate,
+    sal,
+    deptno,
+    comm
+  )
+```
+
+This control file is used in a second session:
+
+```shell
+$ /usr/edb/as14/bin/edbldr -d edb USERID=enterprisedb/password
+CONTROL=emp_parallel_2.ctl DIRECT=TRUE PARALLEL=TRUE
+WARNING: index maintenance will be skipped with PARALLEL load
+EDB*Loader: Copyright (c) 2007-2021, EnterpriseDB Corporation.
+```
+
+EDB\*Loader displays the following message in each session when the load operation completes:
+
+```text
+Successfully loaded (10000) records
+```
+
+This query shows that the index on the emp table was marked `INVALID`:
+
+```sql
+SELECT index_name, status FROM user_indexes WHERE table_name = 'EMP';
+__OUTPUT__
+  index_name | status
+-------------+---------
+   EMP_PK    | INVALID
+ (1 row)
+```
+
+!!! Note
+    `user_indexes` is the view of indexes compatible with Oracle databases owned by the current user.
+
+Queries on the `emp` table don't use the index unless you rebuild it using the `REINDEX` command:
+
+```sql
+REINDEX INDEX emp_pk;
+```
+
+A later query on `user_indexes` shows that the index is now marked as `VALID`:
+
+```sql
+SELECT index_name, status FROM user_indexes WHERE table_name = 'EMP';
+__OUTPUT__
+  index_name | status
+-------------+--------
+   EMP_PK    | VALID
+ (1 row)
+```
