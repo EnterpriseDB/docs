@@ -57,22 +57,22 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
+                    to="/biganimal/latest/free_trial/"
                   >
-                    Multi-region extreme high availability in preview in
-                    BigAnimal
+                    BigAnimal's no-commitment free trial
                   </Link>
                 </h3>
                 <p>
-                  You can now create multi-writer clusters that span BigAnimal
-                  regions to maximize availability, performance, and resiliency
-                  to zonal or regional failures.
+                  You can now get $300 of credits to try out fully managed
+                  Postgres with BigAnimal's cloud account and no commitment.
+                  Then you can move your concept to production with just the
+                  swipe of a credit card.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/biganimal/latest/overview/02_high_availability/#extreme-high-availability-preview"
+                      to="/biganimal/latest/free_trial/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -93,20 +93,20 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/pgd/latest/quickstart/"
+                    to="/pgd/latest/reference/"
                   >
-                    EDB Postgres Distributed quick start topics
+                    EDB Postgres Distributed's ready reference
                   </Link>
                 </h3>
                 <p>
-                  Use these topics to quickly evaluate and deploy EDB Postgres
-                  Distributed. They'll get you up and running with a fully
-                  configured EDB Postgres Distributed cluster using the same
-                  tools that you'll use to deploy to production.
+                  Use the new reference section in EDB Postgres Distributed to
+                  quickly look up views, catalogs, functions, and variables. It's
+                  a new view of the documentation designed to centralize essential 
+                  information and speed up your development.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/pgd/latest/quickstart/">
+                    <Link className="btn-sm ml-2" to="/pgd/latest/reference/">
                       Find out more &rarr;
                     </Link>
                   </p>
@@ -266,8 +266,9 @@ const Page = () => (
             <IndexCardLink to="/supported-open-source/pgadmin/">
               pgAdmin
             </IndexCardLink>
-            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
             <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
+            <IndexCardLink to="/lasso/latest">Lasso</IndexCardLink>
+            <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
           <IndexCard
@@ -353,22 +354,10 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Security
+              Data Movement
             </span>
-            <IndexCardLink to="/partner_docs/HashicorpVault">
-              Hashicorp Vault
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
-              Hashicorp Vault Transit Secrets Engine
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-              Imperva Data Security Fabric
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
-              Thales CipherTrust Manager
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
-              Thales CipherTrust Transparent Encryption
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
@@ -380,9 +369,7 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
             </IndexCardLink>
-            <IndexCardLink to="/partner_docs/HPE">
-              HPE
-            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/HPE">HPE</IndexCardLink>
             <IndexCardLink to="/partner_docs/NutanixAHV">
               Nutanix AHV
             </IndexCardLink>

@@ -46,6 +46,10 @@ const sourceToPluginConfig = {
     name: "language_pack",
     path: "product_docs/docs/language_pack",
   },
+  lasso: {
+    name: "lasso",
+    path: "product_docs/docs/lasso",
+  },
   livecompare: {
     name: "livecompare",
     path: "product_docs/docs/livecompare",

@@ -27,6 +27,7 @@ export const products = {
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
+  lasso: { name: "Lasso" },
   livecompare: { name: "LiveCompare" },
   "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
