@@ -100,7 +100,7 @@ const Page = () => (
                 </h3>
                 <p>
                   Use the new reference section in EDB Postgres Distributed to
-                  quickly look up views, catalogs, functions and variables. It's
+                  quickly look up views, catalogs, functions, and variables. It's
                   a new view of the documentation designed to speed up your
                   development and centralize essential information.
                 </p>
