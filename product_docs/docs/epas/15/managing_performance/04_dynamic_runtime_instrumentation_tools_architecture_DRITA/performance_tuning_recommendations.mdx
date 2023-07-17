@@ -1,0 +1,102 @@
+---
+title: "Performance tuning recommendations"
+description: "Explains how to review DRITA reports for performance tuning recommendations"
+---
+
+<div id="performance_tuning_recommendations" class="registered_link"></div>
+
+## Reviewing the reports
+
+To use Dynamic Runtime Instrumentation Tools Architecture (DRITA) reports for performance tuning, review the top five events in a report. Look for any event that takes an especially large percentage of resources. In a streamlined system, user I/O generally makes up the largest number of waits. Evaluate waits in the context of CPU usage and total time. An event might not be significant if it takes two minutes out of a total measurement interval of two hours and the rest of the time is consumed by CPU time. Evaluate the component of response time (CPU "work" time or other "wait" time) that consumes the highest percentage of overall time.
+
+When evaluating events, watch for:
+
+| Event type                 | Description                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Checkpoint waits           | Checkpoint waits might indicate that checkpoint parameters need to be adjusted (`checkpoint_segments` and `checkpoint_timeout`). |
+| WAL-related waits          | WAL-related waits might indicate `wal_buffers` are undersized.                                                                   |
+| SQL Parse waits            | If the number of waits is high, try to use prepared statements.                                                                 |
+| db file random reads       | If high, check for appropriate indexes and statistics.                                                                   |
+| db file random writes      | If high, might need to decrease `bgwriter_delay`.                                                                                 |
+| btree random lock acquires | Might indicate indexes are being rebuilt. Schedule index builds during less active time.                                          |
+
+Also look at the hardware, the operating system, the network, and the application SQL statements in performance reviews.
+
+<div id="event_descriptions" class="registered_link"></div>
+
+## Event descriptions
+
+The following table lists the basic wait events that are displayed by DRITA.
+
+| Event name                            | Description                                                                                                                                                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add in shmem lock acquire`           | Obsolete/unused.                                                                                                                                                                                                    |
+| `bgwriter communication lock acquire` | The bgwriter (background writer) process has waited for the short-term lock that synchronizes messages between the bgwriter and a backend process.                                                                 |
+| `btree vacuum lock acquire`           | The server has waited for the short-term lock that synchronizes access to the next available vacuum cycle ID.                                                                                                      |
+| `buffer free list lock acquire`       | The server has waited for the short-term lock that synchronizes access to the list of free buffers (in shared memory).                                                                                             |
+| `checkpoint lock acquire`             | A server process has waited for the short-term lock that prevents simultaneous checkpoints.                                                                                                                        |
+| `checkpoint start lock acquire`       | The server has waited for the short-term lock that synchronizes access to the bgwriter checkpoint schedule.                                                                                                        |
+| `clog control lock acquire`           | The server has waited for the short-term lock that synchronizes access to the commit log.                                                                                                                          |
+| `control file lock acquire`           | The server has waited for the short-term lock that synchronizes write access to the control file. This is usually a low number.                                                                            |
+| `db file extend`                      | A server process has waited for the operating system while adding a new page to the end of a file.                                                                                                                 |e
+| `db file read`                        | A server process has waited for a read from disk to complete.                                                                                                                                              |
+| `db file write`                       | A server process has waited for a write to disk to complete.                                                                                                                                               |
+| `db file sync`                        | A server process has waited for the operating system to flush all changes to disk.                                                                                                                                 |
+| `first buf mapping lock acquire`      | The server has waited for a short-term lock that synchronizes access to the shared-buffer mapping table.                                                                                                           |
+| `freespace lock acquire`              | The server has waited for the short-term lock that synchronizes access to the freespace map.                                                                                                                       |
+| `lwlock acquire`                      | The server has waited for a short-term lock that isn't described elsewhere in this table.                                                                                                                 |
+| `multi xact gen lock acquire`         | The server has waited for the short-term lock that synchronizes access to the next available multi-transaction ID (when a SELECT...FOR SHARE statement executes).                                                  |
+| `multi xact member lock acquire`      | The server has waited for the short-term lock that synchronizes access to the multi-transaction member file (when a SELECT...FOR SHARE statement executes).                                                        |
+| `multi xact offset lock acquire`      | The server has waited for the short-term lock that synchronizes access to the multi-transaction offset file (when a SELECT...FOR SHARE statement executes).                                                        |
+| `oid gen lock acquire`                | The server has waited for the short-term lock that synchronizes access to the next available OID (object ID).                                                                                                      |
+| `query plan`                          | The server has computed the execution plan for a SQL statement.                                                                                                                                                    |
+| `rel cache init lock acquire`         | The server has waited for the short-term lock that prevents simultaneous relation-cache loads/unloads.                                                                                                             |
+| `shmem index lock acquire`            | The server has waited for the short-term lock that synchronizes access to the shared-memory map.                                                                                                                   |
+| `sinval lock acquire`                 | The server has waited for the short-term lock that synchronizes access to the cache invalidation state.                                                                                                            |
+| `sql parse`                           | The server has parsed a SQL statement.                                                                                                                                                                             |
+| `subtrans control lock acquire`       | The server has waited for the short-term lock that synchronizes access to the subtransaction log.                                                                                                                  |
+| `tablespace create lock acquire`      | The server has waited for the short-term lock that prevents simultaneous `CREATE TABLESPACE` or `DROP TABLESPACE` commands.                                                                                        |
+| `two phase state lock acquire`        | The server has waited for the short-term lock that synchronizes access to the list of prepared transactions.                                                                                                       |
+| `wal insert lock acquire`             | The server has waited for the short-term lock that synchronizes write access to the write-ahead log. A high number can indicate that WAL buffers are sized too small.                                              |
+| `wal write lock acquire`              | The server has waited for the short-term lock that synchronizes write-ahead log flushes.                                                                                                                           |
+| `wal file sync`                       | The server has waited for the write-ahead log to sync to disk. This is related to the `wal_sync_method` parameter which, by default, is 'fsync'. You can gain better performance by changing this parameter to `open_sync`. |
+| `wal flush`                           | The server has waited for the write-ahead log to flush to disk.                                                                                                                                                    |
+| `wal write`                           | The server has waited for a write to the write-ahead log buffer. Expect this value to be high.                                                                                                                    |
+| `xid gen lock acquire`                | The server has waited for the short-term lock that synchronizes access to the next available transaction ID.                                                                                                       |
+
+When wait events occur for *lightweight locks*, DRITA displays them as well. It uses a lightweight lock to protect a particular data structure in shared memory.
+
+Certain wait events can be due to the server process waiting for one of a group of related lightweight locks, which is referred to as a *lightweight lock tranche*. DRITA doesn't display individual lightweight lock tranches, but it displays their summation with a single event named `other lwlock acquire`.
+
+For a list and description of lightweight locks displayed by DRITA, see the [PostgreSQL core documentation](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-STATS-SETUP). Under [Viewing Statistics](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-STATS-VIEWS), see the Wait Event Type table for more details.
+
+This example displays lightweight locks `ProcArrayLock`, `CLogControlLock`, `WALBufMappingLock`, and `XidGenLock`.
+
+```sql
+postgres=# select * from sys_rpt(40,70,20);
+__OUTPUT__
+                                    sys_rpt
+----------------------------------------------------------------------------
+ WAIT NAME                              COUNT       WAIT TIME        % WAIT
+----------------------------------------------------------------------------
+ wal flush                              56107       44.456494       47.65
+ db file read                           66123       19.543968       20.95
+ wal write                              32886       12.780866       13.70
+ wal file sync                          32933       11.792972       12.64
+ query plan                             223576      4.539186        4.87
+ db file extend                         2339        0.087038        0.09
+ other lwlock acquire                   402         0.066591        0.07
+ ProcArrayLock                          135         0.012942        0.01
+ CLogControlLock                        212         0.010333        0.01
+ WALBufMappingLock                      47          0.006068        0.01
+ XidGenLock                             53          0.005296        0.01
+(13 rows)
+```
+
+DRITA also displays wait events that are related to certain EDB Postgres Advanced Server product features. These events and the `other lwlock acquire` event are listed in the following table.
+
+| Event name              | Description                                                       |
+| ----------------------- | ----------------------------------------------------------------- |
+| `BulkLoadLock`          | The server has waited for access related to EDB\*Loader.          |
+| `EDBResoureManagerLock` | The server has waited for access related to EDB Resource Manager. |
+| `other lwlock acquire`  | Summation of waits for lightweight lock tranches.                 |
