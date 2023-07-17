@@ -100,9 +100,9 @@ const Page = () => (
                 </h3>
                 <p>
                   Use the new reference section in EDB Postgres Distributed to
-                  quickly look up views, catalogs, functions, and variables. It's
-                  a new view of the documentation designed to centralize essential 
-                  information and speed up your development.
+                  quickly look up views, catalogs, functions, and variables.
+                  It's a new view of the documentation designed to centralize
+                  essential information and speed up your development.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
@@ -338,6 +338,13 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Data Movement
+            </span>
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Developer Tools
             </span>
             <IndexCardLink to="/partner_docs/DBeaverPRO">
@@ -354,10 +361,22 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Data Movement
+              Security
             </span>
-            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
-              Precisely Connect CDC
+            <IndexCardLink to="/partner_docs/HashicorpVault">
+              Hashicorp Vault
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
+              Hashicorp Vault Transit Secrets Engine
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
+              Thales CipherTrust Manager
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
+              Thales CipherTrust Transparent Encryption
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
