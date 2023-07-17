@@ -338,6 +338,13 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Data Movement
+            </span>
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Developer Tools
             </span>
             <IndexCardLink to="/partner_docs/DBeaverPRO">
@@ -370,13 +377,6 @@ const Page = () => (
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
               Thales CipherTrust Transparent Encryption
-            </IndexCardLink>
-
-            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Data Movement
-            </span>
-            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
-              Precisely Connect CDC
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
