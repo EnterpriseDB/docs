@@ -271,6 +271,12 @@ const Page = () => (
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -282,6 +288,7 @@ const Page = () => (
             <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
             <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
             <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
+
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Connection Poolers
             </span>
@@ -309,12 +316,6 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
-            <IndexCardLink to="/tpa/latest/">
-              Trusted Postgres Architect
-            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
