@@ -1,0 +1,250 @@
+---
+title: Autopartition
+navTitle: Autopartition
+indexdepth: 3
+rootisheading: false
+---
+
+### `bdr.autopartition`
+
+The `bdr.autopartition` function configures automatic RANGE partitioning of a table.
+
+#### Synopsis
+
+```sql
+bdr.autopartition(relation regclass,
+		partition_increment text,
+		partition_initial_lowerbound text DEFAULT NULL,
+		partition_autocreate_expression text DEFAULT NULL,
+		minimum_advance_partitions integer DEFAULT 2,
+		maximum_advance_partitions integer DEFAULT 5,
+		data_retention_period interval DEFAULT NULL,
+		managed_locally boolean DEFAULT false,
+		enabled boolean DEFAULT on);
+```
+
+#### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `partition_increment` &mdash; Interval or increment to next partition creation.
+-   `partition_initial_lowerbound` &mdash; If the table has no partition, then the
+    first partition with this lower bound and `partition_increment` apart upper
+    bound is created.
+-   `partition_autocreate_expression` &mdash; Used to detect if it's time to create new partitions.
+-   `minimum_advance_partitions` &mdash; The system attempts to always have at
+    least `minimum_advance_partitions` partitions.
+-   `maximum_advance_partitions` &mdash; Number of partitions to create in a single
+    go after the number of advance partitions falls below `minimum_advance_partitions`.
+-   `data_retention_period` &mdash; Interval until older partitions are dropped, if
+    defined. This value must be greater than `migrate_after_period`.
+-   `managed_locally` &mdash; If true, then the partitions are managed locally.
+-   `enabled` &mdash; Allows activity to be disabled or paused and later resumed or reenabled.
+
+#### Examples
+
+Daily partitions, keep data for one month:
+
+```sql
+CREATE TABLE measurement (
+logdate date not null,
+peaktemp int,
+unitsales int
+) PARTITION BY RANGE (logdate);
+
+bdr.autopartition('measurement', '1 day', data_retention_period := '30 days');
+```
+
+Create five advance partitions when there are only two more partitions remaining. Each partition can hold 1 billion orders.
+
+```sql
+bdr.autopartition('Orders', '1000000000',
+		partition_initial_lowerbound := '0',
+		minimum_advance_partitions := 2,
+		maximum_advance_partitions := 5
+     );
+```
+
+#### Synopsis
+
+```sql
+bdr.autopartition(relation regclass,
+		hash_partitions_total integer DEFAULT 24,
+		managed_locally boolean DEFAULT false,
+		enabled boolean DEFAULT on);
+```
+
+#### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `hash_partitions_total` &mdash; Total number of hash partitions to
+    create. By default, 24 hash partitions are created.
+-   `managed_locally` &mdash; If true, then the partitions are managed locally.
+-   `enabled` &mdash; Allows activity to be disabled or paused and later resumed or reenabled.
+
+### `bdr.drop_autopartition`
+
+Use `bdr.drop_autopartition()` to drop the autopartitioning rule for the
+given relation. All pending work items for the relation are deleted, and no new
+work items are created.
+
+```sql
+bdr.drop_autopartition(relation regclass);
+```
+
+#### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+
+### `bdr.autopartition_wait_for_partitions`
+
+Whether RANGE or HASH partitioning is used, partition
+creation is an asynchronous process. AutoPartition provides a set of
+functions to wait for the partition to be created, locally or on all
+nodes.
+
+Use `bdr.autopartition_wait_for_partitions()` to wait for the creation of
+partitions on the local node. The function takes the partitioned table name and
+a partition key column value and waits until the partition that holds that
+value is created.
+
+The function waits only for the partitions to be created locally. It doesn't guarantee
+that the partitions also exists on the remote nodes.
+
+To wait for the partition to be created on all PGD nodes, use the
+`bdr.autopartition_wait_for_partitions_on_all_nodes()` function. This function
+internally checks local as well as all remote nodes and waits until the
+partition is created everywhere.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_wait_for_partitions(relation regclass, upperbound text);
+```
+
+#### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `upperbound` &mdash; Partition key column value. Ignore for HASH-partitioned tables.
+
+### `bdr.autopartition_wait_for_partitions_on_all_nodes`
+
+#### Synopsis
+
+```sql
+bdr.autopartition_wait_for_partitions_on_all_nodes(relation regclass, upperbound text);
+```
+
+#### Parameters
+
+-   `relation` &mdash; Name or Oid of a table.
+-   `upperbound` &mdash; Partition key column value. Ignored for HASH-partitioned tables.
+
+### `bdr.autopartition_find_partition`
+
+Use the `bdr.autopartition_find_partition()` function to find the partition for the
+given partition key value. If partition to hold that value doesn't exist, then
+the function returns NULL. Otherwise Oid of the partition is returned.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_find_partition(relname regclass, searchkey text);
+```
+
+#### Parameters
+
+-   `relname` &mdash; Name of the partitioned table.
+-   `searchkey` &mdash; Partition key value to search.
+
+### `bdr.autopartition_enable`
+
+Use `bdr.autopartition_enable` to enable AutoPartitioning on the given table.
+If AutoPartitioning is already enabled, then no action occurs. See 
+[`bdr.autopartition_disable`](#bdrautopartition_disable) to disable AutoPartitioning on the given table.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_enable(relname regclass);
+```
+
+#### Parameters
+
+-   `relname` &mdash; Name of the relation to enable AutoPartitioning.
+
+
+### `bdr.autopartition_disable` 
+
+Use `bdr.autopartition_disable` to disable AutoPartitioning on the given table.
+If AutoPartitioning is already disabled, then no action occurs.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_disable(relname regclass);
+```
+
+#### Parameters
+
+-   `relname` &mdash; Name of the relation to disable AutoPartitioning.
+
+### Internal functions
+
+### `bdr.autopartition_create_partition`
+
+AutoPartition uses an internal function
+`bdr.autopartition_create_partition` to create a standalone
+AutoPartition on the parent table.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_create_partition(relname regclass,
+                          	   partname name,
+                                 lowerb text,
+                                 upperb text,
+                                 nodes oid[]);
+```
+
+#### Parameters
+
+-   `relname` &mdash; Name or Oid of the parent table to attach to.
+-   `partname` &mdash; Name of the new AutoPartition.
+-   `lowerb` &mdash; Lower bound of the partition.
+-   `upperb` &mdash; Upper bound of the partition.
+-   `nodes` &mdash; List of nodes that the new partition resides on.
+    This parameter is internal to PGD and reserved for future use.
+
+#### Notes
+
+This is an internal function used by AutoPartition for partition
+management. We recommend that you don't use the function directly.
+
+
+### `bdr.autopartition_drop_partition`
+
+AutoPartition uses an internal function
+`bdr.autopartition_drop_partition` to drop a partition that's no longer
+required, as per the data-retention policy. If the partitioned
+table was successfully dropped, the function returns `true`.
+
+#### Synopsis
+
+```sql
+bdr.autopartition_drop_partition(relname regclass)
+```
+
+#### Parameters
+
+-   `relname` &mdash; The name of the partitioned table to drop.
+
+#### Notes
+
+This function places a DDL lock on the parent table before using `DROP TABLE` on the
+chosen partition table. This function is an internal function used by
+AutoPartition for partition management. We recommend that you don't
+use the function directly.
+
+
+
+
