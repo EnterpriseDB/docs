@@ -164,7 +164,7 @@ function composeRow(row, lastRow, currentState) {
         if (row[i] == "TRUE") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `<span style="color:green">✓</span>`, lastRow, true));
         } else if(row[i] == "FALSE") {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `<span style="color:#666666">✘</span>`, lastRow, true));
         } else if(row[i] == "PREVIEW") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
         }
