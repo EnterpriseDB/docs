@@ -100,9 +100,9 @@ const Page = () => (
                 </h3>
                 <p>
                   Use the new reference section in EDB Postgres Distributed to
-                  quickly look up views, catalogs, functions, and variables. It's
-                  a new view of the documentation designed to centralize essential 
-                  information and speed up your development.
+                  quickly look up views, catalogs, functions, and variables.
+                  It's a new view of the documentation designed to centralize
+                  essential information and speed up your development.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
@@ -271,6 +271,12 @@ const Page = () => (
             <IndexCardLink to="/livecompare/latest">LiveCompare</IndexCardLink>
           </IndexCard>
 
+          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
+            <IndexCardLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </IndexCardLink>
+          </IndexCard>
+
           <IndexCard
             iconName={iconNames.CODE_WRITING}
             headingText="Integration"
@@ -282,6 +288,7 @@ const Page = () => (
             <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
             <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
             <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
+
             <span className="font-weight-bold mt-4 text-muted text-uppercase small d-block">
               Connection Poolers
             </span>
@@ -311,12 +318,6 @@ const Page = () => (
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
           </IndexCard>
 
-          <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
-            <IndexCardLink to="/tpa/latest/">
-              Trusted Postgres Architect
-            </IndexCardLink>
-          </IndexCard>
-
           <IndexCard
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
@@ -338,6 +339,13 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Data Movement
+            </span>
+            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
+              Precisely Connect CDC
+            </IndexCardLink>
+
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Developer Tools
             </span>
             <IndexCardLink to="/partner_docs/DBeaverPRO">
@@ -354,10 +362,22 @@ const Page = () => (
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Data Movement
+              Security
             </span>
-            <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
-              Precisely Connect CDC
+            <IndexCardLink to="/partner_docs/HashicorpVault">
+              Hashicorp Vault
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
+              Hashicorp Vault Transit Secrets Engine
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
+              Imperva Data Security Fabric
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
+              Thales CipherTrust Manager
+            </IndexCardLink>
+            <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
+              Thales CipherTrust Transparent Encryption
             </IndexCardLink>
 
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
