@@ -249,6 +249,7 @@ const DocTemplate = ({ data, pageContext }) => {
     indexCards,
     editTarget,
     originalFilePath,
+    deepToC,
   } = frontmatter;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
@@ -276,6 +277,7 @@ const DocTemplate = ({ data, pageContext }) => {
   };
 
   const showToc = !!tableOfContents.items && !frontmatter.hideToC;
+
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
@@ -341,7 +343,10 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents toc={tableOfContents.items} />
+                <TableOfContents
+                  toc={tableOfContents.items}
+                  deepToC={deepToC}
+                />
               </Col>
             )}
           </ContentRow>

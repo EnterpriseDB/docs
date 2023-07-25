@@ -163,8 +163,10 @@ function composeRow(row, lastRow, currentState) {
     for (let i = 6; i < 14; i++) {
         if (row[i] == "TRUE") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `<span style="color:green">✓</span>`, lastRow, true));
-        } else {
+        } else if(row[i] == "FALSE") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
+        } else if(row[i] == "PREVIEW") {
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
         }
     }
     output.push("</tr>\n")

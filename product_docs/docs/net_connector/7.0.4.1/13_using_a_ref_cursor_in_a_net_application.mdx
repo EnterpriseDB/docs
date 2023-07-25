@@ -1,0 +1,104 @@
+---
+title: "Using a ref cursor in a .NET application"
+
+---
+
+<div id="using_a_ref_cursor_in_a_net_application" class="registered_link"></div>
+
+A `ref cursor` is a cursor variable that contains a pointer to a query result set. The result set is determined by executing the `OPEN FOR` statement using the cursor variable. A cursor variable isn't tied to a particular query like a static cursor. You can open the same cursor variable a number of times with the `OPEN FOR` statement containing different queries and each time. A new result set is created for that query and made available by way of the cursor variable. You can declare a cursor variable in two ways:
+
+-   Use the `SYS_REFCURSOR` built-in data type to declare a weakly typed ref cursor.
+-   Define a strongly typed ref cursor that declares a variable of that type.
+
+`SYS_REFCURSOR` is a ref cursor type that allows any result set to be associated with it. This is known as a weakly typed ref cursor. The following example is a declaration of a weakly typed ref cursor:
+
+```
+ name SYS_REFCURSOR`;
+```
+
+Following is an example of a strongly typed ref cursor:
+
+```
+TYPE <cursor_type_name> IS REF CURSOR RETURN emp%ROWTYPE`;
+```
+
+## Creating the stored procedure
+
+This sample code creates a stored procedure called `refcur_inout_callee`. It specifies the data type of the ref cursor being passed as an OUT parameter. To create the sample procedure, invoke EDB-PSQL and connect to the EDB Postgres Advanced Server host database. Enter the following SPL code at the command line:
+
+```sql
+CREATE OR REPLACE PROCEDURE
+  refcur_inout_callee(v_refcur OUT SYS_REFCURSOR)
+IS
+BEGIN
+   OPEN v_refcur FOR SELECT ename FROM emp;
+END;
+```
+
+This C# code uses the stored procedure to retrieve employee names from the `emp` table:
+
+```cpp
+using System;
+using System.Data;
+using EnterpriseDB.EDBClient;
+using System.Configuration;
+namespace EDBRefCursor
+{
+    class EmpRefcursor
+    {
+        [STAThread]
+        static void Main(string[] args)
+        {
+            var strConnectionString =
+            ConfigurationManager.AppSettings["DB_CONN_STRING"];
+            try
+            {
+				await using var dataSource = EDBDataSource.Create(ConnectionString);
+				var conn = await dataSource.OpenConnectionAsync();
+                await using var tran = await connection.BeginTransactionAsync();
+                using var command = new EDBCommand("refcur_inout_callee", conn);
+                command.CommandType = CommandType.StoredProcedure;
+                command.Transaction = tran;
+                command.Parameters.Add(new EDBParameter("refCursor",
+                    EDBTypes.EDBDbType.Refcursor, 10, "refCursor",
+                ParameterDirection.Output, false, 2, 2,
+                    System.Data.DataRowVersion.Current, null));
+                await command.PrepareAsync();
+				command.Parameters[0].Value = null;
+				await command.ExecuteNonQueryAsync();
+                var cursorName = command.Parameters[0].Value.ToString();
+                command.CommandText = "fetch all in \"" + cursorName + "\"";
+                command.CommandType = CommandType.Text;
+                await using var reader = 
+					await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+                var fc = reader.FieldCount;
+                while (await reader.ReadAsync())
+                {
+                    for (int i = 0; i < fc; i++)
+                    {
+                        Console.WriteLine(reader.GetString(i));
+                    }
+                }
+                await reader.CloseAsync();
+				await tran.CommitAsync();
+				await conn.CloseAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message.ToString());
+            }
+        }
+    }
+}
+```
+
+This .NET code snippet displays the result on the console:
+
+```cpp
+for(int i = 0;i < fc; i++)
+{
+    Console.WriteLine(reader.GetString(i));
+}
+```
+
+You must bind the `EDBDbType.RefCursor` type in `EDBParameter()` if you're using a ref cursor parameter.

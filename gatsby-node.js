@@ -142,6 +142,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             navigation
             showInteractiveBadge
             hideToC
+            deepToC
             hideKBLink
             katacodaPages {
               scenario
@@ -331,6 +332,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
   )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
+  const deepToC = doc.frontmatter.deepToC != true ? false : true;
 
   actions.createPage({
     path: path,
@@ -515,6 +517,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       legacyRedirectsGenerated: [String]
       showInteractiveBadge: Boolean
       hideToC: Boolean
+      deepToC: Boolean
       hideVersion: Boolean
       hideKBLink: Boolean
       displayBanner: String
