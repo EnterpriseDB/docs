@@ -2,7 +2,7 @@ import React from "react";
 import Icon, { iconNames } from "./icon/";
 import VersionDropdown from "./version-dropdown";
 import { products } from "../constants/products";
-import { Link, PdfDownload, BackButton, TreeNode } from "./";
+import { Link, PdfDownload, TreeNode } from "./";
 
 const productIcon = (path) => {
   const product = path.split("/")[1];
