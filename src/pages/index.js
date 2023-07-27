@@ -100,9 +100,9 @@ const Page = () => (
                 </h3>
                 <p>
                   Use the new reference section in EDB Postgres Distributed to
-                  quickly look up views, catalogs, functions, and variables. It's
-                  a new view of the documentation designed to centralize essential 
-                  information and speed up your development.
+                  quickly look up views, catalogs, functions, and variables.
+                  It's a new view of the documentation designed to centralize
+                  essential information and speed up your development.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
@@ -309,6 +309,9 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+            <IndexCardLink to="/sql_assess/latest">
+              EDB SQL Assess
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
