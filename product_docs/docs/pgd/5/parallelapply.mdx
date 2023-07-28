@@ -1,0 +1,57 @@
+---
+title: Parallel Apply
+navTitle: Parallel Apply
+---
+
+## What is Parallel Apply?
+
+Parallel Apply is a feature of PGD that allows a PGD node to use multiple writers per subscription. This behavior generally increases the throughput of a subscription and improves replication performance.
+
+The transactional changes from the subscription are written by the multiple Parallel Apply writers. However, each writer ensures that the final commit of its transaction doesn't violate the commit order as executed on the origin node. If there's a violation, an error occurs, and the transaction can be rolled back. 
+
+!!! Warning Possible deadlocks
+It might be possible for this out-of-order application of changes to trigger a deadlock. PGD currently resolves such deadlocks between Parallel Apply writers by aborting and retrying the transactions involved. Experiencing a large number of such deadlocks is an indication that Parallel Apply isn't a good fit for your workload. In this case, consider disabling it.
+!!!
+
+## Configuring Parallel Apply
+Two variables control Parallel Apply in PGD 5: [`bdr.max_writers_per_subscription`](/pgd/latest/reference/pgd-settings#bdrmax_writers_per_subscription) (defaults to 8) and [`bdr.writers_per_subscription`](/pgd/latest/reference/pgd-settings#bdrwriters_per_subscription) (defaults to 2).
+
+```plain
+bdr.max_writers_per_subscription = 8
+bdr.writers_per_subscription = 2
+```
+
+This configuration gives each subscription two writers. However, in some circumstances, the system might allocate up to 8 writers for a subscription.
+
+You can change [`bdr.max_writers_per_subscription`](/pgd/latest/reference/pgd-settings#bdrmax_writers_per_subscription) only with a server restart.
+
+You can change [`bdr.writers_per_subscription`](/pgd/latest/reference/pgd-settings#bdrwriters_per_subscription) for a specific subscription without a restart by:
+
+1. Halting the subscription using [`bdr.alter_subscription_disable`](/pgd/latest/reference/nodes-management-interfaces#bdralter_subscription_disable). 
+1. Setting the new value. 
+1. Resuming the subscription using [`bdr.alter_subscription_enable`](/pgd/latest/reference/nodes-management-interfaces#bdralter_subscription_enable). 
+
+First, though, establish the name of the subscription using `select * from bdr.subscription`. For this example, the subscription name is `bdr_bdrdb_bdrgroup_node2_node1`.
+
+
+```sql
+SELECT bdr.alter_subscription_disable ('bdr_bdrdb_bdrgroup_node2_node1');
+
+UPDATE bdr.subscription
+SET num_writers = 4
+WHERE sub_name = 'bdr_bdrdb_bdrgroup_node2_node1';
+
+SELECT bdr.alter_subscription_enable ('bdr_bdrdb_bdrgroup_node2_node1');
+```
+
+### When to use Parallel Apply
+
+Parallel Apply is always on by default. For most operations, we recommend that you leave it on.
+
+### When not to use Parallel Apply
+
+For PGD 5.1 and earlier, don't use Parallel aAply with Group Commit, CAMO, and Eager Replication. Disable Parallel Apply in these scenarios. Also, if you're experiencing a large number of deadlocks, consider disabling it.
+
+### Disabling Parallel Apply
+
+To disable Parallel Apply, set [`bdr.writers_per_subscription`](/pgd/latest/reference/pgd-settings#bdrwriters_per_subscription) to `1`.

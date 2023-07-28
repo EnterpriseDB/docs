@@ -42,6 +42,14 @@ const sourceToPluginConfig = {
     name: "jdbc_connector",
     path: "product_docs/docs/jdbc_connector",
   },
+  language_pack: {
+    name: "language_pack",
+    path: "product_docs/docs/language_pack",
+  },
+  lasso: {
+    name: "lasso",
+    path: "product_docs/docs/lasso",
+  },
   livecompare: {
     name: "livecompare",
     path: "product_docs/docs/livecompare",
@@ -90,6 +98,10 @@ const sourceToPluginConfig = {
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
   tpa: { name: "tpa", path: "product_docs/docs/tpa" },
+  wait_states: {
+    name: "wait_states",
+    path: "advocacy_docs/pg_extensions/wait_states",
+  },
 };
 
 const externalSourcePlugins = () => {

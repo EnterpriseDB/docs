@@ -1,0 +1,106 @@
+---
+title: "Building the EDB*Loader control file"
+navTitle: "Building the control file"
+description: "Provides information necessary to build a control file"
+---
+
+<div id="building_the_edb_loader_control_file" class="registered_link"></div>
+
+When you invoke EDB\*Loader, the list of arguments provided must include the name of a control file. The control file includes the instructions that EDB\*Loader uses to load the tables from the input data file. The control file includes information such as:
+
+-   The name of the input data file containing the data to load
+-   The name of the tables to load from the data file
+-   Names of the columns in the tables and their corresponding field placement in the data file
+-   Specification of whether the data file uses a delimiter string to separate the fields or if the fields occupy fixed column positions
+-   Optional selection criteria to choose the records from the data file to load into a given table
+-   The name of the file that collects illegally formatted records
+-   The name of the discard file that collects records that don't meet the selection criteria of any table
+
+## Control file syntax
+
+The syntax for the EDB\*Loader control file is:
+
+```sql
+[ OPTIONS (<param=value> [, <param=value> ] ...) ]
+LOAD DATA
+  [ CHARACTERSET <charset> ]
+  [ INFILE '{ <data_file> | <stdin> }' ]
+  [ BADFILE '<bad_file>' ]
+  [ DISCARDFILE '<discard_file>' ]
+  [ { DISCARDMAX | DISCARDS } <max_discard_recs> ]
+[ INSERT | APPEND | REPLACE | TRUNCATE ]
+[ PRESERVE BLANKS ]
+{ INTO TABLE <target_table>
+  [ WHEN <field_condition> [ AND <field_condition> ] ...]
+  [ FIELDS TERMINATED BY '<termstring>'
+    [ OPTIONALLY ENCLOSED BY '<enclstring>' ] ]
+  [ RECORDS DELIMITED BY '<delimstring>' ]
+  [ TRAILING NULLCOLS ]
+   (<field_def> [, <field_def> ] ...)
+} ...
+```
+
+Where `field_def` defines a field in the specified `data_file`. The field describes the location, data format, or value of the data to insert into `column_name` of `target_table`. The syntax of `field_def` is:
+
+```sql
+<column_name> {
+  CONSTANT <val> |
+  FILLER [ POSITION (<start:end>) ] [ <fieldtype> ] |
+  BOUNDFILLER [ POSITION (<start:end>) ] [ <fieldtype> ] |
+  [ POSITION (<start:end>) ] [ <fieldtype> ]
+  [ NULLIF <field_condition> [ AND <field_condition> ] ...]
+  [ PRESERVE BLANKS ] [ "<expr>" ]
+}
+```
+
+Where `fieldtype` is one of:
+
+```sql
+CHAR [(<length>)] | DATE [(<length>)] | TIMESTAMP [(<length>)] [ "<datemask>" ] | 
+INTEGER EXTERNAL [(<length>)] |
+FLOAT EXTERNAL [(<length>)] | DECIMAL EXTERNAL [(<length>)] |
+ZONED EXTERNAL [(<length>)] | ZONED [(<precision> [,<scale>])]
+```
+
+## Description
+
+The specification of `data_file`, `bad_file`, and `discard_file` can include the full directory path or a relative directory path to the filename. If the filename is specified alone or with a relative directory path, the file is then assumed to exist, in the case of `data_file`, relative to the current working directory from which you invoke `edbldr`. In the case of `bad_file` or `discard_file`, it's created.
+
+You can include references to environment variables in the EDB\*Loader control file when referring to a directory path or filename. Environment variable references are formatted differently on Windows systems than on Linux systems:
+
+-   On Linux, the format is `$ENV_VARIABLE` or `${ENV_VARIABLE}`.
+-   On Windows, the format is `%ENV_VARIABLE%`.
+
+Where `ENV_VARIABLE` is the environment variable that's set to the directory path or filename.
+
+Set the `EDBLDR_ENV_STYLE` environment variable to interpret environment variable references as Windows-styled references or Linux-styled references regardless of the operating system on which EDB\*Loader resides. You can use this environment variable to create portable control files for EDB\*Loader.
+
+-   On a Windows system, set `EDBLDR_ENV_STYLE` to `linux` or `unix` to recognize Linux-style references in the control file.
+-   On a Linux system, set `EDBLDR_ENV_STYLE` to `windows` to recognize Windows-style references in the control file.
+
+The operating system account enterprisedb must have read permission on the directory and file specified by `data_file`. It must have write permission to the directories where `bad_file` and `discard_file` are written.
+
+!!! Note
+    The filenames for `data_file`, `bad_file`, and `discard_file` must have extensions `.dat`, `.bad`, and `.dsc`, respectively. If the provided filename doesn't have an extension, EDB\*Loader assumes the actual filename includes the appropriate extension.
+
+Suppose an EDB\*Loader session results in data format errors, the `BADFILE` clause isn't specified, and the `BAD` parameter isn't given on the command line when `edbldr` is invoked. In this case, a bad file is created with the name `control_file_base.bad` in the directory from which `edbldr` is invoked. `control_file_base` is the base name of the control file used in the `edbldr` session.
+
+If all of the following conditions are true, the discard file isn't created even if the EDB\*Loader session results in discarded records:
+
+-   The `DISCARDFILE` clause for specifying the discard file isn't included in the control file.
+-   The `DISCARD` parameter for specifying the discard file isn't included on the command line.
+-   The `DISCARDMAX` clause for specifying the maximum number of discarded records isn't included in the control file.
+-   The `DISCARDS` clause for specifying the maximum number of discarded records isn't included in the control file.
+-   The `DISCARDMAX` parameter for specifying the maximum number of discarded records isn't included on the command line.
+
+Suppose you don't specify the `DISCARDFILE` clause and the `DISCARD` parameter for explicitly specifying the discard filename, but you do specify `DISCARDMAX` or `DISCARDS`. In this case, the EDB\*Loader session creates a discard file using the data filename with an extension of `.dsc`.
+
+!!! Note
+    The keywords `DISCARD` and `DISCARDS` differ. `DISCARD` is an EDB\*Loader command line parameter used to specify the discard filename. `DISCARDS` is a clause of the `LOAD DATA` directive that can appear only in the control file. Keywords `DISCARDS` and `DISCARDMAX` provide the same functionality of specifying the maximum number of discarded records allowed before terminating the EDB\*Loader session. Records loaded into the database before terminating the EDB\*Loader session due to exceeding the `DISCARDS` or `DISCARDMAX` settings are kept in the database. They aren't rolled back.
+
+Specifying one of `INSERT`, `APPEND`, `REPLACE`, or `TRUNCATE` establishes the default action for adding rows to target tables. The default action is `INSERT`.
+
+If you specify the `FIELDS TERMINATED BY` clause, then you can't specify the `POSITION (start:end)` clause for any `field_def`. Alternatively, if you don't specify the `FIELDS TERMINATED BY` clause, then every `field_def` must contain the `POSITION (start:end)` clause, the `fieldtype(length)` clause, or the `CONSTANT` clause.
+
+For complete descriptions of the parameters available for each clause, see [EDB\*Loader control file parameters](../../../reference/database_administrator_reference/edb_loader_control_file_parameters/).
+

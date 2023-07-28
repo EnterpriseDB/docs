@@ -26,6 +26,8 @@ export const products = {
     iconName: IconNames.HIGH_AVAILABILITY,
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
+  language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
+  lasso: { name: "Lasso" },
   livecompare: { name: "LiveCompare" },
   "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
@@ -76,4 +78,5 @@ export const products = {
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
+  wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
 };
