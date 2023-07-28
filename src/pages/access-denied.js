@@ -1,6 +1,6 @@
 import React from "react";
 import { Container } from "react-bootstrap";
-import { Footer, Layout, MainContent } from "../components";
+import { Layout } from "../components";
 
 const AccessDenied = (data) => {
   return (
