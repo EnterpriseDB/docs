@@ -1,0 +1,145 @@
+---
+title: Testing and Tuning PGD clusters
+navTitle: Testing and Tuning
+---
+
+## Application testing
+
+You can test PGD applications using the following programs,
+in addition to other techniques:
+
+-   [Trusted Postgres Architect](#trusted-postgres-architect)
+-   [pgd_bench with CAMO/Failover options](#pgd_bench-with-camofailover-options)
+
+
+### Trusted Postgres Architect
+
+[Trusted Postgres Architect](/tpa/latest) is the system used by EDB to
+deploy reference architectures, including those based on EDB Postgres Distributed.
+
+Trusted Postgres Architect includes test suites for each reference architecture.
+It also simplifies creating and managing a local collection of tests to run
+against a TPA cluster, using a syntax like the following:
+
+```
+tpaexec test mycluster mytest
+```
+
+We strongly recommend that developers write their own multi-node suite
+of Trusted Postgres Architect tests that verify the main expected properties
+of the application.
+
+### pgd_bench with CAMO/failover options
+
+The Postgres benchmarking application [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html) has been extended in PGD 5.0 in the form of a new applications: `pgd_bench`. This version allows users to run failover tests while using CAMO or regular PGD deployments. 
+
+The following options were added:
+
+```
+-m, --mode=regular|camo|failover
+mode in which pgbench should run (default: regular)
+```
+
+-   Use `-m camo` or `-m failover` to specify the mode for pgd_bench.
+    You can use The `-m failover` specification to test failover in
+    regular PGD deployments.
+
+```
+--retry
+retry transactions on failover
+```
+
+-   Use `--retry` to specify whether to retry transactions when
+    failover happens with `-m failover` mode. This option is enabled by default
+    for `-m camo` mode.
+
+In addition to these options, you must specify the connection information about
+the peer node for failover in [DSN
+form](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
+
+
+Here's an example in a CAMO environment:
+
+```sh
+    pgd_bench -m camo -p $node1_port -h $node1_host bdrdemo \
+        "host=$node2_host user=postgres port=$node2_port dbname=bdrdemo"
+```
+
+This command runs in CAMO mode. It connects to node1 and runs the tests. If the
+connection to node1 is lost, then pgd_bench connects to node2. It queries node2
+to get the status of in-flight transactions. Aborted and in-flight transactions
+are retried in CAMO mode.
+
+In failover mode, if you specify `--retry`, then in-flight transactions are
+retried. In this scenario there's no way to find the status of in-flight
+transactions.
+
+## Performance testing and tuning
+
+PGD allows you to issue write transactions onto multiple master nodes. Bringing
+those writes back together onto each node has a cost in performance.
+
+First, replaying changes from another node has a CPU cost, an I/O cost,
+and it generates WAL records. The resource use is usually less
+than in the original transaction since CPU overheads are lower as a result
+of not needing to reexecute SQL. In the case of UPDATE and DELETE
+transactions, there might be I/O costs on replay if data isn't cached.
+
+Second, replaying changes holds table-level and row-level locks that can produce
+contention against local workloads. The conflict-free replicated data types
+(CRDT) and column-level conflict detection (CLCD) features ensure you get the
+correct answers even for concurrent updates, but they don't remove the normal
+locking overheads. If you get locking contention, try to avoid conflicting
+updates, or keep transactions as short as possible. A heavily updated row in a
+larger transaction causes a bottleneck on performance for that transaction.
+Complex applications require some thought to maintain scalability.
+
+If you think you're having performance problems, develop performance tests using
+the benchmarking tools. pgd_bench allows you to write custom test scripts specific
+to your use case so you can understand the overheads of your SQL and measure the
+impact of concurrent execution.
+
+If PGD is running slow, then we suggest the following:
+
+1.  Write a custom test script for pgd_bench, as close as you can make it
+    to the production system's problem case.
+2.  Run the script on one node to give you a baseline figure.
+3.  Run the script on as many nodes as occurs in production, using the
+    same number of sessions in total as you did on one node. This technique
+    shows you the effect of moving to multiple nodes.
+4.  Increase the number of sessions for these two tests so you can
+    plot the effect of increased contention on your application.
+5.  Make sure your tests are long enough to account for replication delays.
+6.  Ensure that replication delay isn't growing during your tests.
+
+Use all of the normal Postgres tuning features to improve the speed
+of critical parts of your application.
+
+## Use of table access methods (TAMs) in PGD
+
+PGD 5.0 supports two table access methods released with EDB Postgres 15.0.
+These two table access methods have been certified and allowed in PGD 5.0:
+
+ * Auto cluster
+ * Ref data
+
+Any other TAM is restricted until certified by EDB.
+If you are planning to use any of the table access method on a table,
+you need to configure that TAM on each participating node in the
+PGD cluster.
+To configure auto cluster or ref data TAM, follow these steps on each node:
+1.   Update `postgresql.conf` to specify TAMs `autocluster` or `refdata` for the
+    `shared_preload_libraries` parameter.
+1.   Restart the server and execute `CREATE EXTENSION autocluster;` or
+    `CREATE EXTENSION refdata;`.
+
+After you create the extension, you can use TAM to create a table using
+`CREATE TABLE test USING autocluster;` or `CREATE TABLE test USING refdata;`.
+This replicates to all the PGD nodes.
+For more information on these table access methods, see [`CREATE TABLE`](/epas/latest/epas_compat_sql/36_create_table/).
+
+
+
+
+
+
