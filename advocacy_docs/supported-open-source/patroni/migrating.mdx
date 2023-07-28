@@ -10,7 +10,7 @@ This page describes how to migrate an existing Postgres cluster to Patroni manag
 1. Disable current HA solution, if any.
 2. Perform the following steps on all nodes, starting with the primary and then going with standbys:
     1. Disable Postgres systemd unit.
-    2. Create an YAML configuration file for Patroni. If you use replication slots in the exiting cluster, then make sure to configure [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) so Patroni does not delete them while migrating.
+    2. Create a YAML configuration file for Patroni. If you use replication slots in the existing cluster, then make sure to configure [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) so Patroni does not delete them while migrating.
     3. Enable Patroni systemd unit.
     4. Start Patroni systemd unit.
 3. Let Patroni take over the "startup procedure" of Postgres:
@@ -25,7 +25,7 @@ This page describes how to migrate an existing Postgres cluster to Patroni manag
 
 In this section we will cover an example with more detailed steps to migrate an existing Postgres cluster to a Patroni managed cluster.
 
-For sake of simpliticy we will put some notes, when relevant, considering 3 possibilities for an existing cluster, just so we do not need to repeat ourselves regarding similar steps:
+For sake of simplicity we will put some notes, when relevant, considering 3 possibilities for an existing cluster, just so we do not need to repeat ourselves regarding similar steps:
 
 1. Managed by [EFM](/efm/latest/).
 2. Managed by [repmgr](/repmgr/latest).
@@ -64,7 +64,7 @@ For the example, the following assumptions are made:
 
 **Note:** please adapt the example names according to your actual cluster.
 
-In the following sub-sections you will find the actual walkthrough.
+In the following subsections you will find the actual walkthrough.
 
 #### 1. Disable current HA solution
 
@@ -108,7 +108,7 @@ You need to perform the following steps on all Postgres nodes. Perform all steps
 systemctl disable postgres
 ```
 
-2. Create an YAML configuration file for Patroni (`/etc/patroni.yml`). You can find below a very basic template for the configuration file:
+2. Create a YAML configuration file for Patroni (`/etc/patroni.yml`). You can find below a very basic template for the configuration file:
 
 ```yaml
 scope: test_cluster
@@ -185,7 +185,7 @@ Please keep the following notes in mind about the above template configuration f
     * `etcd3.hosts`: it contains the list of addresses to reach nodes that are part of the `etcd` cluster
     * `bootstrap.dcs.postgresql.slots`: it contains a list of slots that should be permanent, thus not dropped by Patroni when it starts running. We fill this so we can guarantee WALs will be available for replicas until they reach the LSN of the slots that are created by Patroni.
     * `bootstrap.pg_hba`: it contains a few basic HBA rules that Patroni will write to the `pg_hba.conf` file, so users are able to connect. Adapt it to your needs, as the rules are somehow very permissive.
-* We **strongly** recommend reading the Patroni documentation about [Patroni configuration](https://patroni.readthedocs.io/en/latest/patroni_configuration.html). You will likely need to at least specify some settings through `bootstrap.dcs.postgresql.parameters` (Postgres settings that apply to all nodes) and `postgresql.parameters` (Postgres settings that apply to local node) sections of the configuration file to make the Postgres configuration compatible with what you have in your existing cluster.
+* We **strongly** recommend reading the Patroni documentation about [Patroni configuration](https://patroni.readthedocs.io/en/latest/patroni_configuration.html). You will likely need to at least specify some settings through `bootstrap.dcs.postgresql.parameters` (Postgres settings that apply to all nodes - used once to populate the Patroni DCS when it is initialised) and `postgresql.parameters` (Postgres settings that apply to local node) sections of the configuration file to make the Postgres configuration compatible with what you have in your existing cluster.
 
 3. Enable Patroni. This is done so Patroni will automatically start up on boot and bring Postgres up. Run:
 
@@ -217,7 +217,7 @@ patronictl -c /etc/patroni.yml restart test_cluster postgres-node-2 --scheduled 
 patronictl -c /etc/patroni.yml restart test_cluster postgres-node-3 --scheduled now --force
 ```
 
-3. Schedule a restart of primary `postgres-node-1` to occurr during a maintenance window. On any Postgres node:
+3. Schedule a restart of primary `postgres-node-1` to occur during a maintenance window. On any Postgres node:
 
 ```bash
 patronictl -c /etc/patroni.yml restart test_cluster postgres-node-1 --scheduled SOME_SCHEDULE --force
@@ -240,7 +240,7 @@ As we intend to clean up slots from original cluster, before proceeding with the
     1. `slot_for_postgres_node_3` &mdash; previously existing slot in the original cluster.
     2. `postgres_node_3` &mdash; slot automatically created by Patroni based on node name.
 
-**Note:** You can use a query like the one below to check the required LSN of these slots. You need to make sure that `restart_lsn` of the slots created by Patroni are `>=` the `restart_lsn` of the original slots. On node `postgres-node-1`, through a `psql` section:
+**Note:** You can use a query like the one below to check the required LSN of these slots. You need to make sure that `restart_lsn` of the slots created by Patroni are `>=` the `restart_lsn` of the original slots. On node `postgres-node-1`, through a `psql` session:
 
 ```sql
 SELECT slot_name,
@@ -254,7 +254,7 @@ WHERE slot_name IN (
 )
 ```
 
-Once the above conditions are met we are then able to drop the original slots (`slot_for_postgres_node_2`, and `slot_for_postgres_node_3`). In order to do that, assuming you have not configured any other permament slots other than `slot_for_postgres_node_2` and `slot_for_postgres_node_3`, follow these steps:
+Once the above conditions are met we are then able to drop the original slots (`slot_for_postgres_node_2`, and `slot_for_postgres_node_3`). In order to do that, assuming you have not configured any other permanent slots other than `slot_for_postgres_node_2` and `slot_for_postgres_node_3`, follow these steps:
 
 1. Remove [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) dynamic configuration. On any Postgres node:
 
@@ -266,7 +266,7 @@ patronictl -c /etc/patroni.yml edit-config test_cluster --set "slots=null" --for
 
 #### 5. Test switchover and switchback
 
-At this point your cluster is already being completely managed by Patroni, so it would be interesting to test a switchover and switchback operation during a maintenance window to check how Patroni responds to that.
+At this point your cluster is completely managed by Patroni, so it is important to perform a switchover and switchback operation during a maintenance window to ensure Patroni is operating correctly.
 
 As mentioned, you should perform the following steps during a maintenance window. As an example we will perform a switchover and switchback between `postgres-node-1` and `postgres-node-2`. The steps:
 
@@ -306,4 +306,4 @@ patronictl -c /etc/patroni.yml switchover test_cluster --leader postgres-node-2 
 * Value `Leader` for column `Role`, for row `postgres-node-1`.
 * Value `Replica` for column `Role`, and value `0` for column `Lag in MB`, for row `postgres-node-2`.
 
-If you were able to get here and see the expected outputs, both switchover and switchback operations were successful, and it is very likely that your Patroni cluster is now fully operationable.
+If you were able to get here and see the expected outputs, both switchover and switchback was successful, then congratulations your Patroni cluster is now fully operational.
