@@ -116,7 +116,7 @@ function processRow(currentState, row, nextRow) {
             return;
         case 5:
             if (row.length == 0) {
-                currentState.output.push(`</tbody></table>`)
+                currentState.output.push(`</tbody></table>\n`)
                 currentState.rowState = 1
                 return;
             }
