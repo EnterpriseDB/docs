@@ -68,8 +68,8 @@ For the example, the following assumptions are made:
 * Please adjust the example assumptions according to your environment.
 * Setting up watchdog and HAProxy are out of the scope of this example. However, as they are part of the recommended architecture, you should read the following documentation:
     * About watchdog:
-        * Quick start on [RHEL 8](rhel8_quick_start#3-watchdog) or [Debian 11](debian11_quick_start#3-watchdog) &mdash; set up an watchdog device.
-        * Quick start on [RHEL 8](rhel8_quick_start#4-patroni) or [Debian](debian11_quick_start#4-patroni) &mdash; configure Patroni to use watchdog.
+        * Quick start on [RHEL 8](rhel8_quick_start#3-watchdog) or [Debian 11](debian11_quick_start#3-watchdog) &mdash; set up a watchdog device.
+        * Quick start on [RHEL 8](rhel8_quick_start#4-patroni) or [Debian](debian11_quick_start#4-patroni) &mdash; configure Patroni to use the watchdog.
     * About HAProxy:
         * Quick start on [RHEL 8](rhel8_quick_start#5-haproxy) or [Debian 11](debian11_quick_start#5-haproxy) &mdash; set up HAProxy.
 * This example uses PostgreSQL. If you are running EDB Postgres Extended or EDB Postgres Advanced Server, then we recommend you also read the following documentation:
@@ -219,13 +219,13 @@ At this point Patroni is already monitoring the Postgres instances on each node.
 
 We recommend starting with the standbys, and then proceeding with the primary. Also, we assume you can immediately restart the standbys, and that you want to restart the primary during a maintenance window. The steps:
 
-1. Immediately restart of standby `postgres-node-2`. On any Postgres node run:
+1. Immediately restart the standby `postgres-node-2`. On any Postgres node run:
 
 ```bash
 patronictl -c /etc/patroni.yml restart test_cluster postgres-node-2 --scheduled now --force
 ```
 
-2. Immediately restart of standby `postgres-node-3`. On any Postgres node run:
+2. Immediately restart the standby `postgres-node-3`. On any Postgres node run:
 
 ```bash
 patronictl -c /etc/patroni.yml restart test_cluster postgres-node-3 --scheduled now --force
@@ -237,7 +237,7 @@ patronictl -c /etc/patroni.yml restart test_cluster postgres-node-3 --scheduled 
 patronictl -c /etc/patroni.yml restart test_cluster postgres-node-1 --scheduled SOME_SCHEDULE --force
 ```
 
-**Note:** `SOME_SCHEDULE` should be filled with the desired timestamp in an unambiguous format (e.g. `2023-07-25T20:09`).
+**Note:** `SOME_SCHEDULE` should be filled with the desired timestamp in an unambiguous format (e.g. `2023-07-25T20:09+00`).
 
 Once all Postgres instances were restarted, they will be running through Patroni instead of through the Postgres systemd unit.
 
@@ -247,10 +247,10 @@ At this point we assume all Postgres instances are already running through Patro
 
 As we intend to clean up the slots from the original cluster, before proceeding with the next steps you should confirm that both Postgres standby nodes have already received (and potentially consumed) all WAL files that exist between the replication slots that existed in the original cluster and the replication slots that were created by Patroni. In other words make sure that:
 
-1. `postgres-node-2` has received all WALs between the LSNs reported by these replication slots in `postgres-node-1`:
+1. `postgres-node-2` has received all WALs between the LSNs reported by the following replication slots in `postgres-node-1`:
     1. `slot_for_postgres_node_2` &mdash; previously existing slot in the original cluster.
     2. `postgres_node_2` &mdash; slot automatically created by Patroni based on node name.
-2. `postgres-node-3` has received all WALs between the LSNs reported by these replication slots in `postgres-node-1`:
+2. `postgres-node-3` has received all WALs between the LSNs reported by the following replication slots in `postgres-node-1`:
     1. `slot_for_postgres_node_3` &mdash; previously existing slot in the original cluster.
     2. `postgres_node_3` &mdash; slot automatically created by Patroni based on node name.
 
@@ -276,11 +276,11 @@ Once the above conditions are met, we are then able to let Patroni drop the orig
 patronictl -c /etc/patroni.yml edit-config test_cluster --set "slots=null" --force
 ```
 
-2. Wait for about 10 seconds and check that the replication slots `slot_for_postgres_node_2` and `slot_for_postgres_node_3` have been dropped from `postgres-node-1` -- query `pg_replication_slots` to check this.
+2. Wait for about 10 seconds and check that the replication slots `slot_for_postgres_node_2` and `slot_for_postgres_node_3` have been dropped from `postgres-node-1` (query `pg_replication_slots` to check this).
 
 #### 5. Test switchover and switchback
 
-At this point your cluster is completely managed by Patroni, so it is important to perform switchover and switchback operations during a maintenance window to ensure Patroni is operating correctly.
+At this point your cluster is completely managed by Patroni, so it is important to perform a switchover and switchback operations during a maintenance window to ensure Patroni is operating correctly.
 
 As mentioned, you should perform the following steps during a maintenance window. As an example we will perform a switchover and switchback between `postgres-node-1` and `postgres-node-2`. The steps:
 
@@ -297,9 +297,9 @@ patronictl -c /etc/patroni.yml list test_cluster
 +-----------------+-----------------+---------+-----------+----+-----------+
 ```
 
-**Note:** do not proceed with the next steps if replica nodes are lagging.
+**Note:** Do not proceed with the next steps if replica nodes are lagging.
 
-2. Perform a switchover between `postgres-node-1 ` and `postgres-node-2`. On any Postgres node:
+2. Perform a switchover between `postgres-node-1` and `postgres-node-2`. On any Postgres node:
 
 ```bash
 patronictl -c /etc/patroni.yml switchover test_cluster --leader postgres-node-1 --candidate postgres-node-2 --scheduled now --force
@@ -318,9 +318,9 @@ patronictl -c /etc/patroni.yml list test_cluster
 +-----------------+-----------------+---------+-----------+----+-----------+
 ```
 
-**Note:** do not proceed with the next steps if replicas nodes are lagging or not streaming
+**Note:** Do not proceed with the next steps if replica nodes are lagging or not streaming
 
-4. Perform a switchback between `postgres-node-1 ` and `postgres-node-2`. On any Postgres node:
+4. Perform a switchback between `postgres-node-1` and `postgres-node-2`. On any Postgres node:
 
 ```bash
 patronictl -c /etc/patroni.yml switchover test_cluster --leader postgres-node-2 --candidate postgres-node-1 --scheduled now --force
@@ -339,6 +339,6 @@ patronictl -c /etc/patroni.yml list test_cluster
 +-----------------+-----------------+---------+-----------+----+-----------+
 ```
 
-**Note:** replicas nodes should be streaming and not lagging.
+**Note:** Replica nodes should be streaming and not lagging.
 
-If you were able to get here and see the expected outputs, both switchover and switchback was successful, then congratulations your Patroni cluster is now fully operational.
+If you were able to get here and see the expected outputs, both switchover and switchback were successful, then congratulations your Patroni cluster is now fully operational.
