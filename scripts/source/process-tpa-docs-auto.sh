@@ -4,7 +4,7 @@ TPAVERSION=23
 
 if [ -z $1 ]
 then
-  echo "the path to the source and destination checkouts must be provided"
+  echo "the path to the destination checkout must be provided"
   exit 1
 fi
 
