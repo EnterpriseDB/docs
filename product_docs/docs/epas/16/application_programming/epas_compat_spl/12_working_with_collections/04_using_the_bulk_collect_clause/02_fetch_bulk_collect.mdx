@@ -6,7 +6,7 @@ redirects:
 
 <div id="fetch_bulk_collect" class="registered_link"></div>
 
-You can use the `BULK COLLECT` clause with a `FETCH` statement. Instead of returning a single row at a time from the result set, the `FETCH BULK COLLECT` returns all rows at once from the result set into the specified collection unless restricted by the `LIMIT` clause:
+You can use the `BULK COLLECT` clause with a `FETCH` statement. Instead of returning a single row at a time from the result set, the `FETCH BULK COLLECT` returns all rows at once from the result set into the specified one collection or more collections unless restricted by the `LIMIT` clause:
 
 ```sql
 FETCH <name> BULK COLLECT INTO <collection> [, ...] [ LIMIT <n> ];
@@ -14,48 +14,51 @@ FETCH <name> BULK COLLECT INTO <collection> [, ...] [ LIMIT <n> ];
 
 For information on the `FETCH` statement, see [Fetching rows from a cursor](../../08_static_cursors/03_fetching_rows_from_a_cursor/#fetching_rows_from_a_cursor).
 
-If you specify a single collection, then `collection` can be a collection of a single field, or it can be a collection of a record type. If you specify more than one collection, then each `collection` must consist of a single field. The expressions in the `SELECT` list of the cursor identified by `name` must match all fields in the target collections in number, order, and type-compatibility. If you specify `LIMIT n`, the number of rows returned into the collection on each `FETCH` doesn't exceed `n`.
+If you specify a single collection, then `collection` can be a collection of a single field, or it can be a collection of a record type. If you specify more than one collection, then each `collection` must consist of a single field or a row-type. The expressions in the `SELECT` list of the cursor identified by `name` must match all fields in the target collections in number, order, and type-compatibility. If you specify `LIMIT n`, the number of rows returned into the collection on each `FETCH` doesn't exceed `n`.
 
 This example uses the `FETCH BULK COLLECT` statement to retrieve rows into an associative array:
 
 ```sql
+CREATE TYPE db_type1 as OBJECT(a INT, b VARCHAR2(10));
+CREATE TYPE db_type2 as OBJECT(c VARCHAR2(10), d INT);
+
+CREATE TABLE db_tab(x DB_TYPE1, s1 NUMBER, y DB_TYPE2, s2 TIMESTAMP);
+
+INSERT INTO db_tab values(DB_TYPE1(1, '10'), 1.1, DB_TYPE2('100',1000), '1-Jan-2021 12:30:11 PM');
+INSERT INTO db_tab values(DB_TYPE1(2, '20'), 2.2, DB_TYPE2('200',2000), '2-Feb-2022 08:40:52 AM');
+INSERT INTO db_tab values(DB_TYPE1(3, '30'), 3.3, DB_TYPE2('300',3000), '3-Jan-2023 04:20:33 PM');
+```
+
+```sql
 DECLARE
-    TYPE emp_tbl IS TABLE OF emp%ROWTYPE INDEX BY BINARY_INTEGER;
-    t_emp           EMP_TBL;
-    CURSOR emp_cur IS SELECT * FROM emp;
+  TYPE type1_tbl IS TABLE OF db_type1 INDEX BY BINARY_INTEGER;
+  TYPE s1_tbl    IS TABLE OF number INDEX BY BINARY_INTEGER;
+  TYPE type2_tbl IS TABLE OF db_type2 INDEX BY BINARY_INTEGER;
+  TYPE s2_tbl    IS TABLE OF timestamp INDEX BY BINARY_INTEGER;
+  x type1_tbl;
+  s1 s1_tbl;
+  y type2_tbl;
+  s2 s2_tbl;
+  CURSOR c1 is SELECT * FROM db_tab ORDER BY s1;
 BEGIN
-    OPEN emp_cur;
-    FETCH emp_cur BULK COLLECT INTO t_emp;
-    CLOSE emp_cur;
-    DBMS_OUTPUT.PUT_LINE('EMPNO  ENAME    JOB        HIREDATE    ' ||
-        'SAL        ' || 'COMM      DEPTNO');
-    DBMS_OUTPUT.PUT_LINE('-----  -------  ---------  ---------   ' ||
-        '--------   ' || '--------  ------');
-    FOR i IN 1..t_emp.COUNT LOOP
-        DBMS_OUTPUT.PUT_LINE(t_emp(i).empno || '   ' ||
-            RPAD(t_emp(i).ename,8) || ' ' ||
-            RPAD(t_emp(i).job,10) || ' ' ||
-            TO_CHAR(t_emp(i).hiredate,'DD-MON-YY') || ' ' ||
-            TO_CHAR(t_emp(i).sal,'99,999.99') || ' ' ||
-            TO_CHAR(NVL(t_emp(i).comm,0),'99,999.99') || '  ' ||
-            t_emp(i).deptno);
-    END LOOP;
-END;
+  OPEN c1;
+  FETCH c1 BULK COLLECT INTO x, s1, y, s2;
+  FOR i IN 1..x.count LOOP
+    DBMS_OUTPUT.PUT_LINE(x(i)||' '||s1(i)||' '||y(i)||'"'||s2(i)||'"');
+  END LOOP;
+  CLOSE c1;
+
+  SELECT * BULK COLLECT INTO x, s1, y, s2 FROM db_tab ORDER BY s1;
+  FOR i IN 1..x.count LOOP
+    DBMS_OUTPUT.PUT_LINE(x(i)||' '||s1(i)||' '||y(i)||'"'||s2(i)||'"');
+  END LOOP;
+end;
+
 __OUTPUT__
-EMPNO  ENAME    JOB        HIREDATE    SAL        COMM      DEPTNO
------  -------  ---------  ---------   --------   --------  ------
-7369   SMITH    CLERK      17-DEC-80     800.00        .00  20
-7499   ALLEN    SALESMAN   20-FEB-81   1,600.00     300.00  30
-7521   WARD     SALESMAN   22-FEB-81   1,250.00     500.00  30
-7566   JONES    MANAGER    02-APR-81   2,975.00        .00  20
-7654   MARTIN   SALESMAN   28-SEP-81   1,250.00   1,400.00  30
-7698   BLAKE    MANAGER    01-MAY-81   2,850.00        .00  30
-7782   CLARK    MANAGER    09-JUN-81   2,450.00        .00  10
-7788   SCOTT    ANALYST    19-APR-87   3,000.00        .00  20
-7839   KING     PRESIDENT  17-NOV-81   5,000.00        .00  10
-7844   TURNER   SALESMAN   08-SEP-81   1,500.00        .00  30
-7876   ADAMS    CLERK      23-MAY-87   1,100.00        .00  20
-7900   JAMES    CLERK      03-DEC-81     950.00        .00  30
-7902   FORD     ANALYST    03-DEC-81   3,000.00        .00  20
-7934   MILLER   CLERK      23-JAN-82   1,300.00        .00  10
+(1,10) 1.1 (100,1000) "Fri Jan 01 12:30:11 2021"
+(2,20) 2.2 (200,2000) "Wed Feb 02 08:40:52 2022"
+(3,30) 3.3 (300,3000) "Fri Mar 03 04:20:33 2023"
+(1,10) 1.1 (100,1000) "Fri Jan 01 12:30:11 2021"
+(2,20) 2.2 (200,2000) "Wed Feb 02 08:40:52 2022"
+(3,30) 3.3 (300,3000) "Fri Mar 03 04:20:33 2023"
 ```
