@@ -2,21 +2,26 @@
 // purpose:
 //  Import and convert the tpa docs to EDB Docs -style MDX
 //
-const path = require("path");
-const fs = require("fs/promises");
-const { read, write } = require("to-vfile");
-const remarkParse = require("remark-parse");
-const mdx = require("remark-mdx");
-const unified = require("unified");
-const remarkFrontmatter = require("remark-frontmatter");
-const remarkStringify = require("remark-stringify");
-const admonitions = require("remark-admonitions");
-const yaml = require("js-yaml");
-const visit = require("unist-util-visit");
-const visitAncestors = require("unist-util-visit-parents");
-const mdast2string = require("mdast-util-to-string");
-const { exec } = require("child_process");
-const isAbsoluteUrl = require("is-absolute-url");
+import * as path from "path";
+
+import fs from "fs/promises";
+
+import pkg from 'to-vfile';
+const {write, read} = pkg;
+
+import remarkParse from "remark-parse";
+
+import  mdx from "remark-mdx";
+import unified from "unified";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkStringify from "remark-stringify";
+import admonitions from "remark-admonitions";
+import yaml from "js-yaml";
+import visit from "unist-util-visit";
+import visitAncestors from "unist-util-visit-parents";
+import mdast2string from "mdast-util-to-string";
+import { exec } from "child_process";
+import isAbsoluteUrl from "is-absolute-url";
 
 const fileToMetadata = {};
 const args = process.argv.slice(2);
