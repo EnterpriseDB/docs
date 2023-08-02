@@ -1,4 +1,5 @@
 const fs = require("fs");
+const asyncFs = require("fs/promises");
 const path = require("path");
 
 const sortVersionArray = (versions) => {
@@ -320,6 +321,70 @@ const configureLegacyRedirects = ({
   });
 };
 
+/**
+ * @description Used to create a publicly-accessible file from a File node. Suitable for sample files, PDFs, etc.
+ * @param {File} node the File node to create a PublicFile node based on
+ * @param {Function} createNodeId Gatsby API helper
+ * @param {Actions} actions Gatsby API actions
+ * @param {String} basePath Defaults to "" - used to specify a URL path prefix for the public file
+ * @param {String} mimeType optional - used to override Netlify's content-type for a given file
+ * @returns {Boolean} true if successful
+ */
+const makeFileNodePublic = async (
+  node,
+  createNodeId,
+  actions,
+  { basePath = "", mimeType } = {},
+) => {
+  const { createNode, createParentChildLink } = actions;
+  const product =
+    (node.sourceInstanceName !== "advocacy_docs" && node.sourceInstanceName) ||
+    undefined;
+  const version =
+    (product && node.relativePath.split(path.sep)[0]) || undefined;
+  const relativePath = !product
+    ? node.relativePath
+    : path.join(product, node.relativePath);
+
+  const publicPath = path.join(process.cwd(), `public`, basePath, relativePath);
+
+  let copied = false;
+  try {
+    await asyncFs.mkdir(path.dirname(publicPath), { recursive: true });
+    await asyncFs.copyFile(node.absolutePath, publicPath);
+    copied = true;
+  } catch (err) {
+    console.error(
+      `error copying file from ${node.absolutePath} to ${publicPath}`,
+      err,
+    );
+  }
+
+  if (copied) {
+    const publicFileNodeDef = {
+      urlPath: path.join("/", basePath, relativePath),
+      absolutePath: publicPath,
+      mimeType,
+      product,
+      version,
+      ext: node.ext,
+      extension: node.extension,
+      id: createNodeId("public" + node.id),
+      parent: node.id,
+      children: [],
+      internal: {
+        type: "PublicFile",
+        contentDigest: node.internal.contentDigest,
+      },
+    };
+    await createNode(publicFileNodeDef);
+
+    createParentChildLink({ parent: node, child: publicFileNodeDef });
+  }
+
+  return copied;
+};
+
 const readFile = (filePath) =>
   new Promise(function (resolve, reject) {
     fs.readFile(filePath, "utf8", function (err, data) {
@@ -350,6 +415,7 @@ module.exports = {
   findPrevNextNavNodes,
   configureRedirects,
   configureLegacyRedirects,
+  makeFileNodePublic,
   readFile,
   writeFile,
 };

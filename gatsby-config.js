@@ -183,14 +183,23 @@ module.exports = {
     "gatsby-plugin-sass",
     "gatsby-plugin-react-helmet",
     "gatsby-transformer-sharp",
-    "gatsby-plugin-catch-links",
+    {
+      resolve: "gatsby-plugin-catch-links",
+      // plugin tests this against URL.pathname; it should roughly match tests in link.js
+      options: { excludePattern: /\.(?!mdx?)[\w]+$/ },
+    },
     "gatsby-plugin-sharp",
     {
       resolve: "gatsby-plugin-netlify",
       options: {
+        mergeLinkHeaders: false,
+        mergeCachingHeaders: false,
+        allPageHeaders: isProduction ? [] : ["X-Robots-Tag: noindex"],
         headers: {
-          "/*": isProduction ? [] : ["X-Robots-Tag: noindex"],
-          "/static/*/*.pdf": ["X-Robots-Tag: noindex"],
+          "/pdf/*": [
+            "X-Robots-Tag: noindex",
+            "X-Printshop-Directive: spiralbound",
+          ],
         },
       },
     },
