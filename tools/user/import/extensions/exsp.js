@@ -116,7 +116,7 @@ function processRow(currentState, row, nextRow) {
             return;
         case 5:
             if (row.length == 0) {
-                currentState.output.push(`</tbody></table>`)
+                currentState.output.push(`</tbody></table>\n`)
                 currentState.rowState = 1
                 return;
             }
@@ -167,6 +167,10 @@ function composeRow(row, lastRow, currentState) {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         } else if(row[i] == "PREVIEW") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
+        } else if(row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
+        } else {
+            console.log(`Unhandled value ${row[i]}`)
         }
     }
     output.push("</tr>\n")
