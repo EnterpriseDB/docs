@@ -138,9 +138,9 @@ function composeRow(row, lastRow, currentState) {
     let output = []
     output.push("<tr>")
     let fullName = row[0];
-    let trimmedName = fullName.trimStart()
+    let trimmedName = fullName.trim();
     let spaceDiff = fullName.length - trimmedName.length
-    let lookupName=fullName.replace(" ","_")
+    let lookupName=fullName.trim().replace(" ","_")
     if(spaceDiff<=1) { // Root element, update state
         currentState.lastRoot=lookupName;
     } else {
@@ -169,7 +169,9 @@ function composeRow(row, lastRow, currentState) {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
         } else if(row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
-        } else {
+        } else if(row[i]=="n/a") {
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
+        }else {
             console.log(`Unhandled value ${row[i]}`)
         }
     }
