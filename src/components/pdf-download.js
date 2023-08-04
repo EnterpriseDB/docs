@@ -1,6 +1,7 @@
 import React from "react";
 import { useStaticQuery, graphql } from "gatsby";
 import Icon, { iconNames } from "./icon";
+import usePathPrefix from "../hooks/use-path-prefix";
 
 const PdfDownload = ({ path }) => {
   const data = useStaticQuery(graphql`
@@ -24,10 +25,12 @@ const PdfDownload = ({ path }) => {
     return `/${productVersionPath}` === productPath;
   });
 
+  const pathPrefix = usePathPrefix();
+
   if (file) {
     return (
       <div className="mt-4">
-        <a href={file.urlPath}>
+        <a href={path.join('/', pathPrefix, file.urlPath)}>
           <Icon
             iconName={iconNames.PDF}
             className="fill-orange mr-1 position-relative top-minus-2"
