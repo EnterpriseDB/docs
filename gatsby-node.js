@@ -24,6 +24,7 @@ const {
   configureLegacyRedirects,
   readFile,
   writeFile,
+  makeFileNodePublic,
 } = require("./src/constants/gatsby-utils.js");
 
 const gitData = (() => {
@@ -54,14 +55,29 @@ const gitData = (() => {
   return { branch, sha };
 })();
 
-exports.onCreateNode = async ({ node, getNode, actions, loadNodeContent }) => {
+exports.onCreateNode = async ({
+  node,
+  getNode,
+  createNodeId,
+  actions,
+  loadNodeContent,
+}) => {
   const { createNodeField } = actions;
 
-  if (node.internal.mediaType === "text/yaml") {
-    // See: https://github.com/gatsbyjs/gatsby/issues/34605
-    const content = await loadNodeContent(node);
-    createNodeField({ node, name: "content", value: content });
+  if (node.internal.type === "File") {
+    if (node.internal.mediaType === "application/pdf") {
+      await makeFileNodePublic(node, createNodeId, actions, {
+        basePath: "pdfs",
+      });
+    }
+
+    if (node.extension === "yaml") {
+      await makeFileNodePublic(node, createNodeId, actions, {
+        mimeType: "text/plain; charset=utf-8",
+      });
+    }
   }
+
   if (node.internal.type !== "Mdx") return;
 
   const fileNode = getNode(node.parent);
@@ -181,11 +197,16 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
-      allFile(filter: { extension: { eq: "yaml" } }) {
+      allPublicFile {
         nodes {
-          id
-          relativePath
-          sourceInstanceName
+          urlPath
+          product
+          version
+          parent {
+            ... on File {
+              relativePath
+            }
+          }
         }
       }
     }
@@ -203,7 +224,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   const { nodes } = result.data.allMdx;
   const productVersions = buildProductVersions(nodes);
 
-  processFileNodes(result.data.allFile.nodes, productVersions, actions);
+  processFileNodes(result.data.allPublicFile.nodes, productVersions, actions);
 
   // it should be possible to remove these in the future,
   // they are only used for navLinks generation
@@ -450,35 +471,41 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   });
 };
 
+/**
+ *
+ * @param {PublicFile} fileNodes  Nodes to process
+ * @param {Array} productVersions sorted versions for each product - used to find "latest"
+ * @param {*} actions Gatsby actions
+ * @description Processes public file nodes, ensures that "latest" does something useful
+ */
 const processFileNodes = (fileNodes, productVersions, actions) => {
-  fileNodes.forEach((node) => {
-    const product =
-      node.sourceInstanceName === "advocacy_docs"
-        ? ""
-        : node.sourceInstanceName;
-    const version = node.relativePath.split(path.sep)[0];
-    const isLatest = product ? productVersions[product][0] === version : false;
-    let urlPath = path.join(path.sep, product, node.relativePath);
-    if (isLatest) {
-      const latestPath = replacePathVersion(urlPath);
-      actions.createRedirect({
-        fromPath: urlPath,
-        toPath: latestPath,
-        redirectInBrowser: true,
-        isPermanent: false,
-        force: true,
-      });
-      urlPath = latestPath;
-    }
+  for (const node of fileNodes) {
+    const { relativePath } = node.parent;
+    const { urlPath, product, version } = node;
+    const isLatest =
+      product && productVersions[product]
+        ? productVersions[product][0] === version
+        : false;
+    if (!isLatest) continue;
 
-    actions.createPage({
-      path: urlPath,
-      component: require.resolve("./src/templates/file.js"),
-      context: {
-        nodeId: node.id,
-      },
-    });
-  });
+    let prodVersionPath = path.join(path.sep, product, relativePath);
+    const latestPath = urlPath.replace(
+      prodVersionPath,
+      replacePathVersion(prodVersionPath),
+    );
+    if (latestPath === urlPath) continue;
+    const publicPath = path.join(process.cwd(), `public`, urlPath);
+    const publicLatestPath = path.join(process.cwd(), `public`, latestPath);
+    try {
+      realFs.mkdirSync(path.dirname(publicLatestPath), { recursive: true });
+      realFs.copyFileSync(publicPath, publicLatestPath);
+    } catch (err) {
+      console.error(
+        `error copying file from ${publicPath} to ${publicLatestPath}`,
+        err,
+      );
+    }
+  }
 };
 
 exports.sourceNodes = async ({
@@ -549,6 +576,16 @@ exports.createSchemaCustomization = ({ actions }) => {
       hideKBLink: Boolean
       displayBanner: String
     }
+
+    type PublicFile implements Node {
+      absolutePath: String
+      urlPath: String
+      product: String
+      version: String
+      mimeType: String
+      ext: String
+      extension: String
+    }
   `;
   createTypes(typeDefs);
 };
@@ -565,12 +602,86 @@ exports.onPreBootstrap = () => {
 
 exports.onPreBuild = () => {};
 
-exports.onPostBuild = async ({ reporter, pathPrefix }) => {
+exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
+  //
+  // netlify config
+  //
   realFs.copyFileSync(
     path.join(__dirname, "/netlify.toml"),
     path.join(__dirname, "/public/netlify.toml"),
   );
 
+  //
+  // additional headers
+  //
+  const publicFileData = await graphql(`
+    query {
+      allPublicFile {
+        nodes {
+          urlPath
+          mimeType
+          product
+          version
+          parent {
+            ... on File {
+              relativePath
+            }
+          }
+        }
+      }
+      allMdx {
+        nodes {
+          fields {
+            docType
+            product
+            version
+          }
+        }
+      }
+    }
+  `);
+
+  if (publicFileData.errors) {
+    reporter.panic(
+      "PublicFile header creation graphql query has errors!",
+      publicFileData.errors,
+    );
+  }
+
+  const productVersions = buildProductVersions(
+    publicFileData.data.allMdx.nodes,
+  );
+  const newHeaders = [];
+  for (const file of publicFileData.data.allPublicFile.nodes) {
+    const { urlPath, mimeType, product, version } = file;
+    const { relativePath } = file.parent;
+    if (!mimeType) continue;
+    newHeaders.push(`${pathPrefix}${urlPath}
+  content-type: ${mimeType}`);
+
+    const isLatest =
+      product && productVersions[product]
+        ? productVersions[product][0] === version
+        : false;
+    if (!isLatest) continue;
+    let prodVersionPath = path.join(path.sep, product, relativePath);
+    const latestPath = urlPath.replace(
+      prodVersionPath,
+      replacePathVersion(prodVersionPath),
+    );
+    if (latestPath === urlPath) continue;
+    newHeaders.push(`${pathPrefix}${latestPath}
+  content-type: ${mimeType}`);
+  }
+
+  await writeFile(
+    "public/_headers",
+    (await readFile("public/_headers")) + "\n" + newHeaders.join("\n"),
+  );
+
+  //
+  // redirects cleanup
+  //
   const originalRedirects = await readFile("public/_redirects");
 
   // rewrite legacy redirects to exclude the /docs prefix
