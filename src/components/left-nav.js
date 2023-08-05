@@ -93,7 +93,7 @@ const LeftNav = ({
         />
       ))}
       <li>
-        <PdfDownload path={path} />
+        <PdfDownload pagePath={path} />
       </li>
     </ul>
   );
