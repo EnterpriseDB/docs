@@ -256,10 +256,34 @@ const findPrevNextNavNodes = (navTree, currNode) => {
 
 const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
   if (!redirects) return;
+  const splitToPath = toPath.split(path.sep);
   for (let fromPath of redirects) {
     if (!fromPath) continue;
     // allow relative paths in redirects
     fromPath = path.resolve("/", toPath, fromPath).replace(/\/*$/, "/");
+
+    // Special handling for redirects Part A
+    // -------------------------------------
+    // It has become something of a habit to use "latest" paths in redirects
+    // (possibly because - for good reason - it is the easiest path to copy)
+    // However, this becomes an issue when these creep into older versions...
+    // Therefore, we will treat them specially:
+    // *In redirects*, if...
+    // ...the first part of the path is equal for [from] and [to], and...
+    // ...the second part of the [from] path is "latest"
+    // ...Then the second part of the [from] path will be replaced with the
+    // second part of the [to] path.
+    const splitFromPath = fromPath.split(path.sep);
+    const fromIsLatest = splitFromPath[2] === "latest";
+    if (fromIsLatest && splitFromPath[1] === splitToPath[1])
+      fromPath = path.join(
+        path.sep,
+        splitFromPath[1],
+        splitToPath[2],
+        ...splitFromPath.slice(3),
+        path.sep,
+      );
+
     if (fromPath !== toPath)
       actions.createRedirect({
         fromPath,
@@ -267,6 +291,18 @@ const configureRedirects = (toPath, toIsLatest, redirects, actions) => {
         redirectInBrowser: true,
         isPermanent: true,
       });
+
+    // Special handling for redirects Part B
+    // -------------------------------------
+    // When creating redirects due to reorganization (moving/renaming a file) in the latest version of a product,
+    // it is generally beneficial to have two redirects: one with the versioned path (e.g. /pem/9/...) and one
+    // with the "latest" path (e.g. /pem/latest/...)
+    // To avoid the need to write and maintain two redirects for every file move, we will automatically create
+    // the latter *when a redirect is found in the current version of a product*.
+    // Note that this works with Part A (described above) to allow maintainers to create redirects in *only*
+    // the 2nd form and trust that they will then result in the correct behavior for both older versions
+    // (wherein a single redirect for that product version only will be created) AND for the latest version
+    // (wherein two redirects, one for that product version and one for "[product]/latest/path" will be created).
     if (toIsLatest) {
       fromPath = replacePathVersion(fromPath);
       toPath = replacePathVersion(toPath);
