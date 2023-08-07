@@ -196,7 +196,7 @@ module.exports = {
         mergeCachingHeaders: false,
         allPageHeaders: isProduction ? [] : ["X-Robots-Tag: noindex"],
         headers: {
-          "/pdf/*": [
+          "/docs/pdfs/*": [
             "X-Robots-Tag: noindex",
             "X-Printshop-Directive: spiralbound",
           ],
