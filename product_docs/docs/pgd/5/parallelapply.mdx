@@ -17,7 +17,8 @@ This mechanism has previously meant that if a transaction is pending commit and 
 
 Additionally, handling the error could increase replication lag, due to a combination of the time taken to detect the deadlock, the time taken for the client to rollback its transaction, the time taken for indirect garbage collection of the already applied changes, and the time taken to redo the work. 
 
-This is where Parallel Apply’s deadlock mitigation, introduced in PGD 5.2, comes into play. For any transaction, Parallel Apply now looks at upcoming writes, and where there is a potential conflict, places the transaction on hold until the conflict has passed.
+This is where Parallel Apply’s deadlock mitigation, introduced in PGD 5.2, comes into play. For any transaction, Parallel Apply's receiver process look at the writers for transactions already scheduled to see if they are writing to a row that the current transaction wants to write. If it does, the receiver marks the row as needing to wait until the other transaction is committed before apply its change to the row.  
+This ensures that rows are written in the correct order.  
 
 ### Configuring Parallel Apply
 
@@ -61,9 +62,13 @@ Up to and including PGD 5.1, Parallel Apply should not be used with Group Commit
 
 ### Monitoring Parallel Apply
 
-To support Parallel Apply's deadlock mitigation, PGD 5.2 adds columns to [`bdr.stat_subscription`](/pgd/latest/reference/catalogs-visible#bdrstat_subscription). The new columns are `nprovisional_waits`, `ntuple_waits` and `ncommmit_waits`. The `nprovisional_waits` value reflects the number of operations on the same tuples being performed by concurrent apply transactions. These are provisional waits which aren't actually waiting yet but could. 
+To support Parallel Apply's deadlock mitigation, PGD 5.2 adds columns to [`bdr.stat_subscription`](/pgd/latest/reference/catalogs-visible#bdrstat_subscription). The new columns are `nprovisional_waits`, `ntuple_waits` and `ncommmit_waits`. These 
+are metrics which indicate how well Parallel Apply is managing what would have previously been deadlocks. They are not 
+indicative of overall system performance
 
-If apply operations are affected by the deadlock mitigation measures, they will wait until they can be safely applied and are counted in `ntuple_waits`. Fully applied transactions which waited before being committed are counted in `ncommit_waits`. 
+The `nprovisional_waits` value reflects the number of operations on the same tuples being performed by concurrent apply transactions. These are provisional waits which aren't actually waiting yet but could. 
+
+If a tuple's write needs to wait until it can be safely applied, it is counted in `ntuple_waits`. Fully applied transactions which waited before being committed are counted in `ncommit_waits`. 
 
 ### Disabling Parallel Apply
 
