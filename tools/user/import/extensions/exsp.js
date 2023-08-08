@@ -166,9 +166,9 @@ function composeRow(row, lastRow, currentState) {
         } else if(row[i] == "FALSE") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         } else if(row[i] == "PREVIEW") {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, false, true, `Preview`, lastRow, true));
         } else if(row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, false, true, row[i], lastRow, true));
         } else if(row[i]=="n/a") { /* Hide n/a from spreadsheet as - (n/a is internal status only) */
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         }else {
