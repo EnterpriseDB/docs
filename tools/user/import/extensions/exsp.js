@@ -139,8 +139,13 @@ function composeRow(row, lastRow, currentState) {
     output.push("<tr>")
     let fullName = row[0];
     let trimmedName = fullName.trim();
-    let spaceDiff = fullName.length - trimmedName.length
-    let lookupName=fullName.trim().replace(" ","_")
+    let spaceDiff=0;
+    while(spaceDiff<fullName.length && fullName[spaceDiff]==" ") { spaceDiff++; } 
+    if(spaceDiff==fullName.length) {
+        console.error("All spaces name found.");
+        process.exit(1);
+    }
+    let lookupName=trimmedName.replaceAll(" ","_")
     if(spaceDiff<=1) { // Root element, update state
         currentState.lastRoot=lookupName;
     } else {
@@ -156,7 +161,10 @@ function composeRow(row, lastRow, currentState) {
     if(url=="undefined") { // This lets you not set a URL and not get nagged at
         url=undefined;
     }
-    trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
+    
+    if(spaceDiff>3) {
+        trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
+    }
 
     output.push(composeCell(true, false, false, true,  trimmedName, lastRow, false,url));
     output.push(composeCell(true, true, false, true, row[5], lastRow, true));
