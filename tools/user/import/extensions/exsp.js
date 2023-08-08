@@ -169,8 +169,8 @@ function composeRow(row, lastRow, currentState) {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
         } else if(row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
-        } else if(row[i]=="n/a") {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, row[i], lastRow, true));
+        } else if(row[i]=="n/a") { /* Hide n/a from spreadsheet as - (n/a is internal status only) */
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         }else {
             console.log(`Unhandled value ${row[i]}`)
         }
