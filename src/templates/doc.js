@@ -18,7 +18,7 @@ import { products } from "../constants/products";
 import Icon, { iconNames } from "../components/icon";
 
 export const query = graphql`
-  query ($nodeId: String!, $potentialLatestNodePath: String) {
+  query ($nodeId: String!) {
     mdx(id: { eq: $nodeId }) {
       fields {
         path
@@ -27,9 +27,6 @@ export const query = graphql`
       }
       body
       tableOfContents
-    }
-    potentialLatest: mdx(fields: { path: { eq: $potentialLatestNodePath } }) {
-      id
     }
   }
 `;
@@ -45,18 +42,13 @@ const getProductAndVersion = (path) => {
   };
 };
 
-const makeVersionArray = (versions, path) => {
+const makeVersionArray = (versions, pathVersions, path) => {
   return versions.map((version, i) => ({
     version: version,
-    url: `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
+    url:
+      pathVersions[i] ||
+      `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
   }));
-};
-
-const determineCanonicalPath = (hasLatest, latestPath) => {
-  if (hasLatest) {
-    return latestPath;
-  } // latest will also have hasLatest=true
-  return null;
 };
 
 const buildSections = (navTree) => {
@@ -239,7 +231,11 @@ const DocTemplate = ({ data, pageContext }) => {
     prevNext,
   } = pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === path);
-  const versionArray = makeVersionArray(versions, path);
+  const versionArray = makeVersionArray(
+    versions,
+    pageContext.pathVersions,
+    path,
+  );
   const { product, version } = getProductAndVersion(path);
 
   const {
@@ -270,10 +266,7 @@ const DocTemplate = ({ data, pageContext }) => {
     description: description,
     path: pagePath,
     isIndexPage: isIndexPage,
-    canonicalPath: determineCanonicalPath(
-      !!data.potentialLatest,
-      pageContext.potentialLatestPath,
-    ),
+    canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
   };
 
   const showToc = !!tableOfContents.items && !frontmatter.hideToC;

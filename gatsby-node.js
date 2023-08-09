@@ -20,6 +20,7 @@ const {
   treeToNavigation,
   treeNodeToNavNode,
   findPrevNextNavNodes,
+  preprocessPathsAndRedirects,
   configureRedirects,
   configureLegacyRedirects,
   readFile,
@@ -223,6 +224,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   const { nodes } = result.data.allMdx;
   const productVersions = buildProductVersions(nodes);
+  const validPaths = preprocessPathsAndRedirects(nodes, productVersions);
 
   processFileNodes(result.data.allPublicFile.nodes, productVersions, actions);
 
@@ -296,33 +298,53 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       docType === "doc"
         ? productVersions[node.fields.product][0] === node.fields.version
         : false;
+
+    // all versions for this path.
+    // Null entries for versions that don't exist. Will try to match redirects to avoid this, but won't follow redirect chains
+    // Canonical version is the first non-null in the list, e.g. pathVersions.filter((p) => !!p)[0]
+    const allPaths = [node.fields.path, ...(node.frontmatter?.redirects || [])];
+    const pathVersions = (productVersions[node.fields.product] || []).map(
+      (v, i) => {
+        const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
+        const match = versionPaths.find((vp) => validPaths.has(vp));
+        if (!match) return null;
+        return i === 0 ? replacePathVersion(match) : match;
+      },
+    );
+
     configureRedirects(
       node.fields.path,
-      isLatest,
       node.frontmatter.redirects,
       actions,
+      isLatest,
+      pathVersions,
     );
 
     if (docType === "doc") {
-      createDoc(navTree, prevNext, node, productVersions, actions);
+      createDoc(
+        navTree,
+        prevNext,
+        node,
+        productVersions,
+        pathVersions,
+        actions,
+      );
     } else if (docType === "advocacy") {
       createAdvocacy(navTree, prevNext, node, learn, actions);
     }
   }
 };
 
-const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
+const createDoc = (
+  navTree,
+  prevNext,
+  doc,
+  productVersions,
+  pathVersions,
+  actions,
+) => {
   const isLatest =
     productVersions[doc.fields.product][0] === doc.fields.version;
-  if (isLatest) {
-    actions.createRedirect({
-      fromPath: doc.fields.path,
-      toPath: replacePathVersion(doc.fields.path),
-      redirectInBrowser: true,
-      isPermanent: false,
-      force: true,
-    });
-  }
 
   // configure legacy redirects
   if (!doc.frontmatter.productStub) {
@@ -369,11 +391,7 @@ const createDoc = (navTree, prevNext, doc, productVersions, actions) => {
       githubEditLink: githubEditLink,
       githubIssuesLink: githubIssuesLink,
       isIndexPage: isIndexPage,
-      potentialLatestPath: replacePathVersion(doc.fields.path), // the latest url for this path (may not exist!)
-      potentialLatestNodePath: replacePathVersion(
-        doc.fields.path,
-        productVersions[doc.fields.product][0],
-      ), // the latest version number path (may not exist!), needed for query
+      pathVersions,
     },
   });
 

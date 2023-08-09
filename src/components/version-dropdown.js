@@ -11,7 +11,7 @@ const DropdownItem = ({ to, active, children }) => (
   </Link>
 );
 
-const VersionDropdown = ({ versionArray, path }) => {
+const VersionDropdown = ({ versionArray, pathVersions, path }) => {
   const activeVersion = path.split("/")[2];
 
   return (
