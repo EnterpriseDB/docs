@@ -63,6 +63,10 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
+                  <Icon
+                    iconName={iconNames.POSTGRES_SUPPORT}
+                    className="fill-orange ml-2 float-right"
+                  />
                   EDB's PostgreSQL installers and installation packages simplify
                   the process of installing PostgreSQL. Check out recent
                   improvements to our install instructions including new
@@ -99,6 +103,10 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
+                  <Icon
+                    iconName={iconNames.HIGH_AVAILABILITY}
+                    className="fill-orange ml-2 float-right"
+                  />
                   Use the new reference section in EDB Postgres Distributed to
                   quickly look up views, catalogs, functions, and variables.
                   It's a new view of the documentation designed to centralize
