@@ -138,11 +138,11 @@ async function processExtensions(auth) {
         for(var n=1;n<16;n=n+2) {
             output.push("<td style=\"text-align:center;color: green;\">");
             if (row[n]=='TRUE') {
-                if(row[n+1]=='TRUE') {
-                    output.push('✓+');
-                } else {
+                // if(row[n+1]=='TRUE') {
+                //     output.push('✓+');
+                // } else {
                     output.push('✓');
-                }
+                //}
             } 
             output.push("</td>")
         }
