@@ -57,22 +57,26 @@ const Page = () => (
                 <h3 className="card-title mb-2 font-weight-bold">
                   <Link
                     className="homepage-headling-link"
-                    to="/biganimal/latest/free_trial/"
+                    to="/supported-open-source/postgresql/installing/"
                   >
-                    BigAnimal's no-commitment free trial
+                    Installing PostgreSQL made easy
                   </Link>
                 </h3>
                 <p>
-                  You can now get $300 of credits to try out fully managed
-                  Postgres with BigAnimal's cloud account and no commitment.
-                  Then you can move your concept to production with just the
-                  swipe of a credit card.
+                  <Icon
+                    iconName={iconNames.POSTGRES_SUPPORT}
+                    className="fill-orange ml-2 float-right"
+                  />
+                  EDB's PostgreSQL installers and installation packages simplify
+                  the process of installing PostgreSQL. Check out recent
+                  improvements to our install instructions including new
+                  instructions for installing our Linux packages.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
                     <Link
                       className="btn-sm ml-2"
-                      to="/biganimal/latest/free_trial/"
+                      to="/supported-open-source/postgresql/installing/"
                     >
                       Find out more &rarr;
                     </Link>
@@ -99,6 +103,10 @@ const Page = () => (
                   </Link>
                 </h3>
                 <p>
+                  <Icon
+                    iconName={iconNames.HIGH_AVAILABILITY}
+                    className="fill-orange ml-2 float-right"
+                  />
                   Use the new reference section in EDB Postgres Distributed to
                   quickly look up views, catalogs, functions, and variables.
                   It's a new view of the documentation designed to centralize
