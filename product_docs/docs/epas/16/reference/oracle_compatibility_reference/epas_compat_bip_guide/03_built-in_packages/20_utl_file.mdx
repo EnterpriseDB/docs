@@ -29,9 +29,13 @@ The procedures and functions available in the `UTL_FILE` package are listed in t
 | `FCLOSE_ALL`                                                                   | n/a         | Closes all open files.                                                                                                                                                           |
 | `FCOPY(location, filename, dest_dir, dest_file [, start_line [, end_line ] ])` | n/a         | Copies `filename` in the directory identified by `location` to file `dest_file` in directory `dest_dir`, from line `start_line` to line `end_line`.               |
 | `FFLUSH(file)`                                                                 | n/a         | Forces data in the buffer to be written to disk in the file identified by `file`.                                                                                                |
+| `FGETATTR(location, filename, exists, file_length, block_size)`                | n/a         | Retrieves the attributes for a file when given its `filename` and `location`.                                                                                                    |
+| `FGETPOS(file)`                                                                | `INTEGER`   | Returns an integer which is the relative offset position within the opened file in bytes.                                                                                                                             |
 | `FOPEN(location, filename, open_mode [, max_linesize ])`                       | `FILE_TYPE` | Opens file `filename` in the directory identified by `location`.                                                                                                               |
+| `FOPEN_NCHAR(location, filename, open_mode, max_linesize)`                     | `FILE_TYPE` | Opens file `filename` in the directory identified by `location` to read and/or write Unicode character set data.                                                                                                     |
 | `FREMOVE(location, filename)`                                                  | n/a         | Removes the specified file from the file system.                                                                                                                                 |
 | `FRENAME(location, filename, dest_dir, dest_file [, overwrite ])`              | n/a         | Renames the specified file.                                                                                                                                                      |
+| `FSEEK(file, absolute_offset, relative_offset)`                                | n/a         | Moves the file pointer within a given file by the number of bytes specified.                                                                                                                                         |
 | `GET_LINE(file, buffer OUT)`                                                   | n/a         | Reads a line of text into the variable `buffer` from the file identified by `file`.                                                                                                |
 | `GET_RAW(file, buffer OUT [, len ])`                                           | `BYTEA`     | Reads a `RAW` string value from a file, keeps those into read buffer, and adjusts the file pointer accordingly by the number of bytes read, ignoring the end-of-file terminator.  |
 | `IS_OPEN(file)`                                                                | `BOOLEAN`   | Determines whether the given file is open.                                                                                                                                |
@@ -39,6 +43,7 @@ The procedures and functions available in the `UTL_FILE` package are listed in t
 | `PUT(file, buffer)`                                                            | n/a         | Writes `buffer` to the given file. `PUT` doesn't write an end-of-line character sequence.                                                                                       |
 | `PUT_LINE(file, buffer)`                                                       | n/a         | Writes `buffer` to the given file. An end-of-line character sequence is added by the `PUT_LINE` procedure.                                                                       |
 | `PUTF(file, format [, arg1 ] [, ...])`                                         | n/a         | Writes a formatted string to the given file. You can specify up to five substitution parameters, `arg1,...arg5`, for replacement in `format`.                                    |
+| `PUT_NCHAR(file, buffer)`                                                      | n/a         | Writes `buffer` to the given file and converts data to Unicode. `PUT` doesn't write an end-of-line character sequence.                                                                  |
 | `PUT_RAW(file, buffer [, autoflush ])`                                         | `BOOLEAN`   | Accepts a `RAW` data value as input and writes those values to the output buffer.                                                                                                |
 
 EDB Postgres Advanced Server's implementation of `UTL_FILE` is a partial implementation when compared to Oracle's version. Only the functions and procedures listed in the table are supported.
@@ -284,6 +289,104 @@ BEGIN
     UTL_FILE.FCLOSE(v_empfile);
 END;
 ```
+## FGETATTR
+
+The `FGETATTR` function retrieves the attributes for a given file. When you enter a `filename` and `location`, it returns whether the file exists. If the file exists, it also returns the `file_length` and `block_size`. If the file doesn't exist or there is an error, the attributes return as `NULL`. 
+
+```sql
+FGETATTR(<location> VARCHAR2, <filename> VARCHAR2, <exists> BOOLEAN, <file_length> NUMBER, <block_size> BINARY_INTEGER)
+```
+
+### Parameters
+
+`location`
+ 
+ Directory name of the directory containing the file whose attributes are being retrieved, as stored in `pg_catalog.edb_dir.dirname`.
+
+`filename`
+
+ Name of the file whose attributes are being retrieved.
+
+`exists` 
+
+ Report of whether the file exists. 
+
+`file_length`
+
+ Size of the file in bytes. 
+
+`block_size` 
+
+ System block size of the file in bytes.
+
+### Examples
+
+This example retrieves the attributes for the file `empfile.csv`:
+
+```sql
+DECLARE
+   l_file_exists BOOLEAN;
+   l_file_len    NUMBER;
+   l_blocksize   BINARY_INTEGER;
+   f utl_file.file_type;
+   v_empfile       UTL_FILE.FILE_TYPE;
+   v_directory     VARCHAR2(50) := 'empdir';
+   v_filename      VARCHAR2(20) := 'empfile.csv';
+     
+BEGIN
+   utl_file.fgetattr(
+     location    => v_directory,
+     filename    => v_filename,
+     fexists     => l_file_exists,
+     file_length => l_file_len,
+     block_size  => l_blocksize);
+   IF l_file_exists THEN
+     dbms_output.put_line('File found, size=' || l_file_len);
+   ELSE
+     dbms_output.put_line('File not found.');
+   END IF;
+END;
+File found, size=677
+```
+
+## FGETPOS
+
+The `FGETPOS` function returns an integer which is the relative offset position within the opened file in bytes.
+
+```sql
+FGETPOS(<file>)
+```
+
+### Parameters
+
+`file`
+
+ Variable of type `FILE_TYPE` containing the file handle of the opened file.  
+
+### Examples
+
+The following example finds the position of the file `empfile.csv`:
+
+```sql
+declare
+    f utl_file.file_type;
+    v_empfile       UTL_FILE.FILE_TYPE;
+    v_directory     VARCHAR2(50) := 'empdir';
+    v_filename      VARCHAR2(20) := 'empfile.csv';
+  pos int;
+begin
+  f := utl_file.fopen(v_directory, v_filename, 'r');
+  utl_file.fseek(f, 15);
+  pos := utl_file.fgetpos(f);
+  dbms_output.put_line('1.position: ' || pos);
+  utl_file.fseek(f, NULL, -5);
+  pos := utl_file.fgetpos(f);
+  dbms_output.put_line('2.position: ' || pos);
+  utl_file.fclose(f);
+end;
+1.position: 15
+2.position: 10
+```
 
 ## FOPEN
 
@@ -318,6 +421,71 @@ The `FOPEN` function opens a file for I/O.
 `filetype`
 
  Variable of type `FILE_TYPE` containing the file handle of the opened file.
+
+## FOPEN_NCHAR
+
+The `FOPEN_NCHAR` procedure opens file `filename` in the directory identified by `location` to read and/or write Unicode character set data. 
+
+```sql
+FOPEN_NCHAR(location VARCHAR2, filename VARCHAR2, open_mode VARCHAR2, max_linesize INTEGER)
+```
+
+### Parameters 
+
+`location`
+
+ Directory name of the directory containing the file to open, as stored in `pg_catalog.edb_dir.dirname`.
+
+`filename` 
+
+ Name of the file to open.
+
+`open_mode`
+
+ Mode in which to open the file. Modes are: 
+    - `a` &mdash; Append to file.
+    - `r` &mdash; Read from file. 
+    - `w` &mdash; Write to file.
+
+`max_linesize`
+
+ Maximum size of a line in characters. In read mode, an exception is thrown if you try to read a line exceeding `max_linesize`. In write and append modes, an exception is thrown if you try to write a line exceeding `max_linesize`. The end-of-line characters aren't included in determining if the maximum line size is exceeded. This behavior isn't compatible with Oracle databases. Oracle counts the end-of-line characters.
+
+### Examples
+
+The following example opens the file `empfile1.csv`:
+
+```sql
+declare
+    f utl_file.file_type;
+    t text;
+    v_empfile       UTL_FILE.FILE_TYPE;
+    v_directory     VARCHAR2(50) := 'empdir';
+    v_filename      VARCHAR2(20) := 'empfile1.csv';
+    txt1            text;
+begin
+  f := utl_file.fopen_nchar(v_directory, v_filename, 'w');
+  utl_file.put_nchar(f, 'Hello - 1'::text);
+  utl_file.put_nchar(f, 100::numeric);
+  utl_file.put_nchar(f, '2006-08-13 12:34:56'::timestamp);
+  utl_file.put_nchar(f, '2001-12-27 04:05:06.789-08'::pg_catalog.date);
+  utl_file.put_nchar(f, '2001-12-27 04:05:06.789-08'::time);
+  utl_file.fclose(f);
+
+  f := utl_file.fopen_nchar(v_directory, v_filename, 'r');
+  loop
+    utl_file.get_line_nchar(f, txt1);
+    raise notice '%', txt1;
+  end loop;
+exception
+  when no_data_found then
+    raise notice 'finish % ', sqlerrm;
+    utl_file.fclose(f);
+
+end;
+NOTICE:  Hello - 110013-AUG-06 12:34:5627-DEC-01 00:00:00 +00:0004:05:06.789
+NOTICE:  finish no data found 
+```
 
 ## FREMOVE
 
@@ -442,6 +610,53 @@ The following is the renamed file, 'newemp.csv'
 7902,FORD,ANALYST,7566,03-DEC-81 00:00:00,3000.00,,20
 7934,MILLER,CLERK,7782,23-JAN-82 00:00:00,1300.00,,10
 14 records retrieved
+```
+
+## FSEEK
+
+The `FSEEK` procedure moves the file pointer within a given file by the number of bytes specified. 
+
+```sql
+FSEEK( <file> FILE_TYPE, <absolute_offset> INTEGER, <relative_offset> INTEGER)
+```
+
+### Parameters
+
+`file`
+
+ Variable of type `FILE_TYPE` containing the file handle of the file where the file pointer is being moved.
+
+`absolute_offset` 
+
+ The absolute number of bytes to move the file pointer.
+
+`relative_offset` 
+
+ The relative number of bytes to move the file pointer. 
+
+### Examples 
+
+The following examples moves the file pointer in the file `empfile.csv`:
+
+```sql
+declare
+    f utl_file.file_type;
+    v_empfile       UTL_FILE.FILE_TYPE;
+    v_directory     VARCHAR2(50) := 'empdir';
+    v_filename      VARCHAR2(20) := 'empfile.csv';
+  pos int;
+begin
+  f := utl_file.fopen(v_directory, v_filename, 'r');
+  utl_file.fseek(f, 15);
+  pos := utl_file.fgetpos(f);
+  dbms_output.put_line('1.position: ' || pos);
+  utl_file.fseek(f, NULL, -5);
+  pos := utl_file.fgetpos(f);
+  dbms_output.put_line('2.position: ' || pos);
+  utl_file.fclose(f);
+end;
+1.position: 15
+2.position: 10
 ```
 
 ## GET_LINE
@@ -893,6 +1108,60 @@ Salary: $950.00 Commission: $0
 Salary: $3000.00 Commission: $0
 7934 MILLER, CLERK
 Salary: $1300.00 Commission: $0
+```
+
+## PUT_NCHAR
+
+The `PUT_NCHAR` procedure writes `buffer` to the given file and converts data to Unicode. `PUT` doesn't write an end-of-line character sequence.   
+
+```sql
+PUT_NCHAR(<file> FILE_TYPE, <buffer> NVARCHAR2)
+```
+
+## Parameters 
+
+`file`
+
+ Variable of type `FILE_TYPE` containing the file handle of the file to which to write the line.
+
+`buffer`
+
+ Variable to write `RAW` data to the output buffer.
+
+## Examples 
+
+The following example writes `buffer` to the file `empfile`.csv` and converts data to Unicode:
+
+```sql
+declare
+    f utl_file.file_type;
+    t text;
+    v_empfile       UTL_FILE.FILE_TYPE;
+    v_directory     VARCHAR2(50) := 'empdir';
+    v_filename      VARCHAR2(20) := 'empfile1.csv';
+    txt1            text;
+begin
+  f := utl_file.fopen_nchar(v_directory, v_filename, 'w');
+  utl_file.put_nchar(f, 'Hello - 1'::text);
+  utl_file.put_nchar(f, 100::numeric);
+  utl_file.put_nchar(f, '2006-08-13 12:34:56'::timestamp);
+  utl_file.put_nchar(f, '2001-12-27 04:05:06.789-08'::pg_catalog.date);
+  utl_file.put_nchar(f, '2001-12-27 04:05:06.789-08'::time);
+  utl_file.fclose(f);
+
+  f := utl_file.fopen_nchar(v_directory, v_filename, 'r');
+  loop
+    utl_file.get_line_nchar(f, txt1);
+    raise notice '%', txt1;
+  end loop;
+exception
+  when no_data_found then
+    raise notice 'finish % ', sqlerrm;
+    utl_file.fclose(f);
+
+end;
+NOTICE:  Hello - 110013-AUG-06 12:34:5627-DEC-01 00:00:00 +00:0004:05:06.789
+NOTICE:  finish no data found 
 ```
 
 ## PUT_RAW
