@@ -116,7 +116,7 @@ function processRow(currentState, row, nextRow) {
             return;
         case 5:
             if (row.length == 0) {
-                currentState.output.push(`</tbody></table>`)
+                currentState.output.push(`</tbody></table>\n`)
                 currentState.rowState = 1
                 return;
             }
@@ -138,9 +138,14 @@ function composeRow(row, lastRow, currentState) {
     let output = []
     output.push("<tr>")
     let fullName = row[0];
-    let trimmedName = fullName.trimStart()
-    let spaceDiff = fullName.length - trimmedName.length
-    let lookupName=fullName.replace(" ","_")
+    let trimmedName = fullName.trim();
+    let spaceDiff=0;
+    while(spaceDiff<fullName.length && fullName[spaceDiff]==" ") { spaceDiff++; } 
+    if(spaceDiff==fullName.length) {
+        console.error("All spaces name found.");
+        process.exit(1);
+    }
+    let lookupName=trimmedName.replaceAll(" ","_")
     if(spaceDiff<=1) { // Root element, update state
         currentState.lastRoot=lookupName;
     } else {
@@ -156,7 +161,10 @@ function composeRow(row, lastRow, currentState) {
     if(url=="undefined") { // This lets you not set a URL and not get nagged at
         url=undefined;
     }
-    trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
+    
+    if(spaceDiff>3) {
+        trimmedName = "&nbsp;".repeat(spaceDiff) + trimmedName
+    }
 
     output.push(composeCell(true, false, false, true,  trimmedName, lastRow, false,url));
     output.push(composeCell(true, true, false, true, row[5], lastRow, true));
@@ -166,7 +174,13 @@ function composeRow(row, lastRow, currentState) {
         } else if(row[i] == "FALSE") {
             output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
         } else if(row[i] == "PREVIEW") {
-            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `Preview`, lastRow, true));
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, false, true, `Preview`, lastRow, true));
+        } else if(row[i].match(/Q[1-4] 20[0-9][0-9]/gm)) {
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, false, true, row[i], lastRow, true));
+        } else if(row[i]=="n/a") { /* Hide n/a from spreadsheet as - (n/a is internal status only) */
+            output.push(composeCell(i == 6 || i == 9 || i == 11, i == 13, true, true, `–`, lastRow, true));
+        }else {
+            console.log(`Unhandled value ${row[i]}`)
         }
     }
     output.push("</tr>\n")

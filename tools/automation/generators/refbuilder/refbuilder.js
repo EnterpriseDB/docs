@@ -122,6 +122,7 @@ function processDirectory(sourceDir, prefix) {
 }
 
 function parse(prefix, filepath) {
+    console.log(filepath);
     itemCleaned = path.join(prefix, path.basename(filepath, ".mdx"));
     content = fs.readFileSync(filepath).toString();
     digested = frontmatter(content);
