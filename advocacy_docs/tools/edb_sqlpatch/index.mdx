@@ -1,0 +1,225 @@
+---
+title: "EDB SQL Patch"
+description: "How to use edb_sqlpatch to perform automated adjustments to your EDB Postgres Advanced Server's databases"
+iconName: Tools
+deepToC: true
+---
+
+## Overview
+
+There are occasions when a potentially complex set of changes need to be made to system-defined objects in an already existing database. `edb_sqlpatch` uses patch files supplied with EDB Postgres Advanced Server and can use them, as appropriate, to fix upgraded databases.
+
+## General use
+
+The `edb_sqlpatch` command uses current connection settings to connect a database (or databases) presented as the command's arguments or to all databases if the `-a` flag is used. 
+
+We recommend that the `-a` flag always be used to always check all databases to ensure none are missed from the checking and patching processes.
+
+With no other flags given, `edb_sqlpatch` checks the given database (or all databases) to determine which patches are applicable, which patches have previously been applied and which patches need to be applied.
+
+```
+edb_sqlpatch -a
+```
+
+This will report if any of the databases need patching.
+
+`edb_sqlpatch` only applies the patches if the `-f` (or `--fix`) flag is given. To apply patches to all the databases that need them, use `-f` in combination with `-a`.
+
+```
+edb_sqlpatch -af
+```
+
+Use `edb_sqlpatch -L` or `edb_sqlpatch --list` to obtain a list of available patches. Specific patches can be applied using the patch name as an argument to the `-P` or `--patch` flag.
+
+## Use with backups and replicas
+
+### Backups
+
+If you have a database restored from a backup made before a system was patched, you need to run `edb_sqlpatch` against the restored backup to ensure that the patches are applied to the restored system.
+
+### Streaming replicas
+
+If the master system has been patched, there should be no need to run `edb_sqlpatch` on the replicas as the patching is replicated. You can run `edb_sqlpatch` on a replica to verify that.
+
+### Logical replicas
+
+Logical replicas may not replicate all changes to system objects. Therefore, each logical replica should  have `edb_sqlpatch -a` run against it to ensure that it is fully and correctly patched. Do not run `edb_sqlpatch` concurrently on different replicas. If `edb_sqlpatch` reports un-applied fixes, use `edb_sqlpatch -f -a` to apply them to the replica and repeat the process on all the replicas.
+
+### PGD clusters
+
+PGD clusters are configured to replicate all changes. PGD clusters should have `edb_sqlpatch -f -a` run only once on a single node and then, when that is complete, each node should then have `edb_sqlpatch -a` run against it to ensure that it is fully and correctly patched. Do not run `edb_sqlpatch` concurrently on different nodes. 
+
+## Command line options
+
+### Usage:
+
+```
+  edb_sqlpatch [OPTION]... [DBNAME]...
+```
+
+### Target options:
+
+| short option | long option | description |
+|-------------|-------------|--------------|
+| -a | --all | patch all databases |
+| -d=DBNAME | --database=DBNAME | database to patch |
+
+### Patching options:
+
+| short option | long option | description |
+|-------------|-------------|--------------|
+|  -L | --list | list available patches |
+| -f | --fix | apply the patches, don't just check |
+| -P=PATCHNAME | --patch=PATCHNAME | specify specific patch to apply |
+| -S=PATCHNAME | --source=PATCHNAME | specify non-default patch source directory |
+
+### Connection options:
+
+| short option | long option | description |
+|-------------|-------------|--------------|
+| -h=HOSTNAME | --host=HOSTNAME | database server host or socket directory |
+| -p=PORT | --port=PORT | database server port |
+| -U=USERNAME | --username=USERNAME | user name to connect as |
+| -w | --no-password | never prompt for password |
+| -W | --password | force password prompt
+| | --maintenance-db=DBNAME | alternate maintenance database |
+
+### Other options:
+
+| short option | long option | description |
+|-------------|-------------|--------------|
+|  -v | --verbose | write a lot of output |
+|  -V | --version | output version information, then exit |
+|  -? | --help | show this help, then exit |
+
+
+## Examples
+
+### Checking and fixing all databases
+
+First check all databases using the `-a` flag.
+
+```
+edb_sqlpatch -a    
+__OUTPUT__
+* database postgres
+58 patches need to be applied to this database.
+
+* database edb
+58 patches need to be applied to this database.
+
+* database template1
+58 patches need to be applied to this database.
+
+* database template0
+Skipping database "template0" because it does not allow connections.
+
+* database edb_admin
+58 patches need to be applied to this database.
+```
+
+We can see patches need to be applied to the databases. We can apply those patches by using the `-af` flag.
+
+```
+$ edb_sqlpatch -af
+__OUTPUT__
+* database postgres
+58 patches were successfully applied to this database.
+
+* database edb
+58 patches were successfully applied to this database.
+
+* database template1
+58 patches were successfully applied to this database.
+
+* database template0
+Skipping database "template0" because it does not allow connections.
+
+* database edb_admin
+58 patches were successfully applied to this database.
+```
+
+The databases are now patched.
+
+### Checking a single existing/upgraded database
+
+When a database has been upgraded, patches may need to be applied to the database to complete the remediation of any problems.
+
+```
+$ edb_sqlpatch  postgres
+__OUTPUT__
+* database postgres
+88 patches are not applicable to this database.
+4 patches need to be applied to this database.
+```
+
+The number of patches that have been applied (and the number needing to be applies) varies according to the version of the database, and how many patches are applicable to the current database.
+
+The `-v` flag increases verbosity and lists the patches being evaluated for application:
+
+```
+edb_sqlpatch -v  postgres 
+__OUTPUT__
+* database postgres
+Package_Search_Path/DBMS_JOB: not applicable
+Package_Search_Path/DBMS_PROFILER: not applicable
+Package_Search_Path/DBMS_SCHEDULER: not applicable
+Package_Search_Path/UTL_FILE: not applicable
+Package_Search_Path/UTL_TCP: not applicable
+...
+Secure_Rewrite/_dbms_aq_enqueue_callbacks: needs to be applied
+...
+Security_Invoker/UTL_SMTP: not applicable
+Security_Invoker/UTL_URL: not applicable
+88 patches are not applicable to this database.
+4 patches need to be applied to this database.
+```
+
+### Fixing a single existing/upgraded database
+
+The `-f` flag signals that you want `edb_sqlpatch` to apply patches to the database.
+
+```
+$ edb_sqlpatch postgres -f 
+__OUTPUT__
+* database postgres
+92 patches were successfully applied to this database.
+```
+
+By using the `-a` flag and not specifying a database, `edb_sqlpatch` 
+apply patches to all databases it can connect to:
+
+```
+# edb_sqlpatch -fa
+__OUTPUT__
+* database postgres
+92 patches were previously applied to this database.
+
+* database edb
+92 patches were successfully applied to this database.
+
+* database template1
+92 patches were successfully applied to this database.
+
+* database template0
+Skipping database "template0" because it does not allow connections.
+```
+
+Notice that the edb database was patched in the preceding command, and so `edb_sqlpatch` confirms that the patches were applied. The template database is skipped because, as the command explains, it does not allow connections.
+
+### Checking a fresh database installation
+
+In this scenario, all patches will already be applied so none need to be applied.
+
+```
+$ edb_sqlpatch edb
+__OUTPUT__
+* database edb
+92 patches were previously applied to this database.
+0 patches need to be applied to this database.
+```
+
+The number of patches that have been applied varies according to the version of the database.
+
+
+

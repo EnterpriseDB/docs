@@ -182,6 +182,10 @@ const Page = () => (
               PG Failover Slots
             </IndexCardLink>
 
+            <IndexCardLink to="/tools/edb_sqlpatch">
+              EDB SQL Patch
+            </IndexCardLink>
+
             <IndexCardLink to="/language_pack/latest/">
               Language Pack
             </IndexCardLink>
