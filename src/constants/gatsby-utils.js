@@ -2,8 +2,6 @@ const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
 
-const IS_CI_BUILD = process.env.GITHUB_ACTIONS;
-
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
     b.localeCompare(a, undefined, { numeric: true }),
@@ -332,7 +330,7 @@ const configureRedirects = (
     actions.createRedirect({
       fromPath: toPath,
       toPath: replacePathVersion(toPath),
-      redirectInBrowser: !IS_CI_BUILD,
+      redirectInBrowser: true,
       isPermanent: false,
       force: true,
     });
@@ -346,7 +344,7 @@ const configureRedirects = (
     actions.createRedirect({
       fromPath: replacePathVersion(toPath),
       toPath,
-      redirectInBrowser: !IS_CI_BUILD,
+      redirectInBrowser: true,
       isPermanent: false,
     });
   }
@@ -363,7 +361,7 @@ const configureRedirects = (
       actions.createRedirect({
         fromPath,
         toPath,
-        redirectInBrowser: !IS_CI_BUILD,
+        redirectInBrowser: true,
         isPermanent,
       });
     }
@@ -408,7 +406,7 @@ const configureRedirects = (
         actions.createRedirect({
           fromPath,
           toPath,
-          redirectInBrowser: !IS_CI_BUILD,
+          redirectInBrowser: true,
           isPermanent: false,
         });
     }
