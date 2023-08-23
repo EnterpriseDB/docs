@@ -1,0 +1,344 @@
+---
+title: 'Migrating to Patroni'
+description: "Migrating an existing Postgres cluster to Patroni"
+---
+
+This page describes how to migrate an existing Postgres cluster to Patroni managed cluster.
+
+### Overview of steps
+
+1. Disable current HA solution, if any.
+2. Perform the following steps on all nodes, starting with the primary and then going with standbys:
+    1. Disable Postgres systemd unit.
+    2. Create a YAML configuration file for Patroni. If you use replication slots in the existing cluster, then make sure to configure [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) so Patroni does not delete them while migrating.
+    3. Enable Patroni systemd unit.
+    4. Start Patroni systemd unit.
+3. Let Patroni take over the "startup procedure" of Postgres:
+    1. Restart all standby nodes.
+    2. Schedule a restart of the primary node during a maintenance window.
+4. Clean up slots from original cluster, if any:
+    1. Once Postgres is able to consume all WALs between the original slots and the new slots that have been created by Patroni, then remove the [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) configuration. This will allow Patroni to drop the original slots.
+
+**Note:** The above procedure was designed for minimal downtime. We **strongly** recommend that you conduct these steps during a scheduled maintenance window, and test at least a switchover/switchback operation after all the above steps have been performed.
+
+### More detailed example
+
+In this section we will cover an example with more detailed steps for migrating an existing Postgres cluster to a Patroni managed cluster.
+
+For the sake of simplicity, we will put some notes, when relevant, considering three possibilities for an existing cluster, just so we don't repeat ourselves regarding similar steps:
+
+1. Managed by [EFM](/efm/latest/).
+2. Managed by [repmgr](/repmgr/latest).
+3. With no HA tool.
+
+For the example, the following assumptions are made:
+
+* You already have a working `etcd` cluster &mdash; refer to [Installing and configuring etcd](installing_etcd) to install and set up `etcd` to be used with Patroni. The `etcd` cluster here is composed of the following nodes:
+    * `etcd-node-1`.
+    * `etcd-node-2`.
+    * `etcd-node-3`.
+* The Postgres cluster that needs to be migrated has the following nodes:
+    * `postgres-node-1` &mdash; the primary node.
+    * `postgres-node-2` &mdash; a standby of `postgres-node-1`.
+    * `postgres-node-3` &mdash; a standby of `postgres-node-1`.
+* The existing Postgres cluster uses replication slots to control replication from primary to standbys, and they are named:
+    * `slot_for_postgres_node_2` &mdash; slot used by replica node `postgres-node-2`.
+    * `slot_for_postgres_node_3` &mdash; slot used by replica node `postgres-node-3`.
+* You already have the following Postgres users in the cluster:
+    * `postgres` with password `postgres_password` &mdash; Postgres superuser.
+    * `replicator` with password `replicator_password` &mdash; used by replication connections.
+    * `rewind` with password `rewind_password` &mdash; user with rights for executing `pg_rewind`.
+* You are running PostgreSQL with the following characteristics:
+    * Postgres is running on port `5432`.
+    * Postgres data directory is `/var/lib/postgres/data`.
+    * Postgres binaries directory is `/usr/postgres/bin`.
+* You have already installed Patroni on all the Postgres nodes.
+* The systemd unit names are:
+    * `postgres` &mdash; for Postgres.
+    * `patroni` &mdash; for Patroni.
+    * `edb-efm` &mdash; in case EFM is being used in the existing cluster.
+    * `repmgrd` &mdash; in case repmgr is being used in the existing cluster.
+* The configuration files are:
+    * `/etc/patroni.yml` &mdash; for Patroni.
+    * `/etc/repmgr.conf` &mdash; in case repmgr is being used in the existing cluster.
+* The cluster name is `test_cluster`. This is relevant only for EFM and Patroni.
+
+**Notes:**
+
+* Please adjust the example assumptions according to your environment.
+* Setting up watchdog and HAProxy are out of the scope of this example. However, as they are part of the recommended architecture, you should read the following documentation:
+    * About watchdog:
+        * Quick start on [RHEL 8](rhel8_quick_start#3-watchdog) or [Debian 11](debian11_quick_start#3-watchdog) &mdash; set up a watchdog device.
+        * Quick start on [RHEL 8](rhel8_quick_start#4-patroni) or [Debian](debian11_quick_start#4-patroni) &mdash; configure Patroni to use the watchdog.
+    * About HAProxy:
+        * Quick start on [RHEL 8](rhel8_quick_start#5-haproxy) or [Debian 11](debian11_quick_start#5-haproxy) &mdash; set up HAProxy.
+* This example uses PostgreSQL. If you are running EDB Postgres Extended or EDB Postgres Advanced Server, then we recommend you also read the following documentation:
+    * Quick start on [RHEL 8](rhel8_quick_start#2-edb-postgres-advanced-or-extended-server) or [Debian 11](debian11_quick_start#2-edb-postgres-advanced-or-extended-server) &mdash; check differences in ports, binary paths, etc.
+    * Quick start on [RHEL 8](rhel8_quick_start#4-patroni) or [Debian 11](debian11_quick_start#4-patroni) &mdash; how to configure Patroni to use custom Postgres binary names.
+
+In the following subsections you will find the actual walkthrough.
+
+#### 1. Disable current HA solution
+
+If you have an HA solution managing your current cluster, then you need to disable it. If you do not have any HA solution, this section can be skipped.
+
+If you are using EFM:
+
+1. Stop all EFM agents. On any Postgres node:
+
+```bash
+efm stop-cluster test_cluster
+```
+
+2. Disable the EFM systemd unit. This is required so nothing other than Patroni will try to start Postgres up. On all Postgres nodes:
+
+```bash
+systemctl disable edb-efm
+```
+
+If you are using repmgr:
+
+1. Stop the repmgr daemon. On any postgres node:
+
+```bash
+repmgr -f /etc/repmgr.conf service pause
+```
+
+2. Disable the repmgr systemd unit. This is required so nothing other than Patroni will try to start Postgres up. On all postgres nodes:
+
+```bash
+systemctl disable repmgrd
+```
+
+#### 2. Set up Patroni
+
+You need to perform the following steps on all Postgres nodes. Perform all steps on one node before proceeding with the next node. Start with the primary node (`postgres-node-1`), then proceed with each standby node (`postgres-node-2` and `postgres-node-3`).
+
+1. Disable Postgres systemd unit. This is required so nothing other than Patroni will try to start Postgres. Run:
+
+```bash
+systemctl disable postgres
+```
+
+2. Create a YAML configuration file for Patroni (`/etc/patroni.yml`). You can find below a very basic template for the configuration file:
+
+```yaml
+scope: test_cluster
+name: postgres-node-1
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: postgres-node-1:8008
+
+etcd3:
+  hosts:
+  - etcd-node-1:2379
+  - etcd-node-2:2379
+  - etcd-node-3:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+
+    slots:
+      slot_for_postgres_node_2:
+        type: physical
+      slot_for_postgres_node_3:
+        type: physical
+
+  pg_hba:
+  - host replication replicator 0.0.0.0/0 scram-sha-256
+  - host all all 0.0.0.0/0 scram-sha-256
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: postgres-node-1:5432
+  pgpass: /tmp/.pgpass
+  data_dir: /var/lib/postgres/data
+  bin_dir: /usr/postgres/bin
+
+  authentication:
+    superuser:
+        username: postgres
+        password: postgres_password
+
+    replication:
+        username: replicator
+        password: replicator_password
+
+    rewind:
+        username: rewind
+        password: rewind_password
+
+    parameters:
+      unix_socket_directories: /tmp
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
+```
+
+Please keep in mind the following suggestions related to the configuration file from above:
+
+* This is just an example template, and you will need to change it according to your setup.
+* It was created as an example configuration file for node `postgres-node-1`. Adjust accordingly for other nodes (`postgres-node-2` and `postgres-node-3`).
+* Some key points about the proposed settings:
+    * `scope`: is the name of the Patroni cluster.
+    * `name`: is the name of the managed Postgres node.
+    * `etcd3.hosts`: contains the list of addresses to reach nodes that are part of the `etcd` cluster
+    * `bootstrap.dcs.postgresql.slots`: contains a list of slots that should be permanent, thus not dropped by Patroni when it starts running. We fill this so we can guarantee WALs will be available for replicas until they reach the LSN of the slots that were created by Patroni.
+    * `bootstrap.pg_hba`: contains a few basic HBA rules that Patroni will write to the `pg_hba.conf` file, so users are able to connect. Adapt it to your needs, as the rules in this example are somehow very permissive.
+* We **strongly** recommend reading the Patroni documentation about [Patroni configuration](https://patroni.readthedocs.io/en/latest/patroni_configuration.html). You will likely need to at least specify some settings through `bootstrap.dcs.postgresql.parameters` (Postgres settings that apply to all nodes - used once to populate the Patroni DCS when it is initialised) and `postgresql.parameters` (Postgres settings that apply to local node) sections of the configuration file to make the Postgres configuration compatible with what you have in your existing cluster.
+
+3. Create or adjust the Patroni systemd unit. You can find instructions about that in the quick start on [RHEL 8](rhel8_quick_start#4-patroni) or [Debian 11](debian11_quick_start#4-patroni).
+
+4. Enable the Patroni systemd unit. This is done so Patroni will automatically start up on boot and start Postgres. Run:
+
+```bash
+systemctl enable patroni
+```
+
+5. Start the Patroni systemd unit. This is done so you start Patroni right now. Run:
+
+```bash
+systemctl start patroni
+```
+
+#### 3. Hand over Postgres startup to Patroni
+
+At this point Patroni is already monitoring the Postgres instances on each node. However, Postgres is still running using its own systemd unit (`postgres`). Ideally we should make Patroni start Postgres through its own means, and stop using the Postgres systemd unit.
+
+We recommend starting with the standbys, and then proceeding with the primary. Also, we assume you can immediately restart the standbys, and that you want to restart the primary during a maintenance window. The steps:
+
+1. Immediately restart the standby `postgres-node-2`. On any Postgres node run:
+
+```bash
+patronictl -c /etc/patroni.yml restart test_cluster postgres-node-2 --scheduled now --force
+```
+
+2. Immediately restart the standby `postgres-node-3`. On any Postgres node run:
+
+```bash
+patronictl -c /etc/patroni.yml restart test_cluster postgres-node-3 --scheduled now --force
+```
+
+3. Schedule a restart of primary `postgres-node-1` to occur during a maintenance window. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml restart test_cluster postgres-node-1 --scheduled SOME_SCHEDULE --force
+```
+
+**Note:** `SOME_SCHEDULE` should be filled with the desired timestamp in an unambiguous format, and preferably with a numeric time zone offset (e.g. `2023-07-25T20:09+00`).
+
+Once all Postgres instances were restarted, they will be running through Patroni instead of through the Postgres systemd unit.
+
+#### 4. Clean up slots from original cluster
+
+At this point we assume all Postgres instances are already running through Patroni, as described in the previous section.
+
+As we intend to clean up the slots from the original cluster, before proceeding with the next steps you should confirm that both Postgres standby nodes have already received (and potentially consumed) all WAL files that exist between the replication slots that existed in the original cluster and the replication slots that were created by Patroni. In other words make sure that:
+
+1. `postgres-node-2` has received all WALs between the LSNs reported by the following replication slots in `postgres-node-1`:
+    1. `slot_for_postgres_node_2` &mdash; previously existing slot in the original cluster.
+    2. `postgres_node_2` &mdash; slot automatically created by Patroni based on node name.
+2. `postgres-node-3` has received all WALs between the LSNs reported by the following replication slots in `postgres-node-1`:
+    1. `slot_for_postgres_node_3` &mdash; previously existing slot in the original cluster.
+    2. `postgres_node_3` &mdash; slot automatically created by Patroni based on node name.
+
+**Note:** You can use a query like the one below to check the required LSN of these slots. You need to make sure that the `restart_lsn` of the slots created by Patroni is `>=` than the `restart_lsn` of the original slots. On node `postgres-node-1`, through a `psql` session:
+
+```sql
+SELECT slot_name,
+       restart_lsn
+FROM pg_catalog.pg_replication_slots
+WHERE slot_name IN (
+    'slot_for_postgres_node_2',
+    'postgres_node_2',
+    'slot_for_postgres_node_3',
+    'postgres_node_3'
+)
+```
+
+Once the above conditions are met, we are then able to let Patroni drop the original slots (`slot_for_postgres_node_2`, and `slot_for_postgres_node_3`). In order to do that, assuming you have not configured any other permanent slots other than `slot_for_postgres_node_2` and `slot_for_postgres_node_3`, follow these steps:
+
+1. Remove [permanent slots](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html#:~:text=a%20standby%20leader-,slots,-%3A%20define%20permanent%20replication) dynamic configuration. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml edit-config test_cluster --set "slots=null" --force
+```
+
+2. Wait for about 10 seconds and check that the replication slots `slot_for_postgres_node_2` and `slot_for_postgres_node_3` have been dropped from `postgres-node-1` (query `pg_replication_slots` to check this).
+
+#### 5. Test switchover and switchback
+
+At this point your cluster is completely managed by Patroni, so it is important to perform a switchover and switchback operations during a maintenance window to ensure Patroni is operating correctly.
+
+As mentioned, you should perform the following steps during a maintenance window. As an example we will perform a switchover and switchback between `postgres-node-1` and `postgres-node-2`. The steps:
+
+1. Check replication lag between nodes. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml list test_cluster
++ Cluster: test_cluster ------------+---------+-----------+----+-----------+
+| Member          | Host            | Role    | State     | TL | Lag in MB |
++-----------------+-----------------+---------+-----------+----+-----------+
+| postgres-node-1 | postgres-node-1 | Leader  | running   |  1 |           |
+| postgres-node-2 | postgres-node-1 | Replica | streaming |  1 |         0 |
+| postgres-node-3 | postgres-node-1 | Replica | streaming |  1 |         0 |
++-----------------+-----------------+---------+-----------+----+-----------+
+```
+
+**Note:** Do not proceed with the next steps if replica nodes are lagging.
+
+2. Perform a switchover between `postgres-node-1` and `postgres-node-2`. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml switchover test_cluster --leader postgres-node-1 --candidate postgres-node-2 --scheduled now --force
+```
+
+3. After a few seconds, check again the list of members. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml list test_cluster
++ Cluster: test_cluster ------------+---------+-----------+----+-----------+
+| Member          | Host            | Role    | State     | TL | Lag in MB |
++-----------------+-----------------+---------+-----------+----+-----------+
+| postgres-node-1 | postgres-node-1 | Replica | streaming |  2 |         0 |
+| postgres-node-2 | postgres-node-1 | Leader  | running   |  2 |           |
+| postgres-node-3 | postgres-node-1 | Replica | streaming |  2 |         0 |
++-----------------+-----------------+---------+-----------+----+-----------+
+```
+
+**Note:** Do not proceed with the next steps if replica nodes are lagging or not streaming
+
+4. Perform a switchback between `postgres-node-1` and `postgres-node-2`. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml switchover test_cluster --leader postgres-node-2 --candidate postgres-node-1 --scheduled now --force
+```
+
+5. After a few seconds, check again the list of members. On any Postgres node:
+
+```bash
+patronictl -c /etc/patroni.yml list test_cluster
++ Cluster: test_cluster ------------+---------+-----------+----+-----------+
+| Member          | Host            | Role    | State     | TL | Lag in MB |
++-----------------+-----------------+---------+-----------+----+-----------+
+| postgres-node-1 | postgres-node-1 | Leader  | running   |  3 |           |
+| postgres-node-2 | postgres-node-1 | Replica | streaming |  3 |         0 |
+| postgres-node-3 | postgres-node-1 | Replica | streaming |  3 |         0 |
++-----------------+-----------------+---------+-----------+----+-----------+
+```
+
+**Note:** Replica nodes should be streaming and not lagging.
+
+If you were able to get here and see the expected outputs, both switchover and switchback were successful, then congratulations your Patroni cluster is now fully operational.

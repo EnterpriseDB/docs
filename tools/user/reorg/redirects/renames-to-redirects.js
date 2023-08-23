@@ -55,18 +55,24 @@ const run = async () => {
 
   const mapRenames = {};
   const mapCurrentPathToRedirect = {};
-  for (const [before, after] of renames)
-  {
+  for (const [before, after] of renames) {
     // handle chains of renames such that when:
     // b->c
     // a->b
-    // mapCurrentPathToRedirect[c] = a 
+    // mapCurrentPathToRedirect[c] = a
     mapRenames[before] = after;
     const key = mapRenames[after] || after;
 
     const oldUrlPath = fsPathToURLPath(before);
+    const oldUrlPathSplit = oldUrlPath.split("/");
     const newUrlPath = fsPathToURLPath(after);
-    const redirectPath = path.relative(newUrlPath, oldUrlPath);
+    const newUrlPathSplit = newUrlPath.split("/");
+    const redirectPath =
+      before.startsWith("product_docs") &&
+      oldUrlPathSplit[1] === newUrlPathSplit[1] &&
+      oldUrlPathSplit[2] === newUrlPathSplit[2]
+        ? path.join("/", oldUrlPathSplit[1], "latest", ...oldUrlPathSplit.slice(3), "/")
+        : path.relative(newUrlPath, oldUrlPath) + "/";
     mapCurrentPathToRedirect[key] = redirectPath;
   }
 
@@ -78,6 +84,9 @@ const run = async () => {
     const redirectPath = mapCurrentPathToRedirect[path.relative(basePath, sourcePath)];
     if (redirectPath)
       found++;
+
+    if (sourcePath.includes("05_control_structures/07_exception_handling.mdx")) console.log(sourcePath, redirectPath);
+
     const origContent = await readFile(sourcePath, "utf8");
     const newContent = await replaceRedirect(origContent, redirectPath, {sourcePath, branch});
     if (newContent !== origContent )

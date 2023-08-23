@@ -166,7 +166,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation>
+        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
           <LeftNav
             navTree={navTree}
             navLinks={navLinks}
