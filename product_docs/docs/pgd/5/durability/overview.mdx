@@ -1,0 +1,71 @@
+---
+title: An Overview of Durability options
+navTitle: Overview
+---
+
+## Overview
+
+EDB Postgres Distributed allows you to choose from several replication
+configurations based on your durability, consistency, availability, and
+performance needs using *commit scopes*.
+
+In its basic configuration, EDB Postgres Distributed uses asynchronous
+replication. However, commit scopes can change both the default and the 
+per-transaction behavior.
+
+It's also possible to configure the legacy Postgres
+synchronous replication using standard `synchronous_standby_names` in the same
+way as the built-in physical or logical replication. However, commit scopes 
+provide much more flexibility and control over the replication behavior.
+
+The different synchronization settings affect three properties of interest
+to applications that are related but can all be implemented individually:
+
+-   Durability: Writing to multiple nodes increases crash resilience
+    and allows you to recover the data after a crash and restart.
+-   Visibility: With the commit confirmation to the client, the database
+    guarantees immediate visibility of the committed transaction on some
+    sets of nodes.
+-   Conflict handling: Conflicts can be handled optimistically
+    postcommit, with conflicts resolved when the transaction is replicated
+    based on commit timestamps. Or, they can be handled pessimistically
+    precommit. The client can rely on the transaction to eventually be
+    applied on all nodes without further conflicts or get an abort, directly
+    informing the client of an error.
+
+Commit scopes allow two ways of controlling durability of the transaction:
+
+-   [Group Commit](group-commit). This option controls which and how many nodes
+    have to reach a consensus before the transaction is considered to be committable
+    and at what stage of replication it can be considered committed. This option also
+    allows you to control the visibility ordering of the transaction.
+-   [CAMO](camo). This option is a variant of Group Commit in which the client is part of the
+    consensus.
+-   [Lag Control](lag-control). This option controls how far behind nodes can 
+    be in terms of replication before allowing commit to proceed.
+
+
+!!! Note Legacy synchronization availability
+For backward compatibility, PGD still supports configuring synchronous
+replication with `synchronous_commit` and `synchronous_standby_names`. See
+[Legacy synchronous replication](legacy-sync) for more on this option,
+but consider using [Group Commit](group-commit) instead. 
+!!!
+
+## Terms and definitions
+
+PGD nodes take different roles during the replication of a transaction.
+These are implicitly assigned per transaction and are unrelated even for
+concurrent transactions.
+
+* The *origin* is the node that receives the transaction from the
+  client or application. It's the node processing the transaction
+  first, initiating replication to other PGD nodes and responding back
+  to the client with a confirmation or an error.
+
+* A *partner* node is a PGD node expected to confirm transactions
+  according to Group Commit requirements.
+
+* A *commit group* is the group of all PGD nodes involved in the
+  commit, that is, the origin and all of its partner nodes, which can be
+  just a few or all peer nodes.
