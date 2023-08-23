@@ -2,7 +2,7 @@
 
 ## Structural guidelines
 
-Release notes start with the name of the product, the version number being released and the words "Release Notes". 
+Release notes start with the name of the product, the version number being released and the words "release notes". 
 This should be the setting for the frontmatter title field. The frontmatter will also need a short navigation title 
 (navTitle). This should just be the version number, preceded by the word "Version".
 
@@ -10,7 +10,7 @@ This is followed, in the body of the content, by a date of release in the `Relea
 
 ```
 ---
-title: EDB Postgres Advanced Server 64.0 Release Notes
+title: EDB Postgres Advanced Server 64.0 release notes
 navTitle: Version 64.0
 ---
 
