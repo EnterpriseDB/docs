@@ -222,6 +222,7 @@ const DocTemplate = ({ data, pageContext }) => {
   const {
     frontmatter,
     pagePath,
+    productVersions,
     versions,
     githubFileLink,
     githubEditLink,
@@ -230,7 +231,7 @@ const DocTemplate = ({ data, pageContext }) => {
     navTree,
     prevNext,
   } = pageContext;
-  const navRoot = findDescendent(navTree, (n) => n.path === path);
+  const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const versionArray = makeVersionArray(
     versions,
     pageContext.pathVersions,
@@ -265,7 +266,8 @@ const DocTemplate = ({ data, pageContext }) => {
     title: title,
     description: description,
     path: pagePath,
-    isIndexPage: isIndexPage,
+    isIndexPage,
+    productVersions,
     canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
   };
 
@@ -344,9 +346,7 @@ const DocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
           {sections && <Sections sections={sections} />}
-          {depth > 2 && (
-            <PrevNext prevNext={prevNext} path={path} depth={depth} />
-          )}
+          {depth > 2 && <PrevNext prevNext={prevNext} depth={depth} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileLink} />

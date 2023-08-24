@@ -116,6 +116,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const {
     frontmatter,
     pagePath,
+    productVersions,
     navLinks,
     githubFileLink,
     githubEditLink,
@@ -140,6 +141,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     description: description,
     path: pagePath,
     isIndexPage: isIndexPage,
+    productVersions,
   };
 
   const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;

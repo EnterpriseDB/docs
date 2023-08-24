@@ -255,7 +255,7 @@ const findPrevNextNavNodes = (navTree, currNode) => {
 };
 
 const preprocessPathsAndRedirects = (nodes, productVersions) => {
-  const validPaths = new Set();
+  const validPaths = new Map();
   for (let node of nodes) {
     const nodePath = node.fields?.path;
     if (!nodePath) continue;
@@ -265,17 +265,32 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       productVersions[node.fields.product][0] === node.fields.version;
     const nodePathLatest = isLatest && replacePathVersion(nodePath);
 
-    validPaths.add(nodePath);
-    if (isLatest) validPaths.add(nodePathLatest);
+    validPaths.set(nodePath, nodePathLatest || nodePath);
+    if (isLatest) {
+      validPaths.set(nodePathLatest, nodePathLatest);
+      // from here on, the "latest" path *is* the canonical path
+      node.fields.path = nodePathLatest;
+    }
 
     const redirects = node.frontmatter?.redirects;
     if (!redirects || !redirects.length) continue;
 
     const newRedirects = new Set();
     const addNewRedirect = (redirect) => {
-      if (validPaths.has(redirect))
-        console.warn(`Redirect ${redirect} for page ${nodePath} matches the path of a page or redirect already added and will be ignored!
-::warning file=${node.fileAbsolutePath},title=Overlapping redirect::Redirect matches another redirect or page path, ${redirect}`);
+      if (validPaths.has(redirect)) {
+        const existing = validPaths.get(redirect);
+        const existingIsRedirect = existing !== redirect;
+        console.warn(`Redirect ${redirect} for page ${nodePath} matches the path of a ${
+          existingIsRedirect
+            ? "redirect added in the page at"
+            : "page already added"
+        } ${existing} and will be ignored!
+::warning file=${
+          node.fileAbsolutePath
+        },title=Overlapping redirect::Redirect ${redirect} matches another ${
+          existingIsRedirect ? "redirect pointing to" : "page at"
+        }: ${existing}`);
+      }
       newRedirects.add(redirect);
     };
     for (let redirect of redirects) {
@@ -309,9 +324,10 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       if (fromPath !== nodePath) addNewRedirect(fromPath);
     }
 
-    for (let redirect of newRedirects) validPaths.add(redirect);
+    for (let redirect of newRedirects)
+      validPaths.set(redirect, nodePathLatest || nodePath);
 
-    node.frontmatter.redirects = [...newRedirects];
+    node.frontmatter.redirects = [...newRedirects.keys()];
   }
   return validPaths;
 };
@@ -320,21 +336,22 @@ const configureRedirects = (
   toPath,
   redirects,
   actions,
-  isLatest,
+  versions,
   pathVersions,
 ) => {
+  const splitToPath = toPath.split(path.sep);
+  const isLatest = splitToPath[2] === "latest";
   const lastVersionPath = pathVersions.find((p) => !!p);
   const isLastVersion = toPath === lastVersionPath;
   // latest version should always redirect to .../latest/...
   if (isLatest) {
     actions.createRedirect({
-      fromPath: toPath,
-      toPath: replacePathVersion(toPath),
-      redirectInBrowser: true,
+      fromPath: replacePathVersion(toPath, versions[0]),
+      toPath: toPath,
+      redirectInBrowser: false,
       isPermanent: false,
       force: true,
     });
-    toPath = replacePathVersion(toPath);
   }
   // if this path is a dead-end (it does not exist in any newer versions
   // of the product, and also does not have a matching redirect in any newer versions)
@@ -344,14 +361,13 @@ const configureRedirects = (
     actions.createRedirect({
       fromPath: replacePathVersion(toPath),
       toPath,
-      redirectInBrowser: true,
+      redirectInBrowser: false,
       isPermanent: false,
     });
   }
 
   if (!redirects) return;
 
-  const splitToPath = toPath.split(path.sep);
   for (let fromPath of redirects) {
     if (!fromPath) continue;
     if (fromPath !== toPath) {
@@ -361,7 +377,7 @@ const configureRedirects = (
       actions.createRedirect({
         fromPath,
         toPath,
-        redirectInBrowser: true,
+        redirectInBrowser: false,
         isPermanent,
       });
     }
@@ -406,7 +422,7 @@ const configureRedirects = (
         actions.createRedirect({
           fromPath,
           toPath,
-          redirectInBrowser: true,
+          redirectInBrowser: false,
           isPermanent: false,
         });
     }

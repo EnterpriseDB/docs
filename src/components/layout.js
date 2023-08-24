@@ -53,6 +53,7 @@ const Layout = ({
           to={href}
           pageUrl={meta.path}
           pageIsIndex={meta.isIndexPage}
+          productVersions={meta.productVersions}
           {...rest}
         />
       ),

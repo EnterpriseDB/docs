@@ -294,29 +294,25 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
     const { docType } = node.fields;
 
-    const isLatest =
-      docType === "doc"
-        ? productVersions[node.fields.product][0] === node.fields.version
-        : false;
+    const versions =
+      docType === "doc" ? productVersions[node.fields.product] || [] : [];
 
     // all versions for this path.
     // Null entries for versions that don't exist. Will try to match redirects to avoid this, but won't follow redirect chains
     // Canonical version is the first non-null in the list, e.g. pathVersions.filter((p) => !!p)[0]
-    const allPaths = [node.fields.path, ...(node.frontmatter?.redirects || [])];
-    const pathVersions = (productVersions[node.fields.product] || []).map(
-      (v, i) => {
-        const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
-        const match = versionPaths.find((vp) => validPaths.has(vp));
-        if (!match) return null;
-        return i === 0 ? replacePathVersion(match) : match;
-      },
-    );
+    const allPaths = [node.fields.path, ...(node.frontmatter.redirects || [])];
+    const pathVersions = versions.map((v, i) => {
+      const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
+      const match = versionPaths.find((vp) => validPaths.has(vp));
+      if (!match) return null;
+      return validPaths.get(match);
+    });
 
     configureRedirects(
       node.fields.path,
       node.frontmatter.redirects,
       actions,
-      isLatest,
+      versions,
       pathVersions,
     );
 
@@ -330,7 +326,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         actions,
       );
     } else if (docType === "advocacy") {
-      createAdvocacy(navTree, prevNext, node, learn, actions);
+      createAdvocacy(navTree, prevNext, node, productVersions, learn, actions);
     }
   }
 };
@@ -358,13 +354,13 @@ const createDoc = (
     });
   }
 
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
   const docsRepoUrl = "https://github.com/EnterpriseDB/docs";
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment =
-    removeTrailingSlash(doc.fields.path) +
-    (isIndexPage ? "/index.mdx" : ".mdx");
+  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
+  const fileUrlSegment = doc.fileAbsolutePath
+    .split("/product_docs/docs")
+    .slice(1);
   const githubFileLink = `${docsRepoUrl}/blob/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
   const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
   const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
@@ -385,6 +381,7 @@ const createDoc = (
       pagePath: path,
       navTree,
       prevNext,
+      productVersions,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
       githubFileLink: githubFileHistoryLink,
@@ -418,7 +415,14 @@ const createDoc = (
   });
 };
 
-const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
+const createAdvocacy = (
+  navTree,
+  prevNext,
+  doc,
+  productVersions,
+  learn,
+  actions,
+) => {
   // configure legacy redirects
   configureLegacyRedirects({
     toPath: doc.fields.path,
@@ -437,9 +441,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
   const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const fileUrlSegment =
-    removeTrailingSlash(doc.fields.path) +
-    (isIndexPage ? "/index.mdx" : ".mdx");
+  const fileUrlSegment = doc.fileAbsolutePath.split("/advocacy_docs").slice(1);
   const githubFileLink = `${advocacyDocsRepoUrl}/blob/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
   const githubFileHistoryLink = `${advocacyDocsRepoUrl}/commits/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
   const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
@@ -458,6 +460,7 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       pagePath: doc.fields.path,
       navLinks: navLinks,
       prevNext,
+      productVersions,
       navTree,
       githubFileLink: githubFileHistoryLink,
       githubEditLink: githubEditLink,
