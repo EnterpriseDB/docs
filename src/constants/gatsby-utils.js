@@ -289,16 +289,15 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
         const existing = validPaths.get(redirect);
         const existingIsRedirect = existing.urlpath !== redirect;
         if (isGHBuild) {
-          console.warn(
-            `::warning file=${
-              node.fileAbsolutePath
-            },title=Overlapping redirect::Redirect ${redirect} matches another ${
-              existingIsRedirect ? "redirect pointing to" : "page at"
-            }: https://github.com/EnterpriseDB/docs/${ghBranch}/blob/${path.relative(
-              process.cwd(),
-              existing.filepath,
-            )}`,
-          );
+          console.warn(`
+::warning file=${
+            node.fileAbsolutePath
+          },title=Overlapping redirect::Redirect ${redirect} matches another ${
+            existingIsRedirect ? "redirect pointing to" : "page at"
+          }: https://github.com/EnterpriseDB/docs/${ghBranch}/blob/${path.relative(
+            process.cwd(),
+            existing.filepath,
+          )}`);
         } else {
           console.warn(
             `Redirect ${redirect} for page ${nodePath} matches the path of a ${
