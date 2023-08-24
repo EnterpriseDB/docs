@@ -102,6 +102,7 @@ const sourceToPluginConfig = {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
   },
+  sql_assess: { name: "sql_assess", path: "product_docs/docs/sql_assess"},
 };
 
 const externalSourcePlugins = () => {

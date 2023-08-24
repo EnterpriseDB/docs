@@ -328,6 +328,9 @@ const Page = () => (
               Migration Toolkit
             </IndexCardLink>
             <IndexCardLink to="/eprs/latest">Replication Server</IndexCardLink>
+            <IndexCardLink to="/sql_assess/latest">
+              EDB SQL Assess
+            </IndexCardLink>
           </IndexCard>
 
           <IndexCard
