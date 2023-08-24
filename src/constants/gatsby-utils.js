@@ -2,6 +2,9 @@ const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
 
+const isGHBuild = !!process.env.GITHUB_HEAD_REF;
+const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
     b.localeCompare(a, undefined, { numeric: true }),
@@ -264,10 +267,15 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       node.fields.docType === "doc" &&
       productVersions[node.fields.product][0] === node.fields.version;
     const nodePathLatest = isLatest && replacePathVersion(nodePath);
+    const addPath = (url) =>
+      validPaths.set(url, {
+        urlpath: nodePathLatest || nodePath,
+        filepath: node.fileAbsolutePath,
+      });
 
-    validPaths.set(nodePath, nodePathLatest || nodePath);
+    addPath(nodePath);
     if (isLatest) {
-      validPaths.set(nodePathLatest, nodePathLatest);
+      addPath(nodePathLatest);
       // from here on, the "latest" path *is* the canonical path
       node.fields.path = nodePathLatest;
     }
@@ -279,17 +287,27 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
     const addNewRedirect = (redirect) => {
       if (validPaths.has(redirect)) {
         const existing = validPaths.get(redirect);
-        const existingIsRedirect = existing !== redirect;
-        console.warn(`Redirect ${redirect} for page ${nodePath} matches the path of a ${
-          existingIsRedirect
-            ? "redirect added in the page at"
-            : "page already added"
-        } ${existing} and will be ignored!
-::warning file=${
-          node.fileAbsolutePath
-        },title=Overlapping redirect::Redirect ${redirect} matches another ${
-          existingIsRedirect ? "redirect pointing to" : "page at"
-        }: ${existing}`);
+        const existingIsRedirect = existing.urlpath !== redirect;
+        if (isGHBuild) {
+          console.warn(
+            `::warning file=${
+              node.fileAbsolutePath
+            },title=Overlapping redirect::Redirect ${redirect} matches another ${
+              existingIsRedirect ? "redirect pointing to" : "page at"
+            }: https://github.com/EnterpriseDB/docs/${ghBranch}/blob/${path.relative(
+              process.cwd(),
+              existing.filepath,
+            )}`,
+          );
+        } else {
+          console.warn(
+            `Redirect ${redirect} for page ${nodePath} matches the path of a ${
+              existingIsRedirect
+                ? "redirect added in the page at"
+                : "page already added"
+            } ${existing.filepath} and will be ignored!`,
+          );
+        }
       }
       newRedirects.add(redirect);
     };
@@ -324,8 +342,7 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       if (fromPath !== nodePath) addNewRedirect(fromPath);
     }
 
-    for (let redirect of newRedirects)
-      validPaths.set(redirect, nodePathLatest || nodePath);
+    for (let redirect of newRedirects) addPath(redirect);
 
     node.frontmatter.redirects = [...newRedirects.keys()];
   }
