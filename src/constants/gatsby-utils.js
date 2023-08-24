@@ -294,7 +294,7 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
             node.fileAbsolutePath
           },title=Overlapping redirect::Redirect ${redirect} matches another ${
             existingIsRedirect ? "redirect pointing to" : "page at"
-          }: https://github.com/EnterpriseDB/docs/${ghBranch}/blob/${path.relative(
+          }: https://github.com/EnterpriseDB/docs/blob/${ghBranch}/${path.relative(
             process.cwd(),
             existing.filepath,
           )}`);
