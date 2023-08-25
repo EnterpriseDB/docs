@@ -99,18 +99,18 @@ const Page = () => (
                     className="homepage-headling-link"
                     to="/pgd/latest/reference/"
                   >
-                    EDB Postgres Distributed's ready reference
+                    Find the EPAS content you're looking for
                   </Link>
                 </h3>
                 <p>
                   <Icon
-                    iconName={iconNames.HIGH_AVAILABILITY}
+                    iconName={iconNames.EASY}
                     className="fill-orange ml-2 float-right"
                   />
-                  Use the new reference section in EDB Postgres Distributed to
-                  quickly look up views, catalogs, functions, and variables.
-                  It's a new view of the documentation designed to centralize
-                  essential information and speed up your development.
+                  Whether you are an application programmer trying to debug your
+                  programs or a DBA configuring your database, the new structure
+                  of the EDB Postgres Advanced Server documentation makes
+                  finding relevant content a snap.
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
