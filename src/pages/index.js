@@ -95,10 +95,7 @@ const Page = () => (
 
               <div className="mb-3">
                 <h3 className="card-title mb-2 font-weight-bold">
-                  <Link
-                    className="homepage-headling-link"
-                    to="/pgd/latest/reference/"
-                  >
+                  <Link className="homepage-headling-link" to="/epas/latest/">
                     Find the EPAS content you're looking for
                   </Link>
                 </h3>
@@ -114,7 +111,7 @@ const Page = () => (
                 </p>
                 <div className="d-flex align-items-center">
                   <p>
-                    <Link className="btn-sm ml-2" to="/pgd/latest/reference/">
+                    <Link className="btn-sm ml-2" to="/epas/latest/">
                       Find out more &rarr;
                     </Link>
                   </p>
