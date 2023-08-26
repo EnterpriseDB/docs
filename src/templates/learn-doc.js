@@ -1,6 +1,7 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
 import { graphql } from "gatsby";
+import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   CardDecks,
@@ -24,6 +25,11 @@ export const query = graphql`
       }
       body
       tableOfContents
+      fileAbsolutePath
+    }
+    edbGit {
+      docsRepoUrl
+      branch
     }
   }
 `;
@@ -111,17 +117,13 @@ const FeedbackButton = ({ githubIssuesLink }) => (
 );
 
 const LearnDocTemplate = ({ data, pageContext }) => {
-  const { mdx } = data;
+  const { mdx, edbGit: gitData } = data;
   const { mtime, path, depth } = mdx.fields;
   const {
     frontmatter,
     pagePath,
     productVersions,
     navLinks,
-    githubFileLink,
-    githubEditLink,
-    githubIssuesLink,
-    isIndexPage,
     navTree,
     prevNext,
   } = pageContext;
@@ -140,7 +142,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     title: title,
     description: description,
     path: pagePath,
-    isIndexPage: isIndexPage,
+    isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
   };
 
@@ -149,6 +151,20 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
+
+  // don't encourage folks to edit on main - set the edit links to develop in production builds
+  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
+  const fileUrlSegment = mdx.fileAbsolutePath.split("/advocacy_docs").slice(1);
+  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
+  const githubEditLink = `${gitData.docsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
+  const githubIssuesLink = `${
+    gitData.docsRepoUrl
+  }/issues/new?title=${encodeURIComponent(
+    `Regarding "${title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
 
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
@@ -239,7 +255,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             !
           </p>
 
-          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
+          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
         </MainContent>
       </Container>
     </Layout>

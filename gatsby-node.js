@@ -22,6 +22,7 @@ const {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportRedirectCollisions,
   configureLegacyRedirects,
   readFile,
   writeFile,
@@ -53,7 +54,7 @@ const gitData = (() => {
     .replace(/^refs\/tags\//, "");
   sha = sha.trim();
 
-  return { branch, sha };
+  return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
 })();
 
 exports.onCreateNode = async ({
@@ -292,30 +293,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // determine next and previous nodes
     const prevNext = findPrevNextNavNodes(navTree, curr);
 
-    const { docType } = node.fields;
-
-    const versions =
-      docType === "doc" ? productVersions[node.fields.product] || [] : [];
-
-    // all versions for this path.
-    // Null entries for versions that don't exist. Will try to match redirects to avoid this, but won't follow redirect chains
-    // Canonical version is the first non-null in the list, e.g. pathVersions.filter((p) => !!p)[0]
-    const allPaths = [node.fields.path, ...(node.frontmatter.redirects || [])];
-    const pathVersions = versions.map((v, i) => {
-      const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
-      const match = versionPaths.find((vp) => validPaths.has(vp));
-      if (!match) return null;
-      return validPaths.get(match);
-    });
-
-    configureRedirects(
-      node.fields.path,
-      node.frontmatter.redirects,
+    const pathVersions = configureRedirects(
+      productVersions,
+      node,
+      validPaths,
       actions,
-      versions,
-      pathVersions,
     );
 
+    const { docType } = node.fields;
     if (docType === "doc") {
       createDoc(
         navTree,
@@ -329,6 +314,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
       createAdvocacy(navTree, prevNext, node, productVersions, learn, actions);
     }
   }
+  reportRedirectCollisions(validPaths, reporter);
 };
 
 const createDoc = (
@@ -354,24 +340,8 @@ const createDoc = (
     });
   }
 
-  const docsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const fileUrlSegment = doc.fileAbsolutePath
-    .split("/product_docs/docs")
-    .slice(1);
-  const githubFileLink = `${docsRepoUrl}/blob/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
-  const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
-  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=${encodeURIComponent(
-    `Feedback on ${doc.fields.product} ${doc.fields.version} - "${doc.frontmatter.title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
-  const deepToC = doc.frontmatter.deepToC != true ? false : true;
 
   actions.createPage({
     path: path,
@@ -384,10 +354,6 @@ const createDoc = (
       productVersions,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
-      githubFileLink: githubFileHistoryLink,
-      githubEditLink: githubEditLink,
-      githubIssuesLink: githubIssuesLink,
-      isIndexPage: isIndexPage,
       pathVersions,
     },
   });
@@ -437,20 +403,6 @@ const createAdvocacy = (
     (node) => node.fields.topic === doc.fields.topic,
   );
 
-  const advocacyDocsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const fileUrlSegment = doc.fileAbsolutePath.split("/advocacy_docs").slice(1);
-  const githubFileLink = `${advocacyDocsRepoUrl}/blob/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${advocacyDocsRepoUrl}/commits/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
-  const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
-  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=${encodeURIComponent(
-    `Regarding "${doc.frontmatter.title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
-
   actions.createPage({
     path: doc.fields.path,
     component: require.resolve("./src/templates/learn-doc.js"),
@@ -462,10 +414,6 @@ const createAdvocacy = (
       prevNext,
       productVersions,
       navTree,
-      githubFileLink: githubFileHistoryLink,
-      githubEditLink: githubEditLink,
-      githubIssuesLink: githubIssuesLink,
-      isIndexPage: isIndexPage,
     },
   });
 
