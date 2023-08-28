@@ -7,7 +7,7 @@ The `DEFINE_ARRAY` procedure defines the collection for a column into which you 
 When you fetch rows, they are copied into DBMS_SQL buffers until you run a COLUMN_VALUE call, which copies the rows into the table that was passed as an argument to the COLUMN_VALUE call.
 
 ```sql
-DEFINE_ARRAY(<c> NUMBER, <position> NUMBER, <table_variable> { CLOB | BLOB | TIMESTAMP | NUMBER | VARCHAR2 | TIMESTAMPTZ |}, <cnt> NUMBER, <lower_bnd> NUMBER)
+DEFINE_ARRAY(<c> NUMBER, <position> NUMBER, <table_variable> { CLOB | FLOAT | BLOB | TIMESTAMP | NUMBER | VARCHAR2 |TIMESTAMP |}, <cnt> NUMBER, <lower_bnd> NUMBER)
    );
 ```
 
@@ -25,19 +25,12 @@ Relative position of the column in the array being defined. The first column is 
 
 A datatype that can be any one of the following matching pairs:
  
-<clob_tab>     Clob_Table
-<blob_tab>     Blob_Table
-<date_tab>     Date_Table
-<num_tab>      Number_Table
-<urowid_tab>   Urowid_Table
-<vchr2_tab>    Varchar2_Table
-<tm_tab>       Time_Table
-<ttz_tab>      Time_With_Time_Zone_Table
-<tms_tab>      Timestamp_Table
-<tstz_tab>     Timestamp_With_ltz_Table
-<tstz_tab>     Timestamp_With_Time_Zone_Table
-<ids_tab>      Interval_Day_To_Second_Table
-<iym_tab>      Interval_Year_To_Month_Table
+<clob_tab>     CLOB_TABLE
+<bflt_tab>     FLOAT_TABLE
+<blob_tab>     BLOB_TABLE
+<num_tab>      NUMBER_TABLE
+<vchr2_tab>    VARCHAR2_TABLE
+<tms_tab>      TIMESTAMP_TABLE
 
 `cnt`
 
@@ -50,37 +43,602 @@ Results are copied into the collection, starting at this lower bound index.
 
 ## Example
 
-THE FOLLOWING EXAMPLE IS TAKEN FROM OUR QA TEST ROUTINES. I COULD ALSO COPY AN EXAMPLE FROM ORACLE DOCUMENTATION. WHAT IS THE BEST WAY TO GET AN EXAMPLE?
+-- test DEFINE_ARRAY
+-- This procedure defines the collection into which the row values are fetched,
+-- with a FETCH_ROWS function call, for a given column. This procedure lets you
+-- do batch fetching of rows from a single SELECT statement. A single fetch
+-- brings several rows into the PL/SQL aggregate object.
 
-```sql
-CREATE OR REPLACE PROCEDURE BULK_PLSQL_1750 (deptid NUMBER) IS
-    var_name DBMS_SQL.VARCHAR2_TABLE;
-    var_empid DBMS_SQL.NUMBER_TABLE;
-    l_cursor NUMBER;
-    row_processed NUMBER;
+--Test data for define_array
+CREATE TABLE employees_db1750 (first_name VARCHAR(30), salary NUMBER,
+	department_id INTEGER, dob TIMESTAMP, height FLOAT, rid ROWID, ctext CLOB, btext BLOB);
+INSERT INTO employees_db1750 VALUES ('user1', 10000, 1, TO_TIMESTAMP('07/09/1979', 'dd/mm/yyyy'), 5.2, 1000, 'clob_1', 'blob_1');
+INSERT INTO employees_db1750 VALUES ('user2', 20000, 1, TO_TIMESTAMP('07/09/1980', 'dd/mm/yyyy'), 5.3, 1001, 'clob_2', 'blob_2');
+INSERT INTO employees_db1750 VALUES ('user3', 30000, 1, TO_TIMESTAMP('07/09/1981', 'dd/mm/yyyy'), 5.4, 1002, 'clob_3', 'blob_3');
+INSERT INTO employees_db1750 VALUES ('user4', 40000, 1, TO_TIMESTAMP('07/09/1982', 'dd/mm/yyyy'), 5.5, 1003, 'clob_4', 'blob_4');
+INSERT INTO employees_db1750 VALUES ('user5', 50000, 1, TO_TIMESTAMP('07/09/1983', 'dd/mm/yyyy'), 5.6, 1004, 'clob_5', 'blob_5');
+INSERT INTO employees_db1750 VALUES ('user6', 60000, 1, TO_TIMESTAMP('07/09/1984', 'dd/mm/yyyy'), 5.7);
+INSERT INTO employees_db1750 VALUES ('user7', 70000, 1, TO_TIMESTAMP('07/09/1985', 'dd/mm/yyyy'), 5.8);
+INSERT INTO employees_db1750 VALUES ('user8', 80000, 1, TO_TIMESTAMP('07/09/1986', 'dd/mm/yyyy'), 5.9);
+INSERT INTO employees_db1750 VALUES ('user9', 90000, 2, TO_TIMESTAMP('07/09/1987', 'dd/mm/yyyy'), 4.9);
+INSERT INTO employees_db1750 VALUES ('user10', 100000, 2, TO_TIMESTAMP('07/09/1988', 'dd/mm/yyyy'), 5.0, 1005, 'clob_6', 'blob_7');
+INSERT INTO employees_db1750 VALUES ('user11', 110000, 2, TO_TIMESTAMP('07/09/1989', 'dd/mm/yyyy'), 5.1);
+
+-- Testcase 1 - DEFINE_ARRAY Positive Test
+--
+-- Description: Random order calling for DEFINE_ARRAY and COLUMN_VALUE
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+DECLARE
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
 BEGIN
-    l_cursor := DBMS_SQL.OPEN_CURSOR;
-    DBMS_SQL.PARSE(l_cursor, 'SELECT ename, empno FROM emp1750 WHERE deptno = :b1', DBMS_SQL.NATIVE);
-    DBMS_SQL.BIND_VARIABLE(l_cursor, 'b1', deptid);
-    DBMS_SQL.DEFINE_ARRAY(l_cursor, 1, var_name, 1,1);
-    DBMS_SQL.DEFINE_ARRAY(l_cursor, 2, var_empid, 1,1);
-    row_processed := DBMS_SQL.EXECUTE(l_cursor);
-  LOOP
-    row_processed := DBMS_SQL.FETCH_ROWS(l_cursor);
-    DBMS_SQL.COLUMN_VALUE(l_cursor, 1, var_name);
-    DBMS_SQL.COLUMN_VALUE(l_cursor, 2, var_empid);
-    EXIT WHEN row_processed != 10;
-  END LOOP;
-  DBMS_SQL.CLOSE_CURSOR(l_cursor);
-  FOR i IN var_empid.FIRST .. var_empid.LAST
-  LOOP
-  DBMS_OUTPUT.PUT_LINE('Name = ' || var_name(i) || ' employee_id = ' || var_empid(i));
- END LOOP;
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 11);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+    DBMS_OUTPUT.PUT_LINE('last index in table = ' || sals.LAST);
+    -- loop through the names and sals collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) );
+    END LOOP;
 END;
 /
+
+-- Testcase 2 - DEFINE_ARRAY Positive Test
+--
+-- Description: we will pass different sizes(count) for define_array calls
+--              and minimum of all the sizes should be considered for the
+--              calculation of array size
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+DECLARE
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    clob_id  DBMS_SQL.CLOB_TABLE;
+    blob_id  DBMS_SQL.BLOB_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height, ctext, btext FROM employees_db1750 WHERE department_id = :b1';
 BEGIN
-  BULK_PLSQL_1750(10);
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 4, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 6, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 3, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 4, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 6, clob_id, 5, 11);
+    DBMS_SQL.DEFINE_ARRAY(c, 7, blob_id, 5, 11);
+-- here, minimum count is 3
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_OUTPUT.PUT_LINE('row fetched are ' || r);
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+      DBMS_SQL.COLUMN_VALUE(c, 6, clob_id);
+      DBMS_SQL.COLUMN_VALUE(c, 7, blob_id);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+    DBMS_OUTPUT.PUT_LINE('last index in table = ' || sals.LAST);
+    -- loop through the names and sals collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) || ' clob_text = ' || clob_id(i) || ' blob_text = ' || blob_id(i) );
+    END LOOP;
 END;
 /
-```
 
+-- Testcase 3 - DEFINE_ARRAY Positive Test
+--
+-- Description: array will be called with different index value.  As per
+--              index value, data will be copied into collections.
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+DECLARE
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 4, -9);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 6, -2);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 3, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 4, 6);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, -50);
+-- here, minimum count is 3
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+-- loop through all the collections
+    FOR i IN names.FIRST .. names.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('names [' || i || '] = ' || names(i) );
+    END LOOP;
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary [' || i || '] = ' || sals(i) );
+    END LOOP;
+    FOR i IN dpt_id.FIRST .. dpt_id.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('dpt_id [' || i || '] = ' || dpt_id(i) );
+    END LOOP;
+    FOR i IN dob.FIRST .. dob.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('dob [' || i || '] = ' || dob(i) );
+    END LOOP;
+    FOR i IN height.FIRST .. height.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('height [' || i || '] = ' || height(i) );
+    END LOOP;
+END;
+/
+
+-- Testcase 4 - DEFINE_ARRAY Positive Test
+--
+-- Description: array will be called with different index value and some will
+--              be called without any value so default 1 will be considered to
+--              index value to copy data into collections.
+--              (define_array with 4 parameters)
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+DECLARE
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 4);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 6, -2);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 3);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 4, 6);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, -50);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+    DBMS_OUTPUT.PUT_LINE('last index in table = ' || sals.LAST);
+    -- loop through all the collections
+    FOR i IN names.FIRST .. names.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('names [' || i || '] = ' || names(i) );
+    END LOOP;
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary [' || i || '] = ' || sals(i) );
+    END LOOP;
+    FOR i IN dpt_id.FIRST .. dpt_id.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('dpt_id [' || i || '] = ' || dpt_id(i) );
+    END LOOP;
+    FOR i IN dob.FIRST .. dob.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('dob [' || i || '] = ' || dob(i) );
+    END LOOP;
+    FOR i IN height.FIRST .. height.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('height [' || i || '] = ' || height(i) );
+    END LOOP;
+END;
+/
+
+-- Testcase 5 - DEFINE_ARRAY Positive Test
+--
+-- Description: Negative lower_bnd will be passed in define_array call.  Data
+--              will be copied into collection starting with passed negative
+--              lower_bnd value.
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+CREATE OR REPLACE PROCEDURE TEST_PLSQL_DB1750(deptid NUMBER) IS
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', deptid);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, -1);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, -1);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, -1);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, -1);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, -1);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+    DBMS_OUTPUT.PUT_LINE('last index in table = ' || sals.LAST);
+    -- loop through the names and sals collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) );
+    END LOOP;
+END;
+/
+CALL TEST_PLSQL_DB1750(1);
+
+-- Testcase 6 - DEFINE_ARRAY Positive Test
+--
+-- Description: 0 as lower_bnd will be passed in define_array call.  Data
+--              will be copied into collection starting with passed 0
+--              lower_bnd value.
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+CREATE OR REPLACE PROCEDURE TEST_PLSQL_DB1750(deptid NUMBER) IS
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', deptid);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, 0);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+    END LOOP;
+    DBMS_SQL.CLOSE_CURSOR(c);
+    DBMS_OUTPUT.PUT_LINE('last index in table = ' || sals.LAST);
+    -- loop through the names and sals collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) );
+    END LOOP;
+END;
+/
+CALL TEST_PLSQL_DB1750(1);
+
+-- Testcase 7 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised when after opening the cursor,
+--              we call DEFINE_ARRAY
+--              (i.e. without making a call to PARSE).
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+   c        INTEGER;
+   dpt_id   DBMS_SQL.INTEGER_TABLE;
+BEGIN
+   c := DBMS_SQL.OPEN_CURSOR;
+   DBMS_SQL.DEFINE_ARRAY (c, 1, dpt_id, 4);
+   DBMS_SQL.CLOSE_CURSOR (c);
+END;
+/
+
+-- Testcase 8 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised when after opening the cursor,
+--              we call COLUMN_VALUE
+--              (i.e. without making a call to PARSE).
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+   c        INTEGER;
+   dpt_id   DBMS_SQL.INTEGER_TABLE;
+BEGIN
+   c := DBMS_SQL.OPEN_CURSOR;
+   DBMS_SQL.COLUMN_VALUE (c, 1, dpt_id);
+   DBMS_SQL.CLOSE_CURSOR (c);
+END;
+/
+
+-- Testcase 9 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised when count is passed,
+--              as 0 in DEFINE_ARRAY call
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+    dob          DBMS_SQL.TIMESTAMP_TABLE;
+    c            NUMBER;
+    sql_stmt     VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 0, 5);
+    DBMS_SQL.CLOSE_CURSOR(c);
+END;
+/
+
+-- Testcase 10 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised when count is passed,
+--              as negative number in DEFINE_ARRAY call
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+    dob          DBMS_SQL.TIMESTAMP_TABLE;
+    c            NUMBER;
+    sql_stmt     VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, -5, 5);
+    DBMS_SQL.CLOSE_CURSOR(c);
+END;
+/
+
+-- Testcase 11 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised when COLUMN_VALUE is used
+--              before DEFINE_ARRAY call
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+   c        INTEGER;
+   dpt_id   DBMS_SQL.INTEGER_TABLE;
+   sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750';
+BEGIN
+   c := DBMS_SQL.OPEN_CURSOR;
+   DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+   DBMS_SQL.COLUMN_VALUE(c, 1, dpt_id);
+   DBMS_SQL.DEFINE_ARRAY (c, 1, dpt_id, 4);
+   DBMS_SQL.CLOSE_CURSOR (c);
+END;
+/
+
+-- Testcase 12 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised if DEFINE_ARRAY is called with
+--              NOT NULL as col_size
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+   c        INTEGER;
+   names    DBMS_SQL.VARCHAR2_TABLE;
+BEGIN
+   c := DBMS_SQL.OPEN_CURSOR;
+   names(0) := 'local';
+   DBMS_SQL.DEFINE_ARRAY (c, 1, names, 4, 5, 6);
+   DBMS_SQL.CLOSE_CURSOR (c);
+END;
+/
+
+-- Testcase 13 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised if DEFINE_ARRAY and
+--              DEFINE_COLUMN both are used
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+    dob          DBMS_SQL.TIMESTAMP_TABLE;
+    height_col   FLOAT;
+    c            NUMBER;
+    r            NUMBER;
+    sql_stmt     VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 0);
+    DBMS_SQL.DEFINE_COLUMN(c, 5, height_col);
+    DBMS_SQL.CLOSE_CURSOR(c);
+END;
+/
+
+-- Testcase 14 - DEFINE_ARRAY Negative Test
+--
+-- Description: Verify that an error is raised if DEFINE_ARRAY is called after
+--              FETCH_ROWS function
+--
+-- Expected Result: Error Should Be Thrown
+--
+DECLARE
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750 WHERE department_id = :b1';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, 0);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 0);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, 0);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+    END LOOP;
+END;
+/
+
+-- Testcase 15 - DEFINE_ARRAY Test
+--
+-- Description: Verify that no error will be given if DEFINE_ARRAY and
+--              COLUMN_VALUE are used before EXECUTE
+--
+-- Expected Result: Should not give any error
+--
+DECLARE
+    dob          DBMS_SQL.TIMESTAMP_TABLE;
+    c            NUMBER;
+    sql_stmt     VARCHAR2(32767) :=
+        'SELECT first_name, salary, department_id, dob, height FROM employees_db1750';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 0);
+    DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+    DBMS_SQL.CLOSE_CURSOR(c);
+END;
+/
+
+-- Testcase 16 - DEFINE_ARRAY Positive Test
+--
+-- Description: Reuse same cursor
+--
+-- Expected Result: Statement Should Be Parsed And Executed Successfully
+--
+CREATE OR REPLACE PROCEDURE TEST_PLSQL_DB1750(deptid NUMBER) IS
+    names    DBMS_SQL.VARCHAR2_TABLE;
+    sals     DBMS_SQL.NUMBER_TABLE;
+    dob      DBMS_SQL.TIMESTAMP_TABLE;
+    height   DBMS_SQL.FLOAT_TABLE;
+    dpt_id   DBMS_SQL.INTEGER_TABLE;
+    rid      DBMS_SQL.ROWID_TABLE;
+    c        NUMBER;
+    r        NUMBER;
+    sql_stmt VARCHAR2(32767) :=
+        'SELECT first_name, salary,department_id, dob, height, rid FROM employees_db1750 WHERE department_id = :b1';
+    sql_stmt2 VARCHAR2(32767) :=
+        'SELECT first_name, salary,department_id, dob, height FROM employees_db1750 WHERE department_id = 2';
+BEGIN
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt, dbms_sql.native);
+    DBMS_SQL.BIND_VARIABLE(c, 'b1', deptid);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, 1);
+    DBMS_SQL.DEFINE_ARRAY(c, 6, rid, 5, 1);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+      DBMS_SQL.COLUMN_VALUE(c, 6, rid);
+    END LOOP;
+
+    -- loop through all the collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) || ' rowid = ' || rid(i));
+    END LOOP;
+    c := DBMS_SQL.OPEN_CURSOR;
+    DBMS_SQL.PARSE(c, sql_stmt2, dbms_sql.native);
+    DBMS_SQL.DEFINE_ARRAY(c, 1, names, 5, 9);
+    DBMS_SQL.DEFINE_ARRAY(c, 2, sals, 5, 9);
+    DBMS_SQL.DEFINE_ARRAY(c, 3, dpt_id, 5, 9);
+    DBMS_SQL.DEFINE_ARRAY(c, 4, dob, 5, 9);
+    DBMS_SQL.DEFINE_ARRAY(c, 5, height, 5, 9);
+    r := DBMS_SQL.EXECUTE(c);
+    LOOP
+      r := DBMS_SQL.FETCH_ROWS(c);
+      EXIT WHEN r = 0;
+      DBMS_SQL.COLUMN_VALUE(c, 1, names);
+      DBMS_SQL.COLUMN_VALUE(c, 2, sals);
+      DBMS_SQL.COLUMN_VALUE(c, 3, dpt_id);
+      DBMS_SQL.COLUMN_VALUE(c, 4, dob);
+      DBMS_SQL.COLUMN_VALUE(c, 5, height);
+    END LOOP;
+
+    DBMS_SQL.CLOSE_CURSOR(c);
+    -- loop through the names and sals collections
+    FOR i IN sals.FIRST .. sals.LAST  LOOP
+      DBMS_OUTPUT.PUT_LINE('salary = ' || sals(i) || ' name = ' ||names(i) || ' department_id = ' || dpt_id(i) || ' dob = ' || dob(i) || ' height = ' || height(i) );
+    END LOOP;
+END;
+/
+CALL TEST_PLSQL_DB1750(1);
+
+--cleanup
+DROP TABLE employees_db1750;
+DROP PROCEDURE TEST_PLSQL_DB1750;
