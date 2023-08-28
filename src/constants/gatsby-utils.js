@@ -265,12 +265,12 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       productVersions[node.fields.product][0] === node.fields.version;
     const nodePathLatest = isLatest && replacePathVersion(nodePath);
     const addPath = (url) => {
-      let value = validPaths.get(url) || [];
+      let value = validPaths.get(url);
+      if (!value) validPaths.set(url, (value = []));
       value.push({
         urlpath: nodePathLatest || nodePath,
         filepath: node.fileAbsolutePath,
       });
-      if (value.length === 1) validPaths.set(url, value);
     };
 
     addPath(nodePath);
@@ -424,16 +424,16 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     //    /epas/latest/B -> /epas/latest/C
     const toIsLatest = isLatest || isLastVersion;
     if (toIsLatest) {
-      fromPath = replacePathVersion(fromPath);
-      if (fromPath !== toPath) {
-        let value = validPaths.get(fromPath) || [];
+      const fromPathLatest = replacePathVersion(fromPath);
+      if (fromPathLatest !== fromPath && fromPathLatest !== toPath) {
+        let value = validPaths.get(fromPathLatest);
+        if (!value) validPaths.set(fromPathLatest, (value = []));
         value.push({
           urlpath: toPath,
           filepath: node.fileAbsolutePath,
         });
-        if (value.length === 1) validPaths.set(fromPath, value);
         actions.createRedirect({
-          fromPath,
+          fromPath: fromPathLatest,
           toPath,
           redirectInBrowser: false,
           isPermanent: false,
