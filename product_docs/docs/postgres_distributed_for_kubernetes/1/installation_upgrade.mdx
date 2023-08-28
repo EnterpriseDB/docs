@@ -5,25 +5,31 @@ originalFilePath: 'src/installation_upgrade.md'
 
 ## Kubernetes
 
-### Installation using Helm
-
 EDB Postgres Distributed for Kubernetes can be installed using the provided
 [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts).
 
 If you don't have [Helm](https://helm.sh) installed yet, please follow the
-[instructions](https://helm.sh/docs/intro/quickstart/) to install it in your
-system.
+[official instructions](https://helm.sh/docs/intro/quickstart/) to install it
+in your system.
 
 Assuming you have Helm installed, the first step is to add the repository:
 
 ```console
-helm repo add edb https://enterprisedb.github.io/edb-postgres-for-kubernetes-charts/
+helm repo add edb \
+  https://enterprisedb.github.io/edb-postgres-for-kubernetes-charts/
 ```
 
-You will need credentials to enable `helm` to retrieve the various
-operator and operand images that are stored in private repositories.
-Make sure to replace your username and password
-in the command below:
+!!! Important
+    You'll need access to the private EDB repository where both the operator
+    and operand images are stored. Access requires a valid
+    [EDB subscription plan](https://www.enterprisedb.com/products/plans-comparison).
+    Please refer to ["Accessing EDB private image registries"](private_registries.md) for further details.
+
+Given that the container images for both the operator and the selected operand
+are in EDB's private registry, you need your credentials to enable `helm` to
+retrieve them.
+
+Make sure to replace your repo and token in the command below:
 
 ```console
 helm upgrade --dependency-update \
@@ -31,16 +37,33 @@ helm upgrade --dependency-update \
   --namespace pgd-operator-system \
   --create-namespace \
   edb/edb-postgres-distributed-for-kubernetes \
-  --set image.imageCredentials.username=${REPO} \
-  --set image.imageCredentials.password=${TOKEN}
+  --set image.imageCredentials.username=@@REPOSITORY@@ \
+  --set image.imageCredentials.password=@@TOKEN@@
 ```
 
-Set `REPO` to either `k8s_enterprise_pgd` or `k8s_standard_pgd` depending on the EDB software subscription purchased and Postgres distribution to be installed. Use `k8s_enterprise_pgd` if you are a trialist or preview user.
+In particular:
 
-Set `TOKEN` to the repository token for your EDB account. You can obtain this by going to the [Repos page](https://www.enterprisedb.com/repos-downloads) on the EDB website, signing in (if necessary) and then and displaying the EDB Repos 2.0 token using the Reveal Token button or copying it using the Copy button.
+-   set `@@REPOSITORY@@` to the name of the repository, as explained in ["Which repository to
+    choose?"](private_registries.md#which-repository-to-choose)
+-   set `@@TOKEN@@` to the repository token for your EDB account, as explained in
+    ["How to retrieve the token"](private_registries.md#how-to-retrieve-the-token)
 
-For further details on the Helm chart, please refer to the
-[Helm chart repo](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts).
+Please remember to create a cert issuer before you start deploying PGD clusters.
+The helm chart will already suggest that you do this, but in case you miss it,
+you may run, for example:
+
+```sh
+kubectl apply -f \
+  https://raw.githubusercontent.com/EnterpriseDB/edb-postgres-for-kubernetes-charts/main/hack/samples/issuer-selfsigned.yaml
+```
+
+!!! Info
+    For further details on the Helm chart, please refer to the
+    [Helm chart repo documentation](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts).
+
+With the operators and a self-signed cert issuer deployed, you can start
+creating PGD clusters. Please refer to the
+["Quickstart"](quickstart.md#part-3-deploy-a-pgd-cluster) for an example.
 
 <!--
 ### Upgrades
@@ -55,101 +78,6 @@ TODO
 
 ## Red Hat OpenShift
 
-### Installation via web console
-
-The EDB Postgres Distributed for Kubernetes operator can be found in the Red Hat OperatorHub
-directly from your OpenShift dashboard.
-
-1.  Navigate in the web console to the `Operators -> OperatorHub` page:
-
-    ![Menu OperatorHub](./images/openshift/operatorhub_1.png)
-
-2.  Use the search box to restrict the listing, e.g. using `EDB` or `pgd`:
-
-    ![Install OperatorHub](./images/openshift/find-pgd-openshift.png)
-
-3.  Read the information about the Operator and select `Install`.
-
-4.  The following `Operator installation` page expects you to choose:
-
-    -   the installation mode: [cluster-wide](#cluster-wide-installation) is the
-        only mode at the moment.
-    -   the update channel (at the moment `alpha`)
-    -   the approval strategy, following the availability on the market place of
-        a new release of the operator, certified by Red Hat:
-        -   `Automatic`: OLM automatically upgrades the running operator with the
-            new version
-        -   `Manual`:  OpenShift waits for human intervention, by requiring an
-            approval in the `Installed Operators` section
-
-#### Cluster-wide installation
-
-With cluster-wide installation, you are asking OpenShift to install the
-Operator in the default `openshift-operators` namespace and to make it
-available to all the projects in the cluster. This is the default and normally
-recommended approach to install EDB Postgres Distributed for Kubernetes.
-
-From the web console, select `All namespaces on the cluster (default)` as
-`Installation mode`:
-
-![Install all namespaces](./images/openshift/all-namespaces.png)
-
-As a result, the operator will be visible in every namespace. Otherwise, as with any
-other OpenShift operator, check the logs in any pods in the `openshift-operators`
-project on the `Workloads → Pods` page that are reporting issues to troubleshoot further.
-
-!!! Important "Beware"
-    By choosing the cluster-wide installation you cannot easily move to a
-    single project installation at a later time.
-
-### Creating a PGD cluster
-
-After the installation from OpenShift, you should find the operator deployment
-in the `openshift-operators` namespace. Notice the cert-manager operator will
-also get installed.
-
-```sh
-$ oc get deployments -n openshift-operators
-NAME                                            READY   UP-TO-DATE   AVAILABLE   AGE
-cert-manager-operator                           1/1     1            1           11m
-pgd-operator-controller-manager                 1/1     1            1           11m
-postgresql-operator-controller-manager-1-20-0   1/1     1            1           23h
-…
-```
-
-Checking that the `pgd-operator-controller-manager` deployment is READY, we can
-start creating PGD clusters. See [Examples of configuration](samples.md) for sample files.
-
-Remember to deploy your PGD clusters on a dedicated namespace. The default
-namespace is reserved.
-
-First then, you should create a new namespace, and deploy a self-signed
-certificate `Issuer` in it:
-
-```sh
-oc create ns my-namespace
-oc apply -f hack/samples/issuer-selfsigned.yaml -n my-namespace
-```
-
-Now you can deploy a PGD cluster, for example a flexible 3-region, which
-contains two data groups and a witness group:
-
-```sh
-oc apply -f docs/src/samples/flexible_3regions.yaml -n my-namespace
-```
-
-You should start seeing your PGD groups come up:
-
-```sh
-$ oc get pgdgroups -n my-namespace
-NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                PHASE DETAILS   AGE
-region-a   2                1                   PGDGroup - Healthy                   23m
-region-b   2                1                   PGDGroup - Healthy                   23m
-region-c   0                1                   PGDGroup - Healthy                   23m
-```
-
-<!--
-### Upgrades
-
-TODO
--->
+If you are trying to install EDB Postgres Distributed for Kubernetes on Red Hat OpenShift,
+please refer to the ["Red Hat OpenShift section"](openshift.md) which contains
+information on the certified operator maintained by EDB.
