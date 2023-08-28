@@ -15,7 +15,7 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
   `);
 
   // add the last commit SHA to paths dynamically to minimize page changes
-  const [url, setUrl] = useState(githubIssuesLink);
+  const [url, setUrl] = useState();
   useEffect(() => {
     if (githubIssuesLink)
       setUrl(
@@ -28,7 +28,12 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
           ),
         ),
       );
-  });
+  }, [
+    githubIssuesLink,
+    data.edbGit.docsRepoUrl,
+    data.edbGit.branch,
+    data.edbGit.sha,
+  ]);
 
   return (
     <DropdownButton

@@ -3,7 +3,6 @@ const realFs = require("fs");
 const path = require("path");
 const gracefulFs = require("graceful-fs");
 gracefulFs.gracefulify(realFs);
-
 const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 
@@ -578,6 +577,34 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
   realFs.copyFileSync(
     path.join(__dirname, "/netlify.toml"),
     path.join(__dirname, "/public/netlify.toml"),
+  );
+
+  //
+  // get rid of compilation hash - speeds up netlify deploys
+  //
+  const { globby } = await import("globby");
+  const generatedHTML = await globby([
+    path.join(__dirname, "/public/**/*.html"),
+  ]);
+  for (let filename of generatedHTML) {
+    let file = await readFile(filename);
+    file = file.replace(
+      /window\.___webpackCompilationHash="[^"]+"/,
+      'window.___webpackCompilationHash=""',
+    );
+    await writeFile(filename, file);
+  }
+  const appDataFilename = path.join(
+    __dirname,
+    "/public/page-data/app-data.json",
+  );
+  const appData = await readFile(appDataFilename);
+  await writeFile(
+    appDataFilename,
+    appData.replace(
+      /"webpackCompilationHash":"[^"]+"/,
+      '"webpackCompilationHash":""',
+    ),
   );
 
   //

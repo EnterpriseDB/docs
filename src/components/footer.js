@@ -23,7 +23,12 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
           `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.sha}/`,
         ),
       );
-  });
+  }, [
+    githubFileLink,
+    data.edbGit.docsRepoUrl,
+    data.edbGit.branch,
+    data.edbGit.sha,
+  ]);
 
   if (timestamp) {
     return (

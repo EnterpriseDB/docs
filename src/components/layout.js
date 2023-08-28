@@ -96,7 +96,7 @@ const Layout = ({
       Archive,
       AuthenticatedContentPlaceholder,
     }),
-    [katacodaPanelData, meta.path, meta.isIndexPage],
+    [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
 
   return (

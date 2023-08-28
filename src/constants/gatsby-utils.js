@@ -472,7 +472,7 @@ const reportRedirectCollisions = (validPaths, reporter) => {
         reporter.warn(`
 ::warning file=${
           source.filepath
-        },title=Overlapping redirect found in::Redirect ${urlpath} also matches matches ${(
+        },title=Overlapping redirect found in::Redirect ${urlpath} also matches ${(
           "\n" + list
         )
           .replace(/%/g, "%25")
