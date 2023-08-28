@@ -10,7 +10,7 @@ PGD Cluster, covering the following topics:
 -   [domain names resolution](#domain-names-resolution) using fully qualified domain names (FQDN)
 -   [TLS configuration](#tls-configuration)
 
-!!! Note
+\!!! Notice
     Although the above topics might seem unrelated to each other, they all
     participate in the configuration of the PGD resources to make them universally
     identifiable and accessible over a secure network.
@@ -25,6 +25,8 @@ Every PGDGroup manages several of them, namely:
     to discover a new group in the cluster
 -   a *proxy service*, to enable applications to reach the write leader of the
     group, transparently using PGD proxy
+
+For an example using these services, see [Connecting an application to a PGD cluster](#connecting-to-a-pgd-cluster-from-an-application).
 
 ![Basic architecture of an EDB Postgres Distributed for Kubernetes PGD group](./images/pg4k-pgd-basic-architecture.png)
 
@@ -159,3 +161,69 @@ client certificate for the streaming replication user through the
 `.spec.connectivity.tls.clientCert.preProvisioned.streamingReplica.secretRef` option.
 The certificate lifecycle in this case is managed entirely by a third party,
 either manually or automated, by simply updating the content of the secret.
+
+## Connecting to a PGD cluster from an application
+
+Connecting to a PGD Group from an application running inside the same Kubernetes cluster
+or from outside the cluster is a simple procedure. In both cases, you will connect to
+the proxy service of the PGD Group as the `app` user. The proxy service is a LoadBalancer
+service that will route the connection to the write leader of the PGD Group.
+
+### Connecting from inside the cluster
+
+When connecting from inside the cluster, you can use the proxy service name to connect
+to the PGD Group. The proxy service name is composed of the PGD Group name and the (optional)
+host suffix defined in the `.spec.connectivity.dns` section of the PGDGroup custom resource.
+
+For example, if the PGD Group name is `my-group` and the host suffix is `.my-domain.com`,
+the proxy service name will be `my-group.my-domain.com`.
+
+Before connecting you will need to get the password for the app user from the app user
+secret. The naming format of the secret is `my-group-app` for a PGD Group named `my-group`.
+
+You can get the username and password from the secret with the following commands:
+
+```sh
+kubectl get secret my-group-app -o jsonpath='{.data.username}' | base64 --decode
+kubectl get secret my-group-app -o jsonpath='{.data.password}' | base64 --decode
+```
+
+With this you now have all the pieces for a connection string to the PGD Group:
+
+```text
+postgresql://<app-user>:<app-password>@<proxy-service-name>:5432/<database>
+```
+
+or for a `psql` invocation:
+
+```sh
+psql -U <app-user> -h <proxy-service-name> <database>
+```
+
+where `app-user` and `app-password` are the values you got from the secret,
+and `database` is the name of the database you want to connect
+to (the default is `app` for the app user.)
+
+### Connecting from outside the Kubernetes cluster
+
+When connecting from outside the Kubernetes cluster, in the general case,
+the [*Ingress*](https://kubernetes.io/docs/concepts/services-networking/ingress/) resource or a [*Load Balancer*](https://kubernetes.io/docs/concepts/services-networking/service/#loadbalancer) will be necessary.
+Check your cloud provider or local installation for more information about the
+behavior of them in your environment.
+
+Ingresses and Load Balancers require a Pod selector to forward connection to
+the PGD proxies. When configuring them, we suggest to use the following labels:
+
+-   `k8s.pgd.enterprisedb.io/group`: set the the PGD group name
+-   `k8s.pgd.enterprisedb.io/workloadType`: set to `pgd-proxy`
+
+If using Kind or other solutions for local development, the easiest way to
+access the PGD Group from outside is to use port forwarding
+to the proxy service. You can use the following command to forward port 5432 on your
+local machine to the proxy service:
+
+```sh
+kubectl port-forward svc/my-group.my-domain.com 5432:5432
+```
+
+where `my-group.my-domain.com` is the proxy service name from the previous example.
