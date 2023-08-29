@@ -31,7 +31,7 @@ const TableOfContents = ({ toc, deepToC }) => {
             >
               {item.title}
             </Link>
-            {deepToC && item.items != undefined && (
+            {deepToC && item.items?.filter && (
               <ul className="list-unstyled pl-4 lh-8">
                 {item.items
                   .filter((subitem) => subitem.title)

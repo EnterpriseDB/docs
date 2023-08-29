@@ -20,7 +20,7 @@ function scrollToAnchor(location, mainNavHeight = 0) {
   // Check for location so build does not fail
   if (location && location.hash) {
     try {
-      const item = document.querySelector(`${location.hash}`);
+      const item = document.getElementById(location.hash.substring(1));
 
       if (item) {
         window.scrollTo({
