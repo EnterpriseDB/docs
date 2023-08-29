@@ -1,26 +1,54 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "./";
+import { useStaticQuery, graphql } from "gatsby";
 
 const TimestampLink = ({ timestamp, githubFileLink }) => {
+  const data = useStaticQuery(graphql`
+    {
+      edbGit {
+        docsRepoUrl
+        branch
+        sha
+      }
+    }
+  `);
+
+  // add the last commit SHA to paths dynamically to minimize page changes
+  const [url, setUrl] = useState(githubFileLink);
+  useEffect(() => {
+    if (githubFileLink)
+      setUrl(
+        githubFileLink.replace(
+          `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.branch}/`,
+          `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.sha}/`,
+        ),
+      );
+  }, [
+    githubFileLink,
+    data.edbGit.docsRepoUrl,
+    data.edbGit.branch,
+    data.edbGit.sha,
+  ]);
+
   if (timestamp) {
     return (
       <>
         ·
         <div className="d-inline-block mx-2">
-          {githubFileLink ? (
-            <a href={githubFileLink}> Modified {timestamp.split("T")[0]} </a>
+          {url ? (
+            <a href={url}> Modified {timestamp.split("T")[0]} </a>
           ) : (
             <span>Modified {timestamp.split("T")[0]}</span>
           )}
         </div>
       </>
     );
-  } else if (githubFileLink) {
+  } else if (url) {
     return (
       <>
         ·
         <div className="d-inline-block mx-2">
-          <a href={githubFileLink}>File History</a>
+          <a href={url}>File History</a>
         </div>
       </>
     );
