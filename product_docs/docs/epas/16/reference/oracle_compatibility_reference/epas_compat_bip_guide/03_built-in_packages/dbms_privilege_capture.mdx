@@ -1,0 +1,269 @@
+---
+title: "DBMS_PRIVILEGE_CAPTURE"
+---
+
+The `DBMS_PRIVILEGE_CAPTURE` package provides an interface for database privilege analysis. 
+
+The procedures available in the `DBMS_PRIVILEGE_CAPTURE` package are:
+
+| Function/procedure | Function or procedure | Return type |                                      Description                                      |
+| ------------------ | --------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `CREATE_CAPTURE`   | Procedure             | n/a         | Creates a policy that specifies the conditions for analyzing privilege use.           |
+| `ENABLE_CAPTURE`   | Procedure             | n/a         | Starts the recording of privilege analysis for a specified privilege analysis policy. |
+| `DISABLE_CAPTURE`  | Procedure             | n/a         | Stops the recording of privilege use for a specified privilege analysis policy.       |
+| `DROP_CAPTURE`     | Procedure             | n/a         | Removes a privilege analysis policy together with the data recorded.                  |
+| `DELETE_RUN`       | Procedure             | n/a         | Deletes a privilege analysis capture run.                                             |
+
+
+This package enables you to create a policy that records the use of system and object privileges granted to the users. It helps you determine that users are using the privileges or not. After anlysis, you can revoke the unused privileges to help reducing the number of excess privilege grants for users.
+
+To enable the feature, set this parameter value greater than zero in `postgresql.conf` file:
+
+```ini
+edb_max_capture_privileges_policies = 2
+```
+
+A super user or the non-super user with role `edb_capture_privileges_admin_role` can access the `DBMS_PRIVILEGE_CAPTURE` package. 
+
+## CREATE_CAPTURE
+
+The `CREATE_CAPTURE` procedure creates a privilege analysis policy that specifies the conditions for analyzing privilege use. It also, optionally specifies the roles for which privilege use is to be analyzed, and the conditions under which privilege use is to be analyzed.
+
+```sql
+DBMS_PRIVILEGE_CAPTURE.CREATE_CPATURE (
+    name        IN VARCHAR2,
+    description IN VARCHAR2 DEFAULT NULL,
+    type        IN NUMBER DEFAULT G_DATABASE,
+    roles       IN ROLE_NAME_LIST DEFAULT ROLE_NAME_LIST(),
+    condition   IN VARCHAR2 DEFAULT NULL);
+```
+
+### Parameters
+
+`name`
+
+ Name of the privilege analysis policy. A string of size up to 30 characters.
+
+`description`
+
+ Description of the policy up to 1024 characters.
+
+`type`
+
+ Type of the privilege analysis policy. Possible values are:
+ - `G_DATABASE` &mdash; Captures all privilege use in the database, except privileges used by superuser.
+ - `G_ROLE` &mdash; Captures the use of a privilege if the privilege is part of a specified role or list of roles.
+ - `G_CONTEXT` &mdash; Captures the use of a privilege if the context specified by the `condition` parameter evaluates to true.
+ - `G_ROLE_AND_CONTEXT` &mdash; Captures the use of a privilege if the privilege is part of the specified list of roles and when the condition specified by the `condition` parameter is true.
+
+`roles`
+
+ The roles whose privileges are to be analyzed. Required if the `type` is `G_ROLE` or `G_ROLE_AND_CONTEXT`.
+
+`condition`
+
+ Boolean expression containing up to 4000 characters. Required if `type` is `G_CONTEXT` or `G_ROLE_AND_CONTEXT`. 
+
+ ## ENABLE_CAPTURE
+
+`ENABLE_CAPTURE` procedure starts the recording of privilege analysis for a specified privilege analysis policy and optionally provides a capture run for this policy. After a policy is enabled, all privilege use under the policy condition is recorded.
+
+ ```sql
+ DBMS_PRIVILEGE_CAPTURE.ENABLE_CAPTURE (
+    name      IN VARCHAR2,
+    run_name  IN VARCHAR2 DEFAULT NULL);
+ ```
+
+### Parameters
+
+`name`
+
+ Name of the privilege analysis policy to be enabled.
+
+`run_name`
+
+ Name of the capture run to associate with this policy, less than 128 characters. Enclose exotic characters in double quotation marks.
+
+## DISABLE_CAPTURE
+
+`DISABLE_CAPTURE` procedure stops the recording of privilege use for a specified privilege analysis policy. When a policy is disabled, privilege use meeting the policy condition is no longer needed.
+
+```sql
+DBMS_PRIVILEGE_CAPTURE.DISABLE_CAPTURE (
+    name  IN VARCHAR2);
+```
+
+### Parameters
+
+`name`
+
+Name of the privilege analysis policy to be disabled.
+
+## DROP_CAPTURE
+
+`DROP_CAPTURE` procedure removes a privilege analysis policy together with the data recorded. When a policy is removed, all previously recorded privilege use data associated with the policy is deleted.
+
+```sql
+DBMS_PRIVILEGE_CAPTURE.DROP_CAPTURE (
+    name  IN VARCHAR2);
+```
+
+### Parameters
+
+`name`
+
+ Name of the privilege analysis policy to be removed.
+
+
+## DELETE_RUN
+
+`DELETE_RUN` procedure deletes a privilege analysis capture run.
+
+```sql
+DBMS_PRIVILEGE_CAPTURE.DELETE_RUN (
+    name      IN VARCHAR2,
+    run_name  IN VARCHAR2);
+```
+
+### Parameters
+
+`name`
+
+ Name of the privilege analysis policy with which the capture run is associated.
+
+`run_name`
+
+ Name of the capture run.
+
+## Examples
+
+To enable the privilege analysis feature, set the parameter to a value greater than zero in postgresql.conf file:
+
+```ini
+edb_max_capture_privileges_policies = 2
+```
+
+Login as a superuser or grant the role to the non-super user:
+
+```sql
+GRANT edb_capture_privileges_admin_role TO user1;
+```
+
+Create a table:
+
+```sql
+CREATE TABLE tab1 (a INT);
+```
+
+### Policy on database
+
+```sql
+## Create policy on database:
+BEGIN
+    DBMS_PRIVILEGE_CAPTURE.CREATE_CAPTURE (
+        name         => 'policy_on_database',
+        type         => DBMS_PRIVILEGE_CAPTURE.G_DATABASE);
+
+    DBMS_PRIVILEGE_CAPTURE.ENABLE_CAPTURE (
+        name         => 'policy_on_database');
+END;
+
+## Insert data into the table:
+INSERT INTO tab1 VALUES(1);
+SELECT * FROM tab1;
+
+## Disable the policy:
+DBMS_PRIVILEGE_CAPTURE.DISABLE_CAPTURE(
+    name            => `policy_on_database`);
+END;
+
+## Query the data dictionary views to find used and unused privileges:
+SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+
+## Query the data dictionary views to find policy based used and unused privileges:
+SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1;
+SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+```
+
+### Policy on context
+
+```sql
+## Create a function:
+CREATE OR REPLACE FUNCTION func1(i INTEGER) RETURNS INTEGER AS $$
+  BEGIN
+     RETURN i + 1;
+  END;
+$$ LANGUAGE plpgsql;
+
+## Create a policy on context:
+BEGIN
+	DBMS_PRIVILEGE_CAPTURE.CREATE_CAPTURE(
+		name			=> 'policy_on_db_context',
+		type			=> DBMS_PRIVILEGE_CAPTURE.G_CONTEXT,
+		condition		=> '1=1');
+
+	DBMS_PRIVILEGE_CAPTURE.ENABLE_CAPTURE(
+		name			=> 'policy_on_db_context');
+END;
+
+## Access objects:
+CALL func1(1);
+DELETE FROM tab1;
+
+## Disable policy:
+BEGIN
+	DBMS_PRIVILEGE_CAPTURE.DISABLE_CAPTURE(
+		name			=> 'policy_on_db_context');
+END;
+
+## Query data dictionary view to find used and Unused privileges:
+SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+
+## Stop recording the privileges
+BEGIN
+	DBMS_PRIVILEGE_CAPTURE.DROP_CAPTURE(
+		name			=> 'policy_on_db_context');
+END;
+
+## Query data dictionary views to find policy captured used and unused privileges.
+SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1;
+SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+```
+
+### Policy on role
+
+```sql
+## Create a role and grant privileges to role:
+CREATE ROLE ROLE1;
+GRANT SELECT, UPDATE, DELETE on tab1 to user1;
+
+## Create a policy on role:
+BEGIN
+	DBMS_PRIVILEGE_CAPTURE.create_capture(
+		name			=> 'policy_on_role',
+		type			=> DBMS_PRIVILEGE_CAPTURE.G_ROLE,
+		roles			=> ROLE_NAME_LIST('db2271_r1'));
+
+	DBMS_PRIVILEGE_CAPTURE.enable_capture(
+		name			=> 'policy_on_role',
+		run_name		=> 'run1');
+END;
+
+## Set role and delete data from table:
+SET ROLE role1;
+DELETE FROM tab1;
+SET ROLE edb;
+
+## Disable the policy:
+BEGIN
+	DBMS_PRIVILEGE_CAPTURE.disable_capture(
+		name			=> 'policy_on_role');
+END;
+
+## Query data dictionary views to find captured policy information and used and unused privileges:
+SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1, 2, 6;
+SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+```
