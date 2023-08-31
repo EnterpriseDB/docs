@@ -367,18 +367,18 @@ Content is indexed for search when the production site builds.
 
 To contribute content to this site submit as a pull request (PR). There are two options for this:
 
-Option 1: locally
+Option 1: Making changes locally
 
 1. [Clone](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/cloning-a-repository) this repository.
 2. [Make a new branch.](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging)
 3. Add commits to branch and [push to GitHub](https://git-scm.com/book/en/v2/Git-Branching-Remote-Branches).
 4. Create a new PR on GitHub.
 
-Option 2: on GitHub
+Option 2: Editing files on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
 
 ### Style Guide for EDB contributors
 
-See [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide).
+See [EDB documentation style guide](https://www.enterprisedb.com/docs/community/contributing/styleguide/).
