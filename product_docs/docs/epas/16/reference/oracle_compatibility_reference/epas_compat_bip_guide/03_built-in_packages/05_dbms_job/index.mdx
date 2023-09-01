@@ -11,8 +11,6 @@ redirects:
 
 The `DBMS_JOB` package lets you create, schedule, and manage jobs. A job runs a stored procedure that was previously stored in the database. The `SUBMIT` procedure creates and stores a job definition. A job identifier is assigned to a job with a stored procedure and the attributes describing when and how often to run the job.
 
-This package relies on the pgAgent scheduler. By default, the EDB Postgres Advanced Server installer installs pgAgent, but you must start the pgAgent service manually before using `DBMS_JOB`. If you attempt to use this package to schedule a job after uninstalling pgAgent, `DBMS_JOB` reports an error. `DBMS_JOB` verifies that pgAgent is installed but doesn't verify that the service is running.
-
 EDB Postgres Advanced Server's implementation of `DBMS_JOB` is a partial implementation when compared to Oracle's version. The following table lists the supported `DBMS_JOB` procedures.
 
 | Function/procedure                                               | Return type | Description                                                                                                                                                 |
@@ -26,19 +24,30 @@ EDB Postgres Advanced Server's implementation of `DBMS_JOB` is a partial impleme
 | `SUBMIT(job OUT, what [, next_date [, interval [, no_parse ]]])` | n/a         | Create a job and store its definition in the database.                                                                                                    |
 | `WHAT(job, what)`                                                | n/a         | Change the stored procedure run by a job.                                                                                                                   |
 
-Before using `DBMS_JOB`, a database superuser must create the pgAgent and `DBMS_JOB` extension. Use the psql client to connect to a database and invoke the command:
 
-```sql
-CREATE EXTENSION pgagent;
-CREATE EXTENSION dbms_job;
-```
+To use `DBMS_JOB`,
+
+1. Set the GUC parameter and the shared libraries parameter in `postgresql.conf` file:
+
+   ```ini
+   edb_job_scheduler.database_list = 'edb,regression,ds_db'
+   shared_preload_libraries='$libdir/edb_job_scheduler' 
+   ```
+
+2. Restart the EPAS server.
+
+3. Create the extension:
+
+   ```sql
+   # Connect to your database using psql as superuser
+   psql -d edb -U enterprisedb
+   # Create the extension
+   CREATE EXTENSION edb_job_scheduler;
+   ```
 
 When and how often a job runs depends on two interacting parameters: `next_date` and `interval`. The `next_date` parameter is a date/time value that specifies the next date/time to execute the job. The `interval` parameter is a string that contains a date function that evaluates to a date/time value.
 
 Before the job executes, the expression in the `interval` parameter is evaluated. The resulting value replaces the `next_date` value stored with the job. The job is then executed. In this manner, the expression in `interval` is repeatedly reevaluated before each job executes, supplying the `next_date` date/time for the next execution.
-
-!!! Note
-     To start the pgAgent server and execute the job, the database user must be the same user that created a job and schedule.
 
 The following examples use the stored procedure `job_proc`. The procedure inserts a timestamp into the table `jobrun`, which contains a single column, `VARCHAR2`.
 
