@@ -16,7 +16,7 @@ TO_REFCURSOR (<cursor_number> IN OUT INTEGER)
   RETURN SYS_REFCURSOR;
 ```
 
-## Parameters
+## Parameter
 
 `cursor_number`
 
@@ -24,3 +24,64 @@ TO_REFCURSOR (<cursor_number> IN OUT INTEGER)
 
 ## Examples
 
+```sql
+CREATE TABLE student_info (id INTEGER PRIMARY KEY, first_name VARCHAR(20), last_name VARCHAR(20), dept_id int);
+INSERT INTO student_info VALUES                                                  
+    (1, 'Tia', 'Jackson', 10),                                                   
+    (2, 'Raj','Malhotra', 12),                                                   
+    (3, 'Nash','Cadogan', 13),                                                   
+    (4, 'Sam', 'Wordsworth', 10),                                                
+    (5, 'Roger', 'Zen', 10),                                                     
+    (6, 'Cale', 'Kingston', 12),                                                 
+    (7, 'Caleb', 'Johnson', 13);                                                 
+                                                                                 
+CREATE TABLE department_master (id number PRIMARY KEY, dept_name VARCHAR (20));  
+INSERT INTO department_master VALUES                                             
+    (10,'Science'),                                                              
+    (12, 'Maths'),                                                               
+    (13, 'Computers');                                                           
+                                                                                 
+CREATE OR REPLACE FUNCTION list_dept_student_info (qual IN VARCHAR2)             
+RETURN sys_refcursor                                                             
+IS                                                                               
+  dbmssql_cur   NUMBER;                                                          
+  curvar           sys_refcursor;                                                
+  execvar        PLS_INTEGER;                                                    
+BEGIN                                                                            
+  dbmssql_cur := DBMS_SQL.open_cursor;                                           
+  DBMS_SQL.parse (dbmssql_cur                                                    
+                 , 'SELECT first_name, last_name FROM student_info WHERE dept_id = (SELECT id FROM department_master WHERE dept_name LIKE :dept_id)'
+                 , DBMS_SQL.native                                               
+                 );                                                              
+  DBMS_SQL.bind_variable (dbmssql_cur                                            
+                           , 'dept_id'                                           
+                           , qual                                                
+                            );                                                   
+  execvar := DBMS_SQL.EXECUTE (dbmssql_cur);                                     
+  curvar := DBMS_SQL.to_refcursor (dbmssql_cur);                                 
+  RETURN curvar;                                                                 
+END;                                                                             
+DECLARE                                                                          
+   TYPE strings_t IS TABLE OF VARCHAR2 (200);                                    
+   curvar       sys_refcursor;                                                   
+   fnames      strings_t;                                                        
+   lnames      strings_t;                                                        
+BEGIN                                                                            
+   curvar :=  list_dept_student_info ('Science');                                
+   FETCH curvar                                                                  
+   BULK COLLECT INTO fnames, lnames;    
+   DBMS_OUTPUT.put_line ('Students in Science department');                      
+   FOR idx IN 1 .. fnames.COUNT                                                  
+   LOOP                                                                          
+      DBMS_OUTPUT.put_line (fnames(idx) || '  '||  lnames(idx));                 
+   END LOOP;                                                                     
+   CLOSE curvar;                                                                 
+END; 
+
+Students in Science department
+ Tia  Jackson
+ Sam  Wordsworth
+ Roger  Zen
+
+EDB-SPL Procedure successfully completed
+```
