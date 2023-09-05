@@ -313,9 +313,13 @@ __OUTPUT__
 
 When the OCI database link is used to execute SQL statements on a remote Oracle database, sometimes the *pushdown* of the processing occurs on the foreign server.
 
-Push down refers to the occurrence of processing on the foreign (that is, remote) server instead of the local client where the SQL statement was issued. Push down can result in performance improvement since the data is processed on the remote server before being returned to the local client.
+Push down refers to the occurrence of processing on the foreign that is, remote server instead of the local client where the SQL statement was issued. Push down can result in performance improvement since the data is processed on the remote server before being returned to the local client.
 
-Push down applies to statements with the standard SQL join operations (inner join, left outer join, right outer join, and full outer join). Push down occurs even when a sort is specified on the resulting data set.
+OCI database link supports push down for
+- WHERE clause 
+- JOIN operations
+- AGGREGATE functions
+- ORDER BY clause
 
 For push down to occur, some basic conditions must be met. The tables involved in the join operation must belong to the same foreign server and use the identical connection information to the foreign server. This connection information is the same database link defined with the `CREATE DATABASE LINK` command.
 
@@ -380,11 +384,7 @@ dept@oralink d, emp@oralink e WHERE d.deptno = e.deptno ORDER BY 1, 3;
    Remote Query: SELECT r1.deptno, r1.dname, r2.empno, r2.ename FROM (dept r1 INNER 
 JOIN emp r2 ON ((r1.deptno = r2.deptno))) ORDER BY r1.deptno ASC NULLS LAST, r2.empno ASC NULLS LAST
 (4 rows)
-```
-
-The `INNER JOIN` operation occurs under the Foreign Scan section. The output of this join is the following:
-
-```sql
+# The `INNER JOIN` operation occurs under the Foreign Scan section. The output of this join is the following:
 __OUTPUT__
 deptno |   dname    | empno | ename
 -------+------------+-------+--------
@@ -405,7 +405,7 @@ deptno |   dname    | empno | ename
 (14 rows)
 ```
 
-The following shows the execution plan of a left outer join:
+This example shows the execution plan of an left outer join:
 
 ```sql
 EXPLAIN (verbose,costs off) SELECT d.deptno, d.dname, e.empno, e.ename FROM
@@ -419,11 +419,7 @@ dept@oralink d LEFT OUTER JOIN emp@oralink e ON d.deptno = e.deptno ORDER BY 1, 
    Remote Query: SELECT r1.deptno, r1.dname, r2.empno, r2.ename FROM (dept r1 LEFT JOIN 
 emp r2 ON ((r1.deptno = r2.deptno))) ORDER BY r1.deptno ASC NULLS LAST, r2.empno ASC NULLS LAST
 (4 rows)
-```
-
-The output of this join is the following:
-
-```sql
+# The output of this join is the following:
 __OUTPUT__
 deptno |   dname    | empno | ename
 -------+------------+-------+--------
@@ -443,6 +439,24 @@ deptno |   dname    | empno | ename
     30 | SALES      |  7900 | JAMES
     40 | OPERATIONS |       |
 (15 rows)
+```
+
+This example shows the execution plan of ORDER BY clause:
+
+```sql
+EXPLAIN (verbose, costs off)
+ SELECT department_id, COUNT(*), SUM(salary), AVG(salary), MIN(salary), MAX(salary), ROUND(STDDEV(salary)), SUM(salary) * aggpd_pkg.pkgvar as sum2 
+ FROM employees@oralink
+ WHERE department_id < 50 
+ GROUP BY department_id 
+ ORDER BY 1;    
+                                              QUERY PLAN                                                                                                           
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Output: department_id, (count(*)), (sum(salary)), (avg(salary)), (min(salary)), (max(salary)), (round(stddev(salary), 0)), ((sum(salary)) * (public.aggpd_pkg.pkgvar)::numeric)
+   Relations: Aggregate on (_dblink_employees_1 employees)
+   Remote Query: SELECT department_id, count(*), sum(salary), avg(salary), min(salary), max(salary), round(stddev(salary), 0) FROM employees WHERE (department_id < 50) GROUP BY department_id ORDER BY department_id ASC NULLS LAST
+(4 rows)
 ```
 
 This example shows a case where the entire processing isn't pushed down because the `emp` joined table resides locally instead of on the same foreign server:
