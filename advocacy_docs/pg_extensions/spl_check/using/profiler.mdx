@@ -1,0 +1,117 @@
+---
+title: Profiler
+---
+
+EDB SPL Check contains a simple profiler of `edbspl` functions and procedures. It can work with or without access to shared memory and depends on the `shared_preload_libraries` config. 
+
+When EDB SPL Check is initialized by `shared_preload_libraries`, it can allocate shared memory and stores function's profiles. When EDB SPL Check can't allocate shared memory, the profile is stored in session memory. 
+
+Due to dependencies, `shared_preload_libraries` must contain `edbspl` first: 
+
+```sql
+postgres=# show shared_preload_libraries ;
+__OUTPUT__
+┌──────────────────────────┐
+│ shared_preload_libraries │
+╞══════════════════════════╡
+│ edb-spl,spl_check    │
+└──────────────────────────┘
+(1 row)
+```
+
+The profiler becomes active when the GUC `spl_check.profiler` is on. The profiler doesn't required shared memory, but if there's not enough shared memory, then the profiler is limited to an active session. 
+
+Activate the profiler by calling the function `spl_check_profiler(true)`. Deactivate the profiler by calling the same function but with a `false` argument (or `off` with literals). 
+
+When `shared_preload_libraries` initializes EDB SPL Check, the GUC `spl_check.profiler_max_shared_chunks` becomes available to configure the amount of shared memory used by the profiler. This GUC defines the maximum number of statement chunks that can be stored in the shared memory. For each `edbspl` function/procedure, the whole content is split into chunks of 30 statements. If needed, multiple chunks can be used to store the whole content of a single function. A single chunk is 1704 bytes. 
+
+The default value for `spl_check.profiler_max_shared_chunks` is 15000, which is usually enough for big projects that contain hundred of thousands of statements in `edbspl` and consume about 24MB of memory. 
+
+If your project requires less, you can set the value for `spl_check.profiler_max_shared_chunks` to a smaller number to decrease the memory usage. 
+
+The minimum value is 50, which usually consumes about 83kB of memory. The maximum value is 100000, which usually consumes about 163MB of memory. Changing `spl_check.profiler_max_shared_chunks` requires a PostgreSQL restart. 
+
+The profiler also retrieves the query identifier for each instruction that contains an expression or optimizable statement. However, `pg_stat_statements` (or another similar third-party extensions) must be installed. 
+
+There following are limitations of the query identifier retrieval: 
+
+- If a `edbspl` expression contains underlying statements, only the top level query identifier is retrieved. 
+- The profiler doesn't compute the query identifier and instead relies on the external extension, like `pg_stat_statements`. Depending on the external extension's behavior, a query identifier may not show for some statements. For example, `pg_stat_statements` doesn't show the query identifier for queries with DDL statements. 
+- The profiler retrieves a query identifier only for instructions containing expressions. So, the function `spl_check.profiler_max_shared_chunks` can report less query identifiers than instructions on a single line. 
+
+!!! Note 
+    Updates on shared profiles can decrease the performance on servers under higher loads. 
+
+Display the profile with `spl_profiler_function_tb`:
+
+```sql
+postgres=# select lineno, avg_time, source from spl_profiler_function_tb('fx(int)');
+__OUTPUT__
+┌────────┬──────────┬───────────────────────────────────────────────────────────────────┐
+│ lineno │ avg_time │                              source                               │
+╞════════╪══════════╪═══════════════════════════════════════════════════════════════════╡
+│      1 │          │                                                                   │
+│      2 │          │ declare result int = 0;                                           │
+│      3 │    0.075 │ begin                                                             │
+│      4 │    0.202 │   for i in 1..$1 loop                                             │
+│      5 │    0.005 │     select result + i into result; select result + i into result; │
+│      6 │          │   end loop;                                                       │
+│      7 │        0 │   return result;                                                  │
+│      8 │          │ end;                                                              │
+└────────┴──────────┴───────────────────────────────────────────────────────────────────┘
+(9 rows)
+```
+
+Display the profile per statements with `spl_profiler_function_statements_tb`:
+
+```sql
+        CREATE OR REPLACE FUNCTION public.fx1(a integer)
+         RETURNS integer
+         LANGUAGE spl
+1       AS $function$
+2       begin
+3         if a > 10 then
+4           raise notice 'ahoj';
+5           return -1;
+6         else
+7           raise notice 'nazdar';
+8           return 1;
+9         end if;
+10      end;
+11      $function$
+
+postgres=# select stmtid, parent_stmtid, parent_note, lineno, exec_stmts, stmtname
+             from spl_profiler_function_statements_tb('fx1');
+__OUTPUT__
+┌────────┬───────────────┬─────────────┬────────┬────────────┬─────────────────┐
+│ stmtid │ parent_stmtid │ parent_note │ lineno │ exec_stmts │    stmtname     │
+╞════════╪═══════════════╪═════════════╪════════╪════════════╪═════════════════╡
+│      0 │             ∅ │ ∅           │      2 │          0 │ statement block │
+│      1 │             0 │ body        │      3 │          0 │ IF              │
+│      2 │             1 │ then body   │      4 │          0 │ RAISE           │
+│      3 │             1 │ then body   │      5 │          0 │ RETURN          │
+│      4 │             1 │ else body   │      7 │          0 │ RAISE           │
+│      5 │             1 │ else body   │      8 │          0 │ RETURN          │
+└────────┴───────────────┴─────────────┴────────┴────────────┴─────────────────┘
+(6 rows)
+```
+
+Display all stored profiles with `spl_profiler_functions_all`:
+
+```sql
+postgres=# select * from spl_profiler_functions_all();
+__OUTPUT__
+┌───────────────────────┬────────────┬────────────┬──────────┬─────────────┬──────────┬──────────┐
+│        funcoid        │ exec_count │ total_time │ avg_time │ stddev_time │ min_time │ max_time │
+╞═══════════════════════╪════════════╪════════════╪══════════╪═════════════╪══════════╪══════════╡
+│ fxx(double precision) │          1 │       0.01 │     0.01 │        0.00 │     0.01 │     0.01 │
+└───────────────────────┴────────────┴────────────┴──────────┴─────────────┴──────────┴──────────┘
+(1 row)
+```
+
+## Coverage metrics
+
+EDB SPL Check provides two functions:
+
+- `spl_coverage_statements(name)`
+- `spl_coverage_branches(name)`

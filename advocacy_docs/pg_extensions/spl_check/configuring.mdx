@@ -1,0 +1,233 @@
+---
+title: Configuring EDB SPL Check 
+navTitle: Configuring
+---
+
+To run EDB SPL Check, run the `CREATE EXTENSION` command:
+
+```sql
+CREATE EXTENSION spl_check
+```
+
+EDB SPL Check can be run in active mode or passive mode. In active mode, you can run checks with functions APIs such as `spl_check_function`. In passive mode, functions are checked when executed.
+
+## Active mode
+
+In active mode, checks are started by running function APIs such as `spl_check_function`. Active mode is the default behavior for EDB SPL Check. However, you can change this with the `spl_check.mode` setting. See [Configuring passive mode](#configuring-passive-mode) for more information.
+
+Additionally, you can use the function APIs `spl_check_package`, `spl_check_objecttype`, and `spl_check_trigger` to validate your code. See [Using EDB SPL Check](using) for more information. 
+
+### Example
+
+The SQL statements inside SPL functions are checked by the validator for semantic errors: 
+
+```sql
+postgres=# CREATE TABLE t1(a int, b int);
+CREATE TABLE
+
+postgres=#
+CREATE OR REPLACE FUNCTION public.f1()
+RETURNS void
+LANGUAGE edbspl
+AS $function$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT * FROM t1
+  LOOP
+    RAISE NOTICE '%', r.c; 
+  END LOOP;
+END;
+$function$;
+
+CREATE FUNCTION
+```
+
+`RAISE NOTICE '%', r.c;` indicates that there is a bug, which is table `t1` is missing a `c` column. However, the `CREATE FUNCTION` command doesn't identify there is a bug because table `t1` is empty:
+
+```sql
+postgres=# select f1(); 
+__OUTPUT__
+  f1 
+ ────
+   
+ (1 row)
+```
+
+
+You can view the bug and other semantic errors by running `spl_check_function`:
+
+```sql
+postgres=# \x
+Expanded display is on.
+postgres=# select * from spl_check_function_tb('f1()');
+─[ RECORD 1 ]───────────────────────────
+functionid │ f1
+lineno     │ 6
+statement  │ RAISE
+sqlstate   │ 42703
+message    │ record "r" has no field "c"
+detail     │ [null]
+hint       │ [null]
+level      │ error
+position   │ 0
+query      │ [null]
+```
+
+`spl_check_function()`'s three possible output formats are text, json, and xml: 
+
+```sql
+select * from spl_check_function('f1()', fatal_errors := false);
+                         spl_check_function                         
+------------------------------------------------------------------------
+ error:42703:4:SQL statement:column "c" of relation "t1" does not exist
+ Query: update t1 set c = 30
+ --                   ^
+ error:42P01:7:RAISE:missing FROM-clause entry for table "r"
+ Query: SELECT r.c
+ --            ^
+ error:42601:7:RAISE:too few parameters specified for RAISE
+(7 rows)
+
+postgres=# select * from spl_check_function('fx()', format:='xml');
+                 spl_check_function                     
+────────────────────────────────────────────────────────────────
+ <Function oid="16400">                                        ↵
+   <Issue>                                                     ↵
+     <Level>error</level>                                      ↵
+     <Sqlstate>42P01</Sqlstate>                                ↵
+     <Message>relation "foo111" does not exist</Message>       ↵
+     <Stmt lineno="3">RETURN</Stmt>                            ↵
+     <Query position="23">SELECT (select a from foo111)</Query>↵
+   </Issue>                                                    ↵
+  </Function>
+ (1 row)
+ ```
+
+### Setting the level of warnings
+
+You can set the level of warnings with the function's parameters. 
+
+#### Required arguments
+
+`funcoid oid` &mdash; The function name or function signature, as functions require a function specification. A oid, a name, or a signature can specify any function in PostgreSQL. Once you know a the oid or a complete function's signature, you can use a regprocedure like `'fx()'::regprocedure` or `16799::regprocedure`. A possible alternative is to use only a name when the function's name is unique (like `'fx'`). If the name isn't unique or the doesn't exist, it raises an error.
+
+#### Optional arguments 
+
+`relid DEFAULT 0` &mdash; The oid of the relation assigned to the trigger function. It's necessary to check the trigger function because you are sending the table which the trigger operates on. 
+
+`fatal_errors boolean DEFAULT true` &mdash; Stop on the first error. This argument prevents massive error reports. 
+
+`other_warnings boolean DEFAULT true` &mdash; Shows warnings like different attribute numbers on the left and right side of assignment, the variable overlaps the function's parameter, unused variables, unwanted casting, etc.
+
+`extra_warnings boolean DEFAULT true` &mdash; Shows warnings like a missing `RETURN`, shadowed variables, dead code, never read (unused) function parameter, unmodified variables, modified auto variables, etc.
+ 
+`performance_warnings boolean DEFAULT false` &mdash; Shows performance-related warnings like the declared type with type modifier, casting, implicit casts in the `WHERE` clause (which can be the reason why an index isn't used), etc.
+
+`security_warnings boolean DEFAULT false` &mdash; Shows security-related checks like SQL injection vulnerability detection. 
+
+`compatibility_warnings boolean DEFAULT false` &mdash; Shows compatibility-related checks like the obsolete explicit setting internal cursor names in refcursor's or cursor's variables. 
+
+`anyelementtype regtype DEFAULT 'int'` &mdash; Actual type to use when testing the `anyelementtype`.
+
+`anyenumtype regtype DEFAULT '-'` &mdash; Actual type to be used when testing the `anyenumtype`.
+
+`anyrangetype regtype DEFAULT 'int4range'` &mdash; Actual type to be used when testing the `anyrangetype`. 
+
+`anycompatibletype DEFAULT 'int'` &mdash; Actual type to be used when testing the `anycompatibletype`. 
+
+`anycompatiblerangetype DEFAULT 'int4range'` &mdash;  Actual type to be used when testing the `anycompatiblerangetype`.
+
+`without_warnings DEFAULT false` &mdash; Disables all warnings by ignoring `xxxx_warning` parameters, which is a quick override.
+
+`all_warnings DEFAULT false` &mdash; Enables all warnings by ignoring other `xxxx_warning` parameters, which is a quick positive.
+
+`newtable DEFAULT NULL`, `oldtable DEFAULT NULL` &mdash; The names of `NEW` or `OLD` transition tables. When transition tables are used in trigger functions, these parameters are required. 
+
+`use_incomment_options DEFAULT true` &mdash; When set to `true`, activates in-comment options.
+
+`incomment_options_usage_warning DEFAULT false` &mdash; When set to `true`, raises a warning when in-comment options are used. 
+
+
+### Compatibility warnings 
+
+PostgreSQL cursor's and refcursor's variables are enhanced string variables that hold unique names for their respective portal. Prior to PostgreSQL version 16, the portal had the same name as the cursor variable. In PostgreSQL versions 16 and later, the portal has a unique name.
+
+With this change, the refursor's variable takes the value from another refcursor variable or from a cursor variable when the cursor is opened. For example: 
+
+```sql
+-- obsolete pattern
+DECLARE
+  cur CURSOR FOR SELECT 1;
+  rcur refcursor;
+BEGIN
+  rcur := 'cur';
+  OPEN cur;
+  ...
+
+-- new pattern
+DECLARE
+  cur CURSOR FOR SELECT 1;
+  rcur refcursor;
+BEGIN
+  OPEN cur;
+  rcur := cur;
+  ...
+```
+
+When the `compatibility_warnings` flag is active, EDB SPL Check tries to identify incorrect assigning to refcursor's variable or returning of refcursor's variables:
+
+```sql
+CREATE OR REPLACE FUNCTION public.foo()
+ RETURNS refcursor
+AS $$
+declare
+   c cursor for select 1;
+   r refcursor;
+begin
+  open c;
+  r := 'c';
+  return r;
+end;
+$$ LANGUAGE edbspl;
+
+select * from spl_check_function('foo', extra_warnings =>false, compatibility_warnings => true);
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                              spl_check_function                                   │
+╞═══════════════════════════════════════════════════════════════════════════════════╡
+│ compatibility:00000:6:assignment:obsolete setting of refcursor or cursor variable │
+│ Detail: Internal name of cursor should not be specified by users.                 │
+│ Context: at assignment to variable "r" declared on line 3                         │
+└───────────────────────────────────────────────────────────────────────────────────┘
+(3 rows)
+```
+
+## Passive mode
+
+You can have your functions be checked upon execution by EDB SPL Check when it is in passive mode. The EDB SPL Check module must be loaded with `postgres.conf`. 
+
+!!! Note
+    Passive mode is recommended only for development or preproduction use. 
+
+### Configuring passive mode
+
+These are EDB SPL Check's settings:
+
+```ini
+spl_check.mode = [ disabled | by_function | fresh_start | every_start ]
+spl_check.fatal_errors = [ yes | no ]
+
+spl_check.show_nonperformance_warnings = false
+spl_check.show_performance_warnings = false
+```
+
+By default, `spl_check.mode` is set to `by_function`, which means that checks are only done in active mode by using `spl_check_function`. `fresh_start` means cold start, so function's called first. 
+
+Enable passive mode by doing the following: 
+
+```sql
+load 'edb-spl'; -- 1.1 and higher doesn't need it
+load 'spl_check';
+set spl_check.mode = 'every_start';  -- This scans all code before it is executed
+
+SELECT fx(10); -- run functions - function is checked before runtime starts it
+```
