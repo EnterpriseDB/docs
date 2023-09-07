@@ -69,6 +69,18 @@ doing so incurs many immediate risks and current limitations:
 
 - CLI and OTEL integration (new with v5) assumes one database. 
 
+## Group Commit
+
+[Group Commit](durability/group-commit) is a feature that enable configurable consensus synchronous commit across a node group or PGD cluster. If you use this feature, take these limitations into account when planning:
+
+-   Not all DDL can run when either CAMO, Eager or Group Commit is used. The only supported DDL is:
+    - non-concurrent use of CREATE INDEX
+    - non-concurrent use of DROP INDEX
+    - non-concurrent REINDEX of an individual table or index
+    - CLUSTER (of a single relation or index only)
+    - ANALYZE
+    - TRUNCATE
+
 ## CAMO
 
 [Commit At Most Once](durability/camo) (CAMO) is a feature that aims to prevent
@@ -130,5 +142,20 @@ Consider these limitations when planning your deployment:
 -   Legacy synchronous replication uses a mechanism for transaction confirmation
     different from the one used by CAMO, Eager, and Group Commit. The two aren't compatible, 
     so don't use them together.
-
+ 
+-   If the resolver for the `update_origin_change` conflict
+    is set to `skip`, `synchronous_commit=remote_apply` is used, and
+    concurrent updates of the same row are repeatedly applied on two
+    different nodes, then one of the update statements might hang due
+    to a deadlock with the PGD writer.  As mentioned in the
+    [Conflicts](consistency/conflicts/) chapter, `skip` is not the default
+    resolver for the `update_origin_change` conflict, and this
+    combination isn't intended to be used in production. It discards
+    one of the two conflicting updates based on the order of arrival
+    on that node, which is likely to cause a divergent cluster.
+    In the rare situation that you do choose to use the `skip`
+    conflict resolver,  note the issue with the use of the
+    `remote_apply` mode.
+    
 -   Postgres two-phase commit (2PC) transactions (that is, [`PREPARE TRANSACTION`](https://www.postgresql.org/docs/current/sql-prepare-transaction.html)) can't be used with CAMO, Group Commit, or Eager Replication because those features use two-phase commit underneath.
+
