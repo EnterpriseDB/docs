@@ -4,41 +4,40 @@ title: "Modifying the data directory location"
 
 ## On RHEL/CentOS 7.x or RHEL/Rocky Linux/AlmaLinux 8.x
 
-On a RHEL/CentOS 7.x or RHEL/Rocky Linux/AlmaLinux 8.x host, the unit file is named `edb-as-<xx>.service`, where `<xx>` is the EDB Postgres Advanced Server version. It resides in `/usr/lib/systemd/system`. The unit file contains references to the location of the EDB Postgres Advanced Server `data` directory. Avoid making any modifications directly to the unit file because they might be overwritten during package upgrades.
+On a RHEL/CentOS 7.x or RHEL/Rocky Linux/AlmaLinux 8.x host, the unit file is named `edb-as-<xx>.service`, where `<xx>` is the EDB Postgres Advanced Server version. It resides in `/usr/lib/systemd/system`. The unit file contains references to the location of the EDB Postgres Advanced Server `data` directory.
 
-By default, data files reside under the `/var/lib/edb/as15/data` directory. To use a data directory that resides in a nondefault location:
+!!! Important
+You should never make changes to files residing in `/usr/lib/systemd/system` or `/lib/systemd/system`, as they are provided by EDB packages.
+!!!
 
--   Create a copy of the unit file under the `/etc` directory:
+By default, data files reside under the `/var/lib/edb/as15/data` directory. To use a data directory that resides in a nondefault location, perform the following steps:
 
-    ```text
-    cp /usr/lib/systemd/system/edb-as-15.service /etc/systemd/system/
+-   Edit the database service using `systemctl edit`:
+
+    ```shell
+    systemctl edit edb-as-15.service
     ```
 
--   After copying the unit file to the new location, create the service file `/etc/systemd/system/edb-as-15.service`.
+    This will open a text editor (usually nano or vi, depending on your `EDITOR` environment variable and your distribution defaults).
 
--   In the `/lib/systemd/system/edb-as-15.service` file, update the following values with the new location of the data directory:
+-   In the text editor, add the lines:
 
-    ```text
+    ```ini
+    [Service]
     Environment=PGDATA=/var/lib/edb/as15/data
     PIDFile=/var/lib/edb/as15/data/postmaster.pid
     ```
 
--   Delete the content of the `/etc/systemd/system/edb-as-15.service` file except the following line:
+    Note: In the lines above, replace `/var/lib/edb/as15/data` with the desired location for your data directory.
 
-    ```text
-    .include /lib/systemd/system/edb-as-15.service
-    ```
+-   Save the file
+
+    Note: when editing systemd units using `systemd edit`, there is no need to reload the daemon, as systemd does it automatically as you exit the editor.
 
 -   Initialize the cluster at the new location:
 
     ```text
     PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as15/bin/edb-as-15-setup initdb
-    ```
-
--   Reload systemd, updating the modified service scripts:
-
-    ```text
-    systemctl daemon-reload
     ```
 
 -   Start the EDB Postgres Advanced Server service:
@@ -94,16 +93,27 @@ By default, the data files reside under the `/var/lib/edb/as15/data` directory. 
     mv /var/lib/edb/as15/data /opt/edb/
     ```
 
--   Create a file `edb-as-15.service` under `/etc/systemd/system` to include the location of a new data directory:
+-   Edit the database service using `systemctl edit`:
 
-    ```text
-    .include /lib/systemd/system/edb-as-15.service
+    ```shell
+    systemctl edit edb-as-15.service
+    ```
+
+    This will open a text editor (usually nano or vi, depending on your `EDITOR` environment variable and your distribution defaults).
+
+-   In the text editor, add the lines:
+
+    ```ini
     [Service]
     Environment=PGDATA=/opt/edb/data
     PIDFile=/opt/edb/data/postmaster.pid
     ```
 
--   Use the semanage utility to set the context mapping for `/opt/edb/`. The mapping is written to the `/etc/selinux/targeted/contexts/files/file.contexts.local` file.
+-   Save the file
+
+    Note: when editing systemd units using `systemd edit`, there is no need to reload the daemon, as systemd does it automatically as you exit the editor.
+
+-   Use the `semanage` utility to set the context mapping for `/opt/edb/`. The mapping is written to the `/etc/selinux/targeted/contexts/files/file.contexts.local` file.
 
     ```text
     semanage fcontext --add --equal /var/lib/edb/as15/data /opt/edb
@@ -113,12 +123,6 @@ By default, the data files reside under the `/var/lib/edb/as15/data` directory. 
 
     ```text
     restorecon -rv /opt/edb/
-    ```
-
--   Reload systemd to modify the service script:
-
-    ```text
-    systemctl daemon-reload
     ```
 
 -   With the `/opt/edb` location labeled correctly with the context, start the service:
