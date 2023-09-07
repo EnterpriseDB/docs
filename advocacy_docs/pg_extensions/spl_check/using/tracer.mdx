@@ -1,0 +1,115 @@
+---
+title: Tracer
+---
+EDB SPL Check provides a tracing option where you can see notices on start or end functions (terse and default verbosity) and start or end statements (verbose verbosity). For default and verbose verbosity, this option displays the content of function arguments. The content of related variables diplay when verbosity is verbose. For example: 
+
+```sql
+postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+NOTICE:  #0 ->> start of inline_code_block (Oid=0)
+NOTICE:  #2   ->> start of function fx(integer,integer,date,text) (Oid=16405)
+NOTICE:  #2        call by inline_code_block line 1 at PERFORM
+NOTICE:  #2       "a" => '10', "b" => null, "c" => '2020-08-03', "d" => 'stěhule'
+NOTICE:  #4     ->> start of function fx(integer) (Oid=16404)
+NOTICE:  #4          call by fx(integer,integer,date,text) line 1 at PERFORM
+NOTICE:  #4         "a" => '10'
+NOTICE:  #4     <<- end of function fx (elapsed time=0.098 ms)
+NOTICE:  #2   <<- end of function fx (elapsed time=0.399 ms)
+NOTICE:  #0 <<- end of block (elapsed time=0.754 ms)
+```
+
+The number that follows `#` is the execution frame counter. This number is related to the depth of the error context stack. It allows you to pair the start and end of a function. 
+
+## Using the tracer
+
+To enable tracing, set `spl_check.tracer` to `on`. 
+
+!!!Warning 
+   Enabling tracing can have a significant impact on performance. 
+
+   To prevent performance issues, you can set a level for outputs used by the tracer with `spl_check.tracer_errlevel` (the default is `notice`). And, the output content can be limited according to the length specified with the `spl_check.tracer_variable_max_length` configuration variable. 
+
+As a security safeguard, we recommend that the usage of the tracer be enabled by a superuser by setting `spl_check.enable_tracer` to `on` or `spl_check.enable_tracer` to `on` in `postgresql.conf`. Because the tracer shows the content of EDB SPL Check's variables, some sensitive security information can display for an unprivileged user. 
+
+We also recommend that the extension `spl_check` is loaded. You can execute some `spl_check` function or explicitly with the `load 'spl_check';`. You can use the configuration's option `shared_preload_libraries`, `local_preload_libraries`, or `session_preload_libraries`. 
+
+In terse verbose mode the output is reduced: 
+
+```sql
+postgres=# set spl_check.tracer_verbosity TO terse;
+SET
+postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+NOTICE:  #0 start of inline code block (oid=0)
+NOTICE:  #2 start of fx (oid=16405)
+NOTICE:  #4 start of fx (oid=16404)
+NOTICE:  #4 end of fx
+NOTICE:  #2 end of fx
+NOTICE:  #0 end of inline code block
+```
+
+In verbose mode the output is extended with statement details: 
+
+```sql
+postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+NOTICE:  #0            ->> start of block inline_code_block (oid=0)
+NOTICE:  #0.1       1  --> start of PERFORM
+NOTICE:  #2              ->> start of function fx(integer,integer,date,text) (oid=16405)
+NOTICE:  #2                   call by inline_code_block line 1 at PERFORM
+NOTICE:  #2                  "a" => '10', "b" => null, "c" => '2020-08-04', "d" => 'stěhule'
+NOTICE:  #2.1       1    --> start of PERFORM
+NOTICE:  #2.1                "a" => '10'
+NOTICE:  #4                ->> start of function fx(integer) (oid=16404)
+NOTICE:  #4                     call by fx(integer,integer,date,text) line 1 at PERFORM
+NOTICE:  #4                    "a" => '10'
+NOTICE:  #4.1       6      --> start of assignment
+NOTICE:  #4.1                  "a" => '10', "b" => '20'
+NOTICE:  #4.1              <-- end of assignment (elapsed time=0.076 ms)
+NOTICE:  #4.1                  "res" => '130'
+NOTICE:  #4.2       7      --> start of RETURN
+NOTICE:  #4.2                  "res" => '130'
+NOTICE:  #4.2              <-- end of RETURN (elapsed time=0.054 ms)
+NOTICE:  #4                <<- end of function fx (elapsed time=0.373 ms)
+NOTICE:  #2.1            <-- end of PERFORM (elapsed time=0.589 ms)
+NOTICE:  #2              <<- end of function fx (elapsed time=0.727 ms)
+NOTICE:  #0.1          <-- end of PERFORM (elapsed time=1.147 ms)
+NOTICE:  #0            <<- end of block (elapsed time=1.286 ms)
+```
+
+A special feature of the tracer is the tracing of the `ASSERT` statement when `spl_check.trace_assert` is `on`. When `spl_check.trace_assert_verbosity` is `DEFAULT` and the `ASSERT` statement is `false`, all functions' or procedures' variables are displayed. When this configuration is `VERBOSE`, all variables from all EDB SPL frames are displayed. This behavior is independent of the `spl.check_asserts` value. It can be used, but the assertions are disabled during EDB SPL runtime. For example:
+
+```sql
+postgres=# set spl_check.tracer to off;
+postgres=# set spl_check.trace_assert_verbosity TO verbose;
+
+postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+NOTICE:  #4 PLpgSQL assert expression (false) on line 12 of fx(integer) is false
+NOTICE:   "a" => '10', "res" => null, "b" => '20'
+NOTICE:  #2 PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+NOTICE:   "a" => '10', "b" => null, "c" => '2020-08-05', "d" => 'stěhule'
+NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
+ERROR:  assertion failed
+CONTEXT:  PL/pgSQL function fx(integer) line 12 at ASSERT
+SQL statement "SELECT fx(a)"
+PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+SQL statement "SELECT fx(10,null, 'now', e'stěhule')"
+PL/pgSQL function inline_code_block line 1 at PERFORM
+
+postgres=# set spl.check_asserts to off;
+SET
+postgres=# do $$ begin perform fx(10,null, 'now', e'stěhule'); end; $$;
+NOTICE:  #4 PLpgSQL assert expression (false) on line 12 of fx(integer) is false
+NOTICE:   "a" => '10', "res" => null, "b" => '20'
+NOTICE:  #2 PL/pgSQL function fx(integer,integer,date,text) line 1 at PERFORM
+NOTICE:   "a" => '10', "b" => null, "c" => '2020-08-05', "d" => 'stěhule'
+NOTICE:  #0 PL/pgSQL function inline_code_block line 1 at PERFORM
+DO
+```
+
+## plugin_debugger
+
+If you plan to use `plugin_debugger` (plpgsql debugger) with EDB SPL Check, we recommend that you initialize `plugin_debugger` first. `plugin_debugger` doesn't support the sharing of PL/pgSQL's debug API. 
+
+For example: 
+
+```ini
+shared_preload_libraries = 'plugin_debugger,edb-spl,spl_check'
+```
