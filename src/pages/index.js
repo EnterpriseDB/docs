@@ -366,6 +366,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
               Chemaxon JChem PostgreSQL Cartridge
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/Cyberark">
+              Cyberark
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
             </IndexCardLink>
