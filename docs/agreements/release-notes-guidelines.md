@@ -1,6 +1,28 @@
-# Guidelines for wording release notes
+# Guidelines for release notes
 
-## General guidelines
+## Structural guidelines
+
+Release notes start with the name of the product, the version number being released and the words "release notes". 
+This should be the setting for the frontmatter title field. The frontmatter will also need a short navigation title 
+(navTitle). This should just be the version number, preceded by the word "Version".
+
+This is followed, in the body of the content, by a date of release in the `Released: DD mmm YYYY` format:
+
+```
+---
+title: EDB Postgres Advanced Server 64.0 release notes
+navTitle: Version 64.0
+---
+
+Released: 1 Jan 2024
+
+```
+
+If the release notes are substantially updated after release, add an `Updated: DD mmm YYYY` line, or update any existing `Updated:` line.
+
+## Guidelines for wording release notes
+
+### General guidelines
 
 - For features and enhancements, use second person (you) instead of third person (the user).
 - For bug fixes, avoid referring to the user. Instead, describe the software behavior. If the description is clearer by referring to the user, use third person.
@@ -10,11 +32,11 @@
   - Use contractions.
   - Use serial (aka Oxford) commas.
 
-## Phrasing guidelines for enhancements
+### Phrasing guidelines for enhancements
 
 You can use either of the forms described in the following sections for enhancements. Add as much detail as needed to convey the relevance of the enhancement. If you need to describe how the product worked before, use “previously,” not “currently.”
 
-### Past tense description of the development work
+#### Past tense description of the development work
 
 Start with a past-tense word that describes what you did. Then provide any relevant detail. 
 
@@ -24,7 +46,7 @@ Examples:
 - Added the ability to copy probes and alerts to all servers in a group without having to select them individually.
 - Enabled multi-insert support for the dynamic partition for EDB*Loader and COPY command.
 
-### “Now” phrase
+#### “Now” phrase
 
 Describe what the product does now as a result of the enhancement, generally in the form: The *product/feature* now *does the new behavior*.
 
@@ -32,7 +54,7 @@ Examples:
 - EDB Postgres Advanced Server now provides INDEX and NO_INDEX hints for the partitioned table. The optimizer hints apply to the inherited index in the partitioned table. The execution plan internally expands to include the corresponding inherited child indexes and applies them in later processing.
 - The INTO clause now accepts multiple composite row type targets in SPL. This enhancement allows you to assign a SELECT list having a mix of scalar and composite type values that are fetched from a table to corresponding scalar or composite variables (including collection variables) in the SPL code.
 
-### Enhancement don’ts 
+#### Enhancement don’ts 
 
 Don’t start the enhancement with a gerund, which suggests the work is still in progress:
 - **Correct**: Added the XYZ function.
@@ -44,7 +66,7 @@ Don’t use a title or short description:
 - **Correct**: You can now configure the durability options, such as Group Commit, CAMO, Eager Replication, and Lag Control, through Commit Scope.
 - **Incorrect**: Unified replication durability configuration - The durability options such as Group Commit, CAMO, Eager Replication, or Lag Control are now all configured through Commit Scope configuration.
 
-## Bug fix writing guidelines
+### Bug fix writing guidelines
 
 Start bug fix descriptions with:
 - Fixed an issue whereby…

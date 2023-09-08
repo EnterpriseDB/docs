@@ -53,6 +53,7 @@ const Layout = ({
           to={href}
           pageUrl={meta.path}
           pageIsIndex={meta.isIndexPage}
+          productVersions={meta.productVersions}
           {...rest}
         />
       ),
@@ -95,7 +96,7 @@ const Layout = ({
       Archive,
       AuthenticatedContentPlaceholder,
     }),
-    [katacodaPanelData, meta.path, meta.isIndexPage],
+    [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
 
   return (

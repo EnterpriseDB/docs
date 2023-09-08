@@ -45,7 +45,7 @@ At this point you have a couple options.
 
 1. Run `npm run start`. The application will start in the background and take a few minutes to load.
 
-1. You can view logs and monitor the startup process by running `npm run logs`. Once it's finished it can be accessed at `http://localhost:8000/`.
+1. You can view logs and monitor the startup process by running `npm run logs`. Once it's finished it can be accessed at [http://localhost:8000/](http://localhost:8000).
 
 #### Additional Commands and Options for the Docker Environment
 
@@ -63,7 +63,7 @@ At this point you have a couple options.
 
 If you find that the container crashes frequently or see that your container has exited with code 137, increasing the Docker memory should help. Allocating at least 4GB is recommended.
 
-1. open Docker Desktop
+1. Open Docker Desktop
 
 1. Go to Preferences (gear icon in the top right corner)
 
@@ -283,7 +283,7 @@ If you need to setup a redirect from Docs 1.0 to Docs 2.0 manually, this is the 
 
 # MDX Format
 
-Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/mdx/writing-pages/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/).
+Documentation must be formatted as an [MDX file](https://www.gatsbyjs.com/docs/how-to/routing/mdx/) with the `.mdx` extension. MDX is a superset of [Markdown](https://www.markdownguide.org/). See [What is MDX?](https://mdxjs.com/docs/what-is-mdx/) for a detailed explanation of the format.
 
 ## Frontmatter
 
@@ -367,18 +367,18 @@ Content is indexed for search when the production site builds.
 
 To contribute content to this site submit as a pull request (PR). There are two options for this:
 
-Option 1: locally
+Option 1: Making changes locally
 
 1. [Clone](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/cloning-a-repository) this repository.
 2. [Make a new branch.](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging)
 3. Add commits to branch and [push to GitHub](https://git-scm.com/book/en/v2/Git-Branching-Remote-Branches).
 4. Create a new PR on GitHub.
 
-Option 2: on GitHub
+Option 2: Editing files on GitHub
 
 1. Edit a file on GitHub.
 2. Submit changes as a PR on a new branch.
 
 ### Style Guide for EDB contributors
 
-See [EDB documentation style guide](https://enterprisedb.atlassian.net/wiki/spaces/DCBC/pages/2387870239/Documentation+Style+Guide).
+See [EDB documentation style guide](https://www.enterprisedb.com/docs/community/contributing/styleguide/).
