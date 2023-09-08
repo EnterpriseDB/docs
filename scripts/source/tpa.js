@@ -1,4 +1,4 @@
-// run: node scripts/source/tpaexec.js source_path"
+// run: node scripts/source/tpa.js source_path"
 // purpose:
 //  Import and convert the tpa docs to EDB Docs -style MDX
 //
