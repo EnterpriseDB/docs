@@ -19,7 +19,7 @@ node $DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs \
 
 cd $SOURCE_CHECKOUT/docs/
 
-node $DESTINATION_CHECKOUT/scripts/source/tpaexec.js src
+node $DESTINATION_CHECKOUT/scripts/source/tpa.js src
 
 node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
   "$SOURCE_CHECKOUT/docs/src/index.mdx" \
