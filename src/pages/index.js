@@ -343,6 +343,9 @@ const Page = () => (
             <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
               Repostor Data Protector for PostgresSQL
             </IndexCardLink>
+            <IndexCardLink to="/partner_docs/KastenbyVeeam">
+              Kasten by Veeam for Kasten K10
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
               Veritas NetBackup for PostgreSQL
             </IndexCardLink>
