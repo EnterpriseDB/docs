@@ -135,7 +135,10 @@ let allDocMap = {};
 
 cvelist.forEach(cve => {
     const docMap = parseMarkdownFile(join(advisoriesDir, cve + '.mdx'));
+    // make sure the cve id isn't a link
     docMap['vulnerability_details_cve_id'] = cleanCVE(docMap['vulnerability_details_cve_id']);
+    // trim the cve id off the front of the title
+    docMap['frontmatter_title']=docMap['frontmatter_title'].slice(docMap['frontmatter_title'].indexOf(" - ")+3);
     allDocMap[cve] = docMap;
 });
 
