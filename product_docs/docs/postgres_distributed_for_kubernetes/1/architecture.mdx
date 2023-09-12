@@ -3,150 +3,147 @@ title: 'Architecture'
 originalFilePath: 'src/architecture.md'
 ---
 
-This section covers the main architectural aspects you need to consider
-when deploying EDB Postgres Distributed in Kubernetes (PG4K-PGD).
+Consider these main architectural aspects 
+when deploying EDB Postgres Distributed in Kubernetes.
 
-PG4K-PGD is a
+EDB Postgres Distributed for Kubernetes is a
 [Kubernetes operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
 designed to deploy and manage EDB Postgres Distributed clusters
 running in private, public, hybrid, or multi-cloud environments.
 
 ## Relationship with EDB Postgres Distributed
 
-[EDB Postgres Distributed (PGD)](https://www.enterprisedb.com/docs/pgd/latest/)
+[EDB Postgres Distributed (PGD)](/pgd/latest/)
 is a multi-master implementation of Postgres designed for high performance and <!-- wokeignore:rule=master -->
 availability.
 PGD generally requires deployment using
-[*Trusted Postgres Architect*, (TPA)](https://www.enterprisedb.com/docs/pgd/latest/tpa/),
-a tool that uses [Ansible](https://www.ansible.com) for provisioning and
-deployment of PGD clusters.
+[Trusted Postgres Architect (TPA)](/pgd/latest/tpa/),
+a tool that uses [Ansible](https://www.ansible.com) to provision and
+deploy PGD clusters.
 
-PG4K-PGD offers a different way of deploying PGD clusters, leveraging containers
-and Kubernetes, with the added advantages that the resulting architecture is
-self-healing and robust, managed through declarative configuration, and that it
-takes advantage of the vast and growing Kubernetes ecosystem.
+EDB Postgres Distributed for Kubernetes offers a different way of deploying PGD clusters, leveraging containers
+and Kubernetes. The advantages are that the resulting architecture:
+
+- Is self-healing and robust.
+- Is managed through declarative configuration.
+- Takes advantage of the vast and growing Kubernetes ecosystem.
 
 ## Relationship with EDB Postgres for Kubernetes
 
-A PGD cluster consists of one or more *PGD Groups*, each having one or more *PGD
-Nodes*. A PGD node is a Postgres database. PG4K-PGD internally
+A PGD cluster consists of one or more *PGD groups*, each having one or more *PGD
+nodes*. A PGD node is a Postgres database. EDB Postgres Distributed for Kubernetes internally
 manages each PGD node using the `Cluster` resource as defined by EDB Postgres
-for Kubernetes (PG4K), specifically a `Cluster` with a single instance (i.e. no
+for Kubernetes, specifically a cluster with a single instance (that is, no
 replicas).
 
-The single PostgreSQL instance created by each `Cluster` can be configured
-declaratively via the
+You can configure the single PostgreSQL instance created by each cluster
+declaratively using the
 [`.spec.cnp` section](api_reference.md#CnpConfiguration)
-of the PGD Group spec.
+of the PGD group spec.
 
-In PG4K-PGD, as in PG4K, the underlying database implementation is responsible
-for data replication. However, it is important to note that *failover* and
-*switchover* work differently, entailing Raft election and the nomination of new
-write leaders. PG4K only handles the deployment and healing of data nodes.
+In EDB Postgres Distributed for Kubernetes, as in EDB Postgres for Kubernetes, the underlying database implementation is responsible
+for data replication. However, it's important to note that failover and
+switchover work differently, entailing Raft election and nominating new
+write leaders. EDB Postgres for Kubernetes handles only the deployment and healing of data nodes.
 
-## Managing PGD using PG4K-PGD
+## Managing PGD using EDB Postgres Distributed for Kubernetes
 
-The PG4K-PGD operator can manage the complete lifecycle of PGD clusters. As
-such, in addition to PGD Nodes (represented as single-instance `Clusters`), it
+The EDB Postgres Distributed for Kubernetes operator can manage the complete lifecycle of PGD clusters. As
+such, in addition to PGD nodes (represented as single-instance clusters), it
 needs to manage other objects associated with PGD.
 
 PGD relies on the Raft algorithm for distributed consensus to manage node
-metadata, specifically agreement on a *write leader*. Consensus among data
+metadata, specifically agreement on a write leader. Consensus among data
 nodes is also required for operations such as generating new global sequences
 or performing distributed DDL.
 
 These considerations force additional actors in PGD above database nodes.
 
-PG4K-PGD manages the following:
+EDB Postgres Distributed for Kubernetes manages the following:
 
--   Data nodes: as mentioned previously, a node is a database, and is managed
-    via PG4K, creating a `Cluster` with a single instance.
+-   Data nodes. A node is a database and is managed
+    by EDB Postgres for Kubernetes, creating a cluster with a single instance.
 -   [Witness nodes](https://www.enterprisedb.com/docs/pgd/latest/nodes/#witness-nodes)
-    are basic database instances that do not participate in data
-    replication; their function is to guarantee that consensus is possible in
-    groups with an even number of data nodes, or after network partitions. Witness
+    are basic database instances that don't participate in data
+    replication. Their function is to guarantee that consensus is possible in
+    groups with an even number of data nodes or after network partitions. Witness
     nodes are also managed using a single-instance `Cluster` resource.
--   [PGD Proxies](https://www.enterprisedb.com/docs/pgd/latest/routing/proxy/):
+-   [PGD proxies](https://www.enterprisedb.com/docs/pgd/latest/routing/proxy/)
     act as Postgres proxies with knowledge of the write leader. PGD proxies need
     information from Raft to route writes to the current write leader.
 
 ### Proxies and routing
 
 PGD groups assume full mesh connectivity of PGD nodes. Each node must be able to
-connect to every other node, using the appropriate connection string (a
-`libpq`-style DSN). Write operations don't need to be sent to every node. PGD
-will take care of replicating data after it's committed to one node.
+connect to every other node using the appropriate connection string (a
+`libpq`-style DSN). Write operations don't need to be sent to every node. PGD 
+takes care of replicating data after it's committed to one node.
 
-For performance, it is often recommendable to send write operations mostly to a
-single node, the  *write leader*. Raft is used to identify which node is the
-write leader, and to hold metadata about the PGD nodes. PGD Proxies are used to
-transparently route writes to write leaders, and to quickly pivot to the new
+For performance, we often recommend sending write operations mostly to a
+single node: the write leader. Raft identifies the node that's the
+write leader and holds metadata about the PGD nodes. PGD proxies
+transparently route writes to write leaders and can quickly pivot to the new
 write leader in case of switchover or failover.
 
-It is possible to configure *Raft subgroups*, each of which can maintain a
-separate write leader. In PG4K-PGD, a PGD Group containing a PGD Proxy
-automatically comprises a Raft subgroup.
+It's possible to configure *Raft subgroups*, each of which can maintain a
+separate write leader. In EDB Postgres Distributed for Kubernetes, a PGD group containing a PGD proxy
+comprises a Raft subgroup.
 
-There are two kinds of routing available with PGD Proxies:
+Two kinds of routing are available with PGD proxies:
 
--   Global routing uses the top-level Raft group, and maintains one global write
+-   Global routing uses the top-level Raft group and maintains one global write
     leader.
 -   Local routing uses subgroups to maintain separate write leaders. Local
     routing is often used to achieve geographical separation of writes.
 
-In PG4K-PGD, local routing is used by default, and a configuration option is
+In EDB Postgres Distributed for Kubernetes, local routing is used by default, and a configuration option is
 available to select global routing.
 
-You can find more information in the
-[PGD documentation of routing with Raft](https://www.enterprisedb.com/docs/pgd/latest/routing/raft/).
+For more information, see
+[Proxies, Raft, and Raft subgroups](/pgd/latest/routing/raft/) in the PGD documentation.
 
-### PGD Architectures and High Availability
+### PGD architectures and high availability
 
-EDB proposes several recommended architectures to make good use of PGD's
-distributed multi-master capabilities and to offer high availability. <!-- wokeignore:rule=master -->
+To make good use of PGD's
+distributed multi-master capabilities and to offer high availability, 
+we recommend several architectures. <!-- wokeignore:rule=master -->
 
 The Always On architectures are built from either one group in a single location
 or two groups in two separate locations.
-Please refer to the
-[PGD architecture document](https://www.enterprisedb.com/docs/pgd/latest/architectures/)
-for further information.
+See [Choosing your architecture](/pgd/latest/architectures/) in the PGD documentation
+for more information.
 
 ## Deploying PGD on Kubernetes
 
-PG4K-PGD leverages Kubernetes to deploy and manage PGD clusters. As such, some
+EDB Postgres Distributed for Kubernetes leverages Kubernetes to deploy and manage PGD clusters. As such, some
 adaptations are necessary to translate PGD into the Kubernetes ecosystem.
 
 ### Images and operands
 
-PGD can be configured to run one of three Postgres distributions. Please refer
-to the
-[PGD documentation](https://www.enterprisedb.com/docs/pgd/latest/choosing_server/)
-to understand the features of each distribution.
+PGD can be configured to run one of three Postgres distributions. See 
+[Choosing a Postgres distribution](/pgd/latest/choosing_server/)
+in the PGD documentation to understand the features of each distribution.
 
 To function in Kubernetes, containers are provided for each Postgres
 distribution. These are the *operands*.
 In addition, the operator images are kept in those same repositories.
 
-Please refer to [the document on registries](private_registries.md)
+See [EDB private image registries](private_registries.md)
 for details on accessing the images.
 
 ### Kubernetes architecture
 
-We reproduce some of the points of the
-[PG4K document on Kubernetes architecture](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/architecture/),
-to which we refer you for further depth.
-
 Kubernetes natively provides the possibility to span separate physical locations
-–also known as data centers, failure zones, or more frequently **availability
-zones**– connected to each other via redundant, low-latency, private network
-connectivity.
+connected to each other by way of redundant, low-latency, private network
+connectivity. These physical locations are also known as data centers, failure zones, or, 
+more frequently, *availability zones*.
 
 Being a distributed system, the recommended minimum number of availability zones
-for a **Kubernetes cluster** is three (3), in order to make the control plane
+for a Kubernetes cluster is three to make the control plane
 resilient to the failure of a single zone. This means that each data center is
 active at any time and can run workloads simultaneously.
 
-PG4K-PGD can be installed within a
+EDB Postgres Distributed for Kubernetes can be installed in a
 [single Kubernetes cluster](#single-kubernetes-cluster)
 or across
 [multiple Kubernetes clusters](#multiple-kubernetes-clusters).
@@ -154,31 +151,31 @@ or across
 ### Single Kubernetes cluster
 
 A multi-availability-zone Kubernetes architecture is typical of Kubernetes
-services managed by Cloud Providers. Such an architecture enables the PG4K-PGD
-and the PG4K operators to schedule workloads and nodes across availability
-zones, considering all zones active:
+services managed by cloud providers. Such an architecture enables the EDB Postgres Distributed for Kubernetes
+and the EDB Postgres for Kubernetes operators to schedule workloads and nodes across availability
+zones, considering all zones active.
 
 ![Kubernetes cluster spanning over 3 independent data centers](./images/k8s-architecture-3-az.png)
 
 PGD clusters can be deployed in a single Kubernetes cluster and take advantage
-of Kubernetes availability zones to enable High Availability architectures,
+of Kubernetes availability zones to enable high-availability architectures,
 including the Always On recommended architectures.
 
-The *Always On Single Location* architecture shown in the
-[PGD Architecture document](https://www.enterprisedb.com/docs/pgd/latest/architectures/):
+You can realize the Always On, single-location architecture shown in
+[Choosing your architecture](/pgd/latest/architectures/) in the PGD documentation on
+a single Kubernetes cluster with three availability zones.
+
 ![Always On Single Region](./images/always_on_1x3_updated.png)
 
-can be realized on single kubernetes cluster with 3 availability zones.
-
-The PG4K-PGD operator can control the *scheduling* of pods (i.e. which pods go
-to which data center) using affinity, tolerations and node selectors, as is the
-case with PG4K. Individual scheduling controls are available for proxies as well
+The EDB Postgres Distributed for Kubernetes operator can control the scheduling of pods (that is, which pods go
+to which data center) using affinity, tolerations, and node selectors, as is the
+case with EDB Postgres for Kubernetes. Individual scheduling controls are available for proxies as well
 as nodes.
 
-Please refer to the
+See the
 [Kubernetes documentation on scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/),
-as well as the [PG4K documents](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/scheduling/)
-for further information.
+and [Scheduling](/postgres_for_kubernetes/latest/scheduling/) in the EDB Postgres for Kubernetes documentation
+for more information.
 
 ### Multiple Kubernetes clusters
 
@@ -187,7 +184,7 @@ reliably communicate with each other.
 
 ![Multiple Kubernetes clusters](./images/k8s-architecture-multi.png)
 
-[Always On multi-location PGD architectures](https://www.enterprisedb.com/docs/pgd/latest/architectures/)
+[Always On multi-location PGD architectures](/pgd/latest/architectures/)
 can be realized on multiple Kubernetes clusters that meet the connectivity
 requirements.
-More information can be found in the ["Connectivity"](connectivity.md) section.
+For more information, see [Connectivity](connectivity.md).
