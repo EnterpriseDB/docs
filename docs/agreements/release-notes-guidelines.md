@@ -77,3 +77,4 @@ It’s okay to use “the user” in bug fixes. Using second person is generally
 - **Don’t include** internal Jira ticket numbers. 
 - **Do include** customer facing support tickets, using this format after the last sentence of the description: *Support ticket: ticketNumber*
 
+
