@@ -373,6 +373,9 @@ const Page = () => (
             <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
               Security
             </span>
+            <IndexCardLink to="/partner_docs/Cyberark">
+              CyberArk Central Policy Manager (CPM)
+            </IndexCardLink>
             <IndexCardLink to="/partner_docs/HashicorpVault">
               Hashicorp Vault
             </IndexCardLink>
@@ -394,9 +397,6 @@ const Page = () => (
             </span>
             <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
               Chemaxon JChem PostgreSQL Cartridge
-            </IndexCardLink>
-            <IndexCardLink to="/partner_docs/Cyberark">
-              Cyberark
             </IndexCardLink>
             <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
               Esri ArcGIS Pro and Esri ArcGIS Enterprise
