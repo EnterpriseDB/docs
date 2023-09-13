@@ -1,4 +1,5 @@
 ---
+WARNING: THIS IS AN AUTOMATICALLY GENERATED FILE - DO NOT MANUALLY EDIT - SEE tools/automation/generators/advisoryindex
 title: EDB Security
 navTitle: EDB Security
 directoryDefaults:
@@ -27,16 +28,16 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 {% for cve in shortcvelist %}
 {% set thiscve = cves[cve] %}
 <tr><td>
-<details><summary><h3 style="display:inline"> {{ thiscve.vulnerability_details_cve_id }} </h3>
+<details><summary><h3 style="display:inline"> {{ thiscve.vulnerability_details.cve_id }} </h3>
 <span>
 &nbsp;&nbsp;<a href="advisories/{{ thiscve.filename }}">Read Advisory</a>
-&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open_last_updated }} </span>
-<h4>{{ thiscve.frontmatter_title }}</h4>
-<h5> {{ thiscve.frontmatter_affectedProducts }}</h5>
+&nbsp;&nbsp;Updated: </span><span>{{ thiscve.open.last_updated }}</span>
+<h4>{{ thiscve.frontmatter.title }}</h4>
+<h5> {{ thiscve.frontmatter.affectedProducts }}</h5>
 </summary>
 <hr/>
 <em>Summary:</em>&nbsp;
-{{ thiscve.summary_0 }}
+{{ thiscve.summary[0].replaceAll(r/`([^`]*)`/g,"<code>$1</code>") }}
 <br/>
 <a href="advisories/{{ thiscve.filename }}">Read More...</a>
 </details></td></tr>

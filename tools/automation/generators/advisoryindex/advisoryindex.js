@@ -15,12 +15,13 @@ if (argv.root == undefined) {
 
 const securityRoot = argv.root;
 
-let seccount=10;
+let seccount = 10;
 
 if (argv.count != undefined) {
-    seccount=parseInt(argv.count);
+    seccount = parseInt(argv.count);
 }
 
+const md = new MarkdownIt();
 // We are going to process the advisories in
 const advisoriesDir = join(securityRoot, "advisories");
 // To produce an index file named
@@ -34,71 +35,49 @@ const templatesDir = join(securityRoot, "templates");
 function parseMarkdownFile(filePath) {
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const parsedMatter = matter(fileContent);
+    const parsed = md.parse(parsedMatter.content, {});
 
-    const sections = parsedMatter.content.split('\n#').slice(0); // split at headings
-    const sectionDicts = sections.map(section => {
-        const lines = section.split('\n');
-        const heading = lines[0].replace('#', '').trim();
-        const content = lines.slice(1);
-        var parsedContent = [];
-        content.forEach((line, index) => {
-            if (line !== '') {
-                if (line.startsWith('* [')) {
-                    // This is a line with a link
-                    // For now, we drop links completely
-                } else if (line.indexOf(':') > 0) {
-                    const colon = line.indexOf(':');
-                    let key = line.slice(0, colon);
-                    if (key.startsWith('* ')) {
-                        key = key.slice(2);
-                    }
-                    const value = line.slice(colon + 1).trim();
+    let heading_capture = false;
+    let currentHeading = "open";
+    let currentSectionMap = {}
+    let currentSectionArray = [];
 
-                    parsedContent.push({ [slugify(key)]: value });
+    let docMap=parsed.reduce((currentValue, block) => {
+        if (block.type == "inline") {
+            if (heading_capture) {
+                currentHeading = slugify(block.content);
+                heading_capture=false;
+            } else {
+                let match = block.content.match("^([A-Za-z0-9- ]*): *(.*)$");
+                if (match) {
+                    let key = slugify(match[1]);
+                    let value = match[2];
+                    currentSectionMap[key] = value;
                 } else {
-                    parsedContent.push(line);
+                    currentSectionArray.push(block.content);
                 }
             }
-        });
-
-        if (heading === '') {
-            return { ["open"]: parsedContent };
+        } else if (block.type == "heading_open") {
+            if (currentSectionArray.length!=0) {
+                value=currentSectionArray;
+                currentSectionArray = [];
+            } else {
+                value=currentSectionMap;
+                currentSectionMap = {};
+            }
+            heading_capture = true;
+            currentValue[currentHeading]=value;
+        } else if (block.type == "heading_close") {
         }
-
-        return { [slugify(heading)]: parsedContent };
-    });
-
-    let docMap = {}
+        return currentValue;
+    }, {})
 
     // add the parsedMatter data to the docmap
-    Object.keys(parsedMatter.data).forEach(key => {
-        docMap["frontmatter_" + key] = parsedMatter.data[key];
-    });
+    docMap["frontmatter"]=parsedMatter.data;
 
     const path = basename(filePath, ".mdx");
 
     docMap["filename"] = path;
-
-    // add the flattened sections to the docMap
-    sectionDicts.forEach(section => {
-        Object.keys(section).forEach(key => {
-            let value = section[key];
-            if (Array.isArray(value)) {
-                for (let i = 0; i < value.length; i++) {
-                    if (typeof value[i] === 'object') {
-                        Object.keys(value[i]).forEach(subkey => {
-                            docMap[key + '_' + subkey] = value[i][subkey];
-                        })
-                    } else {
-                        docMap[key + '_' + i] = value[i];
-                    }
-                }
-                value = value.join('\n');
-            } else {
-                docMap[key] = value;
-            }
-        })
-    });;
 
     return docMap;
 }
@@ -113,11 +92,11 @@ function slugify(string) {
         ;
 }
 
-function cleanCVE(string) {
-    if (string[0] == "[") {
-        return string.slice(1, string.indexOf("]", 1));
+function cleanCVE(cvestring) {
+    if (cvestring[0] == "[") {
+        return cvestring.slice(1, cvestring.indexOf("]", 1));
     }
-    return string;
+    return cvestring;
 }
 
 // Iterate over all the files that start cve and end with mdx in the source directory, and parse them
@@ -135,10 +114,10 @@ let allDocMap = {};
 
 cvelist.forEach(cve => {
     const docMap = parseMarkdownFile(join(advisoriesDir, cve + '.mdx'));
-    // make sure the cve id isn't a link
-    docMap['vulnerability_details_cve_id'] = cleanCVE(docMap['vulnerability_details_cve_id']);
+     // make sure the cve id isn't a link
+    docMap['vulnerability_details']['cve_id'] = cleanCVE(docMap['vulnerability_details']['cve_id']);
     // trim the cve id off the front of the title
-    docMap['frontmatter_title']=docMap['frontmatter_title'].slice(docMap['frontmatter_title'].indexOf(" - ")+3);
+    docMap['frontmatter']['title'] = docMap['frontmatter']['title'].slice(docMap['frontmatter']['title'].indexOf(" - ") + 3);
     allDocMap[cve] = docMap;
 });
 
@@ -148,10 +127,10 @@ let lastyear = "";
 let count = 0;
 cvelist.forEach(cve => {
     const year = cve.substring(3, 7);
-    if (lastyear=="") {
+    if (lastyear == "") {
         count = 0;
         lastyear = year;
-    } else if (lastyear!=year) {
+    } else if (lastyear != year) {
         return;
     }
     if (count < seccount) {
@@ -160,11 +139,12 @@ cvelist.forEach(cve => {
     }
 });
 
-namespace["shortcvelist"]= shortcvelist;
+namespace["shortcvelist"] = shortcvelist;
 namespace["cvesorted"] = cvelist;
 namespace["cves"] = allDocMap;
 
 //console.log(JSON.stringify(namespace, null, 2));
+
 
 const res = njk.render("advisoriesindex.njs", namespace);
 
@@ -172,5 +152,5 @@ fs.writeFileSync(advisoriesIndex, res);
 
 const res2 = njk.render("securityindex.njs", namespace);
 
-fs.writeFileSync(securityIndex,res2);
+fs.writeFileSync(securityIndex, res2);
 
