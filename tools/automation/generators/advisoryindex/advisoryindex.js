@@ -1,19 +1,23 @@
-const fs = require('fs');
-const matter = require('gray-matter');
-const MarkdownIt = require('markdown-it');
-const njk = require('nunjucks');
-const { basename, join } = require('path');
-const parseArgs = require('minimist');
-const { addAbortListener } = require('events');
+import fs from "fs";
+import matter from "gray-matter";
+import MarkdownIt from "markdown-it";
+import njk from "nunjucks";
+import path from 'path';
+import  parseArgs from 'minimist';
+import { fileURLToPath } from 'url';
+
+// Modules hack for dirname via https://flaviocopes.com/fix-dirname-not-defined-es-module-scope/
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 var argv = parseArgs(process.argv.slice(2));
 
-if (argv.root == undefined) {
-    console.log("Need --root");
-    process.exit(1);
-}
+let securityRoot = argv.root;
 
-const securityRoot = argv.root;
+if (securityRoot == undefined) {
+    securityRoot=path.normalize(path.join(__dirname,"..","..","..","..","advocacy_docs","security"));
+    console.log(`Using ${securityRoot} as working directory`);
+}
 
 let seccount = 10;
 
@@ -23,14 +27,14 @@ if (argv.count != undefined) {
 
 const md = new MarkdownIt();
 // We are going to process the advisories in
-const advisoriesDir = join(securityRoot, "advisories");
+const advisoriesDir = path.join(securityRoot, "advisories");
 // To produce an index file named
-const advisoriesIndex = join(advisoriesDir, "index.mdx");
+const advisoriesIndex = path.join(advisoriesDir, "index.mdx");
 // And another similar but shorted one named
-const securityIndex = join(securityRoot, "index.mdx");
+const securityIndex = path.join(securityRoot, "index.mdx");
 
 // Using templates in a directory called
-const templatesDir = join(securityRoot, "templates");
+const templatesDir = path.join(securityRoot, "templates");
 
 function parseMarkdownFile(filePath) {
     const fileContent = fs.readFileSync(filePath, 'utf8');
@@ -58,6 +62,7 @@ function parseMarkdownFile(filePath) {
                 }
             }
         } else if (block.type == "heading_open") {
+            let value="";
             if (currentSectionArray.length!=0) {
                 value=currentSectionArray;
                 currentSectionArray = [];
@@ -75,9 +80,9 @@ function parseMarkdownFile(filePath) {
     // add the parsedMatter data to the docmap
     docMap["frontmatter"]=parsedMatter.data;
 
-    const path = basename(filePath, ".mdx");
+    const cvepath = path.basename(filePath, ".mdx");
 
-    docMap["filename"] = path;
+    docMap["filename"] = cvepath;
 
     return docMap;
 }
@@ -113,7 +118,7 @@ let namespace = {};
 let allDocMap = {};
 
 cvelist.forEach(cve => {
-    const docMap = parseMarkdownFile(join(advisoriesDir, cve + '.mdx'));
+    const docMap = parseMarkdownFile(path.join(advisoriesDir, cve + '.mdx'));
      // make sure the cve id isn't a link
     docMap['vulnerability_details']['cve_id'] = cleanCVE(docMap['vulnerability_details']['cve_id']);
     // trim the cve id off the front of the title
