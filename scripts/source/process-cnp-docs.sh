@@ -20,12 +20,16 @@ node $DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs \
 
 cd $SOURCE_CHECKOUT/docs
 
+# grab key bit of source for use in docs
+cp $SOURCE_CHECKOUT/config/manager/default-monitoring.yaml $SOURCE_CHECKOUT/docs/src/
+
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/quickstart.md" \
   -p cnp/add-quickstart-content
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
+  -p "cnp/replace-github-urls" \
   -p "cnp/update-yaml-links" \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
