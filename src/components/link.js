@@ -35,7 +35,7 @@ const hasNonMarkdownExtension = (url) => {
   );
 };
 
-const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
+const rewriteUrl = (url, pageUrl, pageIsIndex, productVersions, pathPrefix) => {
   if (!pageUrl) return forceTrailingSlash(url);
 
   // consistent behavior while authoring: base path for relative links
@@ -57,10 +57,23 @@ const rewriteUrl = (url, pageUrl, pageIsIndex, pathPrefix) => {
   let resultHref = result.href.replace(/^loc:/, "");
   resultHref = stripPathPrefix(resultHref, pathPrefix);
   resultHref = stripMarkdownExtension(resultHref);
+
+  // if this looks like a versioned product link that points at the latest version, rewrite to the "latest" path
+  // this avoids depending on redirects (which won't play well with client-side nav)
+  const splitPath = resultHref.split("/");
+  if (
+    productVersions &&
+    productVersions[splitPath[1]] &&
+    productVersions[splitPath[1]][0] === splitPath[2]
+  ) {
+    splitPath[2] = "latest";
+    resultHref = splitPath.join("/");
+  }
+
   return forceTrailingSlash(resultHref);
 };
 
-const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
+const Link = ({ to, pageUrl, pageIsIndex, productVersions, ...rest }) => {
   const pathPrefix = usePathPrefix();
 
   if (
@@ -74,7 +87,13 @@ const Link = ({ to, pageUrl, pageIsIndex, ...rest }) => {
       </a>
     );
   } else {
-    const outputUrl = rewriteUrl(to, pageUrl, pageIsIndex, pathPrefix);
+    const outputUrl = rewriteUrl(
+      to,
+      pageUrl,
+      pageIsIndex,
+      productVersions,
+      pathPrefix,
+    );
     return <GatsbyLink data-gatsby-link to={outputUrl} {...rest} />;
   }
 };

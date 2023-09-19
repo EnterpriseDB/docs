@@ -2,23 +2,22 @@
 // purpose:
 //  Import and convert the pglogical2 docs from https://raw.githubusercontent.com/2ndQuadrant/pglogical/REL2_x_STABLE/docs/README.md, rendering them in /advocacy_docs/supported-open-source/pglogical2/
 //
-const path = require("path");
-const fs = require("fs/promises");
-const https = require("https");
-const { read, write } = require("to-vfile");
-const remarkParse = require("remark-parse");
-const mdx = require("remark-mdx");
-const unified = require("unified");
-const remarkFrontmatter = require("remark-frontmatter");
-const remarkStringify = require("remark-stringify");
-const admonitions = require("remark-admonitions");
-const yaml = require("js-yaml");
-const visit = require("unist-util-visit");
-const visitAncestors = require("unist-util-visit-parents");
-const mdast2string = require("mdast-util-to-string");
-const { exec } = require("child_process");
-const isAbsoluteUrl = require("is-absolute-url");
-const slugger = require("github-slugger");
+import path from "path";
+import fs from "fs/promises";
+import https from "https";
+import pkg from 'to-vfile';
+const {write, read} = pkg;
+import remarkParse from "remark-parse";
+import  mdx from "remark-mdx";
+import unified from "unified";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkStringify from "remark-stringify";
+import admonitions from "remark-admonitions";
+import yaml from "js-yaml";
+import visit from "unist-util-visit";
+import visitAncestors from "unist-util-visit-parents";
+import mdast2string from "mdast-util-to-string";
+import slugger from "github-slugger";
 
 const outputFiles = [];
 const source = new URL(
@@ -26,9 +25,13 @@ const source = new URL(
 );
 const originalSource =
   "https://github.com/2ndQuadrant/pglogical/blob/REL2_x_STABLE/docs/README.md?plain=1";
-const destination = path.resolve(
+const docsRoot = path.resolve(
   process.argv[1],
-  "../../../advocacy_docs/supported-open-source/pglogical2/",
+  "../../../",
+);
+const destination = path.resolve(
+  docsRoot,
+  "advocacy_docs/supported-open-source/pglogical2/",
 );
 
 (async () => {
@@ -104,7 +107,7 @@ function pglogicalTransformer() {
             metadata: {
               title: title,
               product: "pglogical 2",
-              generatedBy: `${process.argv[1]} - re-run to regenerate from originalFilePath`,
+              generatedBy: `${path.relative(docsRoot, process.argv[1])} - re-run to regenerate from originalFilePath`,
             },
             data: {
               type: "root",

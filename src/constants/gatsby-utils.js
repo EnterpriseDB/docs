@@ -2,6 +2,9 @@ const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
 
+const isGHBuild = !!process.env.GITHUB_HEAD_REF;
+const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
     b.localeCompare(a, undefined, { numeric: true }),
@@ -30,9 +33,6 @@ const removeTrailingSlash = (url) => {
   }
   return url;
 };
-
-const isPathAnIndexPage = (filePath) =>
-  filePath.endsWith("/index.mdx") || filePath === "index.mdx";
 
 const removeNullEntries = (obj) => {
   if (!obj) return obj;
@@ -255,7 +255,7 @@ const findPrevNextNavNodes = (navTree, currNode) => {
 };
 
 const preprocessPathsAndRedirects = (nodes, productVersions) => {
-  const validPaths = new Set();
+  const validPaths = new Map();
   for (let node of nodes) {
     const nodePath = node.fields?.path;
     if (!nodePath) continue;
@@ -264,20 +264,26 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       node.fields.docType === "doc" &&
       productVersions[node.fields.product][0] === node.fields.version;
     const nodePathLatest = isLatest && replacePathVersion(nodePath);
+    const addPath = (url) => {
+      let value = validPaths.get(url);
+      if (!value) validPaths.set(url, (value = []));
+      value.push({
+        urlpath: nodePathLatest || nodePath,
+        filepath: node.fileAbsolutePath,
+      });
+    };
 
-    validPaths.add(nodePath);
-    if (isLatest) validPaths.add(nodePathLatest);
+    addPath(nodePath);
+    if (isLatest) {
+      addPath(nodePathLatest);
+      // from here on, the "latest" path *is* the canonical path
+      node.fields.path = nodePathLatest;
+    }
 
     const redirects = node.frontmatter?.redirects;
     if (!redirects || !redirects.length) continue;
 
     const newRedirects = new Set();
-    const addNewRedirect = (redirect) => {
-      if (validPaths.has(redirect))
-        console.warn(`Redirect ${redirect} for page ${nodePath} matches the path of a page or redirect already added and will be ignored!
-::warning file=${node.fileAbsolutePath},title=Overlapping redirect::Redirect matches another redirect or page path, ${redirect}`);
-      newRedirects.add(redirect);
-    };
     for (let redirect of redirects) {
       if (!redirect) continue;
 
@@ -306,35 +312,55 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
           path.sep,
         );
 
-      if (fromPath !== nodePath) addNewRedirect(fromPath);
+      if (fromPath !== nodePath) newRedirects.add(fromPath);
     }
 
-    for (let redirect of newRedirects) validPaths.add(redirect);
+    for (let redirect of newRedirects) addPath(redirect);
 
-    node.frontmatter.redirects = [...newRedirects];
+    node.frontmatter.redirects = [...newRedirects.keys()];
   }
   return validPaths;
 };
 
-const configureRedirects = (
-  toPath,
-  redirects,
-  actions,
-  isLatest,
-  pathVersions,
-) => {
+const configureRedirects = (productVersions, node, validPaths, actions) => {
+  const toPath = node.fields.path;
+  const redirects = node.frontmatter.redirects || [];
+  const versions =
+    node.fields.docType === "doc"
+      ? productVersions[node.fields.product] || []
+      : [];
+
+  // all versions for this path.
+  // Null entries for versions that don't exist. Will try to match redirects to avoid this, but won't follow redirect chains
+  // Canonical version is the first non-null in the list, e.g. pathVersions.filter((p) => !!p)[0]
+  const allPaths = [node.fields.path, ...(redirects || [])];
+  const pathVersions = versions.map((v, i) => {
+    const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
+    const match = versionPaths.find((vp) => validPaths.has(vp));
+    if (!match) return null;
+    const sources = validPaths.get(match);
+    // this is problematic situation: multiple sources (pages, redirects) exist for this version
+    // the first one will usually "win" - unless one is a page, in which case that will win.
+    // we'll warn about this later on
+    return (
+      sources.find((p) => p.urlpath === match)?.urlpath || sources[0].urlpath
+    );
+  });
+
+  const splitToPath = toPath.split(path.sep);
+  const isLatest = splitToPath[2] === "latest";
   const lastVersionPath = pathVersions.find((p) => !!p);
   const isLastVersion = toPath === lastVersionPath;
+
   // latest version should always redirect to .../latest/...
   if (isLatest) {
     actions.createRedirect({
-      fromPath: toPath,
-      toPath: replacePathVersion(toPath),
-      redirectInBrowser: true,
+      fromPath: replacePathVersion(toPath, versions[0]),
+      toPath: toPath,
+      redirectInBrowser: false,
       isPermanent: false,
       force: true,
     });
-    toPath = replacePathVersion(toPath);
   }
   // if this path is a dead-end (it does not exist in any newer versions
   // of the product, and also does not have a matching redirect in any newer versions)
@@ -344,14 +370,11 @@ const configureRedirects = (
     actions.createRedirect({
       fromPath: replacePathVersion(toPath),
       toPath,
-      redirectInBrowser: true,
+      redirectInBrowser: false,
       isPermanent: false,
     });
   }
 
-  if (!redirects) return;
-
-  const splitToPath = toPath.split(path.sep);
   for (let fromPath of redirects) {
     if (!fromPath) continue;
     if (fromPath !== toPath) {
@@ -361,7 +384,7 @@ const configureRedirects = (
       actions.createRedirect({
         fromPath,
         toPath,
-        redirectInBrowser: true,
+        redirectInBrowser: false,
         isPermanent,
       });
     }
@@ -401,16 +424,80 @@ const configureRedirects = (
     //    /epas/latest/B -> /epas/latest/C
     const toIsLatest = isLatest || isLastVersion;
     if (toIsLatest) {
-      fromPath = replacePathVersion(fromPath);
-      if (fromPath !== toPath)
+      const fromPathLatest = replacePathVersion(fromPath);
+      if (fromPathLatest !== fromPath && fromPathLatest !== toPath) {
+        let value = validPaths.get(fromPathLatest);
+        if (!value) validPaths.set(fromPathLatest, (value = []));
+        value.push({
+          urlpath: toPath,
+          filepath: node.fileAbsolutePath,
+        });
         actions.createRedirect({
-          fromPath,
+          fromPath: fromPathLatest,
           toPath,
-          redirectInBrowser: true,
+          redirectInBrowser: false,
           isPermanent: false,
         });
+      }
     }
   }
+
+  return pathVersions;
+};
+
+const reportRedirectCollisions = (validPaths, reporter) => {
+  let collisionCount = 0,
+    sourceCount = 0;
+  for (const [urlpath, sources] of validPaths) {
+    if (sources.length <= 1) continue;
+
+    collisionCount += 1;
+    sourceCount += sources.length;
+
+    for (const source of sources) {
+      if (source.urlpath === urlpath) continue;
+      if (isGHBuild) {
+        let list = sources
+          .filter((s) => s !== source)
+          .map((existing) => {
+            const existingIsRedirect = existing.urlpath !== urlpath;
+            return ` - ${
+              existingIsRedirect ? "redirect" : "page"
+            } at https://github.com/EnterpriseDB/docs/blob/${ghBranch}/${path.relative(
+              process.cwd(),
+              existing.filepath,
+            )}`;
+          })
+          .join("\n");
+        reporter.warn(`
+::warning file=${
+          source.filepath
+        },title=Overlapping redirect found in::Redirect ${urlpath} also matches ${(
+          "\n" + list
+        )
+          .replace(/%/g, "%25")
+          .replace(/\r/g, "%0D")
+          .replace(/\n/g, "%0A")}`);
+      } else {
+        let list = sources
+          .filter((s) => s !== source)
+          .map((existing) => {
+            const existingIsRedirect = existing.urlpath !== urlpath;
+            return ` - ${
+              existingIsRedirect ? "redirect" : "page"
+            } at ${path.relative(process.cwd(), existing.filepath)}`;
+          })
+          .join("\n");
+        reporter.warn(`Redirect ${urlpath} for page ${source.filepath} matches the path of
+${list}`);
+        break; // reduce noise: only report once for each collision on non-CI builds
+      }
+    }
+  }
+
+  reporter.info(
+    `redirects: ${collisionCount} collisions across ${sourceCount} locations`,
+  );
 };
 
 const convertLegacyDocsPathToLatest = (fromPath) => {
@@ -534,7 +621,6 @@ module.exports = {
   replacePathVersion,
   filePathToDocType,
   removeTrailingSlash,
-  isPathAnIndexPage,
   removeNullEntries,
   pathToDepth,
   mdxNodesToTree,
@@ -546,6 +632,7 @@ module.exports = {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportRedirectCollisions,
   configureLegacyRedirects,
   makeFileNodePublic,
   readFile,

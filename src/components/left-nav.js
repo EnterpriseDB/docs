@@ -87,7 +87,7 @@ const LeftNav = ({
       {navTree.items.map((node) => (
         <TreeNode
           node={node}
-          path={path}
+          path={pagePath}
           key={node.path + node.title}
           hideIfEmpty={hideEmptySections}
         />

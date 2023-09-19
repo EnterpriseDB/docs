@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "./";
 
-const PrevNext = ({ prevNext, path, depth, depthLimit = 3 }) => {
+const PrevNext = ({ prevNext, depth, depthLimit = 3 }) => {
   let prevLink = prevNext.prev;
   let nextLink = prevNext.next;
   if (depth <= depthLimit) prevLink = null;

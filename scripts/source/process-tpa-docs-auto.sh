@@ -8,16 +8,16 @@ then
   exit 1
 fi
 
-SOURCE_CHECKOUT="/tmp/tpaexecforimport"
+SOURCE_CHECKOUT="/tmp/tpaforimport"
 rm -rf $SOURCE_CHECKOUT
 
 if [ -z $2 ]
 then
-# Get the TPAexec tree into /tmp/tpaexecforimport
-  git clone https://github.com/EnterpriseDB/tpaexec.git $SOURCE_CHECKOUT
+# Get the TPA tree into /tmp/tpaforimport
+  git clone https://github.com/EnterpriseDB/tpa.git $SOURCE_CHECKOUT
 else
-  # Get specific branch of the TPAexec tree into /tmp/tpaexecforimport
-  git clone -b $2 https://github.com/EnterpriseDB/tpaexec.git $SOURCE_CHECKOUT
+  # Get specific branch of the TPA tree into /tmp/tpaforimport
+  git clone -b $2 https://github.com/EnterpriseDB/tpa.git $SOURCE_CHECKOUT
 fi
 
 # convert inputs to actual directory names, in case a relative path is passed in.
@@ -30,7 +30,7 @@ node $DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs \
 
 cd $SOURCE_CHECKOUT/docs/
 
-node $DESTINATION_CHECKOUT/scripts/source/tpaexec.js src
+node $DESTINATION_CHECKOUT/scripts/source/tpa.js src
 
 node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
   "$SOURCE_CHECKOUT/docs/src/index.mdx" \
