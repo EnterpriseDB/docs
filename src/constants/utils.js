@@ -28,3 +28,6 @@ export const capitalize = (s) => {
 export const getBaseUrl = (path, depth) => {
   return path.split("/").slice(0, depth).join("/");
 };
+
+export const isPathAnIndexPage = (filePath) =>
+  filePath.endsWith("/index.mdx") || filePath === "index.mdx";

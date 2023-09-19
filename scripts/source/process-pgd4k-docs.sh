@@ -22,6 +22,7 @@ cd $SOURCE_CHECKOUT/docs
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
+  -p "cnp/replace-github-urls" \
   -p "cnp/update-yaml-links" \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"

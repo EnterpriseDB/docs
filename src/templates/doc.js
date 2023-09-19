@@ -1,6 +1,7 @@
 import React from "react";
-import { Container, Row, Col, Dropdown, DropdownButton } from "react-bootstrap";
+import { Container, Row, Col } from "react-bootstrap";
 import { graphql, Link } from "gatsby";
+import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   CardDecks,
@@ -15,7 +16,7 @@ import {
   TableOfContents,
 } from "../components";
 import { products } from "../constants/products";
-import Icon, { iconNames } from "../components/icon";
+import { FeedbackDropdown } from "../components/feedback-dropdown";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -27,6 +28,11 @@ export const query = graphql`
       }
       body
       tableOfContents
+      fileAbsolutePath
+    }
+    edbGit {
+      docsRepoUrl
+      branch
     }
   }
 `;
@@ -181,56 +187,19 @@ const Section = ({ section }) => (
   </div>
 );
 
-const FeedbackDropdown = ({ githubIssuesLink }) => (
-  <DropdownButton
-    className="ml-3"
-    size="sm"
-    variant="outline-info"
-    id="page-actions-button"
-    title={
-      //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
-      <Icon
-        iconName={iconNames.ELLIPSIS}
-        className="fill-orange mr-2"
-        width="15"
-        height="15"
-      />
-    }
-  >
-    <Dropdown.Item
-      href={githubIssuesLink + "&template=problem-with-topic.yaml"}
-      target="_blank"
-      rel="noreferrer"
-    >
-      Report a problem
-    </Dropdown.Item>
-    <Dropdown.Item
-      href={
-        githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"
-      }
-      target="_blank"
-      rel="noreferrer"
-    >
-      Give product feedback
-    </Dropdown.Item>
-  </DropdownButton>
-);
-
 const DocTemplate = ({ data, pageContext }) => {
-  const { fields, body, tableOfContents } = data.mdx;
+  const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
+  const gitData = data.edbGit;
   const { path, mtime, depth } = fields;
   const {
     frontmatter,
     pagePath,
+    productVersions,
     versions,
-    githubFileLink,
-    githubEditLink,
-    githubIssuesLink,
-    isIndexPage,
     navTree,
     prevNext,
   } = pageContext;
-  const navRoot = findDescendent(navTree, (n) => n.path === path);
+  const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const versionArray = makeVersionArray(
     versions,
     pageContext.pathVersions,
@@ -247,6 +216,20 @@ const DocTemplate = ({ data, pageContext }) => {
     originalFilePath,
     deepToC,
   } = frontmatter;
+
+  // don't encourage folks to edit on main - set the edit links to develop in production builds
+  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
+  const fileUrlSegment = fileAbsolutePath.split("/product_docs/docs").slice(1);
+  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}/product_docs/docs${fileUrlSegment}`;
+  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}/product_docs/docs${fileUrlSegment}`;
+  const githubEditLink = `${gitData.docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
+  const githubIssuesLink = `${
+    gitData.docsRepoUrl
+  }/issues/new?title=${encodeURIComponent(
+    `Feedback on ${product} ${version} - "${frontmatter.title}"`,
+  )}&context=${encodeURIComponent(
+    `${githubFileLink}\n`,
+  )}&template=problem-with-topic.yaml`;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
@@ -265,7 +248,8 @@ const DocTemplate = ({ data, pageContext }) => {
     title: title,
     description: description,
     path: pagePath,
-    isIndexPage: isIndexPage,
+    isIndexPage: isPathAnIndexPage(fileAbsolutePath),
+    productVersions,
     canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
   };
 
@@ -344,12 +328,10 @@ const DocTemplate = ({ data, pageContext }) => {
             )}
           </ContentRow>
           {sections && <Sections sections={sections} />}
-          {depth > 2 && (
-            <PrevNext prevNext={prevNext} path={path} depth={depth} />
-          )}
+          {depth > 2 && <PrevNext prevNext={prevNext} depth={depth} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
-          <Footer timestamp={mtime} githubFileLink={githubFileLink} />
+          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
         </MainContent>
       </Container>
     </Layout>

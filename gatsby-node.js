@@ -3,7 +3,6 @@ const realFs = require("fs");
 const path = require("path");
 const gracefulFs = require("graceful-fs");
 gracefulFs.gracefulify(realFs);
-
 const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 
@@ -22,6 +21,7 @@ const {
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
+  reportRedirectCollisions,
   configureLegacyRedirects,
   readFile,
   writeFile,
@@ -53,7 +53,7 @@ const gitData = (() => {
     .replace(/^refs\/tags\//, "");
   sha = sha.trim();
 
-  return { branch, sha };
+  return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
 })();
 
 exports.onCreateNode = async ({
@@ -292,34 +292,14 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // determine next and previous nodes
     const prevNext = findPrevNextNavNodes(navTree, curr);
 
-    const { docType } = node.fields;
-
-    const isLatest =
-      docType === "doc"
-        ? productVersions[node.fields.product][0] === node.fields.version
-        : false;
-
-    // all versions for this path.
-    // Null entries for versions that don't exist. Will try to match redirects to avoid this, but won't follow redirect chains
-    // Canonical version is the first non-null in the list, e.g. pathVersions.filter((p) => !!p)[0]
-    const allPaths = [node.fields.path, ...(node.frontmatter?.redirects || [])];
-    const pathVersions = (productVersions[node.fields.product] || []).map(
-      (v, i) => {
-        const versionPaths = allPaths.map((p) => replacePathVersion(p, v));
-        const match = versionPaths.find((vp) => validPaths.has(vp));
-        if (!match) return null;
-        return i === 0 ? replacePathVersion(match) : match;
-      },
-    );
-
-    configureRedirects(
-      node.fields.path,
-      node.frontmatter.redirects,
+    const pathVersions = configureRedirects(
+      productVersions,
+      node,
+      validPaths,
       actions,
-      isLatest,
-      pathVersions,
     );
 
+    const { docType } = node.fields;
     if (docType === "doc") {
       createDoc(
         navTree,
@@ -330,9 +310,10 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         actions,
       );
     } else if (docType === "advocacy") {
-      createAdvocacy(navTree, prevNext, node, learn, actions);
+      createAdvocacy(navTree, prevNext, node, productVersions, learn, actions);
     }
   }
+  reportRedirectCollisions(validPaths, reporter);
 };
 
 const createDoc = (
@@ -358,24 +339,8 @@ const createDoc = (
     });
   }
 
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const docsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment =
-    removeTrailingSlash(doc.fields.path) +
-    (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${docsRepoUrl}/blob/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${docsRepoUrl}/commits/${gitData.sha}/product_docs/docs${fileUrlSegment}`;
-  const githubEditLink = `${docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
-  const githubIssuesLink = `${docsRepoUrl}/issues/new?title=${encodeURIComponent(
-    `Feedback on ${doc.fields.product} ${doc.fields.version} - "${doc.frontmatter.title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
   const template = doc.frontmatter.productStub ? "doc-stub.js" : "doc.js";
   const path = isLatest ? replacePathVersion(doc.fields.path) : doc.fields.path;
-  const deepToC = doc.frontmatter.deepToC != true ? false : true;
 
   actions.createPage({
     path: path,
@@ -385,12 +350,9 @@ const createDoc = (
       pagePath: path,
       navTree,
       prevNext,
+      productVersions,
       versions: productVersions[doc.fields.product],
       nodeId: doc.id,
-      githubFileLink: githubFileHistoryLink,
-      githubEditLink: githubEditLink,
-      githubIssuesLink: githubIssuesLink,
-      isIndexPage: isIndexPage,
       pathVersions,
     },
   });
@@ -418,7 +380,14 @@ const createDoc = (
   });
 };
 
-const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
+const createAdvocacy = (
+  navTree,
+  prevNext,
+  doc,
+  productVersions,
+  learn,
+  actions,
+) => {
   // configure legacy redirects
   configureLegacyRedirects({
     toPath: doc.fields.path,
@@ -433,22 +402,6 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
     (node) => node.fields.topic === doc.fields.topic,
   );
 
-  const advocacyDocsRepoUrl = "https://github.com/EnterpriseDB/docs";
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const isIndexPage = isPathAnIndexPage(doc.fileAbsolutePath);
-  const fileUrlSegment =
-    removeTrailingSlash(doc.fields.path) +
-    (isIndexPage ? "/index.mdx" : ".mdx");
-  const githubFileLink = `${advocacyDocsRepoUrl}/blob/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${advocacyDocsRepoUrl}/commits/${gitData.sha}/advocacy_docs${fileUrlSegment}`;
-  const githubEditLink = `${advocacyDocsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
-  const githubIssuesLink = `${advocacyDocsRepoUrl}/issues/new?title=${encodeURIComponent(
-    `Regarding "${doc.frontmatter.title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
-
   actions.createPage({
     path: doc.fields.path,
     component: require.resolve("./src/templates/learn-doc.js"),
@@ -458,11 +411,8 @@ const createAdvocacy = (navTree, prevNext, doc, learn, actions) => {
       pagePath: doc.fields.path,
       navLinks: navLinks,
       prevNext,
+      productVersions,
       navTree,
-      githubFileLink: githubFileHistoryLink,
-      githubEditLink: githubEditLink,
-      githubIssuesLink: githubIssuesLink,
-      isIndexPage: isIndexPage,
     },
   });
 
@@ -627,6 +577,34 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
   realFs.copyFileSync(
     path.join(__dirname, "/netlify.toml"),
     path.join(__dirname, "/public/netlify.toml"),
+  );
+
+  //
+  // get rid of compilation hash - speeds up netlify deploys
+  //
+  const { globby } = await import("globby");
+  const generatedHTML = await globby([
+    path.join(__dirname, "/public/**/*.html"),
+  ]);
+  for (let filename of generatedHTML) {
+    let file = await readFile(filename);
+    file = file.replace(
+      /window\.___webpackCompilationHash="[^"]+"/,
+      'window.___webpackCompilationHash=""',
+    );
+    await writeFile(filename, file);
+  }
+  const appDataFilename = path.join(
+    __dirname,
+    "/public/page-data/app-data.json",
+  );
+  const appData = await readFile(appDataFilename);
+  await writeFile(
+    appDataFilename,
+    appData.replace(
+      /"webpackCompilationHash":"[^"]+"/,
+      '"webpackCompilationHash":""',
+    ),
   );
 
   //
