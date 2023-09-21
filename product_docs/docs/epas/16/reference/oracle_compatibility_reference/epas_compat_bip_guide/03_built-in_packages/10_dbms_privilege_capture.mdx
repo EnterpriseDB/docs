@@ -186,13 +186,13 @@ DBMS_PRIVILEGE_CAPTURE.DELETE_RUN (
 
 ## Examples
 
-To enable the privilege analysis feature, set the parameter to a value greater than zero in postgresql.conf file:
+To enable the privilege analysis feature, set the parameter to a value greater than zero in `postgresql.conf` file:
 
 ```ini
 edb_max_capture_privileges_policies = 2
 ```
 
-Login as a superuser or grant the role to the non-super user:
+Login as a superuser or grant the `edb_capture_privileges_admin_role` role to the non-super user:
 
 ```sql
 GRANT edb_capture_privileges_admin_role TO user1;
@@ -207,7 +207,7 @@ CREATE TABLE tab1 (a INT);
 ### Policy on database
 
 ```sql
-## Create policy on database:
+## Create a privilege analysis policy on the database:
 BEGIN
     DBMS_PRIVILEGE_CAPTURE.CREATE_CAPTURE (
         name         => 'policy_on_database',
@@ -226,13 +226,67 @@ DBMS_PRIVILEGE_CAPTURE.DISABLE_CAPTURE(
     name            => `policy_on_database`);
 END;
 
-## Query the data dictionary views to find used and unused privileges:
-SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
-SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+## Run `GENERATE_RESULT` procedure to populate the dictionary views:
+BEGIN
+  DBMS_PRIVILEGE_CAPTURE.GENERATE_RESULT(
+    name   => 'policy_on_database');
+END;
+```
 
-## Query the data dictionary views to find policy based used and unused privileges:
-SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1;
-SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+Query the data dictionary views to find used privileges:
+
+```sql
+SELECT * FROM DBA_USED_PRIVS ORDER BY object_name COLLATE "C", privilege_type COLLATE "C";
+__OUTPUT__
+    policy_name     | run_name | object_class |                                      object_name                                      | column_name |                          application                          | role_name | privilege_type 
+--------------------+----------+--------------+---------------------------------------------------------------------------------------+-------------+---------------------------------------------------------------+-----------+----------------
+ policy_on_database |          | procedure    | dbms_privilege_capture._validate_input_parameter(character varying,character varying) | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | EXECUTE
+ policy_on_database |          | procedure    | dbms_privilege_capture.disable_capture(character varying,character varying)           | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | EXECUTE
+ policy_on_database |          | table        | public.tab1                                                                   | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | INSERT
+ policy_on_database |          | table        | public.tab1                                                                   | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | SELECT
+(4 rows)
+```
+
+Query the data dictionary views to find unused privileges:
+
+```sql
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY object_name COLLATE "C", privilege_type COLLATE "C";
+__OUTPUT__
+    policy_name     | run_name | object_class |     object_name     | column_name |                          application                          | role_name | privilege_type 
+--------------------+----------+--------------+---------------------+-------------+---------------------------------------------------------------+-----------+----------------
+ policy_on_database |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | DELETE
+ policy_on_database |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | REFERENCES
+ policy_on_database |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRIGGER
+ policy_on_database |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRUNCATE
+ policy_on_database |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | UPDATE
+(5 rows)
+```
+
+Drop the policy:
+
+```sql
+BEGIN
+  DBMS_PRIVILEGE_CAPTURE.drop_capture(
+    name   => 'policy_on_database');
+END;
+```
+
+Query the data dictionary views to check policy and its related data is removed:
+
+```sql
+SELECT * FROM DBA_PRIV_CAPTURES;
+__OUTPUT__
+name | description | type | enabled | roles | context | run_name 
+------+-------------+------+---------+-------+---------+----------
+(0 rows)
+```
+
+```sql
+SELECT * FROM DBA_USED_PRIVS;
+__OUTPUT__
+ policy_name | run_name | object_class | object_name | column_name | application | role_name | privilege_type 
+-------------+----------+--------------+-------------+-------------+-------------+-----------+----------------
+(0 rows)
 ```
 
 ### Policy on context
@@ -257,7 +311,7 @@ BEGIN
 END;
 
 ## Access objects:
-CALL func1(1);
+SELECT func1(1);
 DELETE FROM tab1;
 
 ## Disable policy:
@@ -266,19 +320,68 @@ BEGIN
 		name			=> 'policy_on_db_context');
 END;
 
-## Query data dictionary view to find used and Unused privileges:
-SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
-SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
-
-## Stop recording the privileges
+## Run `GENERATE_RESULT` procedure to populate the dictionary views:
 BEGIN
-	DBMS_PRIVILEGE_CAPTURE.DROP_CAPTURE(
-		name			=> 'policy_on_db_context');
+  DBMS_PRIVILEGE_CAPTURE.GENERATE_RESULT(
+    name   => 'policy_on_db_context');
 END;
+```
 
-## Query data dictionary views to find policy captured used and unused privileges.
-SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1;
-SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+Query the data dictionary views to find used privileges:
+
+```sql
+SELECT * FROM DBA_USED_PRIVS ORDER BY object_name COLLATE "C", privilege_type COLLATE "C";
+__OUTPUT__
+     policy_name      | run_name | object_class |                                      object_name                                      | column_name |                          application                          | role_name | privilege_type 
+----------------------+----------+--------------+---------------------------------------------------------------------------------------+-------------+---------------------------------------------------------------+-----------+----------------
+ policy_on_db_context |          | procedure    | dbms_privilege_capture._validate_input_parameter(character varying,character varying) | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | EXECUTE
+ policy_on_db_context |          | procedure    | dbms_privilege_capture.disable_capture(character varying,character varying)           | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | EXECUTE
+ policy_on_db_context |          | function     | public.func1(integer)                                                           | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | EXECUTE
+ policy_on_db_context |          | table        | public.tab1                                                                   | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | DELETE
+(4 rows)
+```
+
+Query the data dictionary views to find unused privileges:
+
+```sql
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY object_name COLLATE "C", privilege_type COLLATE "C";
+__OUTPUT__
+|     policy_name      | run_name | object_class | object_name | column_name |                          application                          | role_name | privilege_type |
++----------------------+----------+--------------+-------------+-------------+---------------------------------------------------------------+-----------+----------------+
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | INSERT         |
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | REFERENCES     |
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | SELECT         |
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRIGGER        |
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRUNCATE       |
+| policy_on_db_context |          | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | UPDATE         |
+(6 rows)
+```
+
+Drop the policy:
+
+```sql
+BEGIN
+  DBMS_PRIVILEGE_CAPTURE.drop_capture(
+    name   => 'policy_on_db_context');
+END;
+```
+
+Query the data dictionary views to check policy and its related data is removed:
+
+```sql
+SELECT * FROM DBA_PRIV_CAPTURES;
+__OUTPUT__
+ name | description | type | enabled | roles | context | run_name 
+------+-------------+------+---------+-------+---------+----------
+(0 rows)
+```
+
+```sql
+SELECT * FROM DBA_USED_PRIVS;
+__OUTPUT__
+ policy_name | run_name | object_class | object_name | column_name | application | role_name | privilege_type 
+-------------+----------+--------------+-------------+-------------+-------------+-----------+----------------
+(0 rows)
 ```
 
 ### Policy on role
@@ -288,19 +391,19 @@ SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
 CREATE ROLE ROLE1;
 GRANT SELECT, UPDATE, DELETE on tab1 to user1;
 
-## Create a policy on role:
+## Create a privilege analysis policy on role:
 BEGIN
 	DBMS_PRIVILEGE_CAPTURE.create_capture(
 		name			=> 'policy_on_role',
 		type			=> DBMS_PRIVILEGE_CAPTURE.G_ROLE,
-		roles			=> ROLE_NAME_LIST('db2271_r1'));
+		roles			=> ROLE_NAME_LIST('role1'));
 
 	DBMS_PRIVILEGE_CAPTURE.enable_capture(
 		name			=> 'policy_on_role',
 		run_name		=> 'run1');
 END;
 
-## Set role and delete data from table:
+## Set role and delete data from the table:
 SET ROLE role1;
 DELETE FROM tab1;
 SET ROLE edb;
@@ -311,8 +414,50 @@ BEGIN
 		name			=> 'policy_on_role');
 END;
 
-## Query data dictionary views to find captured policy information and used and unused privileges:
-SELECT * FROM DBA_PRIV_CAPTURES ORDER BY 1, 2, 6;
-SELECT * FROM DBA_USED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
-SELECT * FROM DBA_UNUSED_PRIVS ORDER BY 1, 2, 3, 4, 7, 8;
+## Run Generate_result procedure to populate the dictionary views:
+BEGIN
+  DBMS_PRIVILEGE_CAPTURE.generate_result(
+    name   => 'policy_on_role');
+END;
+```
+
+Query the data dictionary views to find captured policy information:
+
+```sql
+SELECT * FROM DBA_PRIV_CAPTURES;
+__OUTPUT__
+|      name      | description |  type  | enabled |  roles  | context | run_name |
++----------------+-------------+--------+---------+---------+---------+----------+
+| policy_on_role |             | G_ROLE | f       | {role1} |         | run1     |
+(1 row)
+```
+
+Query the data dictionary views to find used privileges:
+
+```sql
+SELECT * FROM DBA_USED_PRIVS;
+__OUTPUT__
+|  policy_name   | run_name | object_class | object_name | column_name |                          application                          | role_name | privilege_type |
++----------------+----------+--------------+-------------+-------------+---------------------------------------------------------------+-----------+----------------+
+| policy_on_role | run1     | table        | public.tab1 | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | role1     | DELETE         |
+(1 row)
+```
+
+Query the data dictionary views to find unused privileges:
+
+```sql
+SELECT * FROM DBA_UNUSED_PRIVS ORDER BY object_name COLLATE "C", role_name, privilege_type COLLATE "C";
+__OUTPUT__
+  policy_name   | run_name | object_class |     object_name     | column_name |                          application                          | role_name | privilege_type 
+----------------+----------+--------------+---------------------+-------------+---------------------------------------------------------------+-----------+----------------
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | role1     | SELECT
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | role1     | UPDATE
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | DELETE
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | INSERT
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | REFERENCES
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | SELECT
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRIGGER
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | TRUNCATE
+ policy_on_role | run1     | table        | public.tab1         | -           | pg_regress/edb-core/contrib/dbms_privilege_capture/privilege_ | edb       | UPDATE
+(9 rows)
 ```
