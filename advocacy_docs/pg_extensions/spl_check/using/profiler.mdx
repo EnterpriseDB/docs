@@ -9,8 +9,10 @@ When EDB SPL Check is initialized by `shared_preload_libraries`, it can allocate
 Due to dependencies, `shared_preload_libraries` must contain `edb-spl` first: 
 
 ```sql
-show shared_preload_libraries ;
-__OUTPUT__
+SHOW shared_preload_libraries ;
+```
+```
+OUTPUT
   shared_preload_libraries  
 ----------------------------
   edb-spl,spl_check        
@@ -46,67 +48,68 @@ The following are limitations of the query identifier retrieval:
 Display the profile with `spl_profiler_function_tb`:
 
 ```sql
-select lineno, avg_time, source from spl_profiler_function_tb('fx(int)');
-__OUTPUT__
-┌────────┬──────────┬───────────────────────────────────────────────────────────────────┐
-│ lineno │ avg_time │                              source                               │
-╞════════╪══════════╪═══════════════════════════════════════════════════════════════════╡
-│      1 │          │                                                                   │
-│      2 │          │ declare result int = 0;                                           │
-│      3 │    0.075 │ begin                                                             │
-│      4 │    0.202 │   for i in 1..$1 loop                                             │
-│      5 │    0.005 │     select result + i into result; select result + i into result; │
-│      6 │          │   end loop;                                                       │
-│      7 │        0 │   return result;                                                  │
-│      8 │          │ end;                                                              │
-└────────┴──────────┴───────────────────────────────────────────────────────────────────┘
+SELECT lineno, avg_time, source FROM spl_profiler_function_tb('fx(int)');
+```
+```
+OUTPUT
+| lineno │ avg_time │                              source                                |
+|--------|----------|--------------------------------------------------------------------|
+|      1 │          │                                                                    |
+|      2 │          │ declare result int = 0;                                            |
+|      3 │    0.075 │ begin                                                              |
+|      4 │    0.202 │   for i in 1..$1 loop                                              |
+|      5 │    0.005 │     select result + i into result; select result + i into result;  |
+|      6 │          │   end loop;                                                        |
+|      7 │        0 │   return result;                                                   |
+|      8 │          │ end;                                                               |
+
 (9 rows)
 ```
 
 Display the profile per statements with `spl_profiler_function_statements_tb`:
 
 ```sql
-        CREATE OR REPLACE FUNCTION public.fx1(a integer)
-         RETURNS integer
-         LANGUAGE spl
-1       AS $function$
-2       begin
-3         if a > 10 then
-4           raise notice 'ahoj';
-5           return -1;
-6         else
-7           raise notice 'nazdar';
-8           return 1;
-9         end if;
-10      end;
-11      $function$
+CREATE OR REPLACE FUNCTION public.fx1(a integer)
+   RETURNS integer
+   LANGUAGE spl
+ AS $function$
+ BEGIN
+   IF a > 10 THEN
+   RAISE NOTICE 'ahoj';
+ RETURN -1;
+ ELSE
+   RAISE NOTICE 'nazdar';
+ RETURN 1;
+ END IF;
+ END;
+$function$
 
-select stmtid, parent_stmtid, parent_note, lineno, exec_stmts, stmtname
-             from spl_profiler_function_statements_tb('fx1');
-__OUTPUT__
-┌────────┬───────────────┬─────────────┬────────┬────────────┬─────────────────┐
-│ stmtid │ parent_stmtid │ parent_note │ lineno │ exec_stmts │    stmtname     │
-╞════════╪═══════════════╪═════════════╪════════╪════════════╪═════════════════╡
-│      0 │             ∅ │ ∅           │      2 │          0 │ statement block │
-│      1 │             0 │ body        │      3 │          0 │ IF              │
-│      2 │             1 │ then body   │      4 │          0 │ RAISE           │
-│      3 │             1 │ then body   │      5 │          0 │ RETURN          │
-│      4 │             1 │ else body   │      7 │          0 │ RAISE           │
-│      5 │             1 │ else body   │      8 │          0 │ RETURN          │
-└────────┴───────────────┴─────────────┴────────┴────────────┴─────────────────┘
+SELECT stmtid, parent_stmtid, parent_note, lineno, exec_stmts, stmtname
+             FROM spl_profiler_function_statements_tb('fx1');
+```
+```
+OUTPUT
+| stmtid │ parent_stmtid │ parent_note │ lineno │ exec_stmts │    stmtname     │
+|--------|---------------|-------------|--------|------------|-----------------|
+|      0 │             ∅ │ ∅           │      2 │          0 │ statement block │
+|      1 │             0 │ body        │      3 │          0 │ IF              │
+|      2 │             1 │ then body   │      4 │          0 │ RAISE           │
+|      3 │             1 │ then body   │      5 │          0 │ RETURN          │
+|      4 │             1 │ else body   │      7 │          0 │ RAISE           │
+|      5 │             1 │ else body   │      8 │          0 │ RETURN          │
 (6 rows)
 ```
 
 Display all stored profiles with `spl_profiler_functions_all`:
 
 ```sql
-select * from spl_profiler_functions_all();
-__OUTPUT__
-┌───────────────────────┬────────────┬────────────┬──────────┬─────────────┬──────────┬──────────┐
+SELECT * FROM spl_profiler_functions_all();
+```
+```
+OUTPUT
 │        funcoid        │ exec_count │ total_time │ avg_time │ stddev_time │ min_time │ max_time │
-╞═══════════════════════╪════════════╪════════════╪══════════╪═════════════╪══════════╪══════════╡
+|-----------------------|------------|------------|----------|-------------|----------|----------|
 │ fxx(double precision) │          1 │       0.01 │     0.01 │        0.00 │     0.01 │     0.01 │
-└───────────────────────┴────────────┴────────────┴──────────┴─────────────┴──────────┴──────────┘
 (1 row)
 ```
 
