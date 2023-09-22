@@ -12,9 +12,7 @@ To check any trigger, enter a relation that's used with the trigger function. Fo
 ```sql
 CREATE TABLE bar(a int, b int);
 
-CREATE OR REPLACE FUNCTION public.foo();
 
-\sf+ foo_trg
 CREATE OR REPLACE FUNCTION public.foo_trg()
       RETURNS trigger
       LANGUAGE edbspl
@@ -30,7 +28,9 @@ When there's no specified relation for the trigger, the following is returned:
 
 ```sql
 SELECT * FROM spl_check_function('foo_trg()');
-__OUTPUT__
+```
+```
+OUTPUT
 ERROR:  missing trigger relation
 HINT:  Trigger relation oid must be valid
 ```
@@ -39,7 +39,9 @@ When the trigger is checked successfully with a specified relation, the followin
 
 ```sql
 SELECT * FROM spl_check_function('foo_trg()', 'bar');
-__OUTPUT__
+```
+```
+OUTPUT
                  spl_check_function                 
 --------------------------------------------------------
  error:42703:3:assignment:record "new" has no field "c"
@@ -79,8 +81,10 @@ BEGIN
   NEW.a := NEW.b;
 END;
 
-select * from spl_check_trigger('tg1');
-__OUTPUT__
+SELECT * FROM spl_check_trigger('tg1');
+```
+```
+OUTPUT
                spl_check_trigger
 ----------------------------------------------------
  error:42703:2:assignment:record "new" has no field "b"
@@ -95,7 +99,7 @@ A package can have multiple functions/procedures. To validate all of your functi
 You can also validate individual package functions/procedures using `spl_check_function()`. For example:
 
 ```sql
-select * from spl_check_package('<package name>');
+SELECT * FROM spl_check_package('<package name>');
 ```
 
 ## Validating object types
@@ -105,7 +109,7 @@ Object types can have one or more member functions. To validate all the function
 You can also validate individual object type member functions using `spl_check_function()`. For example: 
 
 ```sql
-select * from spl_check_objecttype('<objecttype name>');
+SELECT * FROM spl_check_objecttype('<objecttype name>');
 ```
 
 ## Setting in-comment options
@@ -119,16 +123,16 @@ EDB SPL Check allows persistent-setting, written in-comments. These options are 
 The settings from comment options have top priority, but generally they can be disabled by setting `use_incomment_options` to `false`. For example: 
 
 ```sql
-create or replace function fx(anyelement)
-returns text as $$
-begin
+CREATE OR REPLACE FUNCTION fx(anyelement)
+RETURNS TEXT AS $$
+BEGIN
   /*
    * rewrite default polymorphic type to text
    * @spl_check_options: anyelementtype = text
    */
-  return $1;
-end;
-$$ language edbspl;
+RETURN $1;
+END;
+$$ LANGUAGE edbspl;
 ```
 
 ## Checking all your code
@@ -139,22 +143,22 @@ To check all nontrigger EDB SPL Check functions:
 
 ```sql
 SELECT p.oid, p.proname, spl_check_function(p.oid)
-   FROM pg_catalog.pg_namespace n
-   JOIN pg_catalog.pg_proc p ON pronamespace = n.oid
-   JOIN pg_catalog.pg_language l ON p.prolang = l.oid
-  WHERE l.lanname = 'edbspl' AND p.prorettype <> 2279;
+FROM pg_catalog.pg_namespace n
+JOIN pg_catalog.pg_proc p ON pronamespace = n.oid
+JOIN pg_catalog.pg_language l ON p.prolang = l.oid
+WHERE l.lanname = 'edbspl' AND p.prorettype <> 2279;
 ```
 
 To check all trigger EDB SPL Check functions: 
 
 ```sql
 SELECT p.proname, tgrelid::regclass, cf.*
-   FROM pg_proc p
-        JOIN pg_trigger t ON t.tgfoid = p.oid 
-        JOIN pg_language l ON p.prolang = l.oid
-        JOIN pg_namespace n ON p.pronamespace = n.oid,
-        LATERAL spl_check_function(p.oid, t.tgrelid) cf
-  WHERE n.nspname = 'public' and l.lanname = 'edbspl';
+FROM pg_proc p
+JOIN pg_trigger t ON t.tgfoid = p.oid 
+JOIN pg_language l ON p.prolang = l.oid
+JOIN pg_namespace n ON p.pronamespace = n.oid,
+LATERAL spl_check_function(p.oid, t.tgrelid) cf
+WHERE n.nspname = 'public' and l.lanname = 'edbspl';
 ```
 
 To check all EDB SPL Check functions, including functions or trigger functions with defined triggers: 
@@ -166,18 +170,18 @@ SELECT
     (pcf)."position", (pcf).query, (pcf).context
 FROM
 (
-    SELECT
-        spl_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0)) AS pcf
-    FROM pg_proc
-    LEFT JOIN pg_trigger
-        ON (pg_trigger.tgfoid = pg_proc.oid)
-    WHERE
-        prolang = (SELECT lang.oid FROM pg_language lang WHERE lang.lanname = 'edbspl') AND
-        pronamespace <> (SELECT nsp.oid FROM pg_namespace nsp WHERE nsp.nspname = 'pg_catalog') AND
-        -- ignore unused triggers
-        (pg_proc.prorettype <> (SELECT typ.oid FROM pg_type typ WHERE typ.typname = 'trigger') OR
-         pg_trigger.tgfoid IS NOT NULL)
-    OFFSET 0
+SELECT
+    spl_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0)) AS pcf
+FROM pg_proc
+LEFT JOIN pg_trigger
+ON (pg_trigger.tgfoid = pg_proc.oid)
+WHERE
+    prolang = (SELECT lang.oid FROM pg_language lang WHERE lang.lanname = 'edbspl') AND
+    pronamespace <> (SELECT nsp.oid FROM pg_namespace nsp WHERE nsp.nspname = 'pg_catalog') AND
+    -- ignore unused triggers
+    (pg_proc.prorettype <> (SELECT typ.oid FROM pg_type typ WHERE typ.typname = 'trigger') OR
+    pg_trigger.tgfoid IS NOT NULL)
+OFFSET 0
 ) ss
 ORDER BY (pcf).functionid::regprocedure::text, (pcf).lineno;
 ```
@@ -211,10 +215,10 @@ When the type of a record's variable is unknown, you can explicitly assign it wi
 ```sql
 DECLARE r record;
 BEGIN
-  EXECUTE format('SELECT * FROM %I', _tablename) INTO r;
-  PERFORM spl_check_pragma('type: r (id int, processed bool)');
-  IF NOT r.processed THEN
-    ...
+EXECUTE format('SELECT * FROM %I', _tablename) INTO r;
+PERFORM spl_check_pragma('type: r (id int, processed bool)');
+IF NOT r.processed THEN
+  ...
 ```
 
 !!! Warning 
@@ -237,8 +241,8 @@ RETURNS void AS $$
 DECLARE
   rec_var record;
 BEGIN
-  FETCH refcur_var INTO rec_var; -- this is STOP for spl_check
-  RAISE NOTICE '%', rec_var;     -- record rec_var is not assigned yet error
+FETCH refcur_var INTO rec_var; -- this is STOP for spl_check
+RAISE NOTICE '%', rec_var;     -- record rec_var is not assigned yet error
 ```
 
 In this example, don't use a record type. Instead use a known `rowtype`:
@@ -249,8 +253,8 @@ RETURNS void AS $$
 DECLARE
   rec_var some_rowtype;
 BEGIN
-  FETCH refcur_var INTO rec_var;
-  RAISE NOTICE '%', rec_var;
+FETCH refcur_var INTO rec_var;
+RAISE NOTICE '%', rec_var;
 ```
 
 ### Temporary tables
@@ -268,26 +272,27 @@ CREATE OR REPLACE FUNCTION public.disable_dml()
 RETURNS trigger
 LANGUAGE edbspl AS $function$
 BEGIN
-  RAISE EXCEPTION SQLSTATE '42P01'
-     USING message = format('this instance of %I table doesn''t allow any DML operation', TG_TABLE_NAME),
-           hint = format('you should use "CREATE TEMP TABLE %1$I(LIKE %1$I INCLUDING ALL);" statement',
-                         TG_TABLE_NAME);
-  RETURN NULL;
+RAISE EXCEPTION SQLSTATE '42P01'
+USING message = format('this instance of %I table doesn''t allow any DML operation', TG_TABLE_NAME),
+  hint = format('you should use "CREATE TEMP TABLE %1$I(LIKE %1$I INCLUDING ALL);" statement',
+    TG_TABLE_NAME);
+RETURN NULL;
 END;
 $function$;
 
 CREATE TABLE foo(a int, b int); -- doesn't hold data, ever
 CREATE TRIGGER foo_disable_dml
-   BEFORE INSERT OR UPDATE OR DELETE ON foo
-   EXECUTE PROCEDURE disable_dml();
+BEFORE INSERT OR UPDATE OR DELETE ON foo
+EXECUTE PROCEDURE disable_dml();
 
-postgres=# INSERT INTO  foo VALUES(10,20);
+INSERT INTO  foo VALUES(10,20);
 ERROR:  this instance of foo table doesn't allow any DML operation
 HINT:  you should to run "CREATE TEMP TABLE foo(LIKE foo INCLUDING ALL);" statement
-postgres=# 
+
+CREATE TEMP TABLE foo(LIKE foo INCLUDING ALL);
 
 CREATE TABLE
-postgres=# INSERT INTO  foo VALUES(10,20);
+INSERT INTO  foo VALUES(10,20);
 INSERT 0 1
 ```
 
