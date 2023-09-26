@@ -1,0 +1,93 @@
+---
+title: Createing and joining PGD groups
+navTitle: Creating and joining PGD groups
+---
+
+## Creating and joining PGD groups
+
+For PGD, every node must connect to every other node. To make
+configuration easy, when a new node joins, it configures all
+existing nodes to connect to it. For this reason, every node, including
+the first PGD node created, must know the [PostgreSQL connection string](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING),
+sometimes referred to as a data source name (DSN), that other nodes
+can use to connect to it. Both formats of connection string are supported.
+So you can use either key-value format, like `host=myhost port=5432 dbname=mydb`,
+or URI format, like `postgresql://myhost:5432/mydb`.
+
+The SQL function [`bdr.create_node_group()`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node_group) creates the PGD group
+from the local node. Doing so activates PGD on that node and allows other
+nodes to join the PGD group, which consists of only one node at that point.
+At the time of creation, you must specify the connection string for other
+nodes to use to connect to this node.
+
+Once the node group is created, every further node can join the PGD
+group using the [`bdr.join_node_group()`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) function.
+
+Alternatively, use the command line utility [bdr_init_physical](/pgd/latest/reference/nodes/#bdr_init_physical) to
+create a new node, using `pg_basebackup` (or a physical standby) of an existing
+node. If using `pg_basebackup`, the bdr_init_physical utility can optionally
+specify the base backup of only the target database. The earlier
+behavior was to back up the entire database cluster. With this utility, the activity
+completes faster and also uses less space because it excludes
+unwanted databases. If you specify only the target database, then the excluded
+databases get cleaned up and removed on the new node.
+
+When a new PGD node is joined to an existing PGD group or a node subscribes
+to an upstream peer, before replication can begin the system must copy the
+existing data from the peer nodes to the local node. This copy must be
+carefully coordinated so that the local and remote data starts out
+identical. It's not enough to use pg_dump yourself. The BDR
+extension provides built-in facilities for making this initial copy.
+
+During the join process, the BDR extension synchronizes existing data
+using the provided source node as the basis and creates all metadata
+information needed for establishing itself in the mesh topology in the PGD
+group. If the connection between the source and the new node disconnects during
+this initial copy, restart the join process from the
+beginning.
+
+The node that's joining the cluster must not contain any schema or data
+that already exists on databases in the PGD group. We recommend that the
+newly joining database be empty except for the BDR extension. However,
+it's important that all required database users and roles are created.
+
+Optionally, you can skip the schema synchronization using the `synchronize_structure`
+parameter of the [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) function. In this case, the schema must
+already exist on the newly joining node.
+
+We recommend that you select the source node that has the best connection (the
+closest) as the source node for joining. Doing so lowers the time
+needed for the join to finish.
+
+Coordinate the join procedure using the Raft consensus algorithm, which
+requires most existing nodes to be online and reachable.
+
+The logical join procedure (which uses the [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) function)
+performs data sync doing `COPY` operations and uses multiple writers
+(parallel apply) if those are enabled.
+
+Node join can execute concurrently with other node joins for the majority of
+the time taken to join. However, only one regular node at a time can be in
+either of the states PROMOTE or PROMOTING, which are typically fairly short if
+all other nodes are up and running. Otherwise the join is serialized at
+this stage. The subscriber-only nodes are an exception to this rule, and they
+can be concurrently in PROMOTE and PROMOTING states as well, so their join
+process is fully concurrent.
+
+The join process uses only one node as the source, so it can be
+executed when nodes are down if a majority of nodes are available.
+This can cause a complexity when running logical join.
+During logical join, the commit timestamp of rows copied from the source
+node is set to the latest commit timestamp on the source node.
+Committed changes on nodes that have a commit timestamp earlier than this
+(because nodes are down or have significant lag) can conflict with changes
+from other nodes. In this case, the newly joined node can be resolved
+differently to other nodes, causing a divergence. As a result, we recommend
+not running a node join when significant replication lag exists between nodes.
+If this is necessary, run LiveCompare on the newly joined node to
+correct any data divergence once all nodes are available and caught up.
+
+`pg_dump` can fail when there is concurrent DDL activity on the source node
+because of cache-lookup failures. Since [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) uses `pg_dump`
+internally, it might fail if there's concurrent DDL activity on the source node.
+Retrying the join works in that case.

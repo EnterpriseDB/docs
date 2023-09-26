@@ -1,0 +1,106 @@
+---
+title: Logical standby nodes
+---
+
+PGD allows you to create a *logical standby node*, also known as an offload
+node, a read-only node, receive-only node, or logical-read replicas.
+A master node can have zero, one, or more logical standby nodes.
+
+!!! Note
+    Logical standby nodes can be used in environments where network traffic
+    between data centers is a concern; otherwise having more data nodes per
+    location is always preferred.
+
+With a physical standby node, the node never comes up fully, forcing it to
+stay in continual recovery mode.
+PGD allows something similar. [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) has the `pause_in_standby`
+option to make the node stay in half-way-joined as a logical standby node.
+Logical standby nodes receive changes but don't send changes made locally
+to other nodes.
+
+Later, if you want, use [`bdr.promote_node`](/pgd/latest/reference/nodes-management-interfaces#bdrpromote_node) to move the logical standby into a
+full, normal send/receive node.
+
+A logical standby is sent data by one source node, defined by the DSN in
+[`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group). Changes from all other nodes are received from this one
+source node, minimizing bandwidth between multiple sites.
+
+There are multiple options for high availability:
+
+-   If the source node dies, one physical standby can be promoted to a master.
+    In this case, the new master can continue to feed any or all logical standby nodes.
+
+-   If the source node
+    dies, one logical standby can be promoted to a full node and replace the source
+    in a failover operation similar to single-master operation. If there
+    are multiple logical standby nodes, the other nodes can't follow the new master,
+    so the effectiveness of this technique is limited to one logical
+    standby.
+
+In case a new standby is created from an existing PGD node,
+the needed replication slots for operation aren't synced to the
+new standby until at least 16 MB of LSN has elapsed since the group
+slot was last advanced. In extreme cases, this might require a full
+16 MB before slots are synced or created on the streaming replica. If
+a failover or switchover occurs during this interval, the
+streaming standby can't be promoted to replace its PGD node, as the
+group slot and other dependent slots don't exist yet.
+
+The slot sync-up process on the standby solves this by invoking a function
+on the upstream. This function moves the group slot in the
+entire EDB Postgres Distributed cluster by performing WAL switches and requesting all PGD
+peer nodes to replay their progress updates. This causes the
+group slot to move ahead in a short time span. This reduces the time
+required by the standby for the initial slot's sync-up, allowing for
+faster failover to it, if required.
+
+On PostgreSQL, it's important to ensure that the slot's sync-up completes on
+the standby before promoting it. You can run the following query on the
+standby in the target database to monitor and ensure that the slots
+synced up with the upstream. The promotion can go ahead when this query
+returns `true`.
+
+```sql
+SELECT true FROM pg_catalog.pg_replication_slots WHERE
+    slot_type = 'logical' AND confirmed_flush_lsn IS NOT NULL;
+```
+
+You can also nudge the slot sync-up process in the entire PGD
+cluster by manually performing WAL switches and by requesting all PGD
+peer nodes to replay their progress updates. This activity causes
+the group slot to move ahead in a short time and also hastens the
+slot sync-up activity on the standby. You can run the following queries
+on any PGD peer node in the target database for this:
+
+```sql
+SELECT bdr.run_on_all_nodes('SELECT pg_catalog.pg_switch_wal()');
+SELECT bdr.run_on_all_nodes('SELECT bdr.request_replay_progress_update()');
+```
+
+Use the monitoring query on the standby to check that these
+queries do help in faster slot sync-up on that standby.
+
+Logical standby nodes can be protected using physical standby nodes,
+if desired, so Master->LogicalStandby->PhysicalStandby. You can't
+cascade from LogicalStandby to LogicalStandby.
+
+A logical standby does allow write transactions, so the restrictions
+of a physical standby don't apply. You can use this to great benefit, since
+it allows the logical standby to have additional indexes, longer retention
+periods for data, intermediate work tables, LISTEN/NOTIFY, temp tables,
+materialized views, and other differences.
+
+Any changes made locally to logical standbys that commit before the promotion
+aren't sent to other nodes. All transactions that commit after promotion
+are sent onwards. If you perform writes to a logical standby,
+take care to quiesce the database before promotion.
+
+You might make DDL changes to logical standby nodes but they aren't
+replicated and they don't attempt to take global DDL locks. PGD functions
+that act similarly to DDL also aren't replicated. See [DDL replication](ddl).
+If you made incompatible DDL changes to a logical standby,
+then the database is a *divergent node*. Promotion of a divergent
+node currently results in replication failing.
+As a result, plan to either ensure that a logical standby node
+is kept free of divergent changes if you intend to use it as a standby, or
+ensure that divergent nodes are never promoted.

@@ -1,0 +1,55 @@
+---
+title: Connection DSNs and SSL (TLS)
+---
+
+The DSN of a node is simply a `libpq` connection string, since nodes connect
+using `libpq`. As such, it can contain any permitted `libpq` connection
+parameter, including those for SSL. The DSN must work as the
+connection string from the client connecting to the node in which it's
+specified. An example of such a set of parameters using a client certificate is:
+
+```ini
+sslmode=verify-full sslcert=bdr_client.crt sslkey=bdr_client.key
+sslrootcert=root.crt
+```
+
+With this setup, the files `bdr_client.crt`, `bdr_client.key`, and
+`root.crt` must be present in the data directory on each node, with the
+appropriate permissions.
+For `verify-full` mode, the server's SSL certificate is checked to
+ensure that it's directly or indirectly signed with the `root.crt` certificate
+authority and that the host name or address used in the connection matches the
+contents of the certificate. In the case of a name, this can match a Subject
+Alternative Name or, if there are no such names in the certificate, the
+Subject's Common Name (CN) field.
+Postgres doesn't currently support subject alternative names for IP
+addresses, so if the connection is made by address rather than name, it must
+match the CN field.
+
+The CN of the client certificate must be the name of the user making the
+PGD connection.
+This is usually the user postgres. Each node requires matching
+lines permitting the connection in the `pg_hba.conf` file. For example:
+
+```ini
+hostssl all         postgres 10.1.2.3/24 cert
+hostssl replication postgres 10.1.2.3/24 cert
+```
+
+Another setup might be to use `SCRAM-SHA-256` passwords instead of client
+certificates and not verify the server identity as long as
+the certificate is properly signed. Here the DSN parameters might be:
+
+```ini
+sslmode=verify-ca sslrootcert=root.crt
+```
+
+The corresponding `pg_hba.conf` lines are:
+
+```ini
+hostssl all         postgres 10.1.2.3/24 scram-sha-256
+hostssl replication postgres 10.1.2.3/24 scram-sha-256
+```
+
+In such a scenario, the postgres user needs a `.pgpass` file
+containing the correct password.

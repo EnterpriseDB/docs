@@ -1,0 +1,72 @@
+---
+title: Decoding worker
+---
+
+PGD provides an option to enable a decoding worker process that performs
+decoding once, no matter how many nodes are sent data. This introduces a
+new process, the WAL decoder, on each PGD node. One WAL sender process still
+exists for each connection, but these processes now just perform the task of
+sending and receiving data. Taken together, these changes reduce the CPU
+overhead of larger PGD groups and also allow higher replication throughput
+since the WAL sender process now spends more time on communication.
+
+`enable_wal_decoder` is an option for each PGD group, which is currently
+disabled by default. You can use [`bdr.alter_node_group_config()`](reference/nodes-management-interfaces/#bdralter_node_group_config) to enable or
+disable the decoding worker for a PGD group.
+
+When the decoding worker is enabled, PGD stores logical change record (LCR)
+files to allow buffering of changes between decoding and when all
+subscribing nodes received data. LCR files are stored under the
+`pg_logical` directory in each local node's data directory. The number and
+size of the LCR files varies as replication lag increases, so this also
+needs monitoring. The LCRs that aren't required by any of the PGD nodes are cleaned
+periodically. The interval between two consecutive cleanups is controlled by
+[`bdr.lcr_cleanup_interval`](/pgd/latest/reference/pgd-settings#bdrlcr_cleanup_interval), which defaults to 3 minutes. The cleanup is
+disabled when [`bdr.lcr_cleanup_interval`](/pgd/latest/reference/pgd-settings#bdrlcr_cleanup_interval) is zero.
+
+When disabled, logical decoding is performed by the WAL sender process for each
+node subscribing to each node. In this case, no LCR files are written.
+
+Even though the decoding worker is enabled for a PGD group, following
+GUCs control the production and use of LCR per node. By default
+these are `false`. For production and use of LCRs, enable the
+decoding worker for the PGD group and set these GUCs to `true` on each of the nodes in the PGD group.
+
+-   [`bdr.enable_wal_decoder`](/pgd/latest/reference/pgd-settings#bdrenable_wal_decoder) &mdash; When turned `false`, all WAL
+    senders using LCRs restart to use WAL directly. When `true`
+    along with the PGD group config, a decoding worker process is
+    started to produce LCR and WAL Senders use LCR.
+-   [`bdr.receive_lcr`](/pgd/latest/reference/pgd-settings#bdrreceive_lcr) &mdash; When `true` on the subscribing node, it requests WAL
+    sender on the publisher node to use LCRs if available.
+
+## Notes
+
+As of now, a decoding worker decodes changes corresponding to the node where it's
+running. A logical standby is sent changes from all the nodes in the PGD group
+through a single source. Hence a WAL sender serving a logical standby can't
+use LCRs right now.
+
+A subscriber-only node receives changes from respective nodes directly. Hence
+a WAL sender serving a subscriber-only node can use LCRs.
+
+Even though LCRs are produced, the corresponding WALs are still retained similar
+to the case when a decoding worker isn't enabled. In the future, it might be possible
+to remove WAL corresponding the LCRs, if they aren't otherwise required.
+
+For reference, the first 24 characters of an LCR file name are similar to those
+in a WAL file name. The first 8 characters of the name are all '0' right now.
+In the future, they are expected to represent the TimeLineId similar to the first 8
+characters of a WAL segment file name. The following sequence of 16 characters
+of the name is similar to the WAL segment number, which is used to track LCR
+changes against the WAL stream.
+
+However, logical changes are
+reordered according to the commit order of the transactions they belong to.
+Hence their placement in the LCR segments doesn't match the placement of
+corresponding WAL in the WAL segments.
+
+The set of last 16 characters represents the
+subsegment number in an LCR segment. Each LCR file corresponds to a
+subsegment. LCR files are binary and variable sized. The maximum size of an
+LCR file can be controlled by `bdr.max_lcr_segment_file_size`, which
+defaults to 1 GB.

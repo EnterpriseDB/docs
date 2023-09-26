@@ -1,0 +1,58 @@
+---
+title: Node restart and down node recovery
+navTitle: Node restart and recovery
+---
+
+PGD is designed to recover from node restart or node disconnection.
+The disconnected node rejoins the group by reconnecting
+to each peer node and then replicating any missing data from that node.
+
+When a node starts up, each connection begins showing up in [`bdr.node_slots`](/pgd/latest/reference/catalogs-visible#bdrnode_slots) with
+`bdr.node_slots.state = catchup` and begins replicating missing data.
+Catching up continues for a period of time that depends on the
+amount of missing data from each peer node and will likely increase
+over time, depending on the server workload.
+
+If the amount of write activity on each node isn't uniform, the catchup period
+from nodes with more data can take significantly longer than other nodes.
+Eventually, the slot state changes to `bdr.node_slots.state = streaming`.
+
+Nodes that are offline for longer periods, such as hours or days,
+can begin to cause resource issues for various reasons. Don't plan
+on extended outages without understanding the following issues.
+
+Each node retains change information (using one
+[replication slot](https://www.postgresql.org/docs/current/logicaldecoding-explanation.html)
+for each peer node) so it can later replay changes to a temporarily unreachable node.
+If a peer node remains offline indefinitely, this accumulated change information
+eventually causes the node to run out of storage space for PostgreSQL
+transaction logs (*WAL* in `pg_wal`), and likely causes the database server
+to shut down with an error similar to this:
+
+```
+PANIC: could not write to file "pg_wal/xlogtemp.559": No space left on device
+```
+
+Or, it might report other out-of-disk related symptoms.
+
+In addition, slots for offline nodes also hold back the catalog xmin, preventing
+vacuuming of catalog tables.
+
+On EDB Postgres Extended Server and EDB Postgres Advanced Server, offline nodes
+also hold back freezing of data to prevent losing conflict-resolution data
+(see [Origin conflict detection](consistency/conflicts)).
+
+Administrators must monitor for node outages (see [monitoring](monitoring/))
+and make sure nodes have enough free disk space. If the workload is
+predictable, you might be able to calculate how much space is used over time,
+allowing a prediction of the maximum time a node can be down before critical
+issues arise.
+
+Don't manually remove replication slots created by PGD. If you do, the cluster
+becomes damaged and the node that was using the
+slot must be parted from the cluster, as described in [Replication slots created by PGD](#replication-slots-created-by-pgd).
+
+While a node is offline, the other nodes might not yet have received
+the same set of data from the offline node, so this might appear as a slight
+divergence across nodes. The parting process corrects this imbalance across nodes.
+(Later versions might do this earlier.)

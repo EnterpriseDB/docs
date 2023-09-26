@@ -1,0 +1,107 @@
+---
+title: Physical standby nodes
+---
+
+PGD also enables you to create traditional physical standby failover
+nodes. These are commonly intended to directly replace a PGD
+node in the cluster after a short promotion procedure. As with
+any standard Postgres cluster, a node can have any number of these
+physical replicas.
+
+There are, however, some minimal prerequisites for this to work properly
+due to the use of replication slots and other functional requirements in
+PGD:
+
+-   The connection between PGD primary and standby uses streaming
+    replication through a physical replication slot.
+-   The standby has:
+    -   `recovery.conf` (for PostgreSQL &lt;12, for PostgreSQL 12+ these settings are in `postgres.conf`):
+        -   `primary_conninfo` pointing to the primary
+        -   `primary_slot_name` naming a physical replication slot on the primary to be used only by this standby
+    -   `postgresql.conf`:
+        -   `shared_preload_libraries = 'bdr'`, there can be other plugins in the list as well, but don't include pglogical
+        -   `hot_standby = on`
+        -   `hot_standby_feedback = on`
+-   The primary has:
+    -   `postgresql.conf`:
+        -   [`bdr.standby_slot_names`](/pgd/latest/reference/pgd-settings#bdrstandby_slot_names) specifies the physical
+            replication slot used for the standby's `primary_slot_name`.
+
+While this is enough to produce a working physical standby of a PGD
+node, you need to address some additional concerns.
+
+Once established, the standby requires enough time and WAL traffic
+to trigger an initial copy of the primary's other PGD-related
+replication slots, including the PGD group slot. At minimum, slots on a
+standby are live and can survive a failover only if they report
+a nonzero `confirmed_flush_lsn` as reported by `pg_replication_slots`.
+
+As a consequence, check physical standby nodes in newly initialized PGD
+clusters with low amounts of write activity before
+assuming a failover will work normally. Failing to take this precaution
+can result in the standby having an incomplete subset of required
+replication slots needed to function as a PGD node, and thus an
+aborted failover.
+
+The protection mechanism that ensures physical standby nodes are up to date
+and can be promoted (as configured by [`bdr.standby_slot_names`](/pgd/latest/reference/pgd-settings#bdrstandby_slot_names)) affects the
+overall replication latency of the PGD group. This is because the group replication
+happens only when the physical standby nodes are up to date.
+
+For these reasons, we generally recommend to use either logical standby nodes
+or a subscribe-only group instead of physical standby nodes. They both
+have better operational characteristics in comparison.
+
+You can can manually ensure the group slot is advanced on all nodes
+(as much as possible), which helps hasten the creation of PGD-related
+replication slots on a physical standby using the following SQL syntax:
+
+```sql
+SELECT bdr.move_group_slot_all_nodes();
+```
+
+Upon failover, the standby must perform one of two actions to replace
+the primary:
+
+-   Assume control of the same IP address or hostname as the primary.
+-   Inform the EDB Postgres Distributed cluster of the change in address by executing the
+    [bdr.alter_node_interface](reference/nodes-management-interfaces/#bdralter_node_interface) function on all other PGD nodes.
+
+Once this is done, the other PGD nodes reestablish communication
+with the newly promoted standby -> primary node. Since replication
+slots are synchronized only periodically, this new primary might reflect
+a lower LSN than expected by the existing PGD nodes. If this is the
+case, PGD fast forwards each lagging slot to the last location
+used by each PGD node.
+
+Take special note of the [`bdr.alter_node_interface`](/pgd/latest/reference/nodes-management-interfaces#bdralter_node_interface)) parameter as
+well. It's important to set it in a EDB Postgres Distributed cluster where there is a
+primary -> physical standby relationship or when using subscriber-only groups.
+
+PGD maintains a group slot that always reflects the state of the
+cluster node showing the most lag for any outbound replication.
+With the addition of a physical
+replica, PGD must be informed that there is a nonparticipating node
+member that, regardless, affects the state of the group slot.
+
+Since the standby doesn't directly communicate with the other PGD
+nodes, the `standby_slot_names` parameter informs PGD to consider named
+slots as needed constraints on the group slot as well. When set, the
+group slot is held if the standby shows lag, even if the group
+slot is normally advanced.
+
+As with any physical replica, this type of standby can also be
+configured as a synchronous replica. As a reminder, this requires:
+
+-   On the standby:
+    -   Specifying a unique `application_name` in `primary_conninfo`
+-   On the primary:
+    -   Enabling `synchronous_commit`
+    -   Including the standby `application_name` in `synchronous_standby_names`
+
+It's possible to mix physical standby and other PGD nodes in
+`synchronous_standby_names`. CAMO and Eager All-Node Replication use
+different synchronization mechanisms and don't work with synchronous
+replication. Make sure `synchronous_standby_names` doesn't
+include any PGD node if either CAMO or Eager All-Node Replication is used.
+Instead use only non-PGD nodes, for example, a physical standby.
