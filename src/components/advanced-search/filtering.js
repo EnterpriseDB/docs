@@ -1,17 +1,14 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Badge } from "react-bootstrap";
 import {
-  connectMenu,
-  connectCurrentRefinements,
-  connectRefinementList,
-} from "react-instantsearch-dom";
+  useClearRefinements,
+  useCurrentRefinements,
+  useRefinementList,
+  useInstantSearch,
+} from "react-instantsearch";
 import { products } from "../../constants/products";
 import { capitalize } from "../../constants/utils";
-
-const typeToContentType = {
-  doc: { name: "Documentation" },
-  guide: { name: "Guides" },
-};
+import useSiteMetadata from "../../hooks/use-sitemetadata";
 
 const labelForItem = (item, translation) => {
   return translation[item.label]
@@ -20,7 +17,7 @@ const labelForItem = (item, translation) => {
 };
 
 const versionSort = (a, b) => {
-  return b.label.localeCompare(a.label, undefined, { numeric: true });
+  return b.name.localeCompare(a.name, undefined, { numeric: true });
 };
 
 const RadioInput = ({
@@ -46,7 +43,7 @@ const RadioInput = ({
       {labelText}
       <Badge
         variant="secondary"
-        className="ml-2 align-middle search-filter-badge"
+        className="ms-2 align-middle search-filter-badge"
       >
         {showBadge && badgeNumber}
       </Badge>
@@ -58,8 +55,8 @@ const RadioRefinement = ({
   attribute,
   heading,
   items,
-  queryActive,
   refine,
+  showBadge,
   show,
   sortFunction,
   translation = {},
@@ -79,9 +76,17 @@ const RadioRefinement = ({
       }),
   );
 
+  const radioRefine = (refinement) => {
+    // toggle all current refinements, add new one
+    for (let item of items) {
+      if (item !== refinement && item.isRefined) refine(item.label);
+    }
+    if (refinement) refine(refinement.label);
+  };
+
   return (
-    <div className={`mb-4 pl-1 ${!show && "d-none"}`}>
-      <div className="mb-2 font-weight-bold text-muted text-uppercase small">
+    <div className={`mb-4 ps-1 ${!show && "d-none"}`}>
+      <div className="mb-2 fw-bold text-muted text-uppercase small">
         {heading || capitalize(attribute)}
       </div>
       <RadioInput
@@ -89,8 +94,8 @@ const RadioRefinement = ({
         name={radioName}
         labelText="All"
         badgeNumber={items.reduce((total, item) => total + item.count, 0)}
-        showBadge={queryActive}
-        onChange={() => refine("")}
+        showBadge={showBadge}
+        onChange={() => radioRefine()}
         checked={!refinedItem}
       />
       {sortedItems.map((item) => (
@@ -100,8 +105,8 @@ const RadioRefinement = ({
           name={radioName}
           labelText={labelForItem(item, translation)}
           badgeNumber={item.count}
-          showBadge={queryActive}
-          onChange={() => refine(item.label)}
+          showBadge={showBadge}
+          onChange={() => radioRefine(item)}
           checked={refinedItem === item}
         />
       ))}
@@ -109,54 +114,41 @@ const RadioRefinement = ({
   );
 };
 
-/* eslint-disable no-unused-vars */
-const ContentTypeRefinement = connectMenu(
-  /* eslint-enable */
-  ({ items, currentRefinement, refine, queryActive }) => (
+const SingleFacetRefinement = ({
+  attribute,
+  limit,
+  show,
+  hideIfEmpty = false,
+  sortBy,
+}) => {
+  const { items, refine } = useRefinementList({ attribute, limit, sortBy });
+  const empty = !items || items.length === 0;
+  const { algoliaIndex } = useSiteMetadata();
+
+  const { uiState } = useInstantSearch();
+  const query = uiState[algoliaIndex].query;
+
+  return (
     <RadioRefinement
-      attribute="type"
+      attribute={attribute}
       items={items}
-      queryActive={queryActive}
       refine={refine}
-      show={true}
-      translation={typeToContentType}
+      showBadge={query && query.length}
+      show={show && !(hideIfEmpty && empty)}
+      translation={products}
+      sortFunction={null}
     />
-  ),
-);
+  );
+};
 
-const SingleFacetRefinement = connectRefinementList(
-  ({
-    items,
-    refine,
-    queryActive,
-    show,
-    attribute,
-    sortFunction,
-    hideIfEmpty = false,
-  }) => {
-    const empty = !items || items.length === 0;
-
-    return (
-      <RadioRefinement
-        attribute={attribute}
-        items={items}
-        queryActive={queryActive}
-        refine={refine}
-        show={show && !(hideIfEmpty && empty)}
-        translation={products}
-        sortFunction={sortFunction}
-      />
-    );
-  },
-);
-
-const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
+const ClearRefinements = () => {
+  const { canRefine, refine } = useClearRefinements();
   const clear = (e) => {
-    refine(items);
+    refine();
     e.preventDefault();
   };
 
-  if (items.length > 0) {
+  if (canRefine) {
     return (
       <a href="/" onClick={clear}>
         Clear Filters
@@ -164,51 +156,37 @@ const ClearRefinements = connectCurrentRefinements(({ items, refine }) => {
     );
   }
   return null;
-});
+};
 
-export const AdvancedSearchFiltering = connectCurrentRefinements(
-  ({ items, queryActive, refine }) => {
-    const showProductVersionFilters = !items.find((item) => {
-      return item.attribute === "type" && item.currentRefinement === "guide";
-    });
+export const AdvancedSearchFiltering = () => {
+  const { items } = useCurrentRefinements();
 
-    const productFilterApplied = items.some(
-      (item) => item.attribute === "product",
-    );
-    const versionFilterApplied = items.some(
-      (item) => item.attribute === "version",
-    );
+  const productFilterApplied = items.some(
+    (item) => item.attribute === "product",
+  );
+  const versionFilterApplied = items.some(
+    (item) => item.attribute === "version",
+  );
 
-    // if we don't have a product filter applied, wipe any version filters
-    useEffect(() => {
-      if (versionFilterApplied && !productFilterApplied) {
-        const versionFilter = items.find(
-          (item) => item.attribute === "version",
-        );
-        if (versionFilter.items[0]) {
-          refine(versionFilter.items[0].value);
-        }
-      }
-    });
+  // if we don't have a product filter applied, wipe any version filters
+  if (versionFilterApplied && !productFilterApplied) {
+    const versionFilter = items.find((item) => item.attribute === "version");
+    for (let refinement of versionFilter.refinements) {
+      versionFilter.refine(refinement);
+    }
+  }
 
-    return (
-      <>
-        <SingleFacetRefinement
-          attribute="product"
-          limit={30}
-          show={showProductVersionFilters}
-          queryActive={queryActive}
-        />
-        <SingleFacetRefinement
-          attribute="version"
-          limit={30}
-          show={showProductVersionFilters && productFilterApplied}
-          queryActive={queryActive}
-          hideIfEmpty={!versionFilterApplied}
-          sortFunction={versionSort}
-        />
-        <ClearRefinements />
-      </>
-    );
-  },
-);
+  return (
+    <>
+      <SingleFacetRefinement attribute="product" limit={30} show={true} />
+      <SingleFacetRefinement
+        attribute="version"
+        limit={30}
+        show={productFilterApplied}
+        hideIfEmpty={!versionFilterApplied}
+        sortBy={versionSort}
+      />
+      <ClearRefinements />
+    </>
+  );
+};

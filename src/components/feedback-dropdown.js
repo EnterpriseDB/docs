@@ -37,7 +37,7 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
 
   return (
     <DropdownButton
-      className="ml-3"
+      className="ms-3"
       size="sm"
       variant="outline-info"
       id="page-actions-button"
@@ -45,7 +45,7 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
         //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
         <Icon
           iconName={iconNames.ELLIPSIS}
-          className="fill-orange mr-2"
+          className="fill-orange me-2"
           width="15"
           height="15"
         />

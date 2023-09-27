@@ -5,14 +5,14 @@ import Icon, { iconNames } from "../components/icon";
 
 const KatacodaPanelToggleClosed = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
-    <div className="mr-5">
+    <div className="me-5">
       <Button
         onClick={onClick}
         variant="info"
         className="katacoda-start-button"
       >
         <div>Interactive Demo</div>
-        <div className="font-weight-bold cta">Start Now</div>
+        <div className="fw-bold cta">Start Now</div>
       </Button>
     </div>
     <div className="d-flex align-items-center">
@@ -24,9 +24,9 @@ const KatacodaPanelToggleClosed = ({ onClick }) => (
         circleDiameter={45}
         circleClassName="bg-blue-10"
       />
-      <div className="ml-2">
-        Clicking <span className="font-weight-bold">Start Now</span> will load
-        an interactive terminal in this window
+      <div className="ms-2">
+        Clicking <span className="fw-bold">Start Now</span> will load an
+        interactive terminal in this window
       </div>
     </div>
   </div>
@@ -39,7 +39,7 @@ const KatacodaPanelToggleOpenInstruction = ({ children, className = "" }) => (
       width={13}
       circle={true}
       circleDiameter={25}
-      circleClassName="bg-blue-10 mr-3"
+      circleClassName="bg-blue-10 me-3"
       circleAutoMargin={false}
     />
     {children}
@@ -48,14 +48,14 @@ const KatacodaPanelToggleOpenInstruction = ({ children, className = "" }) => (
 
 const KatacodaPanelToggleOpen = ({ onClick }) => (
   <div className="d-flex align-items-center mt-5 mb-5">
-    <div className="mr-5">
+    <div className="me-5">
       <Button
         onClick={onClick}
         variant="outline-info"
         className="katacoda-start-button"
       >
         <div>Interactive Demo</div>
-        <div className="font-weight-bold cta">Enabled</div>
+        <div className="fw-bold cta">Enabled</div>
       </Button>
     </div>
     <div className="d-flex flex-column">

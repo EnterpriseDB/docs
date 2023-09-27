@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Container, Navbar } from "react-bootstrap";
 import algoliasearch from "algoliasearch/lite";
-import { InstantSearch, Configure } from "react-instantsearch-dom";
+import { InstantSearch, Configure } from "react-instantsearch";
 import { Footer, Layout, SideNavigation } from "../components";
 import {
   AdvancedSearchFiltering,
@@ -19,15 +19,7 @@ const searchClient = algoliasearch(
 
 const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
-
   const { algoliaIndex } = useSiteMetadata();
-
-  const [query, setQuery] = useState(paramSearchState.query || "");
-  const [searchState, setSearchState] = useState(paramSearchState || {});
-
-  useEffect(() => {
-    writeStateToQueryParams(searchState);
-  });
 
   return (
     <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
@@ -35,25 +27,25 @@ const Search = (data) => {
         <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
-          onSearchStateChange={(searchState) => {
-            setQuery(searchState.query);
-            setSearchState(searchState);
+          initialUiState={{ [algoliaIndex]: paramSearchState }}
+          onStateChange={({ uiState, setUiState }) => {
+            writeStateToQueryParams(uiState[algoliaIndex]);
+            setUiState(uiState);
           }}
-          searchState={searchState}
         >
           <Configure hitsPerPage={30} facetingAfterDistinct={true} />
 
           <SideNavigation background="white">
-            <AdvancedSearchFiltering queryActive={query && query.length > 0} />
+            <AdvancedSearchFiltering />
           </SideNavigation>
 
-          <div className="flex-grow-1 border-right min-w-50">
+          <div className="flex-grow-1 border-end min-w-50">
             <Navbar variant="light" className="flex-md-nowrap p-3">
-              <AdvancedSearchForm query={query} />
+              <AdvancedSearchForm />
             </Navbar>
 
             <main role="main" className="content-container mt-0 p-3">
-              <AdvancedSearchResults query={query} />
+              <AdvancedSearchResults />
               <Footer />
             </main>
           </div>
