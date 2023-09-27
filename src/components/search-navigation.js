@@ -6,17 +6,17 @@ import { Link, Logo } from "./";
 
 const LogoLink = () => (
   <Link to="https://www.enterprisedb.com/" title="EDB Home">
-    <Logo width="120" height="50" className="mr-1" />
+    <Logo width="120" height="50" className="me-1" />
   </Link>
 );
 
 const DocsLink = () => (
   <Link
     to="/"
-    className="mr-3 lead text-muted pt-2 header-docs-link"
+    className="me-3 lead text-muted pt-2 header-docs-link"
     title="EDB Docs homepage"
   >
-    /<span className="pl-1">docs</span>
+    /<span className="ps-1">docs</span>
   </Link>
 );
 

@@ -167,7 +167,7 @@ const Section = ({ section }) => (
             <p className="card-text" key={`${guide.title}`}>
               <Link
                 to={guide.path}
-                className="btn btn-link btn-block text-left p-0"
+                className="btn btn-link btn-block text-start p-0"
               >
                 {guide.navTitle || guide.title}
               </Link>
@@ -178,7 +178,7 @@ const Section = ({ section }) => (
             </p>
           ) : (
             <DevOnly key={Math.random()}>
-              <span className="badge badge-light">Link Missing!</span>
+              <span className="badge bg-light text-dark">Link Missing!</span>
             </DevOnly>
           ),
         )}
@@ -283,7 +283,7 @@ const DocTemplate = ({ data, pageContext }) => {
             <h1 className="balance-text">
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
-                <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+                <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
                   v{version}
                 </span>
               )}

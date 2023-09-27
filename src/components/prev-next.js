@@ -13,7 +13,7 @@ const PrevNext = ({ prevNext, depth, depthLimit = 3 }) => {
         {prevLink && (
           <Link
             to={prevLink.path}
-            className="p-3 d-inline-block btn btn-outline-primary text-left"
+            className="p-3 d-inline-block btn btn-outline-primary text-start"
           >
             <h5 className="m-0">&larr; Prev</h5>
             <p className="m-0 small balance-text">{prevLink.title}</p>
@@ -24,7 +24,7 @@ const PrevNext = ({ prevNext, depth, depthLimit = 3 }) => {
         {nextLink && (
           <Link
             to={nextLink.path}
-            className="p-3 d-inline-block btn btn-outline-primary text-right"
+            className="p-3 d-inline-block btn btn-outline-primary text-end"
           >
             <h5 className="m-0">Next &rarr;</h5>
             <p className="m-0 small balance-text">{nextLink.title}</p>

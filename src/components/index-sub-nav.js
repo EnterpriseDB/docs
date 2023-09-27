@@ -11,7 +11,7 @@ const IndexSubLink = ({ url, children }) => (
 
 const IndexSubNav = () => (
   <div className="mt-5 d-flex justify-content-center">
-    <ul className="list-inline mr-3">
+    <ul className="list-inline me-3">
       <IndexSubLink url="https://www.enterprisedb.com/">EDB Home</IndexSubLink>
       <IndexSubLink url="https://support.enterprisedb.com/support/s/">
         Knowledge Base and Technical Alerts
