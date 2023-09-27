@@ -167,6 +167,10 @@ const Page = () => (
               EDB Postgres Tuner
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/spl_check">
+              EDB SPL Check
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/query_advisor">
               EDB Query Advisor
             </IndexCardLink>
@@ -175,12 +179,12 @@ const Page = () => (
               EDB Wait States
             </IndexCardLink>
 
-            <IndexCardLink to="/pg_extensions/pg_failover_slots">
-              PG Failover Slots
-            </IndexCardLink>
-
             <IndexCardLink to="/tools/edb_sqlpatch">
               EDB SQL Patch
+            </IndexCardLink>
+
+            <IndexCardLink to="/pg_extensions/pg_failover_slots">
+              PG Failover Slots
             </IndexCardLink>
 
             <IndexCardLink to="/language_pack/latest/">
