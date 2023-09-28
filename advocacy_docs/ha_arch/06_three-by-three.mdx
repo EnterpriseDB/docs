@@ -1,0 +1,69 @@
+---
+title: "Three by Three Architecture"
+navTitle: "Three by Three"
+---
+
+<div id="three_by_three_overview" class="registered_link"></div>
+
+---
+
+The **Three by Three** architecture consists of **nine Postgres nodes** arranged in a **Physical Streaming Replication** relationship across **three Availability Zones** to achieve **High Availability**. The use of three Availability Zones enables full **Automated Failover** within and between all zones. Each of the Availability Zones also include a **Barman** backup service for full **Offsite Backup** purposes.
+
+Each Availability Zone allows applications and user sessions to operate in full capacity in the event of an outage of either Zone. Depending on latency requirements, all Zones may exist within the same Region, or a remote Region for improved resilience. This design reflects a **medium RPO** since all Zones can survive node outages, and a **medium RTO** since all Zones are automated.
+
+This is an ideal architecture for high throughput production environments which require failover automation within and between multiple operational Zones.
+
+## Diagram
+
+![](images/3x3.png)
+
+## RADAR Chart
+
+![](images/3x3-radar.png)
+
+* **RPO** - Medium
+  - Can survive Zone outage
+  - Asynchronous by default
+* **RTO** - Medium
+  - Automatic failover within Zone
+  - Automatic failover between Zones
+  - Physical streaming replication failover speeds
+* **Latency** - Low
+  - Asynchronous by default
+  - No application-facing cross-Zone or Region traffic
+* **Cost** - High
+  - Highest node count
+  - Three Availability Zones necessary
+* **Resilience** - High
+  - Can survive four total node outages
+  - Can survive a single Availability Zone outage
+* **OLTP** - High
+  - High node count for read distribution
+  - Asynchronous commit times by default
+* **OLAP** - Low
+  - High amount of nodes to replicate
+  - Potentially high replication volume to additional Zones
+
+## Variants
+
+### Postgres Distributed Variant
+
+When using EDB Postgres Distributed, the Three by Three architecture adds an additional **Proxy** resource to each Availability Zone. Accessing Postgres through the Proxy component substantially **improves RTO**, at a slightly increased cost due to licensing. All nodes in this variant are always writable, and the Proxy determines which should be the principal write target within each Zone in order to reduce the risk of write conflicts.
+
+Each Availability Zone has its own Proxy and local Write Group so that each Zone may process write traffic simultaneously. This variant best fits high volume applications with Location or Region-specific data, leading to naturally lower risk of write conflicts between each Zone.
+
+![](images/3x3-pgd.png)
+
+### Synchronous Replication Variant
+
+It is possible to moderately **improve RPO** for the Three by Three design by using **Synchronous Replication**. While this also slightly increases write latency, it also mitigates the loss of committed transactions. This design also exceeds the minimum of two Synchronous Replicas, allowing up to three directly-connected Replicas to be offline at a time without interrupting write traffic on the Primary. Because multiple Synchronous Replicas reside within another Availability Zone, overall RPO is further enhanced.
+
+![](images/3x3-sync.png)
+
+### PgPool Variant
+
+PgPool is commonly used to distribute read and write traffic to different targets. This variant of the Three by Three design incorporates a PgPool node in each Availability Zone for moderately **improved Scalability**. If applications are not particularly sensitive to latency, it’s also possible to incorporate the remote Availability Zones into the Read Pool as well.
+
+![](images/3x3-pool.png)
+
+---

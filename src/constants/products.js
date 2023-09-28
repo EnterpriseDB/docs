@@ -17,6 +17,10 @@ export const products = {
   "EDB Postgres Tuner": { name: "EDB Postgres Tuner" },
 
   eprs: { name: "EDB Replication Server", iconName: IconNames.EDB_EPAS },
+  "High Availability Reference Architectures": {
+    name: "High Availability Reference Architectures",
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
   hadoop_data_adapter: {
     name: "Hadoop Data Adapter",
     iconName: IconNames.HADOOP,

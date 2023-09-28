@@ -1,0 +1,69 @@
+---
+title: "One by Three Plus One Architecture"
+navTitle: "One by Three Plus One"
+---
+
+<div id="one_by_three_plus_one_overview" class="registered_link"></div>
+
+---
+
+The **One by Three Plus One** architecture consists of **three Postgres nodes** arranged in a **Physical Streaming Replication** relationship with a **single Witness node** to achieve **High Availability**. It can survive up to two node outages and perform **Automated Failover** within the principal **Availability Zone** where it is located. A second Availability Zone is reserved for **Disaster Recovery** purposes in case the principal Zone is lost. Each Zone includes a **Barman** backup service for full **Offsite Backup** purposes.
+
+The second Availability Zone allows applications and user sessions to operate in degraded capacity in the event of an outage of the primary Zone. Depending on latency requirements, this second Zone may exist within the same Region, or a remote Region for improved resilience. This design reflects a **medium to high RPO** due to inherent risk of operating in the second Zone with a single node, and a **medium to high RTO** due to the manual steps necessary to activate it.
+
+This is a good cost-saving architecture for production environments which require failover automation and low demand for transaction traffic in degraded capacity scenarios.
+
+## Diagram
+
+![](images/1x3+1.png)
+
+## RADAR Chart
+
+![](images/1x3+1-radar.png)
+
+* **RPO** - Medium-High
+  - Can survive Zone outage
+  - Asynchronous by default
+  - Some risk of node loss in second Zone
+* **RTO** - Medium-High
+  - Automatic failover enabled within Zone
+  - Physical streaming replication failover speeds
+  - Second Zone must be manually activated in disaster scenario
+* **Latency** - Low
+  - Asynchronous by default
+  - No application-facing cross-Zone or Region traffic
+* **Cost** - Low-Medium
+  - Low node count
+  - Two Availability Zones necessary
+* **Resilience** - Low-Medium
+  - Can survive two node outages
+  - Can survive a single Availability Zone outage
+* **OLTP** - Medium
+  - Medium node count for read distribution
+  - Asynchronous commit times by default
+* **OLAP** - Medium-High
+  - Relatively few nodes to replicate
+  - Low replication volume between two Zones
+
+## Variants
+
+### Postgres Distributed Variant
+
+When using EDB Postgres Distributed, the One by Three Plus One architecture adds an additional **Proxy** resource. Accessing Postgres through the Proxy component substantially **improves RTO**, at a slightly increased cost due to licensing. All nodes in this variant are always writable, and the Proxy determines which should be the principal write target in order to reduce the risk of write conflicts.
+
+![](images/1x3+1-pgd.png)
+
+### Synchronous Replication Variant
+
+It is possible to moderately **improve RPO** for the One by Three Plus One design by using **Synchronous Replication**. While this also slightly increases write latency, it also mitigates the loss of committed transactions. This design also includes the minimum of two Synchronous Replicas, allowing one Replica to be offline at a time without interrupting write traffic on the Primary. Because the second Synchronous Replica is in another Availability Zone, overall RPO is further enhanced.
+
+![](images/1x3+1-sync.png)
+
+### PgPool Variant
+
+PgPool is commonly used to distribute read and write traffic to different targets. This variant of the One by Three Plus One design incorporates a PgPool node for slightly **improved Scalability**. The Witness node may also be replaced with a Postgres Replica and added to the Read Pool to further increase read scalability. The Disaster Recovery Replica is not included in the PgPool Read Pool.
+
+![](images/1x3+1-pool.png)
+
+---
+
