@@ -8,13 +8,13 @@ export const queryParamsToState = (query) => {
   if (params.get("product")) {
     searchState.refinementList = {
       ...searchState.refinementList,
-      product: params.get("product"),
+      product: [params.get("product")],
     };
   }
   if (params.get("version")) {
     searchState.refinementList = {
       ...searchState.refinementList,
-      version: params.get("version"),
+      version: [params.get("version")],
     };
   }
   if (params.get("page")) {

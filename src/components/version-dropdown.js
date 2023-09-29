@@ -3,10 +3,7 @@ import { Dropdown } from "react-bootstrap";
 import { Link } from "./";
 
 const DropdownItem = ({ to, active, children }) => (
-  <Link
-    to={to}
-    className={`dropdown-item ${active && "active font-weight-bold"}`}
-  >
+  <Link to={to} className={`dropdown-item ${active && "active fw-bold"}`}>
     {children}
   </Link>
 );

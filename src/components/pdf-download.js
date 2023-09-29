@@ -33,7 +33,7 @@ const PdfDownload = ({ pagePath }) => {
         <a href={pathPrefix + file.urlPath}>
           <Icon
             iconName={iconNames.PDF}
-            className="fill-orange mr-1 position-relative top-minus-2"
+            className="fill-orange me-1 position-relative top-minus-2"
             width="16"
             height="auto"
           />

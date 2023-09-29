@@ -3,7 +3,7 @@ import { Link } from "./";
 
 const SearchNavigationLinks = () => (
   <>
-    <Link to="/search" className="btn btn-link text-nowrap ml-2">
+    <Link to="/search" className="btn btn-link text-nowrap ms-2">
       Advanced Search
     </Link>
   </>

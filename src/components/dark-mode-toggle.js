@@ -10,7 +10,7 @@ const DarkModeToggle = ({ className = "" }) => (
         className={`dark-mode-toggle d-flex ${className}`}
         title="Toggle Color Theme"
       >
-        <label className="mr-2 link-label" htmlFor="darkmode-switch">
+        <label className="me-2 link-label" htmlFor="darkmode-switch">
           Toggle Theme
         </label>
         <Form.Check
