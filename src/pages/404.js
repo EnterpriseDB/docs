@@ -1,13 +1,11 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Container } from "react-bootstrap";
 import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearch,
   Configure,
   Hits,
-  useSearchBox,
   useInstantSearch,
-  useRefinementList,
 } from "react-instantsearch";
 import { Footer, Layout, Link, MainContent } from "../components";
 import Icon, { iconNames } from "../components/icon";
@@ -54,7 +52,8 @@ const buildQuery = (pathname, pathPrefix) => {
 
   const cleanRegex = /-|\//g;
 
-  if (pathname.startsWith(pathPrefix)) pathname.replace(pathPrefix, "");
+  if (pathname.startsWith(pathPrefix))
+    pathname = pathname.replace(pathPrefix, "");
   const segments = pathname.split("/");
   if (products[segments[1]]) {
     return {
@@ -92,13 +91,21 @@ const SuggestedLinksSearch = ({ queryParams }) => {
       initialUiState={{ [algoliaIndex]: queryParams }}
     >
       <SuggestedLinks />
+      <Configure
+        hitsPerPage={5}
+        query={queryParams.query}
+        filters={
+          queryParams.refinementList?.product?.length &&
+          `product:"${queryParams.refinementList?.product[0]}"`
+        }
+      />
       <div>
         Not finding what you need?
         <Link
           to={`/search?query=${encodeURIComponent(
             queryParams.query,
           )}&product=${encodeURIComponent(
-            queryParams.refinementList?.product?.join(","),
+            queryParams.refinementList?.product?.join(",") || "",
           )}`}
           className="ms-2"
         >
@@ -111,8 +118,6 @@ const SuggestedLinksSearch = ({ queryParams }) => {
 
 const SuggestedLinks = () => {
   const { results: searchResults } = useInstantSearch();
-  useSearchBox(); // ensures query is actually sent
-  useRefinementList({ attribute: "product" }); // ensures product refinement is actually sent
 
   return (
     <>
@@ -120,7 +125,6 @@ const SuggestedLinks = () => {
         <>
           <div>Suggested links based on the requested URL:</div>
           <div className="search-content mb-5 mt-3">
-            <Configure hitsPerPage={5} />
             <Hits hitComponent={SuggestedHit} />
           </div>
         </>
@@ -136,9 +140,17 @@ const SuggestedHit = ({ hit }) => (
   </Link>
 );
 
-const NotFound = (data) => {
+const NotFound = ({ location: { pathname, href } }) => {
   const pathPrefix = usePathPrefix();
-  const queryParams = buildQuery(data.location.pathname, pathPrefix);
+  // these are NEVER going to be useful on prerender, so trigger an update every time
+  const [location, setLocation] = useState({ href: "", pathname: "" });
+  useEffect(() => {
+    setLocation({ href, pathname });
+  }, [href, pathname]);
+  const queryParams = useMemo(
+    () => buildQuery(location.pathname, pathPrefix),
+    [location, pathPrefix],
+  );
 
   return (
     <Layout pageMeta={{ title: "Page Not Found" }}>
@@ -147,7 +159,7 @@ const NotFound = (data) => {
           <div className="d-flex align-items-center flex-column">
             <Ascii404 />
             <div>
-              <PageNotFound path={data.location.href} />
+              <PageNotFound path={location.href} />
               <SuggestedLinksSearch queryParams={queryParams} />
             </div>
           </div>
