@@ -197,6 +197,10 @@ const Page = () => {
               EDB SQL Patch
             </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/edb_job_scheduler">
+              EDB Job Scheduler
+            </IndexCardLink>
+
             <IndexCardLink to="/pg_extensions/pg_failover_slots">
               PG Failover Slots
             </IndexCardLink>
