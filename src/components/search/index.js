@@ -231,6 +231,7 @@ const SearchBar = ({ searchProduct }) => {
         <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
+          insights={true}
           className="dropdown"
         >
           <Configure {...searchConfig} />

@@ -39,12 +39,14 @@ const mdxNodeToAlgoliaNode = (node, productVersions) => {
     // switch path to latest (if applicable) to avoid redirects
     const isLatest =
       productVersions[node.fields.product][0] === node.fields.version;
+    newNode["isLatest"] = isLatest;
     if (isLatest) {
       const latestPath = replacePathVersion(node.fields.path);
       newNode["path"] = latestPath;
       newNode["pagePath"] = latestPath;
     }
   } else {
+    newNode["isLatest"] = true;
     newNode["type"] = "guide";
   }
 
@@ -231,6 +233,7 @@ const algoliaTransformer = ({ data }) => {
   while (navStack.length > 0) {
     curr = navStack.pop();
     let parentId = curr.mdxNode?.algoliaId;
+    let parentDepth = curr.mdxNode?.navDepth || 0;
     for (let child of curr.children)
       if (child.mdxNode)
         child.mdxNode.algoliaId = child.path
@@ -251,12 +254,15 @@ const algoliaTransformer = ({ data }) => {
         ),
     );
     // used to set fallback sort in algolia to navigation order
-    for (let i = 0; i < navigation.length; ++i)
-      if (navigation[i].mdxNode)
+    for (let i = 0; i < navigation.length; ++i) {
+      if (navigation[i].mdxNode) {
         navigation[i].mdxNode.algoliaId =
           (parentId || navigation[i].path.split("/").slice(0, -2).join("")) +
           (navigation.length - i).toString().padStart(3, "0") +
           navigation[i].mdxNode.algoliaId;
+        navigation[i].mdxNode.navDepth = parentDepth + 1;
+      }
+    }
     navStack.push(...navigation);
     if (!curr.mdxNode) continue;
 
