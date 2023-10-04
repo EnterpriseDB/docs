@@ -1,4 +1,10 @@
-import React, { useLayoutEffect, useCallback, useRef, useState } from "react";
+import React, {
+  useLayoutEffect,
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import { useSearchBox } from "react-instantsearch";
 import Icon, { iconNames } from "../icon";
 import { SlashIndicator, ClearButton } from "../search/formComps";
@@ -8,6 +14,10 @@ export const AdvancedSearchForm = () => {
   const inputRef = useRef(null);
   const [inputValue, setInputValue] = useState(query);
   const queryLength = (inputValue || "").length;
+
+  useEffect(() => {
+    setInputValue(query);
+  }, [query]);
 
   const onInputChange = useCallback(
     (e) => {
