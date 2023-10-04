@@ -3,11 +3,16 @@ import React, {
   useState,
   useLayoutEffect,
   useCallback,
-  createRef,
   useRef,
+  useEffect,
 } from "react";
 import algoliasearch from "algoliasearch/lite";
-import { InstantSearch, Configure, useSearchBox } from "react-instantsearch";
+import {
+  InstantSearchSSRProvider,
+  InstantSearch,
+  Configure,
+  useSearchBox,
+} from "react-instantsearch";
 import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
@@ -42,9 +47,23 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   const inputRef = useRef(null);
   const searchContentRef = useRef(null);
   const [arrowIndex, setArrowIndex] = useState(0);
+  const [inputValue, setInputValue] = useState(query);
   const context = searchProduct
     ? " " + (products[searchProduct]?.name || searchProduct)
     : "";
+
+  useEffect(() => {
+    setInputValue(query);
+  }, [query]);
+
+  const onInputChange = useCallback(
+    (e) => {
+      let newValue = e.currentTarget.value;
+      setInputValue(newValue);
+      refine(newValue);
+    },
+    [refine],
+  );
 
   const close = useCallback(() => {
     setFocus(false);
@@ -119,11 +138,9 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
 
   useClickOutside(searchBarRef, close);
 
-  const queryLength = (query || "").length;
-
   return (
     <div
-      className={`${queryLength > 0 && focus && "shadow"}`}
+      className={`${inputValue.length > 0 && focus && "shadow"}`}
       ref={searchBarRef}
     >
       <form
@@ -132,7 +149,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
         autoComplete="off"
         role="search"
         className={`search-form d-flex align-items-center ${
-          queryLength > 0 && focus && "open"
+          inputValue.length > 0 && focus && "open"
         }`}
       >
         <DropdownButton
@@ -167,21 +184,21 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
           type="text"
           aria-label="search"
           placeholder={"Search" + context}
-          value={query}
-          onChange={(e) => refine(e.currentTarget.value)}
+          value={inputValue}
+          onChange={onInputChange}
           onFocus={() => setFocus(true)}
           ref={inputRef}
         />
         <ClearButton
           onClick={clear}
-          className={`${queryLength === 0 && "d-none"}`}
+          className={`${inputValue.length === 0 && "d-none"}`}
         />
-        <SlashIndicator query={query} />
+        <SlashIndicator query={inputValue} />
       </form>
 
       <div
         className={`dropdown-menu w-100 p-0 quick-search-container ${
-          queryLength > 0 && focus && "show"
+          inputValue.length > 0 && focus && "show"
         }`}
       >
         <div
@@ -196,30 +213,33 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
 };
 
 const SearchBar = ({ searchProduct }) => {
-  const ref = createRef();
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
   const searchConfig = useMemo(() => {
     return {
       hitsPerPage: 30,
+      advancedSyntax: true,
       filters: currentProduct ? `product:"${currentProduct}"` : "",
     };
   }, [currentProduct]);
 
+  // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (
-    <div className="global-search w-100 position-relative" ref={ref}>
-      <InstantSearch
-        searchClient={searchClient}
-        indexName={algoliaIndex}
-        className="dropdown"
-      >
-        <Configure {...searchConfig} />
-        <Search
-          searchProduct={currentProduct}
-          onSearchProductChange={setCurrentProduct}
-        />
-      </InstantSearch>
+    <div className="global-search w-100 position-relative">
+      <InstantSearchSSRProvider initialResults={{}}>
+        <InstantSearch
+          searchClient={searchClient}
+          indexName={algoliaIndex}
+          className="dropdown"
+        >
+          <Configure {...searchConfig} />
+          <Search
+            searchProduct={currentProduct}
+            onSearchProductChange={setCurrentProduct}
+          />
+        </InstantSearch>
+      </InstantSearchSSRProvider>
     </div>
   );
 };
