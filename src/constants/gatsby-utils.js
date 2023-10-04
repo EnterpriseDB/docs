@@ -259,7 +259,7 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
   for (let node of nodes) {
     const nodePath = node.fields?.path;
     if (!nodePath) continue;
-    const splitPath = nodePath.split(path.sep);
+    const splitPath = nodePath.split(path.posix.sep);
     const isLatest =
       node.fields.docType === "doc" &&
       productVersions[node.fields.product][0] === node.fields.version;
@@ -288,7 +288,8 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       if (!redirect) continue;
 
       // allow relative paths in redirects
-      let fromPath = path.resolve(path.sep, nodePath, redirect) + path.sep;
+      let fromPath =
+        path.resolve(path.posix.sep, nodePath, redirect) + path.posix.sep;
 
       // Special handling for redirects Part A
       // -------------------------------------
@@ -301,15 +302,15 @@ const preprocessPathsAndRedirects = (nodes, productVersions) => {
       // ...the second part of the [from] path is "latest"
       // ...Then the second part of the [from] path will be replaced with the
       // second part of the [to] path.
-      const splitFromPath = fromPath.split(path.sep);
+      const splitFromPath = fromPath.split(path.posix.sep);
       const fromIsLatest = splitFromPath[2] === "latest";
       if (fromIsLatest && splitFromPath[1] === splitPath[1])
         fromPath = path.join(
-          path.sep,
+          path.posix.sep,
           splitFromPath[1],
           splitPath[2],
           ...splitFromPath.slice(3),
-          path.sep,
+          path.posix.sep,
         );
 
       if (fromPath !== nodePath) newRedirects.add(fromPath);
@@ -347,7 +348,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
     );
   });
 
-  const splitToPath = toPath.split(path.sep);
+  const splitToPath = toPath.split(path.posix.sep);
   const isLatest = splitToPath[2] === "latest";
   const lastVersionPath = pathVersions.find((p) => !!p);
   const isLastVersion = toPath === lastVersionPath;
@@ -361,6 +362,18 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
       isPermanent: false,
       force: true,
     });
+
+    // special-case bare product path: there's no landing page here, because
+    // we want the "canonical" path to be latest (don't encourage indexing of individual versions)
+    // so redirect from this path to latest, always
+    if (splitToPath.length === 4)
+      actions.createRedirect({
+        fromPath: path.posix.sep + node.fields.product + path.posix.sep,
+        toPath: toPath,
+        redirectInBrowser: false,
+        isPermanent: false,
+        force: true,
+      });
   }
   // if this path is a dead-end (it does not exist in any newer versions
   // of the product, and also does not have a matching redirect in any newer versions)
@@ -378,7 +391,7 @@ const configureRedirects = (productVersions, node, validPaths, actions) => {
   for (let fromPath of redirects) {
     if (!fromPath) continue;
     if (fromPath !== toPath) {
-      const splitFromPath = fromPath.split(path.sep);
+      const splitFromPath = fromPath.split(path.posix.sep);
       const isPermanent =
         splitFromPath[2] !== "latest" && splitToPath[2] !== "latest";
       actions.createRedirect({

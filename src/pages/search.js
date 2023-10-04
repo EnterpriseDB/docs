@@ -32,8 +32,14 @@ const Search = (data) => {
             writeStateToQueryParams(uiState[algoliaIndex]);
             setUiState(uiState);
           }}
+          insights={true}
         >
-          <Configure hitsPerPage={30} facetingAfterDistinct={true} />
+          <Configure
+            hitsPerPage={30}
+            facetingAfterDistinct={true}
+            distinct="4"
+            advancedSyntax={true}
+          />
 
           <SideNavigation background="white">
             <AdvancedSearchFiltering />

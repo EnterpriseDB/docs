@@ -582,11 +582,18 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
   //
   // get rid of compilation hash - speeds up netlify deploys
   //
+  const hashTimer = reporter.activityTimer("Removing compilation hashes");
+  hashTimer.start();
   const { globby } = await import("globby");
   const generatedHTML = await globby([
     path.join(__dirname, "/public/**/*.html"),
   ]);
-  for (let filename of generatedHTML) {
+  for (
+    let i = 0, filename;
+    i < generatedHTML.length, (filename = generatedHTML[i]);
+    ++i
+  ) {
+    hashTimer.setStatus(`${i + 1}/${generatedHTML.length}`);
     let file = await readFile(filename);
     file = file.replace(
       /window\.___webpackCompilationHash="[^"]+"/,
@@ -606,6 +613,7 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
       '"webpackCompilationHash":""',
     ),
   );
+  hashTimer.end();
 
   //
   // additional headers

@@ -37,12 +37,18 @@ const TryAdvancedSearch = (props) => {
 };
 
 const PageHits = ({ arrowIndex }) => {
-  const { hits } = useHits();
+  const { hits, sendEvent } = useHits();
 
   return (
     <>
       {hits.map((hit, i) => (
-        <div className="mb-3" key={i}>
+        <div
+          className="mb-3"
+          key={i}
+          onClickCapture={() =>
+            sendEvent("click", hit, "global search result clicked")
+          }
+        >
           <PageHit hit={hit} className={arrowIndex === i && "arrow-focus"} />
         </div>
       ))}

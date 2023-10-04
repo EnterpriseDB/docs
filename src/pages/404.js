@@ -89,6 +89,7 @@ const SuggestedLinksSearch = ({ queryParams }) => {
       searchClient={searchClient}
       indexName={algoliaIndex}
       initialUiState={{ [algoliaIndex]: queryParams }}
+      insights={true}
     >
       <SuggestedLinks />
       <Configure
