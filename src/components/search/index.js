@@ -41,20 +41,30 @@ const useClickOutside = (ref, handler, events) => {
 };
 
 const Search = ({ searchProduct, onSearchProductChange }) => {
-  const { clear, refine, query } = useSearchBox();
+  const { clear, refine } = useSearchBox();
   const searchBarRef = useRef(null);
   const [focus, setFocus] = useState(false);
   const inputRef = useRef(null);
   const searchContentRef = useRef(null);
   const [arrowIndex, setArrowIndex] = useState(0);
-  const [inputValue, setInputValue] = useState(query);
+  const [inputValue, setInputValue] = useState("");
   const context = searchProduct
     ? " " + (products[searchProduct]?.name || searchProduct)
     : "";
 
+  // allow typing ahead of search loading
   useEffect(() => {
-    setInputValue(query);
-  }, [query]);
+    setInputValue(inputRef.current?.value || "");
+    setFocus(
+      inputRef.current && inputRef.current.id === document.activeElement?.id,
+    );
+    if (inputRef.current?.value) refine(inputRef.current.value);
+  }, []);
+
+  const onClear = useCallback(() => {
+    setInputValue("");
+    clear();
+  }, [clear]);
 
   const onInputChange = useCallback(
     (e) => {
@@ -190,7 +200,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
           ref={inputRef}
         />
         <ClearButton
-          onClick={clear}
+          onClick={onClear}
           className={`${inputValue.length === 0 && "d-none"}`}
         />
         <SlashIndicator query={inputValue} />
