@@ -165,75 +165,6 @@ const Page = () => {
               EDB LDAP Sync
             </IndexCardLink>
 
-            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Extensions and Tools
-            </span>
-
-            <IndexCardLink to="/pg_extensions/">
-              Supported Postgres extensions
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-              EDB Advanced Storage Pack
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/pg_tuner">
-              EDB Postgres Tuner
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/spl_check">
-              EDB SPL Check
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/query_advisor">
-              EDB Query Advisor
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/wait_states">
-              EDB Wait States
-            </IndexCardLink>
-
-            <IndexCardLink to="/tools/edb_sqlpatch">
-              EDB SQL Patch
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/edb_job_scheduler">
-              EDB Job Scheduler
-            </IndexCardLink>
-
-            <IndexCardLink to="/pg_extensions/pg_failover_slots">
-              PG Failover Slots
-            </IndexCardLink>
-
-            <IndexCardLink to="/language_pack/latest/">
-              Language Pack
-            </IndexCardLink>
-          </IndexCard>
-
-          <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-            <IndexCardLink to="/biganimal/latest">EDB BigAnimal</IndexCardLink>
-            <IndexCardLink
-              to="/biganimal/latest/free_trial/"
-              className="nested-link"
-            >
-              Quick Start
-            </IndexCardLink>
-            <IndexCardLink
-              to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
-              className="nested-link"
-            >
-              Oracle SQL Compatibility
-              <span className="new-thing" title="Interactive Demo">
-                Demo
-              </span>
-
-              <IndexCardLink to="/tde/latest">
-                Transparent Data Encryption
-              </IndexCardLink>
-              <IndexCardLink to="/pg_extensions/ldap_sync">
-                EDB LDAP Sync
-              </IndexCardLink>
-
               <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
                 Extensions and Tools
               </span>
@@ -258,6 +189,10 @@ const Page = () => {
                 EDB Wait States
               </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/edb_job_scheduler">
+              EDB Job Scheduler
+            </IndexCardLink>
+                
               <IndexCardLink to="/pg_extensions/pg_failover_slots">
                 PG Failover Slots
               </IndexCardLink>
