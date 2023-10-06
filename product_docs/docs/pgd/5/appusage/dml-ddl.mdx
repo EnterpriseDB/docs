@@ -1,7 +1,17 @@
 ---
-title: DML and DDL replication
-navTitle: DML and DDL
+title: DML and DDL replication amd nonreplication.
+navTitle: DML and DDL replication
 ---
+
+There are two major classes of SQL statement - DML and DDL. 
+
+* DML is the Data Modification Language and is concerned with the SQL statements that modify the data stored in tables. It includes UPDATE, DELETE and INSERT. 
+
+* DDL is the Data Definition Languages and it's concerned with the SQL statements that modify *how* the data is stored. It includes CREATE, ALTER and DROP.
+
+Each class is handled differently by PGD.
+
+## DML Replication
 
 PGD doesn't replicate the DML statement. It replicates the changes caused by the
 DML statement. For example, an UPDATE that changed two rows replicates two
@@ -9,6 +19,8 @@ changes, whereas a DELETE that didn't remove any rows doesn't replicate
 anything. This means that the results of executing volatile statements are
 replicated, ensuring there's no divergence between nodes as might occur with
 statement-based replication.
+
+## DDL Replication
 
 DDL replication works differently to DML. For DDL, PGD replicates the statement,
 which then executes on all nodes. So a `DROP TABLE IF EXISTS` might not
@@ -19,3 +31,29 @@ nodes for execution if DDL replication is enabled. Full details are covered in
 PGD works to ensure that intermixed DML and DDL statements work correctly, even
 in the same transaction.
 
+## Nonreplicated statements
+
+Outside of those two classes are SQL commands which PGD does not, by design,
+replicate. None of the following user commands are replicated by PGD, so their
+effects occur on the local/origin node only:
+
+-   Cursor operations (DECLARE, CLOSE, FETCH)
+-   Execution commands (DO, CALL, PREPARE, EXECUTE, EXPLAIN)
+-   Session management (DEALLOCATE, DISCARD, LOAD)
+-   Parameter commands (SET, SHOW)
+-   Constraint manipulation (SET CONSTRAINTS)
+-   Locking commands (LOCK)
+-   Table maintenance commands (VACUUM, ANALYZE, CLUSTER, REINDEX)
+-   Async operations (NOTIFY, LISTEN, UNLISTEN)
+
+Since the `NOTIFY` SQL command and the `pg_notify()` functions aren't
+replicated, notifications aren't reliable in case of failover. This means that
+notifications can easily be lost at failover if a transaction is committed just
+when the server crashes. Applications running `LISTEN` might miss notifications
+in case of failover.
+
+This is true in standard PostgreSQL replication, and PGD doesn't yet improve on
+this. 
+
+CAMO and Eager Replication options don't allow the `NOTIFY` SQL command or the
+`pg_notify()` function.
