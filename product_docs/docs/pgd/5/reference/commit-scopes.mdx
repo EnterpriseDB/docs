@@ -1,0 +1,132 @@
+---
+navTitle: Commit Scopes
+title: Commit Scopes
+indexdepth: 4
+refprefix: cs
+rootisheading: true
+deepToC: true
+---
+
+Commit Scopes are rules which determine how transaction commits and conflicts are handled within a PGD system.
+
+## Commit Scope syntax
+
+The overall grammar for commit scope rules is composed as follows:
+
+```
+commit_scope:
+    commit_scope_operation [AND ...]
+
+commit_scope_operation:
+    commit_scope_group commit_scope_visibility commit_scope_kind
+
+commit_scope_visibility:
+    [ ON { received|replicated|durable|visible } ]
+
+commit_scope_group:
+{ ANY num (node_group [, ...])
+  | MAJORITY (node_group [, ...])
+  | ALL (node_group [, ...]) }
+
+commit_scope_kind:
+{ GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ]
+  | CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
+  | LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
+  | SYNCHRONOUS_COMMIT }
+```
+
+* `node_group` &mdash; Name of a node group.
+
+More details of the commit scope kinds and details of their parameters:
+
+* [Group Commit](#group-commit)  
+* [CAMO (Commit At Most Once)](#camo)  
+* [Lag Control](#lag-control) 
+* [Synchronous Commit](#synchronous-commit)
+
+
+## Commit Scope kinds
+
+!!! Note Parameter values 
+Boolean, enum, int and interval values are specified using the [Postgres GUC Parameter value conventions](https://www.postgresql.org/docs/current/config-setting.html#CONFIG-SETTING-NAMES-VALUES). 
+!!!
+
+### GROUP COMMIT
+
+Allows commits to be confirmed by a consensus of nodes and controls conflict resolution settings.
+
+```
+GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ]
+```
+
+#### GROUP COMMIT parameters
+ Parameter | Type | Description
+ --- | --- | --- 
+ `transaction_tracking` | Boolean | Specifies whether to track status of transaction.
+ `conflict_resolution` | enum | Specifies how to handle conflicts. (`async`|`eager`). See [conflict_resolution settings](#conflict_resolution_settings)
+  `commit_decision` | enum | Specifies how the COMMIT decision is made. (`group`|`partner`|`raft`). See [commit_decision settings](#commit_decision_settings)
+
+#### ABORT ON parameters
+
+ Parameter | Type | Description
+ --- | --- | --- 
+ `timeout` | interval | Timeout in milliseconds (accepts other units).
+
+#### conflict_resolution settings
+
+The value `async` means resolve conflicts asynchronously during replication using the conflict resolution policy.
+
+The value `eager` means that conflicts are resolved eagerly during COMMIT by aborting one of the conflicting transactions.
+
+See [Group Commit/Conflict Resolution](group-commit#conflict_resolution)
+
+#### commit_decision settings
+ 
+The value `group` means the preceding `commit_scope_group` specification also affects the COMMIT decision, not just durability. 
+
+The value `partner`  means the partner node decides whether transactions can be committed. This value is allowed only on 2 data node groups. 
+
+The value `raft` means the COMMIT decision is done using Raft consensus independent of `commit_scope_group` consensus.
+
+See [Group Commit/Commit Decision](group-commit#commit_decision)
+
+
+### CAMO
+
+Allows protection, with the client's cooperation, to prevent multiple insertions of the same transaction in failover scenarios.
+
+See [CAMO](../durability/camo) in the Durability guide for more details.
+
+```
+  CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
+```
+
+#### Degrade On parameters
+
+Allows degrading to asynchronous operation on timeout.
+
+ Parameter | Type | Description
+ --- | --- | --- 
+ timeout | interval | Timeout in milliseconds (accepts other units) after which operation becomes asynchronous.
+ require_write_lead | Boolean | Specifies whether the node must be a write lead to be able to switch to asynchronous mode.
+
+### LAG CONTROL
+
+
+Allows the configuration of dynamic rate-limiting controlled by replication lag.
+
+See [Lag Control](../durability/lag-control) in the Durability guide for more details.
+
+```
+  LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
+```
+
+ Parameter | Type | Description
+ --- | --- | --- 
+ `max_lag_size` | int | Maximum allowed lag based on WAL bytes.
+ `max_lag_time` | interval | Maximum allowed lag based on wall clock sampling.
+ `max_commit_delay` | interval | Maximum delay that can be injected to commit to try to keep within the lag limits.
+
+### SYNCHRONOUS_COMMIT
+
+TODO:
