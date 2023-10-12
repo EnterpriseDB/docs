@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useLayoutEffect, useMemo } from "react";
 import { Helmet } from "react-helmet";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import {
@@ -37,7 +37,7 @@ const Layout = ({
   };
 
   // gatsby-ssr handles initial setting of class, this will sync the toggle to that
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       document.documentElement.classList.contains("dark") ||
       window.localStorage.getItem("dark") === "true"
@@ -82,7 +82,7 @@ const Layout = ({
           {...props}
           className={
             (props.className || "") +
-            " pl-3 border-left border-top-0 border-bottom-0 border-right-0 border-5"
+            " ps-3 border-start border-top-0 border-bottom-0 border-end-0 border-5"
           }
         ></blockquote>
       ),
@@ -107,7 +107,11 @@ const Layout = ({
       }}
     >
       <Helmet>
-        <html lang="en" className={`${dark && "dark"}`} />
+        <html
+          lang="en"
+          className={`${dark && "dark"}`}
+          data-bs-theme={dark && "dark"}
+        />
         <title>{title}</title>
         {meta.description && (
           <meta name="description" content={meta.description} />

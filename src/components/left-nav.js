@@ -11,10 +11,10 @@ const productIcon = (path) => {
 
 const SectionHeading = ({ navTree, path, iconName }) => {
   return (
-    <li className="ml-0 mb-4 d-flex align-items-center">
+    <li className="ms-0 mb-4 d-flex align-items-center">
       <Icon
         iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange mr-3"
+        className="fill-orange me-3"
         width="50"
         height="50"
       />
@@ -36,10 +36,10 @@ const SectionHeadingWithVersions = ({
   hideVersion,
 }) => {
   return (
-    <li className="ml-0 mb-4 d-flex align-items-center">
+    <li className="ms-0 mb-4 d-flex align-items-center">
       <Icon
         iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange mr-3"
+        className="fill-orange me-3"
         width="50"
         height="50"
       />

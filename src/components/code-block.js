@@ -125,7 +125,7 @@ const CodePre = ({ className, content, runnable }) => {
 
 const OutputPre = ({ content }) => (
   <div className="mt-1 output-block">
-    <div className="codeblock-controls output-label pl-2 pr-2 pt-2">Output</div>
+    <div className="codeblock-controls output-label ps-2 pe-2 pt-2">Output</div>
     <pre className="language-text m-0 br-tl-0 br-tr-0">{content}</pre>
   </div>
 );

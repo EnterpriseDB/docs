@@ -1,0 +1,273 @@
+---
+title: 'Configuration'
+description: 'Walkthrough of configuring the integration'
+---
+
+Implementing EDB Postgres for Kubernetes with Kasten by Veeam requires the following components:
+
+- [EDB Postgres for Kubernetes](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/)
+- [EDB Postgres for Kubernetes external backup adapter](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/addons/#external-backup-adapter) 
+- [Kasten K10](https://docs.kasten.io/latest/index.html) 
+
+## Prerequisites
+
+- EDB Postgres for Kubernetes configured and running
+- EDB Postgres for Kubernetes external backup adapter configured per your system requirements
+- Kasten K10 installed on your system
+
+!!! Note
+    For this integration, use the `example.yaml` files provided for the appropriate Kasten configuration pieces, and change any environment variables per your specific needs.
+    
+    See [Add the backup decorator annotations to the cluster](#add-the-backup-decorator-annotations-to-the-cluster), which is important for the Kasten add-on integration. 
+    
+    Refer to the [EDB Postgres for Kubernetes external backup adapter](/postgres_for_kubernetes/latest/addons/#external-backup-adapter) documentation for more detailed information on the EDB Postgres for Kubernetes backup adaptor add-on functionality and additional details on its configuraton parameters.
+
+## Install the operator
+
+Install the EDB Postgres for Kubernetes operator.
+
+```bash
+kubectl apply -f https://get.enterprisedb.io/cnp/postgresql-operator-1.20.2.yaml
+```
+
+Running this command creates the operator namespace where the controller runs.
+
+## Create an EDB cluster and client and add data
+
+1. In your Kubernetes environment, create a specific namespace and apply your `.yaml` file:
+
+```bash
+kubctl create ns edb
+kubectl apply -f cluster-example.yaml -n edb
+```
+
+Example `cluster-example.yaml` file:
+
+```bash
+# Example of PostgreSQL cluster
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+  annotations:
+    "k8s.enterprisedb.io/addons": '["kasten"]'    
+spec:
+  instances: 3
+  # Example of rolling update strategy:
+  # - unsupervised: automated update of the primary once all
+  #                 replicas have been upgraded (default)
+  # - supervised: requires manual supervision to perform
+  #               the switchover of the primary
+  primaryUpdateStrategy: unsupervised
+  # Require 1Gi of space
+  storage:
+    size: 1Gi
+```
+
+2. Wait until the cluster is completely ready.
+
+```bash
+kubectl get clusters.postgresql.k8s.enterprisedb.io -n edb
+NAME              AGE   INSTANCES   READY   STATUS                     PRIMARY
+cluster-example   19m   3           3       Cluster in healthy state   cluster-example-1
+```
+
+3. Install the cnp plugin.
+
+```bash
+curl -sSfL \
+  https://github.com/EnterpriseDB/kubectl-cnp/raw/main/install.sh | \
+  sudo sh -s -- -b /usr/local/bin
+```
+
+4. Create a client certificate to the database.
+
+```bash
+kubectl cnp certificate cluster-app \
+  --cnp-cluster cluster-example \
+  --cnp-user app \
+  -n edb
+```
+
+5. Create the client.
+
+```bash
+kubectl create -f client.yaml -n edb 
+```
+
+Example `client.yaml` file:
+
+```bash
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webtest
+  template:
+    metadata:
+      labels:
+        app: webtest
+    spec:
+      containers:
+        - image: ghcr.io/cloudnative-pg/webtest:1.6.0
+          name: cert-test
+          volumeMounts:
+            - name: secret-volume-root-ca
+              mountPath: /etc/secrets/ca
+            - name: secret-volume-app
+              mountPath: /etc/secrets/app
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cluster-example-app
+                  key: password
+            - name: DATABASE_URL
+              value: >
+                sslkey=/etc/secrets/app/tls.key
+                sslcert=/etc/secrets/app/tls.crt
+                sslrootcert=/etc/secrets/ca/ca.crt
+                host=cluster-example-rw.default.svc
+                dbname=app
+                user=app
+                sslmode=verify-full
+            - name: SQL_QUERY
+              value: SELECT 1
+      volumes:
+        - name: secret-volume-root-ca
+          secret:
+            secretName: cluster-example-ca
+            defaultMode: 0600
+        - name: secret-volume-app
+          secret:
+            secretName: cluster-app
+            defaultMode: 0600
+```
+
+6. Add some data into the cluster to test the backup and restore. The following is sample data that was used for this example:
+
+```bash
+kubectl exec -it deploy/cert-test -- bash
+psql 'sslkey=/etc/secrets/app/tls.key sslcert=/etc/secrets/app/tls.crt sslrootcert=/etc/secrets/ca/ca.crt host=cluster-example-rw dbname=app user=app sslmode=verify-full'
+\c app
+DROP TABLE IF EXISTS links;
+CREATE TABLE links (
+	id SERIAL PRIMARY KEY,
+	url VARCHAR(255) NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	description VARCHAR (255),
+        last_update DATE
+);
+INSERT INTO links (url, name, description, last_update) VALUES('https://kasten.io','Kasten','Backup on kubernetes',NOW());
+select * from links;
+\q
+exit
+```
+
+## Add the backup decorator annotations to the cluster
+
+If you created the cluster from the previous process, `cluster-example.yaml` already includes the Kasten add-on, and you can skip this part. If you're working with your own cluster, you need to add the Kasten add-on.
+
+1.  Add the following annotations to your cluster. The previous `cluster-example.yaml` file shows an example of where to add the annotation.
+
+```bash
+"k8s.enterprisedb.io/addons": '["kasten"]'
+```
+
+## Install the EDB blueprint
+
+1. In your environment, enter:
+
+```bash
+kubectl create -f edb-hooks.yaml
+```
+
+Example `edb-hooks.yaml` file:
+
+```bash
+apiVersion: cr.kanister.io/v1alpha1
+kind: Blueprint
+metadata:
+  name: edb-hooks
+  namespace: kasten-io
+actions:
+  backupPrehook:
+    phases:
+    - func: KubeTask
+      name: edbPreBackupHook
+      args:
+        image: ghcr.io/kanisterio/kanister-kubectl-1.18:0.91.0
+        command:
+          - bash
+          - -x 
+          - -o
+          - errexit
+          - -o
+          - pipefail
+          - -c
+          - |
+            namespace={{ .Namespace.Name }}
+            selector='kasten-enterprisedb.io/hasHooks=true'
+            for pod in $(kubectl get po --no-headers -n $namespace -l $selector|awk '{print $1}')
+            do
+              preCommand=$(kubectl get po -n $namespace $pod -o jsonpath='{.metadata.annotations.kasten-enterprisedb\.io/pre-backup-command}')
+              preOnErrorCommand=$(kubectl get po -n $namespace $pod -o jsonpath='{.metadata.annotations.kasten-enterprisedb\.io/pre-backup-on-error}')
+              container=$(kubectl get po -n $namespace $pod -o jsonpath='{.metadata.annotations.kasten-enterprisedb\.io/pre-backup-container}')
+              command=${preCommand//[\[\]\"\,]/' '} 
+              result=$(kubectl exec -it $pod -c $container -n $namespace $pod -- bash -c "if $command; then echo success; else echo failure; fi" | tail -1)
+              if [[ $result == "failure" ]]
+              then 
+                echo "Error after running $preCommand in $pod/$container"
+                echo "Executing $preOnErrorCommand"
+                command=${preOnErrorCommand//[\[\]\"\,]/' '}
+                kubectl exec -it $pod -c $container -n $namespace $pod -- bash -c $command
+                exit 1
+              fi
+            done
+            exit 0  
+  backupPosthook:
+    phases:
+    - func: KubeTask
+      name: edbPostBackupHook
+      args:
+        image: ghcr.io/kanisterio/kanister-kubectl-1.18:0.91.0
+        command:
+          - bash
+          - -x 
+          - -o
+          - errexit
+          - -o
+          - pipefail
+          - -c
+          - |
+            namespace={{ .Namespace.Name }}
+            selector='kasten-enterprisedb.io/hasHooks=true'
+            for pod in $(kubectl get po --no-headers -n $namespace -l $selector|awk '{print $1}') 
+            do
+              postCommand=$(kubectl get po -n $namespace $pod -o jsonpath='{.metadata.annotations.kasten-enterprisedb\.io/post-backup-command}')
+              container=$(kubectl get po -n $namespace $pod -o jsonpath='{.metadata.annotations.kasten-enterprisedb\.io/post-backup-container}')
+              command=${postCommand//[\[\]\"\,]/' '} 
+              result=$(kubectl exec -it $pod -c $container -n $namespace $pod -- bash -c "if $command; then echo success; else echo failure; fi" | tail -1)
+              if [[ $result == "failure" ]]
+              then 
+                echo "Error after running $postCommand in $pod/$container"              
+                exit 1
+              fi
+            done
+            exit 0
+```
+## Create a backup policy with the EDB hooks
+
+1. Launch the Kasten K10 interface.
+
+2. Create a policy for the EDB namespace. You need to set up a location profile for the export and kanister actions.
+
+3. Add the hooks example:
+
+    ![Kasten Backup Policy with EDB Hooks](Images/KastenBackupPolicywithHooks.png)

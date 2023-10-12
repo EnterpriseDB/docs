@@ -85,14 +85,14 @@ const DocTemplate = ({ data, pageContext }) => {
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}
-              <span className="font-weight-light ml-2 text-muted badge-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
+              <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
                 v{version}
               </span>
             </h1>
           </div>
           <VersionDropdown versionArray={versionArray} path={path} />
 
-          {/* <h4 className="text-muted mt-5 mb-3 font-weight-normal">
+          {/* <h4 className="text-muted mt-5 mb-3 fw-normal">
             The documentation for this product version is being migrated to EDB
             Docs 2.0. The links below will take you to EDB Docs 1.0.
           </h4> */}
