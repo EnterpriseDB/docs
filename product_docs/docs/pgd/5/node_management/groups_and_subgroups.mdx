@@ -10,69 +10,13 @@ the direct parent of sub-groups.
 
 ## Sub-groups
 
-A group can also contain zero or more subgroups. Each subgroup can be allocated
-to a specific purpose in the top-level parent group. The `node_group_type` value
-specifies the type when the subgroup is created.
+A group can also contain zero or more subgroups. Subgroups can be used to
+represent data centers or locations allowing commit scopes to refer to nodes
+in a particular region as a whole. PGD Proxy can also make use of subgroups 
+to delineate nodes available to be write leader.
 
+The `node_group_type` value specifies the type when the subgroup is created.
 Some sub-group types change the behavior of the nodes within the group. For
 example, a subscriber-only sub-group will make all the nodes within the group
 into subscriber-only nodes.
 
-## Subscriber-only nodes
-
-As the name suggests, a subscriber-only node subscribes only to replication
-changes from other nodes in the cluster. However, no other nodes receive
-replication changes from `subscriber-only` nodes. This is somewhat similar to
-logical standby nodes. But in contrast to logical standby, the `subscriber-only`
-nodes are fully joined to the cluster. They can receive replication changes from
-all other nodes in the cluster and hence aren't affected by unavailability or
-parting of any one node in the cluster.
-
-A `subscriber-only` node is a fully joined PGD node and hence it receives all
-replicated DDLs and acts on those. It also uses Raft to consistently report its
-status to all nodes in the cluster. The `subscriber-only` node doesn't have Raft
-voting rights and hence can't become a Raft leader or participate in the leader
-election. Also, while it receives replicated DDLs, it doesn't participate in DDL
-or DML lock acquisition. In other words, a currently down `subscriber-only` node
-doesn't stop a DML lock from being acquired.
-
-The `subscriber-only` node forms the building block for PGD Tree topology. In
-this topology, a small number of fully active nodes are replicating changes in
-all directions. A large number of `subscriber-only` nodes receive only changes
-but never send any changes to any other node in the cluster. This topology
-avoids connection explosion due to a large number of nodes, yet provides an
-extremely large number of `leaf` nodes that you can use to consume the data.
-
-## Subscriber-only groups
-
-To make use of `subscriber-only` nodes, first create a PGD group of type
-`subscriber-only`. Make it a subgroup of the group from which the member nodes
-receive the replication changes. Once you create the subgroup, all nodes that
-intend to become `subscriber-only` nodes must join the subgroup. You can create
-more than one subgroup of `subscriber-only` type, and they can have different
-parent groups.
-
-Once a node successfully joins the `subscriber-only` subgroup, it becomes a
-`subscriber-only` node and starts receiving replication changes for the parent
-group. Any changes made directly on the `subscriber-only` node aren't
-replicated.
-
-See
-[`bdr.create_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node_group)
-to know how to create a subgroup of a specific type and belonging to a specific
-parent group.
-
-!!! Note
-
-Since a `subscriber-only` node doesn't replicate changes to any node in the
-cluster, it can't act as a source for syncing replication changes when a node is
-parted from the cluster. But if the `subscriber-only` node already received and
-applied replication changes from the parted node that no other node in the
-cluster currently has, then that causes inconsistency between the nodes.
-
-For now, you can solve this by setting
-[`bdr.standby_slot_names`](/pgd/latest/reference/pgd-settings#bdrstandby_slot_names)
-and
-[`bdr.standby_slots_min_confirmed`](/pgd/latest/reference/pgd-settings#bdrstandby_slots_min_confirmed)
-so that there's always a fully active PGD node that's ahead of the
-`subscriber-only` nodes. !!!
