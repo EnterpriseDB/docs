@@ -29,12 +29,13 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
+  -p "cnp/add-frontmatters" \
+  -p "cnp/flatten-appendices" \
   -p "cnp/replace-github-urls" \
   -p "cnp/update-links" \
   -p "cnp/update-yaml-links" \
   -p "cnp/rewrite-mdextra-anchors" \
   -p "cnp/strip-html-comments" \
-  -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
 
 node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
