@@ -33,6 +33,7 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -p "cnp/update-links" \
   -p "cnp/update-yaml-links" \
   -p "cnp/rewrite-mdextra-anchors" \
+  -p "cnp/strip-html-comments" \
   -p "cnp/add-frontmatters" \
   -p "cnp/rename-to-mdx"
 
