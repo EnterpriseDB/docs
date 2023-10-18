@@ -129,6 +129,17 @@ spec:
         [...]
 ```
 
+### S3 lifecycle policy
+
+Barman Cloud writes objects to S3, then does not update them until they are
+deleted by the Barman Cloud retention policy. A recommended approach for an S3
+lifecycle policy is to expire the current version of objects a few days longer
+than the Barman retention policy, enable object versioning, and expire
+non-current versions after a number of days. Such a policy protects against
+accidental deletion, and also allows for restricting permissions to the
+EDB Postgres for Kubernetes workload so that it may delete objects from S3 without granting
+permissions to permanently delete objects.
+
 ### Other S3-compatible Object Storages providers
 
 In case you're using S3-compatible object storage, like **MinIO** or
@@ -145,8 +156,8 @@ kind: Cluster
 spec:
   backup:
     barmanObjectStore:
-      destinationPath: "<destination path here>"
-      endpointURL: "https://bucket.us-east1.linodeobjects.com"
+      destinationPath: "s3://bucket/"
+      endpointURL: "https://us-east1.linodeobjects.com"
       s3Credentials:
         [...]
 ```
@@ -169,7 +180,7 @@ spec:
 
 !!! Important
     Suppose you configure an Object Storage provider which uses a certificate signed with a private CA,
-    like when using OpenShift or MinIO via HTTPS. In that case, you need to set the option `endpointCA`
+    like when using Openshift or MinIO via HTTPS. In that case, you need to set the option `endpointCA`
     referring to a secret containing the CA bundle so that Barman can verify the certificate correctly.
 
 !!! Note
@@ -546,8 +557,9 @@ You can also schedule your backups periodically by creating a
 resource named `ScheduledBackup`. The latter is similar to a
 `Backup` but with an added field, called `schedule`.
 
-This field is a *cron schedule* specification, which follows the same
-[format used in Kubernetes CronJobs](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
+The schedule allows you to define a *six-term cron schedule* specification,
+which includes seconds, as expressed in
+the [Go `cron` package format](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
 
 This is an example of a scheduled backup:
 
@@ -563,7 +575,12 @@ spec:
     name: pg-backup
 ```
 
-The above example will schedule a backup every day at midnight.
+The above example will schedule a backup every day at midnight because the schedule
+specifies zero for the second, minute, and hour, while specifying wildcard, meaning all,
+for day of the month, month, and day of the week.
+
+In Kubernetes CronJobs, the equivalent expression is `0 0 * * *` because seconds
+are not included.
 
 !!! Hint
     Backup frequency might impact your recovery time object (RTO) after a
@@ -658,15 +675,14 @@ that archival request will be just dismissed with a positive status.
 
 ## Backup from a standby
 
+By default, backups will run on the primary instance of a `Cluster`.
+
 Taking a base backup requires to scrape the whole data content of the
 PostgreSQL instance on disk, possibly resulting in I/O contention with the
 actual workload of the database.
 
 For this reason, EDB Postgres for Kubernetes allows you to take advantage of a
 feature which is directly available in PostgreSQL: **backup from a standby**.
-
-By default, backups will run on the most aligned replica of a `Cluster`. If
-no replicas are available, backups will run on the primary instance.
 
 !!! Info
     Although the standby might not always be up to date with the primary,
@@ -679,8 +695,8 @@ no replicas are available, backups will run on the primary instance.
     primary. This might produce unexpected results in the short term (before
     `archive_timeout` kicks in) in deployments with low write activity.
 
-If you prefer to always run backups on the primary, you can set the backup
-target to `primary` as outlined in the example below:
+You can use set backup target to `prefer-standby` as outlined in the
+example below:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -689,15 +705,15 @@ metadata:
   [...]
 spec:
   backup:
-    target: "primary"
+    target: "prefer-standby"
 ```
 
-When the backup target is set to `prefer-standby`, such policy will ensure
-backups are run on the most up-to-date available secondary instance, or if no
-other instance is available, on the primary instance.
+The `prefer-standby` policy will ensure backups are run on the most up-to-date
+available secondary instance, falling back to the primary instance if no other
+instance is available.
 
-By default, when not otherwise specified, target is automatically set to take
-backups from a standby.
+By default, when not specified, target is automatically set to take backups
+from a primary.
 
 The backup target specified in the `Cluster` can be overridden in the `Backup`
 and `ScheduledBackup` types, like in the following example:
