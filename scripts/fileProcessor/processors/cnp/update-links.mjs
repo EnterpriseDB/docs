@@ -43,7 +43,7 @@ function linkRewriter() {
     visit(tree, "link", (node) => {
       if (node.url === "supported_releases.md")
         node.url = "/resources/platform-compatibility#pgk8s";
-      else if (node.url === "release_nodes.md")
+      else if (node.url === "release_notes.md")
         node.url = "rel_notes";
     });
   };
