@@ -19,18 +19,18 @@ The operator can be installed using the provided [Helm chart](https://github.com
 The operator can be installed like any other resource in Kubernetes,
 through a YAML manifest applied via `kubectl`.
 
-You can install the [latest operator manifest](https://get.enterprisedb.io/cnp/postgresql-operator-1.20.2.yaml)
+You can install the [latest operator manifest](https://get.enterprisedb.io/cnp/postgresql-operator-1.21.0.yaml)
 for this minor release as follows:
 
 ```sh
 kubectl apply -f \
-  https://get.enterprisedb.io/cnp/postgresql-operator-1.20.2.yaml
+  https://get.enterprisedb.io/cnp/postgresql-operator-1.21.0.yaml
 ```
 
 You can verify that with:
 
 ```sh
-kubectl get deploy -n postgresql-operator-system postgresql-operator-controller-manager
+kubectl get deployment -n postgresql-operator-system postgresql-operator-controller-manager
 ```
 
 ### Using the `cnp` plugin for `kubectl`
@@ -75,7 +75,7 @@ For example, you can install the latest snapshot of the operator with:
 
 ```sh
 curl -sSfL \
-  https://raw.githubusercontent.com/cloudnative-pg/artifacts/main/manifests/operator-manifest.yaml | \
+  https://raw.githubusercontent.com/cloudnative-pg/artifacts/release-1.21/manifests/operator-manifest.yaml | \
   kubectl apply -f -
 ```
 
@@ -84,7 +84,7 @@ specific minor release, you can just run:
 
 ```sh
 curl -sSfL \
-  https://raw.githubusercontent.com/cloudnative-pg/artifacts/release-1.20/manifests/operator-manifest.yaml | \
+  https://raw.githubusercontent.com/cloudnative-pg/artifacts/release-1.21/manifests/operator-manifest.yaml | \
   kubectl apply -f -
 ```
 
@@ -100,6 +100,12 @@ which is a package managing system for operators.
 You can install EDB Postgres for Kubernetes using the metadata available in the
 [EDB Postgres for Kubernetes page](https://operatorhub.io/operator/cloud-native-postgresql)
 from the [OperatorHub.io website](https://operatorhub.io), following the installation steps listed on that page.
+
+### Using OLM
+
+EDB Postgres for Kubernetes can also be installed using the
+[Operator Lifecycle Manager (OLM)](https://olm.operatorframework.io/docs/)
+directly from [OperatorHub.io](https://operatorhub.io/operator/cloudnative-pg).
 
 ## Details about the deployment
 
@@ -149,7 +155,7 @@ plane for self-managed Kubernetes installations).
 ## Upgrades
 
 !!! Important
-    Please carefully read the [release notes](release_notes.md)
+    Please carefully read the [release notes](rel_notes)
     before performing an upgrade as some versions might require
     extra steps.
 
@@ -236,7 +242,7 @@ least monthly. If you are unable to apply updates as each version becomes
 available, we recommend upgrading through each version in sequential order to
 come current periodically and not skipping versions.
 
-The [release notes](release_notes.md) page contains a detailed list of the
+The [release notes](rel_notes) page contains a detailed list of the
 changes introduced in every released version of EDB Postgres for Kubernetes,
 and it must be read before upgrading to a newer version of the software.
 
@@ -247,6 +253,222 @@ manager of the chosen distribution is enough.
 When versions are not directly upgradable, the old version needs to be
 removed before installing the new one. This won't affect user data but
 only the operator itself.
+
+### Upgrading to 1.21.0, 1.20.3 or 1.19.5
+
+!!! Important
+    We encourage all existing users of EDB Postgres for Kubernetes to upgrade to version
+    1.21.0 or at least to the latest stable version of the minor release you are
+    currently using (namely 1.20.3 or 1.19.5).
+
+!!! Warning
+    Every time you are upgrading to a higher minor release, make sure you
+    go through the release notes and upgrade instructions of all the
+    intermediate minor releases. For example, if you want to move
+    from 1.19.x to 1.21, make sure you go through the release notes
+    and upgrade instructions for 1.20 and 1.21.
+
+With the goal to keep improving out-of-the-box the *convention over
+configuration* behavior of the operator, EDB Postgres for Kubernetes changes the default
+value of several knobs in the following areas:
+
+-   startup and shutdown control of the PostgreSQL instance
+-   self-healing
+-   security
+-   labels
+
+Some of the above changes have been backported to 1.20.3 and 1.19.5, as
+detailed below. Most of the changes will affect new PostgreSQL clusters only.
+
+!!! Warning
+    Please read carefully the list of changes below, and how to modify the
+    `Cluster` manifests to retain the existing behavior if you don't want to
+    disrupt your existing workloads. Alternatively, postpone the upgrade to
+    until you are sure. In general, we recommend adopting these default
+    values unless you have valid reasons not to.
+
+#### Superuser access disabled
+
+!!! Important
+    This change takes effect starting from EDB Postgres for Kubernetes 1.21.0.
+
+Pushing towards *security-by-default*, EDB Postgres for Kubernetes now disables access
+`postgres` superuser access via the network in all new clusters, unless
+explicitly enabled.
+
+If you want to ensure superuser access to the PostgreSQL cluster, regardless
+which version of EDB Postgres for Kubernetes you are running, we advise you to explicitly
+declare it by setting:
+
+```yaml
+spec:
+   ...
+   enableSuperuserAccess: true
+```
+
+#### Replication slots for HA
+
+!!! Important
+    This change takes effect starting from EDB Postgres for Kubernetes 1.21.0.
+
+[As already anticipated in release 1.20](installation_upgrade.md#replication-slots-for-high-availability),
+replication slots for High Availability are now enabled by default.
+
+If you want to ensure replication slots are disabled, regardless of which
+version of EDB Postgres for Kubernetes you are running, we advise you to explicitly declare
+it by setting:
+
+```yaml
+spec:
+   ...
+   replicationSlots:
+     highAvailability:
+       enabled: false
+```
+
+#### Delay for PostgreSQL shutdown
+
+!!! Important
+    This change has been backported to all supported minor releases. As a
+    result, it will be available starting from versions 1.21.0, 1.20.3 and
+    1.19.5.
+
+Up to now, [the `stopDelay` parameter](instance_manager.md#shutdown-control)
+was set to 30 seconds. Despite the recommendations to change and tune this
+value, almost all the cases we have examined during support incidents or
+community issues show that this value is left unchanged.
+
+The [new default value is 1800 seconds](https://github.com/EnterpriseDB/cloud-native-postgres/commit/9f7f18c5b9d9103423a53d180c0e2f2189e71c3c),
+the equivalent of 30 minutes.
+
+The new `smartShutdownTimeout` parameter has been introduced to define
+the maximum time window within the `stopDelay` value reserved to complete
+the `smart` shutdown procedure in PostgreSQL. During this time, the
+Postgres server rejects any new connections while waiting for all regular
+sessions to terminate.
+
+Once elapsed, the remaining time up to `stopDelay` will be reserved for
+PostgreSQL to complete its duties regarding WAL commitments with both the
+archive and the streaming replicas to ensure the cluster doesn't lose any data.
+
+If you want to retain the old behavior, you need to set explicitly:
+
+```yaml
+spec:
+   ...
+   stopDelay: 30
+```
+
+And, **after** the upgrade has completed, specify `smartShutdownTimeout`:
+
+```yaml
+spec:
+   ...
+   stopDelay: 30
+   smartShutdownTimeout: 15
+```
+
+#### Delay for PostgreSQL startup
+
+!!! Important
+    This change has been backported to all supported minor releases. As a
+    result, it will be available starting from versions 1.21.0, 1.20.3 and
+    1.19.5.
+
+Until now, [the `startDelay` parameter](instance_manager.md#startup-liveness-and-readiness-probes)
+was set to 30 seconds, and EDB Postgres for Kubernetes used this parameter as
+`initialDelaySeconds` for the Kubernetes liveness probe. Given that all the
+supported Kubernetes releases provide [startup probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-startup-probes),
+version 1.21 has adopted this approach as well (`startDelay` is now
+automatically divided into periods of 10 seconds of duration  each).
+
+!!! Important
+    In order to add the `startupProbe`, each pod needs to be restarted.
+    As a result, when you upgrade the operator, a one-time rolling
+    update of the cluster will be executed even in the online update case.
+
+Despite the recommendations to change and tune this value, almost all the cases
+we have examined during support incidents or community issues show that this
+value is left unchanged. Given that this parameter influences the startup of
+a PostgreSQL instance, a low value of `startDelay` would cause Postgres
+never to reach a consistent recovery state and be restarted indefinitely.
+
+For this reason, `startDelay` has been [raised by default to 3600 seconds](https://github.com/EnterpriseDB/cloud-native-postgres/commit/4f4cd96bc6f8e284a200705c11a2b41652d58146),
+the equivalent of 1 hour.
+
+If you want to retain the existing behavior using the new implementation, you
+can do that by explicitly setting:
+
+```yaml
+spec:
+   ...
+   startDelay: 30
+```
+
+#### Delay for PostgreSQL switchover
+
+!!! Important
+    This change has been backported to all supported minor releases. As a
+    result, it will be available starting from versions 1.21.0, 1.20.3 and
+    1.19.5.
+
+Up to now, [the `switchoverDelay` parameter](instance_manager.md#shutdown-of-the-primary-during-a-switchover)
+was set by default to 40000000 seconds (over 15 months) to simulate a very long
+interval.
+
+The [default value has been lowered to 3600 seconds](https://github.com/EnterpriseDB/cloud-native-postgres/commit/9565f9f2ebab8bc648d9c361198479974664c322),
+the equivalent of 1 hour.
+
+If you want to retain the old behavior, you need to set explicitly:
+
+```yaml
+spec:
+   ...
+   switchoverDelay: 40000000
+```
+
+#### Labels
+
+!!! Important
+    This change has been backported to all supported minor releases. As a
+    result, it will be available starting from versions 1.21.0, 1.20.3 and
+    1.19.5.
+
+In version 1.18, we deprecated the `postgresql` label in pods to identify the
+name of the cluster, and replaced it with the more canonical `k8s.enterprisedb.io/cluster`
+label. The `postgresql` label is no longer maintained.
+
+Similarly, from this version, the `role` label is deprecated. The new label
+`k8s.enterprisedb.io/instanceRole` is now used, and will entirely replace the `role` label
+in a future release.
+
+#### Shortcut for keeping the existing behavior
+
+If you want to explicitly keep the existing behavior of EDB Postgres for Kubernetes
+(we advise not to), you need to set these values in all your `Cluster`
+definitions **before upgrading** to version 1.21.0, 1.20.3 or 1.19.5:
+
+```yaml
+spec:
+   ...
+   # Changed in 1.21.0, 1.20.3 and 1.19.5
+   startDelay: 30
+   stopDelay: 30
+   switchoverDelay: 40000000
+   # Changed in 1.21.0 only
+   enableSuperuserAccess: true
+   replicationSlots:
+     highAvailability:
+       enabled: false
+```
+
+Once the upgrade is completed, also add:
+
+```yaml
+spec:
+   ...
+   smartShutdownTimeout: 15
+```
 
 ### Upgrading to 1.20 from a previous minor version
 
@@ -261,7 +483,7 @@ convention over configuration.
 
 #### Backup from a standby
 
-[Backup from a standby](backup_recovery.md#backup-from-a-standby)
+[Backup from a standby](backup.md#backup-from-a-standby)
 was introduced in EDB Postgres for Kubernetes 1.19, but disabled by default - meaning that
 the base backup is taken from the primary unless the target is explicitly
 set to prefer standby.
