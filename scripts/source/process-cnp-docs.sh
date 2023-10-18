@@ -11,7 +11,7 @@ SOURCE_CHECKOUT=`cd $1 && pwd`
 DESTINATION_CHECKOUT=`cd $2 && pwd`
 
 cd $DESTINATION_CHECKOUT/scripts/fileProcessor
-npm install --production
+npm ci
 
 cd $DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/
 node $DESTINATION_CHECKOUT/scripts/source/files-to-ignore.mjs \

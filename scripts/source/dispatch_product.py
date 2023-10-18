@@ -23,7 +23,7 @@ commands = {
 
 ret = os.system(
     f"cd {args.workspace}/destination/scripts/source && \
-                  npm install --production"
+                  npm ci"
 )
 
 if ret != 0:
