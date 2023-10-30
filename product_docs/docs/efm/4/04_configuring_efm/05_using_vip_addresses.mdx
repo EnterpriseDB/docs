@@ -10,13 +10,39 @@ legacyRedirectsGenerated:
 
 <div id="using_vip_addresses" class="registered_link"></div>
 
-Failover Manager uses the `efm_address` script to assign or release a virtual IP address.
+Failover Manager can be used along with a virtual IP address (VIP) for routing requests to the current primary node. 
 
 !!! Note "Cloud provider support and alternatives"
     Virtual IP addresses aren't supported by many cloud providers. In those environments, use another mechanism, such as an elastic IP address on AWS, that can be changed when needed by a fencing or post-promotion script.
 
-!!! Note "Behavior when the agent is stopped"
-    Failover Manager will not drop the Virtual IP address (if used) from the primary node when the agent is stopped. As a convenience for testing, the primary agent will acquire the VIP at startup if the node does not already have it, but otherwise starting and stopping Failover Manager has no effect on the node having the virtual IP address.
+## Behavior when the EFM agent is stopped
+
+Failover Manager will not drop the virtual IP address from the primary node when the agent is stopped. As a convenience for testing, the primary agent will acquire the VIP at startup if the node does not already have it, but otherwise starting and stopping Failover Manager has no effect on the node having the virtual IP address. This allows for upgrades and maintenance of EFM services without interrupting access to the database.
+
+## Behavior during promotion of a node from standby to primary
+
+The VIP should be initially assigned to the primary node. When EMF detects failure of the primary node, the VIP will be released and then assigned to a standby node as it is promoted to be the new primary. 
+
+EFM verifies (via the command configured via the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) cluster property) that the VIP is not currently in use during promotion of a standby, and will skip assigning it to the new primary node if it is already assigned. This behavior can be disabled via the [`check.vip.before.promotion`](01_cluster_properties.mdx#check_vip_before_promotion) cluster property. 
+
+!!!important "Meaning of the ping command exit code"
+   Failover Manager uses the exit code of the ping command to determine whether an address is reachable. A zero exit code indicates the address is reachable (in this context, this means the VIP is assigned). A non-zero exit code indicates the address isn't reachable (in this context, this means the VIP is unassigned). 
+   
+   This matches the behavior of the standard [`ping(8)`](https://manned.org/ping.8) command; if you configure a different command via the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) cluster property, it should also conform to this behavior.
+
+## Configuring Postgres when using multiple addresses for nodes
+
+If a VIP address or any address other than the `bind.address` is assigned to a node, the operating system can choose the source address used when contacting the database. Be sure to modify the `pg_hba.conf` file on all monitored databases to allow contact from all addresses within your replication scenario.
+
+## Using multiple interfaces
+
+The network interface used for the VIP doesn't have to be the same interface used for the Failover Manager agent's [`bind.address`](01_cluster_properties.mdx#bind_address) value. The primary agent drops the VIP as needed during a failover, and Failover Manager verifies that the VIP is no longer available before promoting a standby. A failure of the bind address network leads to primary isolation and failover.
+
+If the VIP uses a different interface from the `bind.address`, you might encounter a timing condition in which the rest of the cluster checks for a reachable VIP before the primary agent drops it. In this case, Failover Manager retries the VIP check for the number of seconds specified in the [`node.timeout`](01_cluster_properties.mdx#node_timeout) property to help ensure that a failover happens as expected.
+
+## The efm_address script
+
+Failover Manager uses the `efm_address` script to assign or release a virtual IP address.
 
 By default, the script resides in:
 
@@ -54,12 +80,12 @@ For more information about properties that describe a virtual IP address, see [T
 
 Invoke the `efm_address` script as the root user. The efm user is created during the installation and is granted privileges in the sudoers file to run the `efm_address` script. For more information about the `sudoers` file, see [Extending Failover Manager permissions](04_extending_efm_permissions/#extending_efm_permissions).
 
-!!! Note
-    If a VIP address or any address other than the `bind.address` is assigned to a node, the operating system can choose the source address used when contacting the database. Be sure to modify the `pg_hba.conf` file on all monitored databases to allow contact from all addresses within your replication scenario.
-
 ## Testing the VIP
 
-When using a virtual IP (VIP) address with Failover Manager, it's important to test the VIP functionality manually before starting Failover Manager. This catches any network-related issues before they cause a problem during an actual failover. While testing the VIP, make sure that Failover Manager isn't running.
+When using a virtual IP (VIP) address with Failover Manager, it's important to test the VIP functionality manually before starting Failover Manager. This catches any network-related issues before they cause a problem during an actual failover. 
+
+!!!important
+   While testing the VIP, make sure that Failover Manager isn't running.
 
 The following steps test the actions that Failover Manager takes. The example uses the following property values:
 
@@ -73,7 +99,7 @@ ping.server.command=/bin/ping -q -c3 -w5
 !!! Note
     The `virtual.ip.prefix` specifies the number of significant bits in the virtual IP address.
 
-When instructed to ping the VIP from a node, use the command defined by the `ping.server.command` property.
+When instructed to ping the VIP from a node, use the command defined by the [`ping.server.command`](01_cluster_properties.mdx#ping_server_command) property and run it from the machine configured in EFM for the appropriate role (primary / secondary / witness).
 
 1. Ping the VIP from all nodes to confirm that the address isn't already in use:
 
@@ -85,12 +111,12 @@ When instructed to ping the VIP from a node, use the command defined by the `pin
    time 3000ms
    ```
 
-   You see 100% packet loss.
-   
-   !!!important
-      Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code isn't zero. If you're using a command other than ping, it must return a non-zero exit code if the address isn't reachable.
+   You will see 100% packet loss when the address is unusued.
 
-2. Run the `efm_address add4` command on the primary node to assign the VIP, and then confirm with ip address:
+   !!!important "Meaning of the ping command exit code for unreachable addresses"
+      Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code isn't zero. If you're using a command other than ping, it must return a non-zero exit code when the address isn't reachable.
+
+2. Run the `efm_address add4` command on the machine configured as the primary node to assign the VIP, and then confirm with ip address:
 
    ```text
    # efm_address add4 eth0 172.24.38.239/24
@@ -111,11 +137,12 @@ When instructed to ping the VIP from a node, use the command defined by the `pin
    rtt min/avg/max/mdev = 0.023/0.025/0.029/0.006 ms
    ```
 
-   No packet loss occurs.
-   !!!Important
-      Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code is zero. If you're using a command other than ping, it must return a zero exit code if the address is reachable.
+   You will see 0% packet loss, indicating the IP now reaches the machine configured as the primary node.
 
-4. Use the `efm_address del` command to release the address on the primary node and confirm the node was released with ip address:
+   !!!important "Meaning of the ping command exit code for reachable addresses"
+      Failover Manager uses the exit code of the ping command to determine whether the address was reachable. In this case, the exit code is zero. If you're using a command other than ping, it must return a zero exit code when the address is reachable.
+
+4. Use the `efm_address del` command to release the address on the primary node and confirm the VIP was released with the `ip address` command:
 
    ```text
    # efm_address del eth0 172.24.38.239/24
@@ -139,7 +166,7 @@ When instructed to ping the VIP from a node, use the command defined by the `pin
 
    100% packet loss occurs. Repeat this step on all nodes.
 
-6. Repeat step 2 on all standby nodes to assign the VIP to every node. You can ping the VIP from any node to verify that it's in use.
+6. Repeat steps 2, 3 and 4 on all standby nodes to verify that the VIP can be successfully assigned to and released from every node. You can ping the VIP from any node to verify that it's in use.
 
    ```text
    # efm_address add4 eth0 172.24.38.239/24
@@ -151,8 +178,3 @@ When instructed to ping the VIP from a node, use the command defined by the `pin
    ```
 
 After these test steps, release the VIP from any nonprimary node before attempting to start Failover Manager.
-
-!!! Note
-    The network interface used for the VIP doesn't have to be the same interface used for the Failover Manager agent's `bind.address` value. The primary agent drops the VIP as needed during a failover, and Failover Manager verifies that the VIP is no longer available before promoting a standby. A failure of the bind address network leads to primary isolation and failover.
-
-If the VIP uses a different interface, you might encounter a timing condition in which the rest of the cluster checks for a reachable VIP before the primary agent drops it. In this case, Failover Manager retries the VIP check for the number of seconds specified in the `node.timeout` property to help ensure that a failover happens as expected.
