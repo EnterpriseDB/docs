@@ -25,7 +25,7 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
     return [[], []];
   }
 
-  const splitRegex = /(?:\s+|^)__OUTPUT__(?:\s+|$)/;
+  const splitRegex = /(?:\s+|^)__OUTPUT__\s*(?:\n+|$)/;
   const code = [];
   const output = [];
 
