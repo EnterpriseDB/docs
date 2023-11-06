@@ -69,7 +69,7 @@ If you find that the container crashes frequently or see that your container has
 
 1. Click on Resources in the left nav menu
 
-1. In the Memory section, adjust the slider to 4.00 GB
+1. In the Memory section, adjust the slider to 8.00 GB
 
 1. Click Apply & Restart button
 
@@ -77,7 +77,7 @@ If you are still experiencing errors or other issues with the site, try the foll
 
 1. `npm run stop` then `npm run start` to restart the docker container
 
-1. `npm run docker:rebuild` then `npm run start` to rebuild and restart the container
+1. `npm run docker:rebuild` then `npm run stop` and `npm run start` to rebuild and restart the container
 
 ### Install Docker using Homebrew
 
