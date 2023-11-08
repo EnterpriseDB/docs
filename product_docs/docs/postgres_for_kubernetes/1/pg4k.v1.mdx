@@ -1,8 +1,9 @@
 ---
 title: 'API Reference'
-originalFilePath: 'src/cloudnative-pg.v1.md'
+originalFilePath: 'src/pg4k.v1.md'
 redirects:
 - ../api_reference
+- cloudnative-pg.v1
 ---
 
 <p>Package v1 contains API Schema definitions for the postgresql v1 API group</p>
@@ -523,6 +524,23 @@ standby, if available.</p>
 and <code>volumeSnapshot</code>. Defaults to: <code>barmanObjectStore</code>.</p>
 </td>
 </tr>
+<tr><td><code>online</code><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>Whether the default type of backup with volume snapshots is
+online/hot (<code>true</code>, default) or offline/cold (<code>false</code>)
+Overrides the default setting specified in the cluster field '.spec.backup.volumeSnapshot.online'</p>
+</td>
+</tr>
+<tr><td><code>onlineConfiguration</code><br/>
+<a href="#postgresql-k8s-enterprisedb-io-v1-OnlineConfiguration"><i>OnlineConfiguration</i></a>
+</td>
+<td>
+   <p>Configuration parameters to control the online/hot backup with volume snapshots
+Overrides the default settings specified in the cluster '.backup.volumeSnapshot.onlineConfiguration' stanza</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -671,6 +689,20 @@ parameter is omitted</p>
    <p>The backup command output in case of error</p>
 </td>
 </tr>
+<tr><td><code>backupLabelFile</code><br/>
+<i>[]byte</i>
+</td>
+<td>
+   <p>Backup label file content as returned by Postgres in case of online (hot) backups</p>
+</td>
+</tr>
+<tr><td><code>tablespaceMapFile</code><br/>
+<i>[]byte</i>
+</td>
+<td>
+   <p>Tablespace map file content as returned by Postgres in case of online (hot) backups</p>
+</td>
+</tr>
 <tr><td><code>instanceID</code><br/>
 <a href="#postgresql-k8s-enterprisedb-io-v1-InstanceID"><i>InstanceID</i></a>
 </td>
@@ -690,6 +722,13 @@ parameter is omitted</p>
 </td>
 <td>
    <p>The backup method being used</p>
+</td>
+</tr>
+<tr><td><code>online</code> <b>[Required]</b><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>Whether the backup was online/hot (<code>true</code>) or offline/cold (<code>false</code>)</p>
 </td>
 </tr>
 </tbody>
@@ -1690,14 +1729,14 @@ Defaults to: <code>RuntimeDefault</code></p>
 </td>
 </tr>
 <tr><td><code>instancesStatus</code><br/>
-<i>map[github.com/EnterpriseDB/cloud-native-postgres/pkg/utils.PodStatus][]string</i>
+<i>map[PodStatus][]string</i>
 </td>
 <td>
    <p>InstancesStatus indicates in which status the instances are</p>
 </td>
 </tr>
 <tr><td><code>instancesReportedState</code><br/>
-<a href="#postgresql-k8s-enterprisedb-io-v1-InstanceReportedState"><i>map[github.com/EnterpriseDB/cloud-native-postgres/api/v1.PodName]github.com/EnterpriseDB/cloud-native-postgres/api/v1.InstanceReportedState</i></a>
+<a href="#postgresql-k8s-enterprisedb-io-v1-InstanceReportedState"><i>map[PodName]InstanceReportedState</i></a>
 </td>
 <td>
    <p>The reported state of the instances during the last reconciliation loop</p>
@@ -2709,7 +2748,7 @@ by the instance manager</p>
 <thead><tr><th width="30%">Field</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td><code>byStatus</code><br/>
-<i>map[github.com/EnterpriseDB/cloud-native-postgres/api/v1.RoleStatus][]string</i>
+<i>map[RoleStatus][]string</i>
 </td>
 <td>
    <p>ByStatus gives the list of roles in each state</p>
@@ -2724,7 +2763,7 @@ with an explanation of the cause</p>
 </td>
 </tr>
 <tr><td><code>passwordStatus</code><br/>
-<a href="#postgresql-k8s-enterprisedb-io-v1-PasswordState"><i>map[string]github.com/EnterpriseDB/cloud-native-postgres/api/v1.PasswordState</i></a>
+<a href="#postgresql-k8s-enterprisedb-io-v1-PasswordState"><i>map[string]PasswordState</i></a>
 </td>
 <td>
    <p>PasswordStatus gives the last transaction id and password secret version for each managed role</p>
@@ -2850,6 +2889,52 @@ up again) or not (recreate it elsewhere - when <code>instances</code> &gt;1)</p>
 </td>
 <td>
    <p>Is there a node maintenance activity in progress?</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+<div id='postgresql-k8s-enterprisedb-io-v1-OnlineConfiguration'></div>
+
+## OnlineConfiguration
+
+**Appears in:**
+
+-   [BackupSpec](#postgresql-k8s-enterprisedb-io-v1-BackupSpec)
+
+-   [ScheduledBackupSpec](#postgresql-k8s-enterprisedb-io-v1-ScheduledBackupSpec)
+
+-   [VolumeSnapshotConfiguration](#postgresql-k8s-enterprisedb-io-v1-VolumeSnapshotConfiguration)
+
+<p>OnlineConfiguration contains the configuration parameters for the online volume snapshot</p>
+
+<table class="table">
+<thead><tr><th width="30%">Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>waitForArchive</code><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>If false, the function will return immediately after the backup is completed,
+without waiting for WAL to be archived.
+This behavior is only useful with backup software that independently monitors WAL archiving.
+Otherwise, WAL required to make the backup consistent might be missing and make the backup useless.
+By default, or when this parameter is true, pg_backup_stop will wait for WAL to be archived when archiving is
+enabled.
+On a standby, this means that it will wait only when archive_mode = always.
+If write activity on the primary is low, it may be useful to run pg_switch_wal on the primary in order to trigger
+an immediate segment switch.</p>
+</td>
+</tr>
+<tr><td><code>immediateCheckpoint</code><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>Control whether the I/O workload for the backup initial checkpoint will
+be limited, according to the <code>checkpoint_completion_target</code> setting on
+the PostgreSQL server. If set to true, an immediate checkpoint will be
+used, meaning PostgreSQL will complete the checkpoint as soon as
+possible. <code>false</code> by default.</p>
 </td>
 </tr>
 </tbody>
@@ -3864,6 +3949,23 @@ standby, if available.</p>
 and <code>volumeSnapshot</code>. Defaults to: <code>barmanObjectStore</code>.</p>
 </td>
 </tr>
+<tr><td><code>online</code><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>Whether the default type of backup with volume snapshots is
+online/hot (<code>true</code>, default) or offline/cold (<code>false</code>)
+Overrides the default setting specified in the cluster field '.spec.backup.volumeSnapshot.online'</p>
+</td>
+</tr>
+<tr><td><code>onlineConfiguration</code><br/>
+<a href="#postgresql-k8s-enterprisedb-io-v1-OnlineConfiguration"><i>OnlineConfiguration</i></a>
+</td>
+<td>
+   <p>Configuration parameters to control the online/hot backup with volume snapshots
+Overrides the default settings specified in the cluster '.backup.volumeSnapshot.onlineConfiguration' stanza</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -4266,7 +4368,7 @@ passed to the OpenSSL command to encrypt and decrypt</p>
 <thead><tr><th width="30%">Field</th><th>Description</th></tr></thead>
 <tbody>
 <tr><td><code>instances</code><br/>
-<a href="#postgresql-k8s-enterprisedb-io-v1-PodTopologyLabels"><i>map[github.com/EnterpriseDB/cloud-native-postgres/api/v1.PodName]github.com/EnterpriseDB/cloud-native-postgres/api/v1.PodTopologyLabels</i></a>
+<a href="#postgresql-k8s-enterprisedb-io-v1-PodTopologyLabels"><i>map[PodName]PodTopologyLabels</i></a>
 </td>
 <td>
    <p>Instances contains the pod topology of the instances</p>
@@ -4341,6 +4443,21 @@ It is the default class for the other types if no specific class is present</p>
 </td>
 <td>
    <p>SnapshotOwnerReference indicates the type of owner reference the snapshot should have</p>
+</td>
+</tr>
+<tr><td><code>online</code><br/>
+<i>bool</i>
+</td>
+<td>
+   <p>Whether the default type of backup with volume snapshots is
+online/hot (<code>true</code>, default) or offline/cold (<code>false</code>)</p>
+</td>
+</tr>
+<tr><td><code>onlineConfiguration</code><br/>
+<a href="#postgresql-k8s-enterprisedb-io-v1-OnlineConfiguration"><i>OnlineConfiguration</i></a>
+</td>
+<td>
+   <p>Configuration parameters to control the online/hot backup with volume snapshots</p>
 </td>
 </tr>
 </tbody>

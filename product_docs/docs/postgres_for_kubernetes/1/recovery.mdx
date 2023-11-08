@@ -51,14 +51,11 @@ compatible, from a physical replication standpoint, with the original one.
 
 For recovery using volume snapshots:
 
--   take a consistent cold backup of the Postgres cluster from a standby through
-    the `kubectl cnp backup` command (see the [plugin document](kubectl-plugin.md#requesting-a-new-base-backup)
-    for reference), which creates the necessary `VolumeSnapshot` objects (two if
-    you have a separate volume for WALs, one if you don't) - recover from the above
-    *VolumeSnapshot* objects through the `volumeSnapshots` option in the
-    `.spec.bootstrap.recovery` stanza, as described in
-    ["Recovery from `VolumeSnapshot` objects"](#recovery-from-volumesnapshot-objects)
-    below
+-   using a consistent set of `VolumeSnapshot` objects that all belong to the
+    same backup, and identified by the same `k8s.enterprisedb.io/cluster` and
+    `k8s.enterprisedb.io/backupName` labels, then recovering through the `volumeSnapshots`
+    option in the `.spec.bootstrap.recovery` stanza, as described in
+    ["Recovery from `VolumeSnapshot` objects"](#recovery-from-volumesnapshot-objects) below
 
 ## Recovery from an object store
 
@@ -120,7 +117,7 @@ spec:
     the volume snapshot, the operator might end up using `pg_basebackup`
     to synchronize them, resulting in a slower process depending on the size
     of the database. This limitation will be lifted in the future when support
-    for online backups will be introduced.
+    for online backups and PVC cloning will be introduced.
 
 EDB Postgres for Kubernetes can create a new cluster from a `VolumeSnapshot` of a PVC of an
 existing `Cluster` that's been taken using the declarative API for
@@ -181,10 +178,6 @@ bootstrap:
 
 ## Recovery from a `Backup` object
 
-!!! Important
-    Recovery from `Backup` objects works only on object store backups,
-    not on volume snapshots.
-
 In case a `Backup` resource is already available in the namespace in which the
 cluster should be created, you can specify its name through
 `.spec.bootstrap.recovery.backup.name`, as in the following example:
@@ -196,9 +189,6 @@ metadata:
   name: cluster-example-initdb
 spec:
   instances: 3
-
-  superuserSecret:
-    name: superuser-secret
 
   bootstrap:
     recovery:
@@ -226,9 +216,8 @@ existing `Backup` resource, the following considerations apply:
     from the backup that is being restored. The operator does not currently attempt
     to back up the underlying secrets, as this is part of the usual maintenance
     activity of the Kubernetes cluster itself.
--   In case you don't supply any `superuserSecret`, a new one is automatically
-    generated with a secure and random password. The secret is then used to
-    reset the password for the `postgres` user of the cluster.
+-   To preserve the original `postgres` user password, you need to properly
+    configure `enableSuperuserAccess` and supply a `superuserSecret`.
 -   By default, the recovery will continue up to the latest
     available WAL on the default target timeline (`current` for PostgreSQL up to
     11, `latest` for version 12 and above).
