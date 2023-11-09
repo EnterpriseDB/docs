@@ -11,7 +11,7 @@ const MainContent = ({
     <div className="flex-grow-1 min-w-50">
       <TimedBanner toDate={new Date("2023-03-15")}>
         tbd{" "}
-        <a className="pl-1 font-weight-bold" href="tbd">
+        <a className="ps-1 fw-bold" href="tbd">
           tbd
         </a>
       </TimedBanner>

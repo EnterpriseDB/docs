@@ -1,0 +1,317 @@
+---
+title: Using EDB SPL Check 
+navTitle: Using
+---
+
+EDB SPL Check helps you to find errors in an EDB stored procedure that a `CREATE PROCEDURE/FUNCTION` can miss. The following are some methods to check your code with EDB SPL Check. 
+
+## Checking triggers
+
+To check any trigger, enter a relation that's used with the trigger function. For example: 
+
+```sql
+CREATE TABLE bar(a int, b int);
+__OUTPUT__
+CREATE TABLE
+```
+
+```sql
+CREATE OR REPLACE FUNCTION public.foo_trg()
+      RETURNS trigger
+      LANGUAGE edbspl
+  AS $function$
+  BEGIN
+    NEW.c := NEW.a + NEW.b;
+  RETURN NEW;
+  END;
+$function$
+__OUTPUT__
+CREATE FUNCTION
+```
+
+When there's no specified relation for the trigger, the following is returned:
+
+```sql
+SELECT * FROM spl_check_function('foo_trg()');
+__OUTPUT__
+ERROR:  missing trigger relation
+HINT:  Trigger relation oid must be valid
+```
+
+When the trigger is checked successfully with a specified relation, the following is returned:
+
+```sql
+SELECT * FROM spl_check_function('foo_trg()', 'bar');
+__OUTPUT__
+                 spl_check_function                 
+--------------------------------------------------------
+ error:42703:3:assignment:record "new" has no field "c"
+(1 row)
+```
+
+For triggers with transitive tables, set the `oldtable` and `newtable` parameters: 
+
+```sql
+CREATE OR REPLACE FUNCTION footab_trig_func()
+RETURNS trigger as $$
+DECLARE x int;
+BEGIN
+  IF false THEN
+    -- should be ok;
+    SELECT COUNT(*) FROM newtab INTO x; 
+
+    -- should fail;
+    SELECT COUNT(*) FROM newtab WHERE d = 10 into x;
+  END If;
+  RETURN null;
+END;
+$$ LANGUAGE edbspl;
+```
+```sql
+SELECT * FROM spl_check_function('footab_trig_func','footab', newtable := 'newtab');
+```
+
+## Validating compound triggers
+
+Another way to verify a trigger function is to use `spl_check_trigger()` by providing the trigger name and, optionally, the relation name. This method is useful for redwood-style triggers and compound triggers where trigger functions are created internally. For example: 
+
+```sql
+CREATE TABLE tab(a int);
+CREATE or REPLACE trigger tg1 before insert on tab
+FOR EACH ROW
+BEGIN
+  NEW.a := NEW.b;
+END;
+```
+```sql
+SELECT * FROM spl_check_trigger('tg1');
+__OUTPUT__
+               spl_check_trigger
+----------------------------------------------------
+ error:42703:2:assignment:record "new" has no field "b"
+ Context: PL/pgSQL assignment "NEW.a := NEW.b"
+(2 rows)
+```
+
+## Validating packages
+
+A package can have multiple functions/procedures. To validate all of your functions/procedures at once, you can use `spl_check_package()`. Similarly, use `spl_check_package_tb()` to view the output in tabular format. 
+
+You can also validate individual package functions/procedures using `spl_check_function()`. For example:
+
+```sql
+SELECT * FROM spl_check_package('<package name>');
+```
+
+## Validating object types
+
+Object types can have one or more member functions. To validate all the functions at once, use `spl_check_objecttype()`. Similarly, use `spl_check_objecttype_tb()` to view the output in tabular format. 
+
+You can also validate individual object type member functions using `spl_check_function()`. For example: 
+
+```sql
+SELECT * FROM spl_check_objecttype('<objecttype name>');
+```
+
+## Setting in-comment options
+
+EDB SPL Check allows persistent-setting, written in-comments. These options are taken from a function's source code before checking. The syntax is: 
+
+```sql
+@spl_check_option: optionname [=] value [, optname [=] value ...]
+```
+
+The settings from comment options have top priority, but generally they can be disabled by setting `use_incomment_options` to `false`. For example: 
+
+```sql
+CREATE OR REPLACE FUNCTION fx(anyelement)
+RETURNS TEXT AS $$
+BEGIN
+  /*
+   * rewrite default polymorphic type to text
+   * @spl_check_options: anyelementtype = text
+   */
+RETURN $1;
+END;
+$$ LANGUAGE edbspl;
+```
+
+## Checking all your code
+
+Use the `spl_check_function()` to check all of your functions/procedures and to check all your triggers. 
+
+To check all nontrigger EDB SPL Check functions:
+
+```sql
+SELECT p.oid, p.proname, spl_check_function(p.oid)
+FROM pg_catalog.pg_namespace n
+JOIN pg_catalog.pg_proc p ON pronamespace = n.oid
+JOIN pg_catalog.pg_language l ON p.prolang = l.oid
+WHERE l.lanname = 'edbspl' AND p.prorettype <> 2279;
+```
+
+To check all trigger EDB SPL Check functions: 
+
+```sql
+SELECT p.proname, tgrelid::regclass, cf.*
+FROM pg_proc p
+JOIN pg_trigger t ON t.tgfoid = p.oid 
+JOIN pg_language l ON p.prolang = l.oid
+JOIN pg_namespace n ON p.pronamespace = n.oid,
+LATERAL spl_check_function(p.oid, t.tgrelid) cf
+WHERE n.nspname = 'public' AND l.lanname = 'edbspl';
+```
+
+To check all EDB SPL Check functions, including functions or trigger functions with defined triggers: 
+
+```sql
+SELECT
+    (pcf).functionid::regprocedure, (pcf).lineno, (pcf).statement,
+    (pcf).sqlstate, (pcf).message, (pcf).detail, (pcf).hint, (pcf).level,
+    (pcf)."position", (pcf).query, (pcf).context
+FROM
+(
+SELECT
+    spl_check_function_tb(pg_proc.oid, COALESCE(pg_trigger.tgrelid, 0)) AS pcf
+FROM pg_proc
+LEFT JOIN pg_trigger
+ON (pg_trigger.tgfoid = pg_proc.oid)
+WHERE
+    prolang = (SELECT lang.oid FROM pg_language lang WHERE lang.lanname = 'edbspl') AND
+    pronamespace <> (SELECT nsp.oid FROM pg_namespace nsp WHERE nsp.nspname = 'pg_catalog') AND
+    -- ignore unused triggers
+    (pg_proc.prorettype <> (SELECT typ.oid FROM pg_type typ WHERE typ.typname = 'trigger') OR
+    pg_trigger.tgfoid IS NOT NULL)
+OFFSET 0
+) ss
+ORDER BY (pcf).functionid::regprocedure::text, (pcf).lineno;
+```
+
+## Limitations
+
+EDB SPL Check finds almost all errors on static code. However, when using PL/pgSQL's dynamic features like dynamic SQL or the record data type, false positives are possible. In these cases, we recommend that you rewrite the affected function or disable EDB SPL Check for the function. For example: 
+
+```sql
+CREATE OR REPLACE FUNCTION f1()
+RETURNS void AS $$
+DECLARE r record;
+BEGIN
+  FOR r IN EXECUTE 'SELECT * FROM t1'
+  LOOP
+    RAISE NOTICE '%', r.c;
+  END LOOP;
+END;
+$$ LANGUAGE edbspl SET edbspl.enable_check TO false;
+```
+
+!!!Note
+    When passive mode is enabled, using EDB SPL Check adds a small overhead. We recommend that you use the setting only in development or preproduction environments. 
+
+### Dynamic SQL
+
+This module doesn't check queries that are assembled in runtime because you can't identify the results of dynamic queries. Therefore, EDB SPL Check can't set the correct type to record variables and can't check a dependent SQL `or` expressions. 
+
+When the type of a record's variable is unknown, you can explicitly assign it with pragma `type`. For example: 
+
+```sql
+DECLARE r record;
+BEGIN
+EXECUTE format('SELECT * FROM %I', _tablename) INTO r;
+PERFORM spl_check_pragma('type: r (id int, processed bool)');
+IF NOT r.processed THEN
+  ...
+```
+
+!!! Warning 
+    You can't use the SQL injection check for a security audit. This tool detects only some SQL injection vulnerabilities, so it might not detect some issues. It can also raise false alarms. 
+
+### Refcursors
+
+You can't use EDB SPL Check to detect the structure of referenced cursors. A reference on a cursor in EDB SPL Check is implemented as the name of a global cursor. During the check, the name is usually unknown, and the global cursor doesn't exist. This issue is significant when performing any static analysis. EDB SPL Check can't set the correct type for the record variable and can't check the dependent SQL statements or expressions. The solution is the same for dynamic SQL. 
+
+You can use either of these solutions:
+
+- Don't use the the record variable as a target when you use a `refcursor` type. 
+- Disable `spl_check` for the affected functions. 
+
+For example:
+
+```sql
+CREATE OR REPLACE FUNCTION foo(refcur_var refcursor)
+RETURNS void AS $$
+DECLARE
+  rec_var record;
+BEGIN
+FETCH refcur_var INTO rec_var; -- this is STOP for spl_check
+RAISE NOTICE '%', rec_var;     -- record rec_var is not assigned yet error
+```
+
+In this example, don't use a record type. Instead use a known `rowtype`:
+
+```sql
+CREATE OR REPLACE FUNCTION foo(refcur_var refcursor)
+RETURNS void AS $$
+DECLARE
+  rec_var some_rowtype;
+BEGIN
+FETCH refcur_var INTO rec_var;
+RAISE NOTICE '%', rec_var;
+```
+
+### Temporary tables
+
+EDB SPL Check can't verify queries over temporary tables that are created in the `edbspl` function runtime. 
+
+As a solution, you can either:
+- Create a fake temporary table.
+- Disable EDB SQL Check for this function.
+
+Temporary tables are stored in your own schema with higher priority than persistent tables. So, you can perform this workaround safely:
+
+```sql
+CREATE OR REPLACE FUNCTION public.disable_dml()
+RETURNS trigger
+LANGUAGE edbspl AS $function$
+BEGIN
+RAISE EXCEPTION SQLSTATE '42P01'
+USING message = format('this instance of %I table doesn''t allow any DML operation', TG_TABLE_NAME),
+  hint = format('you should use "CREATE TEMP TABLE %1$I(LIKE %1$I INCLUDING ALL);" statement',
+    TG_TABLE_NAME);
+RETURN NULL;
+END;
+$function$;
+__OUTPUT__
+CREATE FUNCTION
+```
+```sql
+CREATE TABLE foo(a int, b int); -- doesn't hold data, ever
+__OUTPUT__
+CREATE TABLE
+```
+```sql
+CREATE TRIGGER foo_disable_dml
+BEFORE INSERT OR UPDATE OR DELETE ON foo
+EXECUTE PROCEDURE disable_dml();
+__OUTPUT__
+CREATE TRIGGER
+```
+
+```sql
+INSERT INTO  foo VALUES(10,20);
+__OUTPUT__
+ERROR:  this instance of foo table doesn't allow any DML operation
+HINT:  you should to run "CREATE TEMP TABLE foo(LIKE foo INCLUDING ALL);" statement
+```
+
+```sql
+CREATE TEMP TABLE foo(LIKE foo INCLUDING ALL);
+__OUTPUT__
+CREATE TABLE
+```
+
+```sql
+INSERT INTO foo VALUES(10,20);
+__OUTPUT__
+INSERT 0 1
+```
+

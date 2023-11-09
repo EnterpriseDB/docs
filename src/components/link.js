@@ -21,7 +21,7 @@ const stripPathPrefix = (path, pathPrefix) => {
 };
 
 const stripMarkdownExtension = (path) => {
-  return path.replace(/\.mdx?(?=$|\?|#)/, "");
+  return path.replace(/\.mdx?\/?(?=$|\?|#)/, "");
 };
 
 const isAbsoluteOrProtocolRelativeUrl = (url) => {

@@ -39,12 +39,14 @@ const mdxNodeToAlgoliaNode = (node, productVersions) => {
     // switch path to latest (if applicable) to avoid redirects
     const isLatest =
       productVersions[node.fields.product][0] === node.fields.version;
+    newNode["isLatest"] = isLatest;
     if (isLatest) {
       const latestPath = replacePathVersion(node.fields.path);
       newNode["path"] = latestPath;
       newNode["pagePath"] = latestPath;
     }
   } else {
+    newNode["isLatest"] = true;
     newNode["type"] = "guide";
   }
 
@@ -72,25 +74,35 @@ const EXCERPT_SOFT_SPLIT_MAX_CHARS = 6000; // start looking for "good enough" pl
 
 const mdxTreeToSearchNodes = (rootNode) => {
   const searchNodes = [];
-  let lastHeading = null;
-  let lastHeadingParent = null;
+  let headings = [];
   let currentText = "";
 
   // keep track of the last heading encountered so that subsequent nodes can be tagged with it
   // also keep track of its parent, for those rare cases where a heading is nested below the root
   // (only blockquote, listItem and footnote allow this)
   const observeHeading = (heading, ancestors) => {
-    lastHeading = heading;
-    lastHeadingParent = ancestors[ancestors.length - 1];
+    while (
+      headings.length &&
+      (headings[headings.length - 1].heading.depth >= heading.depth ||
+        !ancestors.includes(headings[headings.length - 1].parent))
+    )
+      headings.pop();
+
+    headings.push({ heading, parent: ancestors[ancestors.length - 1] });
   };
 
   const storeCurrentText = (ancestors) => {
     if (!currentText.length) return;
 
     // the parent of the last observed heading should be among the ancestors of the current node for the last heading to be considered relevant.
-    const headingNode = ancestors.includes(lastHeadingParent) && lastHeading;
-    const heading = (headingNode && mdast2string(headingNode)) || "";
-    const headingId = heading && slugger.slug(heading);
+    while (
+      headings.length &&
+      !ancestors.includes(headings[headings.length - 1].parent)
+    )
+      headings.pop();
+    const headingNode = headings[headings.length - 1]?.heading;
+    const headingId = headingNode && slugger.slug(mdast2string(headingNode));
+    const heading = headings.map((h) => mdast2string(h.heading)).join(" » ");
     searchNodes.push({ text: currentText, heading, headingId });
 
     currentText = "";
@@ -183,10 +195,21 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
       let newNode = { ...node };
       delete newNode["mdxAST"];
 
-      newNode.id = `${newNode.path}-${i + 1}`;
-      newNode.heading = trimSpaces(searchNode.heading);
+      // this particular naming scheme is important, as algolia defaults to sorting by objectId when
+      // other rankings are equal. And it sorts in descending order... So for a given page, where multiple
+      // sections may match equally (say, because the match is in the page title) we want earlier sections
+      // to rank ahead of later sections.
+      newNode.id = `${newNode.algoliaId || newNode.path}${(
+        searchNodes.length - i
+      )
+        .toString()
+        .padStart(4, "0")}`;
+      delete newNode.algoliaId;
+      if (searchNode.heading) newNode.heading = trimSpaces(searchNode.heading);
+      if (newNode.heading)
+        newNode.title = newNode.title + " » " + newNode.heading;
       newNode.excerpt = utf8Truncate(
-        trimSpaces(`${searchNode.heading}: ${searchNode.text}`),
+        trimSpaces(searchNode.text),
         EXCERPT_HARD_TRUNCATE_BYTES,
       );
       if (searchNode.headingId) {
@@ -209,7 +232,38 @@ const algoliaTransformer = ({ data }) => {
 
   while (navStack.length > 0) {
     curr = navStack.pop();
-    curr.children.forEach((child) => navStack.push(child));
+    let parentId = curr.mdxNode?.algoliaId;
+    let parentDepth = curr.mdxNode?.navDepth || 0;
+    for (let child of curr.children)
+      if (child.mdxNode)
+        child.mdxNode.algoliaId = child.path
+          .split("/")
+          .slice(-2)[0]
+          .toLowerCase();
+    const navigation = (curr.mdxNode?.frontmatter?.navigation || [])
+      .map((n) => {
+        const navName = n.toString().toLowerCase();
+        return curr.children.find((c) => c.mdxNode?.algoliaId === navName);
+      })
+      .filter((n) => !!n);
+    navigation.push(
+      ...curr.children
+        .filter((child) => !navigation.includes(child))
+        .sort((a, b) =>
+          a.mdxNode?.algoliaId.localeCompare(b.mdxNode?.algoliaId),
+        ),
+    );
+    // used to set fallback sort in algolia to navigation order
+    for (let i = 0; i < navigation.length; ++i) {
+      if (navigation[i].mdxNode) {
+        navigation[i].mdxNode.algoliaId =
+          (parentId || navigation[i].path.split("/").slice(0, -2).join("")) +
+          (navigation.length - i).toString().padStart(3, "0") +
+          navigation[i].mdxNode.algoliaId;
+        navigation[i].mdxNode.navDepth = parentDepth + 1;
+      }
+    }
+    navStack.push(...navigation);
     if (!curr.mdxNode) continue;
 
     curr.mdxNode.frontmatter = computeFrontmatterForTreeNode(curr);

@@ -1,17 +1,18 @@
 import React, {
   useMemo,
   useState,
-  useEffect,
+  useLayoutEffect,
   useCallback,
-  createRef,
   useRef,
+  useEffect,
 } from "react";
 import algoliasearch from "algoliasearch/lite";
 import {
+  InstantSearchSSRProvider,
   InstantSearch,
   Configure,
-  connectSearchBox,
-} from "react-instantsearch-dom";
+  useSearchBox,
+} from "react-instantsearch";
 import Icon, { iconNames } from "../icon/";
 import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
@@ -25,33 +26,54 @@ const searchClient = algoliasearch(
 
 const useClickOutside = (ref, handler, events) => {
   if (!events) events = [`mousedown`, `touchstart`];
-  const detectClickOutside = (event) =>
-    !ref.current.contains(event.target) && handler();
-  useEffect(() => {
+  const detectClickOutside = useCallback(
+    (event) => !ref.current.contains(event.target) && handler(),
+    [handler, ref],
+  );
+  useLayoutEffect(() => {
     for (const event of events)
       document.addEventListener(event, detectClickOutside);
     return () => {
       for (const event of events)
         document.removeEventListener(event, detectClickOutside);
     };
-  });
+  }, [detectClickOutside, events]);
 };
 
-const SearchForm = ({
-  currentRefinement,
-  refine,
-  query,
-  searchProduct,
-  onSearchProductChange,
-}) => {
-  const searchBarRef = createRef();
+const Search = ({ searchProduct, onSearchProductChange }) => {
+  const { clear, refine } = useSearchBox();
+  const searchBarRef = useRef(null);
   const [focus, setFocus] = useState(false);
-  const inputRef = createRef();
+  const inputRef = useRef(null);
   const searchContentRef = useRef(null);
   const [arrowIndex, setArrowIndex] = useState(0);
+  const [inputValue, setInputValue] = useState("");
   const context = searchProduct
     ? " " + (products[searchProduct]?.name || searchProduct)
     : "";
+
+  // allow typing ahead of search loading
+  useEffect(() => {
+    setInputValue(inputRef.current?.value || "");
+    setFocus(
+      inputRef.current && inputRef.current.id === document.activeElement?.id,
+    );
+    if (inputRef.current?.value) refine(inputRef.current.value);
+  }, []);
+
+  const onClear = useCallback(() => {
+    setInputValue("");
+    clear();
+  }, [clear]);
+
+  const onInputChange = useCallback(
+    (e) => {
+      let newValue = e.currentTarget.value;
+      setInputValue(newValue);
+      refine(newValue);
+    },
+    [refine],
+  );
 
   const close = useCallback(() => {
     setFocus(false);
@@ -117,7 +139,7 @@ const SearchForm = ({
     [inputRef, searchContentRef, arrowIndex, close, moveArrowIndex],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.addEventListener("keydown", searchKeyboardShortcuts);
     return () => {
       document.removeEventListener("keydown", searchKeyboardShortcuts);
@@ -126,11 +148,9 @@ const SearchForm = ({
 
   useClickOutside(searchBarRef, close);
 
-  const queryLength = (query || "").length;
-
   return (
     <div
-      className={`${queryLength > 0 && focus && "shadow"}`}
+      className={`${inputValue.length > 0 && focus && "shadow"}`}
       ref={searchBarRef}
     >
       <form
@@ -139,7 +159,7 @@ const SearchForm = ({
         autoComplete="off"
         role="search"
         className={`search-form d-flex align-items-center ${
-          queryLength > 0 && focus && "open"
+          inputValue.length > 0 && focus && "open"
         }`}
       >
         <DropdownButton
@@ -148,48 +168,47 @@ const SearchForm = ({
           }
           aria-label="Search in"
           role="menu"
+          className="select-product"
           size="lg"
-          onSelect={(key) => onSearchProductChange(key)}
+          onSelect={onSearchProductChange}
         >
           <Dropdown.Item as="button" type="button" eventKey="">
             All products
           </Dropdown.Item>
           <Dropdown.Divider />
           {Object.entries(products).map(([id, { name }]) => (
-            <Dropdown.Item as="button" type="button" eventKey={id}>
+            <Dropdown.Item as="button" type="button" eventKey={id} key={id}>
               {name}
             </Dropdown.Item>
           ))}
         </DropdownButton>
         <Icon
           iconName={iconNames.SEARCH}
-          className="fill-black ml-3 opacity-5 flex-shrink-0"
+          className="fill-black ms-3 opacity-5 flex-shrink-0"
           width="22"
           height="22"
         />
         <input
           id="search-input"
-          className="form-control form-control-lg border-0 pl-3"
+          className="form-control form-control-lg border-0 ps-3"
           type="text"
           aria-label="search"
           placeholder={"Search" + context}
-          value={currentRefinement}
-          onChange={(e) => refine(e.currentTarget.value)}
+          value={inputValue}
+          onChange={onInputChange}
           onFocus={() => setFocus(true)}
           ref={inputRef}
         />
         <ClearButton
-          onClick={() => {
-            refine("");
-          }}
-          className={`${queryLength === 0 && "d-none"}`}
+          onClick={onClear}
+          className={`${inputValue.length === 0 && "d-none"}`}
         />
-        <SlashIndicator query={query} />
+        <SlashIndicator query={inputValue} />
       </form>
 
       <div
         className={`dropdown-menu w-100 p-0 quick-search-container ${
-          queryLength > 0 && focus && "show"
+          inputValue.length > 0 && focus && "show"
         }`}
       >
         <div
@@ -202,36 +221,36 @@ const SearchForm = ({
     </div>
   );
 };
-const Search = connectSearchBox(SearchForm);
 
 const SearchBar = ({ searchProduct }) => {
-  const ref = createRef();
-  const [query, setQuery] = useState(``);
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
   const searchConfig = useMemo(() => {
     return {
       hitsPerPage: 30,
+      advancedSyntax: true,
       filters: currentProduct ? `product:"${currentProduct}"` : "",
     };
   }, [currentProduct]);
 
+  // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (
-    <div className="global-search w-100 position-relative" ref={ref}>
-      <InstantSearch
-        searchClient={searchClient}
-        indexName={algoliaIndex}
-        onSearchStateChange={({ query }) => setQuery(query)}
-        className="dropdown"
-      >
-        <Configure {...searchConfig} />
-        <Search
-          query={query}
-          searchProduct={currentProduct}
-          onSearchProductChange={(product) => setCurrentProduct(product)}
-        />
-      </InstantSearch>
+    <div className="global-search w-100 position-relative">
+      <InstantSearchSSRProvider initialResults={{}}>
+        <InstantSearch
+          searchClient={searchClient}
+          indexName={algoliaIndex}
+          insights={true}
+          className="dropdown"
+        >
+          <Configure {...searchConfig} />
+          <Search
+            searchProduct={currentProduct}
+            onSearchProductChange={setCurrentProduct}
+          />
+        </InstantSearch>
+      </InstantSearchSSRProvider>
     </div>
   );
 };

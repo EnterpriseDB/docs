@@ -5,10 +5,10 @@ import { DarkModeToggle, Link, Logo } from "./";
 const DocsLink = () => (
   <Link
     to="/"
-    className="mr-3 lead text-muted pt-3 header-docs-link"
+    className="me-3 lead text-muted pt-3 header-docs-link"
     title="EDB Docs homepage"
   >
-    /<span className="pl-1">docs</span>
+    /<span className="ps-1">docs</span>
   </Link>
 );
 
@@ -16,7 +16,7 @@ const LogoLink = () => {
   return (
     <h1 className="h3 p-3 d-flex">
       <Link to="https://www.enterprisedb.com/" title="EDB Home">
-        <Logo width="120" height="50" className="mr-1" />
+        <Logo width="120" height="50" className="me-1" />
       </Link>
       <DocsLink />
     </h1>
@@ -24,7 +24,7 @@ const LogoLink = () => {
 };
 
 const FooterItem = ({ url, children }) => (
-  <li className="ml-0">
+  <li className="ms-0">
     <Link to={url} className="d-block py-1 align-middle">
       {children}
     </Link>
@@ -56,8 +56,8 @@ const SideNavigation = ({
   const scrollRestoration = useScrollRestoration("navigation-sidebar");
 
   return (
-    <nav className={`sidebar d-block bg-${background} border-right`}>
-      <div className="sidebar-sticky pl-3 pr-3 pb-4" {...scrollRestoration}>
+    <nav className={`sidebar d-block bg-${background} border-end`}>
+      <div className="sidebar-sticky ps-3 pe-3 pb-4" {...scrollRestoration}>
         <LogoLink />
         {children}
         {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}

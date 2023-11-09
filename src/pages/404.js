@@ -1,17 +1,17 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Container } from "react-bootstrap";
 import algoliasearch from "algoliasearch/lite";
 import {
   InstantSearch,
   Configure,
   Hits,
-  connectSearchBox,
-  connectStateResults,
-} from "react-instantsearch-dom";
+  useInstantSearch,
+} from "react-instantsearch";
 import { Footer, Layout, Link, MainContent } from "../components";
 import Icon, { iconNames } from "../components/icon";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import usePathPrefix from "../hooks/use-path-prefix";
+import { products } from "../constants/products";
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -19,34 +19,50 @@ const searchClient = algoliasearch(
 );
 
 const buildQuery = (pathname, pathPrefix) => {
-  const tokens = pathname
-    .replace("/edb-docs", "")
-    .replace(/-/g, " ")
-    .split("/");
+  // legacy URLs (Docs 1.0)
+  if (pathname.startsWith("/edb-docs")) {
+    const tokens = pathname
+      .replace("/edb-docs", "")
+      .replace(/-/g, " ")
+      .split("/");
 
-  const productIndex = tokens.findIndex((token) => token.match(/edb\s/g));
+    const productIndex = tokens.findIndex((token) => token.match(/edb\s/g));
 
-  let product = null;
-  let title = null;
-  let version = null;
+    let product = null;
+    let title = null;
+    let version = null;
 
-  if (productIndex >= 0) {
-    product = tokens[productIndex];
+    if (productIndex >= 0) {
+      product = tokens[productIndex];
+    }
+    if (productIndex + 2 < tokens.length - 1) {
+      title = tokens[productIndex + 2];
+    }
+    if (productIndex + 3 < tokens.length - 1) {
+      version = (tokens[productIndex + 3].match(/\d+/g) || [])[0];
+    }
+
+    if (product) {
+      return {
+        refinementList: { product: [product] },
+        query: `${title ? title : ""} ${version ? version : ""}`,
+      };
+    }
   }
-  if (productIndex + 2 < tokens.length - 1) {
-    title = tokens[productIndex + 2];
-  }
-  if (productIndex + 3 < tokens.length - 1) {
-    version = (tokens[productIndex + 3].match(/\d+/g) || [])[0];
+
+  const cleanRegex = /-|\//g;
+
+  if (pathname.startsWith(pathPrefix))
+    pathname = pathname.replace(pathPrefix, "");
+  const segments = pathname.split("/");
+  if (products[segments[1]]) {
+    return {
+      refinementList: { product: [segments[1]] },
+      query: segments.slice(3).join(" ").replace(cleanRegex, " ").trim(),
+    };
   }
 
-  if (product) {
-    return `${product} ${title ? title : ""} ${version ? version : ""}`;
-  }
-
-  // eslint-disable-next-line no-useless-escape
-  const regex = new RegExp(`\/${pathPrefix}\/|-|\/`, "g");
-  return pathname.replace(regex, " ").trim();
+  return { query: pathname.replace(cleanRegex, " ").trim() };
 };
 
 const PageNotFound = ({ path }) => (
@@ -65,50 +81,58 @@ const Ascii404 = () => (
   />
 );
 
-const SuggestedLinksSearch = ({ query }) => {
+const SuggestedLinksSearch = ({ queryParams }) => {
   const { algoliaIndex } = useSiteMetadata();
 
   return (
     <InstantSearch
       searchClient={searchClient}
       indexName={algoliaIndex}
-      searchState={{ query: query }}
+      initialUiState={{ [algoliaIndex]: queryParams }}
+      insights={true}
     >
       <SuggestedLinks />
+      <Configure
+        hitsPerPage={5}
+        query={queryParams.query}
+        filters={
+          queryParams.refinementList?.product?.length &&
+          `product:"${queryParams.refinementList?.product[0]}"`
+        }
+      />
       <div>
         Not finding what you need?
         <Link
-          to={`/search?query=${encodeURIComponent(query)}`}
-          className="ml-2"
+          to={`/search?query=${encodeURIComponent(
+            queryParams.query,
+          )}&product=${encodeURIComponent(
+            queryParams.refinementList?.product?.join(",") || "",
+          )}`}
+          className="ms-2"
         >
-          Try Search by Product
+          Try Advanced Search
         </Link>
       </div>
     </InstantSearch>
   );
 };
 
-const SuggestedLinks = connectStateResults(({ searchResults }) => {
+const SuggestedLinks = () => {
+  const { results: searchResults } = useInstantSearch();
+
   return (
     <>
-      <HiddenSearchBox />
       {searchResults && searchResults.nbHits > 0 && (
         <>
           <div>Suggested links based on the requested URL:</div>
           <div className="search-content mb-5 mt-3">
-            <Configure hitsPerPage={5} />
             <Hits hitComponent={SuggestedHit} />
           </div>
         </>
       )}
     </>
   );
-});
-
-const HiddenSearchBox = connectSearchBox(({ currentRefinement }) => (
-  // eslint-disable-next-line jsx-a11y/control-has-associated-label
-  <input type="search" value={currentRefinement} className="d-none" readOnly />
-));
+};
 
 const SuggestedHit = ({ hit }) => (
   <Link to={hit.path}>
@@ -117,9 +141,17 @@ const SuggestedHit = ({ hit }) => (
   </Link>
 );
 
-const NotFound = (data) => {
+const NotFound = ({ location: { pathname, href } }) => {
   const pathPrefix = usePathPrefix();
-  const query = buildQuery(data.location.pathname, pathPrefix);
+  // these are NEVER going to be useful on prerender, so trigger an update every time
+  const [location, setLocation] = useState({ href: "", pathname: "" });
+  useEffect(() => {
+    setLocation({ href, pathname });
+  }, [href, pathname]);
+  const queryParams = useMemo(
+    () => buildQuery(location.pathname, pathPrefix),
+    [location, pathPrefix],
+  );
 
   return (
     <Layout pageMeta={{ title: "Page Not Found" }}>
@@ -128,8 +160,8 @@ const NotFound = (data) => {
           <div className="d-flex align-items-center flex-column">
             <Ascii404 />
             <div>
-              <PageNotFound path={data.location.href} />
-              <SuggestedLinksSearch query={query} />
+              <PageNotFound path={location.href} />
+              <SuggestedLinksSearch queryParams={queryParams} />
             </div>
           </div>
           <Footer />

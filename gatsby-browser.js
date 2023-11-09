@@ -17,22 +17,5 @@ function scrollToAnchor(location, mainNavHeight = 0) {
   const toc = document.querySelector(".toc-sticky .active");
   if (toc) toc.scrollIntoView({ block: "nearest" });
 
-  // Check for location so build does not fail
-  if (location && location.hash) {
-    try {
-      const item = document.getElementById(location.hash.substring(1));
-
-      if (item) {
-        window.scrollTo({
-          top: item.offsetTop - mainNavHeight,
-          behavior: "smooth",
-        });
-      }
-    } catch (error) {
-      // if hash is bad exception will be raised
-      console.error(error);
-    }
-  }
-
   return true;
 }
