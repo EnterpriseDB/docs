@@ -1,0 +1,37 @@
+# Free evaluation
+
+EDB Postgres for Kubernetes is available for a free evaluation.
+
+The process is different between Community PostgreSQL and EDB Postgres Advanced Server.
+
+## Evaluating using PostgreSQL
+
+By default, EDB Postgres for Kubernetes installs the latest available
+version of Community PostgreSQL.
+
+No license key is required. The operator automatically generates an implicit trial license for the cluster that lasts for
+30 days. This trial license is ideal for evaluation, proof of concept, integration with CI/CD pipelines, and so on.
+
+PostgreSQL container images are available at [quay.io/enterprisedb/postgresql](https://quay.io/repository/enterprisedb/postgresql).
+
+## Evaluating using EDB Postgres Advanced Server
+
+You can use EDB Postgres for Kubernetes with EDB Postgres Advanced Server. You will need a trial key to use EDB Postgres Advanced Server.
+
+!!! Note Obtaining your trial key
+    You can request a key from the **[EDB Postgres for Kubernetes Trial License Request](https://cloud-native.enterprisedb.com/trial/)** page. You will also need to be signed into your EDB Account. If you do not have an EDB Account, you can [register for one](https://www.enterprisedb.com/accounts/register) on the EDB site. 
+
+Once you have received the license key, you can use EDB Postgres Advanced Server
+by setting in the `spec` section of the `Cluster` deployment configuration file:
+
+-   `imageName` to point to the `quay.io/enterprisedb/edb-postgres-advanced` repository
+-   `licenseKey` to your license key (in the form of a string)
+
+EDB Postgres Advanced container images are available at
+[quay.io/enterprisedb/edb-postgres-advanced](https://quay.io/repository/enterprisedb/edb-postgres-advanced).
+
+To see how `imageName` and `licenseKey` is set, refer to the [cluster-full-example](samples/cluster-example-full.yaml) file from the the [configuration samples](samples.md) section.
+
+## Further Information
+
+Refer to [License and License keys](license_keys.md) for terms and more details.
