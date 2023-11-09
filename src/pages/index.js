@@ -154,16 +154,16 @@ const Page = () => {
                 PostgreSQL
               </IndexCardLink>
 
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Security
-              </span>
+            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+              Security
+            </span>
 
-              <IndexCardLink to="/tde/latest">
-                Transparent Data Encryption
-              </IndexCardLink>
-              <IndexCardLink to="/pg_extensions/ldap_sync">
-                EDB LDAP Sync
-              </IndexCardLink>
+            <IndexCardLink to="/tde/latest">
+              Transparent Data Encryption
+            </IndexCardLink>
+            <IndexCardLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </IndexCardLink>
 
               <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
                 Extensions and Tools
@@ -189,6 +189,10 @@ const Page = () => {
                 EDB Wait States
               </IndexCardLink>
 
+            <IndexCardLink to="/pg_extensions/edb_job_scheduler">
+              EDB Job Scheduler
+            </IndexCardLink>
+                
               <IndexCardLink to="/pg_extensions/pg_failover_slots">
                 PG Failover Slots
               </IndexCardLink>
