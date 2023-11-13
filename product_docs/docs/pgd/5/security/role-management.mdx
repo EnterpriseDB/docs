@@ -1,0 +1,52 @@
+---
+title: Role management
+---
+
+Users are global objects in a PostgreSQL instance. A `CREATE ROLE` commands or its alias `CREATE USER` is replicated automatically if they're executed in a PGD replicated database. If a role or user is created in a non-PGD, un-replicated database, the role will only exist for that PostgreSQL instance. `GRANT ROLE` and `DROP ROLE` work in the same way, only replicating if applied to a PGD replicated database.
+
+This automatic replication behavior can be disabled by turning off the
+[`bdr.role_replication`](/pgd/latest/reference/pgd-settings#bdrrole_replication)
+setting.
+
+## Roles for new nodes
+
+New PGD nodes, added using [`bdr_init_physical`](/pgd/latest/reference/nodes#bdr_init_physical) will automatically replicate the roles from other nodes of the PGD cluster.
+
+If a PGD node is joined a PGD group without doing that, existing users aren't copied to the newly joined node. This is intentional behavior to ensure that access isn't accidentally granted. Because PostgreSQL allows users to access multiple databases, with the default being to access any database, PGD doesn't know the access each user has to databases and so can't safely determine which users to copy across to the new node without possibly exposing a database. Therefore, it does not copy any users over.
+
+PostgreSQL allows you to dump all users with the command:
+
+```shell
+pg_dumpall --roles-only > roles.sql
+```
+
+You can then edit the file `roles.sql` to remove unwanted users before
+reexecuting that on the newly created node.
+
+Other mechanisms are possible, depending on your identity and access
+management solution (IAM) but aren't automated at this time.
+
+## Connections and roles
+
+When allocating a new PGD node, the user supplied in the DSN for the `local_dsn`
+argument of [`bdr.create_node`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node) and the `join_target_dsn` of [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group)
+are used frequently to refer to, create, and manage database objects.
+
+PGD is carefully written to prevent privilege escalation attacks even when using
+a role with `SUPERUSER` rights in these DSNs.
+
+To further reduce the attack surface, you can specify a more restricted user in
+the above DSNs. At a minimum, such a user must be granted permissions on all
+nodes, such that following stipulations are satisfied:
+
+-   The user has the `REPLICATION` attribute.
+-   It's granted the `CREATE` permission on the database.
+-   It inherits the bdr_superuser role.
+-   It owns all database objects to replicate, either directly or from
+    permissions from the owner roles.
+
+Once all nodes are joined, the permissions can be further reduced to just the
+following to still allow DML and DDL replication:
+
+-   The user has the `REPLICATION` attribute.
+-   It inherits the bdr_superuser role.
