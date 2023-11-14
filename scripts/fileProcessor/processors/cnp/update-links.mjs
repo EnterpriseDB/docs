@@ -6,7 +6,7 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkStringify from "remark-stringify";
 import admonitions from "remark-admonitions";
 import visit from "unist-util-visit";
-import isAbsoluteUrl from "is-absolute-url";
+import yaml from "js-yaml";
 
 export const process = async (filename, content) => {
   const processor = unified()
@@ -38,12 +38,29 @@ export const process = async (filename, content) => {
 
 function linkRewriter() {
   return (tree) => {
+    let fileMetadata = {};
     // link rewriter:
     // - update links to supported_releases.md to point to /resources/platform-compatibility#pgk8s
-    visit(tree, "link", (node) => {
-      if (node.url === "supported_releases.md")
+    // - update links to release_notes to rel_notes
+    // - update links to appendixes/* to /*
+    // - update links *from* appendixes/* to /*
+    visit(tree, ["link", "yaml"], (node) => {
+      if (node.type === "yaml")
+      {
+        fileMetadata = yaml.load(node.value);
+        return;
+      }
+
+      if (fileMetadata.originalFilePath?.startsWith("src/appendixes"))
+        node.url = node.url.replace(/^\.\.\//, "");
+
+      if (node.url.startsWith("appendixes"))
+        node.url = node.url.replace("appendixes/", "");
+      else if (node.url === "supported_releases.md")
         node.url = "/resources/platform-compatibility#pgk8s";
-      else if (node.url === "release_nodes.md")
+      else if (node.url === "release_notes.md")
+        node.url = "rel_notes";
+      else if (node.url === "release_notes.md")
         node.url = "rel_notes";
     });
   };

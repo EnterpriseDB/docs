@@ -132,13 +132,15 @@ data:
             description: "Number of streaming replicas connected to the instance"
 
     pg_replication_slots:
-      primary: true
       query: |
         SELECT slot_name,
           slot_type,
           database,
           active,
-          pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), restart_lsn)
+          (CASE pg_catalog.pg_is_in_recovery()
+            WHEN TRUE THEN pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_last_wal_receive_lsn(), restart_lsn)
+            ELSE pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), restart_lsn)
+          END) as pg_wal_lsn_diff
         FROM pg_catalog.pg_replication_slots
         WHERE NOT temporary
       metrics:
@@ -319,6 +321,7 @@ data:
        SELECT usename
          , COALESCE(application_name, '') AS application_name
          , COALESCE(client_addr::text, '') AS client_addr
+         , COALESCE(client_port::text, '') AS client_port
          , EXTRACT(EPOCH FROM backend_start) AS backend_start
          , COALESCE(pg_catalog.age(backend_xmin), 0) AS backend_xmin_age
          , pg_catalog.pg_wal_lsn_diff(pg_catalog.pg_current_wal_lsn(), sent_lsn) AS sent_diff_bytes
@@ -339,6 +342,9 @@ data:
         - client_addr:
             usage: "LABEL"
             description: "Client IP address"
+        - client_port:
+            usage: "LABEL"
+            description: "Client TCP port"
         - backend_start:
             usage: "COUNTER"
             description: "Time when this process was started"

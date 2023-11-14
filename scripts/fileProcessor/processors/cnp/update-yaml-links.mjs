@@ -39,12 +39,11 @@ export const process = async (filename, content) => {
 function linkRewriter() {
   return (tree) => {
     // link rewriter:
-    // - only links to .yaml files in samples dir
     // - make relative to parent (because gatsby URL paths are always directories)
     visit(tree, "link", (node) => {
       if (isAbsoluteUrl(node.url) || node.url[0] === "/") return;
       if (!node.url.includes(".yaml")) return;
-      node.url = node.url.replace(/^(?:\.\/)?samples\//, "../samples/");
+      node.url = node.url.replace(/^\/?/, "../");
     });
   };
 }

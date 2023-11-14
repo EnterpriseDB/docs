@@ -1,0 +1,111 @@
+---
+title: JDBC properties for setting rollback scope 
+originalFilePath: jdbctxnrollback.md
+
+---
+
+If you're using a JDBC connector to connect to a client application, you use the `autosave` and `transaction_rollback_scope` properties together to specify the transaction rollback scope.
+
+You can specify these properties in either the connection URL or as an
+additional properties object parameter to `DriverManager.getConnection`.
+
+## autosave
+
+The `autosave` parameter is a string that specifies what the driver does if a query containing
+multiple statements fails. The possible values are: `server`, `always`, `never`, and `conservative`. 
+
+- In `autosave=server` mode, JDBC relies on the server-side parameter `transaction_rollback_scope`
+to save each statement by way of internal server savepoints before
+executing the next. The server rolls back to the previous
+statement if any statement in the query fails. If this parameter
+isn't supported on the server side, JDBC rejects the connection. 
+
+- In `autosave=always` mode, the JDBC driver first tries to use the server-side `transaction_rollback_scope` property. If it isn't supported,
+then JDBC driver sets a savepoint before each query
+statement and rolls back to that savepoint in case of failure.
+      
+- In `autosave=never` mode (default), no savepoint activity is ever
+carried out. In `autosave=conservative` mode, savepoint is set for
+each query. However, the rollback is done only for rare cases like
+'cached statement cannot change return type' or 'statement XXX is
+not valid', so JDBC driver rolls back and retries.
+
+The default value for this property is `never`.
+
+This `autosave=server` property is useful only
+with the PostgreSQL server providing `transaction_rollback_scope`
+functionality.
+
+## transaction_rollback_scope
+
+The `autosave` parameter is a string that determines the range of
+operations that roll back when an SQL statement fails. 
+
+The default value is `TRANSACTION`, which causes the entire transaction or
+current subtransaction to roll back. This is the only mode
+that you can select with the `SET TRANSACTION` command. 
+      
+You can specify the other possible mode, `STATEMENT`, only during connection establishment, `ALTER USER`, or `ALTER DATABASE`. In that mode, only
+the failed `SQL` statement is rolled back, and the transaction is put back in normal mode.
+
+## `autosave` test cases
+Test cases for trying out values of the `autosave` property
+are available in the `BatchAutoSaveTest.java` file. The following
+SQL code shows the behavior that's expected when the
+server provides `transaction_rollback_scope` functionality and
+`autosave=server` is used on the JDBC side.
+
+With `autosave=server`, the following query inserts values `(1)`, `(3)`, and
+`(4)` and disregards the `duplicate key violation` error:
+
+```sql
+CREATE TABLE test (id INT PRIMARY KEY);
+INSERT INTO test VALUES (2);
+BEGIN;
+INSERT INTO test VALUES (1);
+INSERT INTO test VALUES (2);
+INSERT INTO test VALUES (3);
+INSERT INTO test VALUES (4);
+COMMIT;
+```
+
+
+The `artifacts` directory contains the `pgjdbc` jar file
+`postgresql-REL2Q.42.2.3.180601.jar`. This file needs to
+be added to the CLASSPATH as usual. It also contains the
+`postgresql-REL2Q.42.2.3.180601-tests.jar` jar that can be used to test
+the latest `autosave` functionality.
+
+You can test the `BatchAutoSaveTest.java` file provided in the `artifacts` as follows:
+
+1. Export CLASSPATH to build and run the test case:
+
+   ```sh
+   cd artifacts
+   export CLASSPATH=$PWD:$PWD/postgresql-REL2Q.42.2.3.180601-tests.jar:$PWD/postgresql-REL2Q.42.2.3.180601.jar:$PWD/junit-4.12.jar:$PWD/hamcrest-core-1.3.jar
+   ```
+
+1. Compile the supplied test file:
+
+   ```sh
+   javac -d . BatchAutoSaveTest.java
+   ```
+
+1. Run the test (assuming user as `test` and running on localhost):
+
+   ```shell
+   java -Dusername=test -Dport=5432 -Dhost=localhost -Ddatabase=postgres org.junit.runner.JUnitCore org.postgresql.test.jdbc2.BatchAutoSaveTest
+   __OUTPUT__
+   JUnit version 4.12
+   .Configuration file /Users/altaf/pg/artifacts/../build.properties does not exist. Consider adding it to specify test db host and login
+   Configuration file /Users/altaf/pg/artifacts/../build.local.properties does not exist. Consider adding it to specify test db host and login
+   Configuration file /Users/altaf/pg/artifacts/../build.properties does not exist. Consider adding it to specify test db host and login
+   Configuration file /Users/altaf/pg/artifacts/../build.local.properties does not exist. Consider adding it to specify test db host and login
+   .........
+   Time: 0.556
+
+   OK (10 tests)
+   ```
+
+To modify the test cases, you can modify the `BatchAutoSaveTest.java` file
+in the `artifacts` directory. Then compile and run the test cases.
