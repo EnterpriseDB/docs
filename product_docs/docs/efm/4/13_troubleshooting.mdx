@@ -43,9 +43,9 @@ Failover Manager is tested with OpenJDK. We strongly recommend using OpenJDK. Yo
 
 ```shell
 # java -version
-openjdk version "1.8.0_191"
-OpenJDK Runtime Environment (build 1.8.0_191-b12)
-OpenJDK 64-Bit Server VM (build 25.191-b12, mixed mode)
+openjdk version "11.0.20" 2023-07-18 LTS
+OpenJDK Runtime Environment (Red_Hat-11.0.20.0.8-1.el7_9) (build 11.0.20+8-LTS)
+OpenJDK 64-Bit Server VM (Red_Hat-11.0.20.0.8-1.el7_9) (build 11.0.20+8-LTS, mixed mode, sharing)
 ```
 !!! Note
     There's a temporary issue with OpenJDK version 11 on RHEL and its derivatives. When starting Failover Manager, you might see an error like the following:
@@ -53,3 +53,19 @@ OpenJDK 64-Bit Server VM (build 25.191-b12, mixed mode)
     `java.lang.Error: java.io.FileNotFoundException: /usr/lib/jvm/java-11-openjdk-11.0.20.0.8-2.el8.x86_64/lib/tzdb.dat (No such file or directory)`
 
     If you see this message, the workaround is to manually install the missing package using the command `sudo dnf install tzdata-java`.
+
+## Unexpected connection attempts from outside the cluster
+
+If an external process tries to connect to an agent on the `bind.address` port, Failover Manager logs a warning containing the source of the connection attempt. These warnings don't affect the Failover Manager cluster. However, you can use the source address to stop or configure the outside process to not try to connect to a Failover Manager agent. The following is an example of the message that appears when something outside of the cluster attempts to connect to the agent process from `<source_address>`:
+
+```text
+org.jgroups.protocols.TCP warn WARN: JGRP000006: failed accepting connection from peer Socket[addr=/<source_address>,port=56046,localport=7800]: java.net.SocketTimeoutException: Read timed out
+```
+
+If you're running an agent with an address that used to be part of a different cluster, the original cluster might still be trying to connect to this address to re-form the cluster. In this example, the cluster `oldcluster` is still trying to connect to an address that's now part of `newcluster`:
+
+```text
+org.jgroups.protocols.TCP warn WARN: JGRP000012: discarded message from different cluster oldcluster (our cluster is newcluster). Sender was 93cb99c7-bf3f-4243-b582-faf25aced49e(<source_address>)
+```
+
+The cluster name and `<source_address>` information can be used to find the original cluster. Using the [efm reset-members](07_using_efm_utility/#efm-reset-members) command with that cluster should clear the address from its cache.
