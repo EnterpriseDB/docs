@@ -1,15 +1,17 @@
 ---
-navTitle: Commit Scopes
-title: Commit Scopes
+navTitle: Commit scopes
+title: Commit scopes
 indexdepth: 4
 refprefix: cs
-rootisheading: true
+rootisheading: false
 deepToC: true
 ---
 
-Commit Scopes are rules which determine how transaction commits and conflicts are handled within a PGD system.
+Commit scopes are rules which determine how transaction commits and conflicts are handled within a PGD system.
 
-## Commit Scope syntax
+Commit scopes are manipulated by the [`bdr.add_commit_scope`](/pgd/latest/reference/functions#bdradd_commit_scope), [`bdr.alter_commit_scope`](/pgd/latest/reference/functions#bdralter_commit_scope) and [`bdr.remove_commit_scope`](/pgd/latest/reference/functions#bdrremove_commit_scope) functions.
+
+## Commit scope syntax
 
 The overall grammar for commit scope rules is composed as follows:
 
@@ -35,23 +37,62 @@ commit_scope_kind:
   | SYNCHRONOUS_COMMIT }
 ```
 
-* `node_group` &mdash; Name of a node group.
+where `node_group` is the name of a PGD data node group.
+
+
+## Commit scope groups
+
+### ANY
+
+Example: `ANY 2 left_dc`
+
+A transaction under this commit scope group will be considered commited if any two nodes in the left_dc group confirm they have processed the transaction.  
+
+### MAJORITY
+
+Example: `MAJORITY left_dc`
+
+A transaction under this commit scope group will be considered commited if a majority of the nodes in the left_dc group confirm they have processed the transaction.  
+
+### ALL
+
+Example: `ALL left_dc`
+
+A transaction under this commit scope group will be considered commited if all of the nodes in the left_dc group confirm they have processed the transaction.  
+
+## Commit scope visibility
+
+Visibility controls when a remote PGD node confirms that it has 
+
+### ON received
+
+A transaction will be confirmed immediately after receiving it, prior to starting the local application.
+
+### ON replicated
+
+A transaction will be confirmed after applying changes of the transaction but before flushing them to disk.
+
+### ON durable
+
+A transaction will be confirmed after all of its changes are flushed to disk.
+
+### ON visible
+
+This is the default visibility. A transaction will be confirmed after all of its changes are flushed to disk and it's visible to concurrent transactions.
+
+## Commit Scope kinds
 
 More details of the commit scope kinds and details of their parameters:
-
 * [Group Commit](#group-commit)  
 * [CAMO (Commit At Most Once)](#camo)  
 * [Lag Control](#lag-control) 
-* [Synchronous Commit](#synchronous-commit)
-
-
-## Commit Scope kinds
+* [Synchronous Commit](#synchronous_commit)
 
 !!! Note Parameter values 
 Boolean, enum, int and interval values are specified using the [Postgres GUC Parameter value conventions](https://www.postgresql.org/docs/current/config-setting.html#CONFIG-SETTING-NAMES-VALUES). 
 !!!
 
-### GROUP COMMIT
+## GROUP COMMIT
 
 Allows commits to be confirmed by a consensus of nodes and controls conflict resolution settings.
 
@@ -59,27 +100,28 @@ Allows commits to be confirmed by a consensus of nodes and controls conflict res
 GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ]
 ```
 
-#### GROUP COMMIT parameters
+### GROUP COMMIT parameters
  Parameter | Type | Default | Description
  --- | --- | --- | ---
- `transaction_tracking` | Boolean | Off/False | Specifies whether to track status of transaction. See [transaction_tracking settings](#transaction_tracking_settings)
- `conflict_resolution` | enum | async | Specifies how to handle conflicts. (`async`|`eager`).  See [conflict_resolution settings](#conflict_resolution_settings)
- `commit_decision` | enum | group | Specifies how the COMMIT decision is made. (`group`|`partner`|`raft`). See [commit_decision settings](#commit_decision_settings)
+ `transaction_tracking` | Boolean | Off/False | Specifies whether to track status of transaction. See [transaction_tracking settings](#transaction_tracking-settings)
+ `conflict_resolution` | enum | async | Specifies how to handle conflicts. (`async`\|`eager` ).  See [conflict_resolution settings](#conflict_resolution-settings)
+ `commit_decision` | enum | group | Specifies how the COMMIT decision is made. (`group`\|`partner`\|`raft`). See [commit_decision settings](#commit_decision-settings)
 
 
-#### ABORT ON parameters
+### ABORT ON parameters
 
  Parameter | Type | Default | Description 
  --- | --- | --- | ---
  `timeout` | interval | 0 | Timeout in milliseconds (accepts other units).  (0 means not set)
+ `require_write_lead` | bool | false | CAMO only. If set, then for a transaction to switch to local (async) mode, a consensus request will be required. |
 
-#### transaction_tracking settings
+### transaction_tracking settings
 
 When set to true, two phase commit transactions will:
 * Lookup commit decisions when a writer is processing a PREPARE message.
 * When recovering from an interruption, lookup the transactions prepared before the interruption. When found it will then lookup the commit scope of the transaction and any corresponding RAFT commit decision. If the node is the origin of the transaction and doesn't have a RAFT commit decision, and transaction_tracking in on in the commit scope, it will periodically look for a RAFT commit decision for this unresolved transaction until it is committed or aborted.
 
-#### conflict_resolution settings
+### conflict_resolution settings
 
 The value `async` means resolve conflicts asynchronously during replication using the conflict resolution policy.
 
@@ -87,7 +129,7 @@ The value `eager` means that conflicts are resolved eagerly during COMMIT by abo
 
 See [Group Commit/Conflict Resolution](group-commit#conflict_resolution)
 
-#### commit_decision settings
+### commit_decision settings
  
 The value `group` means the preceding `commit_scope_group` specification also affects the COMMIT decision, not just durability. 
 
@@ -98,35 +140,38 @@ The value `raft` means the COMMIT decision is done using Raft consensus independ
 See [Group Commit/Commit Decision](group-commit#commit_decision)
 
 
-### CAMO
+
+## CAMO
 
 Enables protection, with the client's cooperation, to prevent multiple insertions of the same transaction in failover scenarios.
 
 See [CAMO](../durability/camo) in the Durability guide for more details.
 
 ```
-  CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
+CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
 ```
 
-#### Degrade On parameters
+### Degrade On parameters
 
 Allows degrading to asynchronous operation on timeout.
 
  Parameter | Type | Default | Description
  --- | --- | --- | ----
  timeout | interval | 0 | Timeout in milliseconds (accepts other units) after which operation becomes asynchronous. (0 means not set)
- require_write_lead | Boolean | False | Specifies whether the node must be a write lead to be able to switch to asynchronous mode. (Only used with CAMO)
+ require_write_lead | Boolean | False | Specifies whether the node must be a write lead to be able to switch to asynchronous mode.
 
-### LAG CONTROL
 
+## LAG CONTROL
 
 Allows the configuration of dynamic rate-limiting controlled by replication lag.
 
 See [Lag Control](../durability/lag-control) in the Durability guide for more details.
 
 ```
-  LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
+LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
 ```
+
+### LAG CONTROL parameters
 
  Parameter | Type | Default | Description
  --- | --- | --- | --- 
@@ -134,6 +179,14 @@ See [Lag Control](../durability/lag-control) in the Durability guide for more de
  `max_lag_time` | interval | 0 | Maximum allowed lag based on wall clock sampling.  (0 means not set)
  `max_commit_delay` | interval | 0 | Maximum delay that can be injected to commit to try to keep within the lag limits.  (0 means not set)
 
-### SYNCHRONOUS_COMMIT
 
-TODO:
+## SYNCHRONOUS_COMMIT
+
+
+```
+SYNCHRONOUS_COMMIT
+```
+
+The `SYNCHRONOUS_COMMIT` commit scope kind has no parameters. It is effectively configured only by the commit scope group and commit scope visibility.
+
+

@@ -156,7 +156,7 @@ function parse(prefix, filepath) {
             element.depth - firstIndex - (rootIsHeading ? 1 : 0),
           )} * [${element.text}](${itemCleaned}#${shortname})\n`,
         );
-        if (refprefix != "") {
+        if (refprefix != undefined && refprefix != "") {
           globalMap[refprefix + "." + shortname] = makeAbsoluteReferenceLink(
             filepath,
             shortname,
