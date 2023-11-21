@@ -1,0 +1,48 @@
+---
+title: Internal Timing of Operations
+---
+
+For a better understanding of how the different modes work, it's helpful to know
+that legacy physical streaming replication (PSR) and PGD apply transactions in
+different ways.
+
+With Legacy PSR, the order of operations is:
+
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes and issues a write.
+-   Peer flushes the received changes to disk.
+-   Peer applies changes, making the transaction visible on the peer.
+
+Note that the change is written to the disk before applying the chnages.
+
+With PGD, by default and with Lag Control, the order of operations is different.
+In these cases, the change becomes visible on the peer before the transaction is
+flushed to the peer's disk:
+
+-   Origin flushes a commit record to WAL, making the transaction
+    visible locally.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible on the peer.
+-   Peer persists the transaction by flushing to disk.
+
+For PGD's Group Commit and CAMO, the origin node waits for a certain number of
+confirmations prior to making the transaction visible locally. The order of
+operations is:
+
+-   Origin flushes a prepare or precommit record to WAL.
+-   Peer node receives changes into its apply queue in memory.
+-   Peer applies changes, making the transaction visible on the peer.
+-   Peer persists the transaction by flushing to disk.
+-   Origin commits and makes the transaction visible locally.
+
+The following table summarizes the differences.
+
+| Variant          | Order of apply vs persist | Replication before or after commit |
+|:-----------------|:-------------------------:|:----------------------------------:|
+| PSR              |      persist first        |  after WAL flush of commit record  |
+| PGD Async        |        apply first        |  after WAL flush of commit record  |
+| PGD Lag Control  |        apply first        |  after WAL flush of commit record  |
+| PGD Group Commit |        apply first        |      before COMMIT on origin       |
+| PGD CAMO         |        apply first        |      before COMMIT on origin       |
+
