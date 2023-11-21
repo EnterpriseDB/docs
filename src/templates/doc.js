@@ -316,6 +316,9 @@ const DocTemplate = ({ data, pageContext }) => {
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{body}</MDXRenderer>
               <Tiles mode={indexCards} node={navRoot} />
+              {(!indexCards || indexCards === TileModes.None) && sections && (
+                <Sections sections={sections} />
+              )}
             </Col>
 
             {showToc && (
@@ -327,7 +330,6 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {sections && <Sections sections={sections} />}
           {depth > 2 && <PrevNext prevNext={prevNext} depth={depth} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
