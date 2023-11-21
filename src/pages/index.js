@@ -68,28 +68,24 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/supported-open-source/postgresql/installing/"
-                    >
-                      Installing PostgreSQL made easy
+                    <Link className="homepage-headling-link" to="/epas/latest/">
+                      EDB Postgres Advanced Server 16 released
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.POSTGRES_SUPPORT}
+                      iconName={iconNames.EDB_EPAS}
                       className="fill-orange ms-2 float-end"
                     />
-                    EDB's PostgreSQL installers and installation packages
-                    simplify the process of installing PostgreSQL. Check out
-                    recent improvements to our install instructions including
-                    new instructions for installing our Linux packages.
+                    The latest version of EDB Postgres Advanced Server brings
+                    together expanded Oracle database compatibility with the
+                    innovations and fixes of PostgreSQL v16.1
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
                       <Link
                         className="btn-sm ms-2"
-                        to="/supported-open-source/postgresql/installing/"
+                        to="/epas/latest/epas_rel_notes/epas16_rel_notes/"
                       >
                         Find out more &rarr;
                       </Link>
@@ -109,23 +105,28 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/epas/latest/">
-                      Find the EPAS content you're looking for
+                    <Link
+                      className="homepage-headling-link"
+                      to="/postgres_for_kubernetes/latest/"
+                    >
+                      Postgres for Kubernetes updates
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.EASY}
+                      iconName={iconNames.KUBERNETES}
                       className="fill-orange ms-2 float-end"
                     />
-                    Whether you are an application programmer trying to debug
-                    your programs or a DBA configuring your database, the new
-                    structure of the EDB Postgres Advanced Server documentation
-                    makes finding relevant content a snap.
+                    EDB Postgres for Kubernetes versions 1.21.1, 1.20.4, 1.19.6,
+                    and 1.18.8 build long-term support and expanded platform
+                    compatibility on the latest versions of CloudNativePG.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
-                      <Link className="btn-sm ms-2" to="/epas/latest/">
+                      <Link
+                        className="btn-sm ms-2"
+                        to="/postgres_for_kubernetes/latest/"
+                      >
                         Find out more &rarr;
                       </Link>
                     </p>
@@ -154,16 +155,16 @@ const Page = () => {
                 PostgreSQL
               </IndexCardLink>
 
-            <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-              Security
-            </span>
+              <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
+                Security
+              </span>
 
-            <IndexCardLink to="/tde/latest">
-              Transparent Data Encryption
-            </IndexCardLink>
-            <IndexCardLink to="/pg_extensions/ldap_sync">
-              EDB LDAP Sync
-            </IndexCardLink>
+              <IndexCardLink to="/tde/latest">
+                Transparent Data Encryption
+              </IndexCardLink>
+              <IndexCardLink to="/pg_extensions/ldap_sync">
+                EDB LDAP Sync
+              </IndexCardLink>
 
               <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
                 Extensions and Tools
@@ -189,10 +190,10 @@ const Page = () => {
                 EDB Wait States
               </IndexCardLink>
 
-            <IndexCardLink to="/pg_extensions/edb_job_scheduler">
-              EDB Job Scheduler
-            </IndexCardLink>
-                
+              <IndexCardLink to="/pg_extensions/edb_job_scheduler">
+                EDB Job Scheduler
+              </IndexCardLink>
+
               <IndexCardLink to="/pg_extensions/pg_failover_slots">
                 PG Failover Slots
               </IndexCardLink>
