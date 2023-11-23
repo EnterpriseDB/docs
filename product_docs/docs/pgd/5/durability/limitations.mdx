@@ -4,28 +4,106 @@ title: Limitations
 
 The following limitations apply to the use of commit scopes and the various durability options they enable.
 
+## General limitations
 
-Group Commit transactions can't yet execute DDL, and they don't support [explicit
-two-phase commit](../twophase). Future releases might allow them. However, the `TRUNCATE`
-command is allowed.
+-   Replacing a node with its physical standby doesn't work for nodes that use
+    CAMO/Eager/Group Commit. We don't recommend combining physical standbys and EDB Postgres
+    Distributed, even if it's possible.
 
-You can combine only CAMO transactions with the `DEGRADE TO` clause for
+-   [Legacy synchronous replication](legacy-sync) uses a mechanism for transaction confirmation
+    different from the one used by CAMO, Eager, and Group Commit. The two aren't
+    compatible, so don't use them together. Whenever you use Group Commit, CAMO
+    or Eager, make sure none of the PGD nodes are configured in
+    `synchronous_standby_names`.
+
+-   Postgres two-phase commit (2PC) transactions (that is, [`PREPARE
+    TRANSACTION`](https://www.postgresql.org/docs/current/sql-prepare-transaction.html))
+    can't be used with CAMO, Group Commit, or Eager because those
+    features use two-phase commit underneath.
+
+## Group Commit
+
+[Group Commit](group-commit) enables configurable synchronous commits over 
+nodes in a group. If you use this feature, take the following limitations into account:
+
+-   Not all DDL can run when you use Group Commit. If you use unsupported DDL, a warning is logged, and the transactions commit scope is set to local. The only supported DDL operations are:
+    - Nonconcurrent `CREATE INDEX`
+    - Nonconcurrent `DROP INDEX`
+    - Nonconcurrent `REINDEX` of an individual table or index
+    - `CLUSTER` (of a single relation or index only)
+    - `ANALYZE`
+    - `TRUNCATE`
+
+- Explicit two-phase commit is not supported by Group Commit as it already uses two-phase commit.
+
+- Combining different commit decision options in the same transaction or
+  combining different conflict resolution options in the same transaction isn't
+  supported.
+
+- Currently, Raft commit decisions are extremely slow, producing very low TPS.
+  We recommended using them only with the `eager` conflict resolution setting
+  to get the Eager All-Node Replication behavior of PGD 4 and older.
+
+## Eager
+
+[Eager](../consistency/eager) is available through Group Commit. It avoids conflicts by eagerly aborting transactions that might clash. It's subject to the same limitations as Group Commit.
+
+- Eager doesn't allow the `NOTIFY` SQL command or the `pg_notify()` function. It
+  also don't allow `LISTEN` or `UNLISTEN`.
+
+## CAMO
+
+[Commit At Most Once](camo) (CAMO) is a feature that aims to prevent
+applications committing more than once. If you use this feature, take 
+these limitations into account when planning:
+
+- CAMO is designed to query the results of a recently failed COMMIT on the
+origin node. So, in case of disconnection, code the application to immediately
+request the transaction status from the CAMO partner. Have as little delay as
+possible after the failure before requesting the status. Applications must not
+rely on CAMO decisions being stored for longer than 15 minutes.
+
+- If the application forgets the global identifier assigned, for example,
+as a result of a restart, there's no easy way to recover
+it. Therefore, we recommend that applications wait for outstanding
+transactions to end before shutting down.
+
+- For the client to apply proper checks, a transaction protected by CAMO
+can't be a single statement with implicit transaction control. You also can't
+use CAMO with a transaction-controlling procedure or
+in a `DO` block that tries to start or end transactions.
+
+- CAMO resolves commit status but doesn't resolve pending
+notifications on commit. CAMO doesn't
+allow the `NOTIFY` SQL command or the `pg_notify()` function.
+They also don't allow `LISTEN` or `UNLISTEN`.
+
+- When replaying changes, CAMO transactions might detect conflicts just
+the same as other transactions. If timestamp-conflict detection is used,
+the CAMO transaction uses the timestamp of the prepare-on-the-origin
+node, which is before the transaction becomes visible on the origin
+node itself.
+
+- CAMO isn't currently compatible with transaction streaming.
+Be sure to disable transaction streaming when planning to use
+CAMO. You can configure this option globally or in the PGD node group. See
+[Transaction streaming configuration](../transaction-streaming#configuration).
+
+- CAMO isn't currently compatible with decoding worker.
+Be sure to not enable decoding worker when planning to use
+CAMO. You can configure this option in the PGD node group. See
+[Decoding worker disabling](../node_management/decoding_worker#enabling).
+
+-   Not all DDL can run when you use CAMO. If you use unsupported DDL, a warning is logged and the transactions commit scope is set to local only. The only supported DDL operations are:
+    - Nonconcurrent `CREATE INDEX`
+    - Nonconcurrent `DROP INDEX`
+    - Nonconcurrent `REINDEX` of an individual table or index
+    - `CLUSTER` (of a single relation or index only)
+    - `ANALYZE`
+    - `TRUNCATE`
+
+
+- Explicit two-phase commit is not supported by CAMO as it already uses two-phase commit.
+
+- You can combine only CAMO transactions with the `DEGRADE TO` clause for
 switching to asynchronous operation in case of lowered availability.
-
-Group Commit, Eager and CAMO transactions aren't currently supported in
-combination with the Decoding Worker feature or with transaction streaming.
-Installations using these commit scopes must keep `enable_wal_decoder` and `streaming_mode`
-disabled for the PGD node group.
-
-[Legacy synchronous replication](legacy-sync) uses a mechanism for transaction
-confirmation different from Group Commit. The two aren't compatible, and you
-must not use them together. Therefore, whenever you Group Commit transactions,
-make sure none of the PGD nodes are configured in `synchronous_standby_names`.
-
-Currently, Raft commit decisions are extremely slow, producing very low TPS. We
-recommended using them only with the `eager` conflict resolution setting to get
-the Eager All-Node Replication behavior of PGD 4 and older.
-
-Combining different commit decision options in the same transaction isn't
-supported. Combining different conflict resolution options in the same
-transaction also isn't supported.
