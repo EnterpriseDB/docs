@@ -4,32 +4,43 @@ title: Commit scopes
 
 Commit scopes give applications granular control about durability and consistency of EDB Postgres Distributed.
 
-A commit scope is a named rule that describes the behavior of COMMIT replication. The actual behavior depends on whether a commit scope uses [Group Commit](group-commit), [Commit At Most Once](camo), [Lag Control](lag-control), [Synchronous Commit](synchronous_commit) or combination of these.
+A commit scope is a set of rules that describes the behavior of COMMIT replication. The actual behavior depends on whether a commit scope uses [Group Commit](group-commit), [Commit At Most Once](camo), [Lag Control](lag-control), [Synchronous Commit](synchronous_commit) or combination of these.
 
-## Commit Scope structure
+## Commit scope structure
 
-Every commit scope has a commit_scope_name and origin_node_group which together uniquely identify the commit scope.
+Every commit scope has a commit_scope_name. 
 
-The origin_node_group is a PGD group which defines the nodes which will apply this rule when they are the originators of a transaction.
+Each commit scope has one or more rules.
 
-A commit scope also has a rule which defines what commit scope kind, or combination of commit scope kinds should be applied to those transactions.
+Each rule within the commit scope has an origin_node_group which together uniquely identify the commit scope rule.
+
+The origin_node_group is a PGD group and it defines the nodes which will apply this rule when they are the originators of a transaction.
+
+Finally there is the rule which defines what kind of commit scope or combination of commit scope kinds should be applied to those transactions.
+
+So if a commit scope has a rule that reads
+
+    origin_node_group := 'example_bdr_group',
+    rule := 'ANY 2 (example_bdr_group) GROUP COMMIT',
+
+Then, the rule is applies when any node in the `example_bdr_group` makes a change. 
+
+The rule itself specifies how many nodes of a specified group will need to confirm the change - `ANY 2 (example_bdr_group)` - followed by the commit scope kind itself - `GROUP COMMIT`. This translates to requiring that any two nodes in the example_bdr_group must confirm the change before the change can be considered as comitted.
+
+## How a commit scope is selected
+
+When any change takes place, PGD looks up which commit scope is should be used for the transaction or node.
+
+If a transaction specifies a commit scope, that scope will be used. 
+
+Then the consulting the group tree is consulted. The node's group is looked up and then starting at the bottom of the group tree with that group and working up, any group which has a default_commit_scope setting defined. This commit scope will then be used.
+
+If no default_commit_scope is found then the node's GUC, bdr.commit_scope is used. And if that isn't set or is set to `local` then no commit scope applies and PGD's async replication is used.
 
 
+## Creating a Commit Scope
 
-## Configuration
-
-To use Group Commit, first define a commit scope, which determines the PGD nodes involved in the commit of a transaction. Once a scope is established, you can configure a transaction to use Group Commit as follows:
-
-```sql
-BEGIN;
-SET LOCAL bdr.commit_scope = 'example_scope';
-...
-COMMIT;
-```
-
-You must set the commit scope before the transaction writes any data.
-
-For this example, you might previously have defined the commit scope as:
+Use `bdr.add_commit_scope` to add our example rule to a commit scope. For example:
 
 ```sql
 SELECT bdr.add_commit_scope(
@@ -40,9 +51,57 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-This example assumes a *node group* named `example_bdr_group` exists and includes at least two PGD nodes as members, either directly or in subgroups. Any transaction committed in the `example_scope` requires one extra confirmation from a PGD node in the group. Together with the origin node, this accounts for "ANY 2" nodes out of the group, on which the transaction is guaranteed to be visible and durable after the commit.
+This will add the rule `ANY 2 (example_bdr_group) GROUP COMMIT` for any transaction originating from the `example_bdr_group` to a scope called `example_scope`. 
 
-### Origin groups
+If no rules previously existed in `example_scope`, then adding this rule would make the scope exist.
+
+When a rule is added, the origin_node_group must already exist. If it does not, the whole add operation will be discarded with an error.
+
+The rule will then be evaluated. If the rule mentions groups that don't exist or the settings on the group are incompatible with other configuration setting on the group's nodes, a warning will be emitted, but the rule will be added.
+
+Once the rule is added the commit scope is available to be used.
+
+The `wait_for_ready` setting is default tryue
+
+
+## Using a commit scope
+
+To use our example scope, we can set `bdr.commit_scope` within a transaction 
+```sql
+BEGIN;
+SET LOCAL bdr.commit_scope = 'example_scope';
+...
+COMMIT;
+```
+
+You must set the commit scope before the transaction writes any data.
+
+A commit scope may be set as a default for a group or sub_group using `bdr.alter_node_group_option`
+
+```sql
+SELECT bdr.alter_node_group_option(
+  node_group_name := 'example_bdr_group',
+  config_key := 'default_commit_scope',
+  config_value := 'example_scope'
+);
+```
+
+You can also do make this change using PGD cli:
+
+```
+pgd set-group-options example-bdr-group --option default_commit_scope=example_scope
+```
+
+Finally, you can set the default commit_scope for a node using:
+
+```sql
+SET bdr.commit_scope = 'example_scope';
+```
+
+Set `bdr.commit_scope` to `local` to  use the PGD default async replication.
+
+
+## Origin groups
 
 Rules for commit scopes can depend on the node the transaction is committed on, that is, the node that acts as the origin for the transaction. To make this transparent for the application, PGD allows a commit scope to define different rules depending on where the transaction originates from.
 
@@ -121,20 +180,3 @@ The `CAMO` commit scope kind is mostly syntactic sugar for `GROUP COMMIT (transa
 While the grammar for `synchronous_standby_names` and commit scopes can look similar, the former doesn't account for the origin node, but the latter does. Therefore, for example `synchronous_standby_names = 'ANY 1 (..)'` is equivalent to a commit scope of `ANY 2 (...)`.  This choice makes reasoning about majority easier and reflects that the origin node also contributes to the durability and visibility of the transaction.
 !!!
 
-### Adding a commit scope rule
-
-To add a commit scope rule, use the function [`bdr.add_commit_scope`](/pgd/latest/reference/functions#bdradd_commit_scope). This function will create a rule for the given commit scope name and origin node group. If the rule is the same for all nodes in the EDB Postgres Distributed cluster, invoking this function once for the top-level node group is enough to fully define the commit scope.
-
-Alternatively, you can invoke it multiple times with the same `commit_scope_name` but different origin node groups and rules for commit scopes that vary depending on the origin of the transaction.
-
-### Changing a commit scope rule
-
-To change a specific rule for a single origin node group in a commit scope, you can use the function [`bdr.alter_commit_scope`](/pgd/latest/reference/functions#bdralter_commit_scope).
-
-### Removing a commit scope rule
-
-To remove a commit scope rule, use [`bdr.remove_commit_scope`](/pgd/latest/reference/functions#bdrremove_commit_scope). This can drop a single rule in a commit scope. If you have defined multiple rules for the commit scope, you will have to invoke this function for each defined rule to remove the entire commit scope.
-
-!!! Note
-Removing a commit scope that's still used as default by a node group isn't allowed.
-!!!
