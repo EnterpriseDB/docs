@@ -175,9 +175,40 @@ LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ]
 
  Parameter | Type | Default | Description
  --- | --- | --- | --- 
- `max_lag_size` | int | 0 | Maximum allowed lag based on WAL bytes.  (0 means not set)
- `max_lag_time` | interval | 0 | Maximum allowed lag based on wall clock sampling.  (0 means not set)
- `max_commit_delay` | interval | 0 | Maximum delay that can be injected to commit to try to keep within the lag limits.  (0 means not set)
+ `max_lag_size` | int | 0 | The maximum lag in kB that a given node can have in the replication connection to another node. When the lag exceeds this maximum scaled by `max_commit_delay`, lag control adjusts the commit delay. 
+ `max_lag_time` | interval | 0 | The maximum replication lag in milliseconds that the given origin can have wrt to a replication connection to a given downstream node.
+ `max_commit_delay` | interval | 0 | Configures the maximum delay each commit can take, in fractional milliseconds. If set to 0, it disables lag control. After each commit delay adjustment (e.g. if the replication is lagging more than `max_lag_size` or `max_lag_time`), the commit delay is recalculated with the weight of the `bdr.lag_control_commit_delay_adjust` GUC. The `max_commit_delay` is a ceiling for the commit delay.
+
+* If `max_lag_size` and `max_lag_time` are set to 0, the LAG CONTROL is disabled.
+* If `max_commit_delay` is not set or set to 0, the LAG CONTROL is disabled.
+
+The lag size is derived from the delta of the send_ptr of the walsender to the apply_ptr of the receiver.
+
+The lag time is calculated according to the following formula:
+
+```
+  lag_time = (lag_size / apply_rate) * 1000;
+```
+
+Where `lag_size` is the delta between the send_ptr and apply_ptr (as used for
+`max_lag_size`) and `apply_rate` is a weighted exponential moving average,
+following the simplified formula:
+
+```
+  apply_rate = prev_apply_rate * (1 - apply_rate_weight) +
+                ((apply_ptr_diff * apply_rate_weight) / diff_secs);
+```
+
+Where:
+  + `prev_apply_rate` was the previously configured `apply_rate`, before
+  recalculating the new rate
+  + `apply_rate_weight` is the value of the GUC `bdr.lag_tracker_apply_rate_weight`
+  + `apply_ptr_diff` is the difference between the current apply_ptr and
+  the apply_ptr at the point in time which the apply rate was last
+  computed
+  + `diff_secs` is the delta in seconds from the last time the apply rate
+  was calculated
+
 
 
 ## SYNCHRONOUS_COMMIT
