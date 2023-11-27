@@ -158,3 +158,71 @@ For example:
 
 -   wrap command: `openssl enc -aes-128-cbc -pass pass:temp-pass -e -out %p`
 -   unwrap command: `openssl enc -aes-128-cbc -pass pass:temp-pass -d -in %p`
+
+
+## Example using HashiCorp Vault
+
+The following example shows how to use HashiCorp Vault to store the encryption
+key and use it to activate TDE. The `vault` CLI is used to interact with Vault
+and is included by default in the EDB Postgres Advanced Server (EPAS) image.
+
+First, wherever you have vault running you must enable the Transit secrets 
+engine and create a key:
+
+``` shell
+vault secrets enable transit
+vault write -f transit/keys/pg-tde
+```
+
+Then, create a secret containing the custom wrap/unwrap commands. The wrap
+and unwrap commands will 'wrap' a binary that is in the EPAS image. The 
+binary will interact with the vault API to encrypt/decrypt the EPAS encryption.
+
+The binary needs 4 flags: `--host`, `--secret`, `--key` and `--vault-endpoint`. The
+`--host` flag is in the format of `http://vault-host:vault-port` and needs to be
+provided to reach the Vault. The server`--secret` flag is the name of the Kubernetes
+secret that contains the vault token and the `--key` flag is the key in that secret
+pointing the vault token. The `--vault-endpoint` flag is the name of the key that
+was created inside vault; in the example above it is `pg-tde`.
+
+If running the Vault operator in Kubernetes the root token can be obtained from the
+following two commands:
+
+```shell
+kubectl exec vault-0 -- vault operator init -key-shares=1 -key-threshold=1 -format=json > cluster-keys.json
+cat cluster-keys.json | jq -r ".root_token"
+```
+
+``` shell
+kubectl create secret generic -o yaml vault-token \
+    --from-literal=wrap="/bin/vault wrap --file %p --host http://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde" \
+    --from-literal=unwrap="/bin/vault unwrap --file %p --host http://vault:8200 --secret vault-token --key token --vault-endpoint pg-tde" \
+    --from-literal=token="hvs.whatever"
+```
+
+You can now create a Cluster that is referencing the secrets:
+
+``` yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: hashicorp-vault-tde
+spec:
+  instances: 3
+  storage:
+    size: 1Gi
+  postgresql:
+    epas:
+      tde:
+        enabled: true
+        wrapCommand:
+          name: vault-token
+          key: wrap
+        unwrapCommand:
+          name: vault-token
+          key: unwrap
+```
+Toggle all file notes
+Toggle all file annotations
+0 comments on commit e6e877a
+Comment
