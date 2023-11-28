@@ -12,9 +12,10 @@ redirects:
 
 ##  Server installation errors
 
+### 
 ### RHEL 8
 
-While installing the PEM server on RHEL 8, if you see this error:
+1. While installing the PEM server on RHEL 8, if you see this error:
 
 ```text
 [root@etpgxlt firstuser]# dnf install edb-pem
@@ -31,13 +32,48 @@ Error:
 [root@etpgxlt firstuser]# 
 ```
 
-Remove the `python3-mod_wsgi` package first:
+  Remove the `python3-mod_wsgi` package first:
 
 ```shell
 dnf remove python3-mod_wsgi
 ```
 
 Try installing the PEM server again.
+
+2. While installing the PEM server on RHEL 8, if you see this error:
+
+```text
+Tue Nov 28 03:02:19 2023 WARNING: Error clearing zombies: ERROR:  failed to JIT module: Added modules have incompatible data layouts: E-m:e-i1:8:16-i8:8:16-i64:64-f128:64-a:8:16-n32:64 (module) vs E-m:e-i1:8:16-i8:8:16-i64:64-f128:64-v128:64-a:8:16-n32:64 (jit)
+CONTEXT:  SQL statement "WITH running_agent_job AS (
+		SELECT j.jobid, j.agent_id
+		FROM pem.job j LEFT JOIN pem.joblog jl ON (j.jobid = jl.jlgjobid)
+		WHERE jl.jlgstatus = 'r' AND agent_id = $1 AND j.jobarid != agent_runtime_id
+		ORDER BY j.jobid, jl.jlgjobid
+		FOR UPDATE SKIP LOCKED
+	), joblog_status_update AS (
+		UPDATE pem.joblog jl SET jlgstatus='d'
+		FROM running_agent_job r
+		WHERE r.jobid = jl.jlgjobid AND jl.jlgstatus='r'
+		RETURNING r.agent_id, jl.jlgjobid, jl.jlgid
+	), jobsteplog_status_update AS (
+		UPDATE pem.jobsteplog js SET jslstatus='d'
+		FROM joblog_status_update jl
+		WHERE js.jsljlgid = jl.jlgid AND js.jslstatus='r'
+		RETURNING jl.agent_id, jl.jlgjobid AS job_id
+	)
+	UPDATE pem.job j SET jobprocessid=NULL, jobnextrun=NULL, jobarid=NULL
+	FROM (SELECT DISTINCT agent_id, job_id FROM jobsteplog_status_update) js
+	WHERE js.job_id = j.jobid"
+PL/pgSQL function pem.clear_job_zombies(integer) line 8 at SQL statement
+```
+
+  Set the `jit` parameter to `off` in `postgresql.conf` file:
+
+  ```ini
+  jit=off
+  ```
+
+  Try installing the PEM server again.
 
 ### RHEL 7 ppc64le
 
