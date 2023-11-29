@@ -4,11 +4,13 @@ title: Commit scopes
 
 Commit scopes give applications granular control about durability and consistency of EDB Postgres Distributed.
 
-A commit scope is a set of rules that describes the behavior of COMMIT replication. The actual behavior depends on whether a commit scope uses [Group Commit](group-commit), [Commit At Most Once](camo), [Lag Control](lag-control), [Synchronous Commit](synchronous_commit) or combination of these.
+A commit scope is a set of rules that describes the behavior of the system as transactions are committed. The actual behavior depends on which a kind of commit scope a commit scope's rule uses [Group Commit](group-commit), [Commit At Most Once](camo), [Lag Control](lag-control), [Synchronous Commit](synchronous_commit) or combination of these. 
+
+While most commit scope kinds control the processing of the transaction, Lag Control is the exception as it dynamically regulates the performance of the system in response to replication operations being slow or queued up. It is typically used, though, in combination with other commit scope kinds
 
 ## Commit scope structure
 
-Every commit scope has a commit_scope_name. 
+Every commit scope has a name (a `commit_scope_name`). 
 
 Each commit scope has one or more rules.
 
@@ -25,7 +27,7 @@ So if a commit scope has a rule that reads
 
 Then, the rule is applies when any node in the `example_bdr_group` makes a change. 
 
-The rule itself specifies how many nodes of a specified group will need to confirm the change - `ANY 2 (example_bdr_group)` - followed by the commit scope kind itself - `GROUP COMMIT`. This translates to requiring that any two nodes in the example_bdr_group must confirm the change before the change can be considered as comitted.
+The rule itself specifies how many nodes of a specified group will need to confirm the change - `ANY 2 (example_bdr_group)` - followed by the commit scope kind itself - `GROUP COMMIT`. This translates to requiring that any two nodes in `example_bdr_group` must confirm the change before the change can be considered as comitted.
 
 ## How a commit scope is selected
 
@@ -33,10 +35,9 @@ When any change takes place, PGD looks up which commit scope is should be used f
 
 If a transaction specifies a commit scope, that scope will be used. 
 
-Then the consulting the group tree is consulted. The node's group is looked up and then starting at the bottom of the group tree with that group and working up, any group which has a default_commit_scope setting defined. This commit scope will then be used.
+If not specified, the system will search for a default commit scope. Default commit scopes are a group level setting. The system consults the group tree. Starting at the bottom of the group tree with the node's group and working up, it searches for any group which has a default_commit_scope setting defined. This commit scope will then be used.
 
 If no default_commit_scope is found then the node's GUC, bdr.commit_scope is used. And if that isn't set or is set to `local` then no commit scope applies and PGD's async replication is used.
-
 
 ## Creating a Commit Scope
 
@@ -137,7 +138,7 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-Now, using the `example_scope` on any node that's part of `left_dc` uses the first scope. Using the same scope on a node that's part of `right_dc` uses the second scope. This is an effective way of creating an inverted scope without having to juggle scope names in the application.
+Now, using the `example_scope` on any node that's part of `left_dc` uses the first scope. Using the same scope on a node that's part of `right_dc` uses the second scope. By combining the `left_dc` and `right_dc` origin rules under one commit scope name, an application can simply use `example_scope` on either data center and get the appropriate behavior for that data center. 
 
 Each group can also have a default commit scope specified using the `bdr.alter_node_group_option` admin interface.
 
