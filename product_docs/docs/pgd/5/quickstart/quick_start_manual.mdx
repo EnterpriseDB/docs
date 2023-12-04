@@ -1,0 +1,309 @@
+---
+title: "Deploying an EDB Postgres Distributed example cluster on Linux hosts by hand"
+navTitle: "Deploying on Linux hosts by hand"
+description: >
+  A quick demonstration of deploying a PGD architecture on Linux hosts by hand
+---
+
+## Prerequisites
+
+### Configure your Linux hosts
+
+You will need to provision four hosts for this quick start. Each host should have a
+[supported Linux operating system](https://www.enterprisedb.com/resources/platform-compatibility#bdr)
+installed.
+
+!!! Note On machine provisioning
+AWS users can follow [an Amazon guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EC2_GetStarted.html)
+on how to provision EC2 linux instances.
+Azure users can follow [a Microsoft guide](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/quick-create-portal?tabs=ubuntu) on how to provision Azure VMs loaded with Linux. Google Cloud Platform users can follow [a Google guide](https://cloud.google.com/compute/docs/create-linux-vm-instance) on how to provision GCP VMs with Linux loaded. You can use any virtual machine technology to host a Linux instance, too. Refer to your virtualization platform's documentation for instructions on how to create instances with Linux loaded on them.
+
+Whichever cloud or VM platform you use, you need to make sure that each instance is accessible by SSH and that each instance can connect to the other instances. They can connect through either the public network or over a VPC for the cloud platforms. You can connect through your local network for on-premises VMs.
+!!!
+
+In this quick start, you will install PGD nodes onto three hosts configured in the cloud. Each of these hosts in this example is installed with Rocky Linux. Each has a public IP address to go with its private IP address.
+
+| Host name   | Public IP                | Private IP     |
+| ----------- | ------------------------ | -------------- |
+| linuxhost-1 | 172.19.16.27 | 192.168.2.247 |
+| linuxhost-2 | 172.19.16.26 | 192.168.2.41   |
+| linuxhost-3 | 172.19.16.25 | 192.168.2.254 |
+
+These are example IP addresses. Substitute them with your own public and private IP addresses as you progress through the quick start.
+
+### Set up a host admin user
+
+Each machine requires a user account to use for installation. For simplicity, use a user with the same name on all the hosts. On each host, also configure the user so that you can SSH into the host without being prompted for a password. Be sure to give that user sudo privileges on the host. On the four hosts, the user rocky is already configured with sudo privileges.
+
+### Set up respository access
+
+Before you begin the installation process:
+
+- Install Postgres on the same host (not needed for witness nodes)
+
+  - See [Installing EDB Postgres Advanced Server](/epas/latest/epas_inst_linux)
+
+  - See [PostgreSQL Downloads](https://www.postgresql.org/download/)
+
+- Set up the EDB repository
+
+  Setting up the repository is a one-time task. If you have already set up your repository, you don't need to perform this step.
+
+  To determine if your repository exists, enter this command:
+
+  `dnf repolist | grep enterprisedb`
+
+  If no output is generated, the repository isn't installed.
+
+  To set up the EDB repository:
+
+  1. Go to [EDB repositories](https://www.enterprisedb.com/repos-downloads).
+
+  2. Select the button that provides access to the EDB repository.
+
+  3. Select the platform and software that you want to download.
+
+<!-- Note: PM needs to push fixing this, it's not how it works for PGD (and only PGD) right now. -->
+
+  4. Follow the instructions for setting up the EDB repository.
+     EDB Postgres Distributed packages come from `postgres_distrbuted` repository.
+
+- Install the EPEL repository
+
+  ```shell
+  sudo yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+  ```
+
+## Install the package
+
+Install PGD5 packages for [EDB Postgres Advanced Server v15](https://www.enterprisedb.com/docs/epas/latest/):
+
+```shell
+sudo yum -y install edb-bdr5-epas15
+```
+
+We also need to install the proxy and the CLI packages
+
+```shell
+sudo yum -y install edb-pgd5-proxy
+sudo yum -y install edb-pgd5-cli
+```
+
+<!-- Note: do we want to discuss setting up TLS keys etc here? -->
+
+## Initial Postgres configuration
+
+We need to configure Postgres in order to be able to use PGD with it.
+
+Ensure that Postgres configuration on every host includes following:
+
+- `shared_preload_libraries = 'bdr'` - this loads the binary itself, you may add additional
+  extensions here as needed, the order generally does not matter
+- `wal_level = logical` - enables extra information logging
+- `track_commit_timestamps = on` - this enables feature which writes timestamp of a COMMIT to
+  the transaction log
+
+There are other configuration options that might need adjusting depending on the cluster size.
+Those are documented in the [Postgres configuration](/pgd/latest/postgres-configuration) chapter
+of the PGD documentation.
+
+We won't need to adjust anything else in Postgres config for our example cluster with 3 nodes
+in a single location.
+
+!!! Note
+    Make sure you restart Postgres after changing the above parameters
+
+## PGD setup
+
+First, we need to create a Postgres database which will represent the PGD node on each host.
+
+```
+CREATE DATABASE bdrdb;
+```
+
+Once the database is created, connect to it and install the BDR extension there.
+
+```
+CREATE EXTENSION BDR;
+```
+
+Adding PGD Replication user
+Adding PGD Proxy user
+
+After that we need to create a PGD node record.
+
+```
+SELECT bdr.create_node('linuxhost-1', 'host=linuxhost-1 dbname=bdrdb');
+```
+
+Do this on each node, changing the host name and connection string appropriately.
+
+Then on first node (let's assume it's `linuxhost-1` node). Create PGD node groups that
+will represent the cluster and the location (dc1 in out case).
+
+```
+SELECT bdr.create_node_group('pgd');
+SELECT bdr.create_node_group('dc1', 'pgd');
+```
+
+Once this is done, connect to the other two hosts and join the `dc1` group with the
+following command.
+
+```
+SELECT bdr.join_node_group('host=linuxhost-1 dbname=bdrdb', 'dc1');
+```
+
+Note the first parameter here, which is the connection string to the node on which we
+created the `dc1` group.
+
+It make take a while for these commands to finish as the node membership updates. If the
+process is taking more than few seconds, the function will start reporting NOTICE messages
+with the current state of joining process.
+
+Once everything is finished we have EDB Postgres Distributed cluster up and running.
+
+Now we can check the cluster shape with.
+
+<!-- Note: this could also be done via PGD CLI but we talk about that only later right now. -->
+
+```
+SELECT * FROM bdr.node_summary;
+```
+
+And replication status of all nodes with.
+
+```
+SELECT * FROM bdr.group_subscription_summary;
+```
+
+This, however, is not the full setup. We need to make the cluster usable by application
+without worry about failover and conflicts. For that we need to setup transparent routing
+to the write leader.
+
+## Routing setup
+
+Before we start proxy setup, we need to setup automatic connection routing in PGD itself.
+
+To do that, connect to any of the PGD nodes and execute following.
+
+```
+SELECT bdr.alter_node_group_option('dc1', 'enable_proxy_routing', 'true');
+```
+
+When this is done, we need to tell PGD that we plan to add proxies and store configuration
+for them. We'll put proxy on every PGD node and keep default behavior, so we simply create
+record for each of them.
+
+Again, on any PGD node (can be same one as above), execute these commands.
+
+```
+SELECT bdr.create_proxy('pgd-proxy', 'dc1');
+```
+
+This creates default configuration for 3 proxies that will route connections transparently
+to the write leader of the `dc1` group.
+
+### PGD Proxy setup
+
+Now, we need to configure the proxies themselves.
+
+Locate the configuration file of the pgd-proxy (`/etc/edb/pgd-proxy`) or every node,
+and put following in it.
+
+```yaml
+log-level: info # debug, info, warn, error
+log-encoder: text # text, json
+cluster:
+  name: pgd
+  endpoints:
+    - host=linuxhost-1 dbname=bdrdb
+    - host=linuxhost-2 dbname=bdrdb
+    - host=linuxhost-3 dbname=bdrdb
+  proxy:
+    name: pgd-proxy
+    endpoint: "host=localhost port=6432 dbname=bdrdb"
+```
+
+The endpoints should contain connection strings to all PGD nodes in the same group (`dc1`).
+
+The name of the proxy configuration must correspond to the name created above with the
+`bdr.create_proxy` command.
+
+!!! Note
+    The proxy must listen on different port that Postgres itself, here we use the port
+    6432, this will be the port application must connect to.
+
+Now we can start the proxies. On every host, start the pgd-proxy service using systemd.
+
+```shell
+sudo systemctl restart pgd-proxy
+```
+
+Once this is done, we can connect to one of the proxies.
+
+```
+psql -h linuxhost-1,linuxhost-2,linuxhost-3 -p 6432 bdrdb
+__OUTPUT__
+psql (15.2.0, server 15.2.0)
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+bdrdb=#
+```
+
+Using all 3 hostnames will result in psql connecting automatically to whichever proxy is up,
+and the proxy will route the connection to current write leader.
+
+You're connected to the Postgres database using PGD Proxy and can start issuing SQL commands.
+
+To leave the SQL client, enter `exit`.
+
+### Using PGD CLI
+
+The pgd utility, also known as the PGD CLI, lets you control and manage your EDB Postgres Distributed cluster.
+We've already installed it on all nodes in the first step.
+
+You can use it to check the cluster's health by running `pgd check-health`:
+
+```shell
+pgd --dsn 'host=linuxhost-1 dbname=bdrdb' check-health
+__OUTPUT__
+Check      Status Message
+-----      ------ -------
+ClockSkew  Ok     All BDR node pairs have clockskew within permissible limit
+Connection Ok     All BDR nodes are accessible
+Raft       Ok     Raft Consensus is working correctly
+Replslots  Ok     All BDR replication slots are working correctly
+Version    Ok     All nodes are running same BDR versions
+```
+
+Or, you can use `pgd show-nodes` to ask PGD to show you the data-bearing nodes in the cluster:
+
+```shell
+pgd --dsn 'host=linuxhost-1 dbname=bdrdb' show-nodes
+__OUTPUT__
+Node        Node ID    Group        Type Current State Target State Status Seq ID
+----        -------    -----        ---- ------------- ------------ ------ ------
+linuxhost-1 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up     1
+linuxhost-2 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up     3
+linuxhost-3 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Up     2
+```
+
+Similarly, use `pgd show-proxies` to display the proxy connection nodes:
+
+```shell
+pgd --dsn 'host=linuxhost-1 dbname=bdrdb' show-proxies
+__OUTPUT__
+Proxy       Group        Listen Addresses Listen Port
+-----       -----        ---------------- -----------
+linuxhost-1 dc1_subgroup [0.0.0.0]        6432
+linuxhost-2 dc1_subgroup [0.0.0.0]        6432
+linuxhost-3 dc1_subgroup [0.0.0.0]        6432
+```
+
+## Explore your cluster
+
+* [Connect to your database](connecting_applications) to applications
+* [Explore failover](further_explore_failover) with hands-on exercises
+* [Understand conflicts](further_explore_conflicts) by creating and monitoring them
+* [Next steps](next_steps) in working with your cluster
