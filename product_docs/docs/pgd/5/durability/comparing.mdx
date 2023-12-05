@@ -27,42 +27,49 @@ storage.
 
 **For**: Good performance.
 
-**Against**: Less robust when a crash occurs.
+**Against**: Not robust; Data can be lost when either a Postgres server or operating system crash occurs.
 
 ### ON REPLICATED
 
 **Expect**: The peer node has received the changes and applied them to the tuple
-store. The changes have not been persisted to storage.
+store. The changes have been written to storage, but the storage has not been flushed
+to disk.
 
-Confirmation on replication means the peer has received and applied the changes, but 
+Confirmation on replication means the peer has received and applied the changes. Those changes
+have been written to storage, but will still be in operating system caches and buffers. The system
 has yet to persist them to disk. 
 
-**For**: A better checkpoint than received with less performance.
+**For**: A better checkpoint than received with less performance. 
 
-**Against**: Less robust when a crash occurs.
+**Against**: Slightly more robust than RECEIVED; Replicated data can survive a Postgres crash but will not survive an operating system crash.
 
 ### ON DURABLE
 
-**Expect**: The peer node has received the changes, applied them to the tuple store and persisted the changes to storage. It has yet to make the changes available to other concurrent transactions.
+**Expect**: The peer node has received the changes, applied them to the tuple
+store and persisted the changes to storage. It has yet to make the changes
+available to other sessions.
 
-Durable confirmation means that the transaction has been written to the peer
-node's storage. This provides protection against loss of data after a crash and
-recovery of the peer node. With Group Commit, this also means the changes are
-visible.
+Durable confirmation means that the transaction has been written and flushed to
+the peer node's storage. This provides protection against loss of data after a
+crash and recovery of the peer node. But, if a session commits a transaction
+with an ON DURABLE rule before disconnecting and reconnects, the transaction's
+changes are not guaranteed to be visible to the reconnected session.
+
+When used with the Group Commit commit scope kind, this also means the changes
+are visible.
 
 **For**: More robust, able to recover without retransmission in the event of a crash.
 
-**Against**: Doesn't guarantee consistency.
+**Against**: Doesn't guarantee consistency in cases of failover.
 
 ### ON VISIBLE
 
-**Expect**: The peer node has recieved and applied the changes, and persisted them to storage, and has now made them visible to other concurrent transactions.
+**Expect**: The peer node has recieved and applied the changes, persisted and flushed those changes to storage. 
 
-Confirmation on visibility means that the transaction was applied remotely. All
-other clients see the results of the transaction on all nodes, providing this
-guarantee immediately after the commit is confirmed by the origin node. Without
-visibility, other clients connected might not see the results of the transaction
-and experience stale reads.
+Confirmation on visibility means that the transaction was fully applied
+remotely. If a session commits a transaction with an ON VISIBLE rule before
+disconnecting and reconnects, the transaction's changes are guaranteed to be
+visible to the reconnected session.
 
 **For**: Robust and consistent.
 
