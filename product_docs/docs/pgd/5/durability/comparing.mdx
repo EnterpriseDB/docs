@@ -1,0 +1,87 @@
+---
+title: Comparing Durability Options
+navTitle: Comparing Durability Options
+deepToC: true
+---
+
+## Comparison
+
+Most options for synchronous replication available to PGD allow for different
+levels of synchronization, offering different tradeoffs between performance and
+protection against node or network outages.
+
+The following list of [confirmation levels](commit-scope-rules#the-confirmation-level) explains
+what a user should expect to see when that confirmation level is in effect and how that can affect performance, durability, and consistency.
+
+### ON RECEIVED
+
+**Expect**: The peer node has received the changes. Nothing has been updated in
+the peer nodes tuple store or written to storage.
+
+Confirmation on reception means that the peer operating normally can
+eventually, apply the transaction without requiring any further
+communication, even in the face of a full or partial network
+outage. A crash of a peer node might still require retransmission of
+the transaction, as this confirmation doesn't involve persistent
+storage. 
+
+**For**: The origin node in the transaction only has to wait for the reception
+of the transaction. Where transactions are large, it may improve the TPS
+performance of the system.
+
+**Against**: An increased likelihood of stale reads. Overall, ON RECEIVED is not robust
+because data can be lost when either a Postgres server or operating system crash
+occurs.
+
+### ON REPLICATED
+
+**Expect**: The peer node has received the changes and applied them to the tuple
+store. The changes have been written to storage, but the storage has not been flushed
+to disk.
+
+Confirmation on replication means the peer has received and applied the changes.
+Those changes have been written to storage, but will still be in operating
+system caches and buffers. The system has yet to persist them to disk. 
+
+**For**: This checkpoint is further down the timeline of transaction processing.
+The origin node only waits for the transaction to be applied, but not persisted.  
+
+**Against**: There's a slightly lower chance of stale reads over ON RECEIVED.
+Also, with ON REPLICATED  data can survive a Postgres crash but will still not
+survive an operating system crash.
+
+### ON DURABLE
+
+**Expect**: The peer node has received the changes, applied them to the tuple
+store and persisted the changes to storage. It has yet to make the changes
+available to other sessions.
+
+Durable confirmation means that the transaction has been written and flushed to
+the peer node's storage. This protects against loss of data after a
+crash and recovery of the peer node. But, if a session commits a transaction
+with an ON DURABLE rule before disconnecting and reconnecting, the transaction's
+changes are not guaranteed to be visible to the reconnected session.
+
+When used with the Group Commit commit scope kind, this also means the changes
+are visible.
+
+**For**: More robust, able to recover without retransmission in the event of a crash.
+
+**Against**: Doesn't guarantee consistency in cases of failover.
+
+### ON VISIBLE
+
+**Expect**: The peer node has received and applied the changes, persisted and flushed those changes to storage. 
+
+Confirmation of visibility means that the transaction was fully applied
+remotely. If a session commits a transaction with an ON VISIBLE rule before
+disconnecting and reconnecting, the transaction's changes are guaranteed to be
+visible to the reconnected session.
+
+**For**: Robust and consistent.
+
+**Against**: Lower performance.
+
+
+
+

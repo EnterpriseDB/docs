@@ -66,69 +66,18 @@ doing so incurs many immediate risks and current limitations:
 
 - CLI and OTEL integration (new with v5) assumes one database. 
 
-## CAMO
+## Durability options (Group Commit/CAMO)
 
-[Commit At Most Once](durability/camo) (CAMO) is a feature that aims to prevent
-applications committing more than once. If you use this feature, take 
-these limitations into account when planning:
+There are various limits on how the PGD durability options work; this covers
+Group Commit and CAMO and how they operate with PGD features such as the WAL
+decoder and transaction streaming. 
 
--  CAMO is designed to query the results of a recently failed COMMIT on
-the origin node. So, in case of disconnection, code the application
-to immediately request the transaction status from the CAMO partner.
-Have as little delay as possible after the failure before
-requesting the status. Applications must not rely on CAMO decisions
-being stored for longer than 15 minutes.
+Also there limitations on interoperability with legacy synchronous replication,
+interoperability with explicit two-phase commit and unsupported combinations
+within commit scope rules. 
 
--  If the application forgets the global identifier assigned, for example,
-as a result of a restart, there's no easy way to recover
-it. Therefore, we recommend that applications wait for outstanding
-transactions to end before shutting down.
-
--  For the client to apply proper checks, a transaction protected by CAMO
-can't be a single statement with implicit transaction control. You also can't
-use CAMO with a transaction-controlling procedure or
-in a `DO` block that tries to start or end transactions.
-
-- CAMO resolves commit status but doesn't resolve pending
-notifications on commit. CAMO and Eager Replication options don't
-allow the `NOTIFY` SQL command or the `pg_notify()` function.
-They also don't allow `LISTEN` or `UNLISTEN`.
-
-- When replaying changes, CAMO transactions might detect conflicts just
-the same as other transactions. If timestamp-conflict detection is used,
-the CAMO transaction uses the timestamp of the prepare-on-the-origin
-node, which is before the transaction becomes visible on the origin
-node itself.
-
-- CAMO isn't currently compatible with transaction streaming.
-Be sure to disable transaction streaming when planning to use
-CAMO. You can configure this option globally or in the PGD node group. See
-[Transaction streaming configuration](transaction-streaming/#configuration).
-
--   Not all DDL can run when you use CAMO. If you use unsupported DDL, a warning is logged and the transactions commit scope is set to local only. The only supported DDL operations are:
-    - Nonconcurrent `CREATE INDEX`
-    - Nonconcurrent `DROP INDEX`
-    - Nonconcurrent `REINDEX` of an individual table or index
-    - `CLUSTER` (of a single relation or index only)
-    - `ANALYZE`
-    - `TRUNCATE`
-
-## Group Commit
-
-[Group Commit](durability/group-commit) enables configurable synchronous commits over 
-nodes in a group. If you use this feature, take the following limitations into account:
-
--   Not all DDL can run when you use Group Commit. If you use unsupported DDL, a warning is logged, and the transactions commit scope is set to local. The only supported DDL operations are:
-    - Nonconcurrent `CREATE INDEX`
-    - Nonconcurrent `DROP INDEX`
-    - Nonconcurrent `REINDEX` of an individual table or index
-    - `CLUSTER` (of a single relation or index only)
-    - `ANALYZE`
-    - `TRUNCATE`
-
-## Eager
-
-[Eager](consistency/eager) is available in Group Commit. It avoids conflicts by eagerly aborting transactions that might clash. It's subject to the same limitations as Group Commit.
+Consult the [Durability limitations](durability/limitations) section for a full
+and current listing.
 
 ## Other limitations
 
@@ -136,9 +85,6 @@ This noncomprehensive list includes other limitations that are expected and
 are by design. We don't expect to resolve them in the future. 
 Consider these limitations when planning your deployment:
 
--   Replacing a node with its physical standby doesn't work for nodes that use
-    CAMO/Eager/Group Commit. We don't recommend combining physical standbys and EDB Postgres
-    Distributed, even if it's possible.
 
 -   A `galloc` sequence might skip some chunks if you create the sequence in a
     rolled back transaction and then create it again with the same name. Skipping chunks can
@@ -149,8 +95,6 @@ Consider these limitations when planning your deployment:
     specify the starting value for the sequence as an argument to the
     `bdr.alter_sequence_set_kind()` function.
 
--   Legacy synchronous replication uses a mechanism for transaction confirmation
-    different from the one used by CAMO, Eager, and Group Commit. The two aren't compatible, 
-    so don't use them together.
 
--   Postgres two-phase commit (2PC) transactions (that is, [`PREPARE TRANSACTION`](https://www.postgresql.org/docs/current/sql-prepare-transaction.html)) can't be used with CAMO, Group Commit, or Eager Replication because those features use two-phase commit underneath.
+
+
