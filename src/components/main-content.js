@@ -6,6 +6,7 @@ const MainContent = ({
   children,
   searchNavLogo = false,
   searchProduct = "",
+  searchVersion = "",
 }) => {
   return (
     <div className="flex-grow-1 min-w-50">
@@ -15,7 +16,11 @@ const MainContent = ({
           tbd
         </a>
       </TimedBanner>
-      <SearchNavigation logo={searchNavLogo} searchProduct={searchProduct} />
+      <SearchNavigation
+        logo={searchNavLogo}
+        searchProduct={searchProduct}
+        searchVersion={searchVersion}
+      />
       <main role="main" className="content-container mt-0 p-5">
         {children}
       </main>

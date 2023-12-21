@@ -95,7 +95,7 @@ const SuggestedLinksSearch = ({ queryParams }) => {
       <Configure
         hitsPerPage={5}
         query={queryParams.query}
-        filters={
+        facetFilters={
           queryParams.refinementList?.product?.length &&
           `product:"${queryParams.refinementList?.product[0]}"`
         }

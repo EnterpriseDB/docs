@@ -11,6 +11,7 @@ import {
   writeStateToQueryParams,
 } from "../components/advanced-search";
 import useSiteMetadata from "../hooks/use-sitemetadata";
+import { products } from "../constants/products";
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -20,6 +21,10 @@ const searchClient = algoliasearch(
 const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
   const { algoliaIndex } = useSiteMetadata();
+
+  const excludedFacets = Object.entries(products)
+    .filter(([id, { noSearch }]) => noSearch)
+    .map(([id]) => `product:-${id}`);
 
   return (
     <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
@@ -39,6 +44,7 @@ const Search = (data) => {
             facetingAfterDistinct={true}
             distinct="4"
             advancedSyntax={true}
+            facetFilters={excludedFacets}
           />
 
           <SideNavigation background="white">

@@ -17,21 +17,42 @@ const TryAdvancedSearch = (props) => {
   const state = uiState[algoliaIndex];
   const productFilter =
     state?.refinementList?.product?.join(",") ||
-    (state?.configure?.filters?.match(/product:"([^"]+)/) || [])[1] ||
+    (
+      state?.configure?.facetFilters
+        ?.filter((f) => f.startsWith("product:") && !f.startsWith("product:-"))
+        ?.map((f) => f.replace(/^product:/, "")) || []
+    ).join(",") ||
     "";
+
+  const searchingLatest =
+    state?.configure?.facetFilters?.includes("isLatest:true");
+  const searchingVersion = state?.configure?.facetFilters?.find((f) =>
+    f.startsWith("version:"),
+  );
+  const context =
+    searchingLatest || searchingVersion
+      ? "Searching only documentation for " +
+        (searchingLatest
+          ? "latest versions"
+          : productFilter + " " + searchingVersion.replace(":", " "))
+      : "";
+
   return (
-    <div className="search-prompt flex-grow-1 d-flex align-items-center justify-content-center p-4">
-      {res && res.nbHits > 0
-        ? "Not finding what you need?"
-        : "No results found."}
-      <Link
-        to={`/search?query=${encodeURIComponent(res.query)}${
-          productFilter ? "&product=" + encodeURIComponent(productFilter) : ""
-        }`}
-        className="ms-2"
-      >
-        Try Advanced Search
-      </Link>
+    <div className="search-prompt text-center p-4">
+      <i>{context}</i>
+      <div className="flex-grow-1 d-flex align-items-center justify-content-center">
+        {res && res.nbHits > 0
+          ? "Not finding what you need?"
+          : "No results found."}
+        <Link
+          to={`/search?query=${encodeURIComponent(res.query)}${
+            productFilter ? "&product=" + encodeURIComponent(productFilter) : ""
+          }`}
+          className="ms-2"
+        >
+          Try Advanced Search
+        </Link>
+      </div>
     </div>
   );
 };
