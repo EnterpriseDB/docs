@@ -59,7 +59,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
       inputRef.current && inputRef.current.id === document.activeElement?.id,
     );
     if (inputRef.current?.value) refine(inputRef.current.value);
-  }, []);
+  }, [refine]);
 
   const onClear = useCallback(() => {
     setInputValue("");
@@ -176,11 +176,14 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
             All products
           </Dropdown.Item>
           <Dropdown.Divider />
-          {Object.entries(products).map(([id, { name }]) => (
-            <Dropdown.Item as="button" type="button" eventKey={id} key={id}>
-              {name}
-            </Dropdown.Item>
-          ))}
+          {Object.entries(products)
+            .filter((entry) => !entry[1].noSearch)
+            .sort((a, b) => a[1].name.localeCompare(b[1].name))
+            .map(([id, { name }]) => (
+              <Dropdown.Item as="button" type="button" eventKey={id} key={id}>
+                {name}
+              </Dropdown.Item>
+            ))}
         </DropdownButton>
         <Icon
           iconName={iconNames.SEARCH}
@@ -222,17 +225,25 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   );
 };
 
-const SearchBar = ({ searchProduct }) => {
+const SearchBar = ({ searchProduct, searchVersion }) => {
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
   const searchConfig = useMemo(() => {
+    let facets = currentProduct
+      ? [`product:${currentProduct}`]
+      : Object.entries(products)
+          .filter(([id, { noSearch }]) => noSearch)
+          .map(([id]) => `product:-${id}`);
+    if (searchVersion) facets.push("version:" + searchVersion);
+    else facets.push("isLatest:true");
+
     return {
       hitsPerPage: 30,
       advancedSyntax: true,
-      filters: currentProduct ? `product:"${currentProduct}"` : "",
+      facetFilters: facets,
     };
-  }, [currentProduct]);
+  }, [currentProduct, searchVersion]);
 
   // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (

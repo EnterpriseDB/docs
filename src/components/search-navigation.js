@@ -20,7 +20,12 @@ const DocsLink = () => (
   </Link>
 );
 
-const SearchNavigation = ({ children, searchProduct, logo = false }) => {
+const SearchNavigation = ({
+  children,
+  searchProduct,
+  searchVersion,
+  logo = false,
+}) => {
   return (
     <Navbar variant="light" className="flex-md-nowrap p-3 border-bottom">
       {logo ? (
@@ -32,7 +37,7 @@ const SearchNavigation = ({ children, searchProduct, logo = false }) => {
       ) : (
         <></>
       )}
-      <SearchBar searchProduct={searchProduct} />
+      <SearchBar searchProduct={searchProduct} searchVersion={searchVersion} />
       <SearchNavigationLinks />
     </Navbar>
   );
