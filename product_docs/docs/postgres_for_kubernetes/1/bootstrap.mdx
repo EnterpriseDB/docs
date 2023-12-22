@@ -67,17 +67,29 @@ storage that the EDB Postgres for Kubernetes operator provides, please refer to 
 ["Recovery" section](recovery.md) for guidance on each method.
 
 !!! Seealso "API reference"
-    Please refer to the ["API reference for the `bootstrap` section](pg4k.v1.md#postgresql-k8s-enterprisedb-io-v1-BootstrapConfiguration)
+    Please refer to the ["API reference for the `bootstrap` section](cloudnative-pg.v1.md#postgresql-k8s-enterprisedb-io-v1-BootstrapConfiguration)
     for more information.
 
 ## The `externalClusters` section
 
-The `externalClusters` section allows you to define one or more PostgreSQL
-clusters that are somehow related to the current one. While in the future
-this section will enable more complex scenarios, it is currently intended
-to define a cross-region PostgreSQL cluster based on physical replication,
-and spanning over different Kubernetes clusters or even traditional VM/bare-metal
-environments.
+The `externalClusters` section provides a mechanism for specifying one or more
+PostgreSQL clusters associated with the current configuration. Its primary use
+cases include:
+
+1.  **Importing Databases:** Specify an external source to be utilized during
+    the [importation of databases](database_import.md) via logical backup and
+    restore, as part of the `initdb` bootstrap method.
+2.  **Cross-Region Replication:** Define a cross-region PostgreSQL cluster
+    employing physical replication, capable of extending across distinct Kubernetes
+    clusters or traditional VM/bare-metal environments.
+3.  **Recovery from Physical Base Backup:** Recover, fully or at a
+    given Point-In-Time, a PostgreSQL cluster by referencing a physical base
+    backup.
+
+!!! Info
+    Ongoing development will extend the functionality of `externalClusters` to
+    accommodate additional use cases, such as logical replication and foreign
+    servers in future releases.
 
 As far as bootstrapping is concerned, `externalClusters` can be used
 to define the source PostgreSQL cluster for either the `pg_basebackup`
@@ -108,8 +120,19 @@ continuously fed from the source, either via streaming, via WAL shipping
 through the PostgreSQL's `restore_command`, or any of the two.
 
 !!! Seealso "API reference"
-    Please refer to the ["API reference for the `externalClusters` section](pg4k.v1.md#postgresql-k8s-enterprisedb-io-v1-ExternalCluster)
+    Please refer to the ["API reference for the `externalClusters` section](cloudnative-pg.v1.md#postgresql-k8s-enterprisedb-io-v1-ExternalCluster)
     for more information.
+
+### Password files
+
+Whenever a password is supplied within an `externalClusters` entry,
+EDB Postgres for Kubernetes autonomously manages a [PostgreSQL password file](https://www.postgresql.org/docs/current/libpq-pgpass.html)
+for it, residing at `/controller/external/NAME/pgpass` in each instance.
+
+This approach empowers EDB Postgres for Kubernetes to securely establish connections with an
+external server without exposing any passwords in the connection string.
+Instead, the connection safely references the aforementioned file through the
+`passfile` connection parameter.
 
 ## Bootstrap an empty cluster (`initdb`)
 
@@ -507,7 +530,7 @@ file on the source PostgreSQL instance:
 host replication streaming_replica all md5
 ```
 
-The following manifest creates a new PostgreSQL 16.0 cluster,
+The following manifest creates a new PostgreSQL 16.1 cluster,
 called `target-db`, using the `pg_basebackup` bootstrap method
 to clone an external PostgreSQL cluster defined as `source-db`
 (in the `externalClusters` array). As you can see, the `source-db`
@@ -522,7 +545,7 @@ metadata:
   name: target-db
 spec:
   instances: 3
-  imageName: quay.io/enterprisedb/postgresql:16.0
+  imageName: quay.io/enterprisedb/postgresql:16.1
 
   bootstrap:
     pg_basebackup:
@@ -542,7 +565,7 @@ spec:
 ```
 
 All the requirements must be met for the clone operation to work, including
-the same PostgreSQL version (in our case 16.0).
+the same PostgreSQL version (in our case 16.1).
 
 #### TLS certificate authentication
 
@@ -557,7 +580,7 @@ in the same Kubernetes cluster.
     This example can be easily adapted to cover an instance that resides
     outside the Kubernetes cluster.
 
-The manifest defines a new PostgreSQL 16.0 cluster called `cluster-clone-tls`,
+The manifest defines a new PostgreSQL 16.1 cluster called `cluster-clone-tls`,
 which is bootstrapped using the `pg_basebackup` method from the `cluster-example`
 external cluster. The host is identified by the read/write service
 in the same cluster, while the `streaming_replica` user is authenticated
@@ -572,7 +595,7 @@ metadata:
   name: cluster-clone-tls
 spec:
   instances: 3
-  imageName: quay.io/enterprisedb/postgresql:16.0
+  imageName: quay.io/enterprisedb/postgresql:16.1
 
   bootstrap:
     pg_basebackup:
