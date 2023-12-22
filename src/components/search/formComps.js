@@ -33,7 +33,7 @@ const TryAdvancedSearch = (props) => {
     searchingLatest || searchingVersion
       ? "Searching only documentation for " +
         (searchingLatest
-          ? "latest versions"
+          ? productFilter + " latest version" + (productFilter ? "" : "s")
           : productFilter + " " + searchingVersion.replace(":", " "))
       : "";
 
