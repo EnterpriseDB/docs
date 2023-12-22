@@ -67,17 +67,29 @@ storage that the EDB Postgres for Kubernetes operator provides, please refer to 
 ["Recovery" section](recovery.md) for guidance on each method.
 
 !!! Seealso "API reference"
-    Please refer to the ["API reference for the `bootstrap` section](pg4k.v1.md#postgresql-k8s-enterprisedb-io-v1-BootstrapConfiguration)
+    Please refer to the ["API reference for the `bootstrap` section](cloudnative-pg.v1.md#postgresql-k8s-enterprisedb-io-v1-BootstrapConfiguration)
     for more information.
 
 ## The `externalClusters` section
 
-The `externalClusters` section allows you to define one or more PostgreSQL
-clusters that are somehow related to the current one. While in the future
-this section will enable more complex scenarios, it is currently intended
-to define a cross-region PostgreSQL cluster based on physical replication,
-and spanning over different Kubernetes clusters or even traditional VM/bare-metal
-environments.
+The `externalClusters` section provides a mechanism for specifying one or more
+PostgreSQL clusters associated with the current configuration. Its primary use
+cases include:
+
+1.  **Importing Databases:** Specify an external source to be utilized during
+    the [importation of databases](database_import.md) via logical backup and
+    restore, as part of the `initdb` bootstrap method.
+2.  **Cross-Region Replication:** Define a cross-region PostgreSQL cluster
+    employing physical replication, capable of extending across distinct Kubernetes
+    clusters or traditional VM/bare-metal environments.
+3.  **Recovery from Physical Base Backup:** Recover, fully or at a
+    given Point-In-Time, a PostgreSQL cluster by referencing a physical base
+    backup.
+
+!!! Info
+    Ongoing development will extend the functionality of `externalClusters` to
+    accommodate additional use cases, such as logical replication and foreign
+    servers in future releases.
 
 As far as bootstrapping is concerned, `externalClusters` can be used
 to define the source PostgreSQL cluster for either the `pg_basebackup`
@@ -108,16 +120,26 @@ continuously fed from the source, either via streaming, via WAL shipping
 through the PostgreSQL's `restore_command`, or any of the two.
 
 !!! Seealso "API reference"
-    Please refer to the ["API reference for the `externalClusters` section](pg4k.v1.md#postgresql-k8s-enterprisedb-io-v1-ExternalCluster)
+    Please refer to the ["API reference for the `externalClusters` section](cloudnative-pg.v1.md#postgresql-k8s-enterprisedb-io-v1-ExternalCluster)
     for more information.
+
+### Password files
+
+Whenever a password is supplied within an `externalClusters` entry,
+EDB Postgres for Kubernetes autonomously manages a [PostgreSQL password file](https://www.postgresql.org/docs/current/libpq-pgpass.html)
+for it, residing at `/controller/external/NAME/pgpass` in each instance.
+
+This approach empowers EDB Postgres for Kubernetes to securely establish connections with an
+external server without exposing any passwords in the connection string.
+Instead, the connection safely references the aforementioned file through the
+`passfile` connection parameter.
 
 ## Bootstrap an empty cluster (`initdb`)
 
 The `initdb` bootstrap method is used to create a new PostgreSQL cluster from
 scratch. It is the default one unless specified differently.
 
-The following example contains the full structure of the `initdb`
-configuration:
+The following example contains the full structure of the `initdb` configuration:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -126,6 +148,9 @@ metadata:
   name: cluster-example-initdb
 spec:
   instances: 3
+
+  superuserSecret:
+    name: superuser-secret
 
   bootstrap:
     initdb:
@@ -141,10 +166,11 @@ spec:
 The above example of bootstrap will:
 
 1.  create a new `PGDATA` folder using PostgreSQL's native `initdb` command
-2.  create an *unprivileged* user named `app`
-3.  set the password of the latter (`app`) using the one in the `app-secret`
+2.  set a password for the `postgres` *superuser* from the secret named `superuser-secret`
+3.  create an *unprivileged* user named `app`
+4.  set the password of the latter (`app`) using the one in the `app-secret`
     secret (make sure that `username` matches the same name of the `owner`)
-4.  create a database called `app` owned by the `app` user.
+5.  create a database called `app` owned by the `app` user.
 
 Thanks to the *convention over configuration paradigm*, you can let the
 operator choose a default database name (`app`) and a default application
@@ -152,10 +178,10 @@ user name (same as the database name), as well as randomly generate a
 secure password for both the superuser and the application user in
 PostgreSQL.
 
-Alternatively, you can generate your password, store it as a secret,
-and use it in the PostgreSQL cluster - as described in the above example.
+Alternatively, you can generate your passwords, store them as secrets,
+and use them in the PostgreSQL cluster - as described in the above example.
 
-The supplied secret must comply with the specifications of the
+The supplied secrets must comply with the specifications of the
 [`kubernetes.io/basic-auth` type](https://kubernetes.io/docs/concepts/configuration/secret/#basic-authentication-secret).
 As a result, the `username` in the secret must match the one of the `owner`
 (for the application secret) and `postgres` for the superuser one.
@@ -178,8 +204,11 @@ data. Applications should connect to the cluster with the user that owns
 the application database.
 
 !!! Important
-    If you need to create additional users, please refer to
-    ["Declarative database role management"](declarative_role_management.md).
+    Future implementations of the operator might allow you to create
+    additional users in a declarative configuration fashion.
+
+The `postgres` superuser and the `postgres` database are supposed to be used
+only by the operator to configure the cluster.
 
 In case you don't supply any database name, the operator will proceed
 by convention and create the `app` database, and adds it to the cluster
@@ -189,7 +218,9 @@ The user that owns the database defaults to the database name instead.
 The application user is not used internally by the operator, which instead
 relies on the superuser to reconcile the cluster with the desired status.
 
-### Passing options to `initdb`
+!!! Important
+    For now, changes to the name of the superuser secret are not applied
+    to the cluster.
 
 The actual PostgreSQL data directory is created via an invocation of the
 `initdb` PostgreSQL command. If you need to add custom options to that command
@@ -249,12 +280,11 @@ spec:
     size: 1Gi
 ```
 
-!!! Warning
-    EDB Postgres for Kubernetes supports another way to customize the behavior of the
-    `initdb` invocation, using the `options` subsection. However, given that there
-    are options that can break the behavior of the operator (such as `--auth` or
-    `-d`), this technique is deprecated and will be removed from future versions of
-    the API.
+EDB Postgres for Kubernetes supports another way to customize the behavior of the
+`initdb` invocation, using the `options` subsection. However, given that there
+are options that can break the behavior of the operator (such as `--auth` or
+`-d`), this technique is deprecated and will be removed from future versions of
+the API.
 
 You can also specify a custom list of queries that will be executed
 once, just after the database is created and configured. These queries will
@@ -277,23 +307,18 @@ spec:
       localeCollate: 'en_US'
       localeCType: 'en_US'
       postInitSQL:
-        - CREATE DATABASE angus
+        - CREATE ROLE angus
+        - CREATE ROLE malcolm
   storage:
     size: 1Gi
 ```
 
 !!! Warning
-    Please use the `postInitSQL`, `postInitApplicationSQL` and
-    `postInitTemplateSQL` options with extreme care, as queries are run as a
-    superuser and can disrupt the entire cluster.  An error in any of those queries
-    interrupts the bootstrap phase, leaving the cluster incomplete.
+    Please use the `postInitSQL`, `postInitApplicationSQL` and `postInitTemplateSQL` options with extreme care,
+    as queries are run as a superuser and can disrupt the entire cluster.
+    An error in any of those queries interrupts the bootstrap phase, leaving the cluster incomplete.
 
-### Executing queries after initialization
-
-Moreover, you can specify a list of Secrets and/or ConfigMaps which contains
-SQL script that will be executed after the database is created and configured.
-These SQL script will be executed using the **superuser** role (`postgres`),
-connected to the database specified in the `initdb` section:
+Moreover, you can specify a list of Secrets and/or ConfigMaps which contains SQL script that will be executed after the database is created and configured. These SQL script will be executed using the **superuser** role (`postgres`), connected to the database specified in the `initdb` section:
 
 ```yaml
 apiVersion: postgresql.k8s.enterprisedb.io/v1
@@ -319,18 +344,12 @@ spec:
 ```
 
 !!! Note
-    The SQL scripts referenced in `secretRefs` will be executed before the ones
-    referenced in `configMapRefs`. For both sections the SQL scripts will be
-    executed respecting the order in the list.  Inside SQL scripts, each SQL
-    statement is executed in a single exec on the server according to the
-    [PostgreSQL semantics](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT),
-    comments can be included, but internal command like `psql` cannot.
+    The SQL scripts referenced in `secretRefs` will be executed before the ones referenced in `configMapRefs`. For both sections the SQL scripts will be executed respecting the order in the list.
+    Inside SQL scripts, each SQL statement is executed in a single exec on the server according to the [PostgreSQL semantics](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT), comments can be included, but internal command like `psql` cannot.
 
 !!! Warning
-    Please make sure the existence of the entries inside the ConfigMaps or
-    Secrets specified in `postInitApplicationSQLRefs`, otherwise the bootstrap will
-    fail. Errors in any of those SQL files will prevent the bootstrap phase to
-    complete successfully.
+    Please make sure the existence of the entries inside the ConfigMaps or Secrets specified in `postInitApplicationSQLRefs`, otherwise the bootstrap will fail.
+    Errors in any of those SQL files will prevent the bootstrap phase to complete successfully.
 
 ### Compatibility Features
 
@@ -507,7 +526,7 @@ file on the source PostgreSQL instance:
 host replication streaming_replica all md5
 ```
 
-The following manifest creates a new PostgreSQL 16.0 cluster,
+The following manifest creates a new PostgreSQL 16.1 cluster,
 called `target-db`, using the `pg_basebackup` bootstrap method
 to clone an external PostgreSQL cluster defined as `source-db`
 (in the `externalClusters` array). As you can see, the `source-db`
@@ -522,7 +541,7 @@ metadata:
   name: target-db
 spec:
   instances: 3
-  imageName: quay.io/enterprisedb/postgresql:16.0
+  imageName: quay.io/enterprisedb/postgresql:16.1
 
   bootstrap:
     pg_basebackup:
@@ -542,7 +561,7 @@ spec:
 ```
 
 All the requirements must be met for the clone operation to work, including
-the same PostgreSQL version (in our case 16.0).
+the same PostgreSQL version (in our case 16.1).
 
 #### TLS certificate authentication
 
@@ -557,7 +576,7 @@ in the same Kubernetes cluster.
     This example can be easily adapted to cover an instance that resides
     outside the Kubernetes cluster.
 
-The manifest defines a new PostgreSQL 16.0 cluster called `cluster-clone-tls`,
+The manifest defines a new PostgreSQL 16.1 cluster called `cluster-clone-tls`,
 which is bootstrapped using the `pg_basebackup` method from the `cluster-example`
 external cluster. The host is identified by the read/write service
 in the same cluster, while the `streaming_replica` user is authenticated
@@ -572,7 +591,7 @@ metadata:
   name: cluster-clone-tls
 spec:
   instances: 3
-  imageName: quay.io/enterprisedb/postgresql:16.0
+  imageName: quay.io/enterprisedb/postgresql:16.1
 
   bootstrap:
     pg_basebackup:
