@@ -235,7 +235,8 @@ const SearchBar = ({ searchProduct, searchVersion }) => {
       : Object.entries(products)
           .filter(([id, { noSearch }]) => noSearch)
           .map(([id]) => `product:-${id}`);
-    if (searchVersion) facets.push("version:" + searchVersion);
+    if (searchVersion && searchProduct === currentProduct)
+      facets.push("version:" + searchVersion);
     else facets.push("isLatest:true");
 
     return {
@@ -243,7 +244,7 @@ const SearchBar = ({ searchProduct, searchVersion }) => {
       advancedSyntax: true,
       facetFilters: facets,
     };
-  }, [currentProduct, searchVersion]);
+  }, [currentProduct, searchProduct, searchVersion]);
 
   // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (
