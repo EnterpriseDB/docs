@@ -1,12 +1,128 @@
 ---
-title: Creating a PGD Cluster
+title: Creating the PGD Cluster
 ---
 
 So far, we have:
 
-* created three server instances
-* installed a Postgres server on each instance
-* installed Postgres Distributed on each instance
+* Created three server instances.
+* Installed a Postgres server on each instance.
+* Installed Postgres Distributed on each instance.
+* Configured the Postgres server to work with PGD.
 
-TBD
+To create the cluster, we now have to tell each instance that it is a PGD node and how it should tell other nodes to connect to it.
+For our example cluster, we will use the private IP addresses we mentioned in [provisioning hosts](01-provisioning-hosts).
+For each node we want to create a DSN which will allow PGD to preform replication.
+
+The DSN starts with a `host=` and the IP address of the host (or if you have resolvable named hosts, the name of the host).
+Next should be the name of the database; `dbname=bdrbd` as we created a `bdrdb` database when [installing the software](04-installing-software).
+Following that should be the user to log in with. 
+Using EDB Postgres Advanced Server this would be `user=enterprisedb`.
+Any other Postgres, it would be `user=postgres`.
+The last part is the password set when [installing the software](04-installing-software).
+In our example we used `secret` as the password, so the setting is `password=secret`.
+
+Calculate the DSN for each of your nodes. 
+Below are the DSN's for our example.
+
+ Name | Private IP | DSN
+------|-------------|----------------------
+ node-one | 192.168.254.166 | host=192.168.254.166 dbname=bdrdb user=enterprisedb password=secret
+ node-two |  192.168.254.247 | host=192.168.254.247 dbname=bdrdb user=enterprisedb password=secret
+ node-three |  192.167.254.135 | host=192.168.254.135 dbname=bdrdb user=enterprisedb password=secret
+
+## Preparing the first node 
+
+Log into node-one's Postgres server.
+
+```
+ssh rocky@node-one
+sudo -iu enterprisedb psql bdrdb
+```
+
+### Create the first node
+
+Call the [`bdr.create_node`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node) function to create a node, passing it the node name and a DSN which other nodes can use to connect to it.
+
+```
+bdrdb=# select bdr.create_node('node-one','host=192.168.254.166 dbname=bdrdb user=enterprisedb password=secret');
+ create_node
+-------------
+  2824718320
+(1 row)
+```
+
+### Create the top-level group
+
+Call the [`bdr.create_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node_group) function to create a top-level group for your PGD cluster. Passing a single string parameter will create the top-level group with that name. For our example, we will create a top-level group named `pgd`.
+
+```
+bdrdb=# select bdr.create_node_group('pgd');
+ create_node_group
+-------------------
+        1850374637
+(1 row)
+```
+
+### Create a sub-group
+
+Call the [`bdr.create_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node_group) function again to create a sub-group of the top-level group. The sub-group name is the first parameter, the parent group is the second parameter. Using sub-groups to organise your nodes is recommended. For our example, we will create a sub-group `dc1` as a child of `pgd`.
+
+```
+bdrdb=# select bdr.create_node_group('dc1','pgd');
+ create_node_group
+-------------------
+        4269540889
+(1 row)
+```
+
+## Adding the second node
+
+Log into node-two's Postgres server
+
+```
+ssh rocky@node-two
+sudo -iu enterprisedb psql bdrdb
+```
+
+### Create the second node
+
+We call the [`bdr.create_node`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node) function to create this node, passing it the node name and a DSN which other nodes can use to connect to it.
+
+```
+select bdr.create_node('node-two','host=192.168.254.247 dbname=bdrdb user=enterprisedb password=secret');
+```
+
+### Join the node group
+
+Using [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) we can ask node-two to join node-one's `dc1` group. The function takes as a first parameter the DSN of a node already in the group, and the group name as a second parameter.
+
+```
+select bdr.join_node_group('host=192.168.254.166 dbname=bdrdb user=enterprisedb password=secret','dc1');
+```
+
+## Adding the third node
+
+Log into node-two's Postgres server
+
+```
+ssh rocky@node-three
+sudo -iu enterprisedb psql bdrdb
+```
+
+### Create the second node
+
+We call the [`bdr.create_node`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node) function to create this node, passing it the node name and a DSN which other nodes can use to connect to it.
+
+```
+select bdr.create_node('node-three','host=192.168.254.135 dbname=bdrdb user=enterprisedb password=secret');
+```
+
+### Join the node group
+
+Using [`bdr.join_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrjoin_node_group) we can ask node-three to join node-one's `dc1` group. The function takes as a first parameter the DSN of a node already in the group, and the group name as a second parameter.
+
+```
+select bdr.join_node_group('host=192.168.254.166 dbname=bdrdb user=enterprisedb password=secret','dc1');
+```
+
 
