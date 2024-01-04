@@ -4,7 +4,7 @@ deepToC: true
 ---
 
 With the repositories configured, you can now install the Postgres Distributed software. 
-These steps must be carried out on each node.
+These steps must be carried out on each host.
 
 We will detail the steps for EDB Postgres Advanced Server below. If you are installing PGD with EDB Postgres Extended Server or Community Postgres, the steps are similar, but details such as package names and paths are different. These differences are summarized in [Installing PGD for EDB Postgres Extended Server](#installing_pgd_for_edb_postgres_extended_server) and [Installing PGD for Community Postgresql](#installing_pgd_for_community_postgresql).
 
@@ -120,6 +120,21 @@ host replication all all md5
 
 to `pg_hba.conf` which will enable the nodes to replicate.
 
+#### Enable authentication between nodes
+
+As part of the process of connecting nodes for replication, PGD logs into other nodes. 
+It will perform that log in as the user that Postgres is running under.
+For epas, this is the `enterprisedb` user.
+That user will need credentials to log into the other nodes.
+We will supply these credentials using the `.pgpass` file which needs to reside in the user's home directory.
+The home directory for `enterprisedb` is `/var/lib/edb`.
+
+Run this command to create the file:
+
+```
+echo -e "*:*:*:enterprisedb:secret" | sudo -u enterprisedb tee /var/lib/edb/.pgpass; sudo chmod 0600 /var/lib/edb/.pgpass
+```
+
 ### Restart the server
 
 After all these configuration changes, it is recommended that the server is restarted with:
@@ -162,6 +177,7 @@ sudo -u enterprisedb psql edb -c "ALTER SYSTEM SET track_commit_timestamp TO 'on
 sudo -u enterprisedb psql edb -c "ALTER USER enterprisedb WITH PASSWORD 'secret'"
 sudo -u enterprisedb psql edb -c "ALTER SYSTEM SET max_worker_processes TO '16'"
 echo -e "host all all all md5\nhost replication all all md5" | sudo tee -a /var/lib/edb/as16/data/pg_hba.conf
+echo -e "*:*:*:enterprisedb:secret" | sudo -u enterprisedb tee /var/lib/edb/.pgpass; sudo chmod 0600 /var/lib/edb/.pgpass
 sudo systemctl restart edb-as-16
 sudo -u enterprisedb psql edb -c "CREATE DATABASE bdrdb"
 sudo -u enterprisedb psql bdrdb -c "CREATE EXTENSION bdr"
@@ -178,6 +194,7 @@ If installing PGD with EDB Postgres Extended Server, there are a number of diffe
 * A different setup utility should be called: /usr/edb/pgeNN/bin/edb-pge-NN-setup 
 * The service name is edb-pge-NN.
 * The system user is postgres (not enterprisedb)
+* The home directory for the postgres user is `/var/lib/pgqsl`
 * There are no pre-existing libraries to be added to `shared_preload_libraries`
 
 #### Summary: Installing PGD for EDB Postgres Extended Server 16
@@ -192,6 +209,7 @@ sudo -u postgres psql postgres -c "ALTER SYSTEM SET track_commit_timestamp TO 'o
 sudo -u postgres psql postgres -c "ALTER USER postgres WITH PASSWORD 'secret'"
 sudo -u postgres psql postgres -c "ALTER SYSTEM SET max_worker_processes TO '16'"
 echo -e "host all all all md5\nhost replication all all md5" | sudo tee -a /var/lib/edb-pge/16/data/pg_hba.conf
+echo -e "*:*:*:postgres:secret" | sudo -u postgres tee /var/lib/pgsql/.pgpass; sudo chmod 0600 /var/lib/pgsql/.pgpass
 sudo systemctl restart edb-pge-16
 sudo -u postgres psql postgres -c "CREATE DATABASE bdrdb"
 sudo -u postgres psql bdrdb -c "CREATE EXTENSION bdr"
@@ -206,11 +224,8 @@ If installing PGD with Community PostgresSQL, there are a number of differences 
 * A different setup utility should be called: /usr/pgsql-NN/bin/postgresql-NN-setup 
 * The service name is postgresql-NN.
 * The system user is postgres (not enterprisedb)
+* The home directory for the postgres user is `/var/lib/pgqsl`
 * There are no pre-existing libraries to be added to `shared_preload_libraries`
-
-* If you are installing Community Postgres (postgres) version 14, then the `postgresversion` value is `pg14`.
-* If you are installing EDB Postgres Extended (pgextended) version 15, then the `postgresversion` value would be `pgextended15`
-* If you are installing EDB Postgres Advanced Server (epas) version 16, then that value is `epas16`.
 
 #### Summary: Installing PGD for Postgresql 16
 
@@ -224,6 +239,7 @@ sudo -u postgres psql postgres -c "ALTER SYSTEM SET track_commit_timestamp TO 'o
 sudo -u postgres psql postgres -c "ALTER USER postgres WITH PASSWORD 'secret'"
 sudo -u postgres psql postgres -c "ALTER SYSTEM SET max_worker_processes TO '16'"
 echo -e "host all all all md5\nhost replication all all md5" | sudo tee -a /var/lib/pgsql/16/data/pg_hba.conf
+echo -e "*:*:*:postgres:secret" | sudo -u postgres tee /var/lib/pgsql/.pgpass; sudo chmod 0600 /var/lib/pgsql/.pgpass
 sudo systemctl restart postgresql-16
 sudo -u postgres psql postgres -c "CREATE DATABASE bdrdb"
 sudo -u postgres psql bdrdb -c "CREATE EXTENSION bdr"
