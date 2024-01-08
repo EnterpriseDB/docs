@@ -1,0 +1,144 @@
+---
+title: Configure Proxies
+---
+
+## Preparing for proxies
+
+For proxies to function, the `dc1` subgroup must enable Raft and routing.
+
+Log into any node in the cluster.
+
+```
+SELECT bdr.alter_node_group_option('dc1', 'enable_raft', 'true');
+SELECT bdr.alter_node_group_option('dc1', 'enable_proxy_routing', 'true');
+```
+
+Next, create a PGD proxy within the cluster using the `bdr.create_proxy` function.
+This function takes two parameters, the proxies unique name and the group it should be a proxy for.
+
+In our example, we want a proxy on each host in the dc1 sub-group:
+
+```
+SELECT bdr.create_proxy('pgd-proxy-one','dc1');
+SELECT bdr.create_proxy('pgd-proxy-two','dc1');
+SELECT bdr.create_proxy('pgd-proxy-three','dc1');
+```
+
+## Create a pgdproxy user on the database
+
+Create a password for the pgdproxy user. In this example we will use `proxysecret`
+
+On any node, log into the database as enterprisedb/postgres
+
+```
+CREATE USER pgdproxy PASSWORD 'proxysecret';
+GRANT bdr_superuser TO pgdproxy;
+```
+
+## Create a pgdproxy user on each host
+
+```
+sudo adduser pgdproxy
+```
+
+This user will need credentials to connect to the server.
+We will create a .pgpass file with the `proxysecret` password in it.
+Then we will lock down the `.pgpass` file so it is only accessible by its owner.
+
+```
+echo -e "*:*:*:pgdproxy:proxysecret" | sudo tee /home/pgdproxy/.pgpass
+sudo chown pgdproxy /home/pgdproxy/.pgpass
+sudo chmod 0600 /home/pgdproxy/.pgpass
+```
+
+## Configure the systemd service on each host
+
+Switch the service file from using root to using the pgdproxy user
+
+```
+sudo sed -i s/root/pgdproxy/ /usr/lib/systemd/system/pgd-proxy.service
+```
+
+Reload the systemd daemon.
+
+```
+sudo systemctl daemon-reload
+```
+
+## Create a proxy config file for each host
+
+The proxy configuration file will be slightly different for each host.
+It is a YAML file which contains a cluster object. This in turn has three
+properties:
+
+The name of the PGD cluster's top-level group (as `name`).
+An array of endpoints of databases (as `endpoints`).
+The proxy definition object with a name and endpoint (as `proxy`).
+
+The first two properties will be the same for all hosts:
+
+```
+cluster:
+  name: pgd
+  endpoints:
+    - host=host-one dbname=bdrdb port=5444
+    - host=host-two dbname=bdrdb port=5444
+    - host=host-three dbname=bdrdb port=5444
+```
+
+Note that the endpoints in this example specify port=5444.
+This is necessary for EDB Postgres Advanced Server instances.
+For EDB Postgres Extended and Community PostgreSQL, this can be omitted.
+
+The third property, `proxy`, has a `name` property and an `endpoint` property.
+The `name` property should be a name created with `bdr.create_proxy` earlier, and it will be different on each host.
+The `endpoint` property is a string which defines how the proxy presents itself as a connection string.
+Conventionally, proxies should be on a different port from direct connections and typically for PGD proxies we use port 6432.
+
+```
+  proxy:
+    name: pgd-proxy-one
+    endpoint: "host=localhost dbname=bdrdb port=6432"
+```
+
+## Install a PGD proxy configuration on each host
+
+For each host, create the `/etc/edb/pgd-proxy` directory:
+
+```
+sudo mkdir -p /etc/edb/pgd-proxy
+```
+
+Then on each host, write the appropriate configuration to the `pgd-proxy-config.yml` file in the `/etc/edb/pgd-proxy` directory.
+
+For our example, this could be run on host-one to create the file.
+
+```
+cat <<EOF | sudo tee /etc/edb/pgd-proxy/pgd-proxy-config.yml
+cluster:
+  name: pgd
+  endpoints:
+    - host=host-one dbname=bdrdb port=5444
+    - host=host-two dbname=bdrdb port=5444
+    - host=host-three dbname=bdrdb port=5444
+  proxy:
+    name: pgd-proxy-one
+    endpoint: "host=localhost dbname=bdrdb port=6432"
+EOF
+```
+
+## Restart the service
+
+```
+sudo systemctl restart pgd-proxy
+```
+
+Confirm it is running correctly with:
+
+```
+sudo systemctl status pgd-proxy
+```
+
+It should show `Active: (running)` in the opening details.
+
+
