@@ -24,6 +24,7 @@ Once the cluster is ready, you will need to configure each host to run pgd-proxy
 * Create a proxy config file for the host which lists the connection strings for all the nodes in the sub-group, specifies the name that the proxy should use when connected and gives the endpoint connection string the proxy will accept connections on.
 * Install that file as `/etc/edb/pgd-proxy/pgd-proxy-config.yml`
 * Restart the systemd service and check its status.
+* Log into the proxy and verify its operation.
 
 Further detail on all these steps is included in the worked example.
 
@@ -33,7 +34,7 @@ Further detail on all these steps is included in the worked example.
 
 For proxies to function, the `dc1` subgroup must enable Raft and routing.
 
-Log into any node in the cluster.
+Log into any node in the cluster and execute:
 
 ```
 SELECT bdr.alter_node_group_option('dc1', 'enable_raft', 'true');
@@ -41,7 +42,7 @@ SELECT bdr.alter_node_group_option('dc1', 'enable_proxy_routing', 'true');
 ```
 
 Next, create a PGD proxy within the cluster using the `bdr.create_proxy` function.
-This function takes two parameters, the proxies unique name and the group it should be a proxy for.
+This function takes two parameters, the proxy's unique name and the group it should be a proxy for.
 
 In our example, we want a proxy on each host in the dc1 sub-group:
 
@@ -120,7 +121,8 @@ For EDB Postgres Extended and Community PostgreSQL, this can be omitted.
 The third property, `proxy`, has a `name` property and an `endpoint` property.
 The `name` property should be a name created with `bdr.create_proxy` earlier, and it will be different on each host.
 The `endpoint` property is a string which defines how the proxy presents itself as a connection string.
-Conventionally, proxies should be on a different port from direct connections and typically for PGD proxies we use port 6432.
+A proxy cannot be on the same port as the Postgres server and, ideally, should be on a commonly used port different from direct connections, even when no Postgres server is running on the host.
+We typically use port 6432 for PGD proxies.
 
 ```
   proxy:
@@ -167,5 +169,46 @@ sudo systemctl status pgd-proxy
 ```
 
 It should show `Active: (running)` in the opening details.
+
+
+## Test the proxy
+
+To confirm the proxy is running, we should log into it. 
+
+Here we pass connection details, using the `-d` flag of `psql` with the hostname for the proxy we just configured and the proxy port number:
+
+```shell
+sudo -iu enterprisedb psql -d "host=host-one dbname=bdrdb port=6432"
+__OUTPUT__
+psql (16.1.0, server 16.1.0)
+Type "help" for help.
+
+bdrdb=#
+```
+
+Once connected, we can query the server to find out which node the proxy has connected us to.
+
+```sql
+SELECT node_name FROM bdr.local_node_summary;
+__OUTPUT__
+ node_name
+-----------
+ node-one
+(1 row)
+bdrdb#
+```
+
+And we can query which node is the write leader for the sub-group we are connected to:
+
+```sql
+SELECT node_group_name, write_lead FROM bdr.node_group_routing_summary;
+__OUTPUT__
+ node_group_name | write_lead
+-----------------+------------
+ dc1             | node-one
+(1 row)
+
+bdrdb=#
+```
 
 
