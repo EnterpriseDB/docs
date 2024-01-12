@@ -1,17 +1,263 @@
 ---
 title: Step 8 - Using PGD CLI
 navTitle: Using PGD CLI
+deepToC: true
 ---
 
 ## Using PGD CLI
 
-### Create a configuration file for PGD CLI
+The PGD CLI command is authenticated in the same way as the psql command. Use an account which you have previously configured authentication for used to run it.
+
+!!! Important Setting passwords
+PGD CLI doesn't interactively prompt for your password. You must pass your password using one of the following methods:
+
+ - Adding an entry to your [`.pgpass` password file](https://www.postgresql.org/docs/current/libpq-pgpass.html), which includes the host, port, database name, user name, and password.
+ - Setting the password in the `PGPASSWORD` environment variable.
+ - Including the password in the connection string.
+
+We recommend the first option, as the other options don't scale well with multiple databases, or they compromise password confidentiality.
+!!!
+
+### Configuring and connecting PGD CLI
 
 * Create a YAML file which specifies the cluster and endpoints the PGD CLI application should use.
-* Install the file in the default config directory /etc/edb/pgd-cli/ as pgd-cli-config.yml
-* Run pgd-cli
+* Install the file in the default config directory /etc/edb/pgd-cli/ as pgd-cli-config.yml.
+* Run pgd-cli.
+* Running pgd-cli without a configuration file.
+* Running pgd-cli with an alternative configuration file.
 
 ### Use PGD CLI to explore the cluster
+* Check the health of the cluster with the `check-health` command.
+* Show the nodes in the cluster with the `show-nodes` command.
+* Show the proxies in the cluster with the `show-proxies` command.
+* Show the groups in the cluster with the `show-groups` command.
+* Set a group option with the `set-group-options` command.
+* Swith write leader with the `switchover` command
 
-* Check the healt of the cluster
-* Show the nodes in the cluster
+We go into more details of these command in the worked example below.
+
+## Worked example
+
+### Creating a configuration file
+
+The PGD CLI configuration file is similar to the PGD proxy configuration filer.
+It is a YAML file which contains a cluster object. This has two properties:
+
+The name of the PGD cluster's top-level group (as `name`).
+An array of endpoints of databases (as `endpoints`).
+
+```
+cluster:
+  name: pgd
+  endpoints:
+    - host=host-one dbname=bdrdb port=5444
+    - host=host-two dbname=bdrdb port=5444
+    - host=host-three dbname=bdrdb port=5444
+```
+
+Note that the endpoints in this example specify port=5444.
+This is necessary for EDB Postgres Advanced Server instances.
+For EDB Postgres Extended and Community PostgreSQL, this can be omitted.
+
+### Installing the PGD CLI configuration
+
+Create the PGD CLI configuration directory.
+
+```
+sudo mkdir -p /etc/edb/pgd-cli
+```
+
+Then write the configuration to the `pgd-cli-config.yml` file in the `/etc/edb/pgd-cli` directory.
+
+For our example, this could be run on host-one to create the file.
+
+```
+cat <<EOF | sudo tee /etc/edb/pgd-cli/pgd-cli-config.yml
+cluster:
+  name: pgd
+  endpoints:
+    - host=host-one dbname=bdrdb port=5444
+    - host=host-two dbname=bdrdb port=5444
+    - host=host-three dbname=bdrdb port=5444
+EOF
+```
+
+### Run PGD CLI
+
+With the configuration file in place, we can run pgd-cli. For example, we can use the `show-nodes` command to list the nodes in our cluster and their status.
+
+```
+pgd show-nodes
+__OUTPUT__
+Node       Node ID    Group Type Current State Target State Status Seq ID
+----       -------    ----- ---- ------------- ------------ ------ ------
+node-one   2824718320 dc1   data ACTIVE        ACTIVE       Up     1
+node-three 1954860017 dc1   data ACTIVE        ACTIVE       Up     3
+node-two   2299992455 dc1   data ACTIVE        ACTIVE       Up     2
+```
+
+### Run PGD CLI without a configuration file
+
+You can pass the connection string directly to PGD CLI, using the `--dsn` flag.
+
+```
+pgd --dsn "host=node-one dbname=bdrdb port=5444" show-nodes
+__OUTPUT__
+Node       Node ID    Group Type Current State Target State Status Seq ID
+----       -------    ----- ---- ------------- ------------ ------ ------
+node-one   2824718320 dc1   data ACTIVE        ACTIVE       Up     1
+node-three 1954860017 dc1   data ACTIVE        ACTIVE       Up     3
+node-two   2299992455 dc1   data ACTIVE        ACTIVE       Up     2
+```
+
+### Run PGD CLI with an alternative configuration file
+
+You can create a yaml file with the configuration data for PGD CLI and use that instead of the default configuration by using the `-f` flag of PGD CLI and passing the filename. If our alternative configuration is stored in `$HOME/otherconfig.yml` then running:
+
+```
+pgd -f $HOME/otherconfig.yml show-nodes
+```
+
+## Using PGD CLI to explore the cluster
+
+Once configured, you can use PGD CLI to get PGD level views of the cluster.
+
+### Check the health of the cluster
+
+The `check-health` command provides a quick way to view the health of the cluster:
+
+```
+pgd check-health
+__OUTPUT__
+Check      Status Message
+-----      ------ -------
+ClockSkew  Ok     All BDR node pairs have clockskew within permissible limit
+Connection Ok     All BDR nodes are accessible
+Raft       Ok     Raft Consensus is working correctly
+Replslots  Ok     All BDR replication slots are working correctly
+Version    Ok     All nodes are running same BDR versions
+```
+
+### Show the nodes in the cluster
+
+As previously seen, the `show-nodes` command lists the nodes in the cluster:
+
+```
+pgd show-nodes
+__OUTPUT__
+Node       Node ID    Group Type Current State Target State Status Seq ID
+----       -------    ----- ---- ------------- ------------ ------ ------
+node-one   2824718320 dc1   data ACTIVE        ACTIVE       Up     1
+node-three 1954860017 dc1   data ACTIVE        ACTIVE       Up     3
+node-two   2299992455 dc1   data ACTIVE        ACTIVE       Up     2
+```
+
+Note that this view shows which group the node is a member of and its current status.
+To find out what versions of PGD and Postgres are running on the nodes, use `show-version`:
+
+```
+pgd show-version
+__OUTPUT__
+Node       BDR Version Postgres Version
+----       ----------- ----------------
+node-one   5.3.0       16.1.0
+node-three 5.3.0       16.1.0
+node-two   5.3.0       16.1.0
+```
+
+### Show the proxies in the cluster
+
+You can view the configured proxies, with their groups and ports using `show-proxies`:
+
+```
+pgd show-proxies
+__OUTPUT__
+Proxy           Group Listen Addresses Listen Port
+-----           ----- ---------------- -----------
+pgd-proxy-one   dc1   [0.0.0.0]        6432
+pgd-proxy-three dc1   [0.0.0.0]        6432
+pgd-proxy-two   dc1   [0.0.0.0]        6432
+```
+
+### Show the groups in the cluster
+
+Finally, the `show-groups` command for PGD CLI shows which groups are configured, and more:
+
+```
+pgd show-node_groups
+__OUTPUT__
+Group Group ID   Type   Parent Group Location Raft Routing Write Leader
+----- --------   ----   ------------ -------- ---- ------- ------------
+pgd   1850374637 global                       true false
+dc1   4269540889 data   pgd                   true true    node-one
+```
+
+This shows:
+* the groups
+* their types
+* their parent group
+* the groups location
+* whether Raft consensus is enabled
+* whether the group is routing connections
+* and if it is, which node is write leader for that
+
+The location is descriptive metadata, and so far we haven't set it. Let's use PGD CLI to rememdy that.
+
+### Set a group option
+
+We can set group options using PGD CLI too, using the `set-group-options` command. 
+This requires a `--group-name` flag to set the group this change should affect and a `--option` flag with the setting to change.
+If we wanted to set the `dc1` group's location to `London`, we would run:
+
+```
+pgd set-group-options --group-name dc1 --option "location=London"
+__OUTPUT__
+group options updated successfully
+```
+
+And we can verify that with `show-groups`
+
+
+```
+pgd show-node_groups
+__OUTPUT__
+Group Group ID   Type   Parent Group Location Raft Routing Write Leader
+----- --------   ----   ------------ -------- ---- ------- ------------
+pgd   1850374637 global                       true false
+dc1   4269540889 data   pgd          London   true true    node-one
+```
+
+### Switching write leader
+
+If we need to change write leader in as group, to enable maintence on a host, PGD CLI offers the `switchover` command.
+It takes a `--group-name` flag with the group the node exists in and a `--node-name` flag with the name of the node to swith to.
+We can then run:
+
+```
+pgd switchover --group-name dc1 --node-name node-two
+__OUTPUT__
+switchover is complete
+```
+
+And we can verify that with `show-groups`:
+
+```
+pgd show-groups
+__OUTPUT__
+Group Group ID   Type   Parent Group Location Raft Routing Write Leader
+----- --------   ----   ------------ -------- ---- ------- ------------
+pgd   1850374637 global                       true false
+dc1   4269540889 data   pgd          London   true true    node-two
+```
+
+
+
+
+
+
+
+
+
+ Note that you do
+
+
