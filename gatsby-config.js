@@ -367,6 +367,17 @@ module.exports = {
       },
     },
     {
+      resolve: "@raae/gatsby-plugin-fathom",
+      options: {
+        site: process.env.FATHOM_SITE_ID,
+        // disable canonical coalescing for two reasons:
+        // #1, we actually want data on specific version requests (e.g. /epas/13/installing vs /epas/latest/installing),
+        // #2, it doesn't work properly: when navigating internally, it reports the canonical URL of the page we're coming *from*, not *to*!
+        canonical: false,
+        includedDomains: "www.enterprisedb.com", // don't report staging / draft / local builds
+      },
+    },
+    {
       // This plugin must be placed last in your list of plugins to ensure that it can query all the GraphQL data
       resolve: `gatsby-plugin-algolia`,
       options: {
