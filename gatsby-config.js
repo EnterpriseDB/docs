@@ -366,7 +366,7 @@ module.exports = {
         id: process.env.GTM_ID,
       },
     },
-    {
+    process.env.FATHOM_SITE_ID && {
       resolve: "@raae/gatsby-plugin-fathom",
       options: {
         site: process.env.FATHOM_SITE_ID,
@@ -406,5 +406,5 @@ module.exports = {
         skipIndexing: process.env.INDEX_ON_BUILD !== "true",
       },
     },
-  ],
+  ].filter((p) => !!p),
 };
