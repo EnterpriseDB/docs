@@ -68,24 +68,27 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/epas/latest/">
-                      EDB Postgres Advanced Server 16 released
+                    <Link
+                      className="homepage-headling-link"
+                      to="/pge/latest/installing/"
+                    >
+                      EDB Postgres Extended Server Enhanced Installation Details
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.EDB_EPAS}
+                      iconName={iconNames.POSTGRESQL}
                       className="fill-orange ms-2 float-end"
                     />
-                    The latest version of EDB Postgres Advanced Server brings
-                    together expanded Oracle database compatibility with the
-                    innovations and fixes of PostgreSQL v16.1
+                    We've expanded installation instructions to cover
+                    post-install configuration, intial exploration, and
+                    component locations for all supported platforms.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
                       <Link
                         className="btn-sm ms-2"
-                        to="/epas/latest/epas_rel_notes/epas16_rel_notes/"
+                        to="/pge/latest/installing/"
                       >
                         Find out more &rarr;
                       </Link>
@@ -107,25 +110,26 @@ const Page = () => {
                   <h3 className="card-title mb-2 fw-bold">
                     <Link
                       className="homepage-headling-link"
-                      to="/postgres_for_kubernetes/latest/"
+                      to="/lasso/latest/"
                     >
-                      Postgres for Kubernetes updates
+                      Lasso 4.12 Released
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.KUBERNETES}
+                      iconName={iconNames.CONTROL}
                       className="fill-orange ms-2 float-end"
                     />
-                    EDB Postgres for Kubernetes versions 1.21.1, 1.20.4, 1.19.6,
-                    and 1.18.8 build long-term support and expanded platform
-                    compatibility on the latest versions of CloudNativePG.
+                    Lasso, EDB's support diagnostics tool, has been updated to
+                    version 4.12. Documentation now better covers installation
+                    requirements and provides enhanced clarity what and how can
+                    be collected.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
                       <Link
                         className="btn-sm ms-2"
-                        to="/postgres_for_kubernetes/latest/"
+                        to="/lasso/latest/release-notes/"
                       >
                         Find out more &rarr;
                       </Link>
