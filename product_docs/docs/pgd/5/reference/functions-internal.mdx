@@ -9,13 +9,150 @@ Listed below are internal system functions. Many are used in the creation of var
 
 ## General internal functions
 
-### `bdr.decode_message_response_payload`
+### `bdr.bdr_get_commit_decisions`
 
-PGD message payload function that decodes the consensus payloads to a more human-readable output.Used primarily by the `bdr.global_consensus_journal_details` debug view.
+Convenience routine to inspect shared memory state
+
+#### Synopsis
+
+```sql
+bdr.bdr_get_commit_decisions(dbid OID,
+            origin_node_id OID,
+            origin_xid xid,
+            local_xid xid,
+            decision "char",
+            decision_ts timestamptz,
+            is_camo boolean)
+```
+
+### `bdr.bdr_track_commit_decision`
+
+Save the transaction commit status in the shared memory hash table.
+This is used by the upgrade scripts to transfer commit decisions
+saved in bdr.node_pre_commit catalog to the shared memory hash table.
+This will also be logged to the WAL and hence can be reloaded from
+WAL.
+
+#### Synopsis
+
+```sql
+bdr.bdr_track_commit_decision(OID, xid, xid, "char", timestamptz, boolean);
+```
+
+
+### `bdr.consensus_kv_fetch`
+
+Fetch value from the consistent KV Store in JSON format.
+
+#### Synopsis
+
+```sql
+bdr.consensus_kv_fetch(IN key text) RETURNS jsonb
+```
+
+#### Parameters
+
+- `key` &mdash; An arbitrary key to fetch.
+
+#### Notes
+
+This is an internal function, mainly used by HARP.
+
+!!! Warning
+    Don't use this function in user applications.
+
+### `bdr.consensus_kv_store`
+
+Stores value in the consistent KV Store.
+
+Returns timestamp of the value expiration time. This depends on `ttl`. If `ttl`
+is `NULL`, then this returns `infinity`. If the value was deleted, it
+returns `-infinity`.
+
+#### Synopsis
+
+```sql
+bdr.consensus_kv_store(key text, value jsonb,
+        prev_value jsonb DEFAULT NULL, ttl int DEFAULT NULL)
+```
+
+#### Parameters
+
+- `key` &mdash; An arbitrary unique key to insert, update, or delete.
+- `value` &mdash; JSON value to store. If NULL, any existing record is deleted.
+- `prev_value` &mdash; If set, the write operation is done only if the current value
+  is equal to `prev_value`.
+- `ttl` &mdash; Time to live of the new value, in milliseconds.
+
+#### Notes
+
+This is an internal function, mainly used by HARP.
+
+!!! Warning
+    Don't use this function in user applications.
 
 ### `bdr.decode_message_payload`
 
 PGD message payload function that decodes the consensus payloads to a more human-readable output.Used primarily by the `bdr.global_consensus_journal_details` debug view.
+
+### `bdr.decode_message_response_payload`
+
+PGD message payload function that decodes the consensus payloads to a more human-readable output. Used primarily by the `bdr.global_consensus_journal_details` debug view.
+
+### `bdr.difference_fix_origin_create`
+
+Creates a replication origin with a given name passed as an argument but adding a `bdr_` prefix.
+It returns the internal id of the origin. This performs the same functionality
+as `pg_replication_origin_create()`, except this requires `bdr_superuser`
+rather than postgres superuser permissions.
+
+
+### `bdr.difference_fix_session_reset`
+
+Marks the current session as not replaying from any origin, essentially
+resetting the effect of `bdr.difference_fix_session_setup()`.
+It returns void. This function has the same functionality as
+`pg_replication_origin_session_reset()` except this function requires
+bdr_superuser rather than postgres superuser permissions.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_session_reset()
+```
+
+### `bdr.difference_fix_session_setup`
+
+Marks the current session as replaying from the current origin.
+The function uses the pre-created `bdr_local_only_origin` local
+replication origin implicitly for the session. It allows replay
+progress to be reported and returns void. This function performs the
+same functionality as `pg_replication_origin_session_setup()`
+except that this function requires bdr_superuser rather than postgres
+superuser permissions. The earlier form of the function,
+`bdr.difference_fix_session_setup(text)`, was deprecated and will be
+removed in upcoming releases.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_session_setup()
+```
+
+### `bdr.difference_fix_xact_set_avoid_conflict`
+
+Marks the current transaction as replaying a transaction that
+committed at LSN '0/0' and timestamp '2000-01-01'. This function has
+the same functionality as
+`pg_replication_origin_xact_setup('0/0', '2000-01-01')`
+except this requires bdr_superuser rather than postgres superuser
+permissions.
+
+#### Synopsis
+
+```sql
+bdr.difference_fix_xact_set_avoid_conflict()
+```
 
 ### `bdr.get_global_locks`
 
@@ -23,6 +160,10 @@ This function shows information about global locks held on the local node.
 
 Used to implement the `bdr.global_locks` view to provide a more detailed
 overview of the locks.
+
+### `bdr.get_node_conflict_resolvers`
+
+Displays a text string of all the conflict resolvers on the local node.
 
 ### `bdr.get_slot_flush_timestamp`
 
@@ -84,47 +225,28 @@ used by the consensus protocol.
 Function for sending messages to another node's connection pooler,
 used by the consensus protocol.
 
+### `bdr.node_catchup_state_name`
+
+Convert catchup state code in name
+
+#### Synopsis
+
+```sql
+bdr.node_catchup_state_name(catchup_state oid);
+```
+
+#### Parameters
+
+-   `catchup_state` &mdash; Oid code of the catchup state.
+
+### `bdr.node_kind_name`
+
+Return human friendly name of the node kind (data|standby|witness|subscriber-only)
+
 ### `bdr.peer_state_name`
 
 This function transforms the node state (`node_state`) into a textual
 representation and is used mainly to implement the `bdr.node_summary` view.
-
-### `bdr.request_replay_progress_update`
-
-Requests the immediate writing of a 'replay progress update' Raft message.
-It's used mainly for test purposes but can be also used to test if the
-consensus mechanism is working.
-
-### `bdr.seq_nextval`
-
-Internal implementation of sequence increments.
-
-Use this function instead of standard `nextval` in queries that
-interact with [PGD global sequences](../sequences/#pgd-global-sequences).
-
-#### Notes
-
-The following are also internal PGD sequence manipulation functions.
-`bdr.seq_currval` and `bdr.sql_lastval` are used automatically.
-
-### `bdr.show_subscription_status`
-
-Retrieves information about the subscription status and is used mainly to
-implement the `bdr.subscription_summary` view.
-
-### `bdr.get_node_conflict_resolvers`
-
-Displays a text string of all the conflict resolvers on the local node.
-
-### `bdr.reset_subscription_stats`
-
-Returns a Boolean result after resetting the statistics created by subscriptions,
-as viewed by `bdr.stat_subscription`.
-
-### `bdr.reset_relation_stats`
-
-Returns a Boolean result after resetting the relation stats,
-as viewed by `bdr.stat_relation`.
 
 ### `bdr.pg_xact_origin`
 
@@ -140,59 +262,21 @@ bdr.pg_xact_origin(xmin xid)
 
 - `xid` &mdash; Transaction id whose origin is returned,
 
-### `bdr.difference_fix_origin_create`
+### `bdr.request_replay_progress_update`
 
-Creates a replication origin with a given name passed as an argument but adding a `bdr_` prefix.
-It returns the internal id of the origin. This performs the same functionality
-as `pg_replication_origin_create()`, except this requires `bdr_superuser`
-rather than postgres superuser permissions.
+Requests the immediate writing of a 'replay progress update' Raft message.
+It's used mainly for test purposes but can be also used to test if the
+consensus mechanism is working.
 
-### `bdr.difference_fix_session_setup`
+### `bdr.reset_relation_stats`
 
-Marks the current session as replaying from the current origin.
-The function uses the pre-created `bdr_local_only_origin` local
-replication origin implicitly for the session. It allows replay
-progress to be reported and returns void. This function performs the
-same functionality as `pg_replication_origin_session_setup()`
-except that this function requires bdr_superuser rather than postgres
-superuser permissions. The earlier form of the function,
-`bdr.difference_fix_session_setup(text)`, was deprecated and will be
-removed in upcoming releases.
+Returns a Boolean result after resetting the relation stats,
+as viewed by `bdr.stat_relation`.
 
-#### Synopsis
+### `bdr.reset_subscription_stats`
 
-```sql
-bdr.difference_fix_session_setup()
-```
-
-### `bdr.difference_fix_session_reset`
-
-Marks the current session as not replaying from any origin, essentially
-resetting the effect of `bdr.difference_fix_session_setup()`.
-It returns void. This function has the same functionality as
-`pg_replication_origin_session_reset()` except this function requires
-bdr_superuser rather than postgres superuser permissions.
-
-#### Synopsis
-
-```sql
-bdr.difference_fix_session_reset()
-```
-
-### `bdr.difference_fix_xact_set_avoid_conflict`
-
-Marks the current transaction as replaying a transaction that
-committed at LSN '0/0' and timestamp '2000-01-01'. This function has
-the same functionality as
-`pg_replication_origin_xact_setup('0/0', '2000-01-01')`
-except this requires bdr_superuser rather than postgres superuser
-permissions.
-
-#### Synopsis
-
-```sql
-bdr.difference_fix_xact_set_avoid_conflict()
-```
+Returns a Boolean result after resetting the statistics created by subscriptions,
+as viewed by `bdr.stat_subscription`.
 
 ### `bdr.resynchronize_table_from_node`
 
@@ -235,58 +319,40 @@ Currently, row_filters are ignored by this function.
 The `bdr.resynchronize_table_from_node` function can be executed only by
 the owner of the table, provided the owner has bdr_superuser privileges.
 
-### `bdr.consensus_kv_store`
+### `bdr.seq_nextval`
 
-Stores value in the consistent KV Store.
+Internal implementation of sequence increments.
 
-Returns timestamp of the value expiration time. This depends on `ttl`. If `ttl`
-is `NULL`, then this returns `infinity`. If the value was deleted, it
-returns `-infinity`.
+Use this function instead of standard `nextval` in queries that
+interact with [PGD global sequences](../sequences/#pgd-global-sequences).
+
+#### Notes
+
+The following are also internal PGD sequence manipulation functions.
+`bdr.seq_currval` and `bdr.seq_lastval` are used automatically.
+
+### `bdr.show_subscription_status`
+
+Retrieves information about the subscription status and is used mainly to
+implement the `bdr.subscription_summary` view.
+
+### `bdr.show_workers`
+
+Information related to the bdr workers.
 
 #### Synopsis
 
 ```sql
-bdr.consensus_kv_store(key text, value jsonb,
-        prev_value jsonb DEFAULT NULL, ttl int DEFAULT NULL)
+bdr.show_workers(
+    worker_pid int,
+    worker_role int,
+    worker_role_name text,
+    worker_subid oid
 ```
 
-#### Parameters
+### `bdr.show_writers`
 
-- `key` &mdash; An arbitrary unique key to insert, update, or delete.
-- `value` &mdash; JSON value to store. If NULL, any existing record is deleted.
-- `prev_value` &mdash; If set, the write operation is done only if the current value
-  is equal to `prev_value`.
-- `ttl` &mdash; Time to live of the new value, in milliseconds.
-
-#### Notes
-
-This is an internal function, mainly used by HARP.
-
-!!! Warning
-    Don't use this function in user applications.
-
-### `bdr.consensus_kv_fetch`
-
-Fetch value from the consistent KV Store in JSON format.
-
-#### Synopsis
-
-```sql
-bdr.consensus_kv_fetch(IN key text) RETURNS jsonb
-```
-
-#### Parameters
-
-- `key` &mdash; An arbitrary key to fetch.
-
-#### Notes
-
-This is an internal function, mainly used by HARP.
-
-!!! Warning
-    Don't use this function in user applications.
-
-
+Function used in the `bdr.writers` view.
 
 ## Task Manager Functions
 
@@ -341,70 +407,3 @@ bdr.taskmgr_work_queue_check_status(workid bigint
 Taskmgr workers are always running in the background, even before the
 `bdr.autopartition` function is called for the first time. If an invalid
 `workid` is used, the function returns `unknown`. `In-progress` is the typical status.
-
-
-### `bdr.node_catchup_state_name`
-
-Convert catchup state code in name
-
-#### Synopsis
-
-```sql
-bdr.node_catchup_state_name(catchup_state oid);
-```
-
-#### Parameters
-
--   `catchup_state` &mdash; Oid code of the catchup state.
-
-### `bdr.bdr_track_commit_decision`
-
-Save the transaction commit status in the shared memory hash table.
-This is used by the upgrade scripts to transfer commit decisions
-saved in bdr.node_pre_commit catalog to the shared memory hash table.
-This will also be logged to the WAL and hence can be reloaded from
-WAL.
-
-#### Synopsis
-
-```sql
-bdr.bdr_track_commit_decision(OID, xid, xid, "char", timestamptz, boolean);
-```
-
-### `bdr.bdr_get_commit_decisions`
-
-Convenience routine to inspect shared memory state
-
-#### Synopsis
-
-```sql
-bdr.bdr_get_commit_decisions(dbid OID,
-            origin_node_id OID,
-            origin_xid xid,
-            local_xid xid,
-            decision "char",
-            decision_ts timestamptz,
-            is_camo boolean)
-```
-
-### `bdr.show_workers`
-
-Information related to the bdr workers.
-
-#### Synopsis
-
-```sql
-bdr.show_workers(
-    worker_pid int,
-    worker_role int,
-    worker_role_name text,
-    worker_subid oid
-```
-
-### `bdr.show_writers`
-
-Function used in the `bdr.writers` view.
-
-### `bdr.node_kind_name`
-
-Return human friendly name of the node kind (data|standby|witness|subscriber-only)

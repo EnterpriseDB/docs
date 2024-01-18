@@ -273,7 +273,7 @@ const DocTemplate = ({ data, pageContext }) => {
             hideVersion={frontmatter.hideVersion}
           />
         </SideNavigation>
-        <MainContent searchProduct={product}>
+        <MainContent searchProduct={product} searchVersion={version}>
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>

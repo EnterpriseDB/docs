@@ -12,7 +12,9 @@ import useSiteMetadata from "../../hooks/use-sitemetadata";
 
 const labelForItem = (item, translation) => {
   return translation[item.label]
-    ? translation[item.label].name
+    ? translation[item.label].noSearch
+      ? null
+      : translation[item.label].name
     : capitalize(item.label);
 };
 
@@ -67,14 +69,16 @@ const RadioRefinement = ({
 
   const radioName = `radio-refinement-${attribute}`;
   const refinedItem = items.find((item) => item.isRefined);
-  const sortedItems = items.sort(
-    sortFunction ||
-      ((a, b) => {
-        const aLabel = labelForItem(a, translation);
-        const bLabel = labelForItem(b, translation);
-        return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
-      }),
-  );
+  const sortedItems = items
+    .filter((item) => labelForItem(item, translation))
+    .sort(
+      sortFunction ||
+        ((a, b) => {
+          const aLabel = labelForItem(a, translation);
+          const bLabel = labelForItem(b, translation);
+          return aLabel.toLowerCase() > bLabel.toLowerCase() ? 1 : -1;
+        }),
+    );
 
   const radioRefine = (refinement) => {
     // toggle all current refinements, add new one
