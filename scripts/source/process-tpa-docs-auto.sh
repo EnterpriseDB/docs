@@ -14,10 +14,10 @@ rm -rf $SOURCE_CHECKOUT
 if [ -z $2 ]
 then
 # Get the TPA tree into /tmp/tpaforimport
-  git clone https://github.com/EnterpriseDB/tpa.git $SOURCE_CHECKOUT
+  git clone https://github.com/EnterpriseDB/tpa-internal.git $SOURCE_CHECKOUT
 else
   # Get specific branch of the TPA tree into /tmp/tpaforimport
-  git clone -b $2 https://github.com/EnterpriseDB/tpa.git $SOURCE_CHECKOUT
+  git clone -b $2 https://github.com/EnterpriseDB/tpa-internal.git $SOURCE_CHECKOUT
 fi
 
 # convert inputs to actual directory names, in case a relative path is passed in.
