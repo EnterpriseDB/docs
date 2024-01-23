@@ -1,0 +1,342 @@
+---
+title: Performing a rolling Postgres major version upgrade
+---
+
+## Performing a rolling Postgres major version upgrade
+
+With your cluster set up and ready to be upgraded, you can now perform the rolling upgrade of the Postgres major version on your PGD cluster. Carry out the following steps on each node in the cluster:
+
+- Confirm your current Postgres version.
+- Stop Postgres on the target node.
+- Install the new Postgres version and bdr_pg_upgrade.
+- Initialize the new Postgres version.
+- Copy the configuration for the old Postgres version to the configuration for the new Postgres version.
+- Rename the PGDATA directories.
+- Stop all Postgres instances.
+- Check that you can upgrade safely.
+- Run the Postgres major version upgrade.
+- Modify the Postgres service.
+- Start Postgres.
+- Cleanup post-upgrade. 
+- Validate the Postgres version. 
+
+We will look at these steps for upgrading a node from Postgres 15 to Postgres 16 in detail below. 
+
+## Worked example
+
+A three-node cluster (bdr1, bdr2 and bdr3) are currently running Postgres 14 on a Linux OS. We want to upgrade a single node to Postgres 15 (and then upgrade our whole cluster). In this walkthrough the target node we will upgrade will be bdr3. We will be using `bdr_pg_upgrade` to do this.
+
+!!! Note
+This process will involve you running commands as the Postgres owner. We will refer to this user as `postgres` throughout. If you are running EDB Postgres Advanced Server, you will need to substitute that user with `enterprisedb` in all commands.
+!!!
+
+### Confirm your current Postgres version
+
+Using psql, connect to any node that is still running Postgres 15 and run this query:
+
+```
+SELECT * FROM bdr.group_versions_details;
+```
+
+You should see output similar to this for your cluster:
+
+```
+  node_id   | node_name | postgres_version | bdr_version
+------------+-----------+------------------+-------------
+ 1609217846 | bdr2      | 14.9             | 5.2.0
+ 1630662325 | bdr3      | 14.9             | 5.2.0
+ 4245713078 | bdr1      | 14.9             | 5.2.0
+(3 rows)
+```
+
+Confirm that the Postgres version is the expected version.
+
+### Stop Postgres on the target node
+
+Use SSH to connect to the target node, in this case bdr3, and then run:
+
+```
+sudo systemctl stop postgres
+```
+
+This command halts the server on the current node. Your cluster will continue running using the other two nodes.
+
+### Install the new Postgres version
+
+On the target node, install the new version of Postgres and the upgrade tool by running:
+
+```
+sudo dnf -y install edb-bdr5-pg16 edb-bdr-utilities
+```
+
+### Initialize Postgres 16
+
+On the target node, run:
+
+```
+sudo -u postgres /usr/pgsql-15/bin/initdb \
+  -D /opt/postgres/datanew \
+  -E UTF8 \
+  --lc-collate=en_US.UTF-8 \
+  --lc-ctype=en_US.UTF-8 
+```
+
+This command creates a PG16 directory for PG 16 configuration, `/opt/postgres/datanew`.
+
+### Copy configuration for PG 15 to PG 16
+
+The next step copies the existing configuration to the new PG16 directory.
+
+On the target node, copy over the `postgresql.conf`, `postgresql.auto.conf`, `pg_hba.conf` files, and the whole conf.d directory:
+
+```
+sudo -u postgres cp /opt/postgres/data/postgresql.conf /opt/postgres/datanew/
+sudo -u postgres cp /opt/postgres/data/postgresql.auto.conf /opt/postgres/datanew/
+sudo -u postgres cp /opt/postgres/data/pg_hba.conf /opt/postgres/datanew/
+sudo -u postgres cp -r /opt/postgres/data/conf.d/ /opt/postgres/datanew/
+```
+
+### Rename the PGDATA directories
+
+While still on the target node, swap the PG15 and PG16 data directories around by
+running: 
+
+```
+sudo -u postgres mv /opt/postgres/data /opt/postgres/dataold
+sudo -u postgres mv /opt/postgres/datanew /opt/postgres/data
+```
+
+### Stop all Postgres instances
+
+Although we stopped the Postgres service on the target node earlier, to be sure, run the stop command for both instances of Postgres (PG14 and PG15) on
+the target node:
+
+```
+sudo /usr/pgsql-14/bin/pg_ctl -D /opt/postgres/dataold stop
+sudo /usr/pgsql-15/bin/pg_ctl -D /opt/postgres/data stop
+```
+
+### Check that you can upgrade safely
+
+The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the
+upgrade process. We can use this option to ensure the upgrade will go smoothly.
+
+On the target node, run:
+
+```
+sudo -u postgres /usr/bin/bdr_pg_upgrade \
+  --old-bindir /usr/pgsql-14/bin/ \
+  --new-bindir /usr/pgsql-15/bin/ \
+  --old-datadir /opt/postgres/dataold/ \
+  --new-datadir /opt/postgres/data \
+  --database bdrdb \
+  --check
+```
+
+If all goes well, you should see this output:
+
+```
+Performing BDR Postgres Checks
+------------------------------
+Collecting pre-upgrade new cluster control data             ok
+Checking new cluster state is shutdown                      ok
+Checking BDR versions                                       ok
+
+Passed all bdr_pg_upgrade checks, now calling pg_upgrade
+
+Performing Consistency Checks
+-----------------------------
+Checking cluster versions                                   ok
+Checking database user is the install user                  ok
+Checking database connection settings                       ok
+Checking for prepared transactions                          ok
+Checking for system-defined composite types in user tables  ok
+Checking for reg* data types in user tables                 ok
+Checking for contrib/isn with bigint-passing mismatch       ok
+Checking for presence of required libraries                 ok
+Checking database user is the install user                  ok
+Checking for prepared transactions                          ok
+Checking for new cluster tablespace directories             ok
+
+*Clusters are compatible
+```
+
+If this is not what you are seeing, NEED INSTRUCTIONS OR REFER USER TO TROUBLESHOOTING
+
+### Run the Postgres major version upgrade
+
+We are now ready to run the upgrade. On the target node, run:
+
+```
+sudo -u postgres /usr/bin/bdr_pg_upgrade \
+  --old-bindir /usr/pgsql-14/bin/ \
+  --new-bindir /usr/pgsql-15/bin/ \
+  --old-datadir /opt/postgres/dataold/ \
+  --new-datadir /opt/postgres/data \
+  --database bdrdb
+```
+
+You should see the following output:
+
+```
+Performing BDR Postgres Checks
+------------------------------
+Collecting pre-upgrade new cluster control data             ok
+Checking new cluster state is shutdown                      ok
+Checking BDR versions                                       ok
+Starting old cluster (if shutdown)                          ok
+Connecting to old cluster                                   ok
+Checking if bdr schema exists                               ok
+Turning DDL replication off                                 ok
+Terminating connections to database                         ok
+Disabling connections to database                           ok
+Waiting for all slots to be flushed                         ok
+Disconnecting from old cluster                              ok
+Stopping old cluster                                        ok
+Starting old cluster with BDR disabled                      ok
+Connecting to old cluster                                   ok
+Collecting replication origins                              ok
+Collecting replication slots                                ok
+Disconnecting from old cluster                              ok
+Stopping old cluster                                        ok
+
+Passed all bdr_pg_upgrade checks, now calling pg_upgrade
+
+Performing Consistency Checks
+-----------------------------
+Checking cluster versions                                   ok
+Checking database user is the install user                  ok
+Checking database connection settings                       ok
+Checking for prepared transactions                          ok
+Checking for system-defined composite types in user tables  ok
+Checking for reg* data types in user tables                 ok
+Checking for contrib/isn with bigint-passing mismatch       ok
+Creating dump of global objects                             ok
+Creating dump of database schemas                           ok
+Checking for presence of required libraries                 ok
+Checking database user is the install user                  ok
+Checking for prepared transactions                          ok
+Checking for new cluster tablespace directories             ok
+
+If pg_upgrade fails after this point, you must re-initdb the
+new cluster before continuing.
+
+Performing Upgrade
+------------------
+Analyzing all rows in the new cluster                       ok
+Freezing all rows in the new cluster                        ok
+Deleting files from new pg_xact                             ok
+Copying old pg_xact to new server                           ok
+Setting oldest XID for new cluster                          ok
+Setting next transaction ID and epoch for new cluster       ok
+Deleting files from new pg_multixact/offsets                ok
+Copying old pg_multixact/offsets to new server              ok
+Deleting files from new pg_multixact/members                ok
+Copying old pg_multixact/members to new server              ok
+Setting next multixact ID and offset for new cluster        ok
+Resetting WAL archives                                      ok
+Setting frozenxid and minmxid counters in new cluster       ok
+Restoring global objects in the new cluster                 ok
+Restoring database schemas in the new cluster               ok
+Copying user relation files                                 ok
+Setting next OID for new cluster                            ok
+Sync data directory to disk                                 ok
+Creating script to delete old cluster                       ok
+Checking for extension updates                              notice
+
+Your installation contains extensions that should be updated
+with the ALTER EXTENSION command.  The file
+    update_extensions.sql
+when executed by psql by the database superuser will update
+these extensions.
+
+
+Upgrade Complete
+----------------
+Optimizer statistics are not transferred by pg_upgrade.
+Once you start the new server, consider running:
+    /usr/pgsql-15/bin/vacuumdb --all --analyze-in-stages
+
+Running this script will delete the old cluster's data files:
+    ./delete_old_cluster.sh
+
+pg_upgrade complete, performing BDR post-upgrade steps
+------------------------------------------------------
+Collecting old cluster control data                         ok
+Collecting new cluster control data                         ok
+Checking LSN of new cluster                                 ok
+Starting new cluster with BDR disabled                      ok
+Connecting to new cluster                                   ok
+Creating replication origin (bdr_bdrdb_rb69_bdr2)           ok
+Advancing replication origin (bdr_bdrdb_rb69_bdr2, 0/1F4... ok
+Creating replication origin (bdr_bdrdb_rb69_bdr1)           ok
+Advancing replication origin (bdr_bdrdb_rb69_bdr1, 0/1E8... ok
+Creating replication slot (bdr_bdrdb_rb69_bdr1)             ok
+Creating replication slot (bdr_bdrdb_rb69)                  ok
+Creating replication slot (bdr_bdrdb_rb69_bdr2)             ok
+Stopping new cluster
+```
+
+### Modify the Postgres service
+
+The Postgres service on the system is configured to start the old version 
+of Postgres (PG14). We need to modify the `postgres.service` file to start the new 
+version (PG15). This can be done using sed to replace the old version 
+number "14" with "15" throughout the file. Once changed, we can tell the 
+systemd daemon to reload the configuration. On the target node, run:
+
+```
+sudo sed -i -e  's/14/15/g' /etc/systemd/system/postgres.service
+sudo systemctl daemon-reload
+```
+
+### Start Postgres
+
+On the target node, start the modified Postgres service by running:
+
+```
+sudo systemctl start postgres
+```
+
+### Cleanup post-upgrade
+
+We want to run a vacuum over to the database at this point as best practice. When the upgrade
+ran, you may have noticed the post-upgrade report included:
+
+```
+Once you start the new server, consider running:
+    /usr/pgsql-15/bin/vacuumdb --all --analyze-in-stages
+```
+
+Let's do this now. On the target node, run:
+
+```
+sudo -u postgres /usr/psql-15/bin/vacuumdb --all --analyze-in-stages
+```
+
+### Validate the Postgres version
+
+Repeating step 1, with psql, connect to any node and run:
+
+```
+SELECT * FROM bdr.group_versions_details;
+```
+
+You should see an output similar to this for your cluster.
+
+```
+  node_id   | node_name | postgres_version | bdr_version
+------------+-----------+------------------+-------------
+ 1609217846 | bdr2      | 14.9             | 5.2.0
+ 1630662325 | bdr3      | 15.4             | 5.2.0
+ 4245713078 | bdr1      | 14.9             | 5.2.0
+(3 rows)
+```
+
+Confirm that the target node is running the upgraded Postgres.
+
+## Next steps
+
+To complete upgrading the cluster for this worked example, repeat the previous steps on the other nodes of the cluster, bdr1 and bdr2.
+
+## See also
