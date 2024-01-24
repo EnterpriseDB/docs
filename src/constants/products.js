@@ -1,7 +1,11 @@
 import IconNames from "../components/icon/iconNames";
 
 export const products = {
-  bart: { name: "Backup and Recovery Tool", iconName: IconNames.EDB_BART },
+  bart: {
+    name: "Backup and Recovery Tool",
+    iconName: IconNames.EDB_BART,
+    noSearch: true,
+  },
   barman: { name: "Barman" },
   biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
   "EDB Advanced Storage Pack": { name: "EDB Advanced Storage Pack" },
