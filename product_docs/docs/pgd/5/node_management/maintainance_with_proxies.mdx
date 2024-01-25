@@ -2,9 +2,23 @@
 title: Maintenance commands through proxies
 ---
 
-PGD clusters nodes are able to present a direct connection for psql and pgd cli clients which can be used for issuing maintenance commands to the Postgres server on those nodes. But the environment in which the PGD cluster is deployed may mean that as a user you cannot use those direct connections. 
+## Maintenance and performance
 
-For example, in BigAnimal, PGD clusters are locked down such that the only access to the database is through an instance of PGD Proxy. This reduces the footprint of the cluster and makes it more secure but it does require a different way of sending maintenance requests to the cluster’s nodes.
+As a general rule, you should never perform maintenance operations on a cluster's write leader. 
+Maintenance operations such as `VACUUM` can be quite disruptive to the smooth running of a busy server and often detrimental to workload performance.
+Therefore it is best to run maintenance commands on any node in a group that isn't the write leader.
+Generally, this requires you connect directly and issue the maintenance commands on the non-write leader nodes.
+But there are situations where this is not possible.
+
+## Maintenance and proxies
+
+Proxies, by design, always connect to and send commands to the current write leader.
+This would usually mean that you should not use a proxy for maintenance.
+PGD clusters nodes are able to present a direct connection for psql and pgd cli clients which can be used for issuing maintenance commands to the server on those nodes. 
+But there are environment in which the PGD cluster is deployed wheer a proxy is the only way to access the cluster.
+
+For example, in BigAnimal, PGD clusters are locked down such that the only access to the database is through an instance of PGD Proxy. 
+This reduces the footprint of the cluster and makes it more secure but it does require a different way of sending maintenance requests to the cluster’s nodes.
 
 The technique outlined here is generally useful for despatching commands to specific nodes without being directly connected to that node’s server.
 
@@ -38,42 +52,84 @@ select node_name, node_group_name from bdr.node_summary;
 More details about [`bdr.node_summary`](/pgd/latest/reference/catalogs-visible#bdrnode_summary) table are available in the reference section.
 !!!
 
+## Finding the write leader
+
+If we assume that you are connected through the proxy, then you will be connected to the write leader. 
+Run `select node_name from bdr.local_node_summary` to see the name of the node:
+
+```
+select node_name from bdr.local_node_summary;
+__OUTPUT__
+    node_name
+------------------
+node-two
+(1 row)
+```
+
+This is the node you do **not** want to run your maintenance tasks on. 
+
+```
+select * from bdr.node_group_routing_summary;
+__OUTPUT__
+ node_group_name |    write_lead    | previous_write_lead |       read_nodes
+-----------------+------------------+---------------------+-------------------------
+ dc1             | node-two         | node-one            | {node-one,node-three}
+```
+
+Where the write_lead is the node we determined earlier (node-two), we can also see the two read_nodes (node-one and node-three). 
+It's these nodes that we can safely perform mainten
+
+
+!!! Tip
+You can perform that operation with a single query:
+```SQL
+select read_nodes from bdr.node_group_routing_summary where write_lead = (select node_name from bdr.local_node_summary);
+```
+!!!
+
 ## Using `bdr.run_on_nodes()`
 PGD does have the ability to run specific commands on specific nodes using the `bdr.run_on_nodes()` function. This takes two parameters, an array of node names and the command you would like to run on those nodes. For example:
 
 ```SQL
-SELECT bdr.run_on_nodes(ARRAY['p-wqnqz5x7ta-a-1','p-wqnqz5x7ta-a-3'],'vacuum full foo');
+SELECT bdr.run_on_nodes(ARRAY['node-one','node-three'],'vacuum full foo');
 __OUTPUT__
 
                                                             	run_on_nodes
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- [{"dsn": "host=p-wqnqz5x7ta-a-1-node.pg.biganimal.io sslmode=verify-full port=5432 dbname=bdrdb", "node_id": "807899305", "response": {"command_status": "VACUUM"}, "node_name": "p-wqnqz5x7ta-a-1", "query_send_time": "2024-01-16 16:24:35.418323+00"}, {"dsn": "host=p-wqnqz5x7ta-a-3-node.pg.biganimal.io sslmode=verify-full port=5432 dbname=bdrdb", "node_id": "199017004", "response": {"command_status": "VACUUM"}, "node_name": "p-wqnqz5x7ta-a-3", "query_send_time": "2024-01-16 16:24:35.4542+00"}]
+ [{"dsn": "host=host-one port=5444 dbname=bdrdb", "node_id": "807899305", "response": {"command_status": "VACUUM"}, "node_name": "node-one", "query_send_time": "2024-01-16 16:24:35.418323+00"}, {"dsn": "host=host-three port=5432 dbname=bdrdb", "node_id": "199017004", "response": {"command_status": "VACUUM"}, "node_name": "node", "query_send_time": "2024-01-16 16:24:35.4542+00"}]
 ```
 
-Would run the vacuum full foo command on the *-1 and *-3 nodes and report the results as JSONB, Note that the node names are passed in an array. The results include the name of the node and the response ( or error message)  resulting from running the command, along with various other fields which may or may not be relevant. It’s also formatted as a single row. To make it more readable, we can apply some formatting.
+This command runs the `vacuum full foo` command on the node-one and node-three nodes.
+Note that the node names are passed to the function in an array.
+
+The bdr.run_on_nodes reports its results as JSONB. 
+The results include the name of the node and the response (or error message)  resulting from running the command.
+Other fields may be included may not be relevant. 
+
+The results also appear as a single string which is hard to read. To make it more readable, we can apply some formatting.
 
 ## Formatting `bdr.run_on_nodes()` output
 
 Using Postgres’s JSON expressions, it is possible to reduce the output to just the columns we are interested in. The following command is functionally equivalent to the previous example but lists only the node and response as its results:
 
 ```SQL
-select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['p-wqnqz5x7ta-a-1','p-wqnqz5x7ta-a-3'], 'VACUUM FULL foo')) q;
+select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['node-one','node-three'], 'VACUUM FULL foo')) q;
 __OUTPUT__
          node     |       	response
 ------------------+------------------------------
- p-wqnqz5x7ta-a-1 | {"command_status": "VACUUM"}
- p-wqnqz5x7ta-a-3 | {"command_status": "VACUUM"}
+ node-one         | {"command_status": "VACUUM"}
+ node-three       | {"command_status": "VACUUM"}
 ```
 
 If an error occurs, the command_status field will be set to error and an additional error_message value will be included in the response. For example:
 
 ```SQL
-select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['p-wqnqz5x7ta-a-1','p-wqnqz5x7ta-a-3'], 'VACUUM FULL fool')) q;
+select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['node-one','node-three'], 'VACUUM FULL fool')) q;
 __OUTPUT__
    	node   	      |                                      	response
 ------------------+--------------------------------------------------------------------------------------------
- p-wqnqz5x7ta-a-1 | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
- p-wqnqz5x7ta-a-3 | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
+ node-one         | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
+ node-three       | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
 (2 rows)
 ```
 
@@ -93,21 +149,21 @@ $$ language 'plpgsql';
 This function takes a node name and a command and runs the command on that node, returning the results like so:
 
 ```SQL
-select runmaint('p-wqnqz5x7ta-a-1','VACUUM FULL foo');
+select runmaint('node-one','VACUUM FULL foo');
 __OUTPUT__
                    	runmaint
 -------------------------------------------------------
- (p-wqnqz5x7ta-a-1,"{""command_status"": ""VACUUM""}")
+ (node-one,"{""command_status"": ""VACUUM""}")
 ```
 
 You can break up the response by using select * from :
 
 ```SQL
-select * from runmaint('p-wqnqz5x7ta-a-1','VACUUM FULL foo');
+select * from runmaint('node-one','VACUUM FULL foo');
 __OUTPUT__
    	node          |       	response
 ------------------+------------------------------
- p-wqnqz5x7ta-a-1 | {"command_status": "VACUUM"}
+ node-one         | {"command_status": "VACUUM"}
 (1 row)
 ```
 
