@@ -302,9 +302,6 @@ const Page = () => {
               <IndexCardLink to="/supported-open-source/pgbackrest/">
                 pgBackRest
               </IndexCardLink>
-              <IndexCardLink to="/bart/latest">
-                Backup &amp; Recovery Tool
-              </IndexCardLink>
             </IndexCard>
 
             <IndexCard
