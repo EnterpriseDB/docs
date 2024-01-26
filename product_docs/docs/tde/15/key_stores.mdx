@@ -17,7 +17,7 @@ If you don't want key wrapping, for example for testing, then you must set the w
 
 Postgres leaves this configuration up to the user, which allows tailoring the setup to local requirements and integrating with existing key management software or similar. To configure the data key protection, you must specify a pair of external commands that take care of the wrapping (encrypting) and unwrapping (decryption).
 
-## Using a passphrase 
+## Using a passphrase
 
 You can protect the data key with a passphrase using the openssl command line utility. The following is an example that sets up this protection:
 
@@ -25,10 +25,10 @@ You can protect the data key with a passphrase using the openssl command line ut
 initdb -D datadir -y --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"' --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
 ```
 
-This example wraps the randomly generated data key (done internally by initdb) by encrypting it using the AES-128-CBC (AESKW) algorithm. The encryption uses a key derived from a passphrase using the PBKDF2 key derivation function and a randomly generated salt. The terminal prompts for the passphrase. (See the openssl-enc manual page for details about these options. Available options vary across versions.) The placeholder `%p` is replaced with the name of the file to store the wrapped key. 
+This example wraps the randomly generated data key (done internally by initdb) by encrypting it using the AES-128-CBC (AESKW) algorithm. The encryption uses a key derived from a passphrase using the PBKDF2 key derivation function and a randomly generated salt. The terminal prompts for the passphrase. (See the openssl-enc manual page for details about these options. Available options vary across versions.) The placeholder `%p` is replaced with the name of the file to store the wrapped key.
 
 The unwrap command performs the opposite operation. initdb doesn't need the unwrap operation. However, it stores it in the `postgresql.conf` file of the initialized cluster, which uses it when it starts up.
-    
+
 
 The key wrap command receives the plaintext key on standard input and needs to put the wrapped key at the file system location specified by the `%p` placeholder. The key unwrap command needs to read the wrapped key from the file system location specified by the `%p` placeholder and write the unwrapped key to the standard output.
 
@@ -43,7 +43,7 @@ export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
 ```
 
 Key unwrap commands that prompt for passwords on the terminal don't work when the server is started by pg_ctl or through service managers such as systemd. The server is detached from the terminal in those environments. If you want an interactive password prompt on server start, you need a more elaborate configuration that fetches the password using some indirect mechanism.
-    
+
 For example, for systemd, you can use `systemd-ask-password`:
 
 ```
@@ -52,12 +52,12 @@ PGDATAKEYUNWRAPCMD="bash -c 'openssl enc -d -aes-128-cbc -pbkdf2 -in %p -pass fi
 ```
 
 You also need an entry like in `/etc/sudoers`:
-    
+
 ```
 postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
 ```
 
-## Using a key store 
+## Using a key store
 You can use the key store in an external key management system to manage the data encryption key. The tested and supported key stores are:
 
 - Amazon AWS Key Management Service (KMS)
@@ -70,7 +70,7 @@ You can use the key store in an external key management system to manage the dat
 
 ### AWS Key Management Service example
 
-Create a key with AWS Key Management Service: 
+Create a key with AWS Key Management Service:
 
 ```shell
 aws kms create-key
@@ -95,13 +95,22 @@ PGDATAKEYUNWRAPCMD='crypt decrypt aws --in %p --region us-east-1'
 
 ### Azure Key Vault example
 
-Create a key with Azure Key Vault: 
+Create a key with Azure Key Vault:
 
 ```shell
 az keyvault key create --vault-name pg-tde --name pg-tde-master-1
 ```
 
-Use the `az keyvault` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
+Use the `az keyvault key` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
+
+```shell
+PGDATAKEYWRAPCMD='az keyvault key encrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @- --data-type plaintext --only-show-errors --output json | jq -r .result > "%p"'
+PGDATAKEYUNWRAPCMD='az keyvault key decrypt --name pg-tde-master-1 --vault-name pg-tde --algorithm A256GCM --value @"%p" --data-type plaintext --only-show-errors --output json | jq -r .result'
+```
+!!! Note
+    Shell commands with pipes, as in this example, are problematic because the exit status of the pipe is that of the last command. A failure of the first, more interesting command isn't reported properly. Postgres handles this somewhat by recognizing whether the wrap or unwrap command wrote nothing. However, it's better to make this more robust. For example, use the `pipefail` option available in some shells or the `mispipe` command available on some operating systems. Put more complicated commands into an external shell script or other program instead of defining them inline.
+
+Alternatively, you can use the [crypt utility](https://github.com/VirtusLab/crypt) to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='crypt encrypt azure --vaultURL https://pg-tde.vault.azure.net --name pg-tde-master-1 --version fa2bf368449e432085318c5bf666754c --out %p'
@@ -112,13 +121,13 @@ This example uses [crypt](https://github.com/VirtusLab/crypt). You can't use the
 
 ### Google Cloud KMS example
 
-Create a key with Google Cloud KMS: 
+Create a key with Google Cloud KMS:
 
 ```shell
 gcloud kms keys create pg-tde-master-1 --location=global --keyring=pg-tde --purpose=encryption
 ```
 
-Use the `az keyvault` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
+Use the `gcloud kms` command with the `pg-tde-master-1` key to wrap and unwrap the data encryption key:
 
 ```shell
 PGDATAKEYWRAPCMD='gcloud kms encrypt --plaintext-file=- --ciphertext-file=%p --location=global --keyring=pg-tde --key=pg-tde-master-1'
