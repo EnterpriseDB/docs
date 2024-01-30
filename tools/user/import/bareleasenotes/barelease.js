@@ -97,7 +97,7 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
       .join("\n");
     const releaseNotesFileName = `${directory}/${getShortMonthName(
       currentMonth,
-    )}_${currentYear}_release_notes.mdx`;
+    )}_${currentYear}_rel_notes.mdx`;
 
     const releaseNotesFile = fs.openSync(`${releaseNotesFileName}`, "w");
 
