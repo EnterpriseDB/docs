@@ -72,20 +72,18 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
 
     const lines = filteredData.map((item) => {
       if (item.description.startsWith("* ")) {
-        var splits = item.description.split("* ");
-        return splits;
+        return item.description.split("* ");
       }
       if (item.description.startsWith("- ")) {
-        var splits = item.description.split("- ");
-        return splits;
+        return item.description.split("- ");
       }
       return item.description;
     });
 
     // Flatten and clean the array of features
-    const cleanlines = lines.flat().filter((item) => {
+    const cleanLines = lines.flat().filter((item) => {
       return (
-        item != "" &&
+        item !== "" &&
         !item.startsWith("Improvements and updates for the cloud service")
       );
     });
@@ -94,14 +92,14 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
       currentMonth,
       currentYear,
     );
-    const releaseNotesBody = cleanlines
+    const releaseNotesBody = cleanLines
       .map((line) => `| Enhancement | ${line.trim()} |`)
       .join("\n");
+    const releaseNotesFileName = `${directory}/${getShortMonthName(
+      currentMonth,
+    )}_${currentYear}_release_notes.mdx`;
 
-    const releaseNotesFile = fs.openSync(
-      `${directory}/${getShortMonthName(currentMonth)}_${currentYear}.md`,
-      "w",
-    );
+    const releaseNotesFile = fs.openSync(`${releaseNotesFileName}`, "w");
 
     fs.writeSync(
       releaseNotesFile,
@@ -110,9 +108,7 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     );
 
     console.log(
-      `Release notes ${directory}/${getShortMonthName(
-        currentMonth,
-      )}_${currentYear}.md generated successfully!`,
+      `Release notes ${releaseNotesFileName} generated successfully!`,
     );
   } catch (error) {
     console.log(error);
@@ -123,7 +119,7 @@ const currentDate = new Date();
 const currentYear = currentDate.getFullYear();
 const currentMonth = currentDate.getMonth() + 1;
 
-var argv = yargs(hideBin(process.argv))
+let argv = yargs(hideBin(process.argv))
   .usage("Usage: $0 <command> -d [path] [options]")
   .option("year", {
     alias: "y",
