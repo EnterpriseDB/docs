@@ -1,0 +1,169 @@
+---
+title: Maintenance commands through proxies
+---
+
+## Maintenance and performance
+
+As a general rule, you should never perform maintenance operations on a cluster's write leader. 
+Maintenance operations such as `VACUUM` can be quite disruptive to the smooth running of a busy server and often detrimental to workload performance.
+Therefore it is best to run maintenance commands on any node in a group that isn't the write leader.
+Generally, this requires you connect directly and issue the maintenance commands on the non-write leader nodes.
+But there are situations where this is not possible.
+
+## Maintenance and proxies
+
+Proxies, by design, always connect to and send commands to the current write leader.
+This would usually mean that you should not connect via a proxy to perform maintenance.
+PGD clusters nodes are able to present a direct connection for psql and pgd cli clients which can be used for issuing maintenance commands to the server on those nodes. 
+But there are environment in which the PGD cluster is deployed where a proxy is the only way to access the cluster.
+
+For example, in BigAnimal, PGD clusters are locked down such that the only access to the database is through an instance of PGD Proxy. 
+This reduces the footprint of the cluster and makes it more secure but it does require a different way of sending maintenance requests to the cluster’s nodes.
+
+The technique outlined here is generally useful for despatching commands to specific nodes without being directly connected to that node’s server.
+
+## Maintenance commands
+
+When we refer to maintenance commands, we are referring to:
+
+* `VACUUM` 
+* Non-replicated DDL commands (which you may want to manually replicate)
+
+
+## A note on node names
+
+We will be addressing the servers in the cluster by their PGD cluster node names. To get a list of node names in your cluster, use:
+
+```SQL
+select node_name from bdr.node;
+```
+
+!!! Tip
+More details about [`bdr.node`](/pgd/latest/reference/catalogs-visible#bdrnode) table are available in the reference section.
+!!!
+
+This will list just the node names. If you need to know which group they are a member of, use:
+
+```
+select node_name, node_group_name from bdr.node_summary;
+```
+
+!!! Tip
+More details about [`bdr.node_summary`](/pgd/latest/reference/catalogs-visible#bdrnode_summary) table are available in the reference section.
+!!!
+
+## Finding the write leader
+
+If we assume that you are connected through the proxy, then you will be connected to the write leader. 
+Run `select node_name from bdr.local_node_summary` to see the name of the node:
+
+```
+select node_name from bdr.local_node_summary;
+__OUTPUT__
+    node_name
+------------------
+node-two
+(1 row)
+```
+
+This is the node you do **not** want to run your maintenance tasks on. 
+
+```
+select * from bdr.node_group_routing_summary;
+__OUTPUT__
+ node_group_name |    write_lead    | previous_write_lead |       read_nodes
+-----------------+------------------+---------------------+-------------------------
+ dc1             | node-two         | node-one            | {node-one,node-three}
+```
+
+Where the write_lead is the node we determined earlier (node-two), we can also see the two read_nodes (node-one and node-three). 
+It's these nodes that we can safely perform maintenance.
+
+
+!!! Tip
+You can perform that operation with a single query:
+```SQL
+select read_nodes from bdr.node_group_routing_summary where write_lead = (select node_name from bdr.local_node_summary);
+```
+!!!
+
+## Using `bdr.run_on_nodes()`
+PGD does have the ability to run specific commands on specific nodes using the `bdr.run_on_nodes()` function. This takes two parameters, an array of node names and the command you would like to run on those nodes. For example:
+
+```SQL
+SELECT bdr.run_on_nodes(ARRAY['node-one','node-three'],'vacuum full foo');
+__OUTPUT__
+
+                                                            	run_on_nodes
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"dsn": "host=host-one port=5444 dbname=bdrdb", "node_id": "807899305", "response": {"command_status": "VACUUM"}, "node_name": "node-one", "query_send_time": "2024-01-16 16:24:35.418323+00"}, {"dsn": "host=host-three port=5432 dbname=bdrdb", "node_id": "199017004", "response": {"command_status": "VACUUM"}, "node_name": "node", "query_send_time": "2024-01-16 16:24:35.4542+00"}]
+```
+
+This command runs the `vacuum full foo` command on the node-one and node-three nodes.
+Note that the node names are passed to the function in an array.
+
+The bdr.run_on_nodes reports its results as JSONB. 
+The results include the name of the node and the response (or error message)  resulting from running the command.
+Other fields may be included may not be relevant. 
+
+The results also appear as a single string which is hard to read. To make it more readable, we can apply some formatting.
+
+## Formatting `bdr.run_on_nodes()` output
+
+Using Postgres’s JSON expressions, it is possible to reduce the output to just the columns we are interested in. The following command is functionally equivalent to the previous example but lists only the node and response as its results:
+
+```SQL
+select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['node-one','node-three'], 'VACUUM FULL foo')) q;
+__OUTPUT__
+         node     |       	response
+------------------+------------------------------
+ node-one         | {"command_status": "VACUUM"}
+ node-three       | {"command_status": "VACUUM"}
+```
+
+If an error occurs, the command_status field will be set to error and an additional error_message value will be included in the response. For example:
+
+```SQL
+select q->>'node_name' as node, q->>'response' as response FROM jsonb_array_elements(bdr.run_on_nodes(ARRAY['node-one','node-three'], 'VACUUM FULL fool')) q;
+__OUTPUT__
+   	node   	      |                                      	response
+------------------+--------------------------------------------------------------------------------------------
+ node-one         | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
+ node-three       | {"error_message": "ERROR:  relation \"fool\" does not exist\n", "command_status": "ERROR"}
+(2 rows)
+```
+
+## Defining a function for maintenance
+
+If you find yourself regularly issuing maintenance commands to one node at a time, you do have the option to define a function to simplify things:
+
+```SQL
+create or replace function runmaint(nodename varchar, command varchar) returns TABLE(node text,response jsonb) as $$
+begin
+return query
+select (q->>'node_name')::text, (q->'response') from jsonb_array_elements(bdr.run_on_nodes(ARRAY [nodename], command)) as q;
+end;
+$$ language 'plpgsql';
+```
+
+This function takes a node name and a command and runs the command on that node, returning the results like so:
+
+```SQL
+select runmaint('node-one','VACUUM FULL foo');
+__OUTPUT__
+                   	runmaint
+-------------------------------------------------------
+ (node-one,"{""command_status"": ""VACUUM""}")
+```
+
+You can break up the response by using select * from :
+
+```SQL
+select * from runmaint('node-one','VACUUM FULL foo');
+__OUTPUT__
+   	node          |       	response
+------------------+------------------------------
+ node-one         | {"command_status": "VACUUM"}
+(1 row)
+```
+
