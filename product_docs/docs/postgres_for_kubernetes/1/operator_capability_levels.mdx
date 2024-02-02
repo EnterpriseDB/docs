@@ -343,11 +343,14 @@ failover and switchover operations. This area includes enhancements in:
 -   Connection pooling, to improve performance and control through a
     connection pooling layer with pgBouncer
 
-### PostgreSQL WAL archive
+### PostgreSQL Hot Backups
 
-The operator supports PostgreSQL continuous archiving of WAL files
-to an object store (AWS S3 and S3-compatible, Azure Blob Storage, Google Cloud
-Storage, and gateways like MinIO).
+The operator has been designed to provide application-level backups using
+PostgreSQL’s native continuous hot backup technology based on
+physical base backups and continuous WAL archiving. Specifically,
+the operator currently supports only backups on object stores (AWS S3 and
+S3-compatible, Azure Blob Storage, Google Cloud Storage, and gateways like
+MinIO).
 
 WAL archiving is defined at the cluster level, declaratively, through the
 `backup` parameter in the cluster definition. This is done by specifying an S3 protocol
@@ -363,39 +366,14 @@ in the archive. In addition, `Instance Manager` checks
 the correctness of the archive destination by performing the `barman-cloud-check-wal-archive` 
 command before beginning to ship the first set of WAL files.
 
-### PostgreSQL backups
-
-The operator was designed to provide application-level backups using
-PostgreSQL’s native continuous hot backup technology based on
-physical base backups and continuous WAL archiving.
-Base backups can be saved on:
-
--   Kubernetes volume snapshots
--   Object stores (AWS S3 and S3-compatible, Azure Blob Storage, Google Cloud
-    Storage, and gateways like MinIO)
-
-Base backups are defined at the cluster level, declaratively,
-through the `backup` parameter in the cluster definition.
-
-You can define base backups in two ways: 
-
--   On-demand, through the `Backup` custom resource definition
--   Scheduled, through the `ScheduledBackup`custom resource definition, using a cron-like syntax
-
-Volume snapshots rely directly on the Kubernetes API, which delegates this
-capability to the underlying storage classes and CSI drivers. Volume snapshot
-backups are suitable for very large database (VLDB) contexts.
-
-Object store backups rely on `barman-cloud-backup` for the job (distributed as
-part of the application container image) to relay backups in the same endpoint,
-alongside WAL files.
+You can define base backups in two ways: on-demand (through the `Backup`
+custom resource definition) or scheduled (through the `ScheduledBackup`
+customer resource definition, using a cron-like syntax). They both rely on
+`barman-cloud-backup` for the job (distributed as part of the application
+container image) to relay backups in the same endpoint, alongside WAL files.
 
 Both `barman-cloud-wal-restore` and `barman-cloud-backup` are distributed in
 the application container image under GNU GPL 3 terms.
-
-Object store backups and volume snapshot backups are taken while PostgreSQL is
-up and running (hot backups). Volume snapshots also support taking consistent
-database snapshots with cold backups.
 
 ### Backups from a standby
 
@@ -406,13 +384,13 @@ particular I/O, for standard database operations.
 ### Full restore from a backup
 
 The operator enables you to bootstrap a new cluster (with its settings)
-starting from an existing and accessible backup, either on a volume snapshot
-or in an object store.
+starting from an existing and accessible backup taken using
+`barman-cloud-backup`. 
 
-Once the bootstrap process is completed, the operator initiates the instance in
-recovery mode. It replays all available WAL files from the specified archive,
-exiting recovery and starting as a primary.
-Subsequently, the operator clones the requested number of standby instances
+Once the bootstrap process is completed, the operator
+initiates the instance in recovery mode and replays all available WAL files
+from the specified archive, exiting recovery and starting as a primary.
+Subsequently, the operator will clone the requested number of standby instances
 from the primary.
 EDB Postgres for Kubernetes supports parallel WAL fetching from the archive.
 
@@ -422,7 +400,7 @@ The operator enables you to create a new PostgreSQL cluster by recovering
 an existing backup to a specific point in time, defined with a timestamp, a
 label, or a transaction ID. This capability is built on top of the full restore
 one and supports all the options available in
-[PostgreSQL for PITR](https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET).
+[PostgreSQL for PITR](https://www.postgresql.org/docs/13/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET).
 
 ### Zero-data-loss clusters through synchronous replication
 
@@ -448,26 +426,15 @@ connection by way of TLS is allowed from the two endpoints.
 
 Moreover, the source can be even outside Kubernetes, running in a physical or
 virtual environment.
+Replica clusters can be created from a recovery object store (backup in Barman
+Cloud format) or via streaming through `pg_basebackup`. Both WAL file shipping
+and WAL streaming are allowed.
 
-Replica clusters can be created from a volume snapshot, a recovery object store
-(backup in Barman Cloud format), or by way of streaming using `pg_basebackup`.
-Both WAL file shipping and WAL streaming are allowed.
 Replica clusters dramatically improve the business continuity posture of your
 PostgreSQL databases in Kubernetes, spanning over multiple data centers and
 opening up for hybrid and multi-cloud setups. (Currently, while waiting for Kubernetes 
 federation native capabilities, manual switchover
 across data centers is required.)
-
-### Tablespace support
-
-EDB Postgres for Kubernetes seamlessly integrates robust support for PostgreSQL tablespaces
-by facilitating the declarative definition of individual persistent volumes.
-This innovative feature empowers you to efficiently distribute I/O operations
-across a diverse array of storage devices. Through the transparent
-orchestration of tablespaces, EDB Postgres for Kubernetes enhances the performance and
-scalability of PostgreSQL databases, ensuring a streamlined and optimized
-experience for managing large scale data storage in cloud-native environments.
-Support for temporary tablespaces is also included.
 
 ### Liveness and readiness probes
 
@@ -601,6 +568,11 @@ or `Secret` objects using a syntax that's compatible with
 [`postgres_exporter` for Prometheus](https://github.com/prometheus-community/postgres_exporter).
 EDB Postgres for Kubernetes provides a set of basic monitoring queries for
 PostgreSQL that can be integrated and adapted to your context.
+
+### Grafana dashboard
+
+EDB Postgres for Kubernetes comes with a Grafana dashboard that you can use as a base to
+monitor all critical aspects of a PostgreSQL cluster, and customize.
 
 ### Standard output logging of PostgreSQL error messages in JSON format
 
