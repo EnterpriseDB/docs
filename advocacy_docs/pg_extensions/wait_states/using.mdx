@@ -16,12 +16,15 @@ This information is saved in a set of files in a user-configurable path and dire
 
 Each of the functions in the EDB Wait States interface has common input and output parameters. Those parameters are:
 
-| Parameter(s) | Input or output | Description |
-| ------------ | --------------- | ----------- |
-| `start_ts` and `end_ts` | Input | Together these specify the time interval and the data to read. If you specify only `start_ts`, the data starting from `start_ts` is output. If you specify only `end_ts`, data up to `end_ts` is output. If you don't specify either, all the data is output. |
-| `query_id` | Output | Identifies a normalized query. It's internal hash code computed from the query. |
-| `session_id` | Output | Identifies a session. |
-| `ref_start_ts` and `ref_end_ts` | Output | Provides the timestamps of a file containing a particular data point. A data point might be a wait event sample record, a query record, or a session record. |
+| Parameter(s)                    | Input or output | Description                                                                                                                                                                                                                                                   |
+|---------------------------------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `start_ts` and `end_ts`         | Input           | Together these specify the time interval and the data to read. If you specify only `start_ts`, the data starting from `start_ts` is output. If you specify only `end_ts`, data up to `end_ts` is output. If you don't specify either, all the data is output. |
+| `query_id`                      | Output          | Identifies a normalized query. It's internal hash code computed from the query.                                                                                                                                                                               |
+| `session_id`                    | Output          | Identifies a session.                                                                                                                                                                                                                                         |
+| `ref_start_ts` and `ref_end_ts` | Output          | Provides the timestamps of a file containing a particular data point. A data point might be a wait event sample record, a query record, or a session record.                                                                                                  |
+| `wait_time`                     | Output          | Provides the amount of time in seconds spent waiting for some wait events. |
+| `cpu_time`                      | Output          | Provides the amount of time in seconds spent working on the CPU. For this given duration the query wasn't waiting on any wait event. |
+| `db_time`                       | Output          | Provides the sum of the `wait_time` and the `cpu_time`. The `db_time`, `wait_time`, and the `cpu_time` don't provide exact time but provides an approximate time computed based on number of occurrences and the sampling interval. |
 
 The following examples use a scenario where three queries are executed simultaneously on four different sessions connected to different databases using different users. Those three queries are:
 
@@ -216,8 +219,11 @@ edb_wait_states_sessions(
   OUT session_id int4,
   OUT <dbname> text,
   OUT <username> text,
-  OUT ref_start_ts timestamptz
-  OUT ref_end_ts timestamptz
+  OUT ref_start_ts timestamptz,
+  OUT ref_end_ts timestamptz,
+  OUT application_name text,
+  OUT client_hostname text,
+  OUT session_start_ts timestamptz
 )
 ```
 
@@ -242,6 +248,18 @@ The database to which the session is connected.
 
 Login user of the session.
 
+`application_name`
+
+Name of the application connection to the session.
+
+`client_hostname`
+
+Host name of the client machine.
+
+`session_start_ts`
+
+Actual timestamp when the session started.
+
 #### Example
 
 The following is a sample output from the `edb_wait_states_sessions()` function:
@@ -249,30 +267,24 @@ The following is a sample output from the `edb_wait_states_sessions()` function:
 ```sql
 edb=# SELECT * FROM edb_wait_states_sessions();
 __OUTPUT__
--[ RECORD 1 ]+---------------------------------
-session_id   | 4340
-dbname       | edb
-username     | enterprisedb
-ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
-ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
--[ RECORD 2 ]+---------------------------------
-session_id   | 4398
-dbname       | edb
-username     | enterprisedb
-ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
-ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
--[ RECORD 3 ]+---------------------------------
-session_id   | 4410
-dbname       | db1
-username     | user1
-ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
-ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
--[ RECORD 4 ]+---------------------------------
-session_id   | 4422
-dbname       | db2
-username     | user2
-ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
-ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
+-[ RECORD 1 ]---+---------------------------------
+session_id       | 184365
+dbname           | postgres
+username         | dilip
+ref_start_ts     | 01-FEB-24 15:59:56.283204 +05:30
+ref_end_ts       | 02-FEB-24 15:59:56.283204 +05:30
+application_name | pgbench
+client_hostname  |
+session_start_ts | 01-FEB-24 16:15:13.267287 +05:30
+-[ RECORD 2 ]---+---------------------------------
+session_id       | 184344
+dbname           | postgres
+username         | dilip
+ref_start_ts     | 01-FEB-24 15:59:56.283204 +05:30
+ref_end_ts       | 02-FEB-24 15:59:56.283204 +05:30
+application_name | pgbench
+client_hostname  |
+session_start_ts | 01-FEB-24 16:15:59.284207 +05:30
 ```
 
 ### `edb_wait_states_samples`
@@ -288,7 +300,8 @@ edb_wait_states_samples(
   OUT <query_start_time> timestamptz,
   OUT <sample_time> timestamptz,
   OUT <wait_event_type> text,
-  OUT <wait_event> text
+  OUT <wait_event> text,
+  OUT sampling_interval int4
 )
 ```
 
@@ -321,35 +334,30 @@ The following is a sample output from the `edb_wait_states_samples()` function:
 ```sql
 edb=# SELECT * FROM edb_wait_states_samples();
 __OUTPUT__
--[ RECORD 1 ]----+---------------------------------
-query_id         | 4292540138852956818
-session_id       | 4340
-query_start_time | 17-AUG-18 11:56:00.39421 -04:00
-sample_time      | 17-AUG-18 11:56:00.699934 -04:00
-wait_event_type  | Timeout
-wait_event       | PgSleep
--[ RECORD 2 ]----+---------------------------------
-query_id         | 4292540138852956818
-session_id       | 4340
-query_start_time | 17-AUG-18 11:56:00.39421 -04:00
-sample_time      | 17-AUG-18 11:56:01.699003 -04:00
-wait_event_type  | Timeout
-wait_event       | PgSleep
--[ RECORD 3 ]----+---------------------------------
-query_id         | 4292540138852956818
-session_id       | 4340
-query_start_time | 17-AUG-18 11:56:00.39421 -04:00
-sample_time      | 17-AUG-18 11:56:02.70001 -04:00
-wait_event_type  | Timeout
-wait_event       | PgSleep
--[ RECORD 4 ]----+---------------------------------
-query_id         | 4292540138852956818
-session_id       | 4340
-query_start_time | 17-AUG-18 11:56:00.39421 -04:00
-sample_time      | 17-AUG-18 11:56:03.700081 -04:00
-wait_event_type  | Timeout
-wait_event       | PgSleep
-                    .
+-[ RECORD 1 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:41.284071 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1
+-[ RECORD 2 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:42.284278 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1
+-[ RECORD 3 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:43.283385 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1                    .
                     .
                     .
 ```
