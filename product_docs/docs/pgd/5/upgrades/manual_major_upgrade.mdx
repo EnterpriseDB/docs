@@ -1,10 +1,10 @@
 ---
-title: Performing a rolling Postgres major version upgrade
+title: Performing a Postgres major version rolling upgrade
 ---
 
-## Performing a rolling Postgres major version upgrade
+## Performing a Postgres major version rolling upgrade
 
-With your cluster set up and ready to be upgraded, you can now perform the rolling upgrade of the Postgres major version on your PGD cluster. Carry out the following steps on each node in the cluster:
+With your PGD cluster set up, you can now perform the rolling upgrade of the Postgres major version on your PGD cluster. Carry out the following steps on each node in the cluster:
 
 - Confirm your current Postgres version.
 - Stop Postgres on the target node.
@@ -24,72 +24,85 @@ We will look at these steps for upgrading a node from Postgres 15 to Postgres 16
 
 ## Worked example
 
-A three-node cluster (kaftan, kaolin, and kaboom) are currently running Postgres 15 on a Linux OS. We want to upgrade a single node to Postgres 16 (and then upgrade our whole cluster). In this walkthrough the target node we will upgrade will be bdr3. We will be using `bdr_pg_upgrade` to do this.
+A three-node cluster (kaftan, kaolin, and kaboom) we [deployed on AWS](https://www.enterprisedb.com/docs/pgd/latest/quickstart/quick_start_aws/) is currently running Postgres 15 on a Linux OS (Debian in this case). We want to upgrade a single node to Postgres 16, and then upgrade our whole cluster. In this walkthrough, the target node we will upgrade will be kaboom. We will be using `bdr_pg_upgrade` to do this.
 
 !!! Note
-This process will involve you running commands as the Postgres owner. We will refer to this user as `postgres` throughout. If you are running EDB Postgres Advanced Server, you will need to substitute that user with `enterprisedb` in all commands.
+Some steps of this process will involve you running commands as the Postgres owner. We will refer to this user as `postgres` throughout when appropriate. If you are running EDB Postgres Advanced Server, you will need to substitute that user with `enterprisedb` in all relevant commands.
 !!!
 
 ### Confirm your current Postgres version
 
-Using psql, connect to any node that is still running Postgres 15 and run this query:
+Connect to any node that is still running Postgres 15 and use this command to connect to the PGD's `bdrdb` database:
 
+```bash
+sudo -u postgres psql bdrdb
 ```
+then when connected to bdrdb:
+
+```sql
 SELECT * FROM bdr.group_versions_details;
 ```
 
 You should see output similar to this for your cluster:
 
 ```
-   node_id   | node_name |        postgres_version        | bdr_version 
+  node_id   | node_name |        postgres_version        | bdr_version 
 ------------+-----------+--------------------------------+-------------
  3490219809 | kaftan    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
- 2111777360 | kaolin    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
  2710197610 | kaboom    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
+ 2111777360 | kaolin    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
 (3 rows)
 ```
 
-Confirm that the Postgres version is the expected version.
+Confirm that the Postgres version is the expected version. Then, use the `exit` command to return to the node's command prompt.
 
 ### Stop Postgres on the target node
 
-Use SSH to connect to the target node, in this case kaboom, and then run:
+If you are not already on the target node, exit the node you are on and use SSH to connect to the target node, in this case, kaboom, and then run:
 
-```
+```bash
 sudo systemctl stop postgres
 ```
 
-This command halts the server on the current node. Your cluster will continue running using the other two nodes.
+This command halts the server on the current node, kaboom. Your cluster will continue running using the other two nodes.
 
 ### Install the new Postgres version
 
-On the target node, install the new version of Postgres and the upgrade tool by running:
+Now, while still on the target node, kaboom, install the new version of Postgres (PG16) and the upgrade tool by running:
 
-```
-sudo dnf -y install edb-bdr5-pg16 edb-bdr-utilities
+```bash
+sudo apt install edb-bdr5-pg16 edb-bdr-utilities
 ```
 
 ### Initialize Postgres 16
 
-On the target node, run:
+Make a new data directory for the upgraded Postgres and give the user, `postgres`, ownership of the directory:
 
+```bash
+sudo mkdir /opt/postgres/datanew
+sudo chown -R postgres:postgres /opt/postgres/datanew
 ```
-sudo -u postgres /usr/pgsql-15/bin/initdb \
+
+Then initialize Postgres 16 in the new directory:
+
+```bash
+sudo -u postgres /usr/lib/postgresql/16/bin/initdb \
   -D /opt/postgres/datanew \
   -E UTF8 \
   --lc-collate=en_US.UTF-8 \
-  --lc-ctype=en_US.UTF-8 
+  --lc-ctype=en_US.UTF-8 \
+  --data-checksums
 ```
 
-This command creates a PG16 directory for PG 16 configuration, `/opt/postgres/datanew`.
+This command creates a PG16 data directory for configuration, `/opt/postgres/datanew`.
 
-### Copy configuration for PG 15 to PG 16
+### Copy configuration for Postgres 15 to Postgres 16
 
-The next step copies the existing configuration to the new PG16 directory.
+The next step copies the existing configuration (PG15) to the new PG16 data directory.
 
-On the target node, copy over the `postgresql.conf`, `postgresql.auto.conf`, `pg_hba.conf` files, and the whole conf.d directory:
+Copy over the `postgresql.conf`, `postgresql.auto.conf`, `pg_hba.conf` files, and the whole conf.d directory:
 
-```
+```bash
 sudo -u postgres cp /opt/postgres/data/postgresql.conf /opt/postgres/datanew/
 sudo -u postgres cp /opt/postgres/data/postgresql.auto.conf /opt/postgres/datanew/
 sudo -u postgres cp /opt/postgres/data/pg_hba.conf /opt/postgres/datanew/
@@ -98,36 +111,68 @@ sudo -u postgres cp -r /opt/postgres/data/conf.d/ /opt/postgres/datanew/
 
 ### Rename the PGDATA directories
 
-While still on the target node, swap the PG15 and PG16 data directories around by
-running: 
+Now create another directory, `dataold`, and give the user, `postgres`, ownership over the directory:
 
+```bash
+sudo mkdir /opt/postgres/dataold
+sudo chown -R postgres:postgres /opt/postgres/dataold
 ```
+
+Next, configure the data directory, `opt/postgres`, so that the user, `postgres`, is now the owner and then grant them sufficient permissions to write to the directory:
+
+```bash
+sudo chown postgres:postgres /opt/postgres
+sudo chmod u+wx /opt/postgres
+```
+
+Finally, swap the PG15 and PG16 data directories around by running: 
+
+```bash
 sudo -u postgres mv /opt/postgres/data /opt/postgres/dataold
 sudo -u postgres mv /opt/postgres/datanew /opt/postgres/data
 ```
 
 ### Stop all Postgres instances
 
-Although we stopped the Postgres service on the target node earlier, to be sure, run the stop command for both instances of Postgres (PG14 and PG15) on
-the target node:
+Although we stopped the Postgres service on the target node, kaboom, earlier, to be sure, run the stop command for both instances of Postgres (PG15 and PG16) on
+the target node, kaboom:
 
+```bash
+sudo -u postgres /usr/lib/postgresql/15/bin/pg_ctl -D /opt/postgres/dataold stop
+sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D /opt/postgres/data stop
 ```
-sudo /usr/pgsql-14/bin/pg_ctl -D /opt/postgres/dataold stop
-sudo /usr/pgsql-15/bin/pg_ctl -D /opt/postgres/data stop
+
+!!! Note
+When running the first or second command to stop the old Posgres instance, you may receive the following error:
+
+```bash
+pg_ctl: directory "/opt/postgres/dataold" is not a database cluster directory
 ```
+
+You may instead receive this error:
+
+```bash
+pg_ctl: PID file "/opt/postgres/data/postmaster.pid" does not exist
+Is server running?
+```
+These errors are expected when both instances of Postgres are already shut down and, therefore, do not prevent the upgrade from progressing.
+!!!
 
 ### Check that you can upgrade safely
 
-The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the
-upgrade process. We can use this option to ensure the upgrade will go smoothly.
+The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the upgrade process. We can use this option to ensure the upgrade will go smoothly. However, first, you should ensure you have permissions on your current working directory, as `bdr_pg_upgrade` needs sufficient permissions to create files there. In this example, we started in admin's home directory, `/home/admin/`, so:
 
-On the target node, run:
-
+```bash
+sudo chown postgres:postgres /home/admin/
 ```
+
+Then run:
+
+```bash
 sudo -u postgres /usr/bin/bdr_pg_upgrade \
-  --old-bindir /usr/pgsql-14/bin/ \
-  --new-bindir /usr/pgsql-15/bin/ \
-  --old-datadir /opt/postgres/dataold/ \
+  --old-bindir /usr/lib/postgresql/15/bin/ \
+  --new-bindir /usr/lib/postgresql/16/bin/ \
+  --old-datadir /opt/postgres/dataold/data \
   --new-datadir /opt/postgres/data \
   --database bdrdb \
   --check
@@ -161,17 +206,23 @@ Checking for new cluster tablespace directories             ok
 *Clusters are compatible
 ```
 
-If this is not what you are seeing, NEED INSTRUCTIONS OR REFER USER TO TROUBLESHOOTING
+!!! Note
+If you didn't initialize Postgres 16 with checksums using the `--data-checksums` option, you will receive an error letting you know about the incompatibility:
+
+```bash
+old cluster uses data checksums but the new one does not
+```
+!!!
 
 ### Run the Postgres major version upgrade
 
 We are now ready to run the upgrade. On the target node, run:
 
-```
+```bash
 sudo -u postgres /usr/bin/bdr_pg_upgrade \
-  --old-bindir /usr/pgsql-14/bin/ \
-  --new-bindir /usr/pgsql-15/bin/ \
-  --old-datadir /opt/postgres/dataold/ \
+  --old-bindir /usr/lib/postgresql/15/bin/ \
+  --new-bindir /usr/lib/postgresql/16/bin/ \
+  --old-datadir /opt/postgres/dataold/data \
   --new-datadir /opt/postgres/data \
   --database bdrdb
 ```
@@ -280,21 +331,21 @@ Stopping new cluster
 ### Modify the Postgres service
 
 The Postgres service on the system is configured to start the old version 
-of Postgres (PG14). We need to modify the `postgres.service` file to start the new 
-version (PG15). This can be done using sed to replace the old version 
-number "14" with "15" throughout the file. Once changed, we can tell the 
+of Postgres (PG15). We need to modify the `postgres.service` file to start the new 
+version (PG16). This can be done using `sed` to replace the old version 
+number "15" with "16" throughout the file. Once changed, we can tell the 
 systemd daemon to reload the configuration. On the target node, run:
 
-```
-sudo sed -i -e  's/14/15/g' /etc/systemd/system/postgres.service
+```bash
+sudo sed -i -e  's/15/16/g' /etc/systemd/system/postgres.service
 sudo systemctl daemon-reload
 ```
 
 ### Start Postgres
 
-On the target node, start the modified Postgres service by running:
+Finally, start the modified Postgres service by running:
 
-```
+```bash
 sudo systemctl start postgres
 ```
 
@@ -305,38 +356,40 @@ ran, you may have noticed the post-upgrade report included:
 
 ```
 Once you start the new server, consider running:
-    /usr/pgsql-15/bin/vacuumdb --all --analyze-in-stages
+    /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
 ```
 
 Let's do this now. On the target node, run:
 
-```
-sudo -u postgres /usr/psql-15/bin/vacuumdb --all --analyze-in-stages
+```bash
+sudo -u postgres /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
 ```
 
 ### Validate the Postgres version
 
-Repeating step 1, with psql, connect to any node and run:
+Repeating our first step, check the version of Postgres to confirm that we upgraded kaboom correctly. While still on kaboom, run:
 
+```bash
+sudo -u postgres psql bdrdb
 ```
+
+```sql
 SELECT * FROM bdr.group_versions_details;
 ```
 
 You should see an output similar to this for your cluster.
 
 ```
-  node_id   | node_name | postgres_version | bdr_version
-------------+-----------+------------------+-------------
- 1609217846 | bdr2      | 14.9             | 5.2.0
- 1630662325 | bdr3      | 15.4             | 5.2.0
- 4245713078 | bdr1      | 14.9             | 5.2.0
+  node_id   | node_name |        postgres_version        | bdr_version 
+------------+-----------+--------------------------------+-------------
+ 3490219809 | kaftan    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
+ 2710197610 | kaboom    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
+ 2111777360 | kaolin    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
 (3 rows)
 ```
 
-Confirm that the target node is running the upgraded Postgres.
+Confirm that the target node is running the upgraded Postgres. 
 
 ## Next steps
 
-To complete upgrading the cluster for this worked example, repeat the previous steps on the other nodes of the cluster, bdr1 and bdr2.
-
-## See also
+To complete upgrading the cluster for this worked example, repeat the previous steps on the other cluster nodes: kaftan and kaolin.
