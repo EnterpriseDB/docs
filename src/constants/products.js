@@ -78,6 +78,10 @@ export const products = {
     name: "EDB Query Advisor",
     iconName: IconNames.POSTGRESQL,
   },
+  "PG_SQUEEZE": {
+    name: "pg_squeeze",
+    iconName: IconNames.POSTGRESQL,
+  },
   CloudNativePG: { name: "CloudNativePG" },
   repmgr: { name: "repmgr", iconName: IconNames.HIGH_AVAILABILITY },
   slony: { name: "Slony Replication", iconName: IconNames.NETWORK2 },

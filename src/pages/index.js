@@ -194,6 +194,10 @@ const Page = () => {
                 EDB Wait States
               </IndexCardLink>
 
+              <IndexCardLink to="/pg_extensions/pg_squeeze">
+                pg_squeeze
+              </IndexCardLink>
+
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
                 EDB Job Scheduler
               </IndexCardLink>
