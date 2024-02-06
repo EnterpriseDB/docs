@@ -7,7 +7,7 @@ navTitle: Using
 
 Performing a full-table squeeze requires twice as much free disk space as the target table and its indexes. For example, if the total size of the tables and indexes to be squeezed is 1GB, you need an additional 2GB of disk space.
 
-## Register table for regular processing
+## Registering a table for regular processing
 
 First, ensure that your table has either a primary key or a unique constraint. This is necessary to process changes resulting from other transactions  while `pg_squeeze` is doing its work.
 
@@ -46,15 +46,15 @@ The following list describes the table metadata:
 
 - `schedule` &mdash; Specifies when the table should be checked and possibly squeezed. The following composite data type, which resembles a `crontab` entry, provides the schedule details:
 
-```shell
-CREATE TYPE schedule AS (
-    minutes       minute[],
-    hours         hour[],
-    days_of_month dom[],
-    months        month[],
-    days_of_week  dow[]
-);
-```
+    ```shell
+    CREATE TYPE schedule AS (
+        minutes       minute[],
+        hours         hour[],
+        days_of_month dom[],
+        months        month[],
+        days_of_week  dow[]
+    );
+    ```
 
     In this data type `minutes` (0-59) and `hours` (0-23) determine the time when the check occurs within a day, while `days_of_month` (1-31), `months` (1-12) and `days_of_week` (0-7, where both 0 and 7 stand for Sunday) determine the day of the check.
 
@@ -64,24 +64,22 @@ CREATE TYPE schedule AS (
 
 - `free_space_extra` &mdash; Minimum percentage of extra free space needed to trigger processing of the table. The `extra` adjective refers to the fact that free space derived from `fillfactor` is not reason to squeeze the table.
 
-    For example, if `fillfactor` equals 60, then at least 40 percent of each page should stay free during normal operation. If you want to ensure that 70 percent of free space makes `pg_squeeze` interested in the table, set `free_space_extra` to 30 (that is 70 percent required to be free minus the 40 percent free due to the `fillfactor`).
+    For example, if `fillfactor` equals 60, then at least 40 percent of each page should stay free during normal operation. If you want to ensure that 70 percent of free space makes `pg_squeeze` interested in the table, set `free_space_extra` to 30 (that is, 70 percent required to be free minus the 40 percent free due to the `fillfactor`).
 
-    The default value of free_space_extra is 50.
+    The default value of `free_space_extra` is 50.
 
 - `min_size` &mdash; Minimum disk space in megabytes that the table must occupy to be eligible for processing. The default value is 8.
 
-- `vacuum_max_age` &mdash; Maximum time since the completion of the last VACUUM to consider the free space map (FSM) fresh. After this interval has elapsed, the portion of dead tuples might be significant and so more effort than simply checking the FSM must be spent to evaluate the potential effect of `pg_squeeze`. The default value is 1 hour.
+- `vacuum_max_age` &mdash; Maximum time since the completion of the last `VACUUM` to consider the free space map (FSM) fresh. After this interval has elapsed, the portion of dead tuples might be significant and so more effort than simply checking the FSM must be spent to evaluate the potential effect of `pg_squeeze`. The default value is 1 hour.
 
-- `max_retry` &mdash; Maximum number of extra attempts to squeeze a table if the first processing of the corresponding task fails. The typical reason to retry processing is that the table definition changed while the table was being squeezed. If the number of retries is achieved, processing of the table is considered complete. The next task is created as soon as the next scheduled time is reached.
-
+- `max_retry` &mdash; Maximum number of extra attempts to squeeze a table if the first processing of the corresponding task fails. The typical reason to retry processing is that the table definition changed while the table was being squeezed. If the number of retries is achieved, processing of the table is considered complete. The next task is created at the next scheduled time.
     The default value of `max_retry` is 0 (that is, do not retry).
 
 - `clustering_index` &mdash; Index of the processed table. After processing finishes, tuples of the table are physically sorted by the key of this index.
 
-- `rel_tablespace` &mdash; Existing tablespace the table should be moved into. NULL means that the table should stay where it is.
+- `rel_tablespace` &mdash; Existing tablespace into which the table should be moved. `NULL` means that the table should stay where it is.
 
-- `ind_tablespaces` &mdash; Two-dimensional array in which each row specifies tablespace mapping of an index. The first and the second columns represent the index name and tablespace name respectively. All indexes for which no mapping is specified remain in the original tablespace.
-
+- `ind_tablespaces` &mdash; Two-dimensional array in which each row specifies tablespace mapping of an index. The first and the second columns represent the index name and tablespace name, respectively. All indexes for which no mapping is specified remain in the original tablespace.
     !!! note
         If a tablespace is specified for the table but not for indexes, the table gets moved to that tablespace but the indexes remain in the original tablespace. In other words, the tablespace of the table is not the default for indexes.
 
@@ -131,7 +129,7 @@ SELECT squeeze.stop_worker();
 ```
 
 !!! note
-    Only the functions mentioned in this documentation are considered part of the user interface. If you want to call any other, make sure you understand what you're doing.
+    Only the functions mentioned in this documentation are considered part of the user interface. If you want to call any other function, make sure you understand what you're doing.
 
 If you want the background workers to start automatically during startup of the whole PostgreSQL cluster, add entries like the following to the  `postgresql.conf` file:
 
@@ -140,27 +138,29 @@ squeeze.worker_autostart = 'my_database your_database'
 squeeze.worker_role = postgres
 ```
 
-The next time you start the cluster, two or more workers (that is, one scheduler worker and one or more squeeze workers) are launched for `my_database` and the same for `your_database`. If you take this approach, note that any worker either does not start or stops without doing any work if :
+The next time you start the cluster, two or more workers (that is, one scheduler worker and one or more squeeze workers) are launched for `my_database` and the same for `your_database`. If you take this approach, note that any worker does not start or stop without doing any work if :
 
 - The `pg_squeeze` extension does not exist in the database, or
 
-- The `squeeze.worker_role` parameter specifies a role that  does not have the superuser privileges.
+- The `squeeze.worker_role` parameter specifies a role that  does not have superuser privileges.
 
-The functions and configuration variables explained above use a singular form of the word worker although there are actually two workers. This is because only one worker existed in the previous versions of `pg_squeeze`, which ensured both scheduling and execution of the tasks. This implementation change is not worth to forcing all users to adjust their configuration files during upgrade.
+The functions and configuration variables explained above use a singular form of the word worker although there are actually two workers. This is because only one worker existed in the previous versions of `pg_squeeze`, which ensured both scheduling and execution of the tasks. This implementation change is not worth forcing all users to adjust their configuration files during upgrade.
 
 ## Controlling impact on other backends
 
-Although the table being squeezed is available for both read and write operations by other transactions most of the time, an exclusive lock is needed to finalize the processing. If `pg_squeeze` occasionally seems to block access to tables, consider setting the `squeeze.max_xlock_time` GUC parameter. For example:
+Although the table being squeezed is available for both read and write operations by other transactions most of the time, an exclusive lock is needed to finalize processing. If `pg_squeeze` occasionally seems to block access to tables, consider setting the `squeeze.max_xlock_time` GUC parameter. For example:
 
 ```shell
 SET squeeze.max_xlock_time TO 100;
 ```
 
-This example specifies that the exclusive lock shouldn't be held for more than 0.1 second (100 milliseconds). If more time is needed for the final stage, `pg_squeeze` releases the exclusive lock, processes changes committed by other transactions in between, and tries the final stage again. An error is reported if the lock duration is exceeded a few more times. If that happens, you should either increase the setting or schedule processing of the problematic table to a different time when the write activity is lower.
+This example specifies that the exclusive lock shouldn't be held for more than 0.1 second (100 milliseconds). If more time is needed for the final stage, `pg_squeeze` releases the exclusive lock, processes changes committed by other transactions in between, and tries the final stage again. An error is reported if the lock duration is exceeded a few more times. If that happens, you should either increase the setting or schedule processing of the problematic table for a different time when write activity is lower.
 
 ## Running multiple workers per database
 
-If you think that a single squeeze worker does not cope with the load, consider setting the `squeeze.workers_per_database` configuration variable to a value higher than 1. Then the `pg_squeeze` extension is able to process multiple tables simultaneously&mdash;one table per squeeze worker. However, be aware that this setting affects all databases in which you actively use the `pg_squeeze` extension. The total number of all the squeeze workers in the cluster (including the "scheduler workers") cannot exceed the in-core configuration variable `max_worker_processes`.
+If you think that a single squeeze worker does not cope with the load, consider setting the `squeeze.workers_per_database` configuration variable to a value higher than 1. Then the `pg_squeeze` extension is able to process multiple tables simultaneously&mdash;one table per squeeze worker. 
+
+However, be aware that this setting affects all databases in which you actively use the `pg_squeeze` extension. The total number of all the squeeze workers in the cluster (including the "scheduler workers") cannot exceed the in-core configuration variable `max_worker_processes`.
 
 ## Monitoring
 
@@ -168,7 +168,7 @@ The `squeeze.log` table contains one entry per successfully squeezed table.
 
 The columns `tabschema` and `tabname` identify the processed table. The columns `started` and `finished` tell when the processing started and finished. `ins_initial` is the number of tuples inserted into the new table storage during the initial load stage, that is, the number of tuples present in the table before the processing started. On the other hand, `ins`, `upd`, and `del` are the numbers of tuples inserted, updated, and deleted by applications during the table processing. (These concurrent data changes must also be incorporated into the squeezed table; otherwise they'd get lost.)
 
-The `squeeze.errors` table contains errors that happened during squeezing. A common problem reported here is that someone changed the definition of the table whose processing was in progress (that is, someone added or removed a column).
+The `squeeze.errors` table contains errors that happen during squeezing. A common problem is that someone changes the definition of the table whose processing is in progress (that is, someone adds or removes a column).
 
 The `squeeze.get_active_workers()` function returns a table of squeeze workers that are processing tables in the current database.
 
@@ -182,7 +182,7 @@ It's also a good practice to unregister a table that you're going to drop, altho
 
 ## Concurrency
 
-The `pg_squeeze` extension does not prevent other transactions from altering a table at certain stages of the processing. If a "disruptive command" (that is, ALTER TABLE, VACUUM FULL, CLUSTER or TRUNCATE) manages to commit before the squeeze finishes, the `squeeze_table()` function aborts and all changes made to the table are rolled back. The `max_retry` column of the `squeeze.tables` table determines how many times the squeeze worker retries. Changing your schedule could help you to avoid these kind of disruptions.
+The `pg_squeeze` extension does not prevent other transactions from altering a table at certain stages of the processing. If a disruptive command (that is, `ALTER TABLE`, `VACUUM FULL`, `CLUSTER` or `TRUNCATE`) manages to commit before the squeeze finishes, the `squeeze_table()` function aborts and all changes made to the table are rolled back. The `max_retry` column of the `squeeze.tables` table determines how many times the squeeze worker retries. Changing your schedule might help avoid these kind of disruptions.
 
-Like `pg_repack`, `pg_squeeze` also changes visibility of rows and thus allows for MVCC-unsafe behavior described in the first paragraph of `mvcc-caveats`.
+Like `pg_repack`, `pg_squeeze` also changes visibility of rows and thus allows for the MVCC-unsafe behavior described in the first paragraph of [Caveats(https://www.postgresql.org/docs/current/mvcc-caveats.html)] for MVCC.
 
