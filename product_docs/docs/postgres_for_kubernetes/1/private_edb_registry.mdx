@@ -1,0 +1,131 @@
+---
+title: 'EDB private container registries'
+originalFilePath: 'src/private_edb_registry.md'
+---
+
+The images for the *EDB Postgres for Kubernetes* operator, as well as various
+operands, are kept in private container image registries under
+`docker.enterprisedb.com`.
+
+!!! Important
+    Access to the private registries requires an account with EDB and is
+    reserved to EDB customers with a valid [subscription plan](https://www.enterprisedb.com/products/plans-comparison#selfmanagedenterpriseplan).
+    Credentials will be funneled through your EDB account.
+
+!!! Important
+    There is a bandwidth quota of 10GB/month per registry.
+
+!!! Note
+    When installing the operator and operands from the private registry, the
+    [license keys](./license_keys.md) are not needed.
+
+## Which repository to choose?
+
+EDB Postgres for Kubernetes is available with either of
+"EDB Enterprise Plan" or "EDB Standard Plan".
+
+Depending on your subscription plan, EDB Postgres for Kubernetes
+will be in one of the following repositories, as described in the table below:
+
+| Plan                  | Repository       |
+| --------------------- | ---------------- |
+| EDB Standard Plan     | `k8s_standard`   |
+| EDB EnterpriseDB Plan | `k8s_enterprise` |
+
+The name of the repository shall be used as the *Username* when you try to
+login to the EDB container registry, for example through `docker login` or a
+[`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
+
+!!! Important
+    Each repository contains all the images you can access with your plan.
+    You don't need to connect to different repositories to access different
+    images, such as operator or operand images.
+
+## How to retrieve the token
+
+In the [repositories page in EDB](https://www.enterprisedb.com/repos-downloads),
+you'll find an *EDB Repos 2.0* section where a `Repo Token` is shown, obscured.
+The same token is also be available in your
+[Account profile](https://www.enterprisedb.com/accounts/profile), labeled
+as `Repos 2.0 token`.
+
+Next to the token you'll find a button to copy the token, and an eye icon
+in case you want to view the content of the token as clear text.
+The token shall be used as the *Password* when you try to login to EDB
+container registry.
+
+### Example with `docker login`
+
+You should be able to login via Docker from your terminal. We suggest you
+copy the Repo Token using the `Copy Token` button. The `docker` command below
+will prompt you for a username and a password.
+
+As explained above, the username should be the repository you are trying to
+access while the password is the token you just copied.
+
+```sh
+$ docker login docker.enterprisedb.com  
+Username: k8s_enterprise
+Password: 
+Login Succeeded
+```
+
+## Operand images
+
+EDB Postgres for Kubernetes supports various PostgreSQL distributions that have
+images available from the same private registries:
+
+-   EDB Postgres Advanced
+-   EDB Postgres Extended
+
+!!! Note
+    PostgreSQL images are not available in the private registries, but are
+    readily available on `quay.io/enterprisedb/postgresql` or
+    `ghcr.io/enterprisedb/postgresql`.
+
+These images follow the requirements and the conventions described in the
+["Container image requirements"](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/container_images/)
+page of the EDB Postgres for Kubernetes documentation.
+
+In the table below you can find the image name prefix for each Postgres distribution:
+
+| Postgres distribution | Image name              | Repositories     |
+| --------------------- | ----------------------- | ---------------- |
+| EDB Postgres Extended | `edb-postgres-extended` | `k8s_standard`   |
+| EDB Postgres Advanced | `edb-postgres-advanced` | `k8s_enterprise` |
+
+## How to install the operator using the EDB private registry
+
+As mentioned above, the *username* for docker is the name of your repository,
+and the token is the *password*.
+The same credentials can be used for kubernetes to access the registry by
+setting up a [`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
+
+As mentioned in the [installation document](./installation_upgrade.md), there
+are several different ways to install the operator.
+
+If you are going to install using images from the private registry, you will
+need to create a pull secret, as we have mentioned, and also customize the
+`OPERATOR_IMAGE_NAME` parameter in the deployment manifest.
+
+We suggest to use the Helm chart for installation, which will take care of
+creating the pull secret and customizing the operator image repository
+for you.
+
+You can find more information in the [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts) page.
+
+As an example, the following command (provided the token) will install the PG4K
+operator when using the repository from the EDB EnterpriseDB Plan:
+
+```sh
+helm upgrade --install edb-pg4k \
+  --namespace postgresql-operator-system \
+  --create-namespace \
+  --set image.repository=docker.enterprisedb.com/k8s_enterprise/edb-postgres-for-kubernetes \
+  --set image.imageCredentials.username=k8s_enterprise \
+  --set image.imageCredentials.password=<ENTITLEMENT_TOKEN> \
+  --set image.imageCredentials.create=true \
+  --set "imagePullSecrets[0].name"=postgresql-operator-pull-secret \
+  --set config.data.PULL_SECRET_NAME=postgresql-operator-pull-secret \
+  edb/edb-postgres-for-kubernetes
+```
