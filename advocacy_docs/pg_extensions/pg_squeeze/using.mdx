@@ -3,10 +3,6 @@ title: Using pg_squeeze
 navTitle: Using
 ---
 
-## Disk Space Requirements
-
-Performing a full-table squeeze requires twice as much free disk space as the target table and its indexes. For example, if the total size of the tables and indexes to be squeezed is 1GB, you need an additional 2GB of disk space.
-
 ## Registering a table for regular processing
 
 First, ensure that your table has either a primary key or a unique constraint. This is necessary to process changes resulting from other transactions  while `pg_squeeze` is doing its work.
@@ -15,11 +11,14 @@ To make the `pg_squeeze` extension aware of the table, you must insert a record 
 
 Here is an example of a simple registration:
 
-```shell
+```sql
 INSERT INTO squeeze.tables (tabschema, tabname, schedule)
 VALUES ('public', 'foo', ('{30}', '{22}', NULL, NULL, '{3, 5}'));
+```
+
 Additional columns can be specified optionally, for example:
 
+```sql
 INSERT INTO squeeze.tables (
     tabschema,
     tabname,
@@ -44,7 +43,7 @@ The following list describes the table metadata:
 
 - `tabname` &mdash; Table name
 
-- `schedule` &mdash; Specifies when the table should be checked and possibly squeezed. The following composite data type, which resembles a `crontab` entry, provides the schedule details:
+- `schedule` &mdash; Specifies when the table should be checked and possibly squeezed. The schedule is described by a value of the following composite data type, which resembles a crontab entry:
 
     ```shell
     CREATE TYPE schedule AS (
@@ -58,7 +57,7 @@ The following list describes the table metadata:
 
     In this data type `minutes` (0-59) and `hours` (0-23) determine the time when the check occurs within a day, while `days_of_month` (1-31), `months` (1-12) and `days_of_week` (0-7, where both 0 and 7 stand for Sunday) determine the day of the check.
 
-    The check is performed if the minute, hour, and month all match the current timestamp, while NULL means any minute, hour, and month respectively. Either `days_of_month` or `days_of_week` must match the current timestamp or both must be NULL for the check to take place.
+    The check is performed if the `minutes`, `hours`, and `months` all match the current timestamp, while `NULL` means any minute, hour, and month respectively. Either `days_of_month` or `days_of_week` must match the current timestamp or both must be NULL for the check to take place.
 
     For example, the entries in the sample registration above specify that the table `public.bar` should be checked every Wednesday and Friday at 22:30.
 
@@ -75,16 +74,6 @@ The following list describes the table metadata:
 - `max_retry` &mdash; Maximum number of extra attempts to squeeze a table if the first processing of the corresponding task fails. The typical reason to retry processing is that the table definition changed while the table was being squeezed. If the number of retries is achieved, processing of the table is considered complete. The next task is created at the next scheduled time.
     The default value of `max_retry` is 0 (that is, do not retry).
 
-- `clustering_index` &mdash; Index of the processed table. After processing finishes, tuples of the table are physically sorted by the key of this index.
-
-- `rel_tablespace` &mdash; Existing tablespace into which the table should be moved. `NULL` means that the table should stay where it is.
-
-- `ind_tablespaces` &mdash; Two-dimensional array in which each row specifies tablespace mapping of an index. The first and the second columns represent the index name and tablespace name, respectively. All indexes for which no mapping is specified remain in the original tablespace.
-    !!! note
-        If a tablespace is specified for the table but not for indexes, the table gets moved to that tablespace but the indexes remain in the original tablespace. In other words, the tablespace of the table is not the default for indexes.
-
-- `skip_analyze` &mdash; Indicates that table processing should not be followed by the `ANALYZE` command. The default value is false, meaning `ANALYZE` is performed by default.
-
 !!! note
     The `squeeze.table` is the only table you should modify. If you want to change anything else, make sure you understand what you are doing.
 
@@ -96,7 +85,7 @@ Function signature:
 
 ```shell
 squeeze.squeeze_table(
-    tabchema name,
+    tabschema name,
     tabname name,
     clustering_index name,
     rel_tablespace name,
@@ -104,7 +93,17 @@ squeeze.squeeze_table(
 )
 ```
 
-Sample execution:
+The following list describes the table metadata for ad hoc processing:
+
+- `clustering_index` &mdash; Index of the processed table. After processing finishes, tuples of the table are physically sorted by the key of this index.
+
+- `rel_tablespace` &mdash; Existing tablespace into which the table should be moved. `NULL` means that the table should stay where it is.
+
+- `ind_tablespaces` &mdash; Two-dimensional array in which each row specifies tablespace mapping of an index. The first and the second columns represent the index name and tablespace name, respectively. All indexes for which no mapping is specified remain in the original tablespace.
+    !!! note
+        If a tablespace is specified for the table but not for indexes, the table gets moved to that tablespace but the indexes remain in the original tablespace. In other words, the tablespace of the table is not the default for indexes.
+
+### Sample execution
 
 ```shell
 SELECT squeeze.squeeze_table('public', 'pgbench_accounts');
@@ -118,7 +117,7 @@ To enable processing of bloated tables, run this statement as superuser:
 SELECT squeeze.start_worker();
 ```
 
-The function starts a background worker (scheduler worker) that periodically checks which of the registered tables should be checked for bloat and creates a task for each. Another worker (squeeze worker) is launched whenever a task exists for particular database.
+The function starts a background worker (`scheduler worker`) that periodically checks which of the registered tables should be checked for bloat and creates a task for each. Another worker (`squeeze worker`) is launched whenever a task exists for particular database.
 
 If the scheduler worker is already running for the current database, the function does not report any error and the new worker exits immediately.
 
@@ -144,7 +143,7 @@ The next time you start the cluster, two or more workers (that is, one scheduler
 
 - The `squeeze.worker_role` parameter specifies a role that  does not have superuser privileges.
 
-The functions and configuration variables explained above use a singular form of the word worker although there are actually two workers. This is because only one worker existed in the previous versions of `pg_squeeze`, which ensured both scheduling and execution of the tasks. This implementation change is not worth forcing all users to adjust their configuration files during upgrade.
+The functions and configuration variables explained above use a singular form of the word `worker` although there are actually two workers. This is because only one `worker` existed in the previous versions of `pg_squeeze`, which ensured both scheduling and execution of the tasks. This implementation change is not worth forcing all users to adjust their configuration files during upgrade.
 
 ## Controlling impact on other backends
 
@@ -158,7 +157,7 @@ This example specifies that the exclusive lock shouldn't be held for more than 0
 
 ## Running multiple workers per database
 
-If you think that a single squeeze worker does not cope with the load, consider setting the `squeeze.workers_per_database` configuration variable to a value higher than 1. Then the `pg_squeeze` extension is able to process multiple tables simultaneously&mdash;one table per squeeze worker. 
+If you think that a single squeeze worker does not cope with the load, consider setting the `squeeze.workers_per_database` configuration variable to a value higher than 1. Then the `pg_squeeze` extension is able to process multiple tables simultaneously - one table per squeeze worker. 
 
 However, be aware that this setting affects all databases in which you actively use the `pg_squeeze` extension. The total number of all the squeeze workers in the cluster (including the "scheduler workers") cannot exceed the in-core configuration variable `max_worker_processes`.
 
@@ -186,3 +185,6 @@ The `pg_squeeze` extension does not prevent other transactions from altering a t
 
 Like `pg_repack`, `pg_squeeze` also changes visibility of rows and thus allows for the MVCC-unsafe behavior described in the first paragraph of [Caveats](https://www.postgresql.org/docs/current/mvcc-caveats.html) for MVCC.
 
+## Disk Space Requirements
+
+Performing a full-table squeeze requires twice as much free disk space as the target table and its indexes. For example, if the total size of the tables and indexes to be squeezed is 1GB, you need an additional 2GB of disk space.
