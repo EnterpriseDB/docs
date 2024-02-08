@@ -276,7 +276,7 @@ function composeRow(row, lastRow, currentState) {
         ),
       );
     } else {
-      console.log(`Unhandled value ${row[i]}`);
+      console.log(`Unhandled value "${row[i]}"`);
     }
   }
   output.push("</tr>\n");
