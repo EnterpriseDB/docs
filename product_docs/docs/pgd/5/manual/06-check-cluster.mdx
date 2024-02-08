@@ -6,12 +6,46 @@ deepToC: true
 
 ## Checking the cluster
 
-With the cluster up and running, it is worth running some basic checks on how effectively it is replicating.
 
-The simplest way to test the cluster is replicating is to log into one node, create a table and populate it.
-Then log into another node and confirm that the table schema and content is replicated on that node.
+With the cluster up and running, it is worthwhile running some basic checks on how effectively it is replicating.
 
-In the following worked example, we show one quick way to do this but you should ensure that any testing you perform is appropriate for your use case.
+In the following example, we show one quick way to do this but you should ensure that any testing you perform is appropriate for your use case.
+
+* **Preparation**
+  * Ensure the cluster is ready  
+    * Log into the database on host-one/node-one  
+    * Run `select bdr.wait_slot_confirm_lsn(NULL, NULL);`  
+    * When the query returns the cluster is ready  
+
+
+* **Create data**
+  The simplest way to test the cluster is replicating is to log into one node, create a table and populate it.
+   * On node-one create a table
+      ```sql
+      CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+      ```
+   * On node-one populate the table
+     ```sql
+     INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
+     ```
+   * On node-one monitor performance
+     ```sql
+     select * from bdr.node_replication_rates;
+     ```
+   * On node-one get a checksum
+     ```sql
+     select COUNT(*),SUM(value) from quicktest;
+     ```
+* **Check data**
+   * Log into node-two  
+      Log into the database on host-two/node-two
+    * On node-two get a checksum
+      ```sql
+      select COUNT(*),SUM(value) from quicktest;
+      ```
+   * Compare with the result from node-one
+
+You can also log into another node and confirm that the table schema and content is replicated on that node.
 
 ## Worked example
 
@@ -20,10 +54,12 @@ In the following worked example, we show one quick way to do this but you should
 Log into host-one's Postgres server.
 ```
 ssh admin@host-one
-sudo -iu enterprisedb psql bdrdbdoc
+sudo -iu enterprisedb psql bdrdb
 ```
 
 This is your connection to PGD's node-one.
+
+#### Ensure the cluster is ready
 
 To ensure that the cluster is ready to go, run: 
 
@@ -40,16 +76,25 @@ sudo -iu enterprisedb psql bdrdb
 
 ### Create data
 
-#### On node-one
+#### On node-one create a table
 
 Run
 
 ```sql
 CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+```
+
+#### On node-one populate the table
+
+```
 INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
 ```
 
-This will generate a table of 10000 rows of random values. As soon as possible, run:
+This will generate a table of 10000 rows of random values. 
+
+#### On node-one monitor performance
+
+As soon as possible, run:
 
 ```sql
 select * from bdr.node_replication_rates;
@@ -70,6 +115,8 @@ al
 
 And it's already replicated. 
 
+#### On node-one get a checksum
+
 Run:
 
 ```sql
@@ -80,13 +127,23 @@ to get some values from the generated data:
 
 ```
 bdrdb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
  count  |    sum
 --------+-----------
  100000 | 498884606
 (1 row)
 ```
+### Check data
 
-#### On node-two
+Log into host-two's Postgres server.
+```
+ssh admin@host-two
+sudo -iu enterprisedb psql bdrdb
+```
+
+This is your connection to PGD's node-two.
+
+#### On node-two get a checksum
 
 Run:
 
@@ -103,6 +160,8 @@ bdrdb=# select COUNT(*),SUM(value) from quicktest;
  100000 | 498884606
 (1 row)
 ```
+
+#### Compare with the result from node-one
 
 And the values will be identical.
 
