@@ -262,7 +262,7 @@ function composeRow(row, lastRow, currentState) {
           true,
         ),
       );
-    } else if (row[i] == "n/a") {
+    } else if (row[i] == "n/a" || row[i] == "") {
       /* Hide n/a from spreadsheet as - (n/a is internal status only) */
       output.push(
         composeCell(
