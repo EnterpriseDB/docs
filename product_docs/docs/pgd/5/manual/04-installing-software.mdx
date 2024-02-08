@@ -10,8 +10,10 @@ With the repositories configured, you can now install the Postgres Distributed s
 These steps must be carried out on each host.
 
 * Install the packages
-  * Install the PGD packages which include a server specific BDR package and generic PGD proxy and cli packages. (`edb-bdr5-postgresversion`, `edb-pgd5-proxy`, and `edb-pgd5-cli`)
+  * Install the PGD packages which include a server specific BDR package and generic PGD proxy and cli packages. (`edb-bdr5-<postgresversion>`, `edb-pgd5-proxy`, and `edb-pgd5-cli`)
 * Ensure the Postgres database server has been initialized and started.
+  * Use `systemctl status ` to check the service is running
+  * If not, initialise the database and start the service
 * Configure the BDR extension
   * Add the BDR extension (`\$libdir/bdr`) at the start of the shared_preload_libraries setting in `postgresql.conf`.
   * Set the `wal_level` GUC variable to `logical` in `postgresql.conf`.
@@ -21,7 +23,7 @@ These steps must be carried out on each host.
   * Add rules to `pg_hba.conf` to allow nodes to connect to each other.
   * Add a `.pgpass` file to allow nodes to authenticate each other.
 * Restart the server.
-  * 
+  * Verify the restarted server is running with the modified settings and the bdr extension is available
 * Create the replicated database
   * Log into the server's default database (`edb` for EPAS, `postgres` for PGE and Community).
   * Use `CREATE DATABASE bdrdb` to create the default PGD replicated database.
@@ -53,6 +55,22 @@ sudo dnf -y install edb-bdr5-epas16 edb-pgd5-proxy edb-pgd5-cli
 ### Ensure the database is initialized and started
 
 If it wasn't initialized and started by the database's package initialisation (or you are repeating the process), you will need to initialize and start the server.
+
+To see if the server is running, you can check the service. The service name for EDB Advanced Server is `edb-as-16` so run:
+
+```
+sudo systemctl status edb-as-16
+```
+
+If the server is not running, this will respond with:
+
+```
+○ edb-as-16.service - EDB Postgres Advanced Server 16
+     Loaded: loaded (/usr/lib/systemd/system/edb-as-16.service; disabled; preset: disabled)
+     Active: inactive (dead)
+```
+
+The "Active: inactive (dead)" tells us we will need to initialize and start the server.
 
 You will need to know the path to the setup script for your particular Postgres flavor.
 
@@ -128,6 +146,7 @@ You will need this password when we get to [Connecting the Cluster](05-connectin
 
 ```
 sudo -u enterprisedb psql edb -c "ALTER USER enterprisedb WITH PASSWORD 'secret'"
+
 ```
 
 #### Enable inter-node authentication in pg_hba.conf
@@ -173,6 +192,30 @@ After all these configuration changes, it is recommended that the server is rest
 
 ```
 sudo systemctl restart edb-as-16
+
+```
+
+#### Check the extension has been installed
+
+At this point, it is worth checking the extension is actually available and our configuration has been correctly loaded. You can query the pg_available_extensions table for the bdr extension like this:
+
+```
+sudo -u enterprisedb psql edb -c "select * from pg_available_extensions where name like 'bdr'"
+
+```
+
+Which should return an entry for the extension and its version.
+
+```
+ name | default_version | installed_version |                  comment
+------+-----------------+-------------------+-------------------------------------------
+ bdr  | 5.3.0           |                   | Bi-Directional Replication for PostgreSQL
+ ```
+
+You can also confirm the other server settings using this command:
+
+```
+sudo -u enterprisedb psql edb -c "show all" | grep -e wal_level -e track_commit_timestamp -e max_worker_processes
 
 ```
 
