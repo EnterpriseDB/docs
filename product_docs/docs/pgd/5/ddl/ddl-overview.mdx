@@ -1,0 +1,80 @@
+---
+title: DDL overview
+navTitle: Overview
+---
+
+DDL stands for data definition language, the subset of the SQL
+language that creates, alters, and drops database objects.
+
+## Replicated DDL
+
+For operational convenience and correctness, PGD replicates most DDL
+actions, with these exceptions:
+
+-   Temporary or unlogged relations
+-   Certain DDL statements (mostly long running)
+-   Locking commands (`LOCK`)
+-   Table maintenance commands (`VACUUM`, `ANALYZE`, `CLUSTER`, `REINDEX`)
+-   Actions of autovacuum
+-   Operational commands (`CHECKPOINT`, `ALTER SYSTEM`)
+-   Actions related to databases or tablespaces
+
+Automatic DDL replication makes 
+certain DDL changes easier without your having to manually distribute
+the DDL change to all nodes and ensure that they're consistent.
+
+In the default replication set, DDL is replicated to all nodes by default.
+To replicate DDL, you must add a DDL replication filter to the
+replication set. See [DDL replication filtering](../repsets/#ddl-replication-filtering).
+
+## Differences from PostgreSQL
+
+PGD is significantly different from standalone PostgreSQL when it
+comes to DDL replication. Treating it the same is the most
+common issue with PGD.
+
+The main difference from table replication is that DDL replication doesn't
+replicate the result of the DDL but the statement itself. This works
+very well in most cases, although it introduces the requirement that the DDL
+must execute similarly on all nodes. A more subtle point is that the DDL
+must be immutable with respect to all datatype-specific parameter settings,
+including any datatypes introduced by extensions (not built in).
+For example, the DDL statement must execute correctly in the default
+encoding used on each node.
+
+## Executing DDL on PGD systems
+
+A PGD group isn't the same as a standalone PostgreSQL server. It's
+based on asynchronous multi-master replication without central
+locking and without a transaction coordinator. This has important implications
+when executing DDL.
+
+DDL that executes in parallel continues to do so with PGD. DDL execution
+respects the parameters that affect parallel operation on each node as it
+executes, so you might notice differences in the settings between nodes.
+
+Prevent the execution of conflicting DDL, otherwise DDL replication
+causes errors and the replication stops.
+
+PGD offers three levels of protection against those problems:
+
+`ddl_locking = 'dml'` is the best option for operations, usable when you execute
+DDL from only one node at a time. This isn't the default, but we recommend
+that you use this setting if you can control where DDL is executed from. Doing so
+ensures that there are no inter-node conflicts. Intra-node conflicts are already
+handled by PostgreSQL.
+
+`ddl_locking = on` is the strictest option and is best when DDL might execute
+from any node concurrently and you want to ensure correctness.
+
+`ddl_locking = off` is the least strict option and is dangerous in general use.
+This option skips locks altogether, avoiding any performance overhead, which makes
+it a useful option when creating a new and empty database schema.
+
+These options can be set only by the bdr_superuser, by the superuser, or in the `config file`.
+
+When using the `bdr.replicate_ddl_command`, you can set this
+parameter directly with the third argument, using the specified
+`bdr.ddl_locking` setting only for the DDL commands passed to that
+function.
+
