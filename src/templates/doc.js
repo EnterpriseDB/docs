@@ -215,8 +215,8 @@ const DocTemplate = ({ data, pageContext }) => {
     editTarget,
     originalFilePath,
     deepToC,
+    hidePDF,
   } = frontmatter;
-
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
   const fileUrlSegment = fileAbsolutePath.split("/product_docs/docs").slice(1);
@@ -271,6 +271,7 @@ const DocTemplate = ({ data, pageContext }) => {
             versionArray={versionArray}
             iconName={iconName}
             hideVersion={frontmatter.hideVersion}
+            hidePDF={hidePDF}
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>
