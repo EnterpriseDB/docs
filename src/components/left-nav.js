@@ -70,6 +70,7 @@ const LeftNav = ({
   iconName,
   hideEmptySections = false,
   hideVersion = false,
+  hidePDF = false,
 }) => {
   return (
     <ul className="list-unstyled mt-0">
@@ -93,7 +94,7 @@ const LeftNav = ({
         />
       ))}
       <li>
-        <PdfDownload pagePath={path} />
+        <PdfDownload pagePath={path} hidePDF={hidePDF} />
       </li>
     </ul>
   );

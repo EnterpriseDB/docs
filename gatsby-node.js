@@ -172,6 +172,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               codelanguages
             }
             hideVersion
+            hidePDF
             displayBanner
             directoryDefaults {
               description
@@ -514,6 +515,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       hideToC: Boolean
       deepToC: Boolean
       hideVersion: Boolean
+      hidePDF: Boolean
       hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
@@ -541,6 +543,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       editTarget: EditTargets
       showInteractiveBadge: Boolean
       hideVersion: Boolean
+      hidePDF: Boolean
       hideKBLink: Boolean
       displayBanner: String
     }

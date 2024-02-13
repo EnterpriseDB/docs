@@ -3,7 +3,7 @@ import { useStaticQuery, graphql } from "gatsby";
 import Icon, { iconNames } from "./icon";
 import usePathPrefix from "../hooks/use-path-prefix";
 
-const PdfDownload = ({ pagePath }) => {
+const PdfDownload = ({ pagePath, hidePDF }) => {
   const data = useStaticQuery(graphql`
     {
       allPublicFile(filter: { ext: { eq: ".pdf" } }) {
@@ -26,6 +26,10 @@ const PdfDownload = ({ pagePath }) => {
   });
 
   const pathPrefix = usePathPrefix();
+
+  if (hidePDF) {
+    return null;
+  }
 
   if (file) {
     return (
