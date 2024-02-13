@@ -7,12 +7,6 @@ EDB LDAP Sync is a collection of tools that synchronize credentials from an LDAP
 
 Find the sample EDB LDAP Sync configuration files at `/usr/lib/python3.6/site-packages/ldap_sync/samples/`.
 
-## Configure pgAgent
-
-pgAgent sets up periodic synchronization tasks. Use `edb-pgagent.conf_tmpl` as the default configuration for pgAgent setup with Postgres. Copy it into the configuration directory for pgAgent with Postgres. 
-
-For more information, see the [pgAgent documentation](https://www.pgadmin.org/docs/pgadmin4/latest/pgagent.html).
-
 ## Setting Postgres database permissions
 
 You need to modify the permission settings for the database server to allow Postgres to query the LDAP host during Postgres authentication. You can do this by updating `pg_hba.conf` in the configuration folder of the database server. For EDB Postgres Advanced Server configuration, `pg_hba.conf` is located in `/opt/postgres/data/pg_hba.conf`.
@@ -357,16 +351,21 @@ role:
 
 ## Set a synchronization schedule
 
-`schedule_pgagent` sets up a synchronization schedule for ldap2pg. This utility uses syntax similar to cron and produces the SQL command `pgagent.sql`, which is loaded into the database. 
+Need to create a SQL file to run pg_cron at some interval. This example uses plpython3u to run ldap2pg every minute to ensure that
+the PG database is synced with LDAP. Here's a sample file to do this called setup_pg_cron.sql
 
-This example creates a schedule that runs every hour: 
+```text
+create function run_ldap() returns void as $$
+import os
+os.system("/usr/bin/ldap2pg -N")
+$$ language plpython3u;
 
-```shell
-schedule_pgagent "0 * * * *"
+-- run ldap every minute
+select cron.schedule('run ldap', '* * * * *', 'select * from run_ldap()');
 ```
 
-This command produces the  `pgagent.sql` file, which is loaded into the database with `enterprisedb` user credentials: 
+Use psql to run the previous SQL file to enable pg_cron
 
 ```shell
-psql < pgagent.sql
+psql postgres < setup_pg_cron.sql
 ```
