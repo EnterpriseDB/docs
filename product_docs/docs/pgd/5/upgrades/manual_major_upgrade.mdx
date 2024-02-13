@@ -6,6 +6,10 @@ title: Performing a Postgres major version rolling upgrade
 
 This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD). The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides step-by-step instructions to facilitate a smooth and controlled upgrade process.
 
+!!! Note
+Ensure that your databases and configuration files are backed up before starting the upgrade process do help prevent data loss.
+!!!
+
 To perform the rolling upgrade of the Postgres major version on your PGD cluster, carry out the following steps on each node in the cluster:
 
 - Confirm your current Postgres version.
@@ -162,11 +166,18 @@ These errors are expected when both instances of Postgres are already shut down 
 
 ### Check that you can upgrade safely
 
-The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the upgrade process. We can use this option to ensure the upgrade will go smoothly. However, first, you should ensure you have permissions on your current working directory, as `bdr_pg_upgrade` needs sufficient permissions to create files there. In this example, we started in admin's home directory, `/home/admin/`, so:
+The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the upgrade process. We can use this option to ensure the upgrade will go smoothly. 
+
+
+However, first, we need a directory for the files created by `bdr_pg_upgrade`, which we can give ownership of to the user `posgres`. 
+
+Accordingly, create an `/upgrade` directory in the `/home` directory and then give ownership of that directory to the user `postgres`:
 
 ```bash
-sudo chown postgres:postgres /home/admin/
+sudo mkdir /home/upgrade
+sudo chown postgres:postgres /home/upgrade
 ```
+Next, navigate to the 
 
 Then run:
 
@@ -390,11 +401,11 @@ You should see an output similar to this for your cluster.
 (3 rows)
 ```
 
-Confirm that the target node is running the upgraded Postgres. 
+Confirm that kaboom is running the upgraded Postgres version. 
 
 ### Next steps
 
-To complete upgrading the cluster for this worked example, repeat the previous steps on the other cluster nodes: kaftan and kaolin. After completing the upgrade on all nodes, you can once again check your versions in the PGD database using:
+To complete upgrading the cluster for this worked example, repeat the previous steps on the other cluster nodes: kaftan and kaolin. After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions in the PGD database using:
 
 ```bash
 sudo -u postgres psql bdrdb
@@ -407,25 +418,35 @@ SELECT * FROM bdr.group_versions_details;
 ```
 You should see output similar to the following:
 
+```
   node_id   | node_name |        postgres_version        | bdr_version 
 ------------+-----------+--------------------------------+-------------
  3490219809 | kaftan    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
  2710197610 | kaboom    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
  2111777360 | kaolin    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
 (3 rows)
+```
+This shows that all the nodes have been successfully upgraded to the new Postgres version.
 
 #### Reconcile with TPA
 
-Since we used TPA to build our cluster in this worked example, after all the nodes have been upgraded, we still need to reconcile the new version of Postgres with TPA.
+Since we used TPA to build our cluster in this worked example, after all the nodes have been upgraded, we still need to reconcile the new version of Postgres with TPA to use TPA to manage the cluster in the future.
 
-First, disconnect from the PGD cluster and return to your TPA cluster directory in your Unix or Linux shell environment. In this worked example, our TPA cluster directory happens to be `democluster`.
+To do this, return to the command line of the server where your TPA cluster directory resides. In this worked example, our TPA cluster directory is `/home/ubuntu/democluster` on the instance where we originally deployed the cluster using TPA.
 
-After navigating to your TPA cluster directory, use a code editor to open up `config.yml` and change `cluster vars:` from `postgres_version: '15'` to `postgres_version: '16'`.
+After navigating to your cluster directory, use a code editor to edit `config.yml` and change `cluster vars:` from `postgres_version: '15'` to `postgres_version: '16'`.
 
-Lastly, run the `tpaexec deploy <clustername>` command:
+Unless already added to your .bashrc or .bash_profile, ensure the TPA tools are accessible in your command line session by adding TPA's binary directory to your PATH.
+
+```shell
+export PATH=$PATH:/opt/EDB/TPA/bin
+```
+Then we can redeploy the cluster:
 
 ```shell
 tpaexec deploy democluster
 ```
 
-This should reconcile the new version of Postgres with TPA.
+This should apply the configuration changes to the cluster managed by TPA. Upon successful deployment, reconciliation of the new version of Postgres with TPA and the upgrade procedure is complete.
+
+
