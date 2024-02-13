@@ -1,5 +1,5 @@
-// HTML comments (<!-- ... -->) are not valid in MDX
-// strip them out completely
+// HTML comments (<!-- ... -->) are not valid in MDX - strip them out completely
+// ensure tags are lowercase
 
 import toVFile from "to-vfile";
 import remarkParse from "remark-parse";
@@ -45,6 +45,9 @@ function stripComments() {
 
       // strip (potentially NON-EMPTY) HTML comments - these are not valid in JSX
       node.value = node.value.replace(/(?=<!--)([\s\S]*?)-->/g, "");
+
+      // lower-case HTML tags
+      node.value = node.value.replace(/<(\/*)(\w+)([^>]*)>/g, (match, close, tag, rest) => `<${close}${tag.toLowerCase()}${rest}>`)
     });
   };
 }
