@@ -195,7 +195,7 @@ const Page = () => {
               </IndexCardLink>
 
               <IndexCardLink to="/pg_extensions/pg_squeeze">
-                pg_squeeze
+                PG Squeeze
               </IndexCardLink>
 
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
