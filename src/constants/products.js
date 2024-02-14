@@ -74,6 +74,10 @@ export const products = {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  pwr: {
+    name: "Postgres Workload Report",
+    iconName: IconNames.TOOLS,
+  },
   "EDB Query Advisor": {
     name: "EDB Query Advisor",
     iconName: IconNames.POSTGRESQL,
