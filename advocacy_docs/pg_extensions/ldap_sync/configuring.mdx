@@ -353,29 +353,32 @@ role:
 
 To ensure continuous synchronization between your Postgres database and LDAP, we're transitioning to using pg_cron for scheduling tasks instead of pgagent. pg_cron allows for scheduling directly within the Postgres environment, offering a streamlined and efficient approach to task management.
 
-In what follows, we walk through an example of creating a SQL script to utilize pg_cron for running `ldap2pg` at defined intervals. These steps assume that you have Postgres with pg_cron installed and configured, the `plpython3u` procedural language is available in your Postgres instance, and that your Postgres user has sufficient privileges to create functions and schedule cron jobs.
+In what follows, we use an example of creating a SQL script to utilize pg_cron for running `ldap2pg` at defined intervals. These steps assume that you have Postgres with pg_cron installed and configured, the `plpython3u` procedural language is available in your Postgres instance, and that your Postgres user has sufficient privileges to create functions and schedule cron jobs.
 
+### Create the SQL Script
 
+Create a new SQL file named `setup_pg_cron.sql`. This script will define a function to run `ldap2pg` and schedule it to execute at regular intervals using pg_cron.
 
-
-
-
-
-Need to create a SQL file to run pg_cron at some interval. This example uses plpython3u to run ldap2pg every minute to ensure that
-the PG database is synced with LDAP. Here's a sample file to do this called setup_pg_cron.sql
-
-```text
-create function run_ldap() returns void as $$
+```sql
+CREATE OR REPLACE FUNCTION run_ldap_sync() RETURNS void LANGUAGE plpython3u as $$
 import os
-os.system("/usr/bin/ldap2pg -N")
-$$ language plpython3u;
-
--- run ldap every minute
-select cron.schedule('run ldap', '* * * * *', 'select * from run_ldap()');
+os.system("usr/bin/ldap2pg -N")
+$$;
 ```
 
-Use psql to run the previous SQL file to enable pg_cron
+Within the same `setup_pg_cron.sql` file, add the following line to schedule the `run_ldap_sync` function. This example schedules the synchronization to run every minute, but you can adjust the cron schedule to fit your needs:
+
+```
+-- run ldap every minute
+SELECT cron.schedule('run_ldap_sync_every_minute', '* * * * *', 'SELECT run_ldap_sync();');
+```
+
+Finally, run the `setup_pg_cron.sql` script through `psql` to apply the changes. Ensure you're executing this as a user with the necessary permissions.
 
 ```shell
 psql postgres < setup_pg_cron.sql
 ```
+
+!!! important
+When allowing Postgres functions to execute system commands, it's essential to consider the security implications. Ensure the database user has the minimum required permissions and the environment is secured against unauthorized access.
+!!!
