@@ -74,8 +74,21 @@ export const products = {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  pwr: {
+    name: "Postgres Workload Report",
+    iconName: IconNames.TOOLS,
+  },
+  // note: the key here doesn't have to be anything specific,
+  // as long as it matches the value used for the `product:` key in the relevant frontmatter
+  // I recommend using the actual product name (same as what's used in the next line), just to
+  // make it obvious that this ISN'T a directory name or something defined in gatsby_config.js
+  // But we could also call it "Bob", as long as e.g. pg_extensions/pg_squeeze/index.mdx contains product: Bob
   "EDB Query Advisor": {
     name: "EDB Query Advisor",
+    iconName: IconNames.POSTGRESQL,
+  },
+  "PG Squeeze": {
+    name: "PG Squeeze",
     iconName: IconNames.POSTGRESQL,
   },
   CloudNativePG: { name: "CloudNativePG" },

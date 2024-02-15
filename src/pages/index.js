@@ -194,6 +194,10 @@ const Page = () => {
                 EDB Wait States
               </IndexCardLink>
 
+              <IndexCardLink to="/pg_extensions/pg_squeeze">
+                PG Squeeze
+              </IndexCardLink>
+
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
                 EDB Job Scheduler
               </IndexCardLink>
@@ -318,6 +322,9 @@ const Page = () => {
               <IndexCardLink to="/lasso/latest">Lasso</IndexCardLink>
               <IndexCardLink to="/livecompare/latest">
                 LiveCompare
+              </IndexCardLink>
+              <IndexCardLink to="/pwr/latest">
+                Postgres Workload Report
               </IndexCardLink>
             </IndexCard>
 
