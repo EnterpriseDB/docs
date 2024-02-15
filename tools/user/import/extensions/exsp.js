@@ -262,7 +262,7 @@ function composeRow(row, lastRow, currentState) {
           true,
         ),
       );
-    } else if (row[i] == "n/a") {
+    } else if (row[i] == "n/a" || row[i] == "") {
       /* Hide n/a from spreadsheet as - (n/a is internal status only) */
       output.push(
         composeCell(
@@ -276,7 +276,7 @@ function composeRow(row, lastRow, currentState) {
         ),
       );
     } else {
-      console.log(`Unhandled value ${row[i]}`);
+      console.log(`Unhandled value "${row[i]}"`);
     }
   }
   output.push("</tr>\n");
