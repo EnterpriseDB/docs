@@ -68,28 +68,22 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/pge/latest/installing/"
-                    >
-                      EDB Postgres Extended Server Enhanced Installation Details
+                    <Link className="homepage-headling-link" to="/pwr/latest/">
+                      Postgres Workload Report v1 released
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.POSTGRESQL}
+                      iconName={iconNames.MONITORING}
                       className="fill-orange ms-2 float-end"
                     />
-                    We've expanded installation instructions to cover
-                    post-install configuration, intial exploration, and
-                    component locations for all supported platforms.
+                    PWR is used for building PostgreSQL workload reports,
+                    mimicking those produced by Oracle's Automatic Workload
+                    Repository (AWR) tool.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/pge/latest/installing/"
-                      >
+                      <Link className="btn-sm ms-2" to="/pwr/latest/">
                         Find out more &rarr;
                       </Link>
                     </p>
@@ -110,26 +104,25 @@ const Page = () => {
                   <h3 className="card-title mb-2 fw-bold">
                     <Link
                       className="homepage-headling-link"
-                      to="/lasso/latest/"
+                      to="/pg_extensions/pg_squeeze/"
                     >
-                      Lasso 4.12 Released
+                      New extension: PG Squeeze
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.CONTROL}
+                      iconName={iconNames.POSTGRESQL}
                       className="fill-orange ms-2 float-end"
                     />
-                    Lasso, EDB's support diagnostics tool, has been updated to
-                    version 4.12. Documentation now better covers installation
-                    requirements and provides enhanced clarity what and how can
-                    be collected.
+                    Open-source extension PG Squeeze removes unused space from a
+                    table and optionally sorts tuples according to a particular
+                    index.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
                       <Link
                         className="btn-sm ms-2"
-                        to="/lasso/latest/release-notes/"
+                        to="/pg_extensions/pg_squeeze/"
                       >
                         Find out more &rarr;
                       </Link>
