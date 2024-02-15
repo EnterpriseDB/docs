@@ -323,6 +323,9 @@ const Page = () => {
               <IndexCardLink to="/livecompare/latest">
                 LiveCompare
               </IndexCardLink>
+              <IndexCardLink to="/pwr/latest">
+                Postgres Workload Report
+              </IndexCardLink>
             </IndexCard>
 
             <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">

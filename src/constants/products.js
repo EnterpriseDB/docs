@@ -74,6 +74,10 @@ export const products = {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  pwr: {
+    name: "Postgres Workload Report",
+    iconName: IconNames.TOOLS,
+  },
   // note: the key here doesn't have to be anything specific,
   // as long as it matches the value used for the `product:` key in the relevant frontmatter
   // I recommend using the actual product name (same as what's used in the next line), just to
