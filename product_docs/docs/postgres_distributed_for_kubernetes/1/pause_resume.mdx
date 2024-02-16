@@ -1,0 +1,57 @@
+---
+title: 'Declarative Pausing and Resuming'
+originalFilePath: 'src/pause_resume.md'
+---
+
+The declarative Pausing and Resuming feature enables saving CPU power by removing the
+database Pods, while keeping the database PVCs.
+
+Declarative Pausing and Resuming leverages the hibernation functionality available for
+EDB Postgres for Kubernetes. For additional depth, and explanation of how
+hibernation works, we refer you to the
+[PG4K documentation on declarative hibernation](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/declarative_hibernation/).
+
+Pause is requested by adding the `k8s.pgd.enterprisedb.io/pause`
+annotation in the desired PGD Group.
+
+For example,
+
+```sh
+kubectl annotate pgdgroup region-a k8s.pgd.enterprisedb.io/pause=on
+```
+
+After a few seconds, the requested PGD Group will be in paused state, with
+all the database pods removed.
+
+```sh
+kubectl get pgdgroups
+
+NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                   AGE
+region-a   2                1                   PGDGroup - Paused       25m
+region-b   2                1                   PGDGroup - Healthy      25m
+region-c   0                1                   PGDGroup - Healthy      25m
+```
+
+To resume a paused PGD Group, you can simply set the annotation to "off".
+Remember to add the `--overwrite` flag.
+
+```sh
+kubectl annotate pgdgroup region-a k8s.pgd.enterprisedb.io/pause=off --overwrite
+```
+
+In a few seconds, you should see the nodes start resuming, and the pods to
+be re-created.
+
+```sh
+kubectl get pgdgroups
+
+NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                   AGE
+region-a   2                1                   Pause - resume nodes       1m
+region-b   2                1                   PGDGroup - Healthy      25m
+region-c   0                1                   PGDGroup - Healthy      25m
+```
+
+There are some requirements before the pause annotation can put the PGD group
+on Pause. Ideally, the PGD Group should be in Healthy state. Alternativelly, if
+all the data nodes in the PGD Group are Healthy at the individual level, Pause
+can also be initiated.
