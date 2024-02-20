@@ -12,8 +12,10 @@ Ensure that your databases and configuration files are backed up before starting
 
 To perform the rolling upgrade of the Postgres major version on your PGD cluster, carry out the following steps on each node in the cluster:
 
-- Confirm your current Postgres version.
-- Stop Postgres on the target node.
+- Confirm the current Postgres version.
+- Check to see if the target node is the write-leader of the cluster.
+- If it is the write-leader, perform a planned switchover to make another node write-leader so you can upgrade the target node and ensure cluster availability.
+- After confirming the target node is not the write-leader, stop Postgres.
 - Install the new Postgres version and bdr_pg_upgrade.
 - Initialize the new Postgres version.
 - Copy the configuration for the old Postgres version to the configuration for the new Postgres version.
@@ -30,13 +32,13 @@ We will look at these steps in more detail below, specifically for upgrading a n
 
 ## Worked example
 
-A three-node cluster (kaftan, kaolin, and kaboom) we [deployed on AWS using TPA](https://www.enterprisedb.com/docs/pgd/latest/quickstart/quick_start_aws/) is currently running Postgres 15 on a Linux OS (Debian in this case). We want to upgrade a single node to Postgres 16 using `bdr_pg_upgrade`, and then upgrade the whole cluster similarly. This walkthrough focuses on the detailed steps for the target node, kaboom. 
+A three-node cluster (kaftan, kaolin, and kaboom) we [deployed on AWS using TPA](https://www.enterprisedb.com/docs/pgd/latest/quickstart/quick_start_aws/) is currently running Postgres 15 on a Linux OS (Debian in this case). We want to upgrade a single node to Postgres 16 using `bdr_pg_upgrade`, and then upgrade the rest of the cluster similarly. This walkthrough focuses on the detailed steps for the target node, kaboom. 
 
 !!! Note
 Some steps of this process will involve you running commands as the Postgres owner. We will refer to this user as `postgres` throughout when appropriate. If you are running EDB Postgres Advanced Server, you will need to substitute that user with `enterprisedb` in all relevant commands.
 !!!
 
-### Confirm your current Postgres version
+### Confirm the current Postgres version
 
 Connect to any node that is still running Postgres 15 and use this command to connect to the PGD's `bdrdb` database:
 
@@ -61,6 +63,48 @@ You should see output similar to this for your cluster:
 ```
 
 Confirm that the Postgres version is the expected version. Then, use the `exit` command to return to the node's command prompt.
+
+### Check to see if the target node is the write-leader of the cluster
+
+To see if the target node is the write-leader, run the `pgd show-groups` command:
+
+```bash
+sudo -u postgres pgd show-nodes
+```
+
+in our example, our target node kaboom, is the current write-leader:
+
+```
+Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----        --------   ----   ------------ -------- ---- ------- ------------ 
+democluster  1935823863 global                       true false                
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom   
+```
+
+### If the target node is the write-leader, perform a planned switchover
+
+Therefore, to keep the cluster available throughout the upgrade (i.e. a *rolling upgrade*), we need to perform a planned switchover to make another node the write-leader while we upgrade the target node, kaboom. In this case, we switchover the write-leader from kaboom to kaftan:
+
+```bash
+sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaftan
+```
+
+Go ahead and run `pgd show-groups` again to make sure kaftan is now the write leader:
+
+```bash
+sudo -u postgres pgd show-groups
+```
+
+Then you should see that kaftan is now the write-leader:
+
+```
+Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----        --------   ----   ------------ -------- ---- ------- ------------ 
+democluster  1935823863 global                       true false                
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaftan  
+```
+
+It is now safe to stop Postgres on kaboom.
 
 ### Stop Postgres on the target node
 
