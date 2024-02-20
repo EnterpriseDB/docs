@@ -1,0 +1,141 @@
+---
+title: Workarounds for DDL restrictions
+navTitle: Workarounds
+---
+
+Some of the limitations of PGD DDL operation handling can be worked around.
+Often splitting up the operation into smaller changes can produce the desired
+result that either isn't allowed as a single statement or requires excessive
+locking.
+
+## Adding a CONSTRAINT
+
+You can add `CHECK` and `FOREIGN KEY` constraints without requiring a DML lock.
+This involves a two-step process.
+
+-   `ALTER TABLE ... ADD CONSTRAINT ... NOT VALID`
+-   `ALTER TABLE ... VALIDATE CONSTRAINT`
+
+Execute these steps in two different transactions. Both these
+steps take DDL lock only on the table and hence can be run even when one
+or more nodes are down. But to validate a constraint, PGD must
+ensure that:
+-  All nodes in the cluster see the `ADD CONSTRAINT` command. 
+-  The node validating the constraint applied replication changes from all other nodes prior to 
+    creating the NOT VALID constraint on those nodes. 
+
+So even though the new mechanism doesn't need all nodes
+to be up while validating the constraint, it still requires that all
+nodes applied the `ALTER TABLE .. ADD CONSTRAINT ... NOT VALID`
+command and made enough progress. PGD waits for a consistent
+state to be reached before validating the constraint.
+
+The new facility requires the cluster to run with Raft protocol
+version 24 and beyond. If the Raft protocol isn't yet upgraded, the old
+mechanism is used, resulting in a DML lock request.
+
+## Adding a column
+
+To add a column with a volatile default, run these commands in
+separate transactions:
+
+```sql
+    ALTER TABLE mytable ADD COLUMN newcolumn coltype; -- Note the lack of DEFAULT or NOT NULL
+
+    ALTER TABLE mytable ALTER COLUMN newcolumn DEFAULT volatile-expression;
+
+	BEGIN;
+	SELECT bdr.global_lock_table('mytable');
+    UPDATE mytable SET newcolumn = default-expression;
+	COMMIT;
+```
+
+This approach splits schema changes and row changes into separate transactions that
+PGD can execute and results in consistent data across all nodes in a
+PGD group.
+
+For best results, batch the update into chunks so that you don't update more than
+a few tens or hundreds of thousands of rows at once. You can do this using
+a `PROCEDURE` with embedded transactions.
+
+The last batch of changes must run in a transaction that
+takes a global DML lock on the table. Otherwise you can miss rows
+that are inserted concurrently into the table on other nodes.
+
+If required, you can run `ALTER TABLE mytable ALTER COLUMN newcolumn NOT NULL;` after the `UPDATE` has finished.
+
+## Changing a column's type
+
+Changing a column's type can cause PostgreSQL to rewrite a table. In some cases though this rewriting can be avoided, 
+for example:
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
+ALTER TABLE foo ALTER COLUMN description TYPE VARCHAR(20);
+```
+
+You can rewrite this statement to avoid a table rewrite by making the
+restriction a table constraint rather than a datatype change. The constraint can
+then be validated in a subsequent command to avoid long locks, if you want.
+
+```sql
+CREATE TABLE foo (id BIGINT PRIMARY KEY, description VARCHAR(128));
+ALTER TABLE foo
+  ALTER COLUMN description TYPE varchar,
+  ADD CONSTRAINT description_length_limit CHECK (length(description) <= 20) NOT VALID;
+ALTER TABLE foo VALIDATE CONSTRAINT description_length_limit;
+```
+
+If the validation fails, then you can `UPDATE` just the failing rows.
+You can use this technique for `TEXT` and `VARCHAR` using `length()` or with
+`NUMERIC` datatype using `scale()`.
+
+In the general case for changing column type, first add a column of the desired type:
+
+```
+ALTER TABLE mytable ADD COLUMN newcolumn newtype;
+```
+
+Create a trigger defined as `BEFORE INSERT OR UPDATE ON mytable FOR EACH ROW ..`,
+which assigns `NEW.newcolumn` to `NEW.oldcolumn` so that new writes to the
+table update the new column automatically.
+
+`UPDATE` the table in batches to copy the value of `oldcolumn` to
+`newcolumn` using a `PROCEDURE` with embedded transactions. Batching the work
+helps reduce replication lag if it's a big table. Updating by range of
+IDs or whatever method you prefer is fine. Alternatively, you can update the whole table in one pass for
+smaller tables.
+
+`CREATE INDEX ...` any required indexes on the new column. It's safe to
+use `CREATE INDEX ... CONCURRENTLY` run individually without DDL replication
+on each node to reduce lock durations.
+
+`ALTER` the column to add a `NOT NULL` and `CHECK` constraints, if required.
+
+1. `BEGIN` a transaction.
+1. `DROP` the trigger you added. 
+1. `ALTER TABLE` to add any `DEFAULT` required on the column. 
+1. `DROP` the old column.
+1. `ALTER TABLE mytable RENAME COLUMN newcolumn TO oldcolumn`. 
+1. `COMMIT`.
+
+!!! Note 
+    Because you're dropping a column, you might have to re-create views, procedures,
+    and so on that depend on the table. Be careful if you `CASCADE` drop the column,
+    as you must be sure you re-create everything that referred to it.
+
+#### Changing other types
+
+The `ALTER TYPE` statement is replicated, but affected tables aren't locked.
+
+When this DDL is used, ensure that the statement has successfully
+executed on all nodes before using the new type. You can achieve this using
+the [`bdr.wait_slot_confirm_lsn()`](/pgd/latest/reference/functions#bdrwait_slot_confirm_lsn) function.
+
+This example ensures that the DDL is written to all nodes before using the new value
+in DML statements:
+
+```
+ALTER TYPE contact_method ADD VALUE 'email';
+SELECT bdr.wait_slot_confirm_lsn(NULL, NULL);
+```
