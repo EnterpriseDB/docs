@@ -1,0 +1,123 @@
+---
+title: Managing DDL with PGD replication
+navTitle: Managing with replication
+---
+
+## Minimizing the impact of DDL
+
+Minimizing the impact of DDL is good operational advice for any database. These points become even more
+important with PGD:
+
+-   To minimize the impact of DDL, make transactions performing DDL short,
+    don't combine them with lots of row changes, and avoid long-running 
+    foreign key or other constraint rechecks.
+
+-   For `ALTER TABLE`, use `ADD CONSTRAINT NOT VALID` followed by another
+    transaction with `VALIDATE CONSTRAINT` rather than using `ADD CONSTRAINT` alone.
+    `VALIDATE CONSTRAINT` waits until replayed on all nodes, which
+    gives a noticeable delay to receive confirmations.
+
+-   When indexing, use the `CONCURRENTLY` option whenever possible.
+
+An alternative way of executing long-running DDL is to disable DDL replication
+and then to execute the DDL statement separately on each node. You can 
+still do this using a single SQL statement, as shown in the following example.
+Global locking rules still apply, so be careful not to lock
+yourself out with this type of usage, which is more of a
+workaround.
+
+```sql
+SELECT bdr.run_on_all_nodes($ddl$
+        CREATE INDEX CONCURRENTLY index_a ON table_a(i);
+$ddl$);
+```
+
+We recommend using the [`bdr.run_on_all_nodes()`](/pgd/latest/reference/functions#bdrrun_on_all_nodes) technique with `CREATE
+INDEX CONCURRENTLY`, noting that DDL replication must be disabled for the whole
+session because `CREATE INDEX CONCURRENTLY` is a multi-transaction command.
+Avoid `CREATE INDEX` on production systems
+since it prevents writes while it executes.
+`REINDEX` is replicated in versions up to 3.6 but not with PGD 3.7 or later.
+Avoid using `REINDEX` because of the AccessExclusiveLocks it holds.
+
+Instead, use `REINDEX CONCURRENTLY` (or `reindexdb --concurrently`),
+which is available in PG12+ or 2QPG11+.
+
+You can disable DDL replication when using command-line utilities like this:
+
+```sql
+$ export PGOPTIONS="-c bdr.ddl_replication=off"
+$ pg_restore --section=post-data
+```
+
+Multiple DDL statements might benefit from bunching into a single transaction
+rather than fired as individual statements, so take the DDL lock 
+only once. This might not be desirable if the table-level locks interfere with
+normal operations.
+
+If DDL is holding up the system for too long, you can safely
+cancel the DDL on the originating node with **Control-C** in psql or with `pg_cancel_backend()`.
+You can't cancel a DDL lock from any other node.
+
+You can control how long the global lock takes with optional global locking
+timeout settings. [`bdr.global_lock_timeout`](/pgd/latest/reference/pgd-settings#bdrglobal_lock_timeout) limits how long the wait for
+acquiring the global lock can take before it's canceled.
+[`bdr.global_lock_statement_timeout`](/pgd/latest/reference/pgd-settings#bdrglobal_lock_statement_timeout) limits the runtime length of any statement
+in transaction that holds global locks, and [`bdr.global_lock_idle_timeout`](/pgd/latest/reference/pgd-settings#bdrglobal_lock_idle_timeout) sets
+the maximum allowed idle time (time between statements) for a transaction
+holding any global locks. You can disable all of these timeouts by setting their
+values to zero.
+
+Once the DDL operation has committed on the originating node, you can't cancel or abort it. 
+The PGD group must wait for it to apply successfully on
+other nodes that confirmed the global lock and for them to acknowledge replay.
+For this reason, keep DDL transactions short and fast.
+
+## Handling DDL with down nodes
+
+If the node initiating the global DDL lock goes down after it acquired
+the global lock (either DDL or DML), the lock stays active.
+The global locks don't time out, even if timeouts were set.
+In case the node comes back up, it releases all the global
+locks that it holds.
+
+If it stays down for a long time or indefinitely,
+remove the node from the PGD group to release the global locks. This
+is one reason for executing emergency DDL using the `SET` command as
+the bdr_superuser to update the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) value.
+
+If one of the other nodes goes down after it confirmed the global lock
+but before the command acquiring it executed, the execution of
+that command requesting the lock continues as if the node were up.
+
+As mentioned earlier, the global DDL lock requires only a majority of
+the nodes to respond, and so it works if part of the cluster is down, as long as a
+majority is running and reachable. But the DML lock can't be acquired
+unless the whole cluster is available.
+
+With global DDL or global DML lock, if another node goes down, the
+command continues normally, and the lock is released.
+
+## Statement-specific DDL replication concerns
+
+Not all commands can be replicated automatically. Such commands
+are generally disallowed, unless DDL replication is turned off
+by turning [`bdr.ddl_replication`](/pgd/latest/reference/pgd-settings#bdrddl_replication) off.
+
+PGD prevents some DDL statements from running when it's active on a
+database. This protects the consistency of the system by disallowing
+statements that can't be replicated correctly or for which replication
+isn't yet supported. 
+
+If a statement isn't permitted under PGD, you can often find
+another way to do the same thing. For example, you can't do an `ALTER TABLE`,
+which adds a column with a volatile default value. But generally you can
+rephrase that as a series of independent `ALTER TABLE` and `UPDATE` statements
+that work.
+
+Generally, unsupported statements are prevented from 
+executing, raising a `feature_not_supported` (SQLSTATE `0A000`) error.
+
+Any DDL that references or relies on a temporary object can't
+be replicated by PGD and throws an error if executed with DDL replication
+enabled.
