@@ -76,7 +76,12 @@ to commit something. This approach requires application changes to use
 the CAMO transaction protocol to work correctly, as the application is in some way
 part of the consensus. For more on this approach, see [CAMO](camo).
 
-The `raft` decision uses PGDs built-in raft consensus for commit decisions. It can have low performance and is currently only required when using GROUP COMMIT with an ALL commit scope group.
+The `raft` decision uses PGDs built-in raft consensus for commit decisions. It
+can have low performance and is currently only required when using GROUP COMMIT
+with an ALL commit scope group.
+
+Using an ALL commit scope group requires that the commit decision must be set to
+raft to avoid [reconciliation](#transaction-reconciliation) issues. 
 
 ### Conflict resolution
 
@@ -108,5 +113,47 @@ transaction abort is requested. If the transaction is already
 decided to be committed at the time the abort request is sent, the transaction
 does eventually COMMIT even though the client might receive an abort message.
 
-
 See also [Limitations](limitations). 
+
+### Transaction Reconciliation
+
+A group commit transaction’s commit on the origin node is implicitly converted 
+into a two step commit. 
+
+In the first step the transaction is prepared locally and made ready to commit.
+The data is made durable but uncomitted at this stage so other transactions
+cannot see the changes made by this transaction. This prepared transaction gets
+replicated to all remaining nodes via async replication. 
+
+The origin node seeks confirmations from other nodes, as per rules in the group
+commit grammar. If it gets confirmations from minimum required nodes in the
+cluster, it decides to commit this transaction and also send this decision via
+replication to other nodes which will also eventually commit on getting this
+message. 
+
+There is a possibility of failure at various stages. For example, the origin
+node may crash after preparing the transaction. Or the origin and one or more
+replicas may crash. 
+
+This leaves the prepared transactions in the system. The `pg_prepared_xacts`
+view in Postgres can show prepared transactions on a system. The prepared
+transactions could be holding locks and other resources and they therefore need
+to be either aborted or committed. That decision has to be made with a consensus
+of nodes. 
+
+When commit_decision is raft then, raft acts as the reconcilator and these
+transactions are eventually, automatically, reconciled. 
+
+But group commit transactions do not use raft and instead the write lead in the
+cluste performs the role of reconciliator. This is because it is the node that
+is most ahead with respect to changes in its sub-group. It detects when a node
+is down and initiates reconciliation for such node by looking for prepared
+transactions it may have with the down node as the origin. 
+
+For all such transactions, it sees if the nodes as per the rules of the commit
+scope have the prepared transaction, it takes a decision. This decision is
+conveyed over raft and needs majority of the nodes to be up to do
+reconciliation.
+
+This process happens in the background and there is no user command needed to
+control or issue this.
