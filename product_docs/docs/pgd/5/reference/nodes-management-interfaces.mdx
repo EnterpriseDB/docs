@@ -11,6 +11,10 @@ You can add and remove nodes dynamically using the SQL interfaces.
 This function changes the configuration parameters of an existing PGD group.
 Options with NULL value (default for all of them) aren't modified.
 
+!!! Warning
+    This function only exists for compatibility with PGD4 and 3.7. 
+    Please use [`bdr.alter_node_group_option`](#bdralter_node_group_option) instead.
+
 ### Synopsis
 
 ```sql
@@ -88,8 +92,7 @@ This function doesn't hold any locks.
     When you use this function to change the `apply_delay` value, the
     change doesn't apply to nodes that are already members of the
     group.
-    This restriction has little consequence on production
-    use because this value normally isn't used outside of testing.
+
 
 
 ## `bdr.alter_node_group_option`
@@ -109,6 +112,49 @@ bdr.alter_node_group_option(node_group_name text,
 -   `node_group_name` &mdash; Name of the group to be changed.
 -   `config_key` &mdash; Key of the option in the node group to be changed.
 -   `config_value` &mdash; New value to be set for the given key.
+
+The group options which can be changed using this function are:
+-   `location` &mdash; Information about node location, this is purely metadata for monitoring.
+-   `apply_delay` &mdash; How long nodes wait to apply incoming changes. This is useful mainly to setup a special sub-group with delayed subscriber-only nodes. Don't set this on groups which contain data nodes or on top-level group. The value is in Postgres interval format. Default is `0s`.
+-   `check_constraints` &mdash; Whether the apply process checks the constraints when writing replicated data. It's recommended to keep this to default value, otherwise you risk data loss. Valid values are either `on` or `off`. Default is `on`.
+-   `num_writers` &mdash; Number of parallel apply writers.
+-   `enable_wal_decoder` &mdash; Number of parallel writers for subscription backing this node group. Valid values are either -1 or a positive integer. The -1 is the default.
+-   `enable_wal_decoder` &mdash; Enables/disables the decoding worker process. You can't enable the decoding worker process if `streaming_mode` is already enabled. Valid values are either `on` or `off`. Default is `off`.
+-   `streaming_mode` &mdash; Enables/disables streaming of large transactions.
+     When set to `off`, streaming is disabled. When set to any other value,
+     large transactions are decoded while they're still in progress, and the
+     changes are sent to the downstream. If the value is set to `file`,
+     then the incoming changes of streaming transactions are stored in a file
+     and applied only after the transaction is committed on upstream. If the
+     value is set to `writer`, then the incoming changes are directly sent to
+     one of the writers, if available. If parallel apply is disabled or no
+     writer is free to handle streaming transaction, then the changes are
+     written to a file and applied after the transaction is committed. If the
+     value is set to `auto`, PGD tries to intelligently pick between
+     `file` and `writer`, depending on the transaction property and available
+     resources. You can't enable `streaming_mode` if the WAL
+     decoder is already enabled. Default is `auto`
+
+     For more details, see [Transaction streaming](../transaction-streaming).
+-   `default_commit_scope` &mdash; The commit scope to use by default,
+     initially the `local` commit scope. This applies only to the
+     top-level node group. You can use individual rules for different
+     origin groups of the same commit scope. See
+     [Origin groups](../durability/commit-scopes/#origin-groups) for more details.
+-   `enable_proxy_routing` &mdash; Where routing through leader is enabled for given group.
+     Valid values are `on` or `off`. Default is `off`.
+-   `route_writer_max_lag` &mdash; Maximum lag in bytes of the new write candidate to be
+     selected as write leader. If no candidate passes this, no writer is
+     selected automatically.
+-   `route_reader_max_lag` &mdash; Maximum lag in bytes for a node to be considered a viable
+  read-only node. Currently reserved for future use.
+-   `enable_raft` &mdash; Whether group has it's own Raft consensus. This is necessary for
+     setting `enable_proxy_routing` to `on`. This is always `on` for top-level group. Valid values are `on` or `off`. Default is `off` for subgroups.
+
+!!! Warning
+    When you use this function to change the `apply_delay` value, the
+    change doesn't apply to nodes that are already members of the
+    group.
 
 ## `bdr.alter_node_interface`
 
@@ -153,6 +199,13 @@ bdr.alter_node_option(node_name text,
 -   `node_name` &mdash; Name of the node to be changed.
 -   `config_key` &mdash; Key of the option in the node to be changed.
 -   `config_value` &mdash; New value to be set for the given key.
+
+The node options that can be changed using this function are:
+- `route_priority` &mdash; Relative routing priority of the node against other nodes in the same node group. Default is '-1'.
+- `route_fence` &mdash; Whether the node is fenced from routing; when true, the node can't receive connections from PGD Proxy. Default is 'f' (false).
+- `route_writes` &mdash; Whether writes can be routed to this node, that is, whether the node can become write leader. Default is 't' (true) for data nodes and 'f' (false) for other node types.
+- `route_reads` &mdash; Whether read-only connections can be routed to this node. Currently reserved for future use. Default is 't' (true) for data and subscriber-only nodes, 'f' (false) for witness and standby nodes.
+- `route_dsn` &mdash; The dsn that the proxy will use to connect to this node. This is optional; if not set it defaults to the node's node_dsn value.
 
 ## `bdr.alter_subscription_enable`
 
@@ -385,9 +438,10 @@ bdr.join_node_group (
 -   `wait_for_completion` &mdash; Wait for the join process to complete before
      returning. Defaults to `true`.
 -   `synchronize_structure` &mdash; Set the kind of structure (schema) synchronization
-     to do during the join. Valid options are `all`, which synchronizes
-     the complete database structure, and `none`, which doesn't synchronize any
-     structure. However, it still synchronizes data.
+     to do during the join.  The default setting is `all`, which synchronizes
+     the complete database structure, The other available setting is `none`, which doesn't
+     synchronize any structure. However, it still synchronizes data (except for witness
+     nodes, which by design do not synchronize data).
 -   `pause_in_standby` &mdash; Optionally tells the join process to join only as a
      logical standby node, which can be later promoted to a full member.
      This option is deprecated and will be disabled or removed in future
@@ -575,4 +629,3 @@ bdr.wait_for_join_completion(verbose_progress boolean DEFAULT false)
 This function waits until the checks state of the local node reaches the target
 state, which was set by `bdr.create_node_group`, `bdr.join_node_group`, or
 `bdr.promote_node`.
-
