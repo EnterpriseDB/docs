@@ -13,9 +13,9 @@ Ensure that your databases and configuration files are backed up before starting
 To perform the rolling upgrade of the Postgres major version on your PGD cluster, carry out the following steps on each node in the cluster:
 
 - Confirm the current Postgres version.
-- Check to see if the target node is the write-leader of the cluster.
-- If it is the write-leader, perform a planned switchover to make another node write-leader so you can upgrade the target node and ensure cluster availability.
-- After confirming the target node is not the write-leader, stop Postgres.
+- Check to see if the target node is the write leader of the cluster.
+- If it is the write leader, perform a planned switchover to make another node write leader so you can upgrade the target node and ensure cluster availability.
+- After confirming the target node is not the write leader, stop Postgres.
 - Install the new Postgres version and bdr_pg_upgrade.
 - Initialize the new Postgres version.
 - Copy the configuration for the old Postgres version to the configuration for the new Postgres version.
@@ -40,7 +40,7 @@ Some steps of this process will involve you running commands as the Postgres own
 
 ### Confirm the current Postgres version
 
-Connect to any node that is still running Postgres 15 and use this command to connect to the PGD's `bdrdb` database:
+Connect to any node that is still running Postgres 15 and use the following command to connect to PGD's `bdrdb` database:
 
 ```bash
 sudo -u postgres psql bdrdb
@@ -64,47 +64,55 @@ You should see output similar to this for your cluster:
 
 Confirm that the Postgres version is the expected version. Then, use the `exit` command to return to the node's command prompt.
 
-### Check to see if the target node is the write-leader of the cluster
+### Plan upgrade order
 
-To see if the target node is the write-leader, run the `pgd show-groups` command:
+The cluster must be available throughout the process (i.e., a *rolling* upgrade). To achieve continuous cluster availability, we must perform a [planned switchover](#performing-a-planned-switchover) of the write leader node before upgrading that node. We also want to keep the number of planned [switchovers](https://www.enterprisedb.com/docs/pgd/latest/cli/command_ref/pgd_switchover/) to a minimum for availability and efficiency. Accordingly, we will upgrade the current write leader last in our upgrade order, so we only have to perform one planned switchover.
 
-```bash
-sudo -u postgres pgd show-groups
-```
-
-in our example, our target node kaboom, is the current write-leader:
-
-```
-Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
------        --------   ----   ------------ -------- ---- ------- ------------ 
-democluster  1935823863 global                       true false                
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom   
-```
-
-### If the target node is the write-leader, perform a planned switchover
-
-Therefore, to keep the cluster available throughout the upgrade (i.e. a *rolling upgrade*), we need to perform a planned switchover to make another node the write-leader while we upgrade the target node, kaboom. In this case, we switchover the write-leader from kaboom to kaftan:
-
-```bash
-sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaftan
-```
-
-Go ahead and run `pgd show-groups` again to make sure kaftan is now the write leader:
+To check to see which node is the current write leader, run the `pgd show-groups` command:
 
 ```bash
 sudo -u postgres pgd show-groups
 ```
 
-Then you should see that kaftan is now the write-leader:
+in our example, kaftan, is the current write leader:
 
 ```
 Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
 -----        --------   ----   ------------ -------- ---- ------- ------------ 
 democluster  1935823863 global                       true false                
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaftan  
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaftan   
 ```
 
-It is now safe to stop Postgres on kaboom.
+The `pgd-show-groups` command shows all groups in the EDB Postgres Distributed cluster and their summary, including the current write leader.
+
+Our upgrade plan can be upgrade kaboom, upgrade kaolin, perform a planned switchover from kaftan to kaboom, and finally upgrade kaftan.
+
+#### Performing a planned switchover
+
+Since our target node in this walkthrough is kaboom, we won't need to perform a planned switchover yet. 
+
+When you are ready to upgrade kaftan, switchover the write leader from kaftan to kaboom with the following command:
+
+```bash
+sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaboom
+```
+
+Then, run `pgd show-groups` to ensure the switchover was successful.
+
+```bash
+sudo -u postgres pgd show-groups
+```
+
+You will see that kaboom is now the write leader:
+
+```
+Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----        --------   ----   ------------ -------- ---- ------- ------------ 
+democluster  1935823863 global                       true false                
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom  
+```
+
+It is then safe to stop Postgres on kaftan.
 
 ### Stop Postgres on the target node
 
@@ -168,9 +176,20 @@ sudo mv /opt/postgres/data /opt/postgres/dataold
 sudo mv /opt/postgres/datanew /opt/postgres/data
 ```
 
+!!! Important
+If something goes wrong at some point during the procedure, you may want to rollback/revert a node to the older major version. To do this, rename directories again so that the current data directory, `/opt/postgres/data`, becomes `/opt/postgres/datafailed` and the old data directory, `/opt/postgres/dataold`, becomes the current data directory:
+
+```bash
+sudo mv /opt/postgres/data /opt/postgres/datafailed
+sudo mv /opt/postgres/dataold /opt/postgres/data
+```
+
+This should rollback/revert the node back to the previous major version of Postgres.
+!!!
+
 ### Stop all Postgres instances
 
-Although we stopped the Postgres service on the target node, kaboom, earlier, to be sure, run the stop command for both instances of Postgres (PG15 and PG16) on
+Although we stopped the Postgres service on the target node, kaboom, earlier, to be absolutely sure, run the stop command for both instances of Postgres (PG15 and PG16) on
 the target node, kaboom:
 
 ```bash
@@ -179,25 +198,18 @@ sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D /opt/postgres/data stop
 ```
 
 !!! Note
-When running the first or second command to stop the old Postgres instance, you may receive the following error:
-
-```bash
-pg_ctl: directory "/opt/postgres/dataold" is not a database cluster directory
-```
-
-You may instead receive this error:
+When running the first or second command to stop the Postgres instances, you may receive the following error:
 
 ```bash
 pg_ctl: PID file "/opt/postgres/data/postmaster.pid" does not exist
 Is server running?
 ```
-These errors are expected when both instances of Postgres are already shut down and, therefore, do not prevent the upgrade from progressing.
+This error is expected when both instances of Postgres are already shut down and, therefore, does not prevent the upgrade from progressing.
 !!!
 
 ### Check that you can upgrade safely
 
 The `bdr_pg_upgrade` tool has a `--check` option, which dry runs some of the upgrade process. We can use this option to ensure the upgrade will go smoothly. 
-
 
 However, first, we need a directory for the files created by `bdr_pg_upgrade`, which we can give ownership of to the user `postgres`. 
 
