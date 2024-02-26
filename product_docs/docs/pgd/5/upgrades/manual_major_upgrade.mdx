@@ -1,10 +1,10 @@
 ---
-title: Performing a Postgres major version rolling upgrade
+title: Performing a Postgres major version rolling upgrade 
 ---
 
 ## Performing a Postgres major version rolling upgrade
 
-This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD). The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides step-by-step instructions to facilitate a smooth and controlled upgrade process.
+This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD) as installed by Trusted Postgres Architect (TPA). The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides step-by-step instructions to facilitate a smooth and controlled upgrade process.
 
 !!! Note
 Ensure that your databases and configuration files are backed up before starting the upgrade process to help prevent data loss.
@@ -116,7 +116,7 @@ It is then safe to stop Postgres on kaftan.
 
 ### Stop Postgres on the target node
 
-If you are not already on the target node, exit the node you are on and use SSH to connect to the target node, in this case, kaboom, and then run:
+If you are not already on the target node, use SSH to connect to the target node, in this case, kaboom, and then run:
 
 ```bash
 sudo systemctl stop postgres
@@ -189,7 +189,7 @@ This should rollback/revert the node back to the previous major version of Postg
 
 ### Stop all Postgres instances
 
-Although we stopped the Postgres service on the target node, kaboom, earlier, to be absolutely sure, run the stop command for both instances of Postgres (PG15 and PG16) on
+Although we stopped the Postgres service on the target node, kaboom, earlier, to be sure, run the stop command for both instances of Postgres (PG15 and PG16) on
 the target node, kaboom:
 
 ```bash
@@ -402,28 +402,6 @@ Finally, start the modified Postgres service by running:
 sudo systemctl start postgres
 ```
 
-### Cleanup post-upgrade
-
-We want to run a vacuum over to the database at this point as best practice. When the upgrade
-ran, you may have noticed the post-upgrade report included:
-
-```
-Once you start the new server, consider running:
-    /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
-```
-
-Let's do this now. On the target node, run:
-
-```bash
-sudo -u postgres /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
-```
-
-Lastly, if you are sure you do not need to revert this node, you can clean up the old data directly folder as well, `dataold`:
-
-```bash
-sudo rm -r /opt/postgres/dataold
-```
-
 ### Validate the Postgres version
 
 Repeating our first step, check the version of Postgres to confirm that we upgraded kaboom correctly. While still on kaboom, run:
@@ -449,9 +427,41 @@ You should see an output similar to this for your cluster.
 
 Confirm that kaboom is running the upgraded Postgres version. 
 
+### Test the upgrade
+
+Now that the upgrade is complete on kaboom, you should test your database(s) thoroughly to ensure the upgrade has been successful. Being still connected to kaboom ensures that your tests run specifically against the new version without interference from cluster routing mechanisms.
+
+```bash
+sudo -u postgres psql <database_name>
+```
+
+Next, execute your test suite, including application transactions, queries, and other operations critical to your environment. Pay particular attention to performance metrics and compatibility with the new version. The insights gained from this controlled upgrade can inform your approach, helping to ensure a smoother transition for all nodes.
+
+### Clean up post-upgrade
+
+We want to run a vacuum over to the database at this point as best practice. When the upgrade ran, you may have noticed the post-upgrade report included:
+
+```
+Once you start the new server, consider running:
+    /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
+```
+
+Let's do this now. On the target node, run:
+
+```bash
+sudo -u postgres /usr/lib/postgresql/16/bin/vacuumdb --all --analyze-in-stages
+```
+
+Lastly, if you are sure you do not need to revert this node, you can clean up the old data directly folder as well, `dataold`:
+
+```bash
+sudo rm -r /opt/postgres/dataold
+```
+
 ### Next steps
 
-To complete upgrading the cluster for this worked example, repeat the previous steps on the other cluster nodes: kaftan and kaolin. After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions in the PGD database using:
+To complete upgrading the cluster for this worked example, repeat the previous steps starting with [stopping postgres](#stop-postgres-on-the-target-node) on kaolin, [perform a planned switchover](#performing-a-planned-switchover) from kaftan to a kaboom that has been [thoroughly tested](#test-the-upgrade), and repeat the upgrade steps one last time on kaftan. Throughout the rest of the procedure, be sure to apply any lessons learned or adjustments identified during the [node testing phase](#test-the-upgrade).
+After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions in the PGD database using:
 
 ```bash
 sudo -u postgres psql bdrdb
@@ -472,6 +482,7 @@ You should see output similar to the following:
  2111777360 | kaolin    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
 (3 rows)
 ```
+
 This shows that all the nodes have been successfully upgraded to the new Postgres version.
 
 #### Reconcile with TPA
@@ -484,15 +495,15 @@ After navigating to your cluster directory, use a code editor to edit `config.ym
 
 Unless already added to your .bashrc or .bash_profile, ensure the TPA tools are accessible in your command line session by adding TPA's binary directory to your PATH.
 
-```shell
+```bash
 export PATH=$PATH:/opt/EDB/TPA/bin
 ```
-Then we can redeploy the cluster:
+Finally, redeploy the cluster:
 
-```shell
+```bash
 tpaexec deploy democluster
 ```
 
-This final step should apply the configuration changes to the cluster managed by TPA. Upon successful deployment, the reconciliation of the new version of Postgres with TPA and the upgrade procedure as a whole is complete.
+This final step should apply the configuration changes to the cluster managed by TPA. If the deployment is successful, the reconciliation of the new version of Postgres with TPA and the upgrade procedure as a whole is complete.
 
 
