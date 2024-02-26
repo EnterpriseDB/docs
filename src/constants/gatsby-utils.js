@@ -2,8 +2,8 @@ const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
 
-const isGHBuild = !!process.env.GITHUB_HEAD_REF;
 const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
+const isGHBuild = !!ghBranch;
 
 const sortVersionArray = (versions) => {
   return versions.sort((a, b) =>
