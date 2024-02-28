@@ -1,21 +1,36 @@
 ---
-title: Performing a Postgres major version rolling upgrade 
+title: Performing a Postgres major version rolling upgrade on a PGD cluster built with TPA
+navTitle: Upgrade Postgres major version
+deepToC: true
 ---
 
-## Performing a Postgres major version rolling upgrade
+## Performing a Postgres major version rolling upgrade on PGD with TPA
 
-This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD) as installed by Trusted Postgres Architect (TPA). The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides step-by-step instructions to facilitate a smooth and controlled upgrade process.
+This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD) as installed by Trusted Postgres Architect (TPA). 
+
+The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. 
+
+Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides general step-by-step instructions and a worked example to help facilitate a smooth and controlled upgrade process.
 
 !!! Note
 Ensure that your databases and configuration files are backed up before starting the upgrade process to help prevent data loss.
 !!!
 
-To perform the rolling upgrade of the Postgres major version on your PGD cluster, carry out the following steps on each node in the cluster:
+### Planning the upgrade
 
-- Confirm the current Postgres version.
-- Check to see if the target node is the write leader of the cluster.
-- If it is the write leader, perform a planned switchover to make another node write leader so you can upgrade the target node and ensure cluster availability.
-- After confirming the target node is not the write leader, stop Postgres.
+Before beginning the upgrade process, we want to check our versions
+
+- Confirm the current major Postgres version.
+  - View versions from PGD by logging in and running: `SELECT * FROM bdr.group_versions_details;`
+- Plan the upgrade order of the nodes.
+  - Check which node is the write leader by running `sudo -u postgres pgd show-groups` and plan it to be the last node to upgrade after a planned switchover to an already upgraded node.
+
+### Perform the upgrade on each node.
+
+To perform the rolling upgrade of the Postgres major version, carry out the following steps on each node:
+
+- Perform a planned switchover if the target node is the current write leader.
+- Stop Postgres.
 - Install the new Postgres version and bdr_pg_upgrade.
 - Initialize the new Postgres version.
 - Copy the configuration for the old Postgres version to the configuration for the new Postgres version.
@@ -29,7 +44,14 @@ To perform the rolling upgrade of the Postgres major version on your PGD cluster
 - Test the upgrade directly against the newly upgraded node.
 - Cleanup post-upgrade. 
 
-We will look at these steps in more detail below, specifically for upgrading a node from Postgres 15 to Postgres 16. 
+### Reconciling the upgrade with TPA
+
+- Change the config.yml of the TPA-deployed cluster to the new version.
+  - `cluster_vars: postgres_version: '<new_version_number>'`
+- Use `tpaexec` to redeploy the PGD cluster with the updated config.yml.
+  - `tpaexec deploy <cluster_name>`
+
+We will look at these steps in more detail below, specifically for upgrading the write leader node from Postgres 15 to Postgres 16. 
 
 ## Worked example
 
@@ -490,9 +512,9 @@ This shows that all the nodes have been successfully upgraded to the new Postgre
 
 We used TPA to build our cluster in this worked example. So after all the nodes have been upgraded, we still need to [reconcile](https://www.enterprisedb.com/docs/tpa/latest/reference/reconciling-local-changes/) the upgraded version of Postgres with TPA to use TPA to manage the cluster in the future.
 
-To do this, return to the server's command line where your TPA cluster directory resides. In this worked example, our TPA cluster directory is `/home/ubuntu/democluster` on the instance where we originally deployed the cluster using TPA.
+To do this, return to the command line where your TPA cluster directory resides. In this worked example, our TPA cluster directory is `/home/ubuntu/democluster` on the instance where we originally deployed the cluster using TPA.
 
-After navigating to your cluster directory, use a code editor to edit `config.yml` and change `cluster vars:` from `postgres_version: '15'` to `postgres_version: '16'`.
+After navigating to your cluster directory, use a code editor to edit `config.yml` and change `cluster_vars:` from `postgres_version: '15'` to `postgres_version: '16'`.
 
 Unless already added to your .bashrc or .bash_profile, ensure the TPA tools are accessible in your command line session by adding TPA's binary directory to your PATH.
 
