@@ -4,58 +4,84 @@ navTitle: Upgrade Postgres major version
 deepToC: true
 ---
 
-## Performing a Postgres major version rolling upgrade on PGD with TPA
+## Overview
 
-This document outlines the procedure for performing a major version upgrade of a Postgres cluster using Postgres Distributed (PGD) as installed by Trusted Postgres Architect (TPA). 
+This document outlines the procedure for performing a major version upgrade of Postgres on a Postgres Distributed (PGD) cluster deployed by Trusted Postgres Architect (TPA).
 
 The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. 
 
 Upgrading your Postgres cluster to a newer major version is recommended to access improved features, performance enhancements, and security updates. This guide provides general step-by-step instructions and a worked example to help facilitate a smooth and controlled upgrade process.
 
+### Plan the upgrade
+
+The cluster must be available throughout the process (i.e., a *rolling* upgrade). To achieve continuous cluster availability, you must [perform a planned switchover](#performing-a-planned-switchover) of the [write leader](https://www.enterprisedb.com/docs/pgd/latest/terminology/#write-leader) node before upgrading it so that there is always a write leader available. 
+
+You can see which node is the write leader by connecting to the PGD cluster (e.g. using SSH) and running the `pgd show-groups` command:
+
+```bash
+sudo -u postgres pgd show-groups
+```
+
+To keep the number of planned [switchovers](https://www.enterprisedb.com/docs/pgd/latest/cli/command_ref/pgd_switchover/) to a minimum, you should upgrade the current write leader last in your upgrade order, so you only have to perform [one planned switchover](#performing-a-planned-switchover) during the upgrade process.
+
+### Perform the upgrade on each node
+
 !!! Note
 Ensure that your databases and configuration files are backed up before starting the upgrade process to help prevent data loss.
 !!!
 
-### Planning the upgrade
+Next, carry out the following steps on each node in order:
 
-Before beginning the upgrade process, we want to check our versions
-
+- Perform a [planned switchover](#plan-the-upgrade) if the target node is the current write leader.
+  - `sudo -u postgres pgd switchover --group-name <group_name> --node-name <new_write_leader_node_name>`
 - Confirm the current major Postgres version.
-  - View versions from PGD by logging in and running: `SELECT * FROM bdr.group_versions_details;`
-- Plan the upgrade order of the nodes.
-  - Check which node is the write leader by running `sudo -u postgres pgd show-groups` and plan it to be the last node to upgrade after a planned switchover to an already upgraded node.
-
-### Perform the upgrade on each node.
-
-To perform the rolling upgrade of the Postgres major version, carry out the following steps on each node:
-
-- Perform a planned switchover if the target node is the current write leader.
+  - View versions from PGD by logging in and running: `SELECT * FROM bdr.group_versions_details;`. Ensure the node you are about to upgrade has the expected major version running.
 - Stop Postgres.
+  - `systemctl stop postgres`
 - Install the new Postgres version and bdr_pg_upgrade.
+  - `sudo apt install edb-bdr<pgd_version_number>-pg<postgres_version_number> edb-bdr-utilities`
 - Initialize the new Postgres version.
+  - Make a new directory `/opt/postgres/datanew` to hold the upgraded PGDATA directory
+  - Initialize the new version of Postgres in the new directory using the newly installed version's `initdb` 
 - Copy the configuration for the old Postgres version to the configuration for the new Postgres version.
-- Rename the PGDATA directories.
-- Stop all Postgres instances.
+  - Copy the current version's configuration files to the new data directory: `postgresql.conf`, `postgresql.auto.conf`, `pg_hba.conf`, and the whole `conf.d` directory.
+- Rename the PGDATA directories to switch the old version's out and the new version's in.
+  - Move `/opt/postgres/data` to `/opt/postgres/dataold` and move `/opt/postgres/datanew` to `/opt/postgres/data`.
+- Double-check that both Postgres instances are not running.
+  - Use `pg_ctl` to stop both `/opt/postgres/dataold` and `/opt/postgres/data`
 - Check that you can upgrade safely.
+  - Use the `--check` option when running `bdr_pg_upgrade`
 - Run the Postgres major version upgrade.
-- Modify the Postgres service.
+  - Run `bdr_pg_upgrade` again without the `--check` option.
+- Update the Postgres service configuration to the new version and refresh the system's service manager to apply the changes.
+  - Replace the old version number with the new version number in the `postgres.service` file.
+    - `sudo sed -i -e 's/<old_version_number>/<new_version_number>/g' /etc/systemd/system/postgres.service`
 - Start Postgres.
+  - `systemctl start postgres`
 - Validate the new Postgres version. 
+  - Connect to the bdrdb database and run `SELECT * FROM bdr.group_versions_details;`
 - Test the upgrade directly against the newly upgraded node.
+  - Run your test suite against while still SSH'd into the newly upgraded node.
 - Cleanup post-upgrade. 
+  - Run the new PG version's `vacuumdb`.
+  - Remove the old version's data directory, `/opt/postgres/dataold`.
 
-### Reconciling the upgrade with TPA
+### Reconcile the upgrade with TPA
 
-- Change the config.yml of the TPA-deployed cluster to the new version.
+TPA needs to continue to manage the deployment effectively after the upgrade. Therefore, it's necessary to reconcile the upgraded nodes with TPA. Follow these steps to update the configuration and redeploy the PGD cluster through TPA.
+
+- Change the config.yml of the TPA-managed cluster to the new version.
   - `cluster_vars: postgres_version: '<new_version_number>'`
 - Use `tpaexec` to redeploy the PGD cluster with the updated config.yml.
   - `tpaexec deploy <cluster_name>`
 
-We will look at these steps in more detail below, specifically for upgrading the write leader node from Postgres 15 to Postgres 16. 
+We will look at these steps in more detail below, specifically for upgrading a [shadow node](https://www.enterprisedb.com/docs/pgd/latest/terminology/#write-leader) from Postgres 15 to Postgres 16. 
 
 ## Worked example
 
-A three-node cluster (kaftan, kaolin, and kaboom) we [deployed on AWS using TPA](https://www.enterprisedb.com/docs/pgd/latest/quickstart/quick_start_aws/) is currently running Postgres 15 on a Linux OS (Debian in this case). We want to upgrade a single node to Postgres 16 using `bdr_pg_upgrade`, and then upgrade the rest of the cluster similarly. This walkthrough focuses on the detailed steps for the target node, kaboom. 
+For this worked example, we start with a [TPA-managed PGD cluster deployed using the AWS Quickstart](https://www.enterprisedb.com/docs/pgd/latest/quickstart/quick_start_aws/). The cluster has three nodes: kaboom, kaolin, and kaftan, all running Postges 15.
+
+In this scenario, the current write leader is kaftan, and we will upgrade the first of two shadow nodes, kaboom.
 
 !!! Note
 Some steps of this process will involve you running commands as the Postgres owner. We will refer to this user as `postgres` throughout when appropriate. If you are running EDB Postgres Advanced Server, you will need to substitute that user with `enterprisedb` in all relevant commands.
@@ -63,7 +89,7 @@ Some steps of this process will involve you running commands as the Postgres own
 
 ### Confirm the current Postgres version
 
-Connect to any node that is still running Postgres 15 and use the following command to connect to PGD's `bdrdb` database:
+SSH into kaboom and use the following command to connect to PGD's `bdrdb` database:
 
 ```bash
 sudo -u postgres psql bdrdb
@@ -87,56 +113,6 @@ You should see output similar to this for your cluster:
 
 Confirm that the Postgres version is the expected version. Then, use the `exit` command to return to the node's command prompt.
 
-### Plan upgrade order
-
-The cluster must be available throughout the process (i.e., a *rolling* upgrade). To achieve continuous cluster availability, we must perform a [planned switchover](#performing-a-planned-switchover) of the write leader node before upgrading that node. We also want to keep the number of planned [switchovers](https://www.enterprisedb.com/docs/pgd/latest/cli/command_ref/pgd_switchover/) to a minimum for availability and efficiency. Accordingly, we will upgrade the current write leader last in our upgrade order, so we only have to perform one planned switchover.
-
-To check to see which node is the current write leader, run the `pgd show-groups` command:
-
-```bash
-sudo -u postgres pgd show-groups
-```
-
-In our example, kaftan, is the current write leader:
-
-```
-Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
------        --------   ----   ------------ -------- ---- ------- ------------ 
-democluster  1935823863 global                       true false                
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaftan   
-```
-
-The `pgd-show-groups` command shows all groups in the EDB Postgres Distributed cluster and their summary, including the current write leader.
-
-Our upgrade plan can be to upgrade kaboom, upgrade kaolin, perform a planned switchover from kaftan to kaboom, and finally upgrade kaftan.
-
-#### Performing a planned switchover
-
-Since our target node in this walkthrough is kaboom, we won't need to perform a planned switchover yet. 
-
-When you are ready to upgrade kaftan, switchover the write leader from kaftan to kaboom with the following command:
-
-```bash
-sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaboom
-```
-
-Then, run `pgd show-groups` to ensure the switchover was successful.
-
-```bash
-sudo -u postgres pgd show-groups
-```
-
-You will see that kaboom is now the write leader:
-
-```
-Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
------        --------   ----   ------------ -------- ---- ------- ------------ 
-democluster  1935823863 global                       true false                
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom  
-```
-
-It is then safe to stop Postgres on kaftan.
-
 ### Stop Postgres on the target node
 
 If you are not already on the target node, use SSH to connect to the target node, in this case, kaboom, and then run:
@@ -145,7 +121,7 @@ If you are not already on the target node, use SSH to connect to the target node
 sudo systemctl stop postgres
 ```
 
-This command halts the server on the current node, kaboom. Your cluster will continue running using the other two nodes.
+This command halts the server on the current node, in this case, kaboom. Your cluster will continue running using the other two nodes.
 
 ### Install the new Postgres version
 
@@ -483,7 +459,37 @@ sudo rm -r /opt/postgres/dataold
 
 ### Next steps
 
-To complete upgrading the cluster for this worked example, repeat the previous steps starting with [stopping postgres](#stop-postgres-on-the-target-node) on kaolin, [perform a planned switchover](#performing-a-planned-switchover) from kaftan to a kaboom that has been [thoroughly tested](#test-the-upgrade), and repeat the upgrade steps one last time on kaftan. Throughout the rest of the procedure, be sure to apply any lessons learned or adjustments identified during the [node testing phase](#test-the-upgrade).
+After completing the upgrade on kaboom, run the same steps to upgrade the other shadow node, namely kaolin.
+
+After kaolin, only kaftan needs to be upgraded. However, because kaftan is our write leader, we should perform a planned switchover before running the upgrade steps on the node to ensure availability.
+
+#### Performing a planned switchover
+
+When you are ready to upgrade kaftan, SSH into kaftan and switchover the write leader from kaftan to an already upgraded shadow node, for example kaboom, with the following command:
+
+```bash
+sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaboom
+```
+
+Then, run `pgd show-groups` to ensure the switchover was successful.
+
+```bash
+sudo -u postgres pgd show-groups
+```
+
+You will see that kaboom is now the write leader:
+
+```
+Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
+-----        --------   ----   ------------ -------- ---- ------- ------------ 
+democluster  1935823863 global                       true false                
+dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom  
+```
+
+It is now safe to upgrade kaftan using the same steps you used on the shadow nodes.
+
+#### Check PG versions across the cluster 
+
 After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions in the PGD database using:
 
 ```bash
@@ -510,7 +516,7 @@ This shows that all the nodes have been successfully upgraded to the new Postgre
 
 #### Reconcile with TPA
 
-We used TPA to build our cluster in this worked example. So after all the nodes have been upgraded, we still need to [reconcile](https://www.enterprisedb.com/docs/tpa/latest/reference/reconciling-local-changes/) the upgraded version of Postgres with TPA to use TPA to manage the cluster in the future.
+After all the nodes have been upgraded, we still need to [reconcile](https://www.enterprisedb.com/docs/tpa/latest/reference/reconciling-local-changes/) the upgraded version of Postgres with TPA so we can continue to use TPA to manage the cluster in the future.
 
 To do this, return to the command line where your TPA cluster directory resides. In this worked example, our TPA cluster directory is `/home/ubuntu/democluster` on the instance where we originally deployed the cluster using TPA.
 
