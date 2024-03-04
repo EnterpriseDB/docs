@@ -1,0 +1,332 @@
+---
+title: Step 4 - Installing the PGD software
+navTitle: Installing PGD software
+deepToC: true
+---
+
+## Installing the PGD software
+
+With the repositories configured, you can now install the Postgres Distributed software. 
+These steps must be carried out on each host before proceeding to the next step.
+
+* **Install the packages**
+  * Install the PGD packages which include a server specific BDR package and generic PGD cli packages. (`edb-bdr4-<postgresversion>`, and `edb-pgd-cli`)
+
+
+* **Ensure the Postgres database server has been initialized and started.**
+  * Use `systemctl status ` to check the service is running
+  * If not, initialize the database and start the service
+
+
+* **Configure the BDR extension**
+  * Add the BDR extension (`$libdir/bdr`) at the start of the shared_preload_libraries setting in `postgresql.conf`.
+  * Set the `wal_level` GUC variable to `logical` in `postgresql.conf`.
+  * Turn on commit timestamp tracking by setting `track_commit_timestamp` to `'on'` in `postgresql.conf`.
+  * Raise the maximum worker processes to 16 or higher by setting `max_worker_processes` to `'16'` in `postgresql.conf`.<br/><br/>
+  !!! Note The `max_worker_processes` value
+  The `max_worker_processes` value is derived from the topology of the cluster, the number of peers, number of databases and other factors. 
+  To calculate the needed value see [Postgres configuration/settings](../../postgres-configuration/#postgres-settings).
+  The value of 16 was calculated for the size of cluster we are deploying and must be raised for larger clusters.
+  !!!
+  * Set a password on the EnterprisedDB/Postgres user.
+  * Add rules to `pg_hba.conf` to allow nodes to connect to each other.
+    * Ensure that these lines are present in `pg_hba.conf:
+    ```
+    host all all all md5
+    host replication all all md5
+    ```
+  * Add a `.pgpass` file to allow nodes to authenticate each other.
+    * Configure a user with sufficient privileges to be able to log into the other nodes.
+    * See [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) in the Postgres documentation for more on the `.pgpass` file. 
+
+
+* **Restart the server.**
+  * Verify the restarted server is running with the modified settings and the bdr extension is available
+
+
+* **Create the replicated database.**
+  * Log into the server's default database (`edb` for EPAS, `postgres` for PGE and Community).
+  * Use `CREATE DATABASE bdrdb` to create the default PGD replicated database.
+  * Log out and then log back in to `bdrdb`.
+  * Use `CREATE EXTENSION bdr` to enable the BDR extension and PGD to run on that database.
+
+
+We will look in detail at the steps for EDB Postgres Advanced Server in the worked example below. 
+
+If you are installing PGD with EDB Postgres Extended Server or Community Postgres, the steps are similar, but details such as package names and paths are different. These differences are summarized in [Installing PGD for EDB Postgres Extended Server](#installing-pgd-for-edb-postgres-extended-server) and [Installing PGD for Postgresql](#installing-pgd-for-postgresql).
+
+## Worked example
+
+### Install the packages
+
+The first step is to install the packages. For each Postgres package, there is a `edb-bdr4-<postgresversion>` package to go with it. 
+For example, if we are installing EDB Postgres Advanced Server (epas) version 14, we would install `edb-bdr4-epas14`. 
+
+There are two other packages to also install: 
+
+- `edb-pgd-cli` for the PGD command line tool.
+
+To install all of these packages on a RHEL or RHEL compatible Linux, run:
+
+```
+sudo dnf -y install edb-bdr4-epas14 edb-pgd-cli
+```
+
+### Ensure the database is initialized and started
+
+If it wasn't initialized and started by the database's package initialisation (or you are repeating the process), you will need to initialize and start the server.
+
+To see if the server is running, you can check the service. The service name for EDB Advanced Server is `edb-as-14` so run:
+
+```
+sudo systemctl status edb-as-14
+```
+
+If the server is not running, this will respond with:
+
+```
+○ edb-as-14.service - EDB Postgres Advanced Server 14
+     Loaded: loaded (/usr/lib/systemd/system/edb-as-16.service; disabled; preset: disabled)
+     Active: inactive (dead)
+```
+
+The "Active: inactive (dead)" tells us we will need to initialize and start the server.
+
+You will need to know the path to the setup script for your particular Postgres flavor.
+
+For EDB Postgres Advanced Server, this script can be found in `/usr/edb/as14/bin` as `edb-as-14-setup`. 
+This command needs to be run with the `initdb` parameter and we need to pass an option setting the database to use UTF-8.
+
+```
+sudo PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
+```
+
+Once the database is initialized, we will start it which will enable us to continue configuring the BDR extension.
+
+```
+sudo systemctl start edb-as-14
+```
+
+### Configure the BDR extension
+
+Installing EDB Postgres Advanced Server creates a system user `enterprisedb` with admin capabilities when connected to the database. We will be using this user to configure the BDR extension.
+
+#### Preload the BDR library
+
+We want the bdr library to be preloaded with other libraries. 
+EPAS has a number of libraries already preloaded, so we have to prefix the existing list with the BDR library.
+
+```
+echo -e "shared_preload_libraries = '\$libdir/bdr,\$libdir/dbms_pipe,\$libdir/edb_gen,\$libdir/dbms_aq'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+```
+
+!!!tip
+This command format (`echo ... | sudo ... tee -a ...`) appends the echoed string to the end of the postgresql.conf file, which is owned by another user.
+!!!
+
+#### Set the `wal_level`
+
+The BDR extension needs to set the server to perform logical replication. We do this by setting `wal_level` to `logical`.
+
+```
+echo -e "wal_level = 'logical'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+
+```
+
+#### Enable commit timestamp tracking
+
+The BDR extension also needs the commit timestamp tracking enabled.
+
+```
+echo -e "track_commit_timestamp = 'on'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+
+```
+
+#### Raise `max_worker_processes`
+
+To communicate between multiple nodes, Postgres Distributed nodes run more worker processes than usual.
+The default limit (8) is too low even for a small cluster. 
+
+The `max_worker_processes` value is derived from the topology of the cluster, the number of peers, number of databases and other factors. 
+To calculate the needed value see [Postgres configuration/settings](../../postgres-configuration/#postgres-settings). 
+
+For this example, with a 3 node cluster, we are using the value of 16.
+
+Raise the maximum number of worker processes to 16 with this commmand:
+
+```
+echo -e "max_worker_processes = '16'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+
+```
+
+
+This value must be raised for larger clusters.
+
+#### Add a password to the Postgres enterprisedb user
+
+To allow connections between nodes, a password needs to be set on the Postgres enterprisedb user. 
+For this example, we are using the password `secret`.
+Select a different password for your deployments.
+You will need this password when we get to [Creating the PGD Cluster](05-creating-cluster).
+
+```
+sudo -u enterprisedb psql edb -c "ALTER USER enterprisedb WITH PASSWORD 'secret'"
+
+```
+
+#### Enable inter-node authentication in pg_hba.conf
+
+Out of the box, Postgres allows local authentication and connections with the database but not external network connections. 
+To enable this, edit `pg_hba.conf` and add appropriate rules, including rules for the replication users.
+To simplify the process, use this command:
+
+```
+echo -e "host all all all md5\nhost replication all all md5" | sudo tee -a /var/lib/edb/as14/data/pg_hba.conf
+
+```
+
+It will append
+
+```
+host all all all md5
+host replication all all md5
+
+```
+
+to `pg_hba.conf` which will enable the nodes to replicate.
+
+#### Enable authentication between nodes
+
+As part of the process of connecting nodes for replication, PGD logs into other nodes. 
+It will perform that log in as the user that Postgres is running under.
+For epas, this is the `enterprisedb` user.
+That user will need credentials to log into the other nodes.
+We will supply these credentials using the `.pgpass` file which needs to reside in the user's home directory.
+The home directory for `enterprisedb` is `/var/lib/edb`.
+
+Run this command to create the file:
+
+```
+echo -e "*:*:*:enterprisedb:secret" | sudo -u enterprisedb tee /var/lib/edb/.pgpass; sudo chmod 0600 /var/lib/edb/.pgpass
+
+```
+
+You can read more about the `.pgpass` file in [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) in the PostgreSQL documentation.
+
+### Restart the server
+
+After all these configuration changes, it is recommended that the server is restarted with:
+
+```
+sudo systemctl restart edb-as-14
+
+```
+
+#### Check the extension has been installed
+
+At this point, it is worth checking the extension is actually available and our configuration has been correctly loaded. You can query the pg_available_extensions table for the bdr extension like this:
+
+```
+sudo -u enterprisedb psql edb -c "select * from pg_available_extensions where name like 'bdr'"
+
+```
+
+Which should return an entry for the extension and its version.
+
+```
+ name | default_version | installed_version |                  comment
+------+-----------------+-------------------+-------------------------------------------
+ bdr  | 4.3.3           |                   | Bi-Directional Replication for PostgreSQL
+(1 row)
+ ```
+
+You can also confirm the other server settings using this command:
+
+```
+sudo -u enterprisedb psql edb -c "show all" | grep -e wal_level -e track_commit_timestamp -e max_worker_processes
+
+```
+
+### Create the replicated database
+
+The server is now prepared for PGD. 
+We need to next create a database named `bdrdb` and install the bdr extension when logged into it.
+
+```
+sudo -u enterprisedb psql edb -c "CREATE DATABASE bdrdb"
+sudo -u enterprisedb psql bdrdb -c "CREATE EXTENSION bdr"
+
+```
+
+Finally, test the connection by logging into the server.
+
+```
+sudo -u enterprisedb psql bdrdb
+```
+
+You should be connected to the server. 
+Execute the command "\\dx" to list extensions installed.
+
+```
+bdrdb=# \dx
+                                List of installed extensions
+       Name       | Version |   Schema   |                   Description
+------------------+---------+------------+--------------------------------------------------
+ bdr              | 4.3.3   | pg_catalog | Bi-Directional Replication for PostgreSQL
+ edb_dblink_libpq | 1.0     | pg_catalog | EnterpriseDB Foreign Data Wrapper for PostgreSQL
+ edb_dblink_oci   | 1.0     | pg_catalog | EnterpriseDB Foreign Data Wrapper for Oracle
+ edbspl           | 1.0     | pg_catalog | EDB-SPL procedural language
+ plpgsql          | 1.0     | pg_catalog | PL/pgSQL procedural language
+```
+
+Notice that the bdr extension is listed in the table, showing it is installed.
+
+## Summaries
+
+### Installing PGD4 for EDB Postgres Advanced Server
+
+These are all the commands used in this section gathered together for your convenience.
+
+```
+sudo dnf -y install edb-bdr4-epas14 edb-pgd-cli
+sudo PGSETUP_INITDB_OPTIONS="-E UTF-8" /usr/edb/as14/bin/edb-as-14-setup initdb
+sudo systemctl start edb-as-14
+echo -e "shared_preload_libraries = '\$libdir/bdr,\$libdir/dbms_pipe,\$libdir/edb_gen,\$libdir/dbms_aq'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+echo -e "wal_level = 'logical'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+echo -e "track_commit_timestamp = 'on'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+echo -e "max_worker_processes = '16'" | sudo -u enterprisedb tee -a /var/lib/edb/as14/data/postgresql.conf >/dev/null
+sudo -u enterprisedb psql edb -c "ALTER USER enterprisedb WITH PASSWORD 'secret'"
+echo -e "host all all all md5\nhost replication all all md5" | sudo tee -a /var/lib/edb/as14/data/pg_hba.conf
+echo -e "*:*:*:enterprisedb:secret" | sudo -u enterprisedb tee /var/lib/edb/.pgpass; sudo chmod 0600 /var/lib/edb/.pgpass
+sudo systemctl restart edb-as-14
+sudo -u enterprisedb psql edb -c "CREATE DATABASE bdrdb"
+sudo -u enterprisedb psql bdrdb -c "CREATE EXTENSION bdr"
+sudo -u enterprisedb psql bdrdb
+
+```
+
+### Installing PGD for EDB Postgres Extended Server
+
+If installing PGD with EDB Postgres Extended Server, there are a number of differences from the EPAS installation.
+
+* The BDR package to install is named `edb-bdrV-pgextendedNN` (where V is the PGD version and NN is the PGE version number)
+* A different setup utility should be called: /usr/edb/pgeNN/bin/edb-pge-NN-setup 
+* The service name is edb-pge-NN.
+* The system user is postgres (not enterprisedb)
+* The home directory for the postgres user is `/var/lib/pgqsl`
+* There are no pre-existing libraries to be added to `shared_preload_libraries`
+
+
+### Installing PGD for Postgresql
+
+If installing PGD with PostgresSQL, there are a number of differences from the EPAS installation.
+
+* The BDR package to install is named `edb-bdrV-pgNN` (where V is the PGD version and NN is the PostgreSQL version number)
+* A different setup utility should be called: /usr/pgsql-NN/bin/postgresql-NN-setup 
+* The service name is postgresql-NN.
+* The system user is postgres (not enterprisedb)
+* The home directory for the postgres user is `/var/lib/pgqsl`
+* There are no pre-existing libraries to be added to `shared_preload_libraries`
+
+
+

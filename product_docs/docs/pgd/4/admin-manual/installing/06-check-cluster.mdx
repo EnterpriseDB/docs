@@ -1,0 +1,210 @@
+---
+title: Step 6 - Checking the cluster
+navTitle: Checking the cluster
+deepToC: true
+---
+
+## Checking the cluster
+
+
+With the cluster up and running, it is worthwhile running some basic checks on how effectively it is replicating.
+
+In the following example, we show one quick way to do this but you should ensure that any testing you perform is appropriate for your use case.
+
+* **Preparation**
+  * Ensure the cluster is ready  
+    * Log into the database on host-one/node-one  
+    * Run `select bdr.wait_slot_confirm_lsn(NULL, NULL);`  
+    * When the query returns the cluster is ready  
+
+
+* **Create data**
+  The simplest way to test the cluster is replicating is to log into one node, create a table and populate it.
+   * On node-one create a table
+      ```sql
+      CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+      ```
+   * On node-one populate the table
+     ```sql
+     INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
+     ```
+   * On node-one monitor performance
+     ```sql
+     select * from bdr.node_replication_rates;
+     ```
+   * On node-one get a sum of the value column (for checking)
+     ```sql
+     select COUNT(*),SUM(value) from quicktest;
+     ```
+* **Check data**
+   * Log into node-two  
+      Log into the database on host-two/node-two
+    * On node-two get a sum of the value column (for checking)
+      ```sql
+      select COUNT(*),SUM(value) from quicktest;
+      ```
+   * Compare with the result from node-one
+   * Log into node-three 
+      Log into the database on host-three/node-three
+    * On node-three get a sum of the value column (for checking)
+      ```sql
+      select COUNT(*),SUM(value) from quicktest;
+      ```
+   * Compare with the result from node-one and node-two
+
+## Worked example
+
+### Preparation
+
+Log into host-one's Postgres server.
+```
+ssh admin@host-one
+sudo -iu enterprisedb psql bdrdb
+```
+
+This is your connection to PGD's node-one.
+
+#### Ensure the cluster is ready
+
+To ensure that the cluster is ready to go, run: 
+
+```
+select bdr.wait_slot_confirm_lsn(NULL, NULL)
+```
+
+This query will block while the cluster is busy initializing and return when the cluster is ready.
+
+In another window, log into host-two's Postgres server
+
+```
+ssh admin@host-two
+sudo -iu enterprisedb psql bdrdb
+```
+
+### Create data
+
+#### On node-one create a table
+
+Run
+
+```sql
+CREATE TABLE quicktest ( id SERIAL PRIMARY KEY, value INT ); 
+```
+
+#### On node-one populate the table
+
+```
+INSERT INTO quicktest (value) SELECT random()*10000 FROM generate_series(1,10000);
+```
+
+This will generate a table of 10000 rows of random values. 
+
+#### On node-one monitor performance
+
+As soon as possible, run:
+
+```sql
+select * from bdr.node_replication_rates;
+```
+
+And you should see statistics on how quickly that data has been replicated to the other two nodes.
+
+```console
+bdrdb=# select * from bdr.node_replication_rates;
+ peer_node_id | target_name | sent_lsn  | replay_lsn | replay_lag | replay_lag_bytes | replay_lag_size | apply_rate | catchup_interv
+al
+--------------+-------------+-----------+------------+------------+------------------+-----------------+------------+---------------
+---
+   1954860017 | node-three  | 0/DDAA908 | 0/DDAA908  | 00:00:00   |                0 | 0 bytes         |      13682 | 00:00:00
+   2299992455 | node-two    | 0/DDAA908 | 0/DDAA908  | 00:00:00   |                0 | 0 bytes         |      13763 | 00:00:00
+(2 rows)
+```
+
+And it's already replicated. 
+
+#### On node-one get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+to get some values from the generated data:
+
+```sql
+bdrdb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+### Check data
+
+#### Log into host-two's Postgres server.
+```
+ssh admin@host-two
+sudo -iu enterprisedb psql bdrdb
+```
+
+This is your connection to PGD's node-two.
+
+#### On node-two get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+to get node-two's values for the generated data:
+
+```sql
+bdrdb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+#### Compare with the result from node-one
+
+And the values will be identical.
+
+You can repeat the process with node-three, or generate new data on any node and see it replicate to the other nodes.
+
+#### Log into host-threes's Postgres server.
+```
+ssh admin@host-two
+sudo -iu enterprisedb psql bdrdb
+```
+
+This is your connection to PGD's node-three.
+
+#### On node-three get a checksum
+
+Run:
+
+```sql
+select COUNT(*),SUM(value) from quicktest;
+```
+
+to get node-three's values for the generated data:
+
+```sql
+bdrdb=# select COUNT(*),SUM(value) from quicktest;
+__OUTPUT__
+ count  |    sum
+--------+-----------
+ 100000 | 498884606
+(1 row)
+```
+
+#### Compare with the result from node-one and node-two
+
+And the values will be identical.
+
+
