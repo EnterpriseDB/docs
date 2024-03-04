@@ -26,14 +26,16 @@ We recommend the first option, as the other options don't scale well with multip
    * If PGD CLI has already been installed move to the next step.
    * For any system, repeat the [configure repositories](03-configuring-repositories) step on that system.
    * Then run the package installation command appropriate for that platform.
-      * RHEL and derivatives: `sudo dnf install edb-pgd5-cli`
-      * Debian, Ubuntu and derivatives: `sudo apt-get install edb-pgd5-cli`
+      * RHEL and derivatives: `sudo dnf install edb-pgd-cli`
+      * Debian, Ubuntu and derivatives: `sudo apt-get install edb-pgd-cli`
 * Create a configuration file
   * YAML file which specifies the cluster and endpoints the PGD CLI application should use.
 * Install the configuration file.
-  * Copy the YAML configuraiton file to a default config directory /etc/edb/pgd-cli/ as pgd-cli-config.yml.
+  * Copy the YAML configuraiton file to a default config directory /etc/edb/ as pgd-config.yml.
   * Repeat this on any system where you want to run PGD CLI.
-* Run pgd-cli.
+* Add `/usr/local/bin/` to the PATH for any user wanting to use PGD CLI.
+  * Add adding `/usr/local/bin` to the path in to your `.bashrc` file
+* Run pgd-cli with the `pgd` command.
 
 ### Use PGD CLI to explore the cluster
 * Check the health of the cluster with the `check-health` command.
@@ -52,7 +54,12 @@ Also consult the [PGD CLI documentation](../../cli/) for details of other config
 ### Ensure PGD CLI is installed
 
 In this worked example, we will be configuring and using PGD CLI on host-one, where we've already installed Postgres and PGD.
-There is no need to install PGD CLI again.
+There is no need to install PGD CLI again. We will be using the `enterprisedb` account as this is already configured for access to Postgres.
+If you are not logged in as `enterprisedb` switch to it using:
+
+```
+sudo -iu enterprisedb
+```
 
 ### Create a configuration file
 
@@ -80,15 +87,15 @@ For EDB Postgres Extended and Community PostgreSQL, this can be omitted.
 Create the PGD CLI configuration directory.
 
 ```
-sudo mkdir -p /etc/edb/pgd-cli
+sudo mkdir -p /etc/edb/
 ```
 
-Then write the configuration to the `pgd-cli-config.yml` file in the `/etc/edb/pgd-cli` directory.
+Then write the configuration to the `pgd-config.yml` file in the `/etc/edb/` directory.
 
 For our example, this could be run on host-one to create the file.
 
 ```
-cat <<EOF | sudo tee /etc/edb/pgd-cli/pgd-cli-config.yml
+cat <<EOF | sudo tee /etc/edb/pgd-config.yml
 cluster:
   name: pgd
   endpoints:
@@ -99,6 +106,20 @@ EOF
 ```
 
 This process can be repeated on any system where you need to use PGD CLI.
+
+### Add `/usr/local/bin` to the Path
+
+Run:
+
+```
+export PATH=/usr/local/bin:$PATH
+```
+
+To add the directory where the `pgd` command is installed to your path.
+
+For users other than `enteprisedb` sdd this line to your `.bashrc` file to always have `pgd` available.
+
+For the `enterprisedb` user, add the line to `/var/lib/ebd/.enterprisedb_profile`. 
 
 ### Run PGD CLI
 
@@ -155,97 +176,9 @@ To find out what versions of PGD and Postgres are running on the nodes, use `sho
 ```
 pgd show-version
 __OUTPUT__
-Node       BDR Version Postgres Version
 ----       ----------- ----------------
-node-one   5.3.0       16.1.0
-node-three 5.3.0       16.1.0
-node-two   5.3.0       16.1.0
+node-one   4.3.3       14.11.0
+node-two   4.3.3       14.11.0
+node-three 4.3.3       14.11.0
 ```
-
-### Show the proxies in the cluster
-
-You can view the configured proxies, with their groups and ports using [`show-proxies`](../../cli/command_ref/pgd_show-proxies):
-
-```
-pgd show-proxies
-__OUTPUT__
-Proxy           Group Listen Addresses Listen Port
------           ----- ---------------- -----------
-pgd-proxy-one   dc1   [0.0.0.0]        6432
-pgd-proxy-three dc1   [0.0.0.0]        6432
-pgd-proxy-two   dc1   [0.0.0.0]        6432
-```
-
-### Show the groups in the cluster
-
-Finally, the [`show-groups`](../../cli/command_ref/pgd_show-groups) command for PGD CLI shows which groups are configured, and more:
-
-```
-pgd show-node_groups
-__OUTPUT__
-Group Group ID   Type   Parent Group Location Raft Routing Write Leader
------ --------   ----   ------------ -------- ---- ------- ------------
-pgd   1850374637 global                       true false
-dc1   4269540889 data   pgd                   true true    node-one
-```
-
-This shows:
-* the groups
-* their types
-* their parent group
-* the groups location
-* whether Raft consensus is enabled
-* whether the group is routing connections
-* and if it is, which node is write leader for that
-
-The location is descriptive metadata, and so far we haven't set it. Let's use PGD CLI to rememdy that.
-
-### Set a group option
-
-We can set group options using PGD CLI too, using the [`set-group-options`](../../cli/command_ref/pgd_set-group-options) command. 
-This requires a `--group-name` flag to set the group this change should affect and a `--option` flag with the setting to change.
-If we wanted to set the `dc1` group's location to `London`, we would run:
-
-```
-pgd set-group-options --group-name dc1 --option "location=London"
-__OUTPUT__
-group options updated successfully
-```
-
-And we can verify that with `show-groups`
-
-
-```
-pgd show-node_groups
-__OUTPUT__
-Group Group ID   Type   Parent Group Location Raft Routing Write Leader
------ --------   ----   ------------ -------- ---- ------- ------------
-pgd   1850374637 global                       true false
-dc1   4269540889 data   pgd          London   true true    node-one
-```
-
-### Switching write leader
-
-If we need to change write leader in as group, to enable maintence on a host, PGD CLI offers the [`switchover`](../../cli/command_ref/pgd_switchover) command.
-It takes a `--group-name` flag with the group the node exists in and a `--node-name` flag with the name of the node to swith to.
-We can then run:
-
-```
-pgd switchover --group-name dc1 --node-name node-two
-__OUTPUT__
-switchover is complete
-```
-
-And we can verify that with `show-groups`:
-
-```
-pgd show-groups
-__OUTPUT__
-Group Group ID   Type   Parent Group Location Raft Routing Write Leader
------ --------   ----   ------------ -------- ---- ------- ------------
-pgd   1850374637 global                       true false
-dc1   4269540889 data   pgd          London   true true    node-two
-```
-
-More details on the available commands in PGD CLI are available in the [PGD CLI command reference](../../cli/command_ref/).
 
