@@ -22,7 +22,7 @@ the transaction has been flushed to disk and is visible to all other transaction
 SELECT bdr.add_commit_scope(
     commit_scope_name := 'example_scope',
     origin_node_group := 'left_dc',
-    rule := 'ALL (left_dc) GROUP COMMIT AND ANY 1 (right_dc) GROUP COMMIT',
+    rule := 'ALL (left_dc) GROUP COMMIT(commit_decision=raft) AND ANY 1 (right_dc) GROUP COMMIT',
     wait_for_ready := true
 );
 ```
@@ -54,6 +54,16 @@ See the Group Commit section of the [Limitations](limitations#group-commit) sect
 To use Group Commit, first define a [commit scope](commit-scopes). The commit scope
 determines the PGD nodes involved in the commit of a transaction.
 
+## Confirmation
+
+   Confirmation&nbsp;Level    | Group Commit Handling
+-------------------------|-------------------------------
+ `received`              | A remote PGD node confirms the transaction immediately after receiving it, prior to starting the local application.
+ `replicated`            |  Confirms after applying changes of the transaction but before flushing them to disk.
+ `durable`               |  Confirms the transaction after all of its changes are flushed to disk.
+ `visible` (default)     | Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions.
+
+
 ## Behavior
 
 The behavior of Group Commit depends on the configuration applied by the commit
@@ -76,7 +86,11 @@ to commit something. This approach requires application changes to use
 the CAMO transaction protocol to work correctly, as the application is in some way
 part of the consensus. For more on this approach, see [CAMO](camo).
 
-The `raft` decision uses PGDs built-in raft consensus for commit decisions. It can have low performance and is currently only required when using GROUP COMMIT with an ALL commit scope group.
+The `raft` decision uses PGDs built-in raft consensus for commit decisions. Use of the `raft` decision can reduce performance. It is currently only required when using GROUP COMMIT
+with an ALL commit scope group.
+
+Using an ALL commit scope group requires that the commit decision must be set to
+raft to avoid [reconciliation](#transaction-reconciliation) issues. 
 
 ### Conflict resolution
 
@@ -108,5 +122,48 @@ transaction abort is requested. If the transaction is already
 decided to be committed at the time the abort request is sent, the transaction
 does eventually COMMIT even though the client might receive an abort message.
 
-
 See also [Limitations](limitations). 
+
+### Transaction Reconciliation
+
+A group commit transaction’s commit on the origin node is implicitly converted 
+into a two phase commit. 
+
+In the first phase (prepare) the transaction is prepared locally and made ready to commit.
+The data is made durable but uncomitted at this stage so other transactions
+cannot see the changes made by this transaction. This prepared transaction gets
+copied to all remaining nodes through normal logical replication. 
+
+The origin node seeks confirmations from other nodes, as per rules in the group
+commit grammar. If it gets confirmations from minimum required nodes in the
+cluster, it decides to commit this transaction moving onto the second phase (commit) 
+where it also sends this decision via replication to other nodes which will also eventually commit on getting this message.
+
+There is a possibility of failure at various stages. For example, the origin
+node may crash after preparing the transaction. Or the origin and one or more
+replicas may crash. 
+
+This leaves the prepared transactions in the system. The `pg_prepared_xacts`
+view in Postgres can show prepared transactions on a system. The prepared
+transactions could be holding locks and other resources and they therefore need
+to be either aborted or committed. That decision has to be made with a consensus
+of nodes. 
+
+When commit_decision is `raft` then, raft acts as the reconcilator and these
+transactions are eventually, automatically, reconciled. 
+
+When the commit_decision is `group` then, transactions do not use raft. Instead 
+the write lead in the cluster performs the role of reconciliator. This is because 
+it is the node that is most ahead with respect to changes in its sub-group. It 
+detects when a node is down and initiates reconciliation for such node by looking
+for prepared transactions it may have with the down node as the origin. 
+
+For all such transactions, it sees if the nodes as per the rules of the commit
+scope have the prepared transaction, it takes a decision. This decision is
+conveyed over raft and needs majority of the nodes to be up to do
+reconciliation.
+
+This process happens in the background and there is no user command needed to
+control or issue this.
+
+
