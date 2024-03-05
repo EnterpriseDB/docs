@@ -1,39 +1,149 @@
 ---
-title: Upgrading Postgres major versions on BigAnimal
+title: Upgrading Postgres major versions
 navTitle: Upgrading Postgres major versions
 ---
 
-## Overview
+To upgrade small to moderately large databases (up to several tens of gigabytes) between major versions of Postgres on BigAnimal, we recommend utilizing pg_dump to migrate data and populate a new BigAnimal instance/cluster. This method will require some downtime, so schedule the pg_dump operation accordingly.
 
-To upgrade small to moderately large databases (up to several tens of gigabytes) between major versions of Postgres on BigAnimal, we recommend utilizing pg_dump to migrate data and populate a new instance. This method will require some downtime, so schedule the pg_dump operation accordingly.
-
-## Migrating Postgres Versions on BigAnimal with pg_dump
+## Migrating Postgres Versions with pg_dump
 
 !!! Important
-This method will likely accrue ingress and egress costs for the migrated data via your cloud service provider (CSP). Please consult the documentation of your cloud service provider to see how ingress and egress fees are calculated.
+This procedure will likely accrue ingress and egress costs from your cloud service provider (CSP) for the migrated data. Please consult your CSP's pricing documentation to see how ingress and egress fees are calculated to determine any extra costs.
 !!!
+
+### Create a new BigAnimal instance
+
+Using pg_dump to migrate between major versions requires creating a new BigAnimal instance of the new version of Postgres. This procedure does not work for upgrading a distributed high-availability BigAnimal instance.
+
+The new instance must have sufficient storage to receive the pg_dump from the old instance, so ensure enough storage is provisioned when creating the new instance.
+
+Considering these caveats, [create the new BigAnimal instance](../getting_started/creating_a_cluster.mdx).
+
+### Gather instance information
+
+For this procedure, information obtained from the BigAnimal console is necessary. For both the new instance and the old instance, you will need the following:
+
+1. Read/write URI
+2. Database name
+3. Username 
+4. Read/write host
+
+To access this information, select the **Clusters** tab on the left-side navigation menu of the BigAnimal console, find the instance in question, and select it by name. Clusters are listed in alphabetical order.
+
+After selecting the instance in question, navigate to the **Connect** tab under the instance's name on the show page. The information needed for the procedure is listed here under **Connection Info**.
 
 ### Confirming the Postgres versions before migration
 
-First, confirm your current version of Postgres on both the old BigAnimal instance (the instance you are migrating *from*) and the new BigAnimal instance (the instance you are migrating *to*)
+Next, from a machine with a Postgres client, confirm the current version of Postgres on both the old BigAnimal instance (the instance you are migrating *from*) and the new BigAnimal instance (the instance you are migrating *to*):
 
-`psql "<biganimal_read/write_uri>" -c "select version();"
+```
+psql "<biganimal_read/write_uri>" -c "select version();"
+```
+
+Example output looks like the following for a version 16 instance:
+
+```
+                                                               version                                                               
+-------------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 16.2 (Debian 16.2.0-3.buster) (BigAnimal Edition) on x86_64-pc-linux-gnu, compiled by gcc (Debian 8.3.0-6) 8.3.0, 64-bit
+(1 row)
+```
+
+Check that both instances are the expected versions.
 
 ### Execute the pg_dump command
 
-!!! Info
-Due to password authentications entailed with piping the pg_dump command to the psql command, it is recommended that you [utilize pgpass for authentication](https://www.postgresql.org/docs/16/libpq-pgpass.html) before performing the migration using the pg_dump command.
+!!! Warning
+Due to two different password authentications (one for the old instance and one for the new instance) entailed when piping the pg_dump command to the psql command, we recommend that you [setup to utilize pgpass for authentication](https://www.postgresql.org/docs/16/libpq-pgpass.html) before performing the migration using the pg_dump command. If you do not, the command prompt may become unresponsive.
 https://www.postgresql.org/docs/16/libpq-pgpass.html
 !!!
 
-Next, execute the pg_dump command:
+Next, execute the pg_dump command, filling in the two instances' [relevant information](#gather-instance-information) accordingly: read/write hosts, usernames, and db names.
 
 ```bash
 pg_dump -h <old_big_animal_read/write_host> -U <old_instance_user_name> -d <old_db_name> | psql -h <new_big_animal_read/write_host> -U <new_instance_username> -d <new_db_name> 
 ```
 
-Successful output looks like the following:
+!!! Tip
+Use the --verbose flag with pg_dump to get more detailed output as the command is executed.
+!!!
 
+The procedure can take several minutes, even for relatively smaller datasets (<5 GB). Successful example output looks like the following:
+
+```
+SET
+SET
+SET
+SET
+SET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+SET
+SET
+SET
+ERROR:  must be able to SET ROLE "postgres"
+CREATE EXTENSION
+ERROR:  must be owner of extension pg_stat_statements
+CREATE EXTENSION
+ERROR:  must be owner of extension pgaudit
+SET
+SET
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+ALTER TABLE
+COPY 20000000
+COPY 200
+COPY 0
+COPY 2000
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+REVOKE
+GRANT
+```
+
+There are three errors present here:
+
+
+```
+ERROR:  must be able to SET ROLE "postgres"
 ```
 
 ```
+ERROR:  must be owner of extension pg_stat_statements
+```
+
+```
+ERROR: must be owner of extension pgaudit
+```
+
+All three are expected and should not prevent the completion of the upgrade.
+
+### Validate the upgrade
+
+Finally, validate the upgrade by running the following on the new instance:
+
+```
+psql "<new_biganimal_read/write_uri>" -c "\dt+;"
+```
+
+Compare this output to the output when running the same command on the old instance:
+
+```
+psql "<old_biganimal_read/write_uri>" -c "\dt+;"
+```
+
+If the upgrade is a success, both the tables and the sizes of those tables are the same between instances. 
+
+!!! Note
+This is only a preliminary validation of the upgrade. Perform a more comprehensive testing of application functionalities and performance for a more thorough validation that the database operates as expected.
+!!!
