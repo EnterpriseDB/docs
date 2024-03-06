@@ -100,7 +100,7 @@ async function loadGHIssues(issueNumber) {
   let ret = issues.data.filter((i) => !i.pull_request);
 
   // if there's a "target" issue, make sure to include that
-  if (issueNumber) {
+  if (issueNumber && !ret.some((i) => i.number === issueNumber)) {
     let issue = await octokit.request(
       "GET /repos/{owner}/{repo}/issues/{issue_number}",
       {
@@ -113,7 +113,7 @@ async function loadGHIssues(issueNumber) {
       },
     );
 
-    if (issue) ret.push(issue);
+    if (issue?.data) ret.push(issue.data);
   }
 
   return ret;
