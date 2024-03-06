@@ -78,6 +78,8 @@ async function main() {
 
 Added issues: **${added}**
 Updated issues: **${updated}**`);
+
+  ghCore.summary.write();
 }
 
 async function loadGHIssues(issueNumber) {
@@ -100,7 +102,7 @@ async function loadGHIssues(issueNumber) {
   let ret = issues.data.filter((i) => !i.pull_request);
 
   // if there's a "target" issue, make sure to include that
-  if (issueNumber && !ret.some((i) => i.number === issueNumber)) {
+  if (issueNumber && !ret.some((i) => i.number == issueNumber)) {
     let issue = await octokit.request(
       "GET /repos/{owner}/{repo}/issues/{issue_number}",
       {
