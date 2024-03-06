@@ -1,0 +1,82 @@
+---
+title: Comparing Commit Scope Kinds
+navTitle: Comparing Commit Scope Kinds
+deepToC: true
+---
+
+## Comparing Group Commit and Synchronous Commit
+
+### How Group Commit works
+
+A Group Commit first writes a prepared transaction to local disk and waits till it is replicated to enough nodes and acknowledged by them before then committing it locally.
+
+This also gives resiliency to failure of N nodes, where N is the number of nodes required to acknowledge the transaction. 
+Commit scope syntax allows you to specify N as part of the rule.
+
+### How Synchronous Commit works
+
+A Synchronous Commit first commits to the local disk and then waits till the transaction is replicated to N other nodes, as per rules of the commit scope. 
+On receiving confirmation that the transaction has been received, applied or made durable, again based on commit scope settings, the client gets a completion acknowledgement of the transaction.
+
+Synchronous commit increases resiliency - it ensures that the transaction is received by more than N nodes before it is acknowledged to caller. 
+This makes it resilient to failure of N nodes.
+When conflicts occur, with Synchronous Commit the conflict resolution is always the default async PGD conflict resolution.
+
+### Network partitions and node crashes
+
+Consider a network partition where the originating node is on one side of the partition and the replicas on the other.
+We will look at the state of each kind, before and after connectivity is restored.
+
+#### Group Commit and network partitions
+
+With Group Commit and before restoration, the origin node will have prepared a transaction and wait for confirmations which will not arrive.
+It could timeout and abort the transaction or just wait if the timeout setting is long enough.
+Writes that are recieved by the replicas will be held back if the nodes have prepared transactions from the now-disconnected origin. If there are no prepared transactions, they can continue to recieve writes.
+
+When connectivity is restored, eventually where the origin node aborted the transaction, the prepared transaction on some or all of the replicas will follow in aborting the transaction.
+If there are prepared transactions on all nodes, including the origin, the reconciliation process will commit them. Until that happens, each prepared transaction will be holding locks that will prevent nodes that have resumed writing from overwriting the transaction's writes from other nodes 
+
+#### Synchronous Commit and network partitions
+
+With Synchronous Commit and before restoration, the origin node will have committed the transaction and be waiting for confirmations which won't arrive. 
+The client may cancel it or it could timeout, but the transaction stays committed on this node. 
+On the other side of the partition, it's possible that one of the replicas becomes write leader and that segment of the cluster starts writing to the other nodes.
+
+As the network restores, and if the commit hasn't reached the other nodes, it is possible that the writes on the non-origin side could conflict with the writes from the origin node. The default async conflict resolution may choose one over the other and give errors or potential inconsistencies.
+
+#### Group Commit and node crashes
+
+A similar situation to Group Commit network partitioning occurs with node crashes. The restored origin node may have a number of locally prepared transactions which it will start replicating as it returns. If conflict resolution is set to eager, and there are conflicts, the transaction can be aborted.
+
+#### Synchronous Commit and node crashes
+
+Like Synchronous Commit network partioning, when a restored origin node returns, it may have a number of locally committed transactions. It will re-commence replicating, including those transactions and there may be conflicts which will be resolve through the default async conflict resolution. Again, this may choose one over the other and result in errors or potential inconsistencies.
+
+### Performance
+
+TBD
+
+
+### Overall result
+
+To compare Group Commit and Synchronous Commit at the highest level, we can look at the effect each has on RPO and RTO.
+
+#### RPO
+
+RPO - Recovery Point Objective - is the term for how much data it is acceptable to lose after a disaster.
+With PGD's default async replication, the amount of data that could be lost is based on replication lag. 
+A cluster where the other nodes lag by 100MB behind the write-leader could lose 100MB of data in a disaster. 
+If that is acceptable, the RPO is therefore 100MB. 
+
+With Group Commit configured for MAJORITY or ALL nodes, there is going to be an RPO of 0 in the case of one node failing. That's because the origin node will not have any data which has not been confirmed as replicated on another node.
+
+With Synchronous Commit, even when MAJORITY OR ALL nodes are configured, the originating node may have committed transactions that the other nodes do not have. Since these transactions have not been acknowledged to the client, it can be thought of as an RPO of 0. When the node recovers though, these transactions will show up as committed and the node will have deal with the conflicts as it recovers.
+
+#### RTO
+
+RTO - Recovery Time Objective - is the term for how much time it is acceptable to wait to regain access to data after a disaster. With PGD's default async replication, RTO is 0 but at the cost of data loss.
+
+With Group Commit, getting access to the data can be immediate, but there will be time take once accessible again, to reconcile the prepared transactions. This only stops access to data that is modified by the prepared transactions and may ony be a few seconds. We can say the RTO is close to 0
+
+With Synchronous Commit, the RTO can be 0 but will require dealing with conflicts later. 
+
