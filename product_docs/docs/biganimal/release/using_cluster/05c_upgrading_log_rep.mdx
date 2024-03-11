@@ -3,3 +3,48 @@ title: Performing a rolling upgrade of Postgres major version on BigAnimal
 navTitle: Upgrading Postgres major versions
 ---
 
+## Using logical replication
+
+Logical replication offers a powerful method for upgrading major Postgres versions on BigAnimal instances, enabling a seamless transition with minimal downtime. 
+
+By replicating database changes in real-time from an older version to a newer one, this approach ensures data integrity and continuity. It's ideal for migrating data across different Postgres versions, providing a reliable upgrade path without sacrificing availability.
+
+
+
+### Schema Migration 
+
+First, copy over the database schema from the old instance using the `pg_dump` command:
+
+```
+pg_dump --schema-only  -h <old_biganimal_host> -U <old_biganimal_username> -d <old_biganimal_databasename> | psql -h <new_biganimal_host> -U <new_biganimal_username> -d <new_biganimal_databasename>
+```
+
+The `pg_dump --schema-only` command exports the schema (structure) of the existing database without the data. It's then piped into `psql` to import this schema into the new Postgres 16 instance. This prepares the target database with the necessary structure to hold the data.
+
+
+### Setting up Publication 
+
+On the Postgres 12 instance, a publication is created. This publication is configured to include specific tables, making their changes available for replication.
+
+```sql
+-- Add tables to publication
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_accounts;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_branches;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_history;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_tellers;
+```
+
+### Creating Logical Replication Slot
+
+A replication slot named 'v12_pub' using the 'pgoutput' plugin is created on the version 12 instance. This slot tracks changes to the published tables to ensure they can be replicated to the subscriber without losing any data.
+
+```sql
+SELECT pg_create_logical_replication_slot('v12_pub','pgoutput');
+```
+### Setting up Subscription
+
+On the Postgres 16 instance, a subscription to the publication on the Postgres 12 instance is created. This subscription uses a connection string to specify the source database and includes options to copy existing data and to follow the publication identified by 'v12_pub'. The subscription mechanism pulls schema changes and data from the source to the target database, effectively replicating the data.
+
+```sql
+CREATE SUBSCRIPTION v16_sub CONNECTION 'user=edb_admin host=p-4bwwpm01u4.pg.biganimal.io port=5432 dbname=edb_admin password=XXX' PUBLICATION v12_pub WITH (enabled=true, copy_data = true, create_slot = false, slot_name=v12_pub);
+```
