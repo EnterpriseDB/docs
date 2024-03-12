@@ -19,7 +19,7 @@ It is best practice to configure PGD Proxy for clusters to enable this behavior.
 To set up a proxy, you will need to first prepare the cluster and sub-group the proxies will be working with by:
 
 * Logging in and setting the `enable_raft` and `enable_proxy_routing` node group options to `true` for the sub-group. Use [`bdr.alter_node_group_option`](/pgd/latest/reference/nodes-management-interfaces#bdralter_node_group_option), passing the sub-group name, option name and new value as parameters.
-* Create as many uniquely named proxies as you plan to deploy using [`bdr.create_proxy`](/pgd/latest/reference/routing#bdrcreate_proxy) and passing the new proxy name and the sub-group it should be attached to.
+* Create as many uniquely named proxies as you plan to deploy using [`bdr.create_proxy`](/pgd/latest/reference/routing#bdrcreate_proxy) and passing the new proxy name and the sub-group it should be attached to. The `bdr.create_proxy` sets default values for different proxy options like 6432 will be set for proxy listen_port.
 * Create a `pgdproxy` user on the cluster with a password (or other authentication)
 
 ### Configure each host as a proxy
@@ -29,7 +29,7 @@ Once the cluster is ready, you will need to configure each host to run pgd-proxy
 * Creating a `pgdproxy` local user
 * Creating a `.pgpass` file for that user which will allow it to log into the cluster as `pgdproxy`.
 * Modify the systemd service file for pgdproxy to use the pgdproxy user.
-* Create a proxy config file for the host which lists the connection strings for all the nodes in the sub-group, specifies the name that the proxy should use when connected and gives the endpoint connection string the proxy will accept connections on.
+* Create a proxy config file for the host which lists the connection strings for all the nodes in the cluster, specifies the name that the proxy should use when fetching proxy options like listen_address, listen_port etc.
 * Install that file as `/etc/edb/pgd-proxy/pgd-proxy-config.yml`
 * Restart the systemd service and check its status.
 * Log into the proxy and verify its operation.
@@ -90,7 +90,7 @@ __OUTPUT__
 
  bdrdb=#
  ```
- 
+
 ## Create a pgdproxy user on the database
 
 Create a user named pgdproxy and give it a password. In this example we will use `proxysecret`
@@ -100,6 +100,16 @@ On any node, log into the bdrdb database as enterprisedb/postgres.
 ```
 CREATE USER pgdproxy PASSWORD 'proxysecret';
 GRANT bdr_superuser TO pgdproxy;
+```
+
+Set node level route_dsn option for each node with database user pgdproxy. The proxy uses these dsn while connecting to database nodes. Please note the initial dsn (on proxy start) is taken from proxy config file (see below). So, ideally, route_dsn given in this section and in config file should match.
+
+On any node, log into the bdrdb database as enterprisedb/postgres.
+
+```
+SELECT bdr.alter_node_option('host-one', 'route_dsn', 'host=host-one dbname=bdrdb port=5444 user=pgdproxy');
+SELECT bdr.alter_node_option('host-two', 'route_dsn', 'host=host-two dbname=bdrdb port=5444 user=pgdproxy');
+SELECT bdr.alter_node_option('host-three', 'route_dsn', 'host=host-three dbname=bdrdb port=5444 user=pgdproxy');
 ```
 
 ## Create a pgdproxy user on each host
@@ -140,7 +150,9 @@ properties:
 
 The name of the PGD cluster's top-level group (as `name`).
 An array of endpoints of databases (as `endpoints`).
-The proxy definition object with a name and endpoint (as `proxy`).
+The proxy definition object with a name (as `proxy`).
+
+The endpoints given in config file are used by proxy only at startup. Once started, the actual list is taken from route_dsn option (see above section).
 
 The first two properties will be the same for all hosts:
 
@@ -148,9 +160,9 @@ The first two properties will be the same for all hosts:
 cluster:
   name: pgd
   endpoints:
-    - host=host-one dbname=bdrdb port=5444
-    - host=host-two dbname=bdrdb port=5444
-    - host=host-three dbname=bdrdb port=5444
+    - "host=host-one dbname=bdrdb port=5444 user=pgdproxy"
+    - "host=host-two dbname=bdrdb port=5444 user=pgdproxy"
+    - "host=host-three dbname=bdrdb port=5444 user=pgdproxy"
 ```
 
 Remember that host-one, host-two and host-three are the systems on which the cluster nodes (node-one, node-two, node-three) are running.
@@ -161,16 +173,14 @@ This is necessary for EDB Postgres Advanced Server instances.
 For EDB Postgres Extended and Community PostgreSQL, this can be omitted.
 
 
-The third property, `proxy`, has a `name` property and an `endpoint` property.
+The third property, `proxy`, has a `name` property.
 The `name` property should be a name created with `bdr.create_proxy` earlier, and it will be different on each host.
-The `endpoint` property is a string which defines how the proxy presents itself as a connection string.
 A proxy cannot be on the same port as the Postgres server and, ideally, should be on a commonly used port different from direct connections, even when no Postgres server is running on the host.
 We typically use port 6432 for PGD proxies.
 
 ```
   proxy:
     name: pgd-proxy-one
-    endpoint: "host=localhost dbname=bdrdb port=6432"
 ```
 
 In this case, by using 'localhost' in the endpoint, we specify that this proxy will listen on the host where the proxy is running.
@@ -192,12 +202,11 @@ cat <<EOF | sudo tee /etc/edb/pgd-proxy/pgd-proxy-config.yml
 cluster:
   name: pgd
   endpoints:
-    - host=host-one dbname=bdrdb port=5444
-    - host=host-two dbname=bdrdb port=5444
-    - host=host-three dbname=bdrdb port=5444
+    - "host=host-one dbname=bdrdb port=5444 user=pgdproxy"
+    - "host=host-two dbname=bdrdb port=5444 user=pgdproxy"
+    - "host=host-three dbname=bdrdb port=5444 user=pgdproxy"
   proxy:
     name: pgd-proxy-one
-    endpoint: "host=localhost dbname=bdrdb port=6432"
 EOF
 ```
 
@@ -219,7 +228,7 @@ It should show `Active: (running)` in the opening details.
 
 ## Test the proxy
 
-At this point, connecting to the PGD Proxy port on any host in the cluster will result in the connection being routed to the current write lead node. 
+At this point, connecting to the PGD Proxy port on any host in the cluster will result in the connection being routed to the current write lead node.
 
 For example, and assuming you've installed the proxy on all three hosts, then connecting to the proxy on host-three should result in the connection being routed to node-one:
 
@@ -246,8 +255,8 @@ __OUTPUT__
 bdrdb#
 ```
 
-We should have connected to the current write leader of the sub-group. 
-You can confirm that by we can querying which node is the write leader for the sub-group we are connected to:
+We should have connected to the current write leader of the sub-group.
+You can confirm that by querying which node is the write leader for the sub-group we are connected to:
 
 ```sql
 SELECT node_group_name, write_lead FROM bdr.node_group_routing_summary;
