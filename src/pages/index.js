@@ -199,6 +199,10 @@ const Page = () => {
                 PG Failover Slots
               </IndexCardLink>
 
+              <IndexCardLink to="/pg_extensions/spl_check/">
+                EDB SPL Check
+              </IndexCardLink>
+
               <IndexCardLink to="/tools/edb_sqlpatch">
                 EDB SQL Patch
               </IndexCardLink>
