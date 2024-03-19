@@ -18,10 +18,10 @@ The following overview of the general instructions and [worked example](#worked-
 To help prevent data loss, ensure that your databases and configuration files are backed up before starting the upgrade process.
 !!!
 
-Perform the following steps on each node:
+Perform the following steps on each node while connected via SSH:
 
 * **Confirm the current Postgres version**
-  * View versions from PGD by logging in with `psql` and running `SELECT version();`.
+  * View versions from PGD by running `sudo -u postgres pgd show-version`.
   * Ensure that the expected major version is running.
 
 
@@ -31,7 +31,7 @@ Perform the following steps on each node:
 
 
 * **Stop Postgres on the target node**
-  * Stop the Postgres service on the current node by running `sudo systemctl stop postgresql`.
+  * Stop the Postgres service on the current node by running `sudo systemctl stop postgres`.
   * The target node is no longer actively participating as a node in the cluster.
 
 
@@ -83,7 +83,6 @@ This error is expected when both instances of Postgres are already shut down. Th
 
 
 * **Verify Upgrade Feasibility**
-
   * The `bdr_pg_upgrade` tool offers a `--check` option designed to perform a preliminary scan of your current setup, identifying any potential issues that could hinder the upgrade process.
   * To initiate the safety check, append the `--check` option to your `bdr_pg_upgrade` command.
   * This operation simulates the upgrade process without making any changes, providing insights into any compatibility issues, deprecated features, or configuration adjustments required for a successful upgrade. 
@@ -104,12 +103,12 @@ This error is expected when both instances of Postgres are already shut down. Th
 
 
 * **Restart Postgres**
-  * Proceed to restart the PostgreSQL service: 
-    * `systemctl start postgresql`
+  * Proceed to restart the PostgreSQL service.
+    * `systemctl start postgres`
 
 
 * **Validate the new Postgres version**
-  * Verify that your PostgreSQL instance is now running the new version by logging in with `psql` and running `SELECT version();`
+  * Verify that your PostgreSQL instance is now upgraded by again running `sudo -u postgres pgd show-version`.
 
 
 * **Clean up post-upgrade**
@@ -145,27 +144,21 @@ Some steps of this process involve running commands as the Postgres owner. We re
 
 ### Confirm the current Postgres version
 
-SSH into kaboom to confirm the major version of Postgres is as expected. First, connect using `psql`:
+SSH into kaboom to confirm the major version of Postgres is as expected by running:
 
 ```bash
-sudo -u postgres psql
-```
-
-When connected, use the following query:
-
-```sql
-SELECT version();
+sudo -u postgres pgd show-version
 ```
 
 The output should be similar to this for your cluster:
 
 ```
-  node_id   | node_name |        postgres_version        | bdr_version 
-------------+-----------+--------------------------------+-------------
- 3490219809 | kaftan    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
- 2710197610 | kaboom    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
- 2111777360 | kaolin    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
-(3 rows)
+Node   BDR Version Postgres Version               
+----   ----------- ----------------               
+kaboom 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+kaftan 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+kaolin 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+
 ```
 
 Confirm that the Postgres version is the expected version. Then, use the `exit` command to return to the node's command prompt.
@@ -174,13 +167,13 @@ Confirm that the Postgres version is the expected version. Then, use the `exit` 
 
 The cluster must be available throughout the process (that is, a *rolling* upgrade). There must always be an available write leader to maintain continuous cluster availability. So, if the target node is the current write leader, you must [perform a planned switchover](#performing-a-planned-switchover) of the [write leader](../terminology/#write-leader) node before upgrading it so that a write leader is always available. 
 
-While SSH'd into kaboom, see which node is the current write leader using the `pgd show-groups` command:
+While SSH'd into kaboom, see which node is the current write leader of the group you are upgrading using the `pgd show-groups` command:
 
 ```bash
 sudo -u postgres pgd show-groups
 ```
 
-In this case, you can see that kaboom is the current write leader:
+In this case, you can see that kaboom is the current write leader of the sole subgroup `dc1_subgroup`:
 
 ```
 Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
@@ -189,7 +182,7 @@ democluster  1935823863 global                       true false
 dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom  
 ```
 
-So we must perform a planned switchover to another node in the cluster.
+So we must perform a planned switchover of the write leader of `dc1_subgroup` to another node in the cluster.
 
 #### Perform a planned switchover
 
@@ -199,14 +192,14 @@ Change the write leader to kaftan so kaboom's Postgres instance can be stopped:
 sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaftan
 ```
 
-After this is successful, it is safe to stop Postgres on the target node. Of course, if kaftan is still the write leader when we come to upgrading it, we will need to perform another planned switchover at that time.
+After the switchover is successful, it is safe to stop Postgres on the target node. Of course, if kaftan is still the write leader when we come to upgrading it, we will need to perform another planned switchover at that time.
 
 ### Stop Postgres on the target node
 
 While SSH'd into the target node (in this case, kaboom), stop Postgres on the node by running:
 
 ```bash
-sudo systemctl stop postgresql
+sudo systemctl stop postgres
 ```
 
 This command halts the server on kaboom. Your cluster continues running using the other two nodes.
@@ -485,7 +478,7 @@ sudo systemctl daemon-reload
 Start the modified Postgres service by running:
 
 ```bash
-sudo systemctl start postgresql
+sudo systemctl start postgres
 ```
 
 ### Validate the new Postgres version
@@ -493,23 +486,21 @@ sudo systemctl start postgresql
 Repeating the first step, check the version of Postgres to confirm that you upgraded kaboom correctly. While still on kaboom, run:
 
 ```bash
-sudo -u postgres psql bdrdb
+sudo -u postgres pgd show-version
 ```
 
-```sql
-SELECT * FROM bdr.group_versions_details;
+Use the output to confirm that kaboom is running the upgraded Postgres version:
+
+ ```
+Node   BDR Version Postgres Version               
+----   ----------- ----------------               
+kaboom 5.4.0       16.2 (Debian 16.2-2EDB.buster) 
+kaftan 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+kaolin 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+
 ```
 
-The output is similar to this for your cluster. Use the output to confirm that kaboom is running the upgraded Postgres version. 
-
-```
-  node_id   | node_name |        postgres_version        | bdr_version 
-------------+-----------+--------------------------------+-------------
- 3490219809 | kaftan    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
- 2710197610 | kaboom    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
- 2111777360 | kaolin    | 15.5 (Debian 15.5-1EDB.buster) | 5.3.0
-(3 rows)
-```
+Here kaboom has been upgraded to major version 16.
 
 ### Clean up post-upgrade
 
@@ -536,34 +527,29 @@ sudo rm -r /opt/postgres/dataold
 
 After completing the upgrade on kaboom, run the same steps on kaolin and kaftan.
 
-However, if you followed along with this example and kaftan is the write leader still, you must perform a planned switchover before running the upgrade steps on that node to ensure availability.
+If you followed along with this example and kaftan is the write leader, you must [perform a planned switchover](perform-a-planned-switchover) to another, already upgraded, node before running the upgrade steps on kaftan to ensure availability.
 
 #### Check PG versions across the cluster 
 
-After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions in the PGD database:
+After completing the upgrade on all nodes, while connected to one of the nodes, you can once again check your versions:
 
 ```bash
-sudo -u postgres psql bdrdb
+sudo -u postgres pgd show-version
 ```
 
-Then run the SQL query:
-
-```sql
-SELECT * FROM bdr.group_versions_details;
-```
 
 The output is similar to the following:
 
-```
-  node_id   | node_name |        postgres_version        | bdr_version 
-------------+-----------+--------------------------------+-------------
- 3490219809 | kaftan    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
- 2710197610 | kaboom    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
- 2111777360 | kaolin    | 16.1 (Debian 16.1-1EDB.buster) | 5.3.0
-(3 rows)
+ ```
+Node   BDR Version Postgres Version               
+----   ----------- ----------------               
+kaboom 5.4.0       16.2 (Debian 16.2-2EDB.buster) 
+kaftan 5.4.0       16.2 (Debian 16.2-2EDB.buster) 
+kaolin 5.4.0       16.2 (Debian 16.2-2EDB.buster) 
+
 ```
 
-This output shows that all the nodes were successfully upgraded to the new Postgres version.
+This output shows that all the nodes were successfully upgraded to the new Postgres version 16.
 
 #### Reconcile with TPA
 
