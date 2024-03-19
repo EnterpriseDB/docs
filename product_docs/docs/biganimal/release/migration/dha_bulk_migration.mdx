@@ -50,7 +50,7 @@ Create a virtual machine with your preferred operating system in the cloud to or
     * Run the automated installer to install the repositories.
 * Install the required software.
     * You will need to install and configure:
-        * PSQL
+        * psql
         * PGD CLI
         * Migration Toolkit
 
@@ -254,19 +254,15 @@ ab-node-3 199017004  ab-group data ACTIVE        ACTIVE       Up     3
 ```
 
 
-Etcetc (for now)
+* Run `pgd -f pgd-cli-config.yml show-raft` to confirm the raft leader:
 
-    pgd show-raft  -f pgd-cli-config.yml
+* Run `pgd -f pgd-cli-config.yml show-replslots` to confirm the replication slots:
 
+* Run `pgd -f pgd-cli-config.yml show-subscriptions` to confirm the subscriptions:
 
-    pgd show-replslots –verbose -f pgd-cli-config.yml
+* Run `pgd -f pgd-cli-config.yml show-groups` to confirm the groups:
 
-
-    pgd show-subscriptions -f pgd-cli-config.yml
-
-
-    pgd show-groups -f pgd-cli-config.yml
-
+These commands will provide a snapshot of the state of the cluster before the migration begins.
 
 ## Migrating the data
 
@@ -337,7 +333,6 @@ nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbty
 nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables stock public >mtk_4.log &
 ```
 
-
 This sets up four processes, each transferring a particular table or sets of tables as a background process. 
 
 While this is running, monitor the lag. Log into the destination node with psql and monitor lag with:
@@ -346,7 +341,7 @@ While this is running, monitor the lag. Log into the destination node with psql 
 SELECT NOW(); SELECT pg_size_pretty( pg_database_size('bdrdb') ); SELECT * FROM bdr.node_replication_rates;
 ```
 
-Once the lag has been consumed, return to the shell.
+Once the lag has been consumed, return to the shell. You can now use `tail` to monitor the progress of the data transfer by following the log files of each process:
 
 ```
 tail -f mtk_1.log
@@ -362,7 +357,7 @@ Now dump the post-data section of the source database:
 pg_dump -Fd -f postdata --section=pre-data -h <source-hostname> -p <source-port> -U <source-user> <source-dbname>
 ```
 
-And then load the post-data section into the target database/
+And then load the post-data section into the target database:
 
 ```
 pg_restore -Fd -d “host=ab-node-1-host dbname=<target-dbname> user=<target-user> options='-cbdr.ddl_locking=off -cbdr.commit_scope=local'”  --section=post-data postdata
@@ -390,3 +385,5 @@ You can now restore the default commit scopes to the cluster to allow PGD to man
 ```sql
 select bdr.alter_node_group_option('ab-group','default_commit_scope', 'ba001_ab-group-a');
 ```
+
+The cluster is now loaded and ready for production. For more assurance, you can run the `pgd -f pgd-cli-config.yml check-health` command to check the overall health of the cluster (and the other pgd commands from when you checked the cluster earlier).
