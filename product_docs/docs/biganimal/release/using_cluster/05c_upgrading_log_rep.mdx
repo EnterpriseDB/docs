@@ -5,6 +5,10 @@ navTitle: Upgrading Postgres major versions
 
 ## Using logical replication
 
+!!! Note
+This procedure does not work with distributed high-availability BigAnimal instances.
+!!!
+
 Logical replication offers a powerful method for upgrading major Postgres versions on BigAnimal instances, enabling a seamless transition with minimal downtime. 
 
 By replicating database changes in real-time from an older version to a newer one, this approach ensures data integrity and continuity. It's ideal for migrating data across different Postgres versions, providing a reliable upgrade path without sacrificing availability.
@@ -15,7 +19,7 @@ Depending on where your older and newer versioned BigAnimal instances are locate
 
 ### Create a new BigAnimal instance
 
-Migrating between major versions first requires creating a new BigAnimal instance with the newer version of Postgres. This procedure does not work for upgrading from a single node or standard high availability cluster to a distributed high-availability BigAnimal instance.
+Migrating between major versions first requires creating a new BigAnimal instance with the newer version of Postgres.
 
 The new instance must have sufficient storage to receive the data from the old instance, so ensure enough storage is provisioned when creating the new instance.
 
@@ -160,13 +164,13 @@ This slot tracks changes to the published tables on the old instance to ensure t
 Now, logged into the newer Postgres instance, create a subscription to the publication on the older instance in the following format:
 
 ```sql
-CREATE SUBSCRIPTION <name_of_subscription> CONNECTION 'user=<old_instance_username> host=<old_instance_read/write_host> port=<old_instance_port> dbname=<old_instance_dbname> password=<old_instance_password>' PUBLICATION <publication_name> WITH (enabled=true, copy_data = true, create_slot = false, slot_name=<slot_name>);
+CREATE SUBSCRIPTION <name_of_subscription> CONNECTION 'user=<old_instance_username> host=<old_instance_read/write_host> sslmode=require port=<old_instance_port> dbname=<old_instance_dbname> password=<old_instance_password>' PUBLICATION <publication_name> WITH (enabled=true, copy_data = true, create_slot = false, slot_name=<slot_name>);
 ```
 
 Specifically, in this example:
 
 ```sql
-CREATE SUBSCRIPTION v16_sub CONNECTION 'user=edb_admin host=p-x67kjhacc4.pg.biganimal.io port=5432 dbname=edb_admin password=XXX' PUBLICATION v12_pub WITH (enabled=true, copy_data = true, create_slot = false, slot_name=v12_pub);
+CREATE SUBSCRIPTION v16_sub CONNECTION 'user=edb_admin host=p-x67kjhacc4.pg.biganimal.io sslmode=require port=5432 dbname=edb_admin password=XXX' PUBLICATION v12_pub WITH (enabled=true, copy_data = true, create_slot = false, slot_name=v12_pub);
 ```
 
 Look for the expected output: `CREATE SUBSCRIPTION`.
@@ -212,3 +216,10 @@ If logical replication is running correctly, each time you run `\dt+;` you see t
  public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes | 
  public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 0 bytes | 
 ```
+
+#### LiveCompare
+
+A final validation step to ensure the two databases are identical is to use [EDB's LiveCompare](https://www.enterprisedb.com/docs/livecompare/latest/). 
+
+LiveCompare compares the databases, generates a comparison report, and provides data manipulation language (DML) scripts so you can optionally apply the DML and fix any database inconsistencies.
+
