@@ -27,6 +27,7 @@ const Layout = ({
   const { baseUrl, imageUrl, title: siteTitle } = useSiteMetadata();
   const meta = pageMeta || {};
   const url = meta.path ? baseUrl + meta.path : baseUrl;
+  const canonicalUrl = meta.canonicalPath ? baseUrl + meta.canonicalPath : url;
   const title = meta.title ? `EDB Docs - ${meta.title}` : siteTitle;
 
   const [dark, setDark] = useState(false);
@@ -122,9 +123,7 @@ const Layout = ({
         )}
         <meta property="og:image" content={imageUrl} />
         <meta property="og:url" content={url} />
-        {meta.canonicalPath && (
-          <link rel="canonical" href={baseUrl + meta.canonicalPath} />
-        )}
+        <link rel="canonical" href={canonicalUrl} />
         <meta name="twitter:card" content="summary_large_image" />
         <body className={`bg-${background} fixed-container`} />
       </Helmet>

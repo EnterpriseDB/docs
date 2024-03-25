@@ -68,22 +68,25 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/pwr/latest/">
-                      Postgres Workload Report v1 released
+                    <Link className="homepage-headling-link" to="/pgd/latest/">
+                      EDB Postgres Distributed 5.4.0
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.MONITORING}
+                      iconName={iconNames.HIGH_AVAILABILITY}
                       className="fill-orange ms-2 float-end"
                     />
-                    PWR is used for building PostgreSQL workload reports,
-                    mimicking those produced by Oracle's Automatic Workload
-                    Repository (AWR) tool.
+                    Documentation for the latest version of PGD includes an
+                    all-new section covering manual configuration and
+                    installation.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
-                      <Link className="btn-sm ms-2" to="/pwr/latest/">
+                      <Link
+                        className="btn-sm ms-2"
+                        to="/pgd/latest/admin-manual/"
+                      >
                         Find out more &rarr;
                       </Link>
                     </p>
@@ -102,28 +105,21 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/pg_extensions/pg_squeeze/"
-                    >
-                      New extension: PG Squeeze
+                    <Link className="homepage-headling-link" to="/tpa/latest/">
+                      Trusted Postgres Architect 23.30
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.POSTGRESQL}
+                      iconName={iconNames.INSTANCES}
                       className="fill-orange ms-2 float-end"
                     />
-                    Open-source extension PG Squeeze removes unused space from a
-                    table and optionally sorts tuples according to a particular
-                    index.
+                    TPA now provides a custom Execution Environment image to be
+                    used on RedHat Ansible Automation Controller.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/pg_extensions/pg_squeeze/"
-                      >
+                      <Link className="btn-sm ms-2" to="/tpa/latest/tower/">
                         Find out more &rarr;
                       </Link>
                     </p>
@@ -197,6 +193,10 @@ const Page = () => {
 
               <IndexCardLink to="/pg_extensions/pg_failover_slots">
                 PG Failover Slots
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/spl_check/">
+                EDB SPL Check
               </IndexCardLink>
 
               <IndexCardLink to="/tools/edb_sqlpatch">
