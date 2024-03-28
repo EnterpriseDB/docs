@@ -1,0 +1,225 @@
+---
+title: Performing a major version upgrade of Postgres on BigAnimal
+navTitle: Upgrading Postgres major versions
+---
+
+## Using logical replication
+
+!!! Note
+This procedure does not work with distributed high-availability BigAnimal instances.
+!!!
+
+Logical replication offers a powerful method for upgrading major Postgres versions on BigAnimal instances, enabling a seamless transition with minimal downtime. 
+
+By replicating database changes in real-time from an older version to a newer one, this approach ensures data integrity and continuity. It's ideal for migrating data across different Postgres versions, providing a reliable upgrade path without sacrificing availability.
+
+!!! Important
+Depending on where your older and newer versioned BigAnimal instances are located, this procedure may accrue ingress and egress costs from your cloud service provider (CSP) for the migrated data. Please consult your CSP's pricing documentation to see how ingress and egress fees are calculated to determine any extra costs.
+!!!
+
+### Create a new BigAnimal instance
+
+Migrating between major versions first requires creating a new BigAnimal instance with the newer version of Postgres.
+
+The new instance must have sufficient storage to receive the data from the old instance, so ensure enough storage is provisioned when creating the new instance.
+
+Considering these caveats, [create the new BigAnimal instance](../getting_started/creating_a_cluster.mdx).
+
+### Gather instance information
+
+Next, information obtained from the BigAnimal console is necessary. For both the new instance and the old instance, you need the following:
+
+1. Read/write URI
+2. Database name
+3. Username 
+4. Read/write host
+
+To access this information, select the **Clusters** tab on the left-side navigation menu of the BigAnimal console, find the instance in question, and select it by name. Clusters are listed in alphabetical order.
+
+After selecting the instance in question, navigate to the **Connect** tab under the instance's name on its show page. The information needed for the procedure is listed there under **Connection Info**.
+
+### Confirm the Postgres versions before migration
+
+Next, from a machine with a Postgres client, confirm the current version of Postgres on both the old BigAnimal instance (the instance you are migrating *from*) and the new BigAnimal instance (the instance you are migrating *to*):
+
+```
+psql "<biganimal_read/write_uri>" -c "select version();"
+```
+
+Example output looks like the following for a version 16 instance:
+
+```
+                                                               version                                                               
+-------------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 16.2 (Debian 16.2.0-3.buster) (BigAnimal Edition) on x86_64-pc-linux-gnu, compiled by gcc (Debian 8.3.0-6) 8.3.0, 64-bit
+(1 row)
+```
+
+Check that both instances are the expected versions.
+
+### Migrate the database schema 
+
+Next, confirm the database schema you want to migrate. While logged into the old instance, use the following SQL to look at the table data:
+
+```sql
+/dt+;
+```
+
+Here is a sample database schema for this example:
+
+```
+                                           List of relations
+ Schema |       Name       | Type  |   Owner   | Persistence | Access method |    Size    | Description 
+--------+------------------+-------+-----------+-------------+---------------+------------+-------------
+ public | pgbench_accounts | table | edb_admin | permanent   | heap          | 1572 MB    | 
+ public | pgbench_branches | table | edb_admin | permanent   | heap          | 8192 bytes | 
+ public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes    | 
+ public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 120 kB     | 
+```
+
+
+Then, from a Postgres client, copy over the database schema from the old instance using the `pg_dump` command:
+
+```
+pg_dump --schema-only  -h <old_biganimal_host> -U <old_biganimal_username> -d <old_biganimal_databasename> | psql -h <new_biganimal_host> -U <new_biganimal_username> -d <new_biganimal_databasename>
+```
+
+The `pg_dump --schema-only` command exports the schema (structure) of the existing database without the data. It's then piped into `psql` to import this schema into the new Postgres instance. This prepares the target database with the necessary structure to hold the data.
+
+Finally, log into the new instance and confirm that the database schema migrated correctly. Run `\dt+;` in this example again and you see the database schema migrated to the new instance as expected:
+
+```
+                                         List of relations
+ Schema |       Name       | Type  |   Owner   | Persistence | Access method |  Size   | Description 
+--------+------------------+-------+-----------+-------------+---------------+---------+-------------
+ public | pgbench_accounts | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_branches | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 0 bytes | 
+```
+
+While the schema looks the same on the new instance, the "Size" column shows 0 bytes of data, confirming that only the schema has been migrated so far.
+
+### Setting up Publication 
+
+To set up the publication, log into the old BigAnimal instance and create a publication:
+
+```sql
+CREATE PUBLICATION <pub_name>;
+```
+
+In this example:
+
+
+```sql
+CREATE PUBLICATION v12_pub;
+```
+
+The expected output is `CREATE PUBLICATION`.
+
+Next, configure the publication to include the specific tables you want replicated on the new instance:
+
+```sql
+ALTER PUBLICATION <pub_name> ADD TABLE <table_name>;
+```
+
+Which in the current example is:
+
+```sql
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_accounts;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_branches;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_history;
+ALTER PUBLICATION v12_pub ADD TABLE pgbench_tellers;
+```
+
+Each of these alterations produces `ALTER PUBLICATION` output upon success. 
+
+### Creating the Logical Replication Slot
+
+Then, on the older versioned instance, create a replication slot using the 'pgoutput' plugin:
+
+```sql
+SELECT pg_create_logical_replication_slot('<slot_name>','pgoutput');
+```
+
+In the current example:
+
+```sql
+SELECT pg_create_logical_replication_slot('v12_pub','pgoutput');
+```
+
+If successful, the expected output is something like the following:
+
+```
+ pg_create_logical_replication_slot 
+------------------------------------
+ (v12_pub,0/AC003330)
+```
+
+This slot tracks changes to the published tables on the old instance to ensure they can be replicated to the subscriber on the new instance without losing any data.
+
+
+### Setting up the Subscription
+
+Now, logged into the newer Postgres instance, create a subscription to the publication on the older instance in the following format:
+
+```sql
+CREATE SUBSCRIPTION <name_of_subscription> CONNECTION 'user=<old_instance_username> host=<old_instance_read/write_host> sslmode=require port=<old_instance_port> dbname=<old_instance_dbname> password=<old_instance_password>' PUBLICATION <publication_name> WITH (enabled=true, copy_data = true, create_slot = false, slot_name=<slot_name>);
+```
+
+Specifically, in this example:
+
+```sql
+CREATE SUBSCRIPTION v16_sub CONNECTION 'user=edb_admin host=p-x67kjhacc4.pg.biganimal.io sslmode=require port=5432 dbname=edb_admin password=XXX' PUBLICATION v12_pub WITH (enabled=true, copy_data = true, create_slot = false, slot_name=v12_pub);
+```
+
+Look for the expected output: `CREATE SUBSCRIPTION`.
+
+In this example, the subscription uses a connection string to specify the source database and includes options to copy existing data and to follow the publication identified by 'v12_pub'. 
+
+The subscription mechanism pulls schema changes (with some exceptions, as noted in the PostgreSQL documentation on Limitations of Logical Replication: https://www.postgresql.org/docs/current/logical-replication-restrictions.html) and data from the source to the target database, effectively replicating the data.
+
+### Validate the migration
+
+Finally, you can follow the progression of the migration. First, use `\dt+;` while logged into the older BigAnimal Postgres instance to see how much data is to be replicated. In this example:
+
+```
+                                           List of relations
+ Schema |       Name       | Type  |   Owner   | Persistence | Access method |    Size    | Description 
+--------+------------------+-------+-----------+-------------+---------------+------------+-------------
+ public | pgbench_accounts | table | edb_admin | permanent   | heap          | 1572 MB    | 
+ public | pgbench_branches | table | edb_admin | permanent   | heap          | 8192 bytes | 
+ public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes    | 
+ public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 120 kB     | 
+```
+
+Then run `\dt+;` while logged into the new BigAnimal instance and compare:
+
+```
+                                         List of relations
+ Schema |       Name       | Type  |   Owner   | Persistence | Access method |  Size   | Description 
+--------+------------------+-------+-----------+-------------+---------------+---------+-------------
+ public | pgbench_accounts | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_branches | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 0 bytes | 
+```
+
+If logical replication is running correctly, each time you run `\dt+;` you see that more data has been migrated:
+
+```
+                                         List of relations
+ Schema |       Name       | Type  |   Owner   | Persistence | Access method |  Size   | Description 
+--------+------------------+-------+-----------+-------------+---------------+---------+-------------
+ public | pgbench_accounts | table | edb_admin | permanent   | heap          | 344 MB  | 
+ public | pgbench_branches | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_history  | table | edb_admin | permanent   | heap          | 0 bytes | 
+ public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 0 bytes | 
+```
+
+#### LiveCompare
+
+A final validation step to ensure the two databases are identical is to use [EDB's LiveCompare](https://www.enterprisedb.com/docs/livecompare/latest/). 
+
+LiveCompare compares the databases, generates a comparison report, and provides data manipulation language (DML) scripts so you can optionally apply the DML and fix any database inconsistencies.
+
