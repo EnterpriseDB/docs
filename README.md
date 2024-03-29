@@ -114,17 +114,17 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
 ### Set Up a Full Development Environment
 
-1. Install [Node.js version 20 LTS](https://nodejs.org/en/download/).
+1. Install [Node.js version 18 LTS](https://nodejs.org/en/download/).
 
    - If you already have Node installed, you can verify your version by running `node -v` in the cloned repo directory.
 
-   - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 20 LTS).
+   - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 18 LTS).
 
 1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
 1. NPM 9 is the package manager we're using for this project.
 
-   - run `npm -v` to ensure you are using the correct version of npm. If you do not have version 10, you can run `npm install -g npm@10` to install it.
+   - run `npm -v` to ensure you are using the correct version of npm. If you do not have version 9, you can run `npm install -g npm@9` to install it.
 
    - NPM may fail with a permissions related issue. To fix that, ensure that your user account owns the required directory: `sudo chown -R $(whoami) /usr/local/lib/node_modules`
 
