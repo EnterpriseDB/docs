@@ -19,34 +19,38 @@ Depending on where your older and newer versioned BigAnimal instances are locate
 
 ### Create a new BigAnimal instance
 
-Migrating between major versions first requires creating a new BigAnimal instance with the newer version of Postgres.
+To perform a major version upgrade, create a BigAnimal instance with your desired version of Postgres. This is your target instance.
 
-The new instance must have sufficient storage to receive the data from the old instance, so ensure enough storage is provisioned when creating the new instance.
+Ensure your target instance is provisioned with a storage size equal to or greater than your source instance.
 
-Considering these caveats, [create the new BigAnimal instance](../getting_started/creating_a_cluster.mdx).
+Considering these caveats, [create your target BigAnimal instance](../getting_started/creating_a_cluster.mdx).
 
 ### Gather instance information
 
-Next, information obtained from the BigAnimal console is necessary. For both the new instance and the old instance, you need the following:
+Use the BigAnimal console to obtain the following information for your source and target instance:
 
-1. Read/write URI
-2. Database name
-3. Username 
-4. Read/write host
+- Read/write URI
+- Database name
+- Username 
+- Read/write host
 
-To access this information, select the **Clusters** tab on the left-side navigation menu of the BigAnimal console, find the instance in question, and select it by name. Clusters are listed in alphabetical order.
+Using the BigAnimal console:
 
-After selecting the instance in question, navigate to the **Connect** tab under the instance's name on its show page. The information needed for the procedure is listed there under **Connection Info**.
+    1. Select the **Clusters** tab.
+    1. Select your source instance.
+    1. From the Connect tab, obtain the information from **Connection Info**.
+
+Repeat the steps for your target instance.
 
 ### Confirm the Postgres versions before migration
 
-Next, from a machine with a Postgres client, confirm the current version of Postgres on both the old BigAnimal instance (the instance you are migrating *from*) and the new BigAnimal instance (the instance you are migrating *to*):
+Confirm the Postgres version on both your source and target BigAnimal instances:
 
 ```
 psql "<biganimal_read/write_uri>" -c "select version();"
 ```
 
-Example output looks like the following for a version 16 instance:
+Output using Postgres 16:
 
 ```
                                                                version                                                               
@@ -55,11 +59,9 @@ Example output looks like the following for a version 16 instance:
 (1 row)
 ```
 
-Check that both instances are the expected versions.
-
 ### Migrate the database schema 
 
-Next, confirm the database schema you want to migrate. While logged into the old instance, use the following SQL to look at the table data:
+On your source instance, view the details of the schema to be migrated:
 
 ```sql
 /dt+;
@@ -77,16 +79,13 @@ Here is a sample database schema for this example:
  public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 120 kB     | 
 ```
 
-
-Then, from a Postgres client, copy over the database schema from the old instance using the `pg_dump` command:
+Use pg_dump with the `--schema-only` flag to copy the schema from your source to your target instance. For more information on using `pg_dump`, [see the Postgres documentation](https://www.postgresql.org/docs/current/app-pgdump.html).
 
 ```
-pg_dump --schema-only  -h <old_biganimal_host> -U <old_biganimal_username> -d <old_biganimal_databasename> | psql -h <new_biganimal_host> -U <new_biganimal_username> -d <new_biganimal_databasename>
+pg_dump --schema-only  -h <source_biganimal_host> -U <source_biganimal_username> -d <source_biganimal_databasename> | psql -h <target_biganimal_host> -U <target_biganimal_username> -d <target_biganimal_databasename>
 ```
 
-The `pg_dump --schema-only` command exports the schema (structure) of the existing database without the data. It's then piped into `psql` to import this schema into the new Postgres instance. This prepares the target database with the necessary structure to hold the data.
-
-Finally, log into the new instance and confirm that the database schema migrated correctly. Run `\dt+;` in this example again and you see the database schema migrated to the new instance as expected:
+On the target instance, confirm the schema is migrated:
 
 ```
                                          List of relations
@@ -98,11 +97,13 @@ Finally, log into the new instance and confirm that the database schema migrated
  public | pgbench_tellers  | table | edb_admin | permanent   | heap          | 0 bytes | 
 ```
 
-While the schema looks the same on the new instance, the "Size" column shows 0 bytes of data, confirming that only the schema has been migrated so far.
+!!! Note
+A successful schema-only copy shows the tables with zero bytes.
+!!!
 
 ### Setting up Publication 
 
-To set up the publication, log into the old BigAnimal instance and create a publication:
+Create a publication from your source instance:
 
 ```sql
 CREATE PUBLICATION <pub_name>;
@@ -115,15 +116,13 @@ In this example:
 CREATE PUBLICATION v12_pub;
 ```
 
-The expected output is `CREATE PUBLICATION`.
+The expected output is: `CREATE PUBLICATION`.
 
-Next, configure the publication to include the specific tables you want replicated on the new instance:
+Add tables that you want to replicate to your target instance:
 
 ```sql
 ALTER PUBLICATION <pub_name> ADD TABLE <table_name>;
 ```
-
-Which in the current example is:
 
 ```sql
 ALTER PUBLICATION v12_pub ADD TABLE pgbench_accounts;
@@ -132,11 +131,11 @@ ALTER PUBLICATION v12_pub ADD TABLE pgbench_history;
 ALTER PUBLICATION v12_pub ADD TABLE pgbench_tellers;
 ```
 
-Each of these alterations produces `ALTER PUBLICATION` output upon success. 
+The expected output is: `ALTER PUBLICATION`.
 
 ### Creating the Logical Replication Slot
 
-Then, on the older versioned instance, create a replication slot using the 'pgoutput' plugin:
+Then, on the source instance, create a replication slot using the `pgoutput` plugin:
 
 ```sql
 SELECT pg_create_logical_replication_slot('<slot_name>','pgoutput');
@@ -148,7 +147,7 @@ In the current example:
 SELECT pg_create_logical_replication_slot('v12_pub','pgoutput');
 ```
 
-If successful, the expected output is something like the following:
+The expected output returns the `slot_name` and `lsn`.
 
 ```
  pg_create_logical_replication_slot 
@@ -156,24 +155,23 @@ If successful, the expected output is something like the following:
  (v12_pub,0/AC003330)
 ```
 
-This slot tracks changes to the published tables on the old instance to ensure they can be replicated to the subscriber on the new instance without losing any data.
-
+The replication slot tracks changes to the published tables from the source instance and replicates changes to the subscriber on the target instance.
 
 ### Setting up the Subscription
 
-Now, logged into the newer Postgres instance, create a subscription to the publication on the older instance in the following format:
+On the target instance, create a subscription:
 
 ```sql
-CREATE SUBSCRIPTION <name_of_subscription> CONNECTION 'user=<old_instance_username> host=<old_instance_read/write_host> sslmode=require port=<old_instance_port> dbname=<old_instance_dbname> password=<old_instance_password>' PUBLICATION <publication_name> WITH (enabled=true, copy_data = true, create_slot = false, slot_name=<slot_name>);
+CREATE SUBSCRIPTION <name_of_subscription> CONNECTION 'user=<source_instance_username> host=<source_instance_read/write_host> sslmode=require port=<source_instance_port> dbname=<source_instance_dbname> password=<source_instance_password>' PUBLICATION <publication_name> WITH (enabled=true, copy_data = true, create_slot = false, slot_name=<slot_name>);
 ```
 
-Specifically, in this example:
+Creating a subscription on a Postgres 16 instance to a publication on a Postgres 12 instance:
 
 ```sql
 CREATE SUBSCRIPTION v16_sub CONNECTION 'user=edb_admin host=p-x67kjhacc4.pg.biganimal.io sslmode=require port=5432 dbname=edb_admin password=XXX' PUBLICATION v12_pub WITH (enabled=true, copy_data = true, create_slot = false, slot_name=v12_pub);
 ```
 
-Look for the expected output: `CREATE SUBSCRIPTION`.
+The expected output is: `CREATE SUBSCRIPTION`.
 
 In this example, the subscription uses a connection string to specify the source database and includes options to copy existing data and to follow the publication identified by 'v12_pub'. 
 
