@@ -1,0 +1,148 @@
+---
+title: Postgres Distributed (PGD) presets on BigAnimal
+navTitle: PGD presets on BigAnimal
+deepToC: true
+---
+
+BigAnimal seamlessly integrates Postgres Distributed (PGD), simplifying its powerful but complex configurations for users. By abstracting intricate settings, BigAnimal allows organizations to harness PGD's capabilities without needing deep technical knowledge. 
+
+This managed service ensures that businesses can scale and optimize their database solutions efficiently, focusing on growth rather than the underlying technical complexities.
+
+## Commit scope
+
+Commit scopes in PGD define how transactions are replicated across a distributed database, impacting consistency and reliability. They set rules for transaction commitment, leveraging various strategies like Group Commit or Synchronous Commit to align with business data integrity goals. 
+
+Customizing these settings can be complex, presenting a challenge for users. 
+
+BigAnimal simplifies this by preconfiguring optimal settings, including commit scopes, allowing users to leverage PGD's power without delving into intricate configurations. This approach ensures users enjoy the benefits of PGD's distributed capabilities with ease, aligning with business needs for scalability and reliability.
+
+The goal is for transactions to remain consistent across all database nodes, enhancing reliability in distributed environments. 
+
+### BigAnimal's commit_scope preset options
+
+BigAnimal's commit scope presets simplify managing commit scopes in PGD. These presets balance customization with ease of use, allowing users to enjoy PGD's benefits without the complexity of manual configurations:
+
+| Preset ID | Description                         | Use Case                             |
+|-----------|-------------------------------------|--------------------------------------|
+| ba001     | SYNCHRONOUS_COMMIT                  | High consistency for critical data   |
+| ba002     | LAG_CONTROL + NOT                   | Manages replication lag with external validation|
+| ba003     | SYNCHRONOUS_COMMIT + LAG_CONTROL + NOT   | Combines consistency with lag control and external validation|
+| ba004     | SYNCHRONOUS_COMMIT + NOT            | Combines consistency with external validation |
+
+### BigAnimal's commit_scope catalog 
+
+The following commit_scope catalog provides a structured framework for creating, managing, and applying these configurations outlined above. It highlights essential rules and guidelines to ensure consistency, reliability, and performance. This can be helpful when devising which presets to apply to which subgroups depending on their specific needs.
+
+1. MAY create additional commit_scopes at any time and MUST NOT edit any existing commit_scopes.
+2. MUST set default commit scope only upon creation of a new PGD data group and MAY set a different default in the future.
+3. MUST name all our commit scopes pre-pended with the commit_scope ID ba000 and MUST be backed by A.R.T. approved documentation.
+4. There will be multiple renditions of each BigAnimal commit_scope per PGD sub-group by appending the PGD group name _location-a.
+5. MUST be functionally tested against the various PGD sub-group configurations.
+6. SHOULD be performance tested and tuned.
+7. SHOULD NOT be an exhaustive catalog of possibilities and permutations.
+
+### ba001
+
+ba001, specifically, offers a default setup that optimizes data consistency and reliability across distributed environments, exemplifying BigAnimal's approach to making advanced database features accessible and manageable. 
+
+This is the baseline BigAnimal provided commit_scope. ba001 utilizes the `MAJORITY`, instead of the `ALL` parameter so that in the case of 3 data nodes, the third is asynchronous. This allows for a node failure without interrupting the single region service. 
+
+Therefore, it brings each PGD data group inline with our conventional High Availability offering where one regional replica is providing asynchronous replication and the other is providing synchronous replication.
+
+ba001 is the default commit_scope for all new sub-groups. However, the following SQL configures ba001:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'ba001_location-a',
+    origin_node_group := 'location-a',
+    rule := 'MAJORITY (location-a) SYNCHRONOUS_COMMIT',
+    wait_for_ready := true
+);
+SELECT bdr.alter_node_group_option(
+  node_group_name := 'location-a',
+  config_key := 'default_commit_scope',
+  config_value := 'ba001_location-a'
+);
+```
+
+### ba002
+
+ba002 is a lag control scope intended to provide additional control over replication lag, offering an alternative approach to synchronous commit by allowing for asynchronous behavior with lag control. To configure ba002:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'ba002_location-a',
+    origin_node_group := 'location-a',
+    rule := 'ALL (location_a) LAG_CONTROL (max_commit_delay=1s, max_lag_size=100MB) AND ALL NOT (location_a) LAG_CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)',
+    wait_for_ready := true
+);
+```
+
+ba002 utilizes `ALL` instead of `MAJORITY` to strengthen data integrity by overriding any default asynchronous replication, requiring consensus across all nodes of the group before confirmation.
+
+It also utilizes `NOT` syntax for commit scope rules, allowing for precise control over replication, enabling rules to specifically include or exclude nodes based upon their group membership. This detailed control supports the requirement for achieving consensus even beyond the immediate subgroup, ensuring comprehensive agreement across a broader network of nodes for enhanced data integrity and consistency.
+
+`max_commit_delay=1s` effectively means that the minimum transaction rate Lag Control allows is `max_connections per` second(as each transaction process sleeps at most 1s when there is lag).
+
+ba002's comprehensive approach, integrating ALL and NOT with specific lag control measures, positions it as a robust alternative for managing data replication with enhanced precision. This preset not only aims to maintain high data integrity by requiring unanimous node agreement but also offers sophisticated control over replication lag, ensuring optimal transaction rates and system responsiveness.
+
+### ba003
+
+ba003 is a combination of synchronous commit and lag control. 
+
+To configure ba003, use the following:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'ba003_location-a',
+    origin_node_group := 'location-a',
+    rule := 'MAJORITY (location_a) SYNCHRONOUS_COMMIT AND ANY 1 NOT (location_a) LAG_CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)',
+    wait_for_ready := true
+);
+```
+
+It expands on the durability introduced in ba001 by adding lag control, which reigns in the amount of acceptable data loss in case of regional failure. ba003 also utilizes `MAJORITY` instead of `ALL` so that, like with [ba001](#ba001), in cases where there are 3 data nodes, the third is asynchronous and allows for a node failure without interrupting the single region service.
+
+Also, like ba001, ba003 uses `SYNCHRONOUS_COMMIT` to ensure high levels of data consistency by requiring confirmation from a specified number of nodes before a transaction is considered commited.
+
+### ba004
+
+ba004 is a durability-oriented BigAnimal-provided commit_scope. 
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'ba004_location-a',
+    origin_node_group := 'location-a',
+    rule := 'MAJORITY (location_a) SYNCHRONOUS_COMMIT AND ANY 1 NOT (location_a) SYNCHRONOUS_COMMIT',
+    wait_for_ready := true
+);
+```
+
+Using `SYNCHRONOUS_COMMIT`, the configuration ensures potential data loss is near zero, as the data is replicated before commit success is signaled to the application. 
+
+Just as in [ba001](#ba001) and [ba003](#ba003), `MAJORITY` is used so that in a three-node scenario in a region, one node can experience failure without compromising the cluster.
+
+However, durability increases over ba001 due to the utilization of `NOT` allowing for the requiring of confirmation outside of the subgroup.
+
+
+
+
+
+
+<!-- Why BigAnimal's management of commit scope matters. Discuss the strategic advantage of using BigAnimal's managed commit scopes. Explain how it supports business objectives like recovery point objectives (RPO).
+
+<!-- Conclusion - Recap the importance of understanding commit scopes within PGD on BigAnimal. Encourage customers to explore further or contact support for deeper insights. -->
+
+
+
+
+
+<!-- ## Security presets -->
+
+<!-- ## Peformance and optimization presets -->
+
+<!-- ## Backup and recovery presets -->
+
+<!-- ## Scaling and resource management presets -->
+
+
