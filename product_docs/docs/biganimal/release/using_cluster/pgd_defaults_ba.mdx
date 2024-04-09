@@ -20,18 +20,16 @@ BigAnimal's commit scope presets simplify managing commit scopes in PGD. These p
 |-----------|---------------------|--------------------|--------------------------------------|
 | ba001     | MAJORITY, SYNCHRONOUS_COMMIT  | N/A                | High consistency for critical data   |
 | ba002     | ALL, LAG_CONTROL         | ALL, LAG_CONTROL        | Manages replication lag locally and externally |
-| ba003     | MAJORITY, SYNCHRONOUS_COMMIT  | ALL LAG_CONTROL        | Combines high consistency for local with lag control for external|
-| ba004     | MAJORITY, SYNCHRONOUS_COMMIT  | ANY 1, SYNCHRONOUS COMMIT | High consistency with external validation |
+| ba003     | MAJORITY, SYNCHRONOUS_COMMIT  | ALL, LAG_CONTROL        | Combines high consistency locally with lag control for external|
+| ba004     | MAJORITY, SYNCHRONOUS_COMMIT  | ANY 1, SYNCHRONOUS COMMIT | Higher consistency via external validation |
 
 !!! Note
-ba001 is also the only BigAnimal preset that works with single or multi-grouped PGD clusters. The rest, ba002-ba004, work for multi-grouped PGD clusters only.
+ba001 is also the only BigAnimal preset that works with single-grouped PGD clusters. All of them, including ba001, work with multi-grouped clusters.
 !!!
-
-
 
 ### ba001
 
-ba001 offers a default setup that optimizes data consistency and reliability across distributed environments. This is the baseline BigAnimal provided commit_scope and is the commit_scope for all new sub-groups:
+ba001 offers a default setup that optimizes data consistency and reliability across distributed environments. Here is an example definition for a group of nodes, `location-a`:
 
 ```sql
 SELECT bdr.add_commit_scope(
@@ -42,42 +40,32 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-The rule says that for any transaction originating from a certain subgroup of nodes (those in location-a), the majority of the nodes in that subgroup (those in location-a) must acknowledge the transaction before it is committed.
+The rule says that for transactions originating from a node in `location-a`, the majority of the nodes in `location-a` must acknowledge the transaction before it is committed.
 
-ba001 utilizes the `MAJORITY`, instead of `ALL` so that in the case of 3 data nodes, the third is asynchronous. This allows for a node failure without interrupting the single region service. 
+ba001 uses `MAJORITY` instead of `ALL` so that in the case of 3 data nodes, the third can be updated asynchronously. This allows for a node failure without interrupting a single region service. 
 
-To make this commit_scope the default_commit_scope for the node group, use the following command:
-
-```sql
-SELECT bdr.alter_node_group_option(
-  node_group_name := 'location-a',
-  config_key := 'default_commit_scope',
-  config_value := 'ba001_location-a'
-);
-```
+This is the baseline BigAnimal provided commit_scope and is the commit_scope for all new sub-groups.
 
 ### ba002
 
-ba002 is a lag control scope intended to provide additional control over replication lag, offering an alternative approach to synchronous commit by allowing for asynchronous behavior with lag control. To define ba002:
+ba002 allows for asynchronous behavior but with lag control for tighter consistency (that is, tighter than the default asynchronous behavior) across the distributed system. An example definition of ba002 for nodes in `location-a` looks like the following:
 
 ```sql
 SELECT bdr.add_commit_scope(
     commit_scope_name := 'ba002_location-a',
     origin_node_group := 'location-a',
-    rule := 'ALL (location_a) LAG_CONTROL (max_commit_delay=1s, max_lag_size=100MB) AND ALL NOT (location_a) LAG_CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)',
+    rule := 'ALL (location-a) LAG_CONTROL (max_commit_delay=1s, max_lag_size=100MB) AND ALL NOT (location-a) LAG_CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)',
     wait_for_ready := true
 );
 ```
 
-The first part of the rule says that for `ALL` nodes of location_a, which is the origin_node_group in this case, monitor transactions for lag according to 
+The first part of the rule says that for all nodes of location_a, which is the `origin_node_group` in this case, nodes in `location-a` are monitored according to `max_lag_size=100MB` and `max_commit_delay=1s`. Specifically, as lag size approaches the set max of 100MB, the system begins injecting commit delays on the origin node of up to 1 second so that replication to the other node(s) in the group can catch up.
 
-`max_commit_delay=1s` effectively means that the minimum transaction rate Lag Control allows is `max_connections per` second(as each transaction process sleeps at most 1s when there is lag).
-
-ba002's comprehensive approach, integrating ALL and NOT with specific lag control measures, positions it as a robust alternative for managing data replication with enhanced precision. This preset not only aims to maintain high data integrity by requiring unanimous node agreement but also offers sophisticated control over replication lag, ensuring optimal transaction rates and system responsiveness.
+The second part of the rule (after the `AND`) says that for all nodes not in `location_a`, those nodes are monitored according to `max_lag_size=1000MB`, `max_lag_time=30s`and `max_commit_delay=4s`. Specifically, as lag size or time approaches either of their respective limits (1000MB or 30s), the system begins injecting commit delays on the origin node of up to 4 seconds so that replication to those nodes outside the origin node group can catch up.
 
 ### ba003
 
-ba003 is a combination of synchronous commit and lag control, ba001 and ba002. 
+ba003 is a combination of SYNCHRNOUS_COMMIT for the local group with LAG_CONTROL parameters met by at least one external node.
 
 To configure ba003, use the following:
 
@@ -90,14 +78,12 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-ba003, like [ba001](#ba001) utilizes `MAJORITY` instead of `ALL` so that in cases where there are 3 data nodes, the third is asynchronous and allows for a node failure without interrupting the single region service. Also, like ba001, ba003 uses `SYNCHRONOUS_COMMIT` to ensure high levels of data consistency by requiring confirmation from a specified number of nodes before a transaction is considered committed.
+The first part of the rule states that for any transaction originating on a node in the `origin_node_group` (in this case `location-a`), a majority of the nodes in `location_a` must confirm the transaction before it is committed. 
 
-It then expands on this durability introduced in ba001 by adding lag control, which reigns in the amount of acceptable data loss in case of regional failure. 
+The second part of the rule states that at least one node not in `location_a` must keep lag within the LAG_CONTROL parameters (max_lag_size=1000MB, max_lag_time=30s) with respect to its replicating transactions originating from a node in the origin_node_group (here location_a), or a commit delays of up to 4 seconds will be used to slow down processing on the originating node to allow for the lagging node to catch up.
 
 
 ### ba004
-
-ba004 is a durability-oriented BigAnimal-provided commit_scope. 
 
 ```sql
 SELECT bdr.add_commit_scope(
@@ -108,9 +94,29 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-Just as in [ba001](#ba001) and [ba003](#ba003), ba004 uses `SYNCHRONOUS_COMMIT` to keep potential data loss at near zero, as the data is replicated before commit success is signaled to the application. Again, `MAJORITY` is used so that in a three-node scenario in a region, one node can experience failure without compromising the cluster.
+ba004 says that for all transactions originating from a node in the `origin_node_group` (in the above example `location-a`), a majority of the nodes of `location-a`, and at least one node not in `location-a`, must confirm the transaction before it is committed.
 
-However, in ba004, durability increases over ba001 due to the utilization of `NOT` allowing for the requiring of confirmation outside of the subgroup.
+Just as in [ba001](#ba001) and [ba003](#ba003), ba004 uses `SYNCHRONOUS_COMMIT` to keep potential data loss at near zero, as the data is replicated before commit success is signaled to the application. Again, `MAJORITY` is used so that in a three-node scenario in a region, one node can experience failure without compromising the cluster. However, in this case the commit scope also requires confirmation from one node outside the cluster to be confirmed.
+
+### Setting default_commit_scope
+
+To make a commit_scope the default_commit_scope for the node group, use the following command:
+
+```sql
+SELECT bdr.alter_node_group_option(
+  node_group_name := '<node_group_name>',
+  config_key := 'default_commit_scope',
+  config_value := '<commit_scope_name>'
+);
+```
+
+
+
+
+
+
+
+
 
 
 
