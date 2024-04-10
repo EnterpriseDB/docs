@@ -514,11 +514,24 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideToC: Boolean
       deepToC: Boolean
+      katacodaPages: DemoPage
+      katacodaPanel: DemoPanel
       hideVersion: Boolean
       hidePDF: Boolean
       hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
+    }
+    
+    type DemoPage {
+      scenario: String
+      account: String
+    }
+    type DemoPanel {
+      scenario: String
+      account: String
+      initializeCommand: String
+      codelanguages: String
     }
 
     enum TileModes {
