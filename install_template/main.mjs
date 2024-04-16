@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import nunjucks from "nunjucks";
 import prettier from "prettier";
+import semver from "semver";
 import loadProductConfig from "./lib/config.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,12 +21,12 @@ const run = async () => {
   for (let product of products) {
     for (let prodVersion in product.cpuArchitecturesForVersion) {
       const prodVersionDetail = product.cpuArchitecturesForVersion[prodVersion];
-      renderProdIndex(product, prodVersion, prodVersionDetail);
+      await renderProdIndex(product, prodVersion, prodVersionDetail);
       for (let arch in prodVersionDetail) {
         const osArchDetail = prodVersionDetail[arch];
-        renderArchIndex(product, prodVersion, arch, osArchDetail);
+        await renderArchIndex(product, prodVersion, arch, osArchDetail);
         for (let os of osArchDetail) {
-          renderDoc(product, {name: os.name, arch}, prodVersion);
+          await renderDoc(product, {name: os.name, arch}, prodVersion);
         }
       }
     }
@@ -70,7 +71,7 @@ const normalizeOSName = (name, version, display_name) => {
  * @param osArchitectures Collection of supported CPU architectures for Linux installs
  * @returns void
  */
-const renderProdIndex = (product, version, osArchitectures) => {
+const renderProdIndex = async (product, version, osArchitectures) => {
   console.log(
     `Starting index render for ${product.name}`
   );
@@ -90,13 +91,13 @@ const renderProdIndex = (product, version, osArchitectures) => {
   console.log(`  using template "${template}"`);
 
   const context = {
-    product: { name: product.name, version: version },
+    product: { name: product.name, version: version, versionMajor: getMajorVersion(version) },
     osArchitectures,
     outputType: "index",
   };
 
   try {
-    writeDoc(template, context);
+    await writeDoc(template, context);
   } catch (error) {
     console.error("[ERROR] An exception occurred. Details below:");
     console.error(error);
@@ -112,7 +113,7 @@ const renderProdIndex = (product, version, osArchitectures) => {
  * @param osVersions OS versions supported for this architecture
  * @returns void
  */
-const renderArchIndex = (product, version, osArchitecture, osVersions) => {
+const renderArchIndex = async (product, version, osArchitecture, osVersions) => {
   console.log(
     `Starting index render for ${product.name} on Linux ${ osArchitecture }`,
   );
@@ -132,14 +133,14 @@ const renderArchIndex = (product, version, osArchitecture, osVersions) => {
   console.log(`  using template "${template}"`);
 
   const context = {
-    product: { name: product.name, version: version },
+    product: { name: product.name, version: version, versionMajor: getMajorVersion(version) },
     arch: osArchitecture,
     osVersions,
     outputType: "index",
   };
 
   try {
-    writeDoc(template, context);
+    await writeDoc(template, context);
   } catch (error) {
     console.error("[ERROR] An exception occurred. Details below:");
     console.error(error);
@@ -154,7 +155,7 @@ const renderArchIndex = (product, version, osArchitecture, osVersions) => {
  * @param version The version of the product to generate docs for
  * @returns void
  */
-const renderDoc = (product, platform, version) => {
+const renderDoc = async (product, platform, version) => {
   console.log(
     `Starting render for ${product.name} ${version} on ${platform.name} ${platform.arch}`,
   );
@@ -175,7 +176,7 @@ const renderDoc = (product, platform, version) => {
   const context = generateContext(product, platform, version);
 
   try {
-    writeDoc(template, context);
+    await writeDoc(template, context);
   } catch (error) {
     console.error("[ERROR] An exception occurred. Details below:");
     console.error(error);
@@ -263,6 +264,7 @@ const generateContext = (product, platform, version) => {
     product: {
       name: product.name,
       version: version,
+      versionMajor: getMajorVersion(version)
     },
     platform: {
       name: platform.name,
@@ -272,13 +274,25 @@ const generateContext = (product, platform, version) => {
 };
 
 /**
+ * Extracts and returns the major portion of the passed semver
+ * @param {*} version The version string being used. May or may not be a valid semver version string; if not, will be returned unchanged
+ * @returns the major version portion of the passed version string
+ */
+const getMajorVersion = (version) => {
+  const semantic = semver.valid(semver.coerce(version));
+  if (semantic === null)
+    return version;
+  return semver.major(semantic);
+};
+
+/**
  * actually render a nunjucks template with context, and write the result to the "/renders" folder.
  * @param template The path to a nunjucks tempalte to render.
  * @param context An object passed into the nunjucks template which will be used to render some variable content.
  */
-const writeDoc = (template, context) => {
+const writeDoc = async (template, context) => {
   context.leafTemplatePath = template;
-  const render = prettier.format(nunjucks.render(template, context), {
+  const render = await prettier.format(nunjucks.render(template, context), {
     parser: "mdx",
   });
   const filename =
