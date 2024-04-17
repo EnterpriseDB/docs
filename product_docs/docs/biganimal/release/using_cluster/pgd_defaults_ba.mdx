@@ -29,7 +29,7 @@ ba001 is also the only BigAnimal preset that works with PGD clusters that have o
 
 ### ba001
 
-ba001 offers a default setup that optimizes data consistency and reliability across distributed environments. Here is an example definition for transactions originating from the group of nodes `location-a`:
+ba001 offers a default setup that optimizes data consistency and reliability across distributed environments. Here, in what follows, is an example definition for transactions originating from the group of nodes `location-a`. The full name of the actual commit scope for this specific group will be `ba001_location-a`:
 
 ```sql
 SELECT bdr.add_commit_scope(
@@ -40,7 +40,7 @@ SELECT bdr.add_commit_scope(
 );
 ```
 
-Commit scopes include the name of the subgroup to which they refer: `origin_node_group`. This rule says that for transactions originating from a node in `location-a`, the majority of the nodes in `location-a` must acknowledge the transaction before it is committed.
+This rule says that for transactions originating from a node in `location-a`, the majority of the nodes in `location-a` must acknowledge the transaction before it is committed.
 
 ba001 uses `MAJORITY` instead of `ALL` so that in the case of 3 data nodes, the third can be updated asynchronously. This allows for a node failure without interrupting a single region service. 
 
@@ -67,7 +67,7 @@ The second part of the rule (after the `AND`) says that for all nodes not in `lo
 
 ba003 is a combination of SYNCHRNOUS_COMMIT for the local group with LAG_CONTROL parameters being met by at least one external node.
 
-Here is an example of defining a ba003 commit scope using the `bdr.add_commit_scope` command:
+Here is an example definition of a ba003 commit scope using the `bdr.add_commit_scope` command, again applying to nodes in `location-a`:
 
 ```sql
 SELECT bdr.add_commit_scope(
@@ -96,15 +96,35 @@ SELECT bdr.add_commit_scope(
 
 ba004 says that for all transactions originating from a node in the `origin_node_group` (in the above example `location-a`), a majority of the nodes of `location-a`, and at least one node not in `location-a`, must confirm the transaction before it is committed.
 
-Just as in [ba001](#ba001) and [ba003](#ba003), ba004 uses `SYNCHRONOUS_COMMIT` to keep potential data loss at near zero, as the data is replicated before commit success is signaled to the application. Again, `MAJORITY` is used so that in a three-node scenario in a region, one node can experience failure without compromising the cluster. However, in this case the commit scope also requires confirmation from one node outside the cluster to be confirmed. 
+Just as in [ba001](#ba001) and [ba003](#ba003), ba004 uses `SYNCHRONOUS_COMMIT` to keep potential data loss at near zero, as the data is replicated before commit success is signaled to the application. Again, `MAJORITY` is used so that in a three-node scenario in a region, one node can experience failure without compromising the cluster. However, in this case the commit scope also requires confirmation from one node outside of the group to confirm the transaction. 
 
 ### Setting default_commit_scope
 
-To make a commit_scope the `default_commit_scope` for a node group, use the following command, `bdr.alter_node_group_option`:
+As mentioned, the default BA PGD commit scope preset is an instantiation of ba001. 
+
+In order to change the default commit scope, you need to know the names of your commit scope presets and the name of the origin node group for your cluster. To see the BA presets as defined for your cluster's groups, connect to the cluster using psql and enter the following:
+
+```sql
+SELECT * FROM bdr.commit_scopes
+```
+
+```
+ commit_scope_id |  commit_scope_name   | commit_scope_origin_node_group |                                                                                commit_scope_rule                                                                                 
+-----------------+----------------------+--------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      1131842441 | ba001_p-mbx2p83u9n-a |                     2800873689 | MAJORITY (p-mbx2p83u9n-a) SYNCHRONOUS_COMMIT
+      2997404763 | ba002_p-mbx2p83u9n-a |                     2800873689 | ALL (p-mbx2p83u9n-a) LAG CONTROL (max_commit_delay=1s, max_lag_size=100MB) AND ALL NOT (p-mbx2p83u9n-a) LAG CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)
+       671768582 | ba003_p-mbx2p83u9n-a |                     2800873689 | MAJORITY (p-mbx2p83u9n-a) SYNCHRONOUS_COMMIT AND ANY 1 NOT (p-mbx2p83u9n-a) LAG CONTROL (max_lag_size=1000MB, max_commit_delay=4s, max_lag_time=30s)
+      1568192748 | ba004_p-mbx2p83u9n-a |                     2800873689 | MAJORITY (p-mbx2p83u9n-a) SYNCHRONOUS_COMMIT AND ANY 1 NOT (p-mbx2p83u9n-a) SYNCHRONOUS_COMMIT
+(4 rows)
+```
+
+Note the `commit_scope_name` of the preset you want to set as your default. The origin node group is what follows the `ba00<#>_`, or in this case `p-mbx2p83u9n-a`.
+
+To make a commit_scope the `default_commit_scope` for a node group, use the following command, `bdr.alter_node_group_option`, and replace <origin_node_group> with the origin node group (in this case `p-mbx2p83u9n-a`) and replace <commit_scope_name> with the `commit_scope_name` of the desired preset. 
 
 ```sql
 SELECT bdr.alter_node_group_option(
-  node_group_name := '<node_group_name>',
+  node_group_name := '<origin_node_group>',
   config_key := 'default_commit_scope',
   config_value := '<commit_scope_name>'
 );
