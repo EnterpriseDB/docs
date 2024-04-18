@@ -46,9 +46,12 @@ const SectionHeadingWithVersions = ({
       <div className="rightsidenoclass">
         <Link
           to={navTree.path}
-          className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+          className={
+            "d-block py-1 align-middle balance-text m-0 h5 " +
+            (navTree.path == path ? "text-primary" : "text-dark")
+          }
         >
-          {navTree.title}
+          {navTree.title} {navTree.path} {path}
         </Link>
         {!navTree.hideVersion && versionArray.length > 1 ? (
           <div>
@@ -57,6 +60,14 @@ const SectionHeadingWithVersions = ({
         ) : !navTree.hideVersion ? (
           <div className="text-muted">Version {versionArray[0].version}</div>
         ) : null}
+        <div>
+          <Link
+            to={navTree.path + "rel_notes/"}
+            className="d-block py-1 align-middle balance-text h6 m-0 text-primary"
+          >
+            Release Notes
+          </Link>
+        </div>
       </div>
     </li>
   );

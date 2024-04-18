@@ -171,10 +171,6 @@ const Section = ({ section }) => (
               >
                 {guide.navTitle || guide.title}
               </Link>
-              {/* <div className="text-small">
-                <span>{guide.frontmatter.description || guide.excerpt}
-                </span>
-              </div> */}
             </p>
           ) : (
             <DevOnly key={Math.random()}>
