@@ -1,6 +1,6 @@
 ---
-title: "EDB Postgres Distributed Proxy"
-navTitle: "PGD Proxy"
+title: "EDB Postgres Distributed Proxy Overview"
+navTitle: "PGD Proxy Overview"
 indexCards: none
 navigation:
 - installing_proxy
@@ -9,37 +9,58 @@ directoryDefaults:
   description: "The PGD Proxy is a service that acts as proxy layer between the client application and Postgres for your EDB Postgres Distributed cluster"
 ---
 
-EDB Postgres Distributed Proxy is a daemon that acts as an abstraction layer between the client application and Postgres. It interfaces with the PGD consensus mechanism to get the identity of the current write leader node and redirects traffic to that node.
 
-The PGD cluster always has at least one global group and one data group. PGD elects the write leader for each data group that has the `enable_proxy_routing` and `enable_raft` options set to true. You can attach Proxy to a global group or data group. You can attach multiple proxies to each group.
+Especially with asynchronous replication, having a consistent write lead node is
+important to avoid conflicts and guarantee availability for the application.
+
+There are two parts to EDB Postgres Distributed's proxy layer:
+
+* Proxy configuration and routing information which is maintained by the PGD consensus mechanism.
+* The PGD Proxy daemon which is installed on a host. It connects to the PGD cluster where it reads its configuration and listens for changes to the routing information.
+
+This is normally installed in highly available configuration (at least two instances of the daemon per
+region).
+
+Once configured, the PGD Proxy daemon monitors routing configuration changes as decided by the EDB Postgres Distributed cluster. It acts on these changes to ensure that connections are consistently routed to the correct nodes.
+
+## PGD Proxy cluster configuration
+
+The PGD cluster always has at least one top-level group and one data group. PGD elects the write leader for each data group that has the `enable_proxy_routing` and `enable_raft` options set to true. 
+
+The cluster also maintains Proxy configurations for each group. Each configuration has a name and is associated with a group. You can attach Proxy to a top-level group or data group. You can attach multiple proxies to each group.
+
+When a PGD Proxy daemon starts running on a host, it has a name in its local configuration file and it will connect to a node in a group, from where it will use the name to look up its complete configuration as stored on the group.
+
+
+## PGD Proxy daemon
+
+The PGD Proxy daemon (EDB Postgres Distributed Proxy) is a process that acts as an abstraction layer between the client application and Postgres. It interfaces with the PGD consensus mechanism to get the identity of the current write leader node and redirects traffic to that node.
 
 PGD Proxy is a TCP layer 4 proxy.
 
-## How it works
+## How they work together
 
 Upon starting, PGD Proxy connects to one of the endpoints given in the local config file. It fetches:
 
 -  DB connection information for all nodes
 -  Proxy options like listen address, listen port
--  Routing details like current write leader
+-  Routing details including the current write leader
 
-Endpoints given in the config file are used only at startup. After that, actual endpoints are taken from the PGD catalog's `route_dsn` field in `bdr.node_routing_config_summary`.
-
+The endpoints given in the config file are used only at startup. After that, actual endpoints are taken from the PGD catalog's `route_dsn` field in [`bdr.node_routing_config_summary`](/pgd/latest/reference/catalogs-internal#bdrnode_routing_config_summary).
 
 PGD manages write leader election. PGD Proxy interacts with PGD to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to the current write leader. PGD Proxy disconnects all existing client connections on write leader change or when write leader is unavailable. Write leader election is a Raft-backed activity and is subject to Raft leader availability. PGD Proxy closes the new client connections if write leader is unavailable.
 
 PGD Proxy responds to write leader change events that can be categorized into two modes of operation: *failover* and *switchover*.
 
-Automatic transfer of write leadership from the current write leader node to a new node in the event of Postgres or operating system crash is called failover. PGD elects a new write leader when the current write leader goes down or becomes unresponsive. Once the new write leader is elected by PGD, PGD Proxy closes existing client connections to the old write leader and redirects new client connections to the newly elected write leader.
+Automatic transfer of write leadership from the current write leader node to a new node in the event of Postgres or operating system crash is called *failover*. PGD elects a new write leader when the current write leader goes down or becomes unresponsive. Once the new write leader is elected by PGD, PGD Proxy closes existing client connections to the old write leader and redirects new client connections to the newly elected write leader.
 
-User-controlled, manual transfer of write leadership from the current write leader to a new target leader is called switchover. Switchover is triggered through the [PGD CLI switchover](../cli/command_ref/pgd_switchover) command. The command is submitted to PGD, which attempts to elect the given target node as the new write leader. Similar to failover, PGD Proxy closes existing client connections and redirects new client connections to the newly elected write leader. This is useful during server maintenance, for example, if the current write leader node needs to be stopped for maintenance like a server update or OS patch update.
+User-controlled, manual transfer of write leadership from the current write leader to a new target leader is called *switchover*. Switchover is triggered through the [PGD CLI switchover](../cli/command_ref/pgd_switchover) command. The command is submitted to PGD, which attempts to elect the given target node as the new write leader. Similar to failover, PGD Proxy closes existing client connections and redirects new client connections to the newly elected write leader. This is useful during server maintenance, for example, if the current write leader node needs to be stopped for maintenance like a server update or OS patch update.
 
 ### Consensus grace period
 
 PGD Proxy provides the `consensus_grace_period` proxy option that can be used to configure the routing behavior upon loss of a Raft leader. PGD Proxy continues to route to the current write leader (if it's available) for this duration. If the new Raft leader isn't elected during this period, the proxy stops routing. If set to `0s`, PGD Proxy stops routing immediately.
 
 The main purpose of this option is to allow users to configure the write behavior when the Raft leader is lost. When the Raft leader isn't present in the cluster, it's not always guaranteed that the current write leader seen by the proxy is the correct one. In some cases, like network partition in the following example, it is possible that the two write leaders may be seen by two different proxies attached to the same group increasing the chances of write conflicts. If this isn't the desired behavior, then the previously mentioned `consensus_grace_period` can be set to 0s. This setting configures the proxy to stop routing and closes existing open connections immediately when it detects the Raft leader is lost.
-
 
 #### Network partition example
 
@@ -55,43 +76,3 @@ The PostgreSQL C client library (libpq) allows you to specify multiple host name
 
 However, if the PGD Proxy instance is accessible but doesn't have access to the write leader, or the write leader for a given instance doesn't exist (that is, because there's no write leader for the given PGD group), the connection simply fails. No other hosts in the multi-host connection string is tried. This behavior is consistent with the behavior of PostgreSQL client libraries with other proxies like HAProxy or pgbouncer.
 
-## Managing PGD Proxy
-
-PGD CLI provides a few commands to manage proxies in a PGD cluster, such as `create-proxy`, `delete-proxy`, `set-proxy-options`, and `show-proxies`. See [PGD CLI](../cli/command_ref) for more information.
-
-See [Connection management](../routing) for more information on the PGD side of configuration and management of PGD Proxy.
-
-### Proxy health check
-
-PGD Proxy provides the following HTTP(s) health check API endpoints. The API endpoints respond to `GET` requests. You need to enable and configure them before using them. See [Configurations](installing_proxy#configuring-health-check).
-
-
-```
-GET /health/is-ready
-GET /health/is-live
-```
-
-#### Readiness
-
-On receiving a valid `GET` request, the proxy checks if it can successfully route connections to the current write leader. If the check returns successfully, the API responds with a body containing `true` and an HTTP status code `200 (OK)`. Otherwise, it returns a body containing `false` with the HTTP status code `500 (Internal Server Error)`.
-
-
-#### Liveness
-
-Liveness checks return either `true` with HTTP status code `200 (OK)` or an error. They never return `false` because the HTTP server listening for the request is stopped if the PGD Proxy service fails to start or exits.
-
-## Proxy log location
-
-### syslog
-
-- Debian based - `/var/log/syslog`
-- Red Hat based - `/var/log/messages`
-
-Use the `journalctl` command to filter and view logs for troubleshooting Proxy. The following are few sample commands for quick reference:
-
-```sh
-journalctl -u pgd-proxy -n100 -f
-journalctl -u pgd-proxy --since today
-journalctl -u pgd-proxy --since "10 min ago"
-journalctl -u pgd-proxy --since "2022-10-20 16:21:50" --until "2022-10-20 16:21:55"
-```

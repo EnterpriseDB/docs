@@ -1,0 +1,68 @@
+---
+title: Read-Only Routing with PGD Proxy
+navTitle: Read-Only Routing
+---
+
+## Background
+
+By default, PGD Proxy routes connections to the currently selected write leader in the cluster. This allows the write traffic conflicts to be rapidly and consistently resolved. Just routing everything to a single node, the write leader, is a natural fit for traditional high availability deployments where system throughput is typically limited to the throughput of what a single node can handle.
+
+But for some use cases this behavior also means that clients which are only querying the data are also placing a load on the current write leader which could equally well be served by one of the non-write leader nodes in the cluster. 
+
+If you could move traffic that was read-only queries to the non-write leader nodes, you could, at least in theory, handle a multiple of single node throughput. An approach like this would typically require changes to applications knowing details of cluster topology and current node status to detect write lead. 
+
+## Read-Only Routing in PGD Proxy
+
+From PGD 5.4.1, PGD Proxy addresses this requirement, to utilize read capacity while minimizing application exposure to the cluster status. It does this by offering a new read_listen_port on proxies which complement the existing listen port. Proxies can be configured with either or both of these ports.
+
+When a proxy is configured with a read_listen_port, connections to that particular port are routed to available data nodes that are not the current write leader. If an application only queries and reads from the database, using a read_listen_port ensures that your queries are not answered by the write leader.
+
+Because PGD Proxy is a TCP Layer 4 proxy, it does not interfere with traffic passing through it. That means, in turn, that it cannot detect attempts to write passing through the read_listen_port connections. It is entirely possible to write through a read-only port. 
+
+The active-active nature of PGD means that any write operation will be performed and replicated and conflict resolution may, or may not have to take place. It is entirely down to the application to avoid this and make sure that it only uses read_listen_ports for read-only traffic.
+
+### Valid read-only nodes
+
+Only data nodes which are not the write leader are valid as read-only nodes. For reference, the following node types are not eligible to be a read-only node:
+
+* Witness nodes cannot be eligible because they do not contain data. 
+* Logical standbys cannot be eligible because they are standbys and prioritize replicating. 
+* Subscriber-only nodes are also not currently eligible.
+
+## Configuring Read-Only Routing
+
+### Using SQL
+
+To configure a read-only proxy port on a proxy, use the `bdr.alter_proxy_options` function.
+
+```sql
+SELECT bdr.alter_proxy_options('proxy-a1','read_listen_port','7432');
+```
+
+This will configure a read-only proxy port on proxy-a1 on port 7432.
+
+To remove the read-only proxy set the port to -1.
+
+```sql
+SELECT bdr.alter_proxy_options('proxy-a1','read_listen_port','-1');
+```
+
+### Using PGD CLI
+
+To configure a read-only proxy port on a proxy, use the `pgd alter-proxy` command.
+
+```sh
+pgd set-proxy-options --proxy-name proxy-a1 --option read_listen_port=7432
+```
+
+This will configure a read-only proxy port on proxy-a1 on port 7432.
+
+To remove the read-only proxy set the port to -1.
+
+```sh
+pgd set-proxy-options --proxy-name proxy-a1 --option read_listen_port=-1
+```
+
+
+ 
+
