@@ -1,55 +1,95 @@
 ---
-title: set-node-options
+title: show-nodes
 ---
 
-Sets node options such as 'route_fence', 'route_priority', and 'route_writes'.
+Shows all nodes in the EDB Postgres Distributed cluster and their summary.
 
 ### Synopsis
 
-You can set the following node options with this command:
+Shows all nodes in the EDB Postgres Distributed cluster and their summary,
+including name, node id, group, and current/target state.
 
-- 'route_dsn'
-- 'route_fence'
-- 'route_priority'
-- 'route_writes'
-- 'route_reads'
+Node States
 
-Use 'pgd show-nodes -o json' to view option values for each node.
+* NONE: Node state is unset when the worker starts, expected to be set
+quickly to the current known state.
+* CREATED: bdr.create_node() has been executed, but the node is not a
+member of any EDB Postgres Distributed cluster yet.
+* JOIN_START: bdr.join_node_group() begins to join the local node to an
+existing EDB Postgres Distributed cluster.
+* JOINING: The node join has started and is currently at the initial sync
+phase, creating the schema and data on the node.
+* CATCHUP: Initial sync phase is completed; now the join is at the last step
+of retrieving and applying transactions that were performed on the upstream
+peer node since the join started.
+* STANDBY:  Node join has finished, but not yet started to broadcast changes.
+All joins spend some time in this state, but if defined as a Logical
+Standby, the node will continue in this state.
+* PROMOTE: Node was a logical standby and we just called bdr.promote_node to
+move the node state to ACTIVE. These two PROMOTE states have to be
+coherent to the fact, that only one node can be with a state higher than
+STANDBY but lower than ACTIVE.
+* PROMOTING: Promotion from logical standby to full BDR node is in progress.
+* ACTIVE: The node is a full BDR node and is currently ACTIVE. This is the
+most common node status.
+* PART_START: Node was ACTIVE or STANDBY and we just called bdr.part_node
+to remove the node from the EDB Postgres Distributed cluster.
+* PARTING: Node disconnects from other nodes and plays no further part in
+consensus or replication.
+* PART_CATCHUP: Non-parting nodes synchronize any missing data from the
+recently parted node.
+* PARTED: Node parting operation is now complete on all nodes.
 
+Only one node at a time can be in either of the states PROMOTE or PROMOTING.
+
+Note that the read-only state of a node, as shown in the Current State or in
+the Target State columns, is indicated as STANDBY.
 
 ```sh
-pgd set-node-options [flags]
+pgd show-nodes [flags]
 ```
 
 ### Examples
 
 ```text
 
-  Example 1 (comma separated multiple options, spaces are not allowed)
+  Example 1 (3 node cluster, bdr-a1 and witness-a are up, bdr-a2 is down)
 
-  $ pgd set-node-options --node-name bdr-a1 --option route_priority=100,route_fence=true
-  node options updated successfully
+  $ pgd show-nodes
+
+  Node      Node ID    Group   Type    Current State Target State Status      Seq ID
+  ----      -------    -----   ----    ------------- ------------ ------      ------
+  bdr-a1    3136956818 group_a data    ACTIVE        ACTIVE       Up          1
+  bdr-a2    2133699692 group_a data    ACTIVE        ACTIVE       Unreachable 2
+  witness-a 3889635963 group_a witness ACTIVE        ACTIVE       Up          3
 
 
-  Example 2 (multiple --option flags are allowed)
+  Example 2 (multi-group cluster with witness, logical standby and
+  subscriber-only nodes)
+  Note: In contrast to logical standby, the subscriber-only nodes are fully
+  joined node to the cluster
 
-  $ pgd set-node-options --node-name bdr-a1 --option route_priority=100 --option route_fence=true
-  node options updated successfully
+  $ pgd show-nodes
 
-
-  Example 3 (use double quote if option value has spaces or special characters)
-
-  $ pgd set-node-options --node-name bdr-a1 --option "route_priority = 100" --option "route_fence = true"
-  node options updated successfully
+  Node               Node ID    Group    Type            Current State Target State Status Seq ID
+  ----               -------    -----    ----            ------------- ------------ ------ ------
+  bdr-a1             3136956818 group_a  data            ACTIVE        ACTIVE       Up     6
+  bdr-a2             2133699692 group_a  data            ACTIVE        ACTIVE       Up     3
+  logical-standby-a1 1140256918 group_a  standby         STANDBY       STANDBY      Up     9
+  witness-a          3889635963 group_a  witness         ACTIVE        ACTIVE       Up     7
+  bdr-b1             2380210996 group_b  data            ACTIVE        ACTIVE       Up     1
+  bdr-b2             2244996162 group_b  data            ACTIVE        ACTIVE       Up     2
+  logical-standby-b1 3541792022 group_b  standby         STANDBY       STANDBY      Up     10
+  witness-b          661050297  group_b  witness         ACTIVE        ACTIVE       Up     5
+  witness-c          1954444188 group_c  witness         ACTIVE        ACTIVE       Up     4
+  subscriber-only-c1 2448841809 group_so subscriber-only ACTIVE        ACTIVE       Up     8
 
 ```
 
 ### Options
 
 ```text
-  -h, --help               help for set-node-options
-      --node-name string   node name
-      --option strings     option in name=value format
+  -h, --help   help for show-nodes
 ```
 
 ### Options inherited from parent commands
