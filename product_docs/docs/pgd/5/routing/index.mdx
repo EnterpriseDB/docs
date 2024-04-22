@@ -1,88 +1,30 @@
 ---
-title: "Application connection management"
-navTitle: "Connection management"
+title: "PGD Proxy""
+navTitle: "PGD Proxy"
 indexCards: none
 description: How to use PGD Proxy to maintain consistent connections to the PGD cluster.
 navigation:
  - proxy
  - installing_proxy
+ - configuration
+ - administering
+ - monitoring
  - raft
 ---
 
-Managing application connections is an important part of high availability.
+Managing application connections is an important part of high availability. PGD Proxy offers a way to manage connections to the EDB Postgres Distributed cluster. It acts as a proxy layer between the client application and the Postgres database.
 
-Especially with asynchronous replication, having a consistent write lead node is
-important to avoid conflicts and guarantee availability for the
-application.
+* [PGD Proxy Overview](/pgd/latest/routing/proxy) provides an overview of the PGD Proxy, its processes and how it interacts with the EDB Postgres Distributed cluster.
 
-EDB Postgres Distributed provides a proxy layer called PGD Proxy, which is
-normally installed in highly available configuration (at least two instances per
-region).
+* [Installing the PGD Proxy daemon](/pgd/latest/routing/installing_proxy) covers installation of the PGD Proxy daemon on a host.
 
-The PGD Proxy connects to one of the EDB Postgres Distributed nodes and monitors
-routing configuration changes as decided by the EDB Postgres Distributed cluster.
-It ensures that the connections are routed to the correct nodes consistently.
+* [Configuring PGD Proxy](/pgd/latest/routing/configuration) details the three levels (group, node, and proxy) of configuration on a cluster that control how the PGD Proxy daemons behave.
 
-## Configuration
+* [Administering PGD Proxy](/pgd/latest/routing/administering) shows how to switch the write leader and manage the PGD Proxy.
 
-Configuring the routing is done through either SQL interfaces or through
-PGD-CLI.
+* [Monitoring PGD Proxy](/pgd/latest/routing/monitoring) looks at how to monitor PGD Proxy through the cluster and at a daemon level.
 
-You can enable routing decisions by calling the `bdr.alter_node_group_option()` function.
-For example:
+* [Read-Only Routing](/pgd/latest/routing/readonly) explains how the read-only routing feature in PGD Proxy enables read scalability.
 
-```text
-SELECT bdr.alter_node_group_option('region1-group', 'enable_proxy_routing', 'true')
-```
+* [RAFT](/pgd/latest/routing/raft) provides an overview of the RAFT consensus mechanism used to coordinate PGD Proxy.
 
-You can disable it by setting the same option to `false`.
-
-Additional group-level options affect the routing decisions:
-
-- `route_writer_max_lag` &mdash; Maximum lag in bytes of the new write candidate to be
-  selected as write leader. If no candidate passes this, no writer is
-  selected automatically.
-- `route_reader_max_lag` &mdash; Maximum lag in bytes for a node to be considered a viable
-  read-only node. Currently reserved for future use.
-
-Per-node configuration of routing is set using `bdr.alter_node_option()`. The
-available options that affect routing are the following:
-
-- `route_dsn` &mdash; The dsn used by proxy to connect to this node.
-- `route_priority` &mdash; Relative routing priority of the node against other nodes in
-  the same node group.
-- `route_fence` &mdash; Whether the node is fenced from routing, that is, it can't receive connections
-  from PGD Proxy.
-- `route_writes` &mdash; Whether writes can be routed to this node, that is, whether the node
-  can become write leader.
-- `route_reads` &mdash; Whether read-only connections can be routed to this node. Currently
-  reserved for future use.
-
-You can also configure the proxies using SQL interfaces. You can add proxy configuration
-using `bdr.create_proxy`. For example, `SELECT bdr.create_proxy('region1-proxy1', 'region1-group');`
-adds the default configuration for a proxy named `region1-proxy1` that's a member
-of PGD group `region1-group`. The name of the proxy given here must be same
-as the name given in the proxy configuration file. You can remove a proxy configuration
-using `SELECT bdr.drop_proxy('region1-proxy1')`. The proxy is
-deactivated as a result.
-
-You can configure options for each proxy using the `bdr.alter_proxy_option()` function.
-The available options are:
-
-- `listen_address` &mdash; Address for the proxy to listen on.
-- `listen_port` &mdash; Port for the proxy to listen on.
-- `max_client_conn` &mdash; Maximum number of connections for the proxy to accept.
-- `max_server_conn` &mdash; Maximum number of connections the proxy can make to the
-  Postgres node.
-- `server_conn_timeout` &mdash; Connection timeout for server connections.
-- `server_conn_keepalive` &mdash; Keepalive interval for server connections.
-- `consensus_grace_period` &mdash; Duration for which proxy continues to route even upon loss
-of a Raft leader. If set to `0s`, proxy stops routing immediately.
-
-The current configuration of every group is visible in the
-`bdr.node_group_routing_config_summary` view. Similarly, the
-`bdr.node_routing_config_summary` view shows current per-node routing
-configuration. `bdr.proxy_config_summary` shows per-proxy configuration.
-
-You can also do a switchover operation to explicitly change the node that's
-the write leader. To do so, use the `bdr.routing_leadership_transfer()` function.
