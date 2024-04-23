@@ -1,0 +1,57 @@
+---
+title: 'Declarative pausing and resuming'
+originalFilePath: 'src/pause_resume.md'
+---
+
+The *declarative pausing and resuming* feature enables saving CPU power by removing the
+database pods while keeping the database PVCs.
+
+Declarative pausing and resuming leverages the hibernation functionality available for
+EDB Postgres for Kubernetes. For additional depth and an explanation of how
+hibernation works, see the
+[Postgres for Kubernetes documentation on declarative hibernation](/postgres_for_kubernetes/latest/declarative_hibernation/).
+
+Request pause by adding the `k8s.pgd.enterprisedb.io/pause`
+annotation in the desired PGD group.
+
+For example:
+
+```sh
+kubectl annotate pgdgroup region-a k8s.pgd.enterprisedb.io/pause=on
+```
+
+After a few seconds, the requested PGD group will be in paused state, with
+all the database pods removed:
+
+```sh
+kubectl get pgdgroups
+
+NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                   AGE
+region-a   2                1                   PGDGroup - Paused       25m
+region-b   2                1                   PGDGroup - Healthy      25m
+region-c   0                1                   PGDGroup - Healthy      25m
+```
+
+To resume a paused PGD group, set the annotation to `off`.
+Remember to add the `--overwrite` flag:
+
+```sh
+kubectl annotate pgdgroup region-a k8s.pgd.enterprisedb.io/pause=off --overwrite
+```
+
+In a few seconds, you should see the nodes start resuming, and the pods to
+be re-created.
+
+```sh
+kubectl get pgdgroups
+
+NAME       DATA INSTANCES   WITNESS INSTANCES   PHASE                   AGE
+region-a   2                1                   Pause - resume nodes       1m
+region-b   2                1                   PGDGroup - Healthy      25m
+region-c   0                1                   PGDGroup - Healthy      25m
+```
+
+There are some requirements before the pause annotation can put the PGD group
+on Pause. Ideally, the PGD Group should be in Healthy state. Alternatively, if
+all the data nodes in the PGD Group are healthy at the individual level, Pause
+can also be initiated.

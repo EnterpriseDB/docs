@@ -267,6 +267,10 @@ const Page = () => {
             </IndexCard>
 
             <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+              <IndexCardLink to="/postgres_distributed_for_kubernetes/latest/">
+                EDB Postgres Distributed for Kubernetes
+              </IndexCardLink>
+
               <IndexCardLink to="/postgres_for_kubernetes/latest/">
                 EDB Postgres for Kubernetes
               </IndexCardLink>
