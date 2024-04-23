@@ -9,6 +9,22 @@ const productIcon = (path) => {
   return products[product] ? products[product].iconName : null;
 };
 
+const pathSame = (treepath, path) => {
+  const splitTreePath = treepath.split("/").filter(function (element) {
+    return element !== "";
+  });
+  const splitPath = path.split("/").filter(function (element) {
+    return element !== "";
+  });
+  if (splitPath[0] == splitTreePath[0]) {
+    if (splitPath.slice(2).toString() == splitTreePath.slice(2).toString()) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const SectionHeading = ({ navTree, path, iconName }) => {
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
@@ -37,21 +53,25 @@ const SectionHeadingWithVersions = ({
 }) => {
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
-        width="50"
-        height="50"
-      />
+      <Link to={navTree.path}>
+        <Icon
+          iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+          className="fill-orange me-3 onhover:fill-orange onhover:stroke-orange"
+          width="50"
+          height="50"
+        />
+      </Link>
+
       <div className="rightsidenoclass">
         <Link
           to={navTree.path}
           className={
-            "d-block py-1 align-middle balance-text m-0 h5 " +
-            (navTree.path == path ? "text-primary" : "text-dark")
+            "d-block align-middle balance-text m-0 " +
+            (pathSame(navTree.path, path) ? "text-dark h5" : "text-primary h5")
           }
         >
-          {navTree.title} {navTree.path} {path}
+          {" "}
+          {navTree.title}
         </Link>
         {!navTree.hideVersion && versionArray.length > 1 ? (
           <div>
@@ -63,7 +83,12 @@ const SectionHeadingWithVersions = ({
         <div>
           <Link
             to={navTree.path + "rel_notes/"}
-            className="d-block py-1 align-middle balance-text h6 m-0 text-primary"
+            className={
+              "d-block align-middle balance-text m-0 " +
+              (pathSame(navTree.path + "rel_notes/", path)
+                ? "text-dark h6"
+                : "text-primary h6")
+            }
           >
             Release Notes
           </Link>
