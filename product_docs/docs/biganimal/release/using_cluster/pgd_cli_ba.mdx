@@ -4,15 +4,29 @@ navTitle: PGD CLI on BigAnimal
 deepToC: true
 ---
 
-When running a distributed high-availability cluster on BigAnimal, you can use the [PGD CLI](../../../pgd/latest/cli/) to manage cluster operations, such as switching over write leaders, performing cluster health checks, and viewing various details about nodes, groups, or other aspects of the cluster.
+When running a distributed high-availability cluster (DHA) on BigAnimal, you can use the [PGD CLI](../../../pgd/latest/cli/) to manage cluster operations, such as switching over write leaders, performing cluster health checks, and viewing various details about nodes, groups, or other aspects of the cluster.
 
-Using the PGD CLI with BigAnimal requires installing it on a client machine, so [install the CLI](../../../pgd/latest/cli/installing_cli/) if you haven't already.
+## Installing the PGD CLI 
+
+To [install the PGD CLI](../../../pgd/latest/cli/installing_cli/), replace `<your-token>` with your EDB subscription token in the following command for Debian and Ubuntu machines:
+
+```bash
+curl -1sLf 'https://downloads.enterprisedb.com/&lt;your-token&gt;/postgres_distributed/setup.deb.sh' | sudo -E bash
+sudo apt-get install edb-pgd5-cli
+```
+
+or in this command for RHEL, Rocky, AlmaLinux, or Oracle Linux machines:
+
+```bash
+curl -1sLf 'https://downloads.enterprisedb.com/&lt;your-token&gt;/postgres_distributed/setup.rpm.sh' | sudo -E bash
+sudo yum install edb-pgd5-cli
+```
 
 ## Connecting to your BigAnimal cluster
 
 ### Discovering your database connection string
 
-To connect to your distributed high-availability BigAnimal cluster via the PGD CLI, you need to [discover the database connection string](../../../pgd/latest/cli/discover_connections/) from your BigAnimal console:
+To connect to your DHA BigAnimal cluster via the PGD CLI, you need to [discover the database connection string](../../../pgd/latest/cli/discover_connections/) from your BigAnimal console:
 
 1. Log into the [BigAnimal clusters](https://portal.biganimal.com/clusters) view.
 1. In the filter, set **Cluster Type** to **Distributed High Availability** to show only clusters that work with PGD CLI.
@@ -22,16 +36,69 @@ To connect to your distributed high-availability BigAnimal cluster via the PGD C
 
 ### Using the PGD CLI with your database connection string
 
+!!! Important
+PGD does not prompt for interactive passwords. Accordingly, you should have a [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) properly configured to allow access to the cluster. Your BigAnimal cluster's connection information page has all the necessary information needed for the file. 
+
+Without a properly configured `.pgpass`, you receive a database connection error when using a PGD CLI command, even when using the correct database connection string with the `--dsn` flag.
+!!!
+
 To use the PGD CLI with your database connection string, use the `--dsn` flag with your PGD CLI command:
 
 ```bash
 pgd show-nodes --dsn "<your_connection_string>"
 ```
 
-See the [PGD CLI command reference](../../../pgd/latest/cli/command_ref/) for the full range of PGD CLI commands and their descriptions. 
+## PGD commands in BigAnimal
 
-!!! Important
-Your database connection string does not contain the password for your BigAnimal cluster. So, you should have a [`.pgpass` file](https://www.postgresql.org/docs/current/libpq-pgpass.html) properly configured to allow access to the cluster. Your BigAnimal cluster's connection information page has all the necessary information needed for the file. 
-
-Without a properly configured `.pgpass`, you receive a database connection error when using a PGD CLI command, even when using the correct database connection string with the `--dsn` flag.
+!!! Note
+There are two EDB Postgres Distributed CLI commands that don't apply to BigAnimal: `create-proxy` and `delete-proxy`.
 !!!
+
+What follows are some examples of the most common PGD CLI commands with a BigAnimal cluster.
+
+### `pgd check-health`
+
+`pgd check-health` provides statuses with relevant messaging regarding the clock skew of node pairs, node accessibility, the current raft leader, replication slot health, and versioning consistency:
+
+```
+$ pgd check-health --dsn "postgres://edb_admin@p-mbx2p83u9n-a.pg.biganimal.io:5432/bdrdb?sslmode=require"
+
+Check      Status  Message                                                    
+-----      ------  -------                                                    
+ClockSkew  Ok      All BDR node pairs have clockskew within permissible limit 
+Connection Ok      All BDR nodes are accessible                               
+Raft       Warning There is no RAFT_LEADER, an election might be in progress  
+Replslots  Ok      All BDR replication slots are working correctly            
+Version    Ok      All nodes are running same BDR versions               
+```
+
+### `pgd show-nodes`
+
+`pgd show-nodes` returns all the nodes in the DHA cluster and their summaries, including name, node id, group, and current/target state:
+
+```
+$ pgd show-nodes --dsn "postgres://edb_admin@p-mbx2p83u9n-a.pg.biganimal.io:5432/bdrdb?sslmode=require"
+
+Node             Node ID    Group          Type Current State Target State Status Seq ID 
+----             -------    -----          ---- ------------- ------------ ------ ------ 
+p-mbx2p83u9n-a-1 3537039754 dc1            data ACTIVE        ACTIVE       Up     1      
+p-mbx2p83u9n-a-2 3155790619 p-mbx2p83u9n-a data ACTIVE        ACTIVE       Up     2      
+p-mbx2p83u9n-a-3 2604177211 p-mbx2p83u9n-a data ACTIVE        ACTIVE       Up     3      
+```
+
+### `pgd show-groups`
+
+`pgd show-groups` returns all groups in your DHA BigAnimal cluster. It also notes which node is the current write leader of each group:
+
+
+```
+$ pgd show-groups --dsn "postgres://edb_admin@p-mbx2p83u9n-a.pg.biganimal.io:5432/bdrdb?sslmode=require"
+
+Group          Group ID   Type   Parent Group   Location Raft  Routing Write Leader     
+-----          --------   ----   ------------   -------- ----  ------- ------------     
+world          3239291720 global                         true  true    p-mbx2p83u9n-a-1 
+dc1            4269540889 data   p-mbx2p83u9n-a          false false                    
+p-mbx2p83u9n-a 2800873689 data   world                   true  true    p-mbx2p83u9n-a-3 
+```
+
+See the [PGD CLI command reference](../../../pgd/latest/cli/command_ref/) for the full range of PGD CLI commands and their descriptions. 
