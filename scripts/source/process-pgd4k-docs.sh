@@ -28,6 +28,7 @@ cd $SOURCE_CHECKOUT/docs-import/docs
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
   -p "cnp/replace-github-urls" \
+  -p "pg4k-pgd/replace-beta-urls" \
   -p "cnp/update-yaml-links" \
   -p "cnp/add-frontmatters" \
   -p "cnp/cleanup-html" \
