@@ -68,7 +68,6 @@ export const products = {
   postgres_distributed_for_kubernetes: {
     name: "EDB Postgres Distributed for Kubernetes",
     iconName: IconNames.KUBERNETES,
-    noSearch: true, // remove this when PG4K-PGD is released!
   },
   postgres_for_kubernetes: {
     name: "EDB Postgres for Kubernetes",
