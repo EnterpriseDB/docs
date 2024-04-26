@@ -9,13 +9,18 @@ const productIcon = (path) => {
   return products[product] ? products[product].iconName : null;
 };
 
-const pathSame = (treepath, path) => {
+const pathSame = (treepath, path, versions) => {
+  if (versions == null) {
+    return treepath == path;
+  }
+
   const splitTreePath = treepath.split("/").filter(function (element) {
     return element !== "";
   });
   const splitPath = path.split("/").filter(function (element) {
     return element !== "";
   });
+
   if (splitPath[0] == splitTreePath[0]) {
     if (splitPath.slice(2).toString() == splitTreePath.slice(2).toString()) {
       return true;
@@ -65,7 +70,9 @@ const SectionHeading = ({ navTree, path, iconName }) => {
           to={navTree.path}
           className={
             "d-block align-middle balance-text m-1 " +
-            (pathSame(navTree.path, path) ? "text-dark h4" : "text-primary h4")
+            (pathSame(navTree.path, path, null)
+              ? "text-dark h4"
+              : "text-primary h4")
           }
         >
           {navTree.title}
@@ -77,7 +84,7 @@ const SectionHeading = ({ navTree, path, iconName }) => {
               to={relnotes.path}
               className={
                 "d-block align-middle balance-text m-1 " +
-                (pathSame(relnotes.path, path)
+                (pathSame(relnotes.path, path, null)
                   ? "text-dark h5"
                   : "text-primary h5")
               }
@@ -115,7 +122,9 @@ const SectionHeadingWithVersions = ({
           to={navTree.path}
           className={
             "d-block align-middle balance-text m-1 " +
-            (pathSame(navTree.path, path) ? "text-dark h4" : "text-primary h4")
+            (pathSame(navTree.path, path, versionArray)
+              ? "text-dark h4"
+              : "text-primary h4")
           }
         >
           {" "}
@@ -134,7 +143,7 @@ const SectionHeadingWithVersions = ({
               to={relnotes.path}
               className={
                 "d-block align-middle balance-text m-1 " +
-                (pathSame(relnotes.path, path)
+                (pathSame(relnotes.path, path, versionArray)
                   ? "text-dark h5"
                   : "text-primary h5")
               }
