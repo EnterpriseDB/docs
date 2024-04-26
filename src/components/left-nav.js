@@ -25,21 +25,68 @@ const pathSame = (treepath, path) => {
   return false;
 };
 
+function getReleaseNotesNode(navTree) {
+  for (var node of navTree.items) {
+    if (node.path) {
+      if (node.path.includes("/rel_notes/")) {
+        return node;
+      } else if (node.path.includes("/release_notes/")) {
+        return node;
+      } else if (node.path.includes("/epas_rel_notes/")) {
+        return node;
+      } else if (node.path.includes("/pem_rel_notes/")) {
+        return node;
+      }
+    }
+  }
+
+  console.log("Returning null");
+  return null;
+}
+
 const SectionHeading = ({ navTree, path, iconName }) => {
+  var relnotes = getReleaseNotesNode(navTree);
+
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
-        width="50"
-        height="50"
-      />
       <Link
         to={navTree.path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
-        {navTree.title}
+        <Icon
+          iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+          className="fill-orange me-3"
+          width="50"
+          height="50"
+        />
       </Link>
+      <div className="rightsidenoclass">
+        <Link
+          to={navTree.path}
+          className={
+            "d-block align-middle balance-text m-1 " +
+            (pathSame(navTree.path, path) ? "text-dark h4" : "text-primary h4")
+          }
+        >
+          {navTree.title}
+        </Link>
+
+        <div>
+          {relnotes ? (
+            <Link
+              to={relnotes.path}
+              className={
+                "d-block align-middle balance-text m-1 " +
+                (pathSame(relnotes.path, path)
+                  ? "text-dark h5"
+                  : "text-primary h5")
+              }
+            >
+              Release Notes
+            </Link>
+          ) : null}
+        </div>
+      </div>
     </li>
   );
 };
@@ -51,6 +98,7 @@ const SectionHeadingWithVersions = ({
   iconName,
   hideVersion,
 }) => {
+  var relnotes = getReleaseNotesNode(navTree);
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
       <Link to={navTree.path}>
@@ -66,8 +114,8 @@ const SectionHeadingWithVersions = ({
         <Link
           to={navTree.path}
           className={
-            "d-block align-middle balance-text m-0 " +
-            (pathSame(navTree.path, path) ? "text-dark h5" : "text-primary h5")
+            "d-block align-middle balance-text m-1 " +
+            (pathSame(navTree.path, path) ? "text-dark h4" : "text-primary h4")
           }
         >
           {" "}
@@ -81,17 +129,19 @@ const SectionHeadingWithVersions = ({
           <div className="text-muted">Version {versionArray[0].version}</div>
         ) : null}
         <div>
-          <Link
-            to={navTree.path + "rel_notes/"}
-            className={
-              "d-block align-middle balance-text m-0 " +
-              (pathSame(navTree.path + "rel_notes/", path)
-                ? "text-dark h6"
-                : "text-primary h6")
-            }
-          >
-            Release Notes
-          </Link>
+          {relnotes ? (
+            <Link
+              to={relnotes.path}
+              className={
+                "d-block align-middle balance-text m-1 " +
+                (pathSame(relnotes.path, path)
+                  ? "text-dark h5"
+                  : "text-primary h5")
+              }
+            >
+              Release Notes
+            </Link>
+          ) : null}
         </div>
       </div>
     </li>
