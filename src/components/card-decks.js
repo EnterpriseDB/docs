@@ -52,7 +52,7 @@ const FullCard = ({ card }) => {
 };
 
 const SimpleCard = ({ card }) => (
-  <div className="card rounded shadow-sm p-2 mt-4 w-100">
+  <div className="card rounded shadow-sm p-1 mb-4 w-100">
     <div className="card-body">
       <h3 className="card-title balance-text">
         <Link className="stretched-link" to={card.fields.path}>
@@ -69,25 +69,27 @@ const SimpleCard = ({ card }) => (
 const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
   return (
     <>
-      {deckTitle && <h2>{deckTitle}</h2>}
-      <div className="row no-gutters">
-        {cards.map((card) => {
-          return (
-            <Col
-              key={card.fields.path}
-              md={12}
-              lg={6}
-              xl={cardType === "simple" && 4}
-              className="d-flex"
-            >
-              {cardType === "full" ? (
-                <FullCard card={card} />
-              ) : (
-                <SimpleCard card={card} />
-              )}
-            </Col>
-          );
-        })}
+      {deckTitle && <h2 class="mt-3">{deckTitle}</h2>}
+      <div class="container">
+        <div className="row no-gutters">
+          {cards.map((card) => {
+            return (
+              <Col
+                key={card.fields.path}
+                md={12}
+                lg={6}
+                xl={cardType === "simple" && 4}
+                className="d-flex"
+              >
+                {cardType === "full" ? (
+                  <FullCard card={card} />
+                ) : (
+                  <SimpleCard card={card} />
+                )}
+              </Col>
+            );
+          })}
+        </div>
       </div>
     </>
   );
