@@ -31,10 +31,6 @@ cd $SOURCE_CHECKOUT/docs-import/docs
 cp $SOURCE_CHECKOUT/docs-import/config/manager/default-monitoring.yaml $SOURCE_CHECKOUT/docs-import/docs/src/
 
 node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
-  -f "src/**/quickstart.md" \
-  -p cnp/add-quickstart-content
-
-node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
   -p "cnp/add-frontmatters" \
   -p "cnp/flatten-appendices" \
