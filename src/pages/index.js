@@ -68,24 +68,27 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/pgd/latest/">
-                      EDB Postgres Distributed 5.4.0
+                    <Link
+                      className="homepage-headling-link"
+                      to="/postgres_distributed_for_kubernetes/latest/"
+                    >
+                      EDB Postgres Distributed for Kubernetes 1.0
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.HIGH_AVAILABILITY}
+                      iconName={iconNames.KUBERNETES}
                       className="fill-orange ms-2 float-end"
                     />
-                    Documentation for the latest version of PGD includes an
-                    all-new section covering manual configuration and
-                    installation.
+                    EDB Postgres Distributed for Kubernetes is an operator
+                    designed to manage PGD workloads on Kubernetes, with traffic
+                    routed by PGD Proxy.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
                       <Link
                         className="btn-sm ms-2"
-                        to="/pgd/latest/admin-manual/"
+                        to="/postgres_distributed_for_kubernetes/latest/"
                       >
                         Find out more &rarr;
                       </Link>
@@ -105,21 +108,28 @@ const Page = () => {
 
                 <div className="mb-3">
                   <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/tpa/latest/">
-                      Trusted Postgres Architect 23.30
+                    <Link
+                      className="homepage-headling-link"
+                      to="/epas/15/planning/deployment_options/aws_epas/"
+                    >
+                      Advanced Server AWS AMI deployment
                     </Link>
                   </h3>
                   <p>
                     <Icon
-                      iconName={iconNames.INSTANCES}
+                      iconName={iconNames.DATABASE}
                       className="fill-orange ms-2 float-end"
                     />
-                    TPA now provides a custom Execution Environment image to be
-                    used on RedHat Ansible Automation Controller.
+                    EDB Postgres Advanced Server Amazon Machine Image (AMI) is a
+                    preconfigured template with EDB Postgres Advanced Server 15
+                    installed on RHEL 8.
                   </p>
                   <div className="d-flex align-items-center">
                     <p>
-                      <Link className="btn-sm ms-2" to="/tpa/latest/tower/">
+                      <Link
+                        className="btn-sm ms-2"
+                        to="/epas/15/planning/deployment_options/aws_epas/"
+                      >
                         Find out more &rarr;
                       </Link>
                     </p>
