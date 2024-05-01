@@ -10,6 +10,10 @@ const showInteractiveBadge = (frontmatter) =>
     ? frontmatter.showInteractiveBadge
     : !!frontmatter.katacodaPanel;
 
+const makeAnchor = (text) => {
+  return text.split(" ").join("-").toLowerCase().replace("/", "");
+};
+
 const FullCard = ({ card }) => {
   const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
 
@@ -69,8 +73,15 @@ const SimpleCard = ({ card }) => (
 const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
   return (
     <>
-      {deckTitle && <h2 class="mt-3">{deckTitle}</h2>}
-      <div class="container">
+      {deckTitle && (
+        <h2
+          className="mt-3"
+          id={deckTitle.split(" ").join("-").toLowerCase().replace("/", "")}
+        >
+          {deckTitle}
+        </h2>
+      )}
+      <div className="container">
         <div className="row no-gutters">
           {cards.map((card) => {
             return (

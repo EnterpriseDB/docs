@@ -57,6 +57,11 @@ const makeVersionArray = (versions, pathVersions, path) => {
   }));
 };
 
+// This should be reusable but for now....
+const makeAnchor = (text) => {
+  return "#" + text.split(" ").join("-").toLowerCase().replace("/", "");
+};
+
 const buildSections = (navTree) => {
   const sections = [];
   let nextSection;
@@ -233,6 +238,20 @@ const DocTemplate = ({ data, pageContext }) => {
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
+  // newtoc will be passed as the toc - this will blend the existing toc with the new sections
+  const newtoc = { items: [] };
+  if (tableOfContents.items) {
+    newtoc.items.push(...tableOfContents.items);
+    if (sections) {
+      sections.forEach((section) =>
+        newtoc.items.push({
+          url: makeAnchor(section.title),
+          title: section.title,
+        }),
+      );
+    }
+  }
+
   let title = frontmatter.title;
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
@@ -324,10 +343,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents
-                  toc={tableOfContents.items}
-                  deepToC={deepToC}
-                />
+                <TableOfContents toc={newtoc.items} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>
