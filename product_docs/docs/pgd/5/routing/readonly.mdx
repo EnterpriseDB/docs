@@ -13,13 +13,15 @@ If you could move traffic that was read-only queries to the non-write leader nod
 
 ## Read-Only Routing in PGD Proxy
 
-From PGD 5.4.1, PGD Proxy addresses this requirement, to utilize read capacity while minimizing application exposure to the cluster status. It does this by offering a new read_listen_port on proxies which complement the existing listen port. Proxies can be configured with either or both of these ports.
+From PGD 5.5.0, PGD Proxy addresses this requirement, to utilize read capacity while minimizing application exposure to the cluster status. It does this by offering a new read_listen_port on proxies which complement the existing listen port. Proxies can be configured with either or both of these ports.
 
 When a proxy is configured with a read_listen_port, connections to that particular port are routed to available data nodes that are not the current write leader. If an application only queries and reads from the database, using a read_listen_port ensures that your queries are not answered by the write leader.
 
-Because PGD Proxy is a TCP Layer 4 proxy, it does not interfere with traffic passing through it. That means, in turn, that it cannot detect attempts to write passing through the read_listen_port connections. It is entirely possible to write through a read-only port. 
+Because PGD Proxy is a TCP Layer 4 proxy, it does not interfere with traffic passing through it. That means that it cannot detect attempts to write passing through the read_listen_port connections. As it cannot distinguish between a SELECT or an INSERT, it is entirely possible to write through a read-only port. 
 
 The active-active nature of PGD means that any write operation will be performed and replicated and conflict resolution may, or may not have to take place. It is entirely down to the application to avoid this and make sure that it only uses read_listen_ports for read-only traffic.
+
+Where available, the problem can be mitigated on the client side by passing [`default_transaction_read_only=on`](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-DEFAULT-TRANSACTION-READ-ONLY) in the connection string or equivalent for the driver in use.
 
 ### Valid read-only nodes
 
@@ -33,8 +35,8 @@ Only data nodes which are not the write leader are valid as read-only nodes. For
 
 Proxy creation functions in PGD take an optional `proxy-mode` parameter. This parameter can be set to one of the following values:
 * `default`: This is the default value. It creates a proxy that can handles traffic that follows the write leader on port 6432.
-* `read-only`: This creates a read-only proxy which routes traffic to nodes that are not the write leader. It only handles this read-only traffic on port 7432.
-* `any`: This creates create a proxy that can handle both read-only and write leader following traffic on seperate ports; 6432 for write leader following traffic and 7432 for read-only traffic.
+* `read-only`: This creates a read-only proxy which routes traffic to nodes that are not the write leader. It only handles this read-only traffic on port 6433.
+* `any`: This creates create a proxy that can handle both read-only and write leader following traffic on seperate ports; 6432 for write leader following traffic and 6433 for read-only traffic.
 
 ## Creating a Read-Only Proxy
 
@@ -67,10 +69,10 @@ To change a proxy's configuration, the proxy must be restarted after changes hav
 To configure a read-only proxy port on a proxy, use the `bdr.alter_proxy_options` function.
 
 ```sql
-SELECT bdr.alter_proxy_options('proxy-a1','read_listen_port','7432');
+SELECT bdr.alter_proxy_options('proxy-a1','read_listen_port','6433');
 ```
 
-This will configure a read-only proxy port on proxy-a1 on port 7432.
+This will configure a read-only proxy port on proxy-a1 on port 6433.
 
 To remove the read-only proxy set the port to 0.
 
@@ -83,10 +85,10 @@ SELECT bdr.alter_proxy_options('proxy-a1','read_listen_port','0');
 To configure a read-only proxy port on a proxy, use the `pgd alter-proxy` command.
 
 ```sh
-pgd set-proxy-options --proxy-name proxy-a1 --option read_listen_port=7432
+pgd set-proxy-options --proxy-name proxy-a1 --option read_listen_port=6433
 ```
 
-This will configure a read-only proxy port on proxy-a1 on port 7432.
+This will configure a read-only proxy port on proxy-a1 on port 6433.
 
 To remove the read-only proxy set the port to 0.
 
