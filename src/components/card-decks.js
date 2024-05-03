@@ -72,7 +72,7 @@ const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
   return (
     <>
       {deckTitle && (
-        <h2 className="mt-3" id={slugger.slug(deckTitle)}>
+        <h2 className="mt-3" id={"section-" + slugger.slug(deckTitle)}>
           {deckTitle}
         </h2>
       )}

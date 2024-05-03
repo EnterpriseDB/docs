@@ -242,7 +242,7 @@ const DocTemplate = ({ data, pageContext }) => {
     if (sections) {
       sections.forEach((section) =>
         newtoc.items.push({
-          url: "#" + slugger.slug(section.title),
+          url: "#section-" + slugger.slug(section.title),
           title: section.title,
         }),
       );
