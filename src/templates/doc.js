@@ -17,6 +17,7 @@ import {
 } from "../components";
 import { products } from "../constants/products";
 import { FeedbackDropdown } from "../components/feedback-dropdown";
+import GithubSlugger from "github-slugger";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -55,11 +56,6 @@ const makeVersionArray = (versions, pathVersions, path) => {
       pathVersions[i] ||
       `${getProductUrlBase(path)}/${i === 0 ? "latest" : version}`,
   }));
-};
-
-// This should be reusable but for now....
-const makeAnchor = (text) => {
-  return "#" + text.split(" ").join("-").toLowerCase().replace("/", "");
 };
 
 const buildSections = (navTree) => {
@@ -193,6 +189,7 @@ const Section = ({ section }) => (
 );
 
 const DocTemplate = ({ data, pageContext }) => {
+  const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
   const gitData = data.edbGit;
   const { path, mtime, depth } = fields;
@@ -245,7 +242,7 @@ const DocTemplate = ({ data, pageContext }) => {
     if (sections) {
       sections.forEach((section) =>
         newtoc.items.push({
-          url: makeAnchor(section.title),
+          url: "#" + slugger.slug(section.title),
           title: section.title,
         }),
       );
