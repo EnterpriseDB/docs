@@ -95,9 +95,12 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const releaseNotesBody = cleanLines
       .map((line) => `| Enhancement | ${line.trim()} |`)
       .join("\n");
-    const releaseNotesFileName = `${directory}/${getShortMonthName(
-      currentMonth,
-    )}_${currentYear}_rel_notes.mdx`;
+    // file name shoudl be like 2021_09_sep_rel_notes.mdx
+    const releaseNotesFileName = `${directory}/${currentYear}_${(
+      currentMonth + 1
+    )
+      .toString()
+      .padStart(2, "0")}_${getShortMonthName(currentMonth)}_rel_notes.mdx`;
 
     const releaseNotesFile = fs.openSync(`${releaseNotesFileName}`, "w");
 
