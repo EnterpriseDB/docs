@@ -95,7 +95,7 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const releaseNotesBody = cleanLines
       .map((line) => `| Enhancement | ${line.trim()} |`)
       .join("\n");
-    // file name shoudl be like 2021_09_sep_rel_notes.mdx
+    // file name should follow the pattern 2021_09_sep_rel_notes.mdx
     const releaseNotesFileName = `${directory}/${currentYear}_${(
       currentMonth + 1
     )
