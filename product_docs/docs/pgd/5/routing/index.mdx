@@ -23,6 +23,32 @@ The PGD Proxy connects to one of the EDB Postgres Distributed nodes and monitors
 routing configuration changes as decided by the EDB Postgres Distributed cluster.
 It ensures that the connections are routed to the correct nodes consistently.
 
+The information about currently selected write and read nodes is visible in
+`bdr.node_group_routing_summary`. Note that this is node-local view, the proxy
+always reads from Raft leader to get current and consistent view.
+
+## Leader selection
+
+The write leader is selected by the current Raft leader (either group one or global one,
+depending on whether the leader for local group or global cluster is being selected).
+
+Leader is selected from candidate nodes which are reachable and meet the criteria based
+on the configuration as described bellow. To be a viable candidate, node has to have
+`route_writes` enabled and `route_fence` disabled and be within `route_writer_max_lag`
+(if enabled) from previous leader. The candidates are ordered by their `route_priority`
+in descending order and by the lag from previous leader in ascending order.
+
+New leader selection process is started when there is either no existing leader currently
+(this could be because there were no valid candidates or because Raft was down), or when
+connectivity is lost to the existing leader.
+
+A Node is considered connected if the last Raft protocol message received from by the leader
+it is not older than Raft election timeout
+(see [Internal settings - Raft timeouts](../pgd-settings#internal-settings---raft-timeouts) ).
+
+Since the Raft leader is sending heartbeat 3 times every election timeout limit, the leader
+node needs to miss reply to 3 heartbeats before it's considered disconnected.
+
 ## Configuration
 
 Configuring the routing is done through either SQL interfaces or through
