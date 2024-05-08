@@ -49,7 +49,7 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 {% endfor %}
 </table>
 
-## Most Recent Assesments
+## Most Recent Assessments
 
 <table class="table-bordered">
 {% for ass in shortasslist %}
@@ -57,7 +57,7 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 <tr><td>
 <details><summary><h3 style="display:inline"> {{ thisass.vulnerability_details.cve_id }} </h3>
 <span>
-&nbsp;&nbsp;<a href="assessments/{{ thisass.filename }}">Read Assesment</a>
+&nbsp;&nbsp;<a href="assessments/{{ thisass.filename }}">Read Assessment</a>
 &nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>
 <h4>{{ thisass.frontmatter.title }}</h4>
 <h5> {{ thisass.frontmatter.affectedProducts }}</h5>
