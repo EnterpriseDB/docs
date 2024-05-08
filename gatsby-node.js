@@ -17,7 +17,6 @@ const {
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
-  treeNodeToNavNode,
   findPrevNextNavNodes,
   preprocessPathsAndRedirects,
   configureRedirects,
@@ -218,7 +217,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     reporter.panic("createPages graphql query has errors!", result.errors);
   }
 
-  // this is critical to avoiding excessive Netlify deploy times: it ensures the pages are ordered consistently from build to build
+  // this is critical to avoiding excessive Netlify deploy times:
+  // it ensures that page context data is ordered consistently from build to build
   result.data.allMdx.nodes = result.data.allMdx.nodes.sort((a, b) =>
     a.fields.path.localeCompare(b.fields.path),
   );
@@ -229,59 +229,17 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
 
   processFileNodes(result.data.allPublicFile.nodes, productVersions, actions);
 
-  // it should be possible to remove these in the future,
-  // they are only used for navLinks generation
-  const learn = nodes.filter((file) => file.fields.docType === "advocacy");
-
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes);
-  const navStack = [treeRoot];
-  let curr = null;
-
-  while (navStack.length > 0) {
-    curr = navStack.pop();
-    curr.children.forEach((child) => navStack.push(child));
-
-    // build ordered navigation for immediate children
-    // treeToNavigation will use this data
-    const addedChildPaths = {};
-    curr.navigationNodes = [];
-    (curr.mdxNode?.frontmatter?.navigation || []).forEach((navEntry) => {
-      if (navEntry.startsWith("#")) {
-        curr.navigationNodes.push({
-          path: null,
-          title: navEntry.replace("#", "").trim(),
-        });
-        return;
-      }
-
-      const navChild = curr.children.find((child) => {
-        if (addedChildPaths[child.path]) return false;
-        const navName = child.path.split("/").slice(-2)[0];
-        return navName.toLowerCase() === navEntry.toLowerCase();
-      });
-      if (!navChild?.mdxNode) return;
-
-      addedChildPaths[navChild.path] = true;
-      curr.navigationNodes.push(treeNodeToNavNode(navChild));
-    });
-
-    curr.children
-      .filter((child) => !addedChildPaths[child.path])
-      .map((child) => treeNodeToNavNode(child))
-      .sort((a, b) => a.path.localeCompare(b.path))
-      .forEach((child) => curr.navigationNodes.push(child));
-
+  for (let curr of treeRoot) {
     // exit here if we're not dealing with an actual page
+    if (!curr.mdxNode && !curr.path) continue;
     if (!curr.mdxNode) {
       reportMissingIndex(reporter, curr);
       continue;
     }
 
     const node = curr.mdxNode;
-
-    // set computed frontmatter
-    node.frontmatter = computeFrontmatterForTreeNode(curr);
 
     // build navigation tree
     const navigationDepth = 1;
@@ -291,7 +249,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     const navTree = treeToNavigation(navRoot, node);
 
     // determine next and previous nodes
-    const prevNext = findPrevNextNavNodes(navTree, curr);
+    const prevNext = findPrevNextNavNodes(navRoot, curr);
 
     const pathVersions = configureRedirects(
       productVersions,
@@ -311,7 +269,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         actions,
       );
     } else if (docType === "advocacy") {
-      createAdvocacy(navTree, prevNext, node, productVersions, learn, actions);
+      createAdvocacy(navTree, prevNext, node, productVersions, actions);
     }
   }
   reportRedirectCollisions(validPaths, reporter);
@@ -381,14 +339,7 @@ const createDoc = (
   });
 };
 
-const createAdvocacy = (
-  navTree,
-  prevNext,
-  doc,
-  productVersions,
-  learn,
-  actions,
-) => {
+const createAdvocacy = (navTree, prevNext, doc, productVersions, actions) => {
   // configure legacy redirects
   configureLegacyRedirects({
     toPath: doc.fields.path,
@@ -399,10 +350,6 @@ const createAdvocacy = (
     actions,
   });
 
-  const navLinks = learn.filter(
-    (node) => node.fields.topic === doc.fields.topic,
-  );
-
   actions.createPage({
     path: doc.fields.path,
     component: require.resolve("./src/templates/learn-doc.js"),
@@ -410,7 +357,6 @@ const createAdvocacy = (
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
       pagePath: doc.fields.path,
-      navLinks: navLinks,
       prevNext,
       productVersions,
       navTree,

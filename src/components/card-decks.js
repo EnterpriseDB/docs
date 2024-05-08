@@ -6,44 +6,35 @@ import GithubSlugger from "github-slugger";
 
 const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
-const showInteractiveBadge = (frontmatter) =>
-  frontmatter.showInteractiveBadge != null
-    ? frontmatter.showInteractiveBadge
-    : !!frontmatter.katacodaPanel;
-
 const FullCard = ({ card }) => {
-  const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
-
   return (
     <div className="card rounded shadow-sm p-2 mt-4 w-100">
-      <Link to={card.fields.path}>
-        <Icon
-          iconName={iconName}
-          className={`${
-            iconName === iconNames.DOTTED_BOX && "opacity-1"
-          } mt-3 ms-3 fill-orange`}
-          width="100"
-          height="100"
-        />
-      </Link>
+      {card.iconName && (
+        <Link to={card.path}>
+          <Icon
+            iconName={card.iconName}
+            className="mt-3 ms-3 fill-orange"
+            width="100"
+            height="100"
+          />
+        </Link>
+      )}
       <div className="card-body">
         <h3 className="card-title balance-text">
-          <Link to={card.fields.path}>
-            {card.frontmatter.navTitle || card.frontmatter.title}
-          </Link>
+          <Link to={card.path}>{card.navTitle || card.title}</Link>
         </h3>
 
-        <p className="card-text">{card.frontmatter.description}</p>
+        <p className="card-text">{card.description}</p>
 
         <div className="d-grid gap-2">
-          {card.children.map((child) => (
+          {card.items.map((child) => (
             <Link
-              key={child.fields.path}
-              to={child.fields.path}
+              key={child.path}
+              to={child.path}
               className="btn btn-link text-start p-0"
             >
-              {child.frontmatter.navTitle || child.frontmatter.title}
-              {showInteractiveBadge(child.frontmatter) && <KatacodaBadge />}
+              {child.navTitle || child.title}
+              {child.interactive && <KatacodaBadge />}
             </Link>
           ))}
         </div>
@@ -56,13 +47,13 @@ const SimpleCard = ({ card }) => (
   <div className="card rounded shadow-sm p-1 mb-4 w-100">
     <div className="card-body">
       <h3 className="card-title balance-text">
-        <Link className="stretched-link" to={card.fields.path}>
-          {card.frontmatter.navTitle || card.frontmatter.title}
-          {showInteractiveBadge(card.frontmatter) && <KatacodaBadge />}
+        <Link className="stretched-link" to={card.path}>
+          {card.navTitle || card.title}
+          {card.interactive && <KatacodaBadge />}
         </Link>
       </h3>
 
-      <p className="card-text">{card.frontmatter.description}</p>
+      <p className="card-text">{card.description}</p>
     </div>
   </div>
 );
@@ -81,7 +72,7 @@ const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
           {cards.map((card) => {
             return (
               <Col
-                key={card.fields.path}
+                key={card.path}
                 md={12}
                 lg={6}
                 xl={cardType === "simple" && 4}

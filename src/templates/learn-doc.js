@@ -4,7 +4,6 @@ import { graphql } from "gatsby";
 import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
-  CardDecks,
   DevFrontmatter,
   Footer,
   Layout,
@@ -13,6 +12,8 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
+  Tiles,
+  TileModes,
 } from "../components";
 
 export const query = graphql`
@@ -40,57 +41,12 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (parentNode, navLinks, navigationOrder) => {
-  const order = (a, b) => {
-    const navPosA = navigationOrder?.findIndex(
-      (item) =>
-        item.toLowerCase() ===
-        a.fields.path.split("/").slice(-2)[0].toLowerCase(),
-    );
-    const navPosB = navigationOrder?.findIndex(
-      (item) =>
-        item.toLowerCase() ===
-        b.fields.path.split("/").slice(-2)[0].toLowerCase(),
-    );
-    if (navigationOrder && navPosA >= 0 && navPosB >= 0)
-      return navPosA - navPosB;
-    if (navigationOrder && navPosA >= 0) return -1;
-    if (navigationOrder && navPosB >= 0) return 1;
-    return a.fields.path.localeCompare(b.fields.path);
-  };
-  return navLinks
-    .filter(
-      (node) =>
-        node.fields.path.includes(parentNode.fields.path) &&
-        node.fields.depth === parentNode.fields.depth + 1,
-    )
-    .sort(order);
-};
+const findDescendent = (root, predicate) => {
+  if (predicate(root)) return root;
 
-const TileModes = {
-  None: "none",
-  Simple: "simple",
-  Full: "full",
-};
-const Tiles = ({ mode, mdx, navLinks, navigationOrder }) => {
-  if (mode === TileModes.None) return null;
-
-  if (!mode) {
-    if (mdx.fields.depth === 2) mode = TileModes.Full;
-    else if (mdx.fields.depth >= 3) mode = TileModes.Simple;
-  }
-
-  if (Object.values(TileModes).includes(mode)) {
-    const tiles = getChildren(mdx, navLinks, navigationOrder).map((child) => {
-      if (mode === "simple") return child;
-
-      return {
-        ...child,
-        children: getChildren(child, navLinks),
-      };
-    });
-
-    return <CardDecks cards={tiles} cardType={mode} />;
+  for (let node of root.items) {
+    const result = findDescendent(node, predicate);
+    if (result) return result;
   }
   return null;
 };
@@ -119,21 +75,15 @@ const FeedbackButton = ({ githubIssuesLink }) => (
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx, edbGit: gitData } = data;
   const { mtime, path, depth } = mdx.fields;
-  const {
-    frontmatter,
-    pagePath,
-    productVersions,
-    navLinks,
-    navTree,
-    prevNext,
-  } = pageContext;
+  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
+    pageContext;
+  const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
     iconName,
     title,
     description,
     katacodaPanel,
     indexCards,
-    navigation,
     originalFilePath,
     editTarget,
     prevNext: showPrevNext,
@@ -151,6 +101,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
+
+  let cardTileMode = indexCards;
+  if (!cardTileMode) {
+    if (navRoot.depth === 2) cardTileMode = TileModes.Full;
+    else if (navRoot.depth >= 3) cardTileMode = TileModes.Simple;
+  }
 
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
@@ -187,7 +143,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         <SideNavigation hideKBLink={frontmatter.hideKBLink}>
           <LeftNav
             navTree={navTree}
-            navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
@@ -207,12 +162,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles
-                mode={indexCards}
-                mdx={mdx}
-                navLinks={navLinks}
-                navigationOrder={navigation}
-              />
+              <Tiles mode={cardTileMode} node={navRoot} />
             </Col>
 
             {showToc && (

@@ -46,24 +46,39 @@ const pathToDepth = (path) => {
   return path.split("/").filter((s) => s.length > 0).length;
 };
 
+// create a tree from a (assumed unordered) list of mdxNodes
+// this is primarily used to assist in constructing various navigation patterns
+// any node can be iterated on, which provides a depth-first traversal and allows fun things like
+// const arrayOfNodes = [...treeToFlatten];
+//
+// Do not confuse this with treeToNavigation(), which transforms (a subset of) this tree
+// into a somewhat more svelt structure for use in page context
 const mdxNodesToTree = (nodes) => {
-  const buildNode = (path, parent) => {
-    return {
-      path: path,
-      parent: parent,
-      children: [],
-      mdxNode: null,
-      depth: pathToDepth(path),
-    };
-  };
+  class Node {
+    constructor(path, parent) {
+      Object.assign(this, {
+        parent,
+        path,
+        children: [],
+        depth: path ? pathToDepth(path) : null,
+      });
+    }
 
-  const rootNode = buildNode("/", null);
+    *[Symbol.iterator]() {
+      yield this;
+      for (let child of this.children) {
+        yield* child;
+      }
+    }
+  }
+
+  const rootNode = new Node("/", null);
 
   const findOrInsertNode = (currentNode, path) => {
     const node = currentNode.children.find((child) => child.path === path);
     if (node) return node;
 
-    const newNode = buildNode(path, currentNode);
+    const newNode = new Node(path, currentNode);
     currentNode.children.push(newNode);
     return newNode;
   };
@@ -80,7 +95,45 @@ const mdxNodesToTree = (nodes) => {
     }
   };
 
-  nodes.forEach((node) => addNode(node));
+  nodes.forEach(addNode);
+
+  // post-processing:
+  // - compute inherited frontmatter
+  // - re-order according to frontmatter-specified navigation
+  for (let node of rootNode) {
+    if (node.mdxNode)
+      node.mdxNode.frontmatter = computeFrontmatterForTreeNode(node);
+
+    // re-order according to navigation order, inserting nodes for headers when present
+    const addedChildPaths = {};
+    const orderedNodes = [];
+    for (const navEntry of node.mdxNode?.frontmatter?.navigation || []) {
+      if (navEntry.startsWith("#")) {
+        let sectionNode = new Node();
+        sectionNode.title = navEntry.replace("#", "").trim();
+        orderedNodes.push(sectionNode);
+        continue;
+      }
+
+      const navChild = node.children.find((child) => {
+        if (addedChildPaths[child.path]) return false;
+        const navName = child.path.split("/").slice(-2)[0];
+        return navName.toLowerCase() === navEntry.toLowerCase();
+      });
+      if (!navChild?.mdxNode) continue;
+
+      addedChildPaths[navChild.path] = true;
+      orderedNodes.push(navChild);
+    }
+
+    // any remaining pages get added at the end, sorted alphabetically
+    node.children = [
+      ...orderedNodes,
+      ...node.children
+        .filter((child) => !addedChildPaths[child.path])
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    ];
+  }
 
   return rootNode;
 };
@@ -90,6 +143,8 @@ const computeFrontmatterForTreeNode = (treeNode) => {
     ...removeNullEntries(treeNode.mdxNode.frontmatter.directoryDefaults),
     ...removeNullEntries(treeNode.mdxNode.frontmatter),
   };
+
+  treeNode._origFrontmatter = { ...frontmatter };
 
   let current;
   let parent = treeNode.parent;
@@ -140,116 +195,123 @@ const reportMissingIndex = (reporter, treeNode) => {
   }
 };
 
-const treeNodeToNavNode = (treeNode, withItems = false) => {
+const treeNodeToNavNode = (treeNode) => {
   const frontmatter = treeNode.mdxNode?.frontmatter;
   const interactive =
-    frontmatter?.showInteractiveBadge != null
-      ? frontmatter?.showInteractiveBadge
-      : !!frontmatter?.katacodaPanel;
+    frontmatter?.showInteractiveBadge ?? !!frontmatter?.katacodaPanel;
 
-  const navNode = {
-    path: treeNode.path,
-    navTitle: frontmatter?.navTitle,
-    title: frontmatter?.title,
-    hideVersion: frontmatter?.hideVersion,
-    displayBanner: frontmatter?.displayBanner,
-    depth: treeNode.mdxNode?.fields?.depth,
-    iconName: frontmatter?.iconName,
-    description: frontmatter?.description,
-    interactive: interactive,
-    childCount: treeNode.children.length,
-  };
-  if (withItems) navNode.items = [];
+  const navNode = Object.assign(
+    {},
+    {
+      path: treeNode.path,
+      navTitle: frontmatter?.navTitle,
+      title: frontmatter?.title ?? treeNode.title,
+      hideVersion: frontmatter?.hideVersion,
+      displayBanner: frontmatter?.displayBanner,
+      depth: treeNode.mdxNode?.fields?.depth,
+      iconName: frontmatter?.iconName,
+      description: treeNode._origFrontmatter?.description,
+      interactive: interactive || undefined,
+      childCount: treeNode.children.length,
+    },
+  );
   return navNode;
 };
 
+// create a tree structure suitable for embedding in page context
+// for use by sidebar nav, card decks during rendering
+// treeNode: produced by mdxNodesToTree(), represents the root of navigation (product index, etc)
+// pageNode: an mdxNode representing the page for which navigation is desired
 const treeToNavigation = (treeNode, pageNode) => {
   const rootNode = treeNodeToNavNode(treeNode, true);
   const { depth, path } = pageNode.fields;
 
-  let curr = treeNode;
-  let items = rootNode.items;
-  while (curr && curr.depth <= depth) {
-    let next = [];
-    let nextItems = [];
-
-    if (!curr.navigationNodes) break;
-
-    curr.navigationNodes.forEach((navNode) => {
-      const newNavNode = { ...navNode, items: [] };
-      items.push(newNavNode);
-      if (path.includes(newNavNode.path)) {
-        next.push(
-          curr.children.find((child) => child.path === newNavNode.path),
-        );
-        nextItems.push(newNavNode.items);
-      }
-    });
-
-    curr = next.pop();
-    items = nextItems.pop();
+  // only process children if,
+  // - this is an ancestor of the page, or
+  // - this is the page, or
+  // - this is a direct child of the page
+  if (
+    rootNode.path &&
+    (path.includes(rootNode.path) ||
+      (rootNode.path.includes(path) && rootNode.depth === depth + 1))
+  ) {
+    rootNode.items = treeNode.children.map((n) =>
+      treeToNavigation(n, pageNode),
+    );
+  } else {
+    rootNode.items = [];
   }
 
   return rootNode;
 };
 
-const getNavNodeForTreeNode = (treeNode) => {
-  if (!treeNode.parent?.navigationNodes) return null;
+//
+// Used by findPrevNextNavNodes()
+// walks up the tree until a sibling is available
+// rootNode is optional; allows limiting search to a
+// subtree.
+const findNextAncestor = (currNode, rootNode) => {
+  if (currNode === rootNode) return null;
 
-  return treeNode.parent.navigationNodes.find((navNode) => {
-    return navNode.path === treeNode.path;
-  });
+  const currIndex =
+    currNode.parent?.children?.findIndex(
+      (node) => node.path === currNode.path,
+    ) ?? -1;
+  if (currIndex < 0) return null;
+
+  if (currIndex < currNode.parent.children.length - 1)
+    return currNode.parent.children[currIndex + 1];
+
+  return findNextAncestor(currNode.parent, rootNode);
 };
 
-const getTreeNodeForNavNode = (parent, navNode) => {
-  return parent.children.find((child) => child.path === navNode.path);
-};
-
-const flattenTree = (flatArray, nodes) => {
-  nodes.forEach((node) => {
-    const { items, ...newNode } = node;
-    flatArray.push(newNode);
-    flattenTree(flatArray, items || []);
-  });
-};
-
-const findPrevNextNavNodes = (navTree, currNode) => {
+//
+// Used to implement next / prev buttons
+// currNode is the page for which to find previous / next pages
+// navRoot is used to restrict navigation to a subtree
+// (usually a single product)
+const findPrevNextNavNodes = (navRoot, currNode) => {
   const prevNext = { prev: null, next: null };
 
-  const parent = currNode.parent; // parent nav nodes should contain currNode
-  if (!parent.navigationNodes) return prevNext;
-
-  const currNavNodeIndex = parent.navigationNodes.findIndex((navNode) => {
-    return navNode.path === currNode.path;
-  });
-
-  // hunt for prev node
-  if (currNavNodeIndex > 0) {
-    let prevNavNode = parent.navigationNodes[currNavNodeIndex - 1];
-
-    while (prevNavNode) {
-      const prevTreeNode = getTreeNodeForNavNode(parent, prevNavNode);
-      if (!prevTreeNode) break;
-      const lastNavNode = prevTreeNode.navigationNodes?.slice(-1)?.[0];
-      if (!lastNavNode) break;
-      prevNavNode = lastNavNode;
-    }
-
-    prevNext.prev = prevNavNode;
-  } else {
-    prevNext.prev = getNavNodeForTreeNode(parent);
+  const currIndex =
+    currNode.parent?.children?.findIndex(
+      (node) => node.path === currNode.path,
+    ) ?? -1;
+  // should not happen, no sense in trying to find anything if it does
+  // most likely reason for this to be hit is a logic error elsewhere,
+  // e.g. calling this function on a section header
+  if (currIndex < 0) {
+    console.warn("Bad tree: node not part of parent", currNode);
+    return prevNext;
   }
 
-  // hunt for next node
-  const flatTree = [];
-  flattenTree(flatTree, navTree.items);
-  const index = flatTree.findIndex((navItem) => navItem.path === currNode.path);
-  if (index < flatTree.length - 1) {
-    prevNext.next = flatTree[index + 1];
+  // Find previous page
+  if (currNode !== navRoot) {
+    if (currIndex > 0) {
+      prevNext.prev = currNode.parent.children[currIndex - 1];
+      // this preserves an existing bug (for testing purposes)
+      // it will only descend into the previous node's children
+      // if its path sorts after the current node alphabetically
+      // I believe this originally worked because nodes were
+      // created in filesystem order. When navigation changes were
+      // introduced, this became increasingly unreliable.
+      if (prevNext.prev?.path?.localeCompare(currNode.path) > 0) {
+        for (const node of currNode.parent.children[currIndex - 1]) {
+          if (node.depth === currNode.depth + 1) prevNext.prev = node;
+        }
+      }
+    } else if (currIndex === 0 && currNode.parent !== navRoot)
+      prevNext.prev = currNode.parent;
   }
 
-  if (!prevNext.prev?.path) prevNext.prev = null;
-  if (!prevNext.next?.path) prevNext.next = null;
+  // find next node
+  if (currNode.children.length) prevNext.next = currNode.children[0];
+  else if (currIndex < currNode.parent.children.length - 1)
+    prevNext.next = currNode.parent.children[currIndex + 1];
+  else prevNext.next = findNextAncestor(currNode.parent, navRoot);
+
+  prevNext.prev = prevNext.prev?.path ? treeNodeToNavNode(prevNext.prev) : null;
+  prevNext.next = prevNext.next?.path ? treeNodeToNavNode(prevNext.next) : null;
 
   return prevNext;
 };
