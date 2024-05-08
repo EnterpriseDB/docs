@@ -288,17 +288,8 @@ const findPrevNextNavNodes = (navRoot, currNode) => {
   // Find previous page
   if (currNode !== navRoot) {
     if (currIndex > 0) {
-      prevNext.prev = currNode.parent.children[currIndex - 1];
-      // this preserves an existing bug (for testing purposes)
-      // it will only descend into the previous node's children
-      // if its path sorts after the current node alphabetically
-      // I believe this originally worked because nodes were
-      // created in filesystem order. When navigation changes were
-      // introduced, this became increasingly unreliable.
-      if (prevNext.prev?.path?.localeCompare(currNode.path) > 0) {
-        for (const node of currNode.parent.children[currIndex - 1]) {
-          if (node.depth === currNode.depth + 1) prevNext.prev = node;
-        }
+      for (const node of currNode.parent.children[currIndex - 1]) {
+        if (node.depth <= currNode.depth + 1) prevNext.prev = node;
       }
     } else if (currIndex === 0 && currNode.parent !== navRoot)
       prevNext.prev = currNode.parent;
