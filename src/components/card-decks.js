@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "../components/";
 import { Col } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
+import GithubSlugger from "github-slugger";
 
 const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
@@ -9,10 +10,6 @@ const showInteractiveBadge = (frontmatter) =>
   frontmatter.showInteractiveBadge != null
     ? frontmatter.showInteractiveBadge
     : !!frontmatter.katacodaPanel;
-
-const makeAnchor = (text) => {
-  return text.split(" ").join("-").toLowerCase().replace("/", "");
-};
 
 const FullCard = ({ card }) => {
   const iconName = card.frontmatter.iconName || iconNames.DOTTED_BOX;
@@ -71,13 +68,11 @@ const SimpleCard = ({ card }) => (
 );
 
 const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
+  let slugger = new GithubSlugger();
   return (
     <>
       {deckTitle && (
-        <h2
-          className="mt-3"
-          id={deckTitle.split(" ").join("-").toLowerCase().replace("/", "")}
-        >
+        <h2 className="mt-3" id={"section-" + slugger.slug(deckTitle)}>
           {deckTitle}
         </h2>
       )}
