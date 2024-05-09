@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "../components/";
 import { Col } from "react-bootstrap";
-import Icon, { iconNames } from "../components/icon/";
+import Icon from "../components/icon/";
 import GithubSlugger from "github-slugger";
 
 const KatacodaBadge = () => <span className="new-thing">Demo</span>;

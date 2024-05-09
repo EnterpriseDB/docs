@@ -4,7 +4,6 @@ import { graphql, Link } from "gatsby";
 import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
-  CardDecks,
   DevOnly,
   DevFrontmatter,
   Footer,
@@ -292,7 +291,7 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {depth > 2 && <PrevNext prevNext={prevNext} depth={depth} />}
+          {depth > 2 && <PrevNext prevNext={prevNext} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />

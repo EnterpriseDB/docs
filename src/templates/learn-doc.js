@@ -171,14 +171,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {showPrevNext && depth > 1 && (
-            <PrevNext
-              prevNext={prevNext}
-              path={path}
-              depth={depth}
-              depthLimit={2}
-            />
-          )}
+          {showPrevNext && <PrevNext prevNext={prevNext} />}
 
           <DevFrontmatter frontmatter={frontmatter} />
 

@@ -251,8 +251,6 @@ const treeToNavigation = (treeNode, pageNode) => {
 // rootNode is optional; allows limiting search to a
 // subtree.
 const findNextAncestor = (currNode, rootNode) => {
-  if (currNode === rootNode) return null;
-
   const currIndex =
     currNode.parent?.children?.findIndex(
       (node) => node.path === currNode.path,
@@ -262,6 +260,7 @@ const findNextAncestor = (currNode, rootNode) => {
   if (currIndex < currNode.parent.children.length - 1)
     return currNode.parent.children[currIndex + 1];
 
+  if (currNode.parent === rootNode) return null;
   return findNextAncestor(currNode.parent, rootNode);
 };
 
@@ -271,37 +270,38 @@ const findNextAncestor = (currNode, rootNode) => {
 // navRoot is used to restrict navigation to a subtree
 // (usually a single product)
 const findPrevNextNavNodes = (navRoot, currNode) => {
-  const prevNext = { prev: null, next: null };
-
-  const currIndex =
-    currNode.parent?.children?.findIndex(
-      (node) => node.path === currNode.path,
-    ) ?? -1;
-  // should not happen, no sense in trying to find anything if it does
-  // most likely reason for this to be hit is a logic error elsewhere,
-  // e.g. calling this function on a section header
-  if (currIndex < 0) {
-    console.warn("Bad tree: node not part of parent", currNode);
-    return prevNext;
-  }
+  const prevNext = { prev: null, next: null, up: null };
 
   // Find previous page
   if (currNode !== navRoot) {
-    if (currIndex > 0) {
+    const currIndex =
+      currNode.parent?.children?.findIndex(
+        (node) => node.path === currNode.path,
+      ) ?? -1;
+    // should not happen, no sense in trying to find anything if it does
+    // most likely reason for this to be hit is a logic error elsewhere,
+    // e.g. calling this function on a section header
+    if (currIndex < 0) {
+      console.warn("Bad tree: node not part of parent", currNode);
+      return prevNext;
+    }
+
+    if (currIndex > 0)
       for (const node of currNode.parent.children[currIndex - 1]) {
-        if (node.depth <= currNode.depth + 1) prevNext.prev = node;
+        prevNext.prev = node;
       }
-    } else if (currIndex === 0 && currNode.parent !== navRoot)
-      prevNext.prev = currNode.parent;
+    else if (currIndex === 0) prevNext.prev = currNode.parent;
   }
+
+  // Find parent page
+  if (currNode !== navRoot) prevNext.up = currNode.parent;
 
   // find next node
   if (currNode.children.length) prevNext.next = currNode.children[0];
-  else if (currIndex < currNode.parent.children.length - 1)
-    prevNext.next = currNode.parent.children[currIndex + 1];
-  else prevNext.next = findNextAncestor(currNode.parent, navRoot);
+  else prevNext.next = findNextAncestor(currNode, navRoot);
 
   prevNext.prev = prevNext.prev?.path ? treeNodeToNavNode(prevNext.prev) : null;
+  prevNext.up = prevNext.up?.path ? treeNodeToNavNode(prevNext.up) : null;
   prevNext.next = prevNext.next?.path ? treeNodeToNavNode(prevNext.next) : null;
 
   return prevNext;
