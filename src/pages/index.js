@@ -100,12 +100,16 @@ const Page = () => {
           {/* Postgres AI nav goes here */}
 
           <div className="border border-success">
-            Postgres AI nav goes here
-            <Link to="/postgres-ai/console/">Console</Link>
-            <Link to="/postgres-ai/databases/">Databases</Link>
-            <Link to="/postgres-ai/analytics/">Analytics</Link>
-            <Link to="/postgres-ai/ai-ml/">AI-ML</Link>
-            <Link to="/postgres-ai/tools/">Tools</Link>
+            <h3>Postgres AI nav goes here</h3>
+            <Link to="/edb-postgres-ai/console/">Console</Link>
+
+            <Link to="/edb-postgres-ai/databases/">Databases</Link>
+            
+            <Link to="/edb-postgres-ai/analytics/">Analytics</Link>
+            
+            <Link to="/edb-postgres-ai/ai-ml/">AI-ML</Link>
+            
+            <Link to="/edb-postgres-ai/tools/">Tools</Link>
           </div>
 
           {/* Sign Post */}
