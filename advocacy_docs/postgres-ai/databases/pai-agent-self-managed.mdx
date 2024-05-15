@@ -1,0 +1,304 @@
+---
+title: Installing EDB Postgres AI agent for monitoring self-managed Postgres deployments
+navTitle: Monitoring self-managed deployments
+deepToC: true
+---
+
+To monitor a self-managed Postgres deployment using EDB Postgres AI, you need a machine agent configured correctly in the EDB Postgres AI Console and an EDB Postgres AI agent configured to access the database and report back to the EDB Postgres AI Console.
+
+This guide walks through the procedure for setting up a machine user in the EDB Postgres AI Console before going into the details of how to configure the EDB Postgres AI agent. There are also optional instructions for running the EDB Postgres AI agent as a service.
+
+## Setting up a machine user for estate ingestion in EDB Postgres AI Console
+
+1. In the EDB Postgres AI Console, using your avatar's dropdown, select the **User Management** page.
+
+2. Select the **Add New User** button.
+
+3. On the **Add New User** page, select *Machine User*, give the user a name, check the **Create Access Key** checkbox, give the key a name, and finally select the **Add User** button.
+
+4. After you get your access key, store it somewhere securely, as EDB does not persist access keys. You must regenerate the key to get a new one.
+
+5. Next, go to the project of the database you want to monitor, select the **Users** tab, and locate the machine user you just created.
+
+6. Select the edit button to the right of the user entry, then select the **Assign Roles** button.
+
+7. In the **Assign Project Roles** modal, select "estate ingester" and then select the **Submit** button.
+
+8. Your machine user is ready for estate ingestions from the EDB Postgres AI agent.
+
+## Installing, configuring, testing, and running the Postgres AI agent
+
+The following steps walk you through how to install and configure the EDB Postgres AI agent, smoke test locally, and then run the agent to see the results in your Estates page in the EDB Postgres AI Console.
+
+1. Establish a connection between your system and the Cloudsmith repository for EDB Postgres AI.
+
+    First, find your EnterpriseDB Repos 2.0 token [here](https://www.enterprisedb.com/repos-downloads).
+
+    Next, download and run a script to configure your system to be able to access the `beacon-agent` package from the repository. Be sure to replace `<your-token>` with your EDB Repos 2.0 token:
+
+    For RHEL-like or SLES:
+
+    ```
+    curl -1sLf 'https://downloads.enterprisedb.com/<your-token>/dev/setup.rpm.sh' | sudo -E bash
+    ```
+
+    For Debian or Ubuntu:
+
+    ```
+    curl -1sLf 'https://downloads.enterprisedb.com/<your-token>/dev/setup.deb.sh' | sudo -E bash
+    ```
+
+2. Install the `beacon-agent` package:
+
+    For RHEL-like:
+
+    ```
+    dnf install beacon-agent
+    ```
+
+    Or if dnf isn't available:
+
+    ```
+    yum install beacon-agent
+    ```
+
+    For SLES:
+
+    ```
+    zypper install beacon-agent
+    ```
+
+    For Debian or Ubuntu:
+
+    ```
+    apt install beacon-agent
+    ```
+
+3. Configure EDB Postgres AI agent and database connections.
+
+    First, create a beacon config in your home directory:
+
+    ```
+    mkdir ${HOME}/.beacon
+    ```
+
+    Next, configure the beacon agent by setting the access key (the one you stored from the [last section](#setting-up-a-machine-user-for-estate-ingestion-in-edb-postgres-ai-console)) and project ID, and specify the Beacon config directory for storing the configuration file created. Use the following commands:
+
+    ```
+    export BEACON_AGENT_ACCESS_KEY=<your-access-key>
+    export BEACON_AGENT_PROJECT_ID=<your-project-id>
+    beacon-agent setup -file="$HOME/.beacon/beacon_agent.yaml"
+    ```
+
+    These commands set up the necessary parameters for the Beacon agent and execute the setup command to generate the configuration file(`beacon_agent.yaml) in the specified directory.
+
+    During this setup process, an authentication attempt occurs, utilizing the provided access key and project ID. This authentication is necessary for the Beacon agent to communicate with the Beacon service and register successfully.
+
+    If the commands execute as expected, you should see a message indicating that you have authenticated successfully to your Beacon project.
+
+
+4. For security best practices, create a `DSN` environmental variable for each database (`DSN1`, `DSN2`, and so on) you want to monitor and set each to the correct corresponding dsn.
+
+    ```
+    export DSN1=<dsn1>
+    ```
+
+5. Open your `$HOME/.beacon/beacon_agent.yaml` configuration file and add an entry for each database you want to connect to, including the environmental variable for each database's dsn.
+
+    Entries under `databases` utilize the following format:
+    
+    ```
+    databases:
+        <database_name_1>:
+            dsn: "$DSN1"
+            tags:
+                - "<tag-one>"
+                - "<tag-two>"
+        <database_name_2>:
+            dsn: "$DSN2"
+            tags: 
+                - "<tag-one>"
+                - "<tag-two>"
+    ```
+
+    Here is an example with a database named `john_laptop_0`:
+```
+agent:
+  access_key: $BEACON_AGENT_ACCESS_KEY
+  access_key_grpc_header: "x-access-key"
+  batch_size: 100
+  beacon_server: "beacon.biganimal.com:443"
+  feature_flag_interval: 10m0s
+  project_id: "<project ID>"
+  providers:
+    - "onprem"
+provider:
+  onprem:
+    databases:
+      john_laptop_0:
+        dsn: “$DSN”
+        tags:
+          - "foo"
+          - "bar"
+    host:
+      resource_id: "Johns-MBP.lan"
+      tags: []
+    poll_interval: 5m0s
+```
+
+6. Test the EDB Postgres AI agent locally.
+
+    As an initial smoke test of the agent, it can send the ingestions that it would send back to the beacon server to stdout instead. This allows you to quickly confirm if the agent is successfully able to gather ingestions and what those ingestions look like.
+
+    You can run the agent in stdout mode by modifying the `beacon_agent.yaml` file generated previously to have an `agent.beacon_server` value of `"stdout"`. A truncated example of this would be:
+
+    ```
+    agent:
+        beacon_server: "stdout"
+    ```
+
+    Next, run the agent in this mode using the following command:
+
+    ```
+    beacon-agent
+    ```
+
+    You should see output similar to the following:
+
+```
+{"level":"debug","data":"$BEACON_AGENT_ACCESS_KEY","time":"2024-05-08T18:40:34Z","message":"expanding environment variable in configuration"}
+{"level":"info","path":"/healthz","time":1715193634,"msg":"serving liveness probe"}
+{"level":"info","path":"/readyz","time":1715193634,"msg":"serving readiness probe"}
+{"level":"info","version":"v1.51.0-snapshot8986075626.97.1.166215e","time":1715193634,"msg":"starting beacon agent"}
+{"level":"info","spiffe_enabled":false,"time":1715193634,"msg":"configuring tls"}
+{"level":"info","server":"stdout","time":1715193634,"msg":"connecting to beacon service"}
+{"level":"info","address":":8081","time":1715193634,"msg":"starting probe server"}
+{"level":"info","target":"stdout","time":1715193634,"msg":"connected to beacon server"}
+{"level":"info","time":1715193634,"msg":"verifying connection to beacon server"}
+{"level":"info","project":"echo","time":1715193634,"msg":"verified connection to beacon server"}
+{"level":"info","interval":"10m0s","time":1715193634,"msg":"loading feature flags periodically"}
+{"level":"info","time":1715193634,"msg":"fetching feature flags"}
+{"level":"info","feature_flags":{"echo_flag":"test","second_flag":false},"time":1715193634,"msg":"loaded feature flags"}
+{"level":"info","id":"onprem","time":1715193634,"msg":"starting provider"}
+{"level":"info","disable_partitioning":false,"batch_size":100,"interval":"10s","time":1715193634,"msg":"starting batch exporter"}
+{"level":"info","provider_id":"onprem","time":1715193634,"msg":"registering ingestion worker in pool"}
+{"level":"info","provider":"onprem","time":1715193634,"msg":"starting provider worker"}
+{"level":"info","ingestions":[{"version":"v0.1.0","type":"onprem/host","id":"ip-10-0-128-121","metadata":{"Data":{"OnPremHostMetadata":{"hostname":"ip-10-0-128-121","operating_system":"linux","platform":"ubuntu","platform_family":"debian","platform_version":"22.04","cpu_limit":1}}}}],"time":1715193934,"msg":"sending ingestions via log client (not actually sending)"}
+{"level":"info","successful_ingestions":1,"failed_ingestions":0,"time":1715193934,"msg":"exported ingestions"}
+```
+
+!!! Note
+The message in the second to last line of the logs above specifies that we are using the log client and not actually sending ingestions.
+!!!
+
+7. Run the Beacon agent.
+
+    In the `beacon_agent.yaml` file, replace `"stdout"` in `agent:beacon_server` with `"beacon.biganimal.com:443"`:
+
+    ```
+    agent:
+        beacon_server: "beacon.biganimal.com:443"
+
+    ```
+
+8. Follow the logs to monitor the ingestions.
+
+## Running Postgres AI agent as a service
+
+To have EDB Postgres AI agent run automatically on startup and restart after error, you need to make it a service.
+
+!!! Note
+Future versions of the agent package may set this up automatically.
+!!!
+
+What follows is an example of how to run EDB Postgres AI agent as a service, specifically on an Ubuntu 22.04 machine. Follow the instructions above for setting up a machine user and then installing, configuring, testing, and running the Beacon agent before moving on to set up Beacon as a service. These instructions assume you have completed the last two sections and installed on a Ubuntu 22.04 machine.
+
+1. Because, in this example, we are running the agent on the same server as the Postgres instance we're monitoring, it's faster and more secure to have the EDB Postgres AI agent use Postgres local auth rather than set up password auth over TCP/IP.
+
+    !!! Note
+    In this example, we use the 'ubuntu' user that is created by default on the EC2 with a default Ubuntu (22.04) machine image. In production you'd want to use a minimally privileged user created specifically for the purposes of running the Beacon agent on the server.
+    !!!
+
+    To configure for local authentication, add the user, `ubuntu`, to Postgres using `psql` and then exit:
+    
+    ```
+    sudo su postgres
+    psql -c 'CREATE USER ubuntu'
+    exit
+    ```
+
+    To complete the setup for local authentication with Postgres, you need to ensure your `pg_hba.conf` file is configured to allow Unix-domain socket connections. Please verify or update the following line in your `pg_hba.conf` file:
+
+    ```
+    local   all   all   peer
+    ```
+
+    This configuration allows any local system user to connect to any database without a password, provided that a corresponding PostgreSQL role with the same name as the system user exists (in this case, user `ubuntu`).
+
+    Now Postgres is configured to allow local authentication so that the Beacon agent can access it as a service.
+
+2. Create a new file using your text editor of choice (superuser level permissions are necessary here). vi is used in this example:
+
+```
+sudo vi /etc/systemd/beacon-agent.service
+```
+
+3. Populate the new file as follows, specifying the BEACON_AGENT_ACCESS_KEY, then save and exit the editor:
+
+```
+[Unit]
+
+Description=The Postgres AI Agent
+
+# After networking because we need that
+
+After=network.target
+
+[Service]
+
+# Simple services don't do any forking / background nonsense
+
+Type=simple
+
+# User with which to run the service
+
+User=ubuntu
+
+# Set the working directory for the application
+
+WorkingDirectory=/home/ubuntu/
+
+Environment='BEACON_AGENT_ACCESS_KEY=<your-api-key-goes-here>'
+
+# Command to run the application
+
+ExecStart=/usr/local/bin/beacon-agent
+
+# Restart policy, only on failure
+
+Restart=on-failure
+
+RestartSec=60
+
+[Install]
+
+# Start the service before we get to multi-user mode
+
+WantedBy=multi-user.target
+```
+
+4. Run the following commands to reload, enable, and start your new service:
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable beacon-agent.service
+sudo systemctl start beacon-agent.service
+```
+
+5. Your agent should now be running as a service. Check on the logs by running the following command:
+
+```
+journalctl -u beacon-agent.service
+```
+
+
