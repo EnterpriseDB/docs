@@ -155,6 +155,14 @@ const Page = () => {
                 PG Squeeze
               </IndexCardLink>
 
+              <IndexCardLink to="/pg_extensions/wal2json">
+                wal2json
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/system_stats">
+                system_stats
+              </IndexCardLink>
+
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
                 EDB Job Scheduler
               </IndexCardLink>
@@ -173,14 +181,6 @@ const Page = () => {
 
               <IndexCardLink to="/language_pack/latest/">
                 Language Pack
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/wal2json">
-                wal2json
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/system_stats">
-                system_stats
               </IndexCardLink>
             </IndexCard>
 
