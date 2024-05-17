@@ -6,9 +6,8 @@ export const updates = [
     icon: IconNames.HIGH_AVAILABILITY,
     description:
       "PGD 5.5 brings improvements for connectivity and read scalability, along with MacOS support for the CLI and more.",
-    url: "/postgres_distributed_for_kubernetes/latest/",
-    moreUrl:
-      "/postgres_distributed_for_kubernetes/latest/rel_notes/pgd_5.5.0_rel_notes/",
+    url: "/pgd/latest/",
+    moreUrl: "/pgd/latest/rel_notes/pgd_5.5.0_rel_notes/",
   },
   {
     title: "Trusted Postgres Architect 23.32",
