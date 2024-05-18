@@ -25,6 +25,53 @@ const IndexCard = ({ iconName, headingText, children }) => (
   </div>
 );
 
+const BannerCard = ({ iconName, headingText, children }) => (
+  <div className="col-xl-12 col-lg-4 width=100">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Icon
+            iconName={iconName}
+            className="fill-orange"
+            width="24"
+            height="24"
+          />
+          <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+        </div>
+        <div className="row">{children}</div>
+      </div>
+    </div>
+  </div>
+);
+
+const BannerSubCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-4 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Link to={to}>
+            <Icon
+              iconName={iconName}
+              className="fill-orange"
+              width="24"
+              height="24"
+            />
+            <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+          </Link>
+        </div>
+        <div class="container-fluid">
+          <div class="row">{children}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+const BannerCardLink = ({ to, className, children }) => (
+  <Link to={to} class={`col-sm-12 py-1 ${className}`}>
+    {children}
+  </Link>
+);
+
 const IndexCardLink = ({ to, className, children }) => (
   <li>
     <Link to={to} className={`d-block py-2 ps-1 ${className}`}>
@@ -113,6 +160,103 @@ const Page = () => {
           </div>
 
           {/* Sign Post */}
+
+          <BannerCard
+            iconName={iconNames.EDB_POSTGRES_AI_LOOP}
+            headingText="EDB Postgres AI"
+          >
+            <BannerSubCard
+              iconName={iconNames.EARTH}
+              headingText="Overview"
+              to="/edb_postgres_ai/overview"
+            >
+              <BannerCardLink to="/edb_postgres_ai/overview/concepts">
+                Concepts
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/overview/guide">
+                Guide
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/overview/features">
+                Features
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.CONTROL}
+              headingText="Console"
+              to="/edb_postgres_ai/console"
+            >
+              <BannerCardLink to="/edb_postgres_ai/console/getstarted">
+                Getting Started
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/console/estate">
+                Estate
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/console/agent">
+                Agent
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.DATABASE}
+              headingText="Databases"
+              to="/edb_postgres_ai/databases"
+            >
+              <BannerCardLink to="/edb_postgres_ai/databases/cloudservice">
+                Cloud Service
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/databases/onprem">
+                On Premises
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/databases/options">
+                High Availability
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Analytics"
+              to="/edb_postgres_ai/analytics"
+            >
+              <BannerCardLink to="/edb_postgres_ai/analytics/getstarted/">
+                Getting Started
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb_postgres_ai/analytics/lakehouse/">
+                Lakehouse
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/analytics/analytics/">
+                Analytics
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.BRAIN_CIRCUIT}
+              headingText="AI/ML"
+              to="/edb_postgres_ai/ai-ml"
+            >
+              <BannerCardLink to="/edb_postgres_ai/ai-ml/overview">
+                Overview
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/ai-ml/databases-and-ai">
+                Databases and AI
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/ai-ml/postgres-and-ai">
+                Postgres and AI
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.TOOLBOX}
+              headingText="Tools"
+              to="/edb_postgres_ai/tools"
+            >
+              <BannerCardLink to="/edb_postgres_ai/tools/migration">
+                Migration and AI
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/tools/management">
+                Management
+              </BannerCardLink>
+              <BannerCardLink to="/edb_postgres_ai/tools/backup">
+                Backup and Recovery
+              </BannerCardLink>
+            </BannerSubCard>
+          </BannerCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
