@@ -26,7 +26,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
 );
 
 const BannerCard = ({ iconName, headingText, children }) => (
-  <div className="col-xl-12 col-lg-4 width=100">
+  <div className="col-xl-12 width=100">
     <div className="card rounded shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
