@@ -103,10 +103,6 @@ const sourceToPluginConfig = {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
   },
-  edb_postgres_ai: {
-    name: "edb_postgres_ai",
-    path: "advocacy_docs/edb_postgres_ai",
-  },
 };
 
 const externalSourcePlugins = () => {

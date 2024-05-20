@@ -96,7 +96,7 @@ export const products = {
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
-  edb_postgres_ai: {
+  "EDB Postgres AI": {
     name: "EDB Postgres AI",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
