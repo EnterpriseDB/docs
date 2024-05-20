@@ -43,8 +43,118 @@ function _objectWithoutProperties(source, excluded) {
   return target;
 }
 
+var _excluded$h = ["title", "titleId"];
+var SvgEdbLandscapeBlack = function SvgEdbLandscapeBlack(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$h);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgEdbLandscapeBlack.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
+var _excluded$g = ["title", "titleId"];
+var SvgEdbLandscapeColorWhite = function SvgEdbLandscapeColorWhite(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$g);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgEdbLandscapeColorWhite.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
+var _excluded$f = ["title", "titleId"];
+var SvgEdbLandscapeWhite = function SvgEdbLandscapeWhite(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$f);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgEdbLandscapeWhite.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
+var _excluded$e = ["title", "titleId"];
+var SvgEdbPortraitBlack = function SvgEdbPortraitBlack(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$e);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgEdbPortraitBlack.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
+var _excluded$d = ["title", "titleId"];
+var SvgEdbPortraitColorGrey = function SvgEdbPortraitColorGrey(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$d);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgEdbPortraitColorGrey.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
 var _excluded$c = ["title", "titleId"];
-var SvgFlagAustralia = function SvgFlagAustralia(_ref) {
+var SvgEdbPortraitColorWhite = function SvgEdbPortraitColorWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$c);
@@ -60,13 +170,13 @@ var SvgFlagAustralia = function SvgFlagAustralia(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagAustralia.propTypes = {
+SvgEdbPortraitColorWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$b = ["title", "titleId"];
-var SvgFlagBrazil = function SvgFlagBrazil(_ref) {
+var SvgEdbPortraitWhite = function SvgEdbPortraitWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$b);
@@ -82,13 +192,13 @@ var SvgFlagBrazil = function SvgFlagBrazil(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagBrazil.propTypes = {
+SvgEdbPortraitWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$a = ["title", "titleId"];
-var SvgFlagFrance = function SvgFlagFrance(_ref) {
+var SvgEdbPostgresBlack = function SvgEdbPostgresBlack(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$a);
@@ -104,13 +214,13 @@ var SvgFlagFrance = function SvgFlagFrance(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagFrance.propTypes = {
+SvgEdbPostgresBlack.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$9 = ["title", "titleId"];
-var SvgFlagGermany = function SvgFlagGermany(_ref) {
+var SvgEdbPostgresColorGrey = function SvgEdbPostgresColorGrey(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$9);
@@ -126,13 +236,13 @@ var SvgFlagGermany = function SvgFlagGermany(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagGermany.propTypes = {
+SvgEdbPostgresColorGrey.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$8 = ["title", "titleId"];
-var SvgFlagIndia = function SvgFlagIndia(_ref) {
+var SvgEdbPostgresColorWhite = function SvgEdbPostgresColorWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$8);
@@ -148,13 +258,13 @@ var SvgFlagIndia = function SvgFlagIndia(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagIndia.propTypes = {
+SvgEdbPostgresColorWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$7 = ["title", "titleId"];
-var SvgFlagItaly = function SvgFlagItaly(_ref) {
+var SvgEdbPostgresWhite = function SvgEdbPostgresWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$7);
@@ -170,13 +280,13 @@ var SvgFlagItaly = function SvgFlagItaly(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagItaly.propTypes = {
+SvgEdbPostgresWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$6 = ["title", "titleId"];
-var SvgFlagJapan = function SvgFlagJapan(_ref) {
+var SvgEdbTaglineBlack = function SvgEdbTaglineBlack(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$6);
@@ -192,13 +302,13 @@ var SvgFlagJapan = function SvgFlagJapan(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagJapan.propTypes = {
+SvgEdbTaglineBlack.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$5 = ["title", "titleId"];
-var SvgFlagKorea = function SvgFlagKorea(_ref) {
+var SvgEdbTaglineColorGrey = function SvgEdbTaglineColorGrey(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$5);
@@ -214,13 +324,13 @@ var SvgFlagKorea = function SvgFlagKorea(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagKorea.propTypes = {
+SvgEdbTaglineColorGrey.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$4 = ["title", "titleId"];
-var SvgFlagNetherlands = function SvgFlagNetherlands(_ref) {
+var SvgEdbTaglineColorWhite = function SvgEdbTaglineColorWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$4);
@@ -236,13 +346,13 @@ var SvgFlagNetherlands = function SvgFlagNetherlands(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagNetherlands.propTypes = {
+SvgEdbTaglineColorWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$3 = ["title", "titleId"];
-var SvgFlagPakistan = function SvgFlagPakistan(_ref) {
+var SvgEdbTaglineWhite = function SvgEdbTaglineWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$3);
@@ -258,13 +368,13 @@ var SvgFlagPakistan = function SvgFlagPakistan(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagPakistan.propTypes = {
+SvgEdbTaglineWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$2 = ["title", "titleId"];
-var SvgFlagSingapore = function SvgFlagSingapore(_ref) {
+var SvgLoopBlack = function SvgLoopBlack(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$2);
@@ -280,13 +390,13 @@ var SvgFlagSingapore = function SvgFlagSingapore(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagSingapore.propTypes = {
+SvgLoopBlack.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$1 = ["title", "titleId"];
-var SvgFlagUk = function SvgFlagUk(_ref) {
+var SvgLoopColor = function SvgLoopColor(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded$1);
@@ -302,13 +412,13 @@ var SvgFlagUk = function SvgFlagUk(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagUk.propTypes = {
+SvgLoopColor.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded = ["title", "titleId"];
-var SvgFlagUsa = function SvgFlagUsa(_ref) {
+var SvgLoopWhite = function SvgLoopWhite(_ref) {
   var title = _ref.title,
     titleId = _ref.titleId,
     props = _objectWithoutProperties(_ref, _excluded);
@@ -324,9 +434,9 @@ var SvgFlagUsa = function SvgFlagUsa(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-SvgFlagUsa.propTypes = {
+SvgLoopWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-export { SvgFlagAustralia as FlagAustralia, SvgFlagBrazil as FlagBrazil, SvgFlagFrance as FlagFrance, SvgFlagGermany as FlagGermany, SvgFlagIndia as FlagIndia, SvgFlagItaly as FlagItaly, SvgFlagJapan as FlagJapan, SvgFlagKorea as FlagKorea, SvgFlagNetherlands as FlagNetherlands, SvgFlagPakistan as FlagPakistan, SvgFlagSingapore as FlagSingapore, SvgFlagUk as FlagUk, SvgFlagUsa as FlagUsa };
+export { SvgEdbLandscapeBlack as EdbLandscapeBlack, SvgEdbLandscapeColorWhite as EdbLandscapeColorWhite, SvgEdbLandscapeWhite as EdbLandscapeWhite, SvgEdbPortraitBlack as EdbPortraitBlack, SvgEdbPortraitColorGrey as EdbPortraitColorGrey, SvgEdbPortraitColorWhite as EdbPortraitColorWhite, SvgEdbPortraitWhite as EdbPortraitWhite, SvgEdbPostgresBlack as EdbPostgresBlack, SvgEdbPostgresColorGrey as EdbPostgresColorGrey, SvgEdbPostgresColorWhite as EdbPostgresColorWhite, SvgEdbPostgresWhite as EdbPostgresWhite, SvgEdbTaglineBlack as EdbTaglineBlack, SvgEdbTaglineColorGrey as EdbTaglineColorGrey, SvgEdbTaglineColorWhite as EdbTaglineColorWhite, SvgEdbTaglineWhite as EdbTaglineWhite, SvgLoopBlack as LoopBlack, SvgLoopColor as LoopColor, SvgLoopWhite as LoopWhite };
