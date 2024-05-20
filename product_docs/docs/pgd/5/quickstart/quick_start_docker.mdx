@@ -108,33 +108,6 @@ You'll use TPA to provision and deploy PGD. If you previously installed TPA, you
 
 [TPA supports several distributions of Linux](/tpa/latest/INSTALL/) as a host platform. These examples are written for Ubuntu 22.04, but steps are similar for other supported platforms.
 
-!!! Important
-    If the Linux host platform you're using is running [cgroups](https://en.wikipedia.org/wiki/Cgroups) v2, you need to disable it and enable cgroups v1 while using TPA to deploy to Docker. 
-    
-    To check for cgroup v2, run:
-
-    ```shell
-    mount | grep cgroup | head -1
-    ```
-
-    If you do **not** see a line beginning:
-    
-    `tmpfs on /sys/fs/cgroup type tmpfs`
-
-    Then you need to to disable cgroup v2. To do this, run:
-
-    ```shell
-    echo 'GRUB_CMDLINE_LINUX=systemd.unified_cgroup_hierarchy=false' | sudo tee /etc/default/grub.d/cgroup.cfg
-    ```
-
-    Then update the grub bootloader and reboot by running:
-
-    ```shell
-    sudo update-grub
-    sudo reboot    
-    ```
-
-
 ### Install the TPA package
 
 ```shell
@@ -176,12 +149,13 @@ tpaexec configure democluster \
   --location-names dc1 \
   --pgd-proxy-routing local \
   --no-git \
-  --hostnames-unsorted
+  --hostnames-unsorted \
+  --keyring-backend legacy
 ```
 
 You specify the PGD-Always-ON architecture (`--architecture PGD-Always-ON`), which
-sets up the configuration for [PGD 5's Always On
-architectures](../architectures/). As part of the default architecture,
+sets up the configuration for [PGD 5's Always On 
+architectures](../planning/architectures/). As part of the default architecture,
 it configures your cluster with three data nodes, cohosting three [PGD
 Proxy](../routing/proxy/) servers, along with a [Barman](../backup#physical-backup)
 node for backup.
@@ -200,9 +174,11 @@ You set the notional location of the nodes to `dc1` using `--location-names`. Yo
 
 By default, TPA commits configuration changes to a Git repository. For this example, you don't need to do that, so pass the `--no-git` flag.
 
-Finally, you ask TPA to generate repeatable hostnames for the nodes by passing `--hostnames-unsorted`. Otherwise, it selects hostnames at random from a predefined list of suitable words.
+You also ask TPA to generate repeatable hostnames for the nodes by passing `--hostnames-unsorted`. Otherwise, it selects hostnames at random from a predefined list of suitable words.
 
-This command creates a subdirectory in the current working directory called `democluster`. It contains the `config.yml` configuration file TPA uses to create the cluster. You can view it using:
+Finally, `--keyring-backend legacy` tells TPA to select the legacy version of the keyring backend. Secrets are stored with an older keyring backend, as the version of Ubuntu this example is based on doesn't support the newer keyring backend.
+
+This command creates a subdirectory called `democluster` in the current working directory. It contains the `config.yml` configuration file TPA uses to create the cluster. You can view it using:
 
 ```shell
 less democluster/config.yml
@@ -213,27 +189,16 @@ less democluster/config.yml
       ```shell
       tpaexec configure --architecture PGD-Always-ON --help
       ``` 
-    - More details on PGD-Always-ON configuration options in [Deploying with TPA](../admin-tpa/installing.mdx)
+    - More details on PGD-Always-ON configuration options in [Deploying with TPA](../deploy-config/deploy-tpa/)
     - [PGD-Always-ON](/tpa/latest/architecture-PGD-Always-ON/) in the Trusted Postgres Architect documentation
     - [`tpaexec configure`](/tpa/latest/tpaexec-configure/) in the Trusted Postgres Architect documentation
     - [Docker platform](/tpa/latest/platform-docker/) in the Trusted Postgres Architect documentation
 
-### Provisioning the cluster
-
-Next, allocate the resources needed to run the configuration you just created using the [`tpaexec provision`](/tpa/latest/tpaexec-provision/) command:
-   
-```shell
-tpaexec provision democluster
-```
-
-Since you specified Docker as the platform, TPA creates a Docker image, containers, networks, and so on.
-
-!!! SeeAlso "Further reading"
-    - [`tpaexec provision`](/tpa/latest/tpaexec-provision/) in the Trusted Postgres Architect documentation
 
 ### Deploying the cluster
 
-With configuration in place and infrastructure provisioned, you can now [deploy](/tpa/latest/tpaexec-deploy/) the distributed cluster:
+You can now [deploy](/tpa/latest/tpaexec-deploy/) the distributed cluster. 
+For Docker deployments, this will both provision the required Docker containers and deploy the software to those containers:
 
 ```shell
 tpaexec deploy democluster

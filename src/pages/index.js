@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
+import { updates } from "../constants/updates";
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -56,86 +57,43 @@ const Page = () => {
 
           <div className="container">
             <div className="row">
-              <div className="col-sm mb-3 me-1">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/postgres_distributed_for_kubernetes/latest/"
+              {updates.slice(0, 2).map((update) => (
+                <div className="col-sm mb-3 me-1">
+                  <div className="mb-2">
+                    <div
+                      className="new-thing-header"
+                      aria-roledescription="badge"
                     >
-                      EDB Postgres Distributed for Kubernetes 1.0
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.KUBERNETES}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    EDB Postgres Distributed for Kubernetes is an operator
-                    designed to manage PGD workloads on Kubernetes, with traffic
-                    routed by PGD Proxy.
-                  </p>
-                  <div className="d-flex align-items-center">
-                    <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/postgres_distributed_for_kubernetes/latest/"
-                      >
-                        Find out more &rarr;
-                      </Link>
-                    </p>
+                      <span className="badge-text fw-bold">What's new</span>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="col-sm mb-3">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
-                  </div>
-                </div>
 
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/epas/15/planning/deployment_options/aws_epas/"
-                    >
-                      Advanced Server AWS AMI deployment
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.DATABASE}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    EDB Postgres Advanced Server Amazon Machine Image (AMI) is a
-                    preconfigured template with EDB Postgres Advanced Server 15
-                    installed on RHEL 8.
-                  </p>
-                  <div className="d-flex align-items-center">
-                    <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/epas/15/planning/deployment_options/aws_epas/"
-                      >
-                        Find out more &rarr;
+                  <div className="mb-3">
+                    <h3 className="card-title mb-2 fw-bold">
+                      <Link className="homepage-headling-link" to={update.url}>
+                        {update.title}
                       </Link>
+                    </h3>
+                    <p>
+                      <Icon
+                        iconName={update.icon}
+                        className="fill-orange ms-2 float-end"
+                      />
+                      {update.description}
                     </p>
+                    <div className="d-flex align-items-center">
+                      <p>
+                        <Link
+                          className="btn-sm ms-2"
+                          to={update.moreUrl || update.url}
+                        >
+                          Find out more &rarr;
+                        </Link>
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -195,6 +153,14 @@ const Page = () => {
 
               <IndexCardLink to="/pg_extensions/pg_squeeze">
                 PG Squeeze
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/wal2json">
+                wal2json
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/system_stats">
+                system_stats
               </IndexCardLink>
 
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
