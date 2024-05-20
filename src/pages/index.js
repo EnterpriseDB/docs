@@ -151,91 +151,91 @@ const Page = () => {
             <BannerSubCard
               iconName={iconNames.EARTH}
               headingText="Overview"
-              to="/edb_postgres_ai/overview"
+              to="/edb-postgres-ai/overview"
             >
-              <BannerCardLink to="/edb_postgres_ai/overview/concepts">
+              <BannerCardLink to="/edb-postgres-ai/overview/concepts">
                 Concepts
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/overview/guide">
+              <BannerCardLink to="/edb-postgres-ai/overview/guide">
                 Guide
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/overview/features">
+              <BannerCardLink to="/edb-postgres-ai/overview/features">
                 Features
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.CONTROL}
               headingText="Console"
-              to="/edb_postgres_ai/console"
+              to="/edb-postgres-ai/console"
             >
-              <BannerCardLink to="/edb_postgres_ai/console/getstarted">
+              <BannerCardLink to="/edb-postgres-ai/console/getstarted">
                 Getting Started
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/console/estate">
+              <BannerCardLink to="/edb-postgres-ai/console/estate">
                 Estate
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/console/agent">
+              <BannerCardLink to="/edb-postgres-ai/console/agent">
                 Agent
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.DATABASE}
               headingText="Databases"
-              to="/edb_postgres_ai/databases"
+              to="/edb-postgres-ai/databases"
             >
-              <BannerCardLink to="/edb_postgres_ai/databases/cloudservice">
+              <BannerCardLink to="/edb-postgres-ai/databases/cloudservice">
                 Cloud Service
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/databases/onprem">
+              <BannerCardLink to="/edb-postgres-ai/databases/onprem">
                 On Premises
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/databases/options">
+              <BannerCardLink to="/edb-postgres-ai/databases/options">
                 High Availability
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Analytics"
-              to="/edb_postgres_ai/analytics"
+              to="/edb-postgres-ai/analytics"
             >
-              <BannerCardLink to="/edb_postgres_ai/analytics/getstarted/">
+              <BannerCardLink to="/edb-postgres-ai/analytics/getstarted/">
                 Getting Started
               </BannerCardLink>
 
-              <BannerCardLink to="/edb_postgres_ai/analytics/lakehouse/">
+              <BannerCardLink to="/edb-postgres-ai/analytics/lakehouse/">
                 Lakehouse
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/analytics/analytics/">
+              <BannerCardLink to="/edb-postgres-ai/analytics/analytics/">
                 Analytics
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
               headingText="AI/ML"
-              to="/edb_postgres_ai/ai-ml"
+              to="/edb-postgres-ai/ai-ml"
             >
-              <BannerCardLink to="/edb_postgres_ai/ai-ml/overview">
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
                 Overview
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/ai-ml/databases-and-ai">
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/databases-and-ai">
                 Databases and AI
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/ai-ml/postgres-and-ai">
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/postgres-and-ai">
                 Postgres and AI
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.TOOLBOX}
               headingText="Tools"
-              to="/edb_postgres_ai/tools"
+              to="/edb-postgres-ai/tools"
             >
-              <BannerCardLink to="/edb_postgres_ai/tools/migration">
+              <BannerCardLink to="/edb-postgres-ai/tools/migration">
                 Migration and AI
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/tools/management">
+              <BannerCardLink to="/edb-postgres-ai/tools/management">
                 Management
               </BannerCardLink>
-              <BannerCardLink to="/edb_postgres_ai/tools/backup">
+              <BannerCardLink to="/edb-postgres-ai/tools/backup">
                 Backup and Recovery
               </BannerCardLink>
             </BannerSubCard>
