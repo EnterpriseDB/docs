@@ -159,8 +159,8 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/overview/guide">
                 Guide
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/overview/features">
-                Features
+              <BannerCardLink to="/edb-postgres-ai/overview/releasenotes">
+                Release Notes
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
@@ -183,14 +183,14 @@ const Page = () => {
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
+              <BannerCardLink to="/edb-postgres-ai/databases/databases">
+                Databases
+              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/databases/cloudservice">
                 Cloud Service
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/onprem">
-                On Premises
-              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/databases/options">
-                High Availability
+                High Availability options
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
