@@ -229,7 +229,7 @@ const Page = () => {
               headingText="Tools"
               to="/edb-postgres-ai/tools"
             >
-              <BannerCardLink to="/edb-postgres-ai/tools/migration">
+              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
                 Migration and AI
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/tools/management">
