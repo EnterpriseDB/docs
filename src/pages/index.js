@@ -195,18 +195,18 @@ const Page = () => {
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.IMPROVE}
-              headingText="Analytics"
+              headingText="Lakehouse Analytics"
               to="/edb-postgres-ai/analytics"
             >
-              <BannerCardLink to="/edb-postgres-ai/analytics/getstarted/">
-                Getting Started
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
               </BannerCardLink>
 
-              <BannerCardLink to="/edb-postgres-ai/analytics/lakehouse/">
-                Lakehouse
+              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+                Quick Start
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/analytics/analytics/">
-                Analytics
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
