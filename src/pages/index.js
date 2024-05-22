@@ -97,6 +97,17 @@ const Page = () => {
             </div>
           </div>
 
+          {/* Postgres AI nav goes here */}
+
+          <div className="border border-success">
+            Postgres AI nav goes here
+            <Link to="/postgres-ai/console/">Console</Link>
+            <Link to="/postgres-ai/databases/">Databases</Link>
+            <Link to="/postgres-ai/analytics/">Analytics</Link>
+            <Link to="/postgres-ai/ai-ml/">AI-ML</Link>
+            <Link to="/postgres-ai/tools/">Tools</Link>
+          </div>
+
           {/* Sign Post */}
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
