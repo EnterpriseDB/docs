@@ -215,13 +215,13 @@ const Page = () => {
               to="/edb-postgres-ai/ai-ml"
             >
               <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
-                Overview
+                Overview of pgai
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-ml/databases-and-ai">
-                Databases and AI
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/install">
+                Install the Tech Preview
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-ml/postgres-and-ai">
-                Postgres and AI
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/use">
+                Use the Tech Preview
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
