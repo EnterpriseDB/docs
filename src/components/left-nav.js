@@ -10,11 +10,18 @@ const productIcon = (path) => {
 };
 
 const SectionHeading = ({ navTree, path, iconName }) => {
+  // if iconName starts with "edb_postgres_ai" then set the fill color to black
+  let myIconName = iconName || productIcon(path) || iconNames.DOTTED_BOX;
+  let className = "fill-orange me-3";
+  if (myIconName && myIconName.startsWith("edb_postgres_ai")) {
+    className = "fill-black me-3";
+  }
+
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
       <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
+        iconName={myIconName}
+        className={className}
         width="50"
         height="50"
       />
