@@ -4,5 +4,187 @@ navTitle: Reference
 description: Things to know about EDB Postgres Lakehouse
 ---
 
-Get started by querying sample data.
+Postgres Lakehouse is an early product. Eventually, it will support deployment
+modes across multiple clouds and on-premises. However, currently it's fairly
+limited in terms of where you can deploy it and what data you can query with it.
 
+To get the best experience with Postgres Lakehouse, you should follow the
+"quick start" guide to query benchmarking data. Then you can try loading your
+own data with Lakehouse Sync. If you're intrigued, please reach out to us and
+we can talk more about your use case and potential opportunities.
+
+This page details some of the important bits to know.
+
+## Supported Cloud Providers and Regions
+
+**AWS Only**: Currently, support for all Lakehouse features (Lakehouse Nodes,
+Managed Storage Locations, and Lakehouse Sync) is limited to AWS.
+
+**EDB-Hosted Only**: "Bring Your Own Account" (BYOA) regions are NOT currently
+supported for Lakehouse resources. Support is limited to
+ONLY **EDB Postgres AI - Hosted** environments on AWS (a.k.a. "EDB-Hosted AWS regions").
+
+This means you can select from one of the following regions:
+
+* North America
+  * US East 1
+  * US East 2
+  * US West 2
+* Europe
+  * EU Central 1
+  * EU West 1
+  * EU West 2
+* Asia
+  * AP South 1
+* Australia
+  * AP SouthEast 2
+
+To be precise:
+
+* Lakehouse Nodes can only be provisioned in EDB-hosted AWS regions
+* Managed Storage Locations can only be created in EDB-hosted AWS regions
+* Lakehouse Sync can only sync from source databases in EDB-hosted AWS regions
+
+These limitations will be removed as we continue to improve the product. Eventually,
+we will support BYOA, as well as Azure and GCP, for all Lakehouse use cases. We
+will also add better support for "external" buckets ("bring your own bucket").
+
+## Supported AWS Instances
+
+When deploying a Lakehouse Node, you must choose an instance type from
+the `m6id` family of instances. Importantly, these instances come with NVMe
+drives attached to them.
+
+**Instances are ephemeral.** These NVMe drives are used only for spill-out space
+*while processing queries, and for caching Delta Tables on disk.
+All data on the NVMe drives will be lost when the cluster is shutdown.
+
+**System tables are persisted.** Persistent data in system tables (users, roles,
+*etc.) is stored in an attached
+block storage device, and will survive a pause/resume cycle.
+
+**Supported Instances**
+
+| API Name        | Memory    | vCPUs     | Cores | Storage                         |
+| --------------- | --------- | --------- | ----- | ------------------------------- |
+| `m6id.large`    | 8.0 GiB   | 2 vCPUs   | 1     | 118 GB NVMe SSD                 |
+| `m6id.xlarge`   | 16.0 GiB  | 4 vCPUs   | 2     | 237 GB NVMe SSD                 |
+| `m6id.2xlarge`  | 32.0 GiB  | 8 vCPUs   | 4     | 474 GB NVMe SSD                 |
+| `m6id.4xlarge`  | 64.0 GiB  | 16 vCPUs  | 8     | 950 GB NVMe SSD                 |
+| `m6id.8xlarge`  | 128.0 GiB | 32 vCPUs  | 16    | 1900 GB NVMe SSD                |
+| `m6id.12xlarge` | 192.0 GiB | 48 vCPUs  | 24    | 2850 GB (2 \* 1425 GB NVMe SSD) |
+| `m6id.16xlarge` | 256.0 GiB | 64 vCPUs  | 32    | 3800 GB (2 \* 1900 GB NVMe SSD) |
+| `m6id.24xlarge` | 384.0 GiB | 96 vCPUs  | 48    | 5700 GB (4 \* 1425 GB NVMe SSD) |
+| `m6id.32xlarge` | 512.0 GiB | 128 vCPUs | 64    | 7600 GB (4 \* 1900 GB NVMe SSD) |
+
+## Available Benchmarking Datasets
+
+When you provision a Lakehouse Node, it comes pre-configured to point to a public
+S3 bucket in its same region, containing sample benchmarking datasets.
+
+You can query tables in these datasets by referencing them with their schema
+name.
+
+| Schema Name     | Dataset                      |
+| --------------- | ---------------------------- |
+| `tpcds_sf_1`    | TPC-DS, Scale Factor 1       |
+| `tpcds_sf_10`   | TPC-DS, Scale Factor 10      |
+| `tpcds_sf_100`  | TPC-DS, Scale Factor 100     |
+| `tpcds_sf_1000` | TPC-DS, Scale Factor 1000    |
+| `tpch_sf_1`     | TPC-H, Scale Factor 1        |
+| `tpch_sf_10`    | TPC-H, Scale Factor 10       |
+| `tpch_sf_100`   | TPC-H, Scale Factor 100      |
+| `tpch_sf_1000`  | TPC-H, Scale Factor 1000     |
+| `clickbench`    | ClickBench, 100 million rows |
+| `brc_1b`        | Billion row challenge        |
+
+!!!note Notes about ClickBench data:
+
+Data columns (`EventData`) are integers, not dates.
+
+You must quote ClickBench column names, because they contain uppercase letters,
+but unquoted identifiers in Postgres are case-insensitive. For example:
+
+✅ `select "Title" from clickbench.hits;`
+
+🚫 `select Title from clickbench.hits;`
+!!!
+
+## Gotcha: Do not set `search_path`
+
+Do not set `search_path`. Always reference fully qualified table names.
+
+Using `search_path` makes Postgres Lakehouse fall back to PostgreSQL,
+dramatically impacting query performance. To avoid this, qualify all table names
+in your query with a schema.
+
+For example:
+
+**🚫 Do NOT do this!**
+
+```sql
+--- DO NOT DO THIS
+SET search_path = tpch_sf_10;
+SELECT COUNT(*) FROM lineitem;
+```
+
+**✅ Do this instead!**
+
+```sql
+SELECT COUNT(*) FROM tpch_sf_10.lineitem
+```
+
+## DirectScan vs. Fallback Modes and EXPLAIN
+
+Postgres Lakehouse is fastest when it can "push down" your entire query to
+DataFusion, the vectorized query used for handling queries when possible. (In the
+future, this will be more fine-grained as we add support for partial pushdowns.)
+
+Postgres Lakehouse can execute your query in two modes. First, it attempts to
+run the entire query using Seafowl (a dedicated columnar database based on
+DataFusion).  If Seafowl can’t run the entire query, for example, because it
+uses PostgreSQL-specific operations like JSON, then Postgres Lakehouse will fall
+back to using the PostgreSQL executor, with Seafowl streaming full table
+contents to it.
+
+If your query is extremely slow, it’s possible that’s what’s happening.
+
+You can check which mode is being used by running an `EXPLAIN` on the query and
+making sure that the top-most query node is `SeafowlDirectScan`. For example:
+
+```
+explain select count from (select count(*) from tpch_sf_1.lineitem);
+                                                                                                                               QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=167.52..167.55 rows=1 width=8)
+   ->  Append  (cost=0.00..165.01 rows=1001 width=0)
+         ->  Seq Scan on lineitem lineitem_1  (cost=0.00..0.00 rows=1 width=0)
+         ->  SeafowlScan on "16529" lineitem_2  (cost=100.00..150.00 rows=1000 width=0)
+               SeafowlPlan: logical_plan
+                 TableScan:  tpch_sf_1.lineitem projection=[l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment]
+(6 rows)
+```
+
+
+In this case, the query is executed by PostgreSQL and Seafowl is only involved
+when scanning the table (see `SeafowlScan` at the bottom). The fix in this case is
+to explicitly name the inner `COUNT(*)` column, since Seafowl gives it an implicit
+name `count(*)` whereas PostgreSQL calls it `count`:
+
+
+```
+edb_admin=> explain select count from (select count(*) as count from tpch_sf_1.lineitem);
+                             QUERY PLAN
+--------------------------------------------------------------------
+ SeafowlDirectScan: logical_plan
+   Projection:  COUNT(*) AS count
+     Aggregate:  groupBy=[[]], aggr=[[COUNT(UInt8(1)) AS COUNT(*)]]
+       TableScan:  tpch_sf_1.lineitem projection=[]
+(4 rows)
+```
+
+Here, we can see the `SeafowlDirectScan` at the top, which means that Seafowl is
+running the entire query.
+
+If you’re having trouble rewording your query to make it run fully on Seafowl,
+please open a support ticket.
