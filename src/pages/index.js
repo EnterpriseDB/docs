@@ -190,7 +190,7 @@ const Page = () => {
                 Cloud Service
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/databases/options">
-                High Availability options
+                Deployment options
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
