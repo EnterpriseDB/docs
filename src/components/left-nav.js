@@ -9,21 +9,72 @@ const productIcon = (path) => {
   return products[product] ? products[product].iconName : null;
 };
 
-const SectionHeading = ({ navTree, path, iconName }) => {
+function getReleaseNotesNode(navTree) {
+  for (var node of navTree.items) {
+    if (node.path) {
+      if (node.path.includes("/rel_notes/")) {
+        return node;
+      } else if (node.path.includes("/release_notes/")) {
+        return node;
+      } else if (node.path.includes("/epas_rel_notes/")) {
+        return node;
+      } else if (node.path.includes("/pem_rel_notes/")) {
+        return node;
+      }
+    }
+  }
+
+  return null;
+}
+
+const SectionHeading = ({ navTree, pagePath, iconName }) => {
+  var relnotes = getReleaseNotesNode(navTree);
+
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
-        width="50"
-        height="50"
-      />
       <Link
         to={navTree.path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
-        {navTree.title}
+        <Icon
+          iconName={iconName}
+          className="fill-orange me-3"
+          width="50"
+          height="50"
+        />
       </Link>
+      <div className="rightsidenoclass">
+        <Link
+          to={navTree.path}
+          className={
+            "d-block align-middle balance-text m-1 h4" +
+            (navTree.path === pagePath
+              ? " active fw-bold text-dark"
+              : " text-primary")
+          }
+        >
+          {navTree.title}
+        </Link>
+
+        <div>
+          {
+            /* don't use 'active' class here, or there'll be duplicate active items in the nav */
+            relnotes && (
+              <Link
+                to={relnotes.path}
+                className={
+                  "d-block align-middle balance-text m-1 h5" +
+                  (relnotes.path === pagePath
+                    ? " fw-bold text-dark"
+                    : " text-primary")
+                }
+              >
+                Release Notes
+              </Link>
+            )
+          }
+        </div>
+      </div>
     </li>
   );
 };
@@ -31,23 +82,33 @@ const SectionHeading = ({ navTree, path, iconName }) => {
 const SectionHeadingWithVersions = ({
   navTree,
   path,
+  pagePath,
   versionArray,
   iconName,
-  hideVersion,
 }) => {
+  var relnotes = getReleaseNotesNode(navTree);
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
-        width="50"
-        height="50"
-      />
+      <Link to={navTree.path}>
+        <Icon
+          iconName={iconName}
+          className="fill-orange me-3 onhover:fill-orange onhover:stroke-orange"
+          width="50"
+          height="50"
+        />
+      </Link>
+
       <div className="rightsidenoclass">
         <Link
           to={navTree.path}
-          className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+          className={
+            "d-block align-middle balance-text m-1 h4" +
+            (navTree.path === pagePath
+              ? " active fw-bold text-dark"
+              : " text-primary")
+          }
         >
+          {" "}
           {navTree.title}
         </Link>
         {!navTree.hideVersion && versionArray.length > 1 ? (
@@ -57,6 +118,24 @@ const SectionHeadingWithVersions = ({
         ) : !navTree.hideVersion ? (
           <div className="text-muted">Version {versionArray[0].version}</div>
         ) : null}
+        <div>
+          {
+            /* don't use 'active' class here, or there'll be duplicate active items in the nav */
+            relnotes && (
+              <Link
+                to={relnotes.path}
+                className={
+                  "d-block align-middle balance-text m-1 h5" +
+                  (relnotes.path === pagePath
+                    ? " fw-bold text-dark"
+                    : " text-primary")
+                }
+              >
+                Release Notes
+              </Link>
+            )
+          }
+        </div>
       </div>
     </li>
   );
@@ -69,21 +148,22 @@ const LeftNav = ({
   versionArray,
   iconName,
   hideEmptySections = false,
-  hideVersion = false,
   hidePDF = false,
 }) => {
+  iconName = iconName || productIcon(path) || iconNames.DOTTED_BOX;
+  const headingProps = {
+    navTree,
+    path,
+    pagePath,
+    versionArray,
+    iconName,
+  };
   return (
     <ul className="list-unstyled mt-0">
       {versionArray ? (
-        <SectionHeadingWithVersions
-          navTree={navTree}
-          path={path}
-          versionArray={versionArray}
-          iconName={iconName}
-          hideVersion={hideVersion}
-        />
+        <SectionHeadingWithVersions {...headingProps} />
       ) : (
-        <SectionHeading navTree={navTree} path={path} iconName={iconName} />
+        <SectionHeading {...headingProps} />
       )}
       {navTree.items.map((node) => (
         <TreeNode
