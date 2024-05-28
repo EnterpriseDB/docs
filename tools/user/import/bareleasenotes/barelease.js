@@ -47,7 +47,7 @@ navTitle: ${getMonthName(currentMonth)} ${currentYear}
 
 BigAnimal's ${getMonthName(
     currentMonth,
-  )} ${currentYear} includes the following enhancements and bugfixes:
+  )} ${currentYear} release includes the following enhancements and bug fixes:
 
 | Type | Description |
 |------|-------------|`;
@@ -58,6 +58,7 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const response = await fetch(
       "https://status.biganimal.com/api/maintenance-windows/done/index.json",
     );
+    ``;
     const data = await response.json();
 
     const filteredData = data.data.filter((item) => {
