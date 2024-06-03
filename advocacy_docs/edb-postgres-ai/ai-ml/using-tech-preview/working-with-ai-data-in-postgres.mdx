@@ -1,0 +1,232 @@
+---
+title: Working with AI data stored in Postgres tables
+navTitle: Working with AI data in Postgres
+description: How to work with AI data stored in Postgres tables using the pgai extension.
+---
+
+We will first look at working with AI data stored in columns in the Postgres table. 
+
+To see how to use AI data stored in S3-compatible object storage, please skip to the next section.
+
+First let’s create a Postgres table for some test AI data: 
+
+```sql
+CREATE TABLE products (
+   product_id SERIAL PRIMARY KEY,
+   product_name TEXT NOT NULL,
+   description TEXT,
+   last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+__OUTPUT__
+CREATE TABLE
+```
+
+
+Now let’s create a retriever with the just created products table as the source. We specify product_id as the unique key column to and we define the product_name and description columns to use for the similarity search by the retriever. We use the `all-MiniLM-L6-v2` open encoder model from HuggingFace. We set `auto_embedding` to True so that any future insert, update or delete to the source table will automatically generate, update or delete also the corresponding embedding. We provide a name for the retriever so that we can identify and reference it subsequent operations:
+
+```sql
+SELECT pgai.create_pg_retriever(
+    'product_embeddings_auto', -- Retriever name
+    'public', -- Schema
+    'product_id', -- Primary key
+    'all-MiniLM-L6-v2', -- embedding model
+    'text', -- data type
+    'products', -- Source table
+    ARRAY['product_name', 'description'], -- Columns to vectorize
+    TRUE -- auto embeddings TRUE to set trigger
+);
+__OUTPUT__
+ create_pg_retriever 
+---------------------
+ 
+(1 row)
+```
+
+
+
+Now let’s insert some AI data records into the products table. Since we have set auto_embedding to True, the retriever will automatically generate all embeddings in real-time for each inserted record: 
+
+```sql
+INSERT INTO products (product_name, description) VALUES
+      ('Hamburger', 'Tasty'),
+      ('Cheesburger', 'Very tasty'),
+      ('Fish n Chips', 'Naa'),
+      ('Fries', 'Dunno'),
+      ('Burrito', 'Always'),
+      ('Pizza', 'Mkay'),
+      ('Sandwich', 'So what'),
+      ('Veggie Burger', 'Go away'),
+      ('Kebab', 'Maybe');
+__OUTPUT__
+INSERT 0 9
+```
+
+Now we can directly use the retriever (specifying the retriever name) for a similarity retrieval of the top K most relevant (most similar) AI data items:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_auto' -- retriever's name
+);
+__OUTPUT__
+                data                 
+-------------------------------------
+ {'data': 'Hamburger - Tasty'}
+ {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Fries - Dunno'}
+ {'data': 'Sandwich - So what'}
+ {'data': 'Kebab - Maybe'}
+(5 rows)
+```
+
+Now let’s try a retriever without auto embedding. This means that the application has control over when the embeddings are computed in a bulk fashion. For demonstration we can simply create a second retriever for the same products table that we just created above:
+
+```sql
+SELECT pgai.create_pg_retriever(
+    'product_embeddings_bulk', -- Retriever name
+    'public', -- Schema
+    'product_id', -- Primary key
+    'all-MiniLM-L6-v2', -- embedding model
+    'text', -- data type
+    'products', -- Source table
+    ARRAY['product_name', 'description'], -- Columns to vectorize
+    FALSE -- auto embeddings FALSE
+);
+__OUTPUT__
+ create_pg_retriever 
+---------------------
+ 
+(1 row)
+```
+
+
+We created this second retriever on the products table after we have inserted the AI records there. If we run a retrieve operation now we would not get back any results:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_bulk' -- retriever's name
+);
+__OUTPUT__
+ data 
+------
+(0 rows)
+```
+
+That’s why we first need to run a bulk generation of embeddings. This is achieved via the `refresh_retriever()` function:
+
+```sql
+SELECT pgai.refresh_retriever(
+'product_embeddings_bulk' -- name of the retriever
+);
+__OUTPUT__
+INFO:  inserted table name public._pgai_embeddings_product_embeddings_bulk
+ refresh_retriever
+-------------------
+
+(1 row)
+```
+
+Now we can run the same retrieve operation with the second retriever as above:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_bulk' -- retriever's name
+);
+__OUTPUT__
+                data                 
+-------------------------------------
+ {'data': 'Hamburger - Tasty'}
+ {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Fries - Dunno'}
+ {'data': 'Sandwich - So what'}
+ {'data': 'Kebab - Maybe'}
+(5 rows)
+```
+
+Now let’s see what happens if we add additional AI data records:
+
+```sql
+INSERT INTO products (product_name, description) VALUES
+      ('Chicken Nuggets', 'Never'),
+      ('Ramen', 'Delicious');
+__OUTPUT__
+INSERT 0 2
+```
+
+The new data is automatically picked up in the retrieval from the first retriever with auto embeddings:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_auto' -- retriever's name
+);
+__OUTPUT__
+                 data                 
+--------------------------------------
+ {'data': 'Hamburger - Tasty'}
+ {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Sandwich - So what'}
+ {'data': 'Kebab - Maybe'}
+ {'data': 'Ramen - Delicious'}
+(5 rows)
+```
+
+At the same time the second retriever without auto embedding does not reflect the new data until there is another explicit refresh_retriever() run:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_bulk' -- retriever's name
+);
+__OUTPUT__
+                data                 
+-------------------------------------
+ {'data': 'Hamburger - Tasty'}
+ {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Fries - Dunno'}
+ {'data': 'Sandwich - So what'}
+ {'data': 'Kebab - Maybe'}
+(5 rows)
+```
+
+If we now call `refresh_retriever()` again, the new data is picked up:
+
+```sql
+SELECT pgai.refresh_retriever(
+'product_embeddings_bulk' -- name of the retriever
+);
+__OUTPUT__
+INFO:  inserted table name public._pgai_embeddings_product_embeddings_bulk
+ refresh_retriever
+-------------------
+```
+
+And will be returned when we run the retrieve operation again:
+
+```sql
+SELECT data FROM pgai.retrieve(
+'I like it', -- The query text to retrieve the top similar data
+ 5, -- top K
+'product_embeddings_bulk' -- retriever's name
+);
+__OUTPUT__
+                 data                 
+--------------------------------------
+ {'data': 'Hamburger - Tasty'}
+ {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Sandwich - So what'}
+ {'data': 'Kebab - Maybe'}
+ {'data': 'Ramen - Delicious'}
+(5 rows)
+```
+
+We used the two different retrievers for the same source data just to demonstrate the workings of auto embedding compared to explicit `refresh_retriever()`. In practice you may want to combine auto embedding and refresh_retriever() in a single retriever to conduct an initial embedding of data that existed before you created the retriever and then rely on auto embedding for any future data that is ingested, updated or deleted.
+
+You should consider relying on `refresh_retriever()` only, without auto embedding, if you typically ingest a lot of AI data at once in a batched manner.

@@ -1,0 +1,195 @@
+---
+title: Installing Beacon Agent
+description: Installing, configuring, testing, and running Beacon Agent
+---
+
+The following steps walk you through how to install and configure Beacon Agent, test locally, and then run the agent to see the results in your Estates page in the EDB Postgres® AI Console.
+
+Before you begin, you need to have the following:
+
+* The access key for a machine user with the `estate ingester` role assigned to it. For more information, see [Creating a machine user](create-machine-user).
+* The project ID for the project you want to monitor. You can find this in the URL when you are in the project in the EDB Postgres AI Console.
+
+1. Establish a connection between your system and the Cloudsmith repository for EDB Postgres AI.
+
+    First, find your EnterpriseDB Repos 2.0 token [here](https://www.enterprisedb.com/repos-downloads).
+
+    Next, set environmental variables for your repos subscription token and your EDB subscription type (standard or enterprise):
+
+    ```
+    export EDB_SUBSCRIPTION_TOKEN=<your-repos-token>
+    export EBD_SUBSCRIPTION_TYPE=<your-subscription-type>
+    ```
+
+    Then, download and run a script to configure your system to access the `beacon-agent` package from the repository. Be sure to replace `<your-token>` with your EDB Repos 2.0 token and replace `<your-subscription-type>` with your subscription type (`standard` or `enterprise`):
+
+    For RHEL-like or SLES:
+
+    ```
+    curl -1sSLf 'https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.rpm.sh' | sudo -E bash
+    ```
+
+    For Debian or Ubuntu:
+
+    ```
+    curl -1sSLf 'https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.deb.sh' | sudo -E bash
+    ```
+
+2. Install the `beacon-agent` package:
+
+    For RHEL-like:
+
+    ```
+    dnf install beacon-agent
+    ```
+
+    Or if dnf isn't available:
+
+    ```
+    yum install beacon-agent
+    ```
+
+    For SLES:
+
+    ```
+    zypper install beacon-agent
+    ```
+
+    For Debian or Ubuntu:
+
+    ```
+    apt install beacon-agent
+    ```
+
+3. Configure Beacon Agent and database connections.
+
+    First, create a Beacon config in your home directory:
+
+    ```
+    mkdir ${HOME}/.beacon
+    ```
+
+    Next, configure Beacon Agent by setting the access key (the one you obtained the [Creating a machine user](create_machine_user)) and project ID:
+    
+     ```
+    export BEACON_AGENT_ACCESS_KEY=<your-access-key>
+    export BEACON_AGENT_PROJECT_ID=<your-project-id>
+    ```
+    
+    
+   Then, specify the Beacon config directory for storing the configuration file and the name of the configuration file to be created there.
+
+    ```
+    beacon-agent setup -file="$HOME/.beacon/beacon_agent.yaml"
+    ```
+
+    During the `beacon-agent setup` process, an authentication attempt occurs, utilizing the provided access key and project ID. This authentication is necessary for Beacon Agent to communicate with the Beacon server and register with the project successfully.
+
+    If the commands execute as expected, you should see a message indicating that you have authenticated successfully to your EDB Postgres AI project.
+
+
+4. For security best practices, create a `DSN` environmental variable for each database (`DSN1`, `DSN2`, and so on) you want to monitor and set each to the correct corresponding dsn.
+
+    ```
+    export DSN1=<dsn1>
+    ```
+
+5. Open your `$HOME/.beacon/beacon_agent.yaml` configuration file and add an entry for each database you want to connect to, including the environmental variable for each database's dsn.
+
+    Entries under `databases` utilize the following format:
+    
+    ```
+    databases:
+        <database_name_1>:
+            dsn: "$DSN1"
+            tags:
+                - "<tag-one>"
+                - "<tag-two>"
+        <database_name_2>:
+            dsn: "$DSN2"
+            tags: 
+                - "<tag-one>"
+                - "<tag-two>"
+    ```
+
+    Here is an example with a database named `sales_reporting`:
+```
+agent:
+  access_key: $BEACON_AGENT_ACCESS_KEY
+  access_key_grpc_header: "x-access-key"
+  batch_size: 100
+  beacon_server: "beacon.biganimal.com:443"
+  feature_flag_interval: 10m0s
+  project_id: "<project ID>"
+  providers:
+    - "onprem"
+provider:
+  onprem:
+    databases:
+      sales_reporting:
+        dsn: “$DSN”
+        tags:
+          - "foo"
+          - "bar"
+    host:
+      resource_id: "postgresql.lan"
+      tags: []
+    poll_interval: 5m0s
+```
+
+6. Test Beacon Agent locally.
+
+    As an initial smoke test of the agent, it can send the ingestions that it would send back to the Beacon server to stdout instead. This allows you to quickly confirm if the agent is successfully able to gather ingestions and what those ingestions look like.
+
+    You can run the agent in stdout mode by modifying the `beacon_agent.yaml` file generated previously to have an `agent.beacon_server` value of `"stdout"`. A truncated example of this would be:
+
+    ```
+    agent:
+        beacon_server: "stdout"
+    ```
+
+    Next, run the agent in this mode using the following command:
+
+    ```
+    beacon-agent
+    ```
+
+    You should see output similar to the following eventually (it can take around 5 minutes to see the last few lines):
+
+```
+{"level":"debug","data":"$BEACON_AGENT_ACCESS_KEY","time":"2024-05-08T18:40:34Z","message":"expanding environment variable in configuration"}
+{"level":"info","path":"/healthz","time":1715193634,"msg":"serving liveness probe"}
+{"level":"info","path":"/readyz","time":1715193634,"msg":"serving readiness probe"}
+{"level":"info","version":"v1.51.0-snapshot8986075626.97.1.166215e","time":1715193634,"msg":"starting beacon agent"}
+{"level":"info","spiffe_enabled":false,"time":1715193634,"msg":"configuring tls"}
+{"level":"info","server":"stdout","time":1715193634,"msg":"connecting to beacon service"}
+{"level":"info","address":":8081","time":1715193634,"msg":"starting probe server"}
+{"level":"info","target":"stdout","time":1715193634,"msg":"connected to beacon server"}
+{"level":"info","time":1715193634,"msg":"verifying connection to beacon server"}
+{"level":"info","project":"echo","time":1715193634,"msg":"verified connection to beacon server"}
+{"level":"info","interval":"10m0s","time":1715193634,"msg":"loading feature flags periodically"}
+{"level":"info","time":1715193634,"msg":"fetching feature flags"}
+{"level":"info","feature_flags":{"echo_flag":"test","second_flag":false},"time":1715193634,"msg":"loaded feature flags"}
+{"level":"info","id":"onprem","time":1715193634,"msg":"starting provider"}
+{"level":"info","disable_partitioning":false,"batch_size":100,"interval":"10s","time":1715193634,"msg":"starting batch exporter"}
+{"level":"info","provider_id":"onprem","time":1715193634,"msg":"registering ingestion worker in pool"}
+{"level":"info","provider":"onprem","time":1715193634,"msg":"starting provider worker"}
+{"level":"info","ingestions":[{"version":"v0.1.0","type":"onprem/host","id":"ip-10-0-128-121","metadata":{"Data":{"OnPremHostMetadata":{"hostname":"ip-10-0-128-121","operating_system":"linux","platform":"ubuntu","platform_family":"debian","platform_version":"22.04","cpu_limit":1}}}}],"time":1715193934,"msg":"sending ingestions via log client (not actually sending)"}
+{"level":"info","successful_ingestions":1,"failed_ingestions":0,"time":1715193934,"msg":"exported ingestions"}
+```
+
+!!! Note
+The message in the second to last line of the logs above specifies that we are using the log client and not actually sending ingestions.
+!!!
+
+7. Run Beacon Agent.
+
+    In the `beacon_agent.yaml` file, replace `"stdout" with `"beacon.biganimal.com:443"`:
+
+    ```
+    agent:
+        beacon_server: "beacon.biganimal.com:443"
+
+    ```
+
+8. Follow the logs to monitor the ingestions.

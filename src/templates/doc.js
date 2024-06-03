@@ -17,6 +17,7 @@ import {
 } from "../components";
 import { products } from "../constants/products";
 import { FeedbackDropdown } from "../components/feedback-dropdown";
+import GithubSlugger from "github-slugger";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -188,6 +189,7 @@ const Section = ({ section }) => (
 );
 
 const DocTemplate = ({ data, pageContext }) => {
+  const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
   const gitData = data.edbGit;
   const { path, mtime, depth } = fields;
@@ -232,6 +234,20 @@ const DocTemplate = ({ data, pageContext }) => {
   )}&template=problem-with-topic.yaml`;
 
   const sections = depth === 2 ? buildSections(navTree) : null;
+
+  // newtoc will be passed as the toc - this will blend the existing toc with the new sections
+  const newtoc = { items: [] };
+  if (tableOfContents.items) {
+    newtoc.items.push(...tableOfContents.items);
+    if (sections) {
+      sections.forEach((section) =>
+        newtoc.items.push({
+          url: "#section-" + slugger.slug(section.title),
+          title: section.title,
+        }),
+      );
+    }
+  }
 
   let title = frontmatter.title;
   if (depth === 2 && !navTree.hideVersion) {
@@ -324,10 +340,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents
-                  toc={tableOfContents.items}
-                  deepToC={deepToC}
-                />
+                <TableOfContents toc={newtoc.items} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>

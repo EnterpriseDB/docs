@@ -47,7 +47,7 @@ navTitle: ${getMonthName(currentMonth)} ${currentYear}
 
 BigAnimal's ${getMonthName(
     currentMonth,
-  )} ${currentYear} includes the following enhancements and bugfixes:
+  )} ${currentYear} release includes the following enhancements and bug fixes:
 
 | Type | Description |
 |------|-------------|`;
@@ -58,6 +58,7 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const response = await fetch(
       "https://status.biganimal.com/api/maintenance-windows/done/index.json",
     );
+    ``;
     const data = await response.json();
 
     const filteredData = data.data.filter((item) => {
@@ -95,9 +96,12 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const releaseNotesBody = cleanLines
       .map((line) => `| Enhancement | ${line.trim()} |`)
       .join("\n");
-    const releaseNotesFileName = `${directory}/${getShortMonthName(
-      currentMonth,
-    )}_${currentYear}_rel_notes.mdx`;
+    // file name should follow the pattern 2021_09_sep_rel_notes.mdx
+    const releaseNotesFileName = `${directory}/${currentYear}_${(
+      currentMonth + 1
+    )
+      .toString()
+      .padStart(2, "0")}_${getShortMonthName(currentMonth)}_rel_notes.mdx`;
 
     const releaseNotesFile = fs.openSync(`${releaseNotesFileName}`, "w");
 

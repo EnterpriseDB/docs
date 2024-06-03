@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "../components/";
 import { Col } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
+import GithubSlugger from "github-slugger";
 
 const KatacodaBadge = () => <span className="new-thing">Demo</span>;
 
@@ -52,7 +53,7 @@ const FullCard = ({ card }) => {
 };
 
 const SimpleCard = ({ card }) => (
-  <div className="card rounded shadow-sm p-2 mt-4 w-100">
+  <div className="card rounded shadow-sm p-1 mb-4 w-100">
     <div className="card-body">
       <h3 className="card-title balance-text">
         <Link className="stretched-link" to={card.fields.path}>
@@ -67,27 +68,34 @@ const SimpleCard = ({ card }) => (
 );
 
 const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
+  let slugger = new GithubSlugger();
   return (
     <>
-      {deckTitle && <h2>{deckTitle}</h2>}
-      <div className="row no-gutters">
-        {cards.map((card) => {
-          return (
-            <Col
-              key={card.fields.path}
-              md={12}
-              lg={6}
-              xl={cardType === "simple" && 4}
-              className="d-flex"
-            >
-              {cardType === "full" ? (
-                <FullCard card={card} />
-              ) : (
-                <SimpleCard card={card} />
-              )}
-            </Col>
-          );
-        })}
+      {deckTitle && (
+        <h2 className="mt-3" id={"section-" + slugger.slug(deckTitle)}>
+          {deckTitle}
+        </h2>
+      )}
+      <div className="container">
+        <div className="row no-gutters">
+          {cards.map((card) => {
+            return (
+              <Col
+                key={card.fields.path}
+                md={12}
+                lg={6}
+                xl={cardType === "simple" && 4}
+                className="d-flex"
+              >
+                {cardType === "full" ? (
+                  <FullCard card={card} />
+                ) : (
+                  <SimpleCard card={card} />
+                )}
+              </Col>
+            );
+          })}
+        </div>
       </div>
     </>
   );

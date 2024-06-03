@@ -2,48 +2,37 @@ import React from 'react';
 import PropTypes from 'prop-types';
 
 function _extends() {
-  _extends = Object.assign || function (target) {
+  _extends = Object.assign ? Object.assign.bind() : function (target) {
     for (var i = 1; i < arguments.length; i++) {
       var source = arguments[i];
-
       for (var key in source) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
           target[key] = source[key];
         }
       }
     }
-
     return target;
   };
-
   return _extends.apply(this, arguments);
 }
-
 function _objectWithoutPropertiesLoose(source, excluded) {
   if (source == null) return {};
   var target = {};
   var sourceKeys = Object.keys(source);
   var key, i;
-
   for (i = 0; i < sourceKeys.length; i++) {
     key = sourceKeys[i];
     if (excluded.indexOf(key) >= 0) continue;
     target[key] = source[key];
   }
-
   return target;
 }
-
 function _objectWithoutProperties(source, excluded) {
   if (source == null) return {};
-
   var target = _objectWithoutPropertiesLoose(source, excluded);
-
   var key, i;
-
   if (Object.getOwnPropertySymbols) {
     var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
-
     for (i = 0; i < sourceSymbolKeys.length; i++) {
       key = sourceSymbolKeys[i];
       if (excluded.indexOf(key) >= 0) continue;
@@ -51,17 +40,14 @@ function _objectWithoutProperties(source, excluded) {
       target[key] = source[key];
     }
   }
-
   return target;
 }
 
-var _excluded$1o = ["title", "titleId"];
-
+var _excluded$1x = ["title", "titleId"];
 var SvgAaa = function SvgAaa(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1o);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1x);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -74,19 +60,16 @@ var SvgAaa = function SvgAaa(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgAaa.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1n = ["title", "titleId"];
-
+var _excluded$1w = ["title", "titleId"];
 var SvgAbnAmro = function SvgAbnAmro(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1n);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1w);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -99,19 +82,16 @@ var SvgAbnAmro = function SvgAbnAmro(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgAbnAmro.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1m = ["title", "titleId"];
-
+var _excluded$1v = ["title", "titleId"];
 var SvgAngularjs = function SvgAngularjs(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1m);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1v);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -124,19 +104,16 @@ var SvgAngularjs = function SvgAngularjs(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgAngularjs.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1l = ["title", "titleId"];
-
+var _excluded$1u = ["title", "titleId"];
 var SvgApple = function SvgApple(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1l);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1u);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -149,19 +126,16 @@ var SvgApple = function SvgApple(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgApple.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1k = ["title", "titleId"];
-
+var _excluded$1t = ["title", "titleId"];
 var SvgAws = function SvgAws(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1k);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1t);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -174,19 +148,16 @@ var SvgAws = function SvgAws(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgAws.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1j = ["title", "titleId"];
-
+var _excluded$1s = ["title", "titleId"];
 var SvgAzure = function SvgAzure(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1j);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1s);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -199,19 +170,16 @@ var SvgAzure = function SvgAzure(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgAzure.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1i = ["title", "titleId"];
-
+var _excluded$1r = ["title", "titleId"];
 var SvgBiganimalIconWhite = function SvgBiganimalIconWhite(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1i);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1r);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -224,19 +192,16 @@ var SvgBiganimalIconWhite = function SvgBiganimalIconWhite(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgBiganimalIconWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1h = ["title", "titleId"];
-
+var _excluded$1q = ["title", "titleId"];
 var SvgBiganimalLockupWhite = function SvgBiganimalLockupWhite(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1h);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1q);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -249,19 +214,16 @@ var SvgBiganimalLockupWhite = function SvgBiganimalLockupWhite(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgBiganimalLockupWhite.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1g = ["title", "titleId"];
-
+var _excluded$1p = ["title", "titleId"];
 var SvgBiganimalMagenta = function SvgBiganimalMagenta(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1g);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1p);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -274,19 +236,16 @@ var SvgBiganimalMagenta = function SvgBiganimalMagenta(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgBiganimalMagenta.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1f = ["title", "titleId"];
-
+var _excluded$1o = ["title", "titleId"];
 var SvgBiganimalText = function SvgBiganimalText(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1f);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1o);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -299,19 +258,16 @@ var SvgBiganimalText = function SvgBiganimalText(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgBiganimalText.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1e = ["title", "titleId"];
-
+var _excluded$1n = ["title", "titleId"];
 var SvgBiganimal = function SvgBiganimal(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1e);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1n);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -324,19 +280,16 @@ var SvgBiganimal = function SvgBiganimal(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgBiganimal.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1d = ["title", "titleId"];
-
+var _excluded$1m = ["title", "titleId"];
 var SvgCPlusPlus = function SvgCPlusPlus(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1d);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1m);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -349,19 +302,16 @@ var SvgCPlusPlus = function SvgCPlusPlus(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgCPlusPlus.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1c = ["title", "titleId"];
-
+var _excluded$1l = ["title", "titleId"];
 var SvgCSharpMono = function SvgCSharpMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1c);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1l);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -374,19 +324,16 @@ var SvgCSharpMono = function SvgCSharpMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgCSharpMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1b = ["title", "titleId"];
-
+var _excluded$1k = ["title", "titleId"];
 var SvgCSharp = function SvgCSharp(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1b);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1k);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -399,19 +346,16 @@ var SvgCSharp = function SvgCSharp(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgCSharp.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$1a = ["title", "titleId"];
-
+var _excluded$1j = ["title", "titleId"];
 var SvgC = function SvgC(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1a);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1j);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -424,19 +368,16 @@ var SvgC = function SvgC(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgC.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$19 = ["title", "titleId"];
-
+var _excluded$1i = ["title", "titleId"];
 var SvgCentos = function SvgCentos(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$19);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1i);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -449,19 +390,16 @@ var SvgCentos = function SvgCentos(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgCentos.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$18 = ["title", "titleId"];
-
-var SvgDebian = function SvgDebian(_ref) {
+var _excluded$1h = ["title", "titleId"];
+var SvgCsg = function SvgCsg(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$18);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1h);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -474,19 +412,38 @@ var SvgDebian = function SvgDebian(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgCsg.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$1g = ["title", "titleId"];
+var SvgDebian = function SvgDebian(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1g);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgDebian.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$17 = ["title", "titleId"];
-
+var _excluded$1f = ["title", "titleId"];
 var SvgDellEmc = function SvgDellEmc(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$17);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1f);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -499,19 +456,16 @@ var SvgDellEmc = function SvgDellEmc(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDellEmc.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$16 = ["title", "titleId"];
-
+var _excluded$1e = ["title", "titleId"];
 var SvgDjangoInitials = function SvgDjangoInitials(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$16);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1e);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -524,19 +478,16 @@ var SvgDjangoInitials = function SvgDjangoInitials(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDjangoInitials.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$15 = ["title", "titleId"];
-
+var _excluded$1d = ["title", "titleId"];
 var SvgDjango = function SvgDjango(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$15);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1d);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -549,19 +500,16 @@ var SvgDjango = function SvgDjango(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDjango.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$14 = ["title", "titleId"];
-
+var _excluded$1c = ["title", "titleId"];
 var SvgDocker = function SvgDocker(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$14);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1c);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -574,19 +522,16 @@ var SvgDocker = function SvgDocker(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDocker.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$13 = ["title", "titleId"];
-
+var _excluded$1b = ["title", "titleId"];
 var SvgDotNetIcon = function SvgDotNetIcon(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$13);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1b);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -599,19 +544,16 @@ var SvgDotNetIcon = function SvgDotNetIcon(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDotNetIcon.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$12 = ["title", "titleId"];
-
+var _excluded$1a = ["title", "titleId"];
 var SvgDotNet = function SvgDotNet(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$12);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1a);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -624,19 +566,16 @@ var SvgDotNet = function SvgDotNet(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgDotNet.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$11 = ["title", "titleId"];
-
+var _excluded$19 = ["title", "titleId"];
 var SvgEdbBadge = function SvgEdbBadge(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$11);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$19);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -649,19 +588,16 @@ var SvgEdbBadge = function SvgEdbBadge(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgEdbBadge.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$10 = ["title", "titleId"];
-
+var _excluded$18 = ["title", "titleId"];
 var SvgEdbDocsLogoDiscDark = function SvgEdbDocsLogoDiscDark(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$10);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$18);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -674,19 +610,16 @@ var SvgEdbDocsLogoDiscDark = function SvgEdbDocsLogoDiscDark(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgEdbDocsLogoDiscDark.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$$ = ["title", "titleId"];
-
+var _excluded$17 = ["title", "titleId"];
 var SvgEdbLogoDiscDark = function SvgEdbLogoDiscDark(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$$);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$17);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -699,19 +632,16 @@ var SvgEdbLogoDiscDark = function SvgEdbLogoDiscDark(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgEdbLogoDiscDark.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$_ = ["title", "titleId"];
-
+var _excluded$16 = ["title", "titleId"];
 var SvgEdbLogoSymbolBadge = function SvgEdbLogoSymbolBadge(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$_);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$16);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -724,19 +654,16 @@ var SvgEdbLogoSymbolBadge = function SvgEdbLogoSymbolBadge(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgEdbLogoSymbolBadge.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$Z = ["title", "titleId"];
-
+var _excluded$15 = ["title", "titleId"];
 var SvgEricsson = function SvgEricsson(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Z);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$15);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -749,19 +676,16 @@ var SvgEricsson = function SvgEricsson(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgEricsson.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$Y = ["title", "titleId"];
-
+var _excluded$14 = ["title", "titleId"];
 var SvgExpress = function SvgExpress(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Y);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$14);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -774,19 +698,16 @@ var SvgExpress = function SvgExpress(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgExpress.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$X = ["title", "titleId"];
-
+var _excluded$13 = ["title", "titleId"];
 var SvgFacebook = function SvgFacebook(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$X);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$13);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -799,19 +720,16 @@ var SvgFacebook = function SvgFacebook(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgFacebook.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$W = ["title", "titleId"];
-
+var _excluded$12 = ["title", "titleId"];
 var SvgFlask = function SvgFlask(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$W);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$12);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -824,19 +742,16 @@ var SvgFlask = function SvgFlask(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgFlask.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$V = ["title", "titleId"];
-
+var _excluded$11 = ["title", "titleId"];
 var SvgGolang = function SvgGolang(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$V);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$11);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -849,19 +764,16 @@ var SvgGolang = function SvgGolang(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgGolang.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$U = ["title", "titleId"];
-
+var _excluded$10 = ["title", "titleId"];
 var SvgGoogleCloud = function SvgGoogleCloud(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$U);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$10);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -874,19 +786,16 @@ var SvgGoogleCloud = function SvgGoogleCloud(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgGoogleCloud.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$T = ["title", "titleId"];
-
+var _excluded$$ = ["title", "titleId"];
 var SvgHadoopMono = function SvgHadoopMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$T);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$$);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -899,19 +808,16 @@ var SvgHadoopMono = function SvgHadoopMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgHadoopMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$S = ["title", "titleId"];
-
+var _excluded$_ = ["title", "titleId"];
 var SvgHadoop = function SvgHadoop(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$S);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$_);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -924,19 +830,16 @@ var SvgHadoop = function SvgHadoop(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgHadoop.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$R = ["title", "titleId"];
-
+var _excluded$Z = ["title", "titleId"];
 var SvgHaskell = function SvgHaskell(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$R);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$Z);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -949,19 +852,16 @@ var SvgHaskell = function SvgHaskell(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgHaskell.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$Q = ["title", "titleId"];
-
+var _excluded$Y = ["title", "titleId"];
 var SvgHtml = function SvgHtml(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$Q);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$Y);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -974,19 +874,16 @@ var SvgHtml = function SvgHtml(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgHtml.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$P = ["title", "titleId"];
-
+var _excluded$X = ["title", "titleId"];
 var SvgIbmCloud = function SvgIbmCloud(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$P);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$X);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -999,19 +896,16 @@ var SvgIbmCloud = function SvgIbmCloud(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgIbmCloud.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$O = ["title", "titleId"];
-
+var _excluded$W = ["title", "titleId"];
 var SvgIos = function SvgIos(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$O);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$W);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1024,19 +918,16 @@ var SvgIos = function SvgIos(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgIos.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$N = ["title", "titleId"];
-
+var _excluded$V = ["title", "titleId"];
 var SvgJavaMono = function SvgJavaMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$N);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$V);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1049,19 +940,16 @@ var SvgJavaMono = function SvgJavaMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgJavaMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$M = ["title", "titleId"];
-
+var _excluded$U = ["title", "titleId"];
 var SvgJava = function SvgJava(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$M);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$U);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1074,19 +962,16 @@ var SvgJava = function SvgJava(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgJava.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$L = ["title", "titleId"];
-
+var _excluded$T = ["title", "titleId"];
 var SvgJavascript = function SvgJavascript(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$L);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$T);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1099,19 +984,16 @@ var SvgJavascript = function SvgJavascript(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgJavascript.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$K = ["title", "titleId"];
-
+var _excluded$S = ["title", "titleId"];
 var SvgJquery = function SvgJquery(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$K);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$S);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1124,19 +1006,16 @@ var SvgJquery = function SvgJquery(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgJquery.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$J = ["title", "titleId"];
-
-var SvgKotlin = function SvgKotlin(_ref) {
+var _excluded$R = ["title", "titleId"];
+var SvgKonica = function SvgKonica(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$J);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$R);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1149,19 +1028,38 @@ var SvgKotlin = function SvgKotlin(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgKonica.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$Q = ["title", "titleId"];
+var SvgKotlin = function SvgKotlin(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$Q);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgKotlin.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$I = ["title", "titleId"];
-
+var _excluded$P = ["title", "titleId"];
 var SvgKreditpartner = function SvgKreditpartner(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$I);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$P);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1174,19 +1072,16 @@ var SvgKreditpartner = function SvgKreditpartner(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgKreditpartner.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$H = ["title", "titleId"];
-
+var _excluded$O = ["title", "titleId"];
 var SvgKt = function SvgKt(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$H);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$O);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1199,19 +1094,16 @@ var SvgKt = function SvgKt(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgKt.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$G = ["title", "titleId"];
-
+var _excluded$N = ["title", "titleId"];
 var SvgKubernetesMono = function SvgKubernetesMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$G);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$N);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1224,19 +1116,16 @@ var SvgKubernetesMono = function SvgKubernetesMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgKubernetesMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$F = ["title", "titleId"];
-
+var _excluded$M = ["title", "titleId"];
 var SvgKubernetes = function SvgKubernetes(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$F);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$M);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1249,19 +1138,16 @@ var SvgKubernetes = function SvgKubernetes(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgKubernetes.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$E = ["title", "titleId"];
-
+var _excluded$L = ["title", "titleId"];
 var SvgKubernetes2 = function SvgKubernetes2(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$E);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$L);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1274,19 +1160,16 @@ var SvgKubernetes2 = function SvgKubernetes2(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgKubernetes2.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$D = ["title", "titleId"];
-
+var _excluded$K = ["title", "titleId"];
 var SvgLaravelMono = function SvgLaravelMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$D);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$K);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1299,19 +1182,16 @@ var SvgLaravelMono = function SvgLaravelMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgLaravelMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$C = ["title", "titleId"];
-
+var _excluded$J = ["title", "titleId"];
 var SvgLaravel = function SvgLaravel(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$C);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$J);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1324,19 +1204,16 @@ var SvgLaravel = function SvgLaravel(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgLaravel.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$B = ["title", "titleId"];
-
+var _excluded$I = ["title", "titleId"];
 var SvgLinkedinMono = function SvgLinkedinMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$B);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$I);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1349,19 +1226,16 @@ var SvgLinkedinMono = function SvgLinkedinMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgLinkedinMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$A = ["title", "titleId"];
-
+var _excluded$H = ["title", "titleId"];
 var SvgLinkedin = function SvgLinkedin(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$A);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$H);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1374,19 +1248,16 @@ var SvgLinkedin = function SvgLinkedin(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgLinkedin.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$z = ["title", "titleId"];
-
-var SvgLinux = function SvgLinux(_ref) {
+var _excluded$G = ["title", "titleId"];
+var SvgLinuxSmall = function SvgLinuxSmall(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$z);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$G);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1399,19 +1270,38 @@ var SvgLinux = function SvgLinux(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgLinuxSmall.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$F = ["title", "titleId"];
+var SvgLinux = function SvgLinux(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$F);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgLinux.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$y = ["title", "titleId"];
-
-var SvgMacos = function SvgMacos(_ref) {
+var _excluded$E = ["title", "titleId"];
+var SvgLseLockup = function SvgLseLockup(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$y);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$E);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1424,19 +1314,60 @@ var SvgMacos = function SvgMacos(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgLseLockup.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$D = ["title", "titleId"];
+var SvgLse = function SvgLse(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$D);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
+SvgLse.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
+
+var _excluded$C = ["title", "titleId"];
+var SvgMacos = function SvgMacos(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$C);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgMacos.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$x = ["title", "titleId"];
-
-var SvgMastercard = function SvgMastercard(_ref) {
+var _excluded$B = ["title", "titleId"];
+var SvgMaryland = function SvgMaryland(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$x);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$B);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1449,19 +1380,38 @@ var SvgMastercard = function SvgMastercard(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgMaryland.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$A = ["title", "titleId"];
+var SvgMastercard = function SvgMastercard(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$A);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgMastercard.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$w = ["title", "titleId"];
-
+var _excluded$z = ["title", "titleId"];
 var SvgNielsen = function SvgNielsen(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$w);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$z);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1474,19 +1424,16 @@ var SvgNielsen = function SvgNielsen(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgNielsen.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$v = ["title", "titleId"];
-
+var _excluded$y = ["title", "titleId"];
 var SvgNodejsMono = function SvgNodejsMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$v);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$y);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1499,19 +1446,16 @@ var SvgNodejsMono = function SvgNodejsMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgNodejsMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$u = ["title", "titleId"];
-
+var _excluded$x = ["title", "titleId"];
 var SvgNodejs = function SvgNodejs(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$u);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$x);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1524,19 +1468,16 @@ var SvgNodejs = function SvgNodejs(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgNodejs.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$t = ["title", "titleId"];
-
+var _excluded$w = ["title", "titleId"];
 var SvgNokia = function SvgNokia(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$t);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$w);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1549,19 +1490,16 @@ var SvgNokia = function SvgNokia(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgNokia.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$s = ["title", "titleId"];
-
+var _excluded$v = ["title", "titleId"];
 var SvgPandas = function SvgPandas(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$s);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$v);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1574,19 +1512,16 @@ var SvgPandas = function SvgPandas(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPandas.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$r = ["title", "titleId"];
-
+var _excluded$u = ["title", "titleId"];
 var SvgPerl = function SvgPerl(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$r);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$u);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1599,19 +1534,16 @@ var SvgPerl = function SvgPerl(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPerl.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$q = ["title", "titleId"];
-
+var _excluded$t = ["title", "titleId"];
 var SvgPhpMono = function SvgPhpMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$q);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$t);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1624,19 +1556,16 @@ var SvgPhpMono = function SvgPhpMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPhpMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$p = ["title", "titleId"];
-
+var _excluded$s = ["title", "titleId"];
 var SvgPhp = function SvgPhp(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$p);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$s);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1649,19 +1578,16 @@ var SvgPhp = function SvgPhp(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPhp.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$o = ["title", "titleId"];
-
+var _excluded$r = ["title", "titleId"];
 var SvgPostgresSupport = function SvgPostgresSupport(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$o);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$r);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1674,19 +1600,16 @@ var SvgPostgresSupport = function SvgPostgresSupport(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPostgresSupport.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$n = ["title", "titleId"];
-
+var _excluded$q = ["title", "titleId"];
 var SvgPostgresqlMono = function SvgPostgresqlMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$n);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$q);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1699,19 +1622,16 @@ var SvgPostgresqlMono = function SvgPostgresqlMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPostgresqlMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$m = ["title", "titleId"];
-
+var _excluded$p = ["title", "titleId"];
 var SvgPostgresql = function SvgPostgresql(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$m);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$p);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1724,19 +1644,16 @@ var SvgPostgresql = function SvgPostgresql(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPostgresql.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$l = ["title", "titleId"];
-
+var _excluded$o = ["title", "titleId"];
 var SvgPostgresql2 = function SvgPostgresql2(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$l);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$o);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1749,19 +1666,16 @@ var SvgPostgresql2 = function SvgPostgresql2(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPostgresql2.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$k = ["title", "titleId"];
-
+var _excluded$n = ["title", "titleId"];
 var SvgPythonMono = function SvgPythonMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$k);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$n);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1774,19 +1688,16 @@ var SvgPythonMono = function SvgPythonMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPythonMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$j = ["title", "titleId"];
-
+var _excluded$m = ["title", "titleId"];
 var SvgPython = function SvgPython(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$j);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$m);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1799,19 +1710,16 @@ var SvgPython = function SvgPython(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgPython.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$i = ["title", "titleId"];
-
-var SvgReactNative = function SvgReactNative(_ref) {
+var _excluded$l = ["title", "titleId"];
+var SvgRabobank = function SvgRabobank(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$i);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$l);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1824,19 +1732,38 @@ var SvgReactNative = function SvgReactNative(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgRabobank.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$k = ["title", "titleId"];
+var SvgReactNative = function SvgReactNative(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$k);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgReactNative.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$h = ["title", "titleId"];
-
+var _excluded$j = ["title", "titleId"];
 var SvgRedhatMono = function SvgRedhatMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$h);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$j);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1849,19 +1776,16 @@ var SvgRedhatMono = function SvgRedhatMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgRedhatMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$g = ["title", "titleId"];
-
+var _excluded$i = ["title", "titleId"];
 var SvgRedhat = function SvgRedhat(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$g);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$i);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1874,19 +1798,16 @@ var SvgRedhat = function SvgRedhat(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgRedhat.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$f = ["title", "titleId"];
-
+var _excluded$h = ["title", "titleId"];
 var SvgRubyMono = function SvgRubyMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$f);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$h);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1899,19 +1820,16 @@ var SvgRubyMono = function SvgRubyMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgRubyMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$e = ["title", "titleId"];
-
+var _excluded$g = ["title", "titleId"];
 var SvgRuby = function SvgRuby(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$e);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$g);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1924,19 +1842,16 @@ var SvgRuby = function SvgRuby(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgRuby.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$d = ["title", "titleId"];
-
+var _excluded$f = ["title", "titleId"];
 var SvgSiemens = function SvgSiemens(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$d);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$f);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1949,19 +1864,16 @@ var SvgSiemens = function SvgSiemens(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgSiemens.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$c = ["title", "titleId"];
-
+var _excluded$e = ["title", "titleId"];
 var SvgSony = function SvgSony(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$c);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$e);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1974,19 +1886,16 @@ var SvgSony = function SvgSony(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgSony.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$b = ["title", "titleId"];
-
+var _excluded$d = ["title", "titleId"];
 var SvgSpring = function SvgSpring(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$b);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$d);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -1999,19 +1908,16 @@ var SvgSpring = function SvgSpring(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgSpring.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$a = ["title", "titleId"];
-
+var _excluded$c = ["title", "titleId"];
 var SvgSuse = function SvgSuse(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$a);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$c);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2024,19 +1930,16 @@ var SvgSuse = function SvgSuse(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgSuse.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$9 = ["title", "titleId"];
-
+var _excluded$b = ["title", "titleId"];
 var SvgSwift = function SvgSwift(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$9);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$b);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2049,19 +1952,16 @@ var SvgSwift = function SvgSwift(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgSwift.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$8 = ["title", "titleId"];
-
+var _excluded$a = ["title", "titleId"];
 var SvgTransunion = function SvgTransunion(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$8);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$a);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2074,19 +1974,16 @@ var SvgTransunion = function SvgTransunion(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgTransunion.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$7 = ["title", "titleId"];
-
+var _excluded$9 = ["title", "titleId"];
 var SvgTwitter = function SvgTwitter(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$7);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$9);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2099,19 +1996,16 @@ var SvgTwitter = function SvgTwitter(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgTwitter.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$6 = ["title", "titleId"];
-
+var _excluded$8 = ["title", "titleId"];
 var SvgTypescript = function SvgTypescript(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$6);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$8);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2124,19 +2018,16 @@ var SvgTypescript = function SvgTypescript(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgTypescript.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$5 = ["title", "titleId"];
-
+var _excluded$7 = ["title", "titleId"];
 var SvgUbuntu = function SvgUbuntu(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$5);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$7);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2149,19 +2040,16 @@ var SvgUbuntu = function SvgUbuntu(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgUbuntu.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$4 = ["title", "titleId"];
-
-var SvgUsCellular = function SvgUsCellular(_ref) {
+var _excluded$6 = ["title", "titleId"];
+var SvgUsArmy = function SvgUsArmy(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$4);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$6);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2174,19 +2062,38 @@ var SvgUsCellular = function SvgUsCellular(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgUsArmy.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$5 = ["title", "titleId"];
+var SvgUsCellular = function SvgUsCellular(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$5);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgUsCellular.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-var _excluded$3 = ["title", "titleId"];
-
-var SvgVueJs = function SvgVueJs(_ref) {
+var _excluded$4 = ["title", "titleId"];
+var SvgUsNavy = function SvgUsNavy(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$3);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$4);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2199,19 +2106,38 @@ var SvgVueJs = function SvgVueJs(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
+SvgUsNavy.propTypes = {
+  title: PropTypes.string,
+  titleId: PropTypes.string
+};
 
+var _excluded$3 = ["title", "titleId"];
+var SvgVueJs = function SvgVueJs(_ref) {
+  var title = _ref.title,
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$3);
+  return /*#__PURE__*/React.createElement("svg", _extends({
+    width: "1em",
+    height: "1em",
+    viewBox: "0 0 24 24",
+    fill: "currentColor",
+    "aria-labelledby": titleId
+  }, props), title ? /*#__PURE__*/React.createElement("title", {
+    id: titleId
+  }, title) : null, /*#__PURE__*/React.createElement("path", {
+    d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
+  }));
+};
 SvgVueJs.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$2 = ["title", "titleId"];
-
 var SvgWindowsMono = function SvgWindowsMono(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$2);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$2);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2224,19 +2150,16 @@ var SvgWindowsMono = function SvgWindowsMono(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgWindowsMono.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded$1 = ["title", "titleId"];
-
 var SvgWindows = function SvgWindows(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded$1);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded$1);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2249,19 +2172,16 @@ var SvgWindows = function SvgWindows(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgWindows.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
 var _excluded = ["title", "titleId"];
-
 var SvgYoutube = function SvgYoutube(_ref) {
   var title = _ref.title,
-      titleId = _ref.titleId,
-      props = _objectWithoutProperties(_ref, _excluded);
-
+    titleId = _ref.titleId,
+    props = _objectWithoutProperties(_ref, _excluded);
   return /*#__PURE__*/React.createElement("svg", _extends({
     width: "1em",
     height: "1em",
@@ -2274,10 +2194,9 @@ var SvgYoutube = function SvgYoutube(_ref) {
     d: "M6.594 2A4.574 4.574 0 002 6.406V7h2v-.5A2.592 2.592 0 016.594 4H7V2zM9 2v2h2V2zm4 0v2h2V2zm4 0v2h.5A2.592 2.592 0 0120 6.594V7h2v-.406c0-2.48-1.93-4.496-4.406-4.594zM2 9v2h2V9zm18 0v2h2V9zM2 13v2h2v-2zm18 0v2h2v-2zM2 17v.594A4.574 4.574 0 006.594 22H7v-2h-.406A2.592 2.592 0 014 17.5V17zm18 0v.406A2.592 2.592 0 0117.5 20H17v2h.594A4.574 4.574 0 0022 17.406V17zM9 20v2h2v-2zm4 0v2h2v-2z"
   }));
 };
-
 SvgYoutube.propTypes = {
   title: PropTypes.string,
   titleId: PropTypes.string
 };
 
-export { SvgAaa as Aaa, SvgAbnAmro as AbnAmro, SvgAngularjs as Angularjs, SvgApple as Apple, SvgAws as Aws, SvgAzure as Azure, SvgBiganimal as Biganimal, SvgBiganimalIconWhite as BiganimalIconWhite, SvgBiganimalLockupWhite as BiganimalLockupWhite, SvgBiganimalMagenta as BiganimalMagenta, SvgBiganimalText as BiganimalText, SvgC as C, SvgCPlusPlus as CPlusPlus, SvgCSharp as CSharp, SvgCSharpMono as CSharpMono, SvgCentos as Centos, SvgDebian as Debian, SvgDellEmc as DellEmc, SvgDjango as Django, SvgDjangoInitials as DjangoInitials, SvgDocker as Docker, SvgDotNet as DotNet, SvgDotNetIcon as DotNetIcon, SvgEdbBadge as EdbBadge, SvgEdbDocsLogoDiscDark as EdbDocsLogoDiscDark, SvgEdbLogoDiscDark as EdbLogoDiscDark, SvgEdbLogoSymbolBadge as EdbLogoSymbolBadge, SvgEricsson as Ericsson, SvgExpress as Express, SvgFacebook as Facebook, SvgFlask as Flask, SvgGolang as Golang, SvgGoogleCloud as GoogleCloud, SvgHadoop as Hadoop, SvgHadoopMono as HadoopMono, SvgHaskell as Haskell, SvgHtml as Html, SvgIbmCloud as IbmCloud, SvgIos as Ios, SvgJava as Java, SvgJavaMono as JavaMono, SvgJavascript as Javascript, SvgJquery as Jquery, SvgKotlin as Kotlin, SvgKreditpartner as Kreditpartner, SvgKt as Kt, SvgKubernetes as Kubernetes, SvgKubernetes2 as Kubernetes2, SvgKubernetesMono as KubernetesMono, SvgLaravel as Laravel, SvgLaravelMono as LaravelMono, SvgLinkedin as Linkedin, SvgLinkedinMono as LinkedinMono, SvgLinux as Linux, SvgMacos as Macos, SvgMastercard as Mastercard, SvgNielsen as Nielsen, SvgNodejs as Nodejs, SvgNodejsMono as NodejsMono, SvgNokia as Nokia, SvgPandas as Pandas, SvgPerl as Perl, SvgPhp as Php, SvgPhpMono as PhpMono, SvgPostgresSupport as PostgresSupport, SvgPostgresql as Postgresql, SvgPostgresql2 as Postgresql2, SvgPostgresqlMono as PostgresqlMono, SvgPython as Python, SvgPythonMono as PythonMono, SvgReactNative as ReactNative, SvgRedhat as Redhat, SvgRedhatMono as RedhatMono, SvgRuby as Ruby, SvgRubyMono as RubyMono, SvgSiemens as Siemens, SvgSony as Sony, SvgSpring as Spring, SvgSuse as Suse, SvgSwift as Swift, SvgTransunion as Transunion, SvgTwitter as Twitter, SvgTypescript as Typescript, SvgUbuntu as Ubuntu, SvgUsCellular as UsCellular, SvgVueJs as VueJs, SvgWindows as Windows, SvgWindowsMono as WindowsMono, SvgYoutube as Youtube };
+export { SvgAaa as Aaa, SvgAbnAmro as AbnAmro, SvgAngularjs as Angularjs, SvgApple as Apple, SvgAws as Aws, SvgAzure as Azure, SvgBiganimal as Biganimal, SvgBiganimalIconWhite as BiganimalIconWhite, SvgBiganimalLockupWhite as BiganimalLockupWhite, SvgBiganimalMagenta as BiganimalMagenta, SvgBiganimalText as BiganimalText, SvgC as C, SvgCPlusPlus as CPlusPlus, SvgCSharp as CSharp, SvgCSharpMono as CSharpMono, SvgCentos as Centos, SvgCsg as Csg, SvgDebian as Debian, SvgDellEmc as DellEmc, SvgDjango as Django, SvgDjangoInitials as DjangoInitials, SvgDocker as Docker, SvgDotNet as DotNet, SvgDotNetIcon as DotNetIcon, SvgEdbBadge as EdbBadge, SvgEdbDocsLogoDiscDark as EdbDocsLogoDiscDark, SvgEdbLogoDiscDark as EdbLogoDiscDark, SvgEdbLogoSymbolBadge as EdbLogoSymbolBadge, SvgEricsson as Ericsson, SvgExpress as Express, SvgFacebook as Facebook, SvgFlask as Flask, SvgGolang as Golang, SvgGoogleCloud as GoogleCloud, SvgHadoop as Hadoop, SvgHadoopMono as HadoopMono, SvgHaskell as Haskell, SvgHtml as Html, SvgIbmCloud as IbmCloud, SvgIos as Ios, SvgJava as Java, SvgJavaMono as JavaMono, SvgJavascript as Javascript, SvgJquery as Jquery, SvgKonica as Konica, SvgKotlin as Kotlin, SvgKreditpartner as Kreditpartner, SvgKt as Kt, SvgKubernetes as Kubernetes, SvgKubernetes2 as Kubernetes2, SvgKubernetesMono as KubernetesMono, SvgLaravel as Laravel, SvgLaravelMono as LaravelMono, SvgLinkedin as Linkedin, SvgLinkedinMono as LinkedinMono, SvgLinux as Linux, SvgLinuxSmall as LinuxSmall, SvgLse as Lse, SvgLseLockup as LseLockup, SvgMacos as Macos, SvgMaryland as Maryland, SvgMastercard as Mastercard, SvgNielsen as Nielsen, SvgNodejs as Nodejs, SvgNodejsMono as NodejsMono, SvgNokia as Nokia, SvgPandas as Pandas, SvgPerl as Perl, SvgPhp as Php, SvgPhpMono as PhpMono, SvgPostgresSupport as PostgresSupport, SvgPostgresql as Postgresql, SvgPostgresql2 as Postgresql2, SvgPostgresqlMono as PostgresqlMono, SvgPython as Python, SvgPythonMono as PythonMono, SvgRabobank as Rabobank, SvgReactNative as ReactNative, SvgRedhat as Redhat, SvgRedhatMono as RedhatMono, SvgRuby as Ruby, SvgRubyMono as RubyMono, SvgSiemens as Siemens, SvgSony as Sony, SvgSpring as Spring, SvgSuse as Suse, SvgSwift as Swift, SvgTransunion as Transunion, SvgTwitter as Twitter, SvgTypescript as Typescript, SvgUbuntu as Ubuntu, SvgUsArmy as UsArmy, SvgUsCellular as UsCellular, SvgUsNavy as UsNavy, SvgVueJs as VueJs, SvgWindows as Windows, SvgWindowsMono as WindowsMono, SvgYoutube as Youtube };

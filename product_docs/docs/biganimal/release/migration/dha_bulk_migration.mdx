@@ -25,14 +25,18 @@ We recommend that, when provisioning or, if needed, after provisioning, you set 
  | wal_receiver_timeout | 60min                                                                                                                                        |
  | max_wal_size         | Set to either:<br/> • A multiple (2 or 3) of your largest table<br/> or<br/> • More than one third of the capacity of your dedicated WAL disk (if configured) |
     
-Make note of the target's proxy hostname and port. You also need a user and password for the target cluster.
+Make note of the target's proxy hostname (target-proxy) and port (target-port). You also need a user (target-user) and password (target-password) for the target cluster.
 
-The following instructions give examples for a cluster named `ab-cluster` with an `ab-group` subgroup and three nodes: `ab-node-1`, `ab-node-2`, and `ab-node3`. The cluster is accessed through a host named `ab-proxy`. On BigAnimal, a cluster is configured, by default, with an edb_admin user that can be used for the bulk upload.
+The following instructions give examples for a cluster named `ab-cluster` with an `ab-group` subgroup and three nodes: `ab-node-1`, `ab-node-2`, and `ab-node3`. The cluster is accessed through a host named `ab-proxy` (the target-proxy). 
+
+On BigAnimal, a cluster is configured, by default, with an `edb_admin` user (the target-user) that can be used for the bulk upload. 
+The target-password for the target-user will be available from the BigAnimal dashboard for the cluster. 
+A database named `bdrdb` (the target-dbname) will also have been created.
 
 
 ## Identify your data source
 
-You need the source hostname, port, database name, user, and password for your source database. 
+You need the source hostname (source-host), port (source-port), database name (source-dbname), user , and password for your source database. 
 
 Also, you currently need a list of tables in the database that you want to migrate to the target database.
 
@@ -52,20 +56,32 @@ Create a virtual machine with your preferred operating system in the cloud to or
         * psql
         * PGD CLI
         * Migration Toolkit
+        * LiveCompare
 
+### Use your EDB account
+
+Go to the [EDB Repos 2.0](https://www.enterprisedb.com/repos-downloads) page and log in with your EDB account. Make a note of the repository token that you will use to configure the repositories on the bastion server.
+
+### Set environment variables
+
+Set the `EDB_SUBSCRIPTION_TOKEN` environment variable to the repository token you obtained from the EDB Repos 2.0 page.
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=your-repository-token
+```
 
 ### Configure repositories
 
 The required software is available from the EDB repositories. You need to install the EDB repositories on your bastion server.
 
 * Red Hat
-```
+```shell
 curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/postgres_distributed/setup.rpm.sh" | sudo -E bash
 curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/enterprise/setup.rpm.sh" | sudo -E bash
 ```
 
 * Ubuntu/Debian
-```
+```shell
 curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/postgres_distributed/setup.deb.sh" | sudo -E bash
 curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/enterprise/setup.deb.sh" | sudo -E bash
 ```
@@ -74,17 +90,17 @@ curl -1sLf "https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/enterpris
 
 Once the repositories are configured, you can install the required software.
 
-#### psql and pg_dump/pg_restore
+#### Installing `psql` and `pg_dump`/`pg_restore`/`pg_dumpall`
 
 The psql command is the interactive terminal for working with PostgreSQL. It's a client application and can be installed on any operating system. Packaged with psql are pg_dump and pg_restore, command-line utilities for dumping and restoring PostgreSQL databases.
 
 * Ubuntu
-```
+```shell
 sudo apt install postgresql-client-16
 ```
 
 * Red Hat
-```
+```shell
 sudo dnf install postgresql-client-16
 ```
 
@@ -95,28 +111,29 @@ source-host:source-port:source-dbname:source-user:source-password
 target-proxy:target-port:target-dbname:target-user:target-password
 ```
 
-Create the file in your home directory and change its permissions to read/write only for the owner.
+Create the file in your home directory and change its permissions to read/write only for the owner. 
+Ensure that your passwords are appropriately escaped in the .pgpass file. If an entry needs to contain : or \\, escape this character with \\. 
 
-```
+```shell
 chmod 0600 $HOME/.pgpass
 ```
 
-#### PGD CLI 
+#### Installing PGD CLI 
 
 PGD CLI is a command-line interface for managing and monitoring PGD clusters. It's a Go application and can be installed on any operating system.
 
 * Ubuntu
-```
+```shell
 sudo apt-get install edb-pgd5-cli
 ```
 * Red Hat
-```
+```shell
 sudo dnf install edb-pgd5-cli
 ```
 
 Create a configuration file for the PGD CLI:
 
-```
+```yaml
 cluster:
   name: target-cluster-name
   endpoints:
@@ -125,7 +142,7 @@ cluster:
 
 For the example `ab-cluster`:
 
-```
+```yaml
 cluster:
   name: ab-cluster
   endpoints:
@@ -137,23 +154,37 @@ Save it as `pgd-cli-config.yml`.
 See also [Installing PGD CLI](/pgd/latest/cli/installing_cli/).
 
 
-#### Migration Toolkit
+#### Installing Migration Toolkit
 
 EDB's Migration Toolkit (MTK) is a command-line tool that can be used to migrate data from a source database to a target database. It's a Java application and requires a Java runtime environment to be installed.
 
 * Ubuntu
-```
+```shell
 sudo apt-get -y install edb-migrationtoolkit
 sudo wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar -P /usr/edb/migrationtoolkit/lib
 ```
 * Red Hat
-```
+```shell
 sudo apt-get -y install edb-migrationtoolkit
 sudo wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar -P /usr/edb/migrationtoolkit/lib
 ```
 
 See also  [Installing Migration Toolkit](/migration_toolkit/latest/installing/)
 
+#### Installing LiveCompare
+
+EDB LiveCompare is an application that can be used to compare two databases and generate a report of the differences. It will be used later on in this process to verify the data migration.
+
+* Ubuntu
+```
+sudo apt-get -y install edb-livecompare
+```
+* Red Hat
+```
+sudo dnf -y install edb-livecompare
+```
+
+See also [LiveCompare requirements](/livecompare/latest/requirements/).
 
 ## Set up and tune the target cluster
 
@@ -182,13 +213,13 @@ The next time you connect with psql, you're directed to the write leader, which 
 
 To minimize the possibility of disconnections, move the raft and write leader roles to the destination node.
 
-Make the destination node the raft leader using `bdr.raft_leadership_transfer`:
+Make the destination node the raft leader using `bdr.raft_leadership_transfer`. You need to specify the node and the group name that the node is a member of.:
 
 ```
-bdr.raft_leadership_transfer('ab-node-1',true);
+bdr.raft_leadership_transfer('ab-node-1',true,'ab-group');
 ```
 
-Because you fenced off the other nodes in the group, this command triggers a write leader election that elects the `ab-node-1` as write leader.
+Because you fenced off the other nodes in the group, this command triggers a write leader election in the `ab-group` that elects the `ab-node-1` as write leader.
 
 
 ### Record then clear default commit scopes
@@ -265,9 +296,10 @@ These commands provide a snapshot of the state of the cluster before the migrati
 
 ## Migrating the data
 
-Currently, you must migrate the data in three phases:
+Currently, you must migrate the data in four phases:
 
 1. Transferring the “pre-data” using pg_dump and pg_restore, which exports and imports all the data definitions.
+1. Transfer the role definitions using pg_dumpall and psql.
 1. Using MTK with the `--dataonly` option to transfer only the data from each table, repeating as necessary for each table.
 1. Transferring the “post-data” using pg_dump and pg_restore, which completes the data transfer.
 
@@ -276,17 +308,39 @@ Currently, you must migrate the data in three phases:
 
 Use the `pg_dump` utility against the source database to dump the pre-data section in directory format:
 
+```shell
+pg_dump -Fd -f predata --section=pre-data -h <source-hostname> -p <source-port> -U <source-user> <source-dbname> >> predatadump.log
 ```
-pg_dump -Fd -f predata --section=pre-data -h <source-hostname> -p <source-port> -U <source-user> <source-dbname>
-```
+
+Consult `predatadump.log` to ensure that the dump was successful. If it fails, you can repeat the dump after resolving the issue.
 
 Once the pre-data is dumped into the predata directory, you can load it into the target cluster using `pg_restore`:
 
-```
-pg_restore -Fd --section=pre-data -d "host=ab-node-1-host dbname=<target-dbname> user=<target-user> options='-cbdr.ddl_locking=off -cbdr.commit_scope=local'"  predata
+```shell
+pg_restore -Fd --section=pre-data -d "host=ab-node-1-host dbname=<target-dbname> user=<target-user> options='-cbdr.ddl_locking=off -cbdr.commit_scope=local'"  predata >> predatarestore.log
 ```
 
 The `options=` section in the connection string to the server is important. The options disable DDL locking and set the commit scope to `local`, overriding any default commit scopes. Using `--section=pre-data` limits the restore to the configuration that precedes the data in the dump.
+
+Consult `predatarestore.log` to ensure that the restore was successful. If it fails, you can repeat the restore after resolving the issue.
+
+### Transferring role definitions
+
+Use the `pg_dumpall` utility to dump the role definitions from the source database:
+
+```shell
+pg_dumpall -r -h <source-hostname> -p <source-port> -U <source-user> > roles.sql >> rolesdump.log
+```
+
+Consult `rolesdump.log` to ensure that the dump was successful. If it fails, you can repeat the dump after resolving the issue.
+
+Then load the role definitions into the target cluster:
+
+```shell
+psql -h <target-proxy> -p <target-port> -U <target-user> -d bdrdb -f roles.sql >> rolesrestore.log
+```
+
+Consult `rolesrestore.log` to ensure that the restore was successful. If it fails, you can repeat the restore after resolving the issue.
 
 ### Transferring the data
 
@@ -310,8 +364,8 @@ Ensure that the configuration file is owned by the user you intend to run the da
 
 Now, select sets of tables in the source database that must be transferred together, ideally grouping them for redundancy in case of failure:
 
-```
-nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables <tablename1>,<tablename2>,... <schemaname> > mtk.log
+```shell
+nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables <tablename1>,<tablename2>,... <schemaname> > mtk.log >>mtkerr.log
 ```
 
 This command uses the `-truncLoad` option and drops indexes and constraints before the data is loaded. It then recreates them after the loading has completed.
@@ -320,14 +374,14 @@ You can run multiple instances of this command in parallel. To do so, add an `&`
 
 For example:
 
-```
-nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables warehouse,district,item,new_order,orders,history public >mtk_1.log &
+```shell
+nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables warehouse,district,item,new_order,orders,history public >mtk_1.log >>mtkerr_1.log &
 
-nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables customer public >mtk_2.log &
+nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables customer public >mtk_2.log >>mtkerr_2.log&
 
-nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables order_line public >mtk_3.log &
+nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables order_line public >mtk_3.log >>mtkerr_3.log &
 
-nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables stock public >mtk_4.log &
+nohup /usr/edb/migrationtoolkit/bin/runMTK.sh -sourcedbtype postgres -targetdbtype postgres  -loaderCount 1  -tableLoaderLimit 1  -fetchSize 4000  -parallelLoadRowLimit 1000  -truncLoad -dataOnly -tables stock public >mtk_4.log >>mtkerr_4.log &
 ```
 
 This sets up four processes, each transferring a particular table or sets of tables as a background process. 
@@ -340,9 +394,11 @@ SELECT NOW(); SELECT pg_size_pretty( pg_database_size('bdrdb') ); SELECT * FROM 
 
 Once the lag is consumed, return to the shell. You can now use `tail` to monitor the progress of the data transfer by following the log files of each process:
 
-```
+```shell
 tail -f mtk_1.log mtk_2.log mtk_3.log mtk_4.log
 ```
+
+You can also consult the error logs (`mtkerr_1.log`, `mtkerr_2.log`, `mtkerr_3.log`, `mtkerr_4.log`) to troubleshoot any issues that arise.
 
 ### Transferring the post-data
 
@@ -350,14 +406,14 @@ Make sure there's no replication lag across the entire cluster before proceeding
 
 Now dump the post-data section of the source database:
 
-```
+```shell
 pg_dump -Fd -f postdata --section=post-data -h <source-hostname> -p <source-port> -U <source-user> <source-dbname>
 ```
 
 Then load the post-data section into the target database:
 
-```
-pg_restore -Fd -d “host=ab-node-1-host dbname=<target-dbname> user=<target-user> options='-cbdr.ddl_locking=off -cbdr.commit_scope=local'”  --section=post-data postdata
+```shell
+pg_restore -Fd -d "host=ab-node-1-host dbname=<target-dbname> user=<target-user> options='-cbdr.ddl_locking=off -cbdr.commit_scope=local'"  --section=post-data postdata
 ```
 
 If this step fails due to a disconnection, return to monitoring lag (as described previously). Then, when no synchronization lag is present, repeat the restore.
@@ -384,3 +440,36 @@ select bdr.alter_node_group_option('ab-group','default_commit_scope', 'ba001_ab-
 ```
 
 The cluster is now loaded and ready for production. For more assurance, you can run the `pgd -f pgd-cli-config.yml check-health` command to check the overall health of the cluster and the other PGD commands from when you checked the cluster earlier.
+
+## Verify the data migration
+
+Use LiveCompare to compare the source and target databases. Create a configuration file for LiveCompare:
+
+```ini
+[General Settings]
+logical_replication_mode = off
+difference_tie_breakers = first
+
+[First Connection]
+dsn = host=<source-host> port=<source-port> dbname=<source-dbname> user=<source-username>
+
+[Second Connection]
+dsn = host=<target-proxy> port=<target-port> dbname=<target-dbname> user=<target-username>
+
+[Output Connection]
+dsn = host=<target-proxy> port=<target-port> dbname=<target-dbname> user=<target-username>
+```
+
+This configuration file should be saved as `migrationcheck.ini`. The `[First Connection]` and `[Second Connection]` sections should be updated with the appropriate values, with the `[First Connection]` section pointing to the source database and the `[Second Connection]` section pointing to the target database. The `[Output Connection]` section defines a database where a `livecompare` schema will be created to store the comparison results.
+
+Run LiveCompare using the configuration file you created:
+
+```shell
+livecompare migrationcheck.ini --compare
+```
+
+LiveCompare will compare the source and target databases and generate a report of the differences. 
+Review the report to ensure that the data migration was successful.
+
+Refer to the [LiveCompare](/livecompare/latest/) documentation for more information on using LiveCompare.
+

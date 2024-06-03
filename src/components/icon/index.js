@@ -4,6 +4,7 @@ import iconNames from "./iconNames";
 import * as defaultIcons from "@enterprisedb/icons";
 import * as colorIcons from "@enterprisedb/icons/color";
 import * as logosIcons from "@enterprisedb/icons/logos";
+import * as ebd_postgres_aiIcons from "@enterprisedb/icons/edb_logos";
 
 function IconContainer({
   circle,
@@ -42,6 +43,8 @@ const Icon = ({ category, name, ...props }) => {
     SelectedIcon = logosIcons[name];
   } else if (category === "color") {
     SelectedIcon = colorIcons[name];
+  } else if (category === "edb_postgres_ai") {
+    SelectedIcon = ebd_postgres_aiIcons[name];
   }
 
   if (!SelectedIcon) SelectedIcon = "span";

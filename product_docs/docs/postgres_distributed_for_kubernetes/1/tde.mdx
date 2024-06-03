@@ -1,0 +1,119 @@
+---
+title: 'Transparent Data Encryption (TDE)'
+originalFilePath: 'src/tde.md'
+---
+
+!!! Important
+    TDE is available *only* for operands that support it:
+    EPAS versions 15 and newer, Postgres Extended versions 15 and newer.
+
+Transparent Data Encryption, or TDE, is a technology used by several database
+vendors to **encrypt data at rest**, i.e. database files on disk.
+TDE does not however encrypt data in use.
+
+TDE is included in EDB Postgres Advanced Server (EPAS) or EDB Postgres
+Extended, starting with version 15, and it is supported by EDB Postgres
+Distributed for Kubernetes.
+
+!!! Important
+    Before you proceed, please take some time to familiarize with the
+    [TDE feature in the EPAS documentation](https://www.enterprisedb.com/docs/tde/latest/).
+
+With TDE activated, both WAL files and files for tables will be encrypted.
+Data encryption/decryption is entirely transparent to the user, as it is
+managed by the database without requiring any application changes or updated
+client drivers.
+
+The support for TDE on EDB Postgres Distributed for Kubernetes relies on the
+implementation from EDB Postgres for Kubernetes (PG4K). Please refer to
+[the PG4K documentation](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/tde/)
+for the full context.
+
+We show now how to use TDE with a passphrase stored in a Kubernetes Secret,
+which will be used to encrypt the EPAS binary key.
+
+!!! Seealso "EPAS documentation"
+    Please refer to [the EPAS documentation](https://www.enterprisedb.com/docs/tde/latest/key_stores/)
+    for details on the EPAS encryption key.
+
+TDE on EDB Postgres Distributed for Kubernetes relies on the PG4K
+implementation.
+To activate TDE on a cluster, we use the `epas` section of the manifest,
+which is within the `cnp` section used for PG4K-level directives such as
+storage.
+Use the `tde` stanza to enable TDE, and set the name of the Kubernetes secret
+holding the TDE encryption key.
+
+The following YAML portion contains both a secret holding a passphrase
+(base-64 encoded), and the `epas` section activating TDE with the passphrase.
+
+```yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tde-key
+data:
+  key: bG9zcG9sbGl0b3NkaWNlbnBpb3Bpb3Bpb2N1YW5kb3RpZW5lbmhhbWJyZWN1YW5kb3RpZW5lbmZyaW8=
+
+---
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+[…]
+spec:
+  instances: 3
+[…]
+  cnp:
+    postgresql:
+      epas:
+        tde:
+          enabled: true
+          secretKeyRef:
+            name: tde-key
+            key: key
+    storage:
+      size: 1Gi
+```
+
+Again, please refer to [the PG4K documentation](https://www.enterprisedb.com/docs/postgres_for_kubernetes/latest/tde/)
+for additional depth, including how to create the encryption secret and
+additional ways of using TDE.
+
+As shown in the [TDE feature documentation](https://www.enterprisedb.com/docs/tde/latest/),
+the information will be encrypted at rest.
+
+For example, open a `psql` terminal into one of your data nodes.
+
+```sh
+kubectl exec -ti <DATA-NODE> -- psql app
+```
+
+and create a new table including a text column.
+
+```sql
+create table foo(bar int, baz varchar);
+insert into foo(bar, baz) values (1, 'hello'), (2, 'goodbye');
+```
+
+And then verify the location where the newly defined table is stored on disk:
+
+```sql
+select pg_relation_filepath('foo');
+ pg_relation_filepath 
+----------------------
+ base/16385/16387
+```
+
+You can open a terminal on the same data node:
+
+```sh
+kubectl exec -ti <DATA-NODE> -- bash
+```
+
+and verify the file has been encrypted.
+
+```sh
+cd $PGDATA/base/16385
+hexdump -C 16387 | grep hello
+hexdump -C 16387 | grep goodbye
+```

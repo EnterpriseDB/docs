@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
+import { updates } from "../constants/updates";
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -22,6 +23,53 @@ const IndexCard = ({ iconName, headingText, children }) => (
       </div>
     </div>
   </div>
+);
+
+const BannerCard = ({ iconName, headingText, children }) => (
+  <div className="col-xl-12 width=100">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Icon
+            iconName={iconName}
+            className="fill-orange"
+            width="24"
+            height="24"
+          />
+          <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+        </div>
+        <div className="row">{children}</div>
+      </div>
+    </div>
+  </div>
+);
+
+const BannerSubCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-4 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Link to={to}>
+            <Icon
+              iconName={iconName}
+              className="fill-orange"
+              width="24"
+              height="24"
+            />
+            <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+          </Link>
+        </div>
+        <div class="container-fluid">
+          <div class="row">{children}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+const BannerCardLink = ({ to, className, children }) => (
+  <Link to={to} class={`col-sm-12 py-1 ${className}`}>
+    {children}
+  </Link>
 );
 
 const IndexCardLink = ({ to, className, children }) => (
@@ -56,80 +104,142 @@ const Page = () => {
 
           <div className="container">
             <div className="row">
-              <div className="col-sm mb-3 me-1">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
+              {updates.slice(0, 2).map((update) => (
+                <div className="col-sm mb-3 me-1">
+                  <div className="mb-2">
+                    <div
+                      className="new-thing-header"
+                      aria-roledescription="badge"
+                    >
+                      <span className="badge-text fw-bold">What's new</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/pgd/latest/">
-                      EDB Postgres Distributed 5.4.0
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.HIGH_AVAILABILITY}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    Documentation for the latest version of PGD includes an
-                    all-new section covering manual configuration and
-                    installation.
-                  </p>
-                  <div className="d-flex align-items-center">
-                    <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/pgd/latest/admin-manual/"
-                      >
-                        Find out more &rarr;
+                  <div className="mb-3">
+                    <h3 className="card-title mb-2 fw-bold">
+                      <Link className="homepage-headling-link" to={update.url}>
+                        {update.title}
                       </Link>
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="col-sm mb-3">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/tpa/latest/">
-                      Trusted Postgres Architect 23.30
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.INSTANCES}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    TPA now provides a custom Execution Environment image to be
-                    used on RedHat Ansible Automation Controller.
-                  </p>
-                  <div className="d-flex align-items-center">
+                    </h3>
                     <p>
-                      <Link className="btn-sm ms-2" to="/tpa/latest/tower/">
-                        Find out more &rarr;
-                      </Link>
+                      <Icon
+                        iconName={update.icon}
+                        className="fill-orange ms-2 float-end"
+                      />
+                      {update.description}
                     </p>
+                    <div className="d-flex align-items-center">
+                      <p>
+                        <Link
+                          className="btn-sm ms-2"
+                          to={update.moreUrl || update.url}
+                        >
+                          Find out more &rarr;
+                        </Link>
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Sign Post */}
+          <BannerCard
+            iconName={iconNames.EDB_POSTGRES_AI_LOOP}
+            headingText="EDB Postgres AI"
+          >
+            <BannerSubCard
+              iconName={iconNames.EARTH}
+              headingText="Overview"
+              to="/edb-postgres-ai/overview"
+            >
+              <BannerCardLink to="/edb-postgres-ai/overview/concepts">
+                Concepts
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/overview/guide">
+                Guide
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/overview/releasenotes">
+                Release Notes
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.CONTROL}
+              headingText="Console"
+              to="/edb-postgres-ai/console"
+            >
+              <BannerCardLink to="/edb-postgres-ai/console/getstarted">
+                Getting Started
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate">
+                Estate
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/agent">
+                Agent
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.DATABASE}
+              headingText="Databases"
+              to="/edb-postgres-ai/databases"
+            >
+              <BannerCardLink to="/edb-postgres-ai/databases/databases">
+                Databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/databases/cloudservice">
+                Cloud Service
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/databases/options">
+                Deployment options
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Lakehouse Analytics"
+              to="/edb-postgres-ai/analytics"
+            >
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+                Quick Start
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.BRAIN_CIRCUIT}
+              headingText="AI/ML"
+              to="/edb-postgres-ai/ai-ml"
+            >
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
+                Overview of pgai
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/install-tech-preview/">
+                Install the Tech Preview
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/using-tech-preview/">
+                Use the Tech Preview
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.TOOLBOX}
+              headingText="Tools"
+              to="/edb-postgres-ai/tools"
+            >
+              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
+                Migration and AI
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/tools/management">
+                Management
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/tools/backup">
+                Backup and Recovery
+              </BannerCardLink>
+            </BannerSubCard>
+          </BannerCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
@@ -185,6 +295,14 @@ const Page = () => {
 
               <IndexCardLink to="/pg_extensions/pg_squeeze">
                 PG Squeeze
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/wal2json">
+                wal2json
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/system_stats">
+                system_stats
               </IndexCardLink>
 
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
@@ -267,6 +385,10 @@ const Page = () => {
             </IndexCard>
 
             <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+              <IndexCardLink to="/postgres_distributed_for_kubernetes/latest/">
+                EDB Postgres Distributed for Kubernetes
+              </IndexCardLink>
+
               <IndexCardLink to="/postgres_for_kubernetes/latest/">
                 EDB Postgres for Kubernetes
               </IndexCardLink>
