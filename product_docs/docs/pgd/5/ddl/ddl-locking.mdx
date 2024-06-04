@@ -3,13 +3,13 @@ title: DDL locking details
 navTitle: Locking
 ---
 
-Two kinds of locks enforce correctness of replicated DDL with PGD; the global DDL lock and the global DML lock.
+Two kinds of locks enforce correctness of replicated DDL with PGD: the global DDL lock and the global DML lock.
 
 ### The global DDL lock
 
-The first kind is known as a global DDL lock and is used only when `ddl_locking = 'all'`.
-A global DDL lock prevents any other DDL from executing on the cluster while
-each DDL statement runs. This ensures full correctness in the general case but
+A global DDL lock is used only when `ddl_locking = 'all'`.
+This kind of lock prevents any other DDL from executing on the cluster while
+each DDL statement runs. This behavior ensures full correctness in the general case but
 is too strict for many simple cases. PGD acquires a global lock on
 DDL operations the first time in a transaction where schema changes are made.
 This effectively serializes the DDL-executing transactions in the cluster. In
@@ -24,7 +24,7 @@ The lock request is sent by the regular replication stream, and the
 nodes respond by the replication stream as well. So it's important that nodes (or
 at least a majority of the nodes) run without much replication
 delay. Otherwise it might take a long time for the node to acquire the DDL
-lock. Once the majority of nodes agrees, the DDL execution is carried out.
+lock. Once the majority of nodes agree, the DDL execution is carried out.
 
 The ordering of DDL locking is decided using the Raft protocol. DDL statements
 executed on one node are executed in the same sequence on all other nodes.
@@ -37,17 +37,17 @@ take a long time to acquire the lock. Hence it's preferable to run DDLs from a
 single node or the nodes that have nearly caught up with replication changes
 originating at other nodes.
 
-A global DDL Lock has to be granted by a majority of data and witness nodes, where a majority is N/2+1
+A global DDL lock must be granted by a majority of data and witness nodes, where a majority is N/2+1
 of the eligible nodes. Subscriber-only nodes aren't eligible to participate. 
 
 ### The global DML lock
 
-The second kind is known as a global DML lock or relation DML lock. This kind of lock is used when
+Known as a global DML lock or relation DML lock, this kind of lock is used when
 either `ddl_locking = all` or `ddl_locking = dml`, and the DDL statement might cause
 in-flight DML statements to fail. These failures can occur when you add or modify a constraint,
 such as a unique constraint, check constraint, or NOT NULL constraint.
-Relation DML locks affect only one relation at a time. Relation DML
-locks ensure that no DDL executes while there are changes in the queue that
+Relation DML locks affect only one relation at a time. These
+locks ensure that no DDL executes while changes are in the queue that
 might cause replication to halt with an error.
 
 To acquire the global DML lock on a table, the PGD node executing the DDL
@@ -63,19 +63,17 @@ normally doesn't take an EXCLUSIVE LOCK or higher.
 
 Waiting for pending DML operations to drain can take a long time and even longer
 if replication is currently lagging.
-This means that schema changes affecting row representation and constraints,
-unlike with data changes, can be performed only while all configured nodes
+This means that, unlike with data changes, schema changes affecting row representation and constraints can be performed only while all configured nodes
 can be reached and are keeping up reasonably well with the current write rate.
 If such DDL commands must be performed while a node is down, first remove the
 down node from the configuration.
 
-
-**All** eligible data notes must agree to grant a global DML lock before the lock is granted.
+All eligible data notes must agree to grant a global DML lock before the lock is granted.
 Witness and subscriber-only nodes aren't eligible to participate.
 
 If a DDL statement isn't replicated, no global locks are acquired.
 
-Locking behavior is specified by the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) parameter, as
+Specify locking behavior with the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) parameter, as
 explained in [Executing DDL on PGD systems](ddl-overview#executing-ddl-on-pgd-systems):
 
 -   `ddl_locking = all` takes global DDL lock and, if needed, takes relation DML lock.
@@ -85,12 +83,12 @@ explained in [Executing DDL on PGD systems](ddl-overview#executing-ddl-on-pgd-sy
 Some PGD functions make DDL changes. For those functions,
 DDL locking behavior applies, which is noted in the documentation for each function.
 
-Thus, `ddl_locking = dml` is only safe when you can guarantee that
+Thus, `ddl_locking = dml` is safe only when you can guarantee that
 no conflicting DDL is executed from other nodes. With this setting,
 the statements that require only the global DDL lock don't use the global
 locking at all.
 
-`ddl_locking = off` is only safe when you can guarantee that there are no
+`ddl_locking = off` is safe only when you can guarantee that there are no
 conflicting DDL and no conflicting DML operations on the database objects
 DDL executes on. If you turn locking off and then experience difficulties,
 you might lose in-flight changes to data. The user application team needs to resolve any issues caused.
@@ -98,7 +96,7 @@ you might lose in-flight changes to data. The user application team needs to res
 In some cases, concurrently executing DDL can properly be serialized.
 If these serialization failures occur, the DDL might reexecute.
 
-DDL replication isn't active on logical standby nodes until they are promoted.
+DDL replication isn't active on logical standby nodes until they're promoted.
 
 Some PGD management functions act like DDL, meaning that they
 attempt to take global locks, and their actions are replicated if DDL
