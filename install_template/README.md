@@ -240,7 +240,7 @@ In particular, avoid the trap of setting a flag in a leaf template and then chec
    arch: x86_64
    supported versions: [<supported_versions>]
    
-1. In **templates/platformBase_deploymentConstants.njk**, update the `map_platform` and `map_platform_old` blocks. For example, for RHEL 9, the following lines were added to both blocks of code:
+1. In **templates/platformBase/_deploymentConstants.njk**, update the `map_platform` and `map_platform_old` blocks. For example, for RHEL 9, the following lines were added to both blocks of code:
 
 "AlmaLinux 9 or Rocky Linux 9": "other_linux9",
 .
