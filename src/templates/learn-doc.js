@@ -86,6 +86,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     indexCards,
     originalFilePath,
     editTarget,
+    deepToC,
     prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
@@ -167,7 +168,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents toc={mdx.tableOfContents.items} />
+                <TableOfContents
+                  toc={mdx.tableOfContents.items}
+                  deepToC={deepToC}
+                />
               </Col>
             )}
           </ContentRow>
