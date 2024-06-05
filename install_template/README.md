@@ -266,3 +266,36 @@ In particular, avoid the trap of setting a flag in a leaf template and then chec
    - In each file, update the entry for `platformBaseTemplate` so it points to the appropriate template, either in the **templates/platformBase** folder or in the current **templates/products** folder. 
    - Check content to determine if other references require updating. 
    - The number of topics that need to be updated will vary depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
+
+#### Adding a new architecture
+
+Similar to adding a new platform (above). Depending on what customizations are necessary for the new architecture, may involve adding specializations for platform *and* arch for each affected product.
+
+1. Modify **config.yaml**. For example, when adding the arm64 platform for Debian 12, the following entries were made to each product:
+
+   ```
+   - name: Debian 12
+      arch: arm64
+      supported versions: [<supported versions>]
+   ```
+
+2. In **templates/platformBase/_deploymentConstants.njk**, update the `expand_arch` block. For example, for arm64, the following line was added:
+
+   ```
+    arm64: "arm64"
+   ```
+
+   (This is only necessary to avoid build errors when generating redirects, although any redirects so-generated are initially useless as by definition we don't have any old paths for new architecture documentation)
+
+3. Add a new architecture index template to platformBase, e.g. `arm64_index.njk`. Copy an existing index template and edit to reflect the new arch.
+
+4. Add a call to the macro for the new arch in platformBase/index.njk, e.g.
+
+   ```
+   {{archInstall("AArch64 (ARM64)", "arm64", ["Debian"])}}
+   ```
+
+   The last parameter is a list of base platforms (without versions) to render; you should list all of them that will use the new architecture. 
+
+5. Add new architecture-specific index templates (e.g. `arm64_index.njk`) to the affected products (this is done to set `productShortname` - so you can just copy an existing index verbatim unless there are other customizations needed)
+
