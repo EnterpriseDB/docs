@@ -26,6 +26,7 @@ import SideNavigation from "./side-navigation";
 import StubCards from "./stub-cards";
 import TableOfContents from "./table-of-contents";
 import TextBalancer from "./text-balancer";
+import Tiles, { TileModes } from "./tiles.js";
 import TimedBanner from "./timed-banner";
 import TopBar from "./top-bar";
 import TreeNode from "./tree-node";
@@ -61,6 +62,8 @@ export {
   StubCards,
   TableOfContents,
   TextBalancer,
+  Tiles,
+  TileModes,
   TimedBanner,
   TopBar,
   TreeNode,

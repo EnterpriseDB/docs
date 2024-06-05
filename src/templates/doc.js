@@ -4,7 +4,6 @@ import { graphql, Link } from "gatsby";
 import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
-  CardDecks,
   DevOnly,
   DevFrontmatter,
   Footer,
@@ -14,6 +13,8 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
+  Tiles,
+  TileModes,
 } from "../components";
 import { products } from "../constants/products";
 import { FeedbackDropdown } from "../components/feedback-dropdown";
@@ -92,60 +93,6 @@ const findDescendent = (root, predicate) => {
   for (let node of root.items) {
     const result = findDescendent(node, predicate);
     if (result) return result;
-  }
-  return null;
-};
-
-const getCards = (node, searchDepth) => {
-  const card = {
-    fields: {
-      path: node.path,
-      depth: node.depth,
-    },
-    frontmatter: {
-      navTitle: node.navTitle,
-      title: node.title,
-      description: node.description,
-      iconName: node.iconName,
-      interactive: node.interactive,
-    },
-    children:
-      searchDepth && node.items
-        ? node.items.map((n) => getCards(n, searchDepth - 1))
-        : [],
-  };
-  return card;
-};
-
-const TileModes = {
-  None: "none",
-  Simple: "simple",
-  Full: "full",
-};
-const Tiles = ({ mode, node }) => {
-  if (!node || !node.items) return null;
-
-  if (Object.values(TileModes).includes(mode) && mode !== TileModes.None) {
-    const decks = {};
-    let currentDeckName = "";
-    for (let item of node.items) {
-      if (!item.path) {
-        currentDeckName = item.title;
-      } else {
-        decks[currentDeckName] = decks[currentDeckName] || [];
-        decks[currentDeckName].push(getCards(item, mode === "simple" ? 0 : 1));
-      }
-    }
-
-    return Object.keys(decks).map((deckName) => {
-      return (
-        <CardDecks
-          cards={decks[deckName]}
-          cardType={mode}
-          deckTitle={deckName}
-        />
-      );
-    });
   }
   return null;
 };
@@ -344,7 +291,7 @@ const DocTemplate = ({ data, pageContext }) => {
               </Col>
             )}
           </ContentRow>
-          {depth > 2 && <PrevNext prevNext={prevNext} depth={depth} />}
+          {depth > 2 && <PrevNext prevNext={prevNext} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
