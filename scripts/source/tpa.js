@@ -6,12 +6,12 @@ import * as path from "path";
 
 import fs from "fs/promises";
 
-import pkg from 'to-vfile';
-const {write, read} = pkg;
+import pkg from "to-vfile";
+const { write, read } = pkg;
 
 import remarkParse from "remark-parse";
 
-import  mdx from "remark-mdx";
+import mdx from "remark-mdx";
 import unified from "unified";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkStringify from "remark-stringify";
@@ -185,8 +185,15 @@ function stripEmptyComments(rawMarkdown) {
 function transformer() {
   return (tree, file) => {
     const filename = path.relative(basePath, file.path);
-    const metadata = fileToMetadata[filename];
-    if (!metadata) console.warn(`No metadata for ${filename}`);
+    var metadata = fileToMetadata[filename];
+    for (let i = 0; i < tree.children.length; ++i) {
+      const node = tree.children[i];
+      if (node.type === "yaml") {
+        metadata = Object.assign({}, metadata || {}, yaml.load(node.value));
+        tree.children.splice(i--, 1);
+        break;
+      }
+    }
     let title = "";
     for (let i = 0; i < tree.children.length; ++i) {
       const node = tree.children[i];
