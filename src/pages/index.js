@@ -32,7 +32,7 @@ const BannerCard = ({ iconName, headingText, children }) => (
         <div className="d-flex align-items-center mb-3">
           <Icon
             iconName={iconName}
-            className="fill-orange"
+            class="fill: aquamarine"
             width="24"
             height="24"
           />
@@ -52,7 +52,7 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
           <Link to={to}>
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              class="fill: aquamarine"
               width="24"
               height="24"
             />
@@ -66,6 +66,21 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
     </div>
   </div>
 );
+
+const BannerWideCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-12 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="row">{children}</div>
+    </div>
+  </div>
+);
+
+const BannerWideCardLink = ({ to, className, children }) => (
+  <Link to={to} class={`col py-2 px-5 text-center ${className}`}>
+    {children}
+  </Link>
+);
+
 const BannerCardLink = ({ to, className, children }) => (
   <Link to={to} class={`col-sm-12 py-1 ${className}`}>
     {children}
@@ -148,21 +163,17 @@ const Page = () => {
             iconName={iconNames.EDB_POSTGRES_AI_LOOP}
             headingText="EDB Postgres AI"
           >
-            <BannerSubCard
-              iconName={iconNames.EARTH}
-              headingText="Overview"
-              to="/edb-postgres-ai/overview"
-            >
-              <BannerCardLink to="/edb-postgres-ai/overview/concepts">
-                Concepts
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/overview/guide">
-                Guide
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/overview/releasenotes">
-                Release Notes
-              </BannerCardLink>
-            </BannerSubCard>
+            <BannerWideCard>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/overview-and-concepts">
+                Overview and Concepts
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/guide-and-getting-started">
+                Guide and Getting Started
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/latest-release-news">
+                Latest Release News
+              </BannerWideCardLink>
+            </BannerWideCard>
             <BannerSubCard
               iconName={iconNames.CONTROL}
               headingText="Console"
@@ -178,21 +189,39 @@ const Page = () => {
                 Agent
               </BannerCardLink>
             </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.CLOUD_DBA}
+              headingText="Cloud Service"
+              to="/edb-postgres-ai/cloud-service"
+            >
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/hosted">
+                Hosted databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/managed">
+                Managed databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/deployment">
+                Deployment options
+              </BannerCardLink>
+            </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.DATABASE}
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
-              <BannerCardLink to="/edb-postgres-ai/databases/databases">
-                Databases
+              <BannerCardLink to="/edb-postgres-ai/databases/epas">
+                EDB Postgres Advanced Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/cloudservice">
-                Cloud Service
+              <BannerCardLink to="/edb-postgres-ai/databases/pge">
+                EDB Postgres Extended Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/options">
-                Deployment options
+              <BannerCardLink to="/edb-postgres-ai/databases/pgd">
+                EDB Postgres Distributed
               </BannerCardLink>
             </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Lakehouse Analytics"
