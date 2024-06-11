@@ -255,7 +255,7 @@ const Page = () => {
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.TOOLBOX}
-              headingText="Tools"
+              headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
               <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
