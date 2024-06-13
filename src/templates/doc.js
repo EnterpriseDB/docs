@@ -109,7 +109,9 @@ const Section = ({ section }) => (
   <div className="card-deck my-4" key={section.title}>
     <div className="card rounded shadow-sm p-2">
       <div className="card-body">
-        <h3 className="card-title balance-text">{section.title}</h3>
+        <h3 className="card-title balance-text" id={section.slug}>
+          {section.title}
+        </h3>
         {section.guides.map((guide) =>
           guide ? (
             <p className="card-text" key={`${guide.title}`}>
@@ -187,12 +189,13 @@ const DocTemplate = ({ data, pageContext }) => {
   if (tableOfContents.items) {
     newtoc.items.push(...tableOfContents.items);
     if (sections) {
-      sections.forEach((section) =>
+      sections.forEach((section) => {
+        section.slug = "section-" + slugger.slug(section.title);
         newtoc.items.push({
-          url: "#section-" + slugger.slug(section.title),
+          url: "#" + section.slug,
           title: section.title,
-        }),
-      );
+        });
+      });
     }
   }
 
