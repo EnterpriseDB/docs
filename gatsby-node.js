@@ -71,7 +71,7 @@ exports.onCreateNode = async ({
       });
     }
 
-    if (node.extension === "yaml") {
+    if (node.extension === "yaml" || node.extension === "yml") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "text/plain; charset=utf-8",
       });
