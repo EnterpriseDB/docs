@@ -113,10 +113,79 @@ The final step is to subtract the blue from the database. In this simple scenari
 
 ## Blue/green with cross-region high-availability clusters
 
+**Scenario**: Consider a production environment with applications distributed across two regions in either an active/active or active/passive configuration. Each application instance is serving traffic its own subgroup of an EDB Postgres Distributed cluster in its region. There is a witness node in a third group in a third region to weigh in on consensus decisions when necessary. In the users table of the database, you need to change the `family_name` column to `surname`, just like in the last scenario. You have the three essential capabilities for blue/green deployments involving stateful components: traffic routing, forward compatibility, and additive first subtractive last capability. Using these, you can successfully update your applications and database with zero downtime and reduced risk. The whole system starts as all blue.
+
+ ![](./images/pgd_overview.jpeg) 
+
+ ![](./images/pgd_all_blue.jpeg) 
 
 
+As with a single region case, it's crucial to manage any stateful objects in the application layer. However, distributed database systems present additional challenges when trying apply a blue/green deployment pattern. 
 
+Fortunately, EDB Postgres Distributed (PGD) eases these challenges greatly, primarily by providing an active/active interface, which means the basic pattern of blue/green can be successfully practiced even across regions with little adjustment necessary. The PGD cluster can be treated as a single database despite being distributed across multiple regions, allowing the conventional blue/green upgrade process to be practiced given a more complicated architecture. Moreover, the multi-writer functionality of PGD is especially powerful for blue/green practices as it eliminates the difficulty of managing a database layer failover.
+
+### 1. Add green to the database. Can still rollback.
+
+Add the new version (green) to the database. This involves adding the new column `surname` with data. At this stage, it's still possible to roll back if necessary.
+
+**Rollback Strategy**: If something goes wrong at this stage, you can simply drop the newly added `surname` column. Since your application is forward compatible, this won't affect its operation.
+
+
+### 2. Push traffic to one side. Upgrade the other to green. Thoroughly test green. Can still rollback.
+
+Push traffic to one of the two regions and block traffic to the other. This allows you to upgrade the blocked region to the green version and test thoroughly. At this point, it's still possible to rollback if necessary.
+
+**Rollback strategy**: If issues are detected during testing, you can roll back the green environment to the previous version of the application. Since all traffic is still being served by the other region, this won't affect users.
+
+### 3. Push traffic to green. Upgrade blue. Test blue.
+
+Now flip the traffic from going to the blue environment to the green environment and test again. If all goes well, upgrade the blue version and test it.
+
+**Rollback strategy**: If issues are detected after traffic has been routed to the green environment and you haven't yet upgraded blue to green, you can quickly route traffic back to the other region (which is still running the old version) while you fix the green environment. 
+
+
+### 4. Route traffic equally/fully to upgraded applications.
+
+This involves treating the PGD cluster as a single database despite being distributed across multiple regions. 
+
+**Rollback strategy**: If issues are detected after traffic has been routed to the blue environment, you can quickly route traffic back to the green environment (which is still running the new version) while you fix the issues in the blue environment. 
+
+
+### 5. Subtract blue from the database.
+
+Delete the old blue version from the database. That means removing the `family_name` column with DDL in this case. This final step allows for zero downtime during updates. The importance of considering the entire stack, not just the database layer, when discussing availability and upgrades is emphasized.
+
+**Rollback strategy**: Restore data from a backup. Rollback applications. Downtime is nearly unavoidable.
 
 
 ## Database-only blue/green with cross-region high-availability clusters
+
+PGD's capability to provide multiple write endpoints across a distributed set of multiple Postgres databases effectively presents an eventually consistent database across regions. PGD also provides a robust set of functions, which, when combined, can enable node-level control of the deployment of database schema or data updates.
+
+These functions provided by PGD make node-level control of the deployment of database schema or data updates.
+
+1. **[bdr.run_on_nodes](https://www.enterprisedb.com/docs/pgd/latest/node_management/maintainance_with_proxies/#using-bdrrun_on_nodes)** - PGD provides the capability to apply operations against the database one PGD node at a time.
+2. **[switchover](https://www.enterprisedb.com/docs/pgd/latest/cli/command_ref/pgd_switchover/)** - The PGD CLI provides the switchover feature, which changes the Write Leader with sub-second interruption of service.
+3. **[bdr.xact_replication](https://www.enterprisedb.com/docs/pgd/latest/reference/pgd-settings/#bdrxact_replication)** - PGD also provides transactional-level replication control
+    - you will also want to turn DDL replication off 
+
+**Scenario**: We have the same setup as we did in our last scenario, the only difference being that this time, we want to update a stored procedure in just the database layer, which is a DDL ALTER statement. We should still ensure that our existing application is forward-compatible with the changes we plan to roll out to the database layer.
+
+### Deploy green to PGD Group A
+
+1. Deploy green to PGD node A2 only using transaction-level replication control so the changes replicate to other nodes.
+
+    - Depending on your appetite for testing, you can optionally switch your traffic over to the blue site to enable testing of the green. Moreover, you could use the switchover feature to promote A2 to Write Leader (as depicted) to test through the application stack.
+
+2. Deploy green to PGD node A3.
+
+3. Deploy green to PGD node A1.
+
+### Deploy green to PGD Group B
+
+1. Apply changes to PGD node B2.
+
+2. Apply changes to PGD node B3.
+
+3. Apply changes to PGD node B1. Re-enable traffic to PGD Group B.
 
