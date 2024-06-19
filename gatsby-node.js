@@ -76,6 +76,13 @@ exports.onCreateNode = async ({
         mimeType: "text/plain; charset=utf-8",
       });
     }
+
+    // For "natural" linking to work, this also depends on support from the link-rewriter in src/components/layout.js
+    if (node.extension === "svg") {
+      await makeFileNodePublic(node, createNodeId, actions, {
+        mimeType: "image/svg+xml",
+      });
+    }
   }
 
   if (node.internal.type !== "Mdx") return;
