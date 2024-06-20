@@ -1,5 +1,6 @@
 import React, { useState, useLayoutEffect, useMemo } from "react";
 import { Helmet } from "react-helmet";
+import { withPrefix } from "gatsby";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import {
   Archive,
@@ -17,6 +18,42 @@ import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
 
 import "../styles/index.scss";
+
+const mapRelativeResourcePath = (
+  url,
+  containingPageUrl,
+  containingPageIsIndex,
+) => {
+  // add file extensions here to enable "filesystem-like" references from .mdx pages
+  // Note: you'll probably also need to enable importing them via a call to makeFileNodePublic() in gatsby-node.js
+  const resourceTypes = [".svg"];
+
+  // test for absolute URLs; when we pass Node 19.9, switch to use canParse
+  try {
+    new URL(url);
+    // if we get this far, URL is absolute and we don't want to touch it
+    return url;
+  } catch {}
+
+  try {
+    // consistent behavior while authoring: base path for relative links
+    // should always be the directory containing the file holding the link
+    // Trigger this behavior by judicious use of an ending slash
+    // See: RFC 3986 section 5.2.3
+    let modifiedPageUrl = containingPageUrl.replace(/\/$/, "");
+    if (containingPageIsIndex) {
+      modifiedPageUrl = modifiedPageUrl + "/";
+    }
+
+    const base = new URL(modifiedPageUrl, "loc:/");
+    const result = new URL(url, base);
+
+    if (resourceTypes.some((t) => result.pathname.endsWith(t)))
+      return withPrefix(result.href.replace(/^loc:/, ""));
+  } catch {}
+
+  return url;
+};
 
 const Layout = ({
   children,
@@ -51,7 +88,7 @@ const Layout = ({
     () => ({
       a: ({ href, ...rest }) => (
         <Link
-          to={href}
+          to={mapRelativeResourcePath(href, meta.path, meta.isIndexPage)}
           pageUrl={meta.path}
           pageIsIndex={meta.isIndexPage}
           productVersions={meta.productVersions}
@@ -77,7 +114,13 @@ const Layout = ({
       ) => <h3 {...props} className={(props.className || "") + " mt-4-5"} />,
       img: (
         props, // eslint-disable-next-line jsx-a11y/alt-text
-      ) => <img {...props} className={(props.className || "") + " mw-100"} />,
+      ) => (
+        <img
+          {...props}
+          src={mapRelativeResourcePath(props.src, meta.path, meta.isIndexPage)}
+          className={(props.className || "") + " mw-100"}
+        />
+      ),
       blockquote: (props) => (
         <blockquote
           {...props}
