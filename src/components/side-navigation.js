@@ -16,7 +16,7 @@ const LogoLink = () => {
   return (
     <h1 className="h3 p-3 d-flex">
       <Link to="https://www.enterprisedb.com/" title="EDB Home">
-        <Logo width="120" height="50" className="me-1" />
+        <Logo width="120" height="50" class="me-1" />
       </Link>
       <DocsLink />
     </h1>
