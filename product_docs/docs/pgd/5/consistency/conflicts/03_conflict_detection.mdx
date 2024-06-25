@@ -1,0 +1,139 @@
+---
+title: Conflict detection
+Description: Learn how PGD detects conflicts.
+deepToC: true
+---
+
+PGD provides these mechanisms for conflict detection:
+
+-   [Origin conflict detection](#origin-conflict-detection) (default)
+-   [Row version conflict detection](#row-version-conflict-detection)
+-   [Column-level conflict detection](column-level-conflicts)
+
+## Origin conflict detection
+
+Origin conflict detection uses and relies on commit timestamps as recorded on the node the transaction originates from. This requires clocks to be in sync to work correctly or to be within a tolerance of the fastest message between two nodes. If this isn't the case, conflict resolution tends to favor the node that's further ahead. You can manage clock skew between nodes using the parameters `bdr.maximum_clock_skew` and `bdr.maximum_clock_skew_action`.
+
+Row origins are available only if `track_commit_timestamp = on`.
+
+Conflicts are first detected based on whether the replication origin changed, so conflict triggers are called in situations that might not turn out to be conflicts. Hence, this mechanism isn't precise, since it can generate false-positive conflicts.
+
+Origin info is available only up to the point where a row is frozen. Updates arriving for a row after it was frozen don't raise a conflict so are applied in all cases. This is the normal case when adding a new node by `bdr_init_physical`, so raising conflicts causes many false-positive results in that case.
+
+A node that was offline that reconnects and begins sending data changes can cause divergent
+errors if the newly arrived updates are older than the frozen rows that they update. Inserts and deletes aren't affected by this situation.
+
+We suggest that you don't leave down nodes for extended outages, as discussed in [Node restart and down node recovery](../node_management).
+
+On EDB Postgres Extended Server and EDB Postgres Advanced Server, PGD holds back the freezing of rows while a node is down. This mechanism handles this situation gracefully so you don't need to change parameter settings.
+
+On other variants of Postgres, you might need to manage this situation with some care.
+
+Freezing normally occurs when a row being vacuumed is older than `vacuum_freeze_min_age` xids from the current xid, which means that you need to configure suitably high values for these parameters:
+
+-   `vacuum_freeze_min_age`
+-   `vacuum_freeze_table_age`
+-   `autovacuum_freeze_max_age`
+
+Choose values based on the transaction rate, giving a grace period of downtime before removing any conflict data from the database node. For example, when `vacuum_freeze_min_age` is set to 500 million, a node performing 1000 TPS can be down for just over 5.5 days before conflict data is removed. The CommitTS data structure takes on-disk space of 5 GB with that setting, so lower transaction rate systems can benefit from lower settings.
+
+Initially recommended settings are:
+
+```sql
+# 1 billion = 10GB
+autovacuum_freeze_max_age = 1000000000
+
+vacuum_freeze_min_age = 500000000
+
+# 90% of autovacuum_freeze_max_age
+vacuum_freeze_table_age = 900000000
+```
+
+Note that:
+
+-   You can set `autovacuum_freeze_max_age` only at node start.
+-   You can set `vacuum_freeze_min_age`, so using a low value freezes rows early and can result in conflicts being ignored. You can also set `autovacuum_freeze_min_age` and `toast.autovacuum_freeze_min_age` for individual tables.
+-   Running the `CLUSTER` or `VACUUM FREEZE` commands also freezes rows early and can result in conflicts being ignored.
+
+## Row version conflict detection
+
+PGD provides the option to use row versioning and make conflict detection independent of the nodes' system clock.
+
+Row version conflict detection requires that you enable three things. If any of these steps aren't performed correctly then [origin conflict detection](#origin-conflict-detection) is used.
+
+-  Enable `check_full_tuple` or the PGD node group.
+
+-  Enable `REPLICA IDENTITY FULL` on all tables that use row version conflict detection.
+
+-  Enable row version tracking on the table by using `bdr.alter_table_conflict_detection`. This function adds a column with a name you specify and an `UPDATE` trigger that manages the new column value. The column is created as `INTEGER` type.
+
+Although the counter is incremented only on `UPDATE`, this technique allows conflict detection for both `UPDATE` and `DELETE`.
+
+This approach resembles Lamport timestamps and fully prevents the ABA problem for conflict detection.
+
+!!! Note
+    The row-level conflict resolution is still handled based on the [conflict resolution](#conflict-resolution) configuration even with row versioning. The way the row version is generated is useful only for detecting conflicts. Don't rely on it as authoritative information about which
+    version of row is newer.
+
+To determine the current conflict resolution strategy used for a specific table, refer to the column `conflict_detection` of the view `bdr.tables`.
+
+## bdr.alter_table_conflict_detection
+
+Allows the table owner to change how conflict detection works for a given table.
+
+### Synopsis
+
+```sql
+bdr.alter_table_conflict_detection(relation regclass,
+                                   method text,
+                                   column_name name DEFAULT NULL)
+```
+
+### Parameters
+
+-   `relation` &mdash; Name of the relation for which to set the new conflict detection method.
+-   `method` &mdash; The conflict detection method to use.
+-   `column_name` &mdash; The column to use for storing the column detection data. This can be skipped, in which case the column name is chosen based on the conflict detection method. The `row_origin` method doesn't require an extra column for metadata storage.
+
+The recognized methods for conflict detection are:
+
+-   `row_origin` &mdash; Origin of the previous change made on the tuple (see [Origin conflict detection](#origin-conflict-detection)). This is the only method supported that doesn't require an extra column in the table.
+-   `row_version` &mdash; Row version column (see [Row version conflict detection](#row-version-conflict-detection)).
+-   `column_commit_timestamp` &mdash; Per-column commit timestamps (described in [CLCD](column-level-conflicts)).
+-   `column_modify_timestamp` &mdash; Per-column modification timestamp (described in [CLCD](column-level-conflicts)).
+
+### Notes
+
+For more information about the difference between `column_commit_timestamp` and `column_modify_timestamp` conflict detection methods, see [Current versus commit timestamp](column-level-conflicts#current-versus-commit-timestamp).
+
+This function uses the same replication mechanism as `DDL` statements. This means the replication is affected by the [ddl filters](../repsets#ddl-replication-filtering) configuration.
+
+The function takes a `DML` global lock on the relation for which column-level conflict resolution is being enabled.
+
+This function is transactional. You can roll back the effects with the `ROLLBACK` of the transaction, and the changes are visible to the current transaction.
+
+Only the owner of the `relation` can execute the `bdr.alter_table_conflict_detection` function unless `bdr.backwards_compatibility` is set to 30618 or less.
+
+!!! Warning
+    When changing the conflict detection method from one that uses an extra column to store metadata, that column is dropped.
+
+!!! Warning
+    This function disables CAMO and gives a warning, as long as warnings aren't disabled with `bdr.camo_enable_client_warnings`.
+
+## List of conflict types
+
+PGD recognizes the following conflict types, which can be used as the `conflict_type` parameter:
+
+-   `insert_exists` &mdash; An incoming insert conflicts with an existing row by way of a primary key or a unique key/index.
+-   `update_differing` &mdash; An incoming update's key row differs from a local row. This can happen only when using [row version conflict detection](#row-version-conflict-detection).
+-   `update_origin_change` &mdash; An incoming update is modifying a row that was last changed by a different node.
+-   `update_missing` &mdash; An incoming update is trying to modify a row that doesn't exist.
+-   `update_recently_deleted` &mdash; An incoming update is trying to modify a row that was recently deleted.
+-   `update_pkey_exists` &mdash; An incoming update has modified the `PRIMARY KEY` to a value that already exists on the node that's applying the change.
+-   `multiple_unique_conflicts` &mdash; The incoming row conflicts with multiple UNIQUE constraints/indexes in the target table.
+-   `delete_recently_updated` &mdash; An incoming delete with an older commit timestamp than the most recent update of the row on the current node or when using [row version conflict detection](#row-version-conflict-detection).
+-   `delete_missing` &mdash; An incoming delete is trying to remove a row that doesn't exist.
+-   `target_column_missing` &mdash; The target table is missing one or more columns present in the incoming row.
+-   `source_column_missing` &mdash; The incoming row is missing one or more columns that are present in the target table.
+-   `target_table_missing` &mdash; The target table is missing.
+-   `apply_error_ddl` &mdash; An error was thrown by Postgres when applying a replicated DDL command.
