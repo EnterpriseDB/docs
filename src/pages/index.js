@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
+
+const isBrowser = typeof window !== "undefined";
+const Masonry = isBrowser ? window.Masonry || require("masonry-layout") : null;
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -12,7 +15,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
           <div className="d-inline-block me-3">
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
@@ -32,7 +35,7 @@ const BannerCard = ({ iconName, headingText, children }) => (
         <div className="d-flex align-items-center mb-3">
           <Icon
             iconName={iconName}
-            class="fill: aquamarine"
+            className="fill-aquamarine"
             width="24"
             height="24"
           />
@@ -52,15 +55,15 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
           <Link to={to}>
             <Icon
               iconName={iconName}
-              class="fill: aquamarine"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
             <h4 className="d-inline-block card-title m-1">{headingText}</h4>
           </Link>
         </div>
-        <div class="container-fluid">
-          <div class="row">{children}</div>
+        <div className="container-fluid">
+          <div className="row">{children}</div>
         </div>
       </div>
     </div>
@@ -76,13 +79,13 @@ const BannerWideCard = ({ iconName, headingText, to, children }) => (
 );
 
 const BannerWideCardLink = ({ to, className, children }) => (
-  <Link to={to} class={`col py-2 px-5 text-center ${className}`}>
+  <Link to={to} className={`col py-2 px-5 text-center ${className}`}>
     {children}
   </Link>
 );
 
 const BannerCardLink = ({ to, className, children }) => (
-  <Link to={to} class={`col-sm-12 py-1 ${className}`}>
+  <Link to={to} className={`col-sm-12 py-1 ${className}`}>
     {children}
   </Link>
 );
@@ -97,12 +100,9 @@ const IndexCardLink = ({ to, className, children }) => (
 
 const Page = () => {
   const layout = useRef(null);
-  useEffect(() => {
-    (async () => {
-      const { default: Masonry } = await import("masonry-layout");
-      layout.current = new Masonry("*[data-masonry]");
-    })();
-    return () => layout.current.destroy();
+  useLayoutEffect(() => {
+    layout.current = layout.current || new Masonry("*[data-masonry]");
+    return () => layout.current?.destroy();
   }, []);
 
   return (
