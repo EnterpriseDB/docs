@@ -1,0 +1,53 @@
+---
+title: Cluster networking architecture
+---
+BigAnimal clusters can be exposed to client applications in two ways:
+
+-   Public &mdash; The cluster is available on the internet.
+-   Private &mdash; The IP address or DNS name is private to the VNet or VPC hosting your BigAnimal services. By default, it isn't routable from other networks. See [Connecting to your cluster from your application](/biganimal/latest/using_cluster/02_connecting_your_cluster/#from-your-applications) for details and instructions on how to properly configure routing for private clusters.
+
+## Basic architecture
+
+BigAnimal deploys a dedicated virtual network (VNet) in Azure, an Amazon Virtual Private Cloud (VPC) in AWS, or a Google VPC in Google Cloud to host clusters and their supporting management services. This VNet or VPC is named after the region where the cluster is deployed. In Azure, for example, if the cluster is deployed in the East US region, the name is `vnet-eastus`.
+
+## Load balancing
+
+BigAnimal uses the following resources for making routing decisions and distributing requests:
+
+### Standard SKU load balancer in Azure
+
+When a cluster is created with public network access, a load balancer is created and configured with a public IP address. Once assigned, this IP address doesn't change unless you change the networking configuration for your cluster. The load balancer always routes to the leader of your cluster.
+
+Only one load balancer is typically deployed in an Azure region. BigAnimal adds more IP addresses to the existing load balancer for subsequent clusters in the Azure region.
+
+Every BigAnimal cluster, regardless of public or private networking status, is assigned a single DNS zone that maps to its exposed IP address, either public or private. When toggling between public and private, wait up to 120 seconds for DNS caches to flush.
+
+Clusters can change from public to private and vice versa at any time. When this happens, the IP address previously assigned to the cluster is deallocated, a new one is assigned, and DNS is updated accordingly.
+
+### Amazon network load balancer in AWS
+
+BigAnimal creates a new load balancer for each cluster and tags it with the cluster ID in the following format:
+
+```text
+service.k8s.aws/stack: default/<cluster_ID>
+```
+
+An example is `service.k8s.aws/stack: default/p-c4j0jfcmp3af2ieok5eg`.
+
+Because the load balancer IP address used in AWS is dynamic, make sure that your application uses the correct DNS name to access the network load balancer of a particular cluster. In your application's AWS account:
+
+1.  Select the **Load Balancers** service.
+1.  Search for the load balancer with the cluster ID you want to access.
+1.  Use the DNS name provided in the details section to access your cluster.
+
+### Google load balancer in Google Cloud
+
+BigAnimal creates a new load balancer using the Premium Network Service Tier for each cluster and tags it using a unique identifier. The corresponding front-end forwarding rule uses the same unique identifier and includes the cluster ID in the following format:
+
+```
+{"kubernetes.io/service-name":"default/<cluster_ID>-<service_type>"}
+```
+
+An example is `{"kubernetes.io/service-name":"default/p-8jz4kedbiy-rw-external-lb"}`.
+
+Because the load balancer IP address used in Google Cloud is dynamic, make sure that your application uses the correct DNS name to access the network load balancer of a particular cluster. To be able to access it, make sure you're using the FQDN that BigAnimal provides in the Cluster Overview or Connect page.
