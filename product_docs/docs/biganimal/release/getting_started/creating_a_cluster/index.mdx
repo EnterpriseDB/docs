@@ -1,6 +1,7 @@
 ---
 title: "Creating a cluster"
 description: Describes cluster creation options
+deepToC: true
 redirects:
   #adding hierarchy to the structure (Creating a Cluster topic nows has a child topic) so created a folder and moved the contents from 03_create_cluster to index.mdx
   - ../03_create_cluster/
@@ -216,15 +217,85 @@ Enable **Superuser Access** to grant superuser privileges to the edb_admin role.
 
 ### Security 
 
-Enable **Transparent Data Encryption (TDE)** to use your own encryption key. This option is available for EDB Postgres Advanced Server and EDB Postgres Extended Server for version 15 and later on AWS. Select an encryption key from your project and region to encrypt the cluster with TDE.
+Enable **Transparent Data Encryption (TDE)** to use your own encryption key. This option is available for EDB Postgres Advanced Server and EDB Postgres Extended Server for version 15 and later. Select an encryption key from your project and region to encrypt the cluster with TDE. To learn more about TDE support, see [Transparent Data Encryption](../../overview/03_security/#your-own-encryption-key---transparent-data-encryption-tde).
 
 !!!Note "Important"
-- To enable and use TDE for cluster, the encryption key must be enabled and added at the project level. For more information, see [Adding a TDE key at project level](../../administering_cluster/projects.mdx/#adding-a-tde-key).
-- If the TDE enabled cluster creation is in progress and the process is waiting providing **Encryption Key Error** next to the cluster name on the clusters page:
-  - Select the cluster name and go to the cluster's home page.
-  - See the **Action required: grant key permissions to activate the cluster** on the cluster's overview tab.
-  - Copy the **Principal** and add it to your key policy to provide **kms:Encrypt** and **kms:Decrypt** permission. 
+- To enable and use TDE for a cluster, the encryption key must be enabled and added at the project level before creating a cluster. 
+  To add a key, see [Adding a TDE key at project level](../../administering_cluster/projects.mdx/#adding-a-tde-key).
+- To enable and use TDE for a cluster, you must complete the configuration on the platform of your key management provider after creating a cluster. See [Completing the TDE configuration](#completing-the-TDE-configuration) for more information.
 !!!
+
+#### Completing the TDE configuration
+
+After you create the cluster in the BigAnimal console, the UI will display the **Waiting for access to encryption key** state. To complete the configuration and enable the key sync between BigAnimal and the key management platform you must grant encrypt and decrypt permissions to your key:
+
+1.  In BigAnimal, select the cluster name and access the cluster's page. See the **Action required: grant key permissions to activate the cluster**.
+
+1.  Copy the **Principal** identifier (AWS), **service account** (GCP) or **MSI Workload Identity** (Azure) to your clipboard. 
+
+1.  Follow the on-screen guide to grant encrypt and decrypt permissions to your key. Here is additional information in case you require further guidance:
+
+    <details><summary>AWS</summary>
+
+    1.  Copy the **Principal** identifier to your clipboard. 
+    1.  Go to the AWS console, and navigate to the **Key Management Service**
+    1.  Select **Customer-managed keys**, and **Edit policy** for your key.
+    1.  Append a new policy statement where the `Principal.AWS` field equals the **Principal** identifier you copied to    your clipboard and where the `Principal.Action` field contains **kms:Encrypt** and **kms:Decrypt** permissions. 
+    
+        This example contains the default AWS policy statement and the BigAnimal policy statement that corresponds to the TDE configuration.  
+
+        ```
+        {
+             "Version": "2012-10-17",
+             "Id": "key-consolepolicy-3",
+             "Statement": [
+                 {
+                     "Sid": "Enable IAM User Permissions",
+                     "Effect": "Allow",
+                     "Principal": {
+                         "AWS": "arn:aws:iam::<aws_project_id>:root"
+                     },
+                     "Action": "kms:*",
+                     "Resource": "*"
+                 },
+                 {
+                     "Sid": "Enable TDE on cluster ExampleCluster",
+                     "Effect": "Allow",
+                     "Principal": {
+                         "AWS": "arn:aws:iam::<aws_project_id>:role/<pg_cluster_role>"
+                     },
+                     "Action": [
+                         "kms:Encrypt",
+                         "kms:Decrypt"
+                     ],
+                     "Resource": "*"
+                 }
+             ]
+         }
+        ```
+        
+    </details>
+
+    <details><summary>GCP</summary>
+
+    1.  Copy the **service account** to your clipboard.
+    1.  Go to the Google Cloud console, select **Security**, **VIEW BY PRINCIPALS**, **GRANT ACCESS** for your key.
+    1.  Paste the service account into the **New principals** field.
+    1.  Assign the `Cloud KMS CryptoKey Decrypter` and `Cloud KMS CryptoKey Encrypter` roles and save. 
+
+    </details>
+
+    <details><summary>Azure</summary>
+
+    1.  Copy the **MSI Workload Identity** to your clipboard. 
+    1.  Got to the Microsoft Azure console, and navigate to **Key vaults**. 
+    1.  Select the key, go to **Access configuration** and set the **Permission model** to **Vault access policy**.
+    1.  Select **Access policies**, and **Create**.
+    1.  In **Permissions**, select **Encrypt** and **Decrypt**.
+    1.  In **Principal**, paste the MSI Workload Identity you copied to your clipboard and finish creating the policy.
+
+    </details>
+
 
 ## What’s next
 
