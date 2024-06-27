@@ -74,7 +74,6 @@ const FeedbackButton = ({ githubIssuesLink }) => (
 
 const LearnDocTemplate = ({ data, pageContext }) => {
   const { mdx, edbGit: gitData } = data;
-  const { mtime, path, depth } = mdx.fields;
   const { frontmatter, pagePath, productVersions, navTree, prevNext } =
     pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
@@ -202,7 +201,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             !
           </p>
 
-          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
+          <Footer
+            timestamp={mdx.fields.mtime}
+            githubFileLink={githubFileHistoryLink}
+          />
         </MainContent>
       </Container>
     </Layout>

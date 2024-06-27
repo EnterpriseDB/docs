@@ -14,7 +14,9 @@ const SectionHeading = ({ navTree, path, iconName }) => {
   let myIconName = iconName || productIcon(path) || iconNames.DOTTED_BOX;
   let className = "fill-orange me-3";
   if (myIconName && myIconName.startsWith("edb_postgres_ai")) {
-    className = "fill-black me-3";
+    className = "fill-aquamarine me-3";
+  } else if (myIconName && path.startsWith("/edb-postgres-ai/")) {
+    className = "fill-aquamarine me-3";
   }
 
   return (

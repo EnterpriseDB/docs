@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
+
+const isBrowser = typeof window !== "undefined";
+const Masonry = isBrowser ? window.Masonry || require("masonry-layout") : null;
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -12,7 +15,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
           <div className="d-inline-block me-3">
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
@@ -32,7 +35,7 @@ const BannerCard = ({ iconName, headingText, children }) => (
         <div className="d-flex align-items-center mb-3">
           <Icon
             iconName={iconName}
-            className="fill-orange"
+            className="fill-aquamarine"
             width="24"
             height="24"
           />
@@ -52,22 +55,37 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
           <Link to={to}>
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
             <h4 className="d-inline-block card-title m-1">{headingText}</h4>
           </Link>
         </div>
-        <div class="container-fluid">
-          <div class="row">{children}</div>
+        <div className="container-fluid">
+          <div className="row">{children}</div>
         </div>
       </div>
     </div>
   </div>
 );
+
+const BannerWideCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-12 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="row">{children}</div>
+    </div>
+  </div>
+);
+
+const BannerWideCardLink = ({ to, className, children }) => (
+  <Link to={to} className={`col py-2 px-5 text-center ${className}`}>
+    {children}
+  </Link>
+);
+
 const BannerCardLink = ({ to, className, children }) => (
-  <Link to={to} class={`col-sm-12 py-1 ${className}`}>
+  <Link to={to} className={`col-sm-12 py-1 ${className}`}>
     {children}
   </Link>
 );
@@ -82,12 +100,9 @@ const IndexCardLink = ({ to, className, children }) => (
 
 const Page = () => {
   const layout = useRef(null);
-  useEffect(() => {
-    (async () => {
-      const { default: Masonry } = await import("masonry-layout");
-      layout.current = new Masonry("*[data-masonry]");
-    })();
-    return () => layout.current.destroy();
+  useLayoutEffect(() => {
+    layout.current = layout.current || new Masonry("*[data-masonry]");
+    return () => layout.current?.destroy();
   }, []);
 
   return (
@@ -148,21 +163,17 @@ const Page = () => {
             iconName={iconNames.EDB_POSTGRES_AI_LOOP}
             headingText="EDB Postgres AI"
           >
-            <BannerSubCard
-              iconName={iconNames.EARTH}
-              headingText="Overview"
-              to="/edb-postgres-ai/overview"
-            >
-              <BannerCardLink to="/edb-postgres-ai/overview/concepts">
-                Concepts
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/overview/guide">
-                Guide
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/overview/releasenotes">
-                Release Notes
-              </BannerCardLink>
-            </BannerSubCard>
+            <BannerWideCard>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/overview-and-concepts">
+                Overview and Concepts
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/guide-and-getting-started">
+                Guide and Getting Started
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/latest-release-news">
+                Latest Release News
+              </BannerWideCardLink>
+            </BannerWideCard>
             <BannerSubCard
               iconName={iconNames.CONTROL}
               headingText="Console"
@@ -178,21 +189,39 @@ const Page = () => {
                 Agent
               </BannerCardLink>
             </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.CLOUD_DBA}
+              headingText="Cloud Service"
+              to="/edb-postgres-ai/cloud-service"
+            >
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/hosted">
+                Hosted databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/managed">
+                Managed databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/deployment">
+                Deployment options
+              </BannerCardLink>
+            </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.DATABASE}
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
-              <BannerCardLink to="/edb-postgres-ai/databases/databases">
-                Databases
+              <BannerCardLink to="/edb-postgres-ai/databases/epas">
+                EDB Postgres Advanced Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/cloudservice">
-                Cloud Service
+              <BannerCardLink to="/edb-postgres-ai/databases/pge">
+                EDB Postgres Extended Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/options">
-                Deployment options
+              <BannerCardLink to="/edb-postgres-ai/databases/pgd">
+                EDB Postgres Distributed
               </BannerCardLink>
             </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.IMPROVE}
               headingText="Lakehouse Analytics"
@@ -226,7 +255,7 @@ const Page = () => {
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.TOOLBOX}
-              headingText="Tools"
+              headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
               <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
