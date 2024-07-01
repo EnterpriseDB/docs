@@ -37,7 +37,7 @@ const Search = (data) => {
             writeStateToQueryParams(uiState[algoliaIndex]);
             setUiState(uiState);
           }}
-          insights={true}
+          insights={false}
         >
           <Configure
             hitsPerPage={30}
