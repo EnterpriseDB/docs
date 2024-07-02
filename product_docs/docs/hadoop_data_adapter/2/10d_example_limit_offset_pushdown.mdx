@@ -83,3 +83,60 @@ __OUTPUT__
   7782
 (5 rows)
 ```
+
+Disable GUC for LIMIT OFFSET pushdown queries at the session level: 
+
+```sql 
+SET hdfs_fdw.enable_limit_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM emp ORDER BY empno LIMIT 5 OFFSET 2;
+__OUTPUT__
+QUERY PLAN
+----------------------------------------------------------------------------------
+ Limit
+   Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+   ->  Foreign Scan on public.emp
+         Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+         Remote SQL: SELECT * FROM `fdw_db`.`emp` ORDER BY `empno` ASC NULLS LAST
+(5 rows)
+
+SELECT * FROM emp ORDER BY empno LIMIT 5 OFFSET 2;
+ empno | ename  |   job    | mgr  |  hiredate  | sal  | comm | deptno
+-------+--------+----------+------+------------+------+------+--------
+  7521 | WARD   | SALESMAN | 7698 | 02-22-1981 | 1250 |  500 |     30
+  7566 | JONES  | MANAGER  | 7839 | 04-02-1981 | 2975 |      |     20
+  7654 | MARTIN | SALESMAN | 7698 | 09-28-1981 | 1250 | 1400 |     30
+  7698 | BLAKE  | MANAGER  | 7839 | 05-01-1981 | 2850 |      |     30
+  7782 | CLARK  | MANAGER  | 7839 | 06-09-1981 | 2450 |      |     10
+(5 rows)
+```
+
+Enable GUC for LIMIT OFFSET pushdown queries at the session level: 
+
+```sql 
+SET hdfs_fdw.enable_limit_pushdown TO ON;
+-- LIMIT/OFFSET scenarios eligible for pushdown
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM emp ORDER BY empno LIMIT 5;
+__OUTPUT__
+QUERY PLAN
+------------------------------------------------------------------------------------
+ Foreign Scan on public.emp
+   Output: empno, ename, job, mgr, hiredate, sal, comm, deptno
+   Remote SQL: SELECT * FROM `fdw_db`.`emp` ORDER BY `empno` ASC NULLS LAST LIMIT 5
+(3 rows)
+
+SELECT * FROM emp ORDER BY empno LIMIT 5;
+ empno | ename  |   job    | mgr  |  hiredate  | sal  | comm | deptno
+-------+--------+----------+------+------------+------+------+--------
+  7369 | SMITH  | CLERK    | 7902 | 12-17-1980 |  800 |      |     20
+  7499 | ALLEN  | SALESMAN | 7698 | 02-20-1981 | 1600 |  300 |     30
+  7521 | WARD   | SALESMAN | 7698 | 02-22-1981 | 1250 |  500 |     30
+  7566 | JONES  | MANAGER  | 7839 | 04-02-1981 | 2975 |      |     20
+  7654 | MARTIN | SALESMAN | 7698 | 09-28-1981 | 1250 | 1400 |     30
+(5 rows)
+```
+
+!!! Note
+    You can also enable/disable LIMIT OFFSET pushdown at the server/table level using a GUC. For more information, see [CREATE SERVER](configuring/#create-server) and [CREATE FOREIGN TABLE](configuring/#create-foreign-table).
+    
