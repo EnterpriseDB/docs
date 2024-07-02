@@ -1,0 +1,98 @@
+---
+title: Using other extensions with PGD
+navTitle: Extension usage
+---
+
+## PGD and other PostgreSQL extensions
+
+PGD is implemented as a PostgreSQL extension (see [Supported Postgres database servers
+](overview/#supported-postgres-database-servers)), taking advantage of PostgreSQL's
+expandability and flexibility to modify system behaviour at quite a low level.
+
+In principle other extensions - both those provided by community PostgreSQL and
+EPAS, as well as third-party extensions, can be used together with PGD, however
+the distributed nature of PGD means selection and installation of extensions
+should be carefully considered and planned.
+
+### Extensions providing logical decoding
+
+Extensions providing logical decoding, such as [wal2json](https://github.com/eulerto/wal2json),
+may in theory work with PGD, but there is no support for failover, meaning any WAL stream
+being read from such an extension may be interrupted.
+
+### Extensions providing replication and/or HA functionality
+
+Any extension extending PostgreSQL with functionality related to replication
+and/or HA/failover is unlikely to work well with PGD, and may even be detrimental
+to the health of the PGD cluster, so should be avoided.
+
+### Supported extensions
+
+This section lists extensions which are known to work with PGD.
+
+#### EDB Advanced Server Table Access methods
+
+The [EDB Advanced Storage Pack](/pg_extensions/advanced_storage_pack/) provides
+a selection of table access methods (TAMs) implemented as extensions of which
+the following are certified for use with PGD:
+
+ - [Autocluster](/pg_extensions/advanced_storage_pack/#autocluster)
+ - [Refdata](/pg_extensions/advanced_storage_pack/#refdata)
+
+For more details, see [Table access methods](table-access-methods).
+
+#### pgaudit
+
+PGD has been modified to ensure compatibility with the [pgaudit](https://www.pgaudit.org/) extension.
+
+### Installing extensions
+
+PostgreSQL extensions provide SQL objects such as functions and datatypes, and
+optionally also one or more shared libraries, which must be loaded into the
+PostgreSQL backend before the extension can be installed and used.
+
+!!! Warning
+
+    The relevant extension packages must be available on all nodes in the cluster,
+    otherwise extension installation may fail and impact cluster stability.
+
+#### Configuring "shared_preload_libraries"
+
+If an extension provides a shared library, this library must be included in the [shared_preload_libraries](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES)
+configuration parameter before the extension itself is installed.
+
+`shared_preload_libraries` consists of a comma-separated list of extension
+names. It must include the `bdr` extension.  The order in which other extensions
+are specified is generally unimportant, however if using the `pgaudit`
+extension, this **must** appear in the list before `bdr`.
+
+See also [Postgres settings](../postgres-configuration/#postgres-settings).
+
+!!! Warning
+
+    `shared_preload_libraries` should be configured on all nodes in the cluster before
+    installing the extension with `CREATE EXTENSION`. Note that it requires a PostgreSQL
+    restart for the new configuration to be activiated.
+
+!!! Note
+
+    In older PGD versions, the `pglogical` extension needed to be included in
+    `shared_preload_libraries`. From PGD 4, `pglogical` is incorporated in
+    the `bdr` extension and should no longer be installed.
+
+
+#### Installing the extension
+
+The extension itself is installed with the `CREATE EXTENSION` command. This only
+needs to be carried out on one node in the cluster - PGD's DDL replication will
+ensure it is propagated to all other nodes.
+
+!!! Warning
+
+    Do not attempt to install extensions manually on each node by e.g. disabling
+    DDL replication before executing `CREATE EXTENSION`.
+
+    Do not use a command such as `bdr.replicate_ddl_command()`
+    to execute `CREATE EXTENSION`.
+
+Ensure the extension is installed on all nodes before attempting to use it.
