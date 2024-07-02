@@ -1,0 +1,535 @@
+---
+title: "Metrics details"
+redirects:
+- /biganimal/latest/using_cluster/05_monitoring_and_logging/06_metrics
+---
+
+BigAnimal collects a wide set of metrics about Postgres instances and makes them available in your cloud provider. Most of these metrics are acquired directly from Postgres system tables, views, and functions. The Postgres documentation is the main reference for these metrics.
+
+Some data from Postgres monitoring system views, tables, and functions is transformed to be easier to consume in Prometheus metrics format. For example, timestamp fields are generally converted to Unix epoch time and can be accompanied by a relative time-interval metric. Other metrics are aggregated into categories by label dimensions to limit the number of very specific and narrowly scoped individual metrics emitted. It isn't useful to report the inactivity period of every single backend, for example, so backend statistics are aggregated by database, user, `application_name`, and backend state.
+
+The number of tables in your database affects the number of metrics in your cloud logging platform, thus
+affecting your cloud provider costs for storing these metrics. To ensure stability of the metrics pipeline, metrics might be dropped when the number of tables in your database exceeds 2500.
+
+Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels) are included in the exposed metrics. These will be in the `$.Message.labels` JSON object when consuming a metrics stream, or in a cloud-provider-specific format for metrics ingested into cloud provider monitoring platforms. Dimensions vary depending on the individual metric and are documented separately for each group of related metrics.
+
+The available set of metrics is subject to change. Metrics might be added, removed, or renamed. Where possible, we change the metric name when changing the meaning or type of existing metrics.
+
+
+[comment1]: # "Generated content using script https://github.com/EnterpriseDB/starlight-scripts/blob/main/docs/metrics_to_markdown_txt.py"
+
+## `cnp_backends`
+
+Backend counts from `pg_stat_activity` aggregated by the listed label
+dimensions. Useful for identifying busy applications, excessive idle
+backends, and so on.
+
+Derived from the `pg_stat_activity` view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_backends_total` | GAUGE | Number of backends in this group |
+| `cnp_backends_max_tx_duration_seconds` | GAUGE | Maximum duration of a transaction in seconds in this group |
+| `cnp_backends_max_backend_xmin_age` | GAUGE | Maximum duration of a transaction in seconds in this group |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of the database for this group of backends |
+| `usename` | Name of the user in this group of backends |
+| `application_name` | Name of the application for this group of backends |
+| `state` | State of the group of backends (pg\_stat\_activity.state) |
+
+## `cnp_backends_waiting`
+
+Postgres instance-level aggregate information on backends that are blocked
+waiting for locks. Doesn't count I/O waits or other reasons backends might
+wait or be blocked.
+
+Derived from the `pg_locks` view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_backends_waiting_total` | GAUGE | Total number of backends that are currently waiting on other queries |
+
+## `cnp_pg_database`
+
+Per-database metrics for each database in the Postgres instance.
+Includes per-database vacuum progress information.
+
+Derived from the `pg_database` catalog.
+
+See also [cnp_pg_stat_database](#cnp_pg_stat_database).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_database_size_bytes` | GAUGE | Disk space used by the database |
+| `cnp_pg_database_xid_age` | GAUGE | Number of transactions from the frozen XID to the current one |
+| `cnp_pg_database_mxid_age` | GAUGE | Number of multiple transactions (Multixact) from the frozen XID to the current one |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of the database |
+
+## `cnp_pg_postmaster`
+
+Data on the Postgres instance's managing "postmaster" process.
+
+Derived from the `pg_postmaster_start_time()` function.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_postmaster_start_time` | GAUGE | Time at which postgres started (based on epoch) |
+
+## `cnp_pg_replication`
+
+Physical replication details for a standby replica postgres instance
+as captured from the standby replica.
+
+Derived from the `pg_last_xact_replay_timestamp()` function.
+
+Relevant only on standby replicas.
+
+See also [cnp_pg_stat_replication](#cnp_pg_stat_replication), [cnp_pg_replication_slots](#cnp_pg_replication_slots).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_replication_lag` | GAUGE | Replication lag behind primary in seconds |
+| `cnp_pg_replication_in_recovery` | GAUGE | Whether the instance is in recovery |
+
+## `cnp_pg_replication_slots`
+
+Details about replication slots on a Postgres instance. In most
+configurations, only the primary server has active replication clients,
+but other nodes can still have replication slots.
+
+Logical replication slots are specific to a database, whereas
+physical replication slots have an empty "database" label as they
+apply to the Postgres instance as a whole.
+
+Derived from the `pg_replication_slots` view.
+
+See also [cnp_pg_stat_replication](#cnp_pg_stat_replication), [cnp_pg_replication](#cnp_pg_replication).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_replication_slots_active` | GAUGE | Flag indicating if the slot is active |
+| `cnp_pg_replication_slots_pg_wal_lsn_diff` | GAUGE | Replication lag in bytes |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `slot_name` | Name of the replication slot |
+| `database` | Name of the database |
+
+## `cnp_pg_stat_archiver`
+
+Progress information about WAL archiving. Only the currently active primary
+server generally performs WAL archiving.
+
+WAL archiving is important for backup and restore. If WAL archiving is
+delayed or failing for too long, the point-in-time recovery backups for
+a Postgres cluster won't be up to date. This condition has disaster recovery
+implications and can potentially also affect failover.
+
+Occasional WAL archiving failures are normal, but pay attention to a growing delay in the time
+since the last successful WAL archiving operation.
+
+The following metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+Derived from the `pg_stat_archiver` view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_archiver_archived_count` | COUNTER | Number of WAL files that have been successfully archived |
+| `cnp_pg_stat_archiver_failed_count` | COUNTER | Number of failed attempts for archiving WAL files |
+| `cnp_pg_stat_archiver_seconds_since_last_archival` | GAUGE | Seconds since the last successful archival operation |
+| `cnp_pg_stat_archiver_seconds_since_last_failure` | GAUGE | Seconds since the last failed archival operation |
+| `cnp_pg_stat_archiver_last_archived_time` | GAUGE | Epoch of the last time WAL archiving succeeded |
+| `cnp_pg_stat_archiver_last_failed_time` | GAUGE | Epoch of the last time WAL archiving failed |
+| `cnp_pg_stat_archiver_last_archived_wal_start_lsn` | GAUGE | Archived WAL start LSN |
+| `cnp_pg_stat_archiver_last_failed_wal_start_lsn` | GAUGE | Last failed WAL LSN |
+| `cnp_pg_stat_archiver_stats_reset_time` | GAUGE | Time at which these statistics were last reset |
+
+## `cnp_pg_stat_bgwriter`
+
+Stats for the Postgres background writer and checkpointer processes, which
+are instance-wide and shared across all databases in a Postgres instance.
+
+Very long delays between checkpoints on a busy system increase the time
+taken for it to return to read/write availability if crash recovery is
+required. Excessively frequent checkpoints can increase I/O load and the size
+of the WAL stream for backup and replication.
+
+The Postgres documentation discusses checkpoints, dirty writeback, and
+checkpoint tuning in detail.
+
+These metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+Derived from the `pg_stat_bgwriter` catalog.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_bgwriter_checkpoints_timed` | COUNTER | Number of scheduled checkpoints that have been performed |
+| `cnp_pg_stat_bgwriter_checkpoints_req` | COUNTER | Number of requested checkpoints that have been performed |
+| `cnp_pg_stat_bgwriter_checkpoint_write_time` | COUNTER | Total amount of time that has been spent in the portion of checkpoint processing where files are written to disk, in milliseconds |
+| `cnp_pg_stat_bgwriter_checkpoint_sync_time` | COUNTER | Total amount of time that has been spent in the portion of checkpoint processing where files are synchronized to disk, in milliseconds |
+| `cnp_pg_stat_bgwriter_buffers_checkpoint` | COUNTER | Number of buffers written during checkpoints |
+| `cnp_pg_stat_bgwriter_buffers_clean` | COUNTER | Number of buffers written by the background writer |
+| `cnp_pg_stat_bgwriter_maxwritten_clean` | COUNTER | Number of times the background writer stopped a cleaning scan because it had written too many buffers |
+| `cnp_pg_stat_bgwriter_buffers_backend` | COUNTER | Number of buffers written directly by a backend |
+| `cnp_pg_stat_bgwriter_buffers_backend_fsync` | COUNTER | Number of times a backend had to execute its own fsync call (normally the background writer handles those even when the backend does its own write) |
+| `cnp_pg_stat_bgwriter_buffers_alloc` | COUNTER | Number of buffers allocated |
+
+## `cnp_pg_stat_database`
+
+This metrics group directly exposes the summary data Postgres collects in its
+own `pg_stat_database` view. It contains statistical counters maintained by
+Postgres for database activity.
+
+These metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+Derived from the `pg_stat_database` catalog.
+
+See also [cnp_pg_database](#cnp_pg_database).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_database_xact_commit` | COUNTER | Number of transactions in this database that have been committed |
+| `cnp_pg_stat_database_xact_rollback` | COUNTER | Number of transactions in this database that have been rolled back |
+| `cnp_pg_stat_database_blks_read` | COUNTER | Number of disk blocks read in this database |
+| `cnp_pg_stat_database_blks_hit` | COUNTER | Number of times disk blocks were found already in the buffer cache, so that a read was not necessary (this only includes hits in the PostgreSQL buffer cache, not the operating system's file system cache) |
+| `cnp_pg_stat_database_tup_returned` | COUNTER | Number of rows returned by queries in this database |
+| `cnp_pg_stat_database_tup_fetched` | COUNTER | Number of rows fetched by queries in this database |
+| `cnp_pg_stat_database_tup_inserted` | COUNTER | Number of rows inserted by queries in this database |
+| `cnp_pg_stat_database_tup_updated` | COUNTER | Number of rows updated by queries in this database |
+| `cnp_pg_stat_database_tup_deleted` | COUNTER | Number of rows deleted by queries in this database |
+| `cnp_pg_stat_database_conflicts` | COUNTER | Number of queries canceled due to conflicts with recovery in this database |
+| `cnp_pg_stat_database_temp_files` | COUNTER | Number of temporary files created by queries in this database |
+| `cnp_pg_stat_database_temp_bytes` | COUNTER | Total amount of data written to temporary files by queries in this database |
+| `cnp_pg_stat_database_deadlocks` | COUNTER | Number of deadlocks detected in this database |
+| `cnp_pg_stat_database_blk_read_time` | COUNTER | Time spent reading data file blocks by backends in this database, in milliseconds |
+| `cnp_pg_stat_database_blk_write_time` | COUNTER | Time spent writing data file blocks by backends in this database, in milliseconds |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of this database |
+
+## `cnp_pg_stat_database_conflicts`
+
+These metrics provide information on conflicts between queries on a standby replica
+and the standby replica's replay of the change-stream from the primary. These are
+called *recovery conflicts*.
+
+These metrics are unrelated to "INSERT ... ON CONFLICT" conflicts or
+multi-master replication row conflicts. They are relevant only on standby
+replicas.
+
+These metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+
+Defined only on standby replicas.
+
+Derived from the `pg_stat_database_conflicts` view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_database_conflicts_confl_tablespace` | COUNTER | Number of queries in this database that have been canceled due to dropped tablespaces |
+| `cnp_pg_stat_database_conflicts_confl_lock` | COUNTER | Number of queries in this database that have been canceled due to lock timeouts |
+| `cnp_pg_stat_database_conflicts_confl_snapshot` | COUNTER | Number of queries in this database that have been canceled due to old snapshots |
+| `cnp_pg_stat_database_conflicts_confl_bufferpin` | COUNTER | Number of queries in this database that have been canceled due to pinned buffers |
+| `cnp_pg_stat_database_conflicts_confl_deadlock` | COUNTER | Number of queries in this database that have been canceled due to deadlocks |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of the database |
+
+## `cnp_pg_stat_user_tables`
+
+Access and usage statistics maintained by Postgres on nonsystem tables.
+
+These metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+Derived from the `pg_stat_user_tables` view.
+
+See also [cnp_pg_statio_user_tables](#cnp_pg_statio_user_tables).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_user_tables_seq_scan` | COUNTER | Number of sequential scans initiated on this table |
+| `cnp_pg_stat_user_tables_seq_tup_read` | COUNTER | Number of live rows fetched by sequential scans |
+| `cnp_pg_stat_user_tables_idx_scan` | COUNTER | Number of index scans initiated on this table |
+| `cnp_pg_stat_user_tables_idx_tup_fetch` | COUNTER | Number of live rows fetched by index scans |
+| `cnp_pg_stat_user_tables_n_tup_ins` | COUNTER | Number of rows inserted |
+| `cnp_pg_stat_user_tables_n_tup_upd` | COUNTER | Number of rows updated |
+| `cnp_pg_stat_user_tables_n_tup_del` | COUNTER | Number of rows deleted |
+| `cnp_pg_stat_user_tables_n_tup_hot_upd` | COUNTER | Number of rows HOT updated (i.e., with no separate index update required) |
+| `cnp_pg_stat_user_tables_n_live_tup` | GAUGE | Estimated number of live rows |
+| `cnp_pg_stat_user_tables_n_dead_tup` | GAUGE | Estimated number of dead rows |
+| `cnp_pg_stat_user_tables_n_mod_since_analyze` | GAUGE | Estimated number of rows changed since last analyze |
+| `cnp_pg_stat_user_tables_last_vacuum` | GAUGE | Last time at which this table was manually vacuumed (not counting VACUUM FULL) |
+| `cnp_pg_stat_user_tables_last_autovacuum` | GAUGE | Last time at which this table was vacuumed by the autovacuum daemon |
+| `cnp_pg_stat_user_tables_last_analyze` | GAUGE | Last time at which this table was manually analyzed |
+| `cnp_pg_stat_user_tables_last_autoanalyze` | GAUGE | Last time at which this table was analyzed by the autovacuum daemon |
+| `cnp_pg_stat_user_tables_vacuum_count` | COUNTER | Number of times this table has been manually vacuumed (not counting VACUUM FULL) |
+| `cnp_pg_stat_user_tables_autovacuum_count` | COUNTER | Number of times this table has been vacuumed by the autovacuum daemon |
+| `cnp_pg_stat_user_tables_analyze_count` | COUNTER | Number of times this table has been manually analyzed |
+| `cnp_pg_stat_user_tables_autoanalyze_count` | COUNTER | Number of times this table has been analyzed by the autovacuum daemon |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of current database |
+| `schemaname` | Name of the schema that this table is in |
+| `relname` | Name of this table |
+
+## `cnp_pg_stat_replication`
+
+Realtime information about replication connections to this Postgres instance,
+their progress, and their activity.
+
+These metrics aren't reset when a Postgres stats reset is issued
+on the db server. The "stat" in the name is a historic artifact from Postgres
+development.
+
+Derived from the `pg_stat_replication` view.
+
+See also [cnp_pg_replication_slots](#cnp_pg_statio_user_tables), [cnp_pg_replication](#cnp_pg_replication).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_stat_replication_backend_start_age` | GAUGE | How long ago in seconds this process was started |
+| `cnp_pg_stat_replication_backend_xmin_age` | COUNTER | The age of this standby's xmin horizon |
+| `cnp_pg_stat_replication_sent_diff_bytes` | GAUGE | Difference in bytes from the last write-ahead log location sent on this connection |
+| `cnp_pg_stat_replication_write_diff_bytes` | GAUGE | Difference in bytes from the last write-ahead log location written to disk by this standby server |
+| `cnp_pg_stat_replication_flush_diff_bytes` | GAUGE | Difference in bytes from the last write-ahead log location flushed to disk by this standby server |
+| `cnp_pg_stat_replication_replay_diff_bytes` | GAUGE | Difference in bytes from the last write-ahead log location replayed into the database on this standby server |
+| `cnp_pg_stat_replication_write_lag_seconds` | GAUGE | Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written it |
+| `cnp_pg_stat_replication_flush_lag_seconds` | GAUGE | Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written and flushed it |
+| `cnp_pg_stat_replication_replay_lag_seconds` | GAUGE | Time elapsed between flushing recent WAL locally and receiving notification that this standby server has written, flushed and applied it |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `usename` | Name of the replication user |
+| `application_name` | Name of the application |
+
+## `cnp_pg_statio_user_tables`
+
+I/O activity statistics maintained by Postgres on nonsystem tables.
+
+These metrics are reset when a Postgres stats reset is issued
+on the db server.
+
+Derived from the `pg_statio_user_tables` view.
+
+See also [cnp_pg_stat_user_tables](#cnp_pg_stat_user_tables).
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_statio_user_tables_heap_blks_read` | COUNTER | Number of disk blocks read from this table |
+| `cnp_pg_statio_user_tables_heap_blks_hit` | COUNTER | Number of buffer hits in this table |
+| `cnp_pg_statio_user_tables_idx_blks_read` | COUNTER | Number of disk blocks read from all indexes on this table |
+| `cnp_pg_statio_user_tables_idx_blks_hit` | COUNTER | Number of buffer hits in all indexes on this table |
+| `cnp_pg_statio_user_tables_toast_blks_read` | COUNTER | Number of disk blocks read from this table's TOAST table (if any) |
+| `cnp_pg_statio_user_tables_toast_blks_hit` | COUNTER | Number of buffer hits in this table's TOAST table (if any) |
+| `cnp_pg_statio_user_tables_tidx_blks_read` | COUNTER | Number of disk blocks read from this table's TOAST table indexes (if any) |
+| `cnp_pg_statio_user_tables_tidx_blks_hit` | COUNTER | Number of buffer hits in this table's TOAST table indexes (if any) |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `datname` | Name of current database |
+| `schemaname` | Name of the schema that this table is in |
+| `relname` | Name of this table |
+
+## `cnp_pg_settings`
+
+Expose the subset of Postgres server settings that can be represented as
+Prometheus compatible metrics&mdash;any integer, Boolean, or real number.
+Text-format settings, list-valued settings, and enumeration-typed settings aren't
+captured or reported.
+
+This set of metrics doesn't expose per-database settings assigned with
+`ALTER DATABASE ... SET ...`, per-user settings assigned with `ALTER USER ...
+SET ...`, or per-session values. It shows only the database systemwide
+global values. You can explore other settings interactively using Postgres
+system views.
+
+Derived from the `pg_settings` view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_pg_settings_setting` | GAUGE | Setting value. Note that settings are only reported when they were changed via Cloud Native PostgreSQL. |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `name` | Name of the setting |
+
+## `cnp_xlog_insert`
+
+Reports the postgres instance's transaction log insert position in bytes.
+Useful to compare one postgres instance's WAL insert position with other
+instances' replication replay positions in monitoring.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_xlog_insert_lsn` | GAUGE | Node xlog insert position (lsn) |
+
+## `cnp_bdr_rep_slot_stats`
+
+Metrics from pg_catalog.pg_stat_replication_slots for each BDR replication slot.
+These metrics can be used to monitor logical decoding activity and performance the
+sending (upstream) side of a logical replication connection.
+See [`pg_stat_replication_slots`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-REPLICATION-SLOTS-VIEW)
+for details.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_bdr_rep_slot_stats_spill_txns` | COUNTER | spill\_txns |
+| `cnp_bdr_rep_slot_stats_spill_count` | COUNTER | spill\_count |
+| `cnp_bdr_rep_slot_stats_spill_bytes` | COUNTER | spill\_bytes |
+| `cnp_bdr_rep_slot_stats_stream_txns` | COUNTER | stream\_txns |
+| `cnp_bdr_rep_slot_stats_stream_count` | COUNTER | stream\_count |
+| `cnp_bdr_rep_slot_stats_stream_bytes` | COUNTER | stream\_bytes |
+| `cnp_bdr_rep_slot_stats_total_txns` | COUNTER | total\_txns |
+| `cnp_bdr_rep_slot_stats_total_bytes` | COUNTER | total\_bytes |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `peer_name` | peer\_name |
+| `slot_name` | slot\_name |
+
+## `cnp_bdr_rep_lag`
+
+Metrics based on the bdr.node_replication_rates monitoring catalog for monitoring
+BDR replication performance and replication lag. See
+[Monitoring Outgoing Replication](/pgd/latest/monitoring/sql/#monitoring-outgoing-replication)
+and [`bdr.node_replication_rates`](/pgd/4/bdr/catalogs/#bdrnode_replication_rates)
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_bdr_rep_lag_replay_lag_s` | GAUGE | replay\_lag\_s |
+| `cnp_bdr_rep_lag_replay_lag_bytes` | GAUGE | replay\_lag\_bytes |
+| `cnp_bdr_rep_lag_apply_rate` | GAUGE | apply\_rate |
+| `cnp_bdr_rep_lag_catchup_interval_s` | GAUGE | catchup\_interval\_s |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `peer_name` | peer\_name |
+
+## `cnp_bdr_node_slots`
+
+Metrics derived from the bdr.node_slots view. These metrics provide lower level insight
+into the progress of outbound BDR replication, including transaction ID limits and
+WAL retention and the connection status of replication sessions.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_bdr_node_slots_active_pid` | GAUGE | active\_pid |
+| `cnp_bdr_node_slots_xmin_age` | GAUGE | xmin age |
+| `cnp_bdr_node_slots_catalog_xmin_age` | GAUGE | catalog\_xmin age |
+| `cnp_bdr_node_slots_restart_lsn_age` | GAUGE | restart\_lsn age |
+| `cnp_bdr_node_slots_confirmed_flush_lsn_age` | GAUGE | confirmed\_flush\_lsn age |
+| `cnp_bdr_node_slots_flush_lag_bytes` | GAUGE | flush\_lag in bytes |
+| `cnp_bdr_node_slots_replay_lag_bytes` | GAUGE | replay\_lag in bytes |
+| `cnp_bdr_node_slots_slot_state` | GAUGE | slot\_state enumeration. disconnected = 0, streaming = 1, catchup = 2, unknown/unrecognised -1 |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `peer_name` | peer\_name |
+| `slot_name` | slot\_name |
+
+## `cnp_bdr_global_locking`
+
+metrics for bdr global lock acquire and hold durations for both DDL and DML lock types.
+Useful for detection of long global lock waits or frequent global locks that may impact performance.
+These metrics are not fine grained and do not expose information about individual tables, etc.
+Details are available in the bdr.global_locks view.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| `cnp_bdr_global_locking_since_locally_requested_s` | GAUGE | since\_locally\_requested\_s |
+| `cnp_bdr_global_locking_since_local_granted_s` | GAUGE | since\_local\_granted\_s |
+
+
+
+The metrics in this group can have these labels:
+
+| Label | Description |
+|-------|-------------|
+| `lock_type` | lock\_type |
+
+
+## Disabled: `cnp_bdr_raft_mon`
+
+This metric has been disabled for performance and reliability reasons. It will no longer be generated after 2023-08-16. It was used to report on the health of the Raft distributed consensus layer on PGD nodes. Please see the EDB Postgres Distributed monitoring documentation for other methods to monitor Raft health on PGD clusters.
+
+| Metric   | Usage | Description |
+|----------|-------|-------------|
+| ~~`cnp_bdr_raft_mon_raftstatus`~~ | GAUGE | Raft health status; 0 for unhealthy, 1 for healthy |
+
+
+[comment2]: # "End generated content"
+
+
+## Other metrics streams
+
+In addition to Postgres metrics from the Cloud Native PostgreSQL operator that
+manages databases in BigAnimal, additional metrics on Kubernetes workload health
+etc are available from the BigAnimal metrics endpoints. Specific metrics exposed
+may vary depending on Kubernetes version, BigAnimal deployment model and more.
+Any such metrics are generally well-known metrics from widely used tools,
+documented by the upstream vendor of the component. The BigAnimal platform makes
+no guarantees about the availability or stability of these metrics unless explicitly
+documented otherwise.
+
+See also [Kubernetes cluster metrics](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/).

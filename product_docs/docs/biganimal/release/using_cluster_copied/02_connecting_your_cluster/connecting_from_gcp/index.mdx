@@ -1,0 +1,130 @@
+---
+title: Connecting from Google Cloud
+navTitle: From Google Cloud
+---
+
+The way you create a private Google Cloud endpoint differs when you're using your Google Cloud account versus using BigAnimal's cloud account.
+
+## Using BigAnimal's cloud account
+When using BigAnimal's cloud account, when creating a cluster, you provide BigAnimal with your Google Cloud project ID (see [Networking](/biganimal/latest/getting_started/creating_a_cluster/#network-logs--telemetry-section)). BigAnimal, in turn, provides you with a Google Cloud service attachment, which you can use to connect to your cluster privately.
+
+1. When creating your cluster, on the **Cluster Settings** tab, in the **Network** section:
+   1. Select **Private**.
+
+   1. Enter your application's Google Cloud project ID.
+
+1. After the cluster is created, go to the cluster details to see the corresponding service attachment. You need the service attachment while creating a PSC-connected endpoint.
+
+1. Create a connected endpoint in the client's VPC. The steps for creating a connected endpoint in the client's VPC are the same whether you're using BigAnimal's cloud or your cloud. See [Step 2: Create a connected endpoint for the VM client/application](#step-2-create-a-connected-endpoint-for-the-vm-clientapplication).
+
+1. In your application's Google Cloud, select **Private Service Connect**, and then select **Connected Endpoints**. Select the endpoint you created previously, and use the service attachment provided in the details section in BigAnimal to access your cluster.
+
+## Using your Google Cloud account
+
+Two different methods enable you to connect to your private cluster from your application's VPC in Google Cloud. Each method offers different levels of accessibility and security. 
+
+- You can use Google Cloud [Private Service Connect (PSC)](https://cloud.google.com/vpc/docs/configure-private-service-connect-producer) to publish services using internal IP addresses in your VPC network. PSC is a network interface that securely connects a private IP address from your Google Cloud VPC to an external service. You grant access only to a single cluster instead of the entire BigAnimal resource VPC, thus ensuring maximum network isolation. We refer to this process of connecting as using PSC-connected endpoints. 
+
+- We recommend the PSC-connected endpoint method, which is most commonly used and is used in the example. However, if required by your organization, you can also use the [VPC peering](vpc_peering) connection method.
+
+### PSC-connected endpoint example
+This example shows how to connect your cluster using PSC-connected endpoints. 
+
+Assume that your cluster is in a project called `development` and is being accessed from a client in another project called `test`. It has the following properties:
+
+-  BigAnimal cluster:
+   - Google Cloud Project Project: `development`
+   - Google Cloud Project ID: `development-001`
+   - BigAnimal Cluster ID: `p-mckwlbakq5`
+   - Region where BigAnimal cluster is deployed: `us-central1`
+   - BigAnimal Organization ID: `brcxzr08qr7rbei1`
+   - Organization's domain name: `biganimal.io`
+   - Host Name: `p-mckwlbakq5.private.brcxzr08qr7rbei1.biganimal.io`
+- VM Client:
+   - Google Cloud Project Name: `test`
+   - Google Cloud Project ID: `test-001`
+   - VM Client/App: `test-app-1`
+   - VM Client’s VPC: `client-app-vpc`
+   - VM Client’s Subnet: `client-app-subnet`
+
+
+#### Prerequisites
+
+To walk through an example in your own environment, you need a:
+
+- BigAnimal Postgres cluster deployed with private connectivity.
+- VM with a client/application installed in your Google Cloud project.
+- Subnet in the VM’s VPC in the same region as the BigAnimal cluster.
+
+
+#### Step 1: Publish a service from BigAnimal
+
+!!! Note
+    Publish a service from BigAnimal in the Google Cloud project connected to your BigAnimal subscription.
+
+In the Google Cloud project connected to BigAnimal, to provide access to your cluster from other VPCs in other Google Cloud projects, create a PSC published service. Publish a service from BigAnimal for each Postgres cluster to which you want to provide access.
+
+1. Get the hostname of your Postgres cluster from the **Connect** tab of the Cluster page on the BigAnimal portal (`P-mckwlbakq5.private.brcxzr08qr7rbei1.biganimal.io`).
+
+1. Using Cloudshell, the command prompt, or some other terminal, get the internal IP address of the host by performing a ping, nslookup, or dig +short &lt;host> against the hostname (`10.247.200.9`).
+
+1. In the Google Cloud portal, go to **Network Services > Load balancing**.
+
+1. In the Filter area, under **Load Balancers**, select **Addresses** and filter for the host IP (`10.247.200.9`). Note the load balancer name (`a58262cd80b234a3aa917b719e69843f`).
+
+1. Go to **Private Service Connect > Published Services**.
+
+1. Select **+ Publish Service**. 
+   1. Under **Load Balancer Type**:
+
+      1. Select **Internal passthrough Network Load Balancer**.
+
+      1. In the **Internal load balancer** field, paste the load balancer name (`a58262cd80b234a3aa917b719e69843f`).
+   1. For **Service Name**, enter the published service a name (`p-mckwlbakq5`).
+   1. For **Subnets**, select **Reserve New Subnet**.
+
+1. In the Reserve subnet for Private Service Connect window, enter the following details, and then select **Add**.
+   1. For **Name**, use the name of the Postgres cluster (`p-mckwlbakq5`).
+
+   1. For **IPv4 range**, assign the CIDR for the field IPv4 range, for example, `10.247.214.0/29`.
+   !!! Note "Recommendations for IP range"
+       - Allocate at least 8 IP addresses to the CIDR. The subnet mask must not be greater than 29.
+       - Avoid overlap with other reserved IP ranges by not allocating too many IP addresses at one time.
+       - If you encounter the error "This IPv4 address range overlaps with a subnet you already added. Enter an address range that doesn't overlap.", use another CIDR block until no error is returned.
+
+1. (Optional) To accept connections automatically, add the consumer (where the client app resides) Google Cloud project ID (`test-001`).
+
+1. Select **Add Service** and get the name of the service attachment. You might need to select the newly created published service to find the name of the service attachment. (`projects/development-001/regions/us-central1/serviceAttachments/p-mckwlbakq5`).
+
+#### Step 2: Create a connected endpoint for the VM client/application
+
+!!! Note
+    Create a connected endpoint for the VM client/application in the Google Cloud project where your VM client/application resides.
+
+1. From the Google Cloud console, switch over to the project where your VM client/application resides (`test`).
+
+1. To get the VPC of your VM (`client-app-vpc`), go to **Compute Engine > VM Instances**. Under **Network Interface**, note the network information.
+
+1. To create an endpoint with the VPC, go to **Network Services > Private Service Connect**. Under **Connected Endpoints**, select **+ Connect Endpoint**. 
+   1. For the target, select **Published service**, and use the service attachment captured earlier (`projects/development-001/regions/us-central1/serviceAttachments/p-mckwlbakq5`).
+   
+   1. For the endpoint name, use the name of your VM client/application (`test-app-1`).
+   1. For the network (VPC), use the name of your VM client’s VPC (`client-app-vpc`).
+   1. For the subnetwork, use your VM client’s subnet (`client-app-subnet`).
+      !!! Note
+          If no subnet is available, create a subnet in the VPC for the region where your Postgres cluster was created as shown in [this knowledge base article](https://support.biganimal.com/hc/en-us/articles/20383247227801-GCP-Connect-to-BigAnimal-private-cluster-using-GCP-Private-Service-Connect#h_01H4NMNNSFQXNTX78W08Q3G39K).
+    1. For the IP address, create an IP address, or choose an existing IP that isn't used by the other endpoints.
+    1. Enable **Global Access**.
+       !!! Note
+           If your VM is running in a different region from BigAnimal, then always enable **Global Access**.
+1. Select **Add Endpoint**.
+
+1. Check to see if the endpoint status is Accepted, and obtain the IP address. 
+   !!! Note
+       If the endpoint status is Pending, see [this knowledge base article](https://support.biganimal.com/hc/en-us/articles/20383247227801-GCP-Connect-to-BigAnimal-private-cluster-using-GCP-Private-Service-Connect#h_01H4NMPGXCSC9V30WNESV52FAV). 
+
+1. Connect to your BigAnimal cluster from your client application using the endpoint IP address (for example, `psql "postgres://edb_admin@<endpoint IP>:5432/edb_admin?sslmode=require"`).
+
+#### Step 3: (Optional) Set up a private DNS zone
+
+Setting up a private DNS zone in your Google Cloud project allows you to connect BigAnimal with the host. For instructions on setting up a private DNS zone, see [this knowledge base article](https://support.biganimal.com/hc/en-us/articles/20383247227801-GCP-Connect-to-BigAnimal-private-cluster-using-GCP-Private-Service-Connect#h_01H4QMHF1DJGKW5ED2BQ6YCT29).
