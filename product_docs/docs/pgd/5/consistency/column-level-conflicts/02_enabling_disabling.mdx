@@ -1,0 +1,75 @@
+---
+navTitle: Enabling and disabling
+title: Enabling and disabling
+redirects:
+  - /pgd/latest/bdr/column-level-conflicts/
+---
+
+## Enabling and disabling column-level conflict resolution
+
+!!! Note Permissions required
+Column-level conflict detection uses the `column_timestamps` type. This type requires any user needing to detect column-level conflicts to have at least the [bdr_application](../security/pgd-predefined-roles/#bdr_application) role assigned.
+!!!
+
+The [bdr.alter_table_conflict_detection()](conflicts#bdralter_table_conflict_detection) function manages column-level conflict resolution.
+
+### Example
+
+This example creates a table `test_table` and then enables column-level conflict resolution on it:
+
+```sql
+db=# CREATE TABLE my_app.test_table (id SERIAL PRIMARY KEY, val INT);
+CREATE TABLE
+
+db=# ALTER TABLE my_app.test_table REPLICA IDENTITY FULL;
+ALTER TABLE
+
+db=# SELECT bdr.alter_table_conflict_detection(
+db(# 'my_app.test_table'::regclass, 
+db(# 'column_modify_timestamp', 'cts');
+ alter_table_conflict_detection
+--------------------------------
+ t
+
+db=# \d my_app.test_table
+```
+
+The function adds a `cts` column as specified in the function call. It also creates two triggers (`BEFORE INSERT` and `BEFORE UPDATE`) that are responsible for maintaining timestamps in the new column before each change.
+
+The new column specifies `NOT NULL` with a default value, which means that `ALTER TABLE ... ADD COLUMN` doesn't perform a table rewrite.
+
+!!! Note 
+    Avoid using columns with the `bdr.column_timestamps` data type for other purposes, as doing so can have negative effects. For example, it switches the table to column-level conflict resolution, which doesn't work correctly without the triggers.
+
+### Listing table with column-level conflict resolution
+
+You can list tables having column-level conflict resolution enabled with the following query. This query detects the presence of a column of type `bdr.column_timestamp`.
+
+```sql
+SELECT nc.nspname, c.relname
+FROM pg_attribute a
+JOIN (pg_class c JOIN pg_namespace nc ON c.relnamespace = nc.oid)
+  ON a.attrelid = c.oid
+JOIN (pg_type t  JOIN pg_namespace nt ON t.typnamespace = nt.oid)
+  ON a.atttypid = t.oid
+WHERE NOT pg_is_other_temp_schema(nc.oid)
+  AND nt.nspname = 'bdr'
+  AND t.typname = 'column_timestamps'
+  AND NOT a.attisdropped
+  AND c.relkind IN ('r', 'v', 'f', 'p');
+```
+
+### bdr.column_timestamps_create
+
+This function creates column-level conflict resolution. It's called within `column_timestamp_enable`.
+
+#### Synopsis
+
+```sql
+bdr.column_timestamps_create(p_source cstring, p_timestamp timestampstz)
+```
+
+#### Parameters
+
+-   `p_source` &mdash; The two options are `current` or `commit`.
+-   `p_timestamp` &mdash; Timestamp depends on the source chosen. If `commit`, then `TIMESTAMP_SOURCE_COMMIT`. If `current`, then `TIMESTAMP_SOURCE_CURRENT`.
