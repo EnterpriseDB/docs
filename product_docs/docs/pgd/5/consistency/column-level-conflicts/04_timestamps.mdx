@@ -1,0 +1,81 @@
+## Current versus commit timestamp
+
+An important decision is the timestamp to assign to modified columns.
+
+By default, the timestamp assigned to modified columns is the current timestamp, as if obtained from `clock_timestamp`. This is simple, and for many cases it is correct (for example, when the conflicting rows modify non-overlapping subsets of columns).
+
+It can, however, have various unexpected effects:
+
+-   The timestamp changes during statement execution. So, if an `UPDATE` affects multiple rows, each gets a slightly different timestamp. This means that the effects of concurrent changes might get "mixed" in various ways, depending on how the changes performed on different nodes interleave.
+
+-   The timestamp is unrelated to the commit timestamp. Using it to resolve conflicts means that the result isn't equivalent to the commit order, which means it likely can't be serialized.
+
+!!! Note
+    Statement and transaction timestamps might be added in the future, which will address issues with mixing effects of concurrent statements or transactions. Still, neither of these options can ever produce results equivalent to commit order.
+
+You can also use the actual commit timestamp, although this feature is considered experimental. To use the commit timestamp, set the last parameter to `true` when enabling column-level conflict resolution:
+
+```sql
+SELECT bdr.column_timestamps_enable('test_table'::regclass, 'cts', true);
+```
+
+You can disable it using `bdr.column_timestamps_disable`.
+
+Commit timestamps currently have restrictions that are explained in [Notes](#notes).
+
+## Inspecting column timestamps
+
+The column storing timestamps for modified columns is maintained by triggers. Don't modify it directly. It can be useful to inspect the current timestamps value, for example, while investigating how a conflict was resolved.
+
+Three functions are useful for this purpose:
+
+-   `bdr.column_timestamps_to_text(bdr.column_timestamps)`
+
+    This function returns a human-readable representation of the timestamp mapping and
+    is used when casting the value to `text`:
+
+```sql
+db=# select cts::text from test_table;
+                                                 cts
+-----------------------------------------------------------------------------------------------------
+ {source: current, default: 2018-09-23 19:24:52.118583+02, map: [2 : 2018-09-23 19:25:02.590677+02]}
+(1 row)
+
+```
+
+-   `bdr.column_timestamps_to_jsonb(bdr.column_timestamps)`
+
+    This function turns a JSONB representation of the timestamps mapping and is used
+    when casting the value to `jsonb`:
+
+```sql
+db=# select jsonb_pretty(cts::jsonb) from test_table;
+                   jsonb_pretty
+---------------------------------------------------
+ {                                                +
+     "map": {                                     +
+         "2": "2018-09-23T19:24:52.118583+02:00"  +
+     },                                           +
+     "source": "current",                         +
+     "default": "2018-09-23T19:24:52.118583+02:00"+
+ }
+(1 row)
+```
+
+-   `bdr.column_timestamps_resolve(bdr.column_timestamps, xid)`
+
+    This function updates the mapping with the commit timestamp for the attributes modified by the most recent transaction if it already committed. This matters only when using the commit timestamp. For example, in this case, the last transaction updated the second attribute (with `attnum = 2`):
+
+```sql
+test=# select cts::jsonb from test_table;
+                                                                  cts
+----------------------------------------------------------------------------------------------------------------------------------------
+ {"map": {"2": "2018-09-23T19:29:55.581823+02:00"}, "source": "commit", "default": "2018-09-23T19:29:55.581823+02:00", "modified": [2]}
+(1 row)
+
+db=# select bdr.column_timestamps_resolve(cts, xmin)::jsonb from test_table;
+                                               column_timestamps_resolve
+-----------------------------------------------------------------------------------------------------------------------
+ {"map": {"2": "2018-09-23T19:29:55.581823+02:00"}, "source": "commit", "default": "2018-09-23T19:29:55.581823+02:00"}
+(1 row)
+```
