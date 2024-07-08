@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Trusted Postgres Architect 23.33",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.33 includes platform support for Debian 12, enables PGD 5.5 read-only proxies and adds the ability to deploy beacon agent for EDB Postgres AI into your deployed clusters.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.33_rel_notes/",
+  },
+  {
     title: "EDB Postgres Distributed 5.5",
     icon: IconNames.HIGH_AVAILABILITY,
     description:

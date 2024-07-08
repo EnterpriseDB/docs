@@ -12,19 +12,21 @@ import {
 } from "../components/advanced-search";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import { products } from "../constants/products";
+// loaded client-side for use by Algolia
+import aa from "search-insights"; // eslint-disable-line no-unused-vars
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
   "fb05499144f0399f5985485b624a0290",
 );
 
+const excludedFacets = Object.entries(products)
+  .filter(([id, { noSearch }]) => noSearch)
+  .map(([id]) => `product:-${id}`);
+
 const Search = (data) => {
   const paramSearchState = queryParamsToState(data.location.search);
   const { algoliaIndex } = useSiteMetadata();
-
-  const excludedFacets = Object.entries(products)
-    .filter(([id, { noSearch }]) => noSearch)
-    .map(([id]) => `product:-${id}`);
 
   return (
     <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
@@ -37,12 +39,13 @@ const Search = (data) => {
             writeStateToQueryParams(uiState[algoliaIndex]);
             setUiState(uiState);
           }}
-          insights={false}
+          future={{ preserveSharedStateOnUnmount: true }}
+          insights={true}
         >
           <Configure
             hitsPerPage={30}
             facetingAfterDistinct={true}
-            distinct="4"
+            distinct={4}
             advancedSyntax={true}
             facetFilters={excludedFacets}
           />
@@ -53,7 +56,7 @@ const Search = (data) => {
 
           <div className="flex-grow-1 border-end min-w-50">
             <Navbar variant="light" className="flex-md-nowrap p-3">
-              <AdvancedSearchForm />
+              <AdvancedSearchForm initialQuery={paramSearchState.query} />
             </Navbar>
 
             <main role="main" className="content-container mt-0 p-3">
