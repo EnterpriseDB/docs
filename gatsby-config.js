@@ -94,6 +94,7 @@ const sourceToPluginConfig = {
   },
   pgpool: { name: "pgpool", path: "product_docs/docs/pgpool" },
   postgis: { name: "postgis", path: "product_docs/docs/postgis" },
+  pwr: { name: "pwr", path: "product_docs/docs/pwr" },
   repmgr: { name: "repmgr", path: "product_docs/docs/repmgr" },
   slony: { name: "slony", path: "product_docs/docs/slony" },
   tde: { name: "tde", path: "product_docs/docs/tde" },
@@ -299,12 +300,20 @@ module.exports = {
         lessBabel: true,
         gatsbyRemarkPlugins: [
           {
+            resolve: require.resolve("./src/plugins/preserve-image-style"),
+          },
+          {
             resolve: "gatsby-remark-images",
             options: {
               linkImagesToOriginal: false,
               showCaptions: false,
+              disableBgImage: true,
+              backgroundColor: "none",
               maxWidth: 1080,
             },
+          },
+          {
+            resolve: require.resolve("./src/plugins/preserve-image-style"),
           },
           {
             resolve: `gatsby-remark-autolink-headers`,

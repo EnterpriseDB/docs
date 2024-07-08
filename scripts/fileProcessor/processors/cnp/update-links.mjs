@@ -44,6 +44,7 @@ function linkRewriter() {
     // - update links to release_notes to rel_notes
     // - update links to appendixes/* to /*
     // - update links *from* appendixes/* to /*
+    // - update links to cloudnative-pg.v1.md to pg4k.v1.md
     visit(tree, ["link", "yaml"], (node) => {
       if (node.type === "yaml")
       {
@@ -62,6 +63,8 @@ function linkRewriter() {
         node.url = "rel_notes";
       else if (node.url === "release_notes.md")
         node.url = "rel_notes";
+      else if (node.url.includes("cloudnative-pg.v1.md"))
+        node.url = node.url.replace("cloudnative-pg.v1.md", "pg4k.v1.md");
     });
   };
 }

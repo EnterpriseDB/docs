@@ -1,11 +1,10 @@
 import React from "react";
 import { Link } from "./";
 
-const PrevNext = ({ prevNext, depth, depthLimit = 3 }) => {
+const PrevNext = ({ prevNext }) => {
   let prevLink = prevNext.prev;
   let nextLink = prevNext.next;
-  if (depth <= depthLimit) prevLink = null;
-  if ((nextLink?.depth || 0) <= depthLimit) nextLink = null;
+  let upLink = prevNext.up;
 
   return (
     <div className="d-flex justify-content-between mt-5">
@@ -17,6 +16,17 @@ const PrevNext = ({ prevNext, depth, depthLimit = 3 }) => {
           >
             <h5 className="m-0">&larr; Prev</h5>
             <p className="m-0 small balance-text">{prevLink.title}</p>
+          </Link>
+        )}
+      </div>
+      <div className="max-w-40">
+        {upLink && (
+          <Link
+            to={upLink.path}
+            className="p-3 d-inline-block btn btn-outline-primary text-start"
+          >
+            <h5 className="m-0">&uarr; Up</h5>
+            <p className="m-0 small balance-text">{upLink.title}</p>
           </Link>
         )}
       </div>

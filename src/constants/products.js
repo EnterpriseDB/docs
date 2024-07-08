@@ -68,14 +68,26 @@ export const products = {
   postgres_distributed_for_kubernetes: {
     name: "EDB Postgres Distributed for Kubernetes",
     iconName: IconNames.KUBERNETES,
-    noSearch: true, // remove this when PG4K-PGD is released!
   },
   postgres_for_kubernetes: {
     name: "EDB Postgres for Kubernetes",
     iconName: IconNames.KUBERNETES,
   },
+  pwr: {
+    name: "Postgres Workload Report",
+    iconName: IconNames.TOOLS,
+  },
+  // note: the key here doesn't have to be anything specific,
+  // as long as it matches the value used for the `product:` key in the relevant frontmatter
+  // I recommend using the actual product name (same as what's used in the next line), just to
+  // make it obvious that this ISN'T a directory name or something defined in gatsby_config.js
+  // But we could also call it "Bob", as long as e.g. pg_extensions/pg_squeeze/index.mdx contains product: Bob
   "EDB Query Advisor": {
     name: "EDB Query Advisor",
+    iconName: IconNames.POSTGRESQL,
+  },
+  "PG Squeeze": {
+    name: "PG Squeeze",
     iconName: IconNames.POSTGRESQL,
   },
   CloudNativePG: { name: "CloudNativePG" },
@@ -84,4 +96,8 @@ export const products = {
   tde: { name: "Transparent Data Encryption", iconName: IconNames.SECURITY },
   tpa: { name: "Trusted Postgres Architect", iconName: IconNames.INSTANCES },
   wait_states: { name: "EDB Wait States", iconName: IconNames.POSTGRESQL },
+  "EDB Postgres AI": {
+    name: "EDB Postgres AI",
+    iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
 };

@@ -181,10 +181,7 @@ const buildFinalAlgoliaNodes = (nodes, productVersions) => {
     const algoliaNode = mdxNodeToAlgoliaNode(node, productVersions);
 
     // skip indexing this content for now
-    if (
-      node.path.includes("/postgresql_journey/") ||
-      node.path.includes("/playground/")
-    ) {
+    if (node.path.includes("/playground/")) {
       console.log(`skipped indexing ${node.path}`);
       continue;
     }

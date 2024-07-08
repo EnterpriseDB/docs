@@ -167,7 +167,7 @@ table and use that instead. Doing so doesn't require you to stop the consensus w
 #### Synopsis
 
 ```sql
-bdr.consensus_snapshot_import(IN snapshot bytea)
+bdr.consensus_snapshot_import(snapshot bytea)
 ```
 
 Import a consensus snapshot that was exported by
@@ -206,7 +206,7 @@ applied log position.
 #### Synopsis
 
 ```sql
-bdr.consensus_snapshot_verify(IN snapshot bytea)
+bdr.consensus_snapshot_verify(snapshot bytea)
 ```
 
 Verify the given consensus snapshot that was exported by
@@ -232,7 +232,9 @@ Alias for `bdr.get_consensus_status`.
 #### Synopsis
 
 ```sql
-bdr.raft_leadership_transfer(IN node_name text, IN wait_for_completion boolean)
+bdr.raft_leadership_transfer(node_name text, 
+                             wait_for_completion boolean, 
+                             node_group_name text DEFAULT NULL)
 ```
 
 Request the node identified by `node_name` to be the Raft leader. The
@@ -253,6 +255,12 @@ the given node becomes the new leader and possibly waits infinitely if
 the requested node fails to become Raft leader (for example, due to network
 issues). We therefore recommend that you always set a `statement_timeout`
 with `wait_for_completion` to prevent an infinite loop.
+
+The `node_group_name` is optional and can be used to specify the name of the node group where the
+leadership transfer happens. If not specified, it defaults to NULL, which
+is interpreted as the top-level group in the cluster. If the `node_group_name` is
+specified, the function transfers leadership only within the specified node
+group.
 
 ## Utility functions
 
@@ -364,6 +372,32 @@ bdr.get_node_sub_apply_lsn(node_name name)
 
 -   `node_name` &mdash; the name of the node that's the source of the
     replication stream whose LSN is being retrieved.
+
+### `bdr.replicate_ddl_command`
+
+Function to replicate a DDL command to a group of nodes.
+
+#### Synopsis
+
+```sql
+bdr.replicate_ddl_command(ddl_cmd text,
+                          replication_sets text[],
+                          ddl_locking text,
+                          execute_locally bool)
+```
+
+#### Parameters
+
+- `ddl_cmd` &mdash; DDL command to execute.
+- `replication_sets` &mdash; An array of replication set names to apply the `ddlcommand` to. If NULL (or the function is only passed the `ddlcommand`), this is set to the active PGD groups's default replication set.
+- `ddl_locking` &mdash; A string that sets the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) value while replicating. Defaults to the GUC value for `bdr.ddl_locking` on the local system that is running the replicate_ddl_command.
+- `execute_locally` &mdash; A boolean which determines whether the DDL command will be executed locally. Defaults to true.
+
+#### Notes
+
+The only required parameter of this function is `ddl_cmd`.
+
+`bdr.replicate_ddl_command()` will always replicate the command and is unaffected by the setting of [`bdr.ddl_replication`](./pgd-settings#bdrddl_replication).
 
 ### `bdr.run_on_all_nodes`
 
@@ -536,7 +570,7 @@ replicate DDL.
 ### `bdr.global_lock_table`
 
 This function acquires a global DML locks on a given table.
-See [DDL locking details](../ddl#ddl-locking-details) for information
+See [DDL locking details](../ddl/ddl-locking.mdx) for information
 about global DML lock.
 
 #### Synopsis
@@ -950,25 +984,29 @@ bdr.lag_control()
 
 #### Output columns
 
-- `commit_delay` &mdash; Current runtime commit delay, in fractional milliseconds.
+- `commit_scope_id` &mdash; OID of the commit scope (see [`bdr.commit_scopes`](/pgd/latest/reference/catalogs-visible#bdrcommit_scopes)))
 
-- `commit_delay_maximum` &mdash; Configured maximum commit delay, in fractional milliseconds.
+- `sessions` &mdash; Number of sessions referencing the lag control entry
 
-- `commit_delay_adjustment` &mdash; Change to runtime commit delay possible during
+- `current_commit_delay` &mdash; Current runtime commit delay, in fractional milliseconds.
+
+- `maximum_commit_delay` &mdash; Configured maximum commit delay, in fractional milliseconds.
+
+- `commit_delay_adjust` &mdash; Change to runtime commit delay possible during
   a sample interval, in fractional milliseconds.
 
-- `conforming_nodes` &mdash; Current runtime number of nodes conforming to lag measures.
+- `curent_conforming_nodes` &mdash; Current runtime number of nodes conforming to lag measures.
 
-- `conforming_nodes_minimum` &mdash; Configured minimum number of nodes required to
+- `minimum_conforming_nodes` &mdash; Configured minimum number of nodes required to
   conform to lag measures, below which a commit delay adjustment is applied.
 
 - `lag_bytes_threshold` &mdash; Lag size at which a commit delay is applied, in kilobytes.
 
-- `lag_bytes_maximum` &mdash; Configured maximum lag size, in kilobytes.
+- `maximum_lag_bytes` &mdash; Configured maximum lag size, in kilobytes.
 
 - `lag_time_threshold` &mdash; Lag time at which a commit delay is applied, in milliseconds.
 
-- `lag_time_maximum` &mdash; Configured maximum lag time, in milliseconds.
+- `maximum_lag_time` &mdash; Configured maximum lag time, in milliseconds.
 
 - `sample_interval` &mdash; Configured minimum time between lag samples and possible
   commit delay adjustments, in milliseconds.
@@ -1103,6 +1141,14 @@ bdr.alter_commit_scope(
     origin_node_group NAME,
     rule TEXT)
 ```
+
+#### Note
+
+When using `bdr.add_commit_scope` if a new commit scope is added which has the
+same name as a commit scope on any group, then the commit scope silently
+overwrites the commit scope but retains the original group the scope was
+associated with (if any). To modify a commit scope safely, use
+[`bdr.alter_commit_scope`](#bdralter_commit_scope).
 
 ### `bdr.remove_commit_scope`
 

@@ -1,0 +1,69 @@
+---
+title: Known issues with distributed high availability/PGD
+navTitle: Distributed high availability/PGD known issues
+deepToC: true
+redirects:
+- /biganimal/latest/known_issues/known_issues_dha/
+---
+
+These are currently known issues in EDB Postgres Distributed (PGD) on BigAnimal as deployed in distributed high availability clusters. 
+These known issues are tracked in our ticketing system and are expected to be resolved in a future release. 
+
+For general PGD known issues, refer to the [Known Issues](/pgd/latest/known_issues/) and [Limitations](/pgd/latest/limitations/) in the PGD documentation.
+
+## Management/administration
+
+### Deleting a PGD data group may not fully reconcile 
+When deleting a PGD data group, the target group resources is physically deleted, but in some cases we have observed that the PGD nodes may not be completely partitioned from the remaining PGD Groups. 
+We recommend avoiding use of this feature until this is fixed and removed from the known issues list.
+
+### Adjusting PGD cluster architecture may not fully reconcile
+In rare cases, we have observed that changing the node architecture of an existing PGD cluster may not complete. 
+If a change hasn't taken effect in 1 hour, reach out to Support. 
+
+### PGD cluster may fail to create due to Azure SKU issue
+In some cases, although a regional quota check may have passed initially when the PGD cluster is created, it may fail if an SKU critical for the witness nodes is unavailable across three availability zones.
+To check for this issue at the time of a region quota check, run: 
+
+```
+biganimal-csp-preflight --onboard -i d2s_v3 -x eha <azure-sub-id> <azure-region>
+```
+
+If you have already encountered this issue, reach out to Azure support: 
+
+```plaintext
+We're going to be provisioning a number of instances of <SKU TYPE> in <TARGET REGION> and need to be able to provision these instances in all AZs. Can you please ensure that subscription <AA BYOA AZURE SUBSCRIPTION> is able to provision this VM type in all AZs of <TARGET REGION>. Thank you!
+```
+
+### Changing the default database name is not possible
+Currently, the default database for a replicated PGD cluster is `bdrdb`. 
+This cannot be changed, either at initialization or after the cluster is created.
+
+## Replication
+
+### Replication speed is slow during a large data migration
+During a large data migration, when migrating to a PGD cluster, you may experience a replication rate of 20 MBps. 
+
+### PGD leadership change on healthy cluster
+PGD clusters that are in a healthy state may experience a change in PGD node leadership, potentially resulting in failover. 
+The client applications will need to reconnect when a leadership change occurs.
+
+### Extensions which require alternate roles are not supported
+Where an extension requires a role other than the default role (`bdr_application`) used for replication, it will fail when attempting to replicate. 
+This is because PGD runs replication writer operations as a `SECURITY_RESTRICTED_OPERATION` to mitigate the risk of privilege escalation.
+Attempts to install such extensions may cause the cluster to fail to operate.
+
+## Migration
+
+### Connection interruption disrupts migration via Migration Toolkit 
+When using Migration Toolkit (MTK), if the session is interrupted, the migration errors out. To resolve, you need to restart the migration from the beginning. 
+The recommended path to avoid this is to migrate on a per-table basis when using MTK so that if this issue does occur, you retry the migration with a table rather than the whole database.
+
+### Ensure loaderCount is less than 1 in Migration ToolKit 
+When using Migration Toolkit to migrate a PGD cluster, if you adjusted the loaderCount to be greater than 1 to speed up migration, you may see an error in the MTK CLI that says “pgsql_tmp/': No such file or directory.” 
+If you see this, reduce your loaderCount to 1 in MTK. 
+
+## Tools
+
+### Verify-settings command via PGD CLI provides false negative for PGD on BigAnimal clusters
+When used with PGD on BigAnimal clusters, the command verify-settings in the PGD CLI displays that a “node is unreachable.” 

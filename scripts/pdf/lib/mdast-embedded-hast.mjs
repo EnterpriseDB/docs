@@ -29,6 +29,8 @@ export default function remarkMdxEmbeddedHast() {
           .parse(node.value);
 
         if (isUsableHast(hast)) {
+          if (node.position?.start)
+            offsetPosition(hast, node.position?.start);
           node.type = "jsx-hast";
           node.children = hast.children;
         } else if (isOpeningTag(hast, node.value)) {
@@ -176,5 +178,18 @@ export default function remarkMdxEmbeddedHast() {
 
       return container.replace(endTag, content + endTag);
     }
+  }
+
+  function offsetPosition(node, offsetPoint)
+  {
+    visit(node, (child) => {
+      if (!child.position) return;
+      if (child.position.start?.line) child.position.start.line += offsetPoint.line - 1;
+      if (child.position.start?.column) child.position.start.column += offsetPoint.column - 1;
+      if (child.position.start?.offset) child.position.start.offset += offsetPoint.offset;
+      if (child.position.end?.line) child.position.end.line += offsetPoint.line - 1;
+      if (child.position.end?.column) child.position.end.column += offsetPoint.column - 1;
+      if (child.position.end?.offset) child.position.end.offset += offsetPoint.offset;
+    });
   }
 }
