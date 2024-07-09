@@ -32,3 +32,27 @@ Applied to the previous example, the result is `(100,100)` on both nodes, despit
 When thinking about column-level conflict resolution, it can be useful to see tables as vertically partitioned, so that each update affects data in only one slice. This approach eliminates conflicts between changes to different subsets of columns. In fact, vertical partitioning can even be a practical alternative to column-level conflict resolution.
 
 Column-level conflict resolution requires the table to have `REPLICA IDENTITY FULL`. The `bdr.alter_table_conflict_detection` function checks that and fails with an error if this setting is missing.
+
+
+
+
+-  By treating the columns independently, it's easy to violate constraints in a way that isn't possible when all changes happen on the same node. Consider, for example, a table like this:
+
+   ```sql
+   CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, CHECK (a > b));
+   INSERT INTO t VALUES (1, 1000, 1);
+   ```
+
+   Assume one node does:
+
+   ```sql
+   UPDATE t SET a = 100;
+   ```
+
+   Another node concurrently does:
+
+   ```sql
+   UPDATE t SET b = 500;
+   ```
+
+   Each of those updates is valid when executed on the initial row and so passes on each node. But when replicating to the other node, the resulting row violates the `CHECK (A > b)` constraint, and the replication stops until the issue is resolved manually.
