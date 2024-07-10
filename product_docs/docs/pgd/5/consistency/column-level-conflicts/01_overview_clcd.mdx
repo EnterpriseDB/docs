@@ -21,6 +21,10 @@ On another node, before receiving the preceding `UPDATE`, concurrently execute:
 UPDATE t SET b = 100
 ```
 
+!!! Note
+The attributes modified by an `UPDATE` are determined by comparing the old and new row in a trigger. This means that if the attribute doesn't change a value, it isn't detected as modified even if it's explicitly set. For example, `UPDATE t SET a = a` doesn't mark `a` as modified for any row. Similarly, `UPDATE t SET a = 1` doesn't mark `a` as modified for rows that are already set to `1`.
+!!!
+
 This sequence results in an `UPDATE-UPDATE` conflict. With the `update_if_newer` conflict resolution, the commit timestamps are compared, and the new row version is kept. Assuming the second node committed last, the result is `(1,100)`, which effectively discards the change to column a.
 
 For many use cases, this behavior is desired and expected. However, for some use cases, this might be an issue. Consider, for example, a multi-node cluster where each part of the application is connected to a different node, updating a dedicated subset of columns in a shared table. In that case, the different components might conflict and overwrite changes.
@@ -33,10 +37,7 @@ When thinking about column-level conflict resolution, it can be useful to see ta
 
 Column-level conflict resolution requires the table to have `REPLICA IDENTITY FULL`. The `bdr.alter_table_conflict_detection` function checks that and fails with an error if this setting is missing.
 
-
-
-
--  By treating the columns independently, it's easy to violate constraints in a way that isn't possible when all changes happen on the same node. Consider, for example, a table like this:
+By treating the columns independently, it's easy to violate constraints in a way that isn't possible when all changes happen on the same node. Consider, for example, a table like this:
 
    ```sql
    CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, CHECK (a > b));
@@ -55,4 +56,4 @@ Column-level conflict resolution requires the table to have `REPLICA IDENTITY FU
    UPDATE t SET b = 500;
    ```
 
-   Each of those updates is valid when executed on the initial row and so passes on each node. But when replicating to the other node, the resulting row violates the `CHECK (A > b)` constraint, and the replication stops until the issue is resolved manually.
+Each of those updates is valid when executed on the initial row and so passes on each node. But when replicating to the other node, the resulting row violates the `CHECK (A > b)` constraint, and the replication stops until the issue is resolved manually.
