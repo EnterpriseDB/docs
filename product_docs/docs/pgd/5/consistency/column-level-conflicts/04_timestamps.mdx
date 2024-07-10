@@ -7,7 +7,11 @@ redirects:
 
 ## Current versus commit timestamp
 
-An important decision is the timestamp to assign to modified columns.
+An important decision is which timestamp to assign to modified columns.
+
+!!! Note
+The column storing timestamp mapping is managed automatically. Don't specify or override the value in your queries, as the results can be unpredictable. (The value is ignored where possible.)
+!!!
 
 By default, the timestamp assigned to modified columns is the current timestamp, as if obtained from `clock_timestamp`. This is simple, and for many cases it is correct (for example, when the conflicting rows modify non-overlapping subsets of columns).
 
@@ -15,13 +19,10 @@ By default, the timestamp assigned to modified columns is the current timestamp,
 A clock skew can occur between different nodes. It can induce somewhat unexpected behavior, discarding seemingly newer changes because the timestamps are inverted. However, you can manage clock skew between nodes using the parameters `bdr.maximum_clock_skew` and `bdr.maximum_clock_skew_action`.
 !!! 
 
-!!! Note
-The column storing timestamp mapping is managed automatically. Don't specify or override the value in your queries, as the results can be unpredictable. (The value is ignored where possible.)
-!!!
-
 It can, however, have various unexpected effects:
 
 -   The timestamp changes during statement execution. So, if an `UPDATE` affects multiple rows, each gets a slightly different timestamp. This means that the effects of concurrent changes might get "mixed" in various ways, depending on how the changes performed on different nodes interleave.
+
 
 -   The timestamp is unrelated to the commit timestamp. Using it to resolve conflicts means that the result isn't equivalent to the commit order, which means it likely can't be serialized.
 
@@ -40,16 +41,13 @@ You can disable it using `bdr.column_timestamps_disable`.
 When using regular timestamps to order changes or commits, the conflicting changes might have exactly the same timestamp because two or more nodes happened to generate the same timestamp. This risk isn't unique to column-level conflict resolution, as it can happen even for regular row-level conflict resolution. The node id is the tie breaker in this situation. The higher node id wins. This approach ensures that the same changes are applied on all nodes.
 !!!
 
-Commit timestamps currently have restrictions that are explained in [Notes](#notes).
-
 ## Inspecting column timestamps
 
 The column storing timestamps for modified columns is maintained by triggers. Don't modify it directly. It can be useful to inspect the current timestamps value, for example, while investigating how a conflict was resolved. 
 
 !!! Note
-While the timestamp mapping is maintained by triggers, the order in which triggers execute matters. So if you have custom triggers that modify tuples and are executed after the `pgl_clcd_` triggers, the modified columns aren't detected correctly.
+The timestamp mapping is maintained by triggers and the order in which triggers execute matters. So if you have custom triggers that modify tuples and are executed after the `pgl_clcd_` triggers, the modified columns aren't detected correctly.
 !!!
-
 
 Three functions are useful for this purpose:
 
@@ -104,7 +102,6 @@ db=# select bdr.column_timestamps_resolve(cts, xmin)::jsonb from test_table;
 (1 row)
 ```
 
--   A clock skew can occur between different nodes. It can induce somewhat unexpected behavior, discarding seemingly newer changes because the timestamps are inverted. However, you can manage clock skew between nodes using the parameters `bdr.maximum_clock_skew` and `bdr.maximum_clock_skew_action`.
 -   For `INSERT` statements, there's no old row to compare the new one to, so all attributes are considered to be modified, and they are assigned a new timestamp. This condition applies even for columns that weren't included in the `INSERT` statement and received default values. PGD can detect the attributes that have a default value but can't know if it was included automatically or specified explicitly.
 -  The attributes modified by an `UPDATE` are determined by comparing the old and new row in a trigger. This means that if the attribute doesn't change a value, it isn't detected as modified even if it's explicitly set. For example, `UPDATE t SET a = a` doesn't mark `a` as modified for any row. Similarly, `UPDATE t SET a = 1` doesn't mark `a` as modified for rows that are already set to `1`.
 
