@@ -81,7 +81,11 @@ As with any release of software to production, these generally critical techniqu
 
     **Rollback strategy**: If something goes wrong at this stage, you can simply drop the newly added `surname` column. Since your application is forward-compatible, this won't affect its operation.
 
-    ![](./images/mixed_db.jpeg)
+<center>
+
+![](images/blue-green_single_additive.svg)
+
+</center>
 
 2. Push traffic to one VM to be blue. Upgrade the other to green. Thoroughly test green. 
 
@@ -89,7 +93,11 @@ As with any release of software to production, these generally critical techniqu
 
     **Rollback strategy**: If issues are detected during testing, you can roll back the green environment to the previous version of the application. Since all traffic is still being served by the other half of your applications, this won't affect users.
 
-    ![](./images/intro_green.jpeg)
+<center>
+
+![](images/blue-green_single_traffic1.svg)
+
+</center>
 
 3. Push traffic to green, upgrade blue.
 
@@ -97,7 +105,11 @@ As with any release of software to production, these generally critical techniqu
 
     **Rollback strategy**: If issues are detected after traffic has been routed to the green environment, you can quickly route traffic back to the blue (as long as it has not yet been upgraded) while you fix the issues in the green environment.
 
-     ![](./images/block_blue.jpeg)    
+<center>
+
+![](images/blue-green_single_traffic2.svg)    
+
+</center>
 
 4. Route traffic equally/fully to both VMs.
 
@@ -105,24 +117,41 @@ As with any release of software to production, these generally critical techniqu
 
     **Rollback strategy**: You can still rollback the application, but there will be some downtime. At this point your database is still fine with either a blue or green application, as blue is forward-compatible.
 
+<center>
+
+![](images/blue-green_single_subtractive.svg)    
+
+</center>
+
 5. Subtract Blue, all Green.
 
 The final step is to subtract the blue from the database. In this simple scenario, you must delete the old `family_name` column once everything is upgraded. This approach allows for zero downtime during the upgrade process, resulting in a system that is now all green.
 
 **Rollback strategy**: At this point, rollback would require restoring from a backup.
 
-![](./images/all_green.jpeg)    
+<center>
 
+![](images/blue-green_single_green.svg)    
+
+</center>
 
 ## Blue/green with cross-region high-availability clusters
 
-**Scenario**: Consider a production environment with applications distributed across two regions in either an active/active or active/passive configuration. Each application instance is serving traffic its own subgroup of an EDB Postgres Distributed cluster in its region. There is a witness node in a third group in a third region to weigh in on consensus decisions when necessary. In the users table of the database, you need to change the `family_name` column to `surname`, just like in the last scenario. You have the three essential capabilities for blue/green deployments involving stateful components: traffic routing, forward compatibility, and additive first subtractive last capability. Using these, you can successfully update your applications and database with zero downtime and reduced risk. The whole system starts as all blue.
+**Scenario**: Consider a production environment with applications distributed across two regions in either an active/active or active/passive configuration. Each application instance is serving traffic its own subgroup of an EDB Postgres Distributed cluster in its region. There is a witness node in a third group in a third region to weigh in on consensus decisions when necessary. 
 
-![](./images/pgd_overview.jpeg) 
+<center>
 
+![](images/blue-green_pgd_base.svg)    
 
-![](./images/pgd_all_blue.jpeg) 
+</center>
 
+In the users table of the database, you need to change the `family_name` column to `surname`, just like in the last scenario. You have the three essential capabilities for blue/green deployments involving stateful components: traffic routing, forward compatibility, and additive first subtractive last capability. Using these, you can successfully update your applications and database with zero downtime and reduced risk. The whole system starts as all blue.
+
+<center>
+
+![](images/blue-green_pgd_blue.svg)    
+
+</center>
 
 As with a single region case, it's crucial to manage any stateful objects in the application layer. However, distributed database systems present additional challenges when trying apply a blue/green deployment pattern. 
 
@@ -130,7 +159,11 @@ Fortunately, EDB Postgres Distributed (PGD) eases these challenges greatly, prim
 
 ### 1. Add green to the database. Can still rollback.
 
-![](./images/pgd_db_blue_green1.jpeg) 
+<center>
+
+![](images/blue-green_pgd_addition.svg)    
+
+</center>
 
 Add the new version (green) to the database. This involves adding the new column `surname` with data. At this stage, it's still possible to roll back if necessary.
 
@@ -139,7 +172,11 @@ Add the new version (green) to the database. This involves adding the new column
 
 ### 2. Push traffic to one side. Upgrade the other to green. Thoroughly test green. Can still rollback.
 
-![](./images/pgd_db_blue_green2.jpeg) 
+<center>
+
+![](images/blue-green_pgd_traffic1.svg)    
+
+</center>
 
 Push traffic to one of the two regions and block traffic to the other. This allows you to upgrade the blocked region to the green version and test thoroughly. At this point, it's still possible to rollback if necessary.
 
@@ -147,7 +184,11 @@ Push traffic to one of the two regions and block traffic to the other. This allo
 
 ### 3. Push traffic to green. Upgrade blue. Test blue.
 
-![](./images/pgd_db_blue_green3.jpeg) 
+<center>
+
+![](images/blue-green_pgd_traffic2.svg)    
+
+</center>
 
 Now flip the traffic from going to the blue environment to the green environment and test again. If all goes well, upgrade the blue version and test it.
 
@@ -156,7 +197,11 @@ Now flip the traffic from going to the blue environment to the green environment
 
 ### 4. Route traffic equally/fully to upgraded applications.
 
-![](./images/pgd_db_blue_green4.jpeg) 
+<center>
+
+![](images/blue-green_pgd_subractive.svg)    
+
+</center>
 
 This involves treating the PGD cluster as a single database despite being distributed across multiple regions. 
 
@@ -165,7 +210,11 @@ This involves treating the PGD cluster as a single database despite being distri
 
 ### 5. Subtract blue from the database. All green.
 
-![](./images/pgd_db_blue_green5.jpeg) 
+<center>
+
+![](images/blue-green_pgd_green.svg)    
+
+</center>
 
 Delete the old blue version from the database. That means removing the `family_name` column with DDL in this case. This final step allows for zero downtime during updates. The importance of considering the entire stack, not just the database layer, when discussing availability and upgrades is emphasized. The whole production system is now green.
 
@@ -185,41 +234,65 @@ These functions provided by PGD make node-level control of the deployment of dat
 
 **Scenario**: We have the same setup as we did in our last scenario, the only difference being that this time, we want to update a stored procedure in just the database layer, which is a DDL ALTER statement. We should still ensure that our existing application is forward-compatible with the changes we plan to roll out to the database layer. We start all blue.
 
-![](./images/pgd_db_only1.jpeg) 
+<center>
 
-### Deploy green to PGD Group A
+![](images/blue-green_pgd-node_blue.svg)    
 
-1. Deploy green to PGD node A2 only using transaction-level replication control so the changes replicate to other nodes.
-
-![](./images/pgd_db_only2.jpeg) 
-
-
-- Depending on your appetite for testing, you can optionally switch your traffic over to the blue site to enable testing of the green. Moreover, you could use the switchover feature to promote A2 to Write Leader (as depicted) to test through the application stack:
-
-2. Deploy green to PGD node A3.
-
-![](./images/pgd_db_only3.jpeg) 
-
-
-3. Deploy green to PGD node A1.
-
-![](./images/pgd_db_only4.jpeg) 
-
+</center>
 
 ### Deploy green to PGD Group B
 
-1. Apply changes to PGD node B2.
+1. Deploy green to PGD node B2 only using transaction-level replication control so the changes replicate to other nodes.
+
+<center>
+
+![](images/blue-green_pgd-node_b2.svg)    
+
+</center>
+
+- Depending on your appetite for testing, you can optionally switch your traffic over to the blue site to enable testing of the green. Moreover, you could use the switchover feature to promote A2 to Write Leader (as depicted) to test through the application stack:
+
+2. Deploy green to PGD node B3.
+
+<center>
+
+![](images/blue-green_pgd-node_b3.svg)    
+
+</center>
+
+3. Deploy green to PGD node B1.
+
+<center>
+
+![](images/blue-green_pgd-node_b1.svg)    
+
+</center>
+
+### Deploy green to PGD Group A
+
+1. Apply changes to PGD node A2.
 
 
-![](./images/pgd_db_only5.jpeg) 
+<center>
+
+![](images/blue-green_pgd-node_a2.svg)    
+
+</center>
 
 
-2. Apply changes to PGD node B3.
+2. Apply changes to PGD node A3.
 
 
-![](./images/pgd_db_only6.jpeg) 
+<center>
 
+![](images/blue-green_pgd-node_a3.svg)    
 
-3. Apply changes to PGD node B1. Re-enable traffic to PGD Group B. All green.
+</center>
 
-![](./images/pgd_db_only7.jpeg) 
+3. Apply changes to PGD node A1. Re-enable traffic to PGD Group A. All green.
+
+<center>
+
+![](images/blue-green_pgd-node_a1.svg)    
+
+</center>
