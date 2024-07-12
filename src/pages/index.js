@@ -179,14 +179,14 @@ const Page = () => {
               headingText="Console"
               to="/edb-postgres-ai/console"
             >
-              <BannerCardLink to="/edb-postgres-ai/console/getstarted">
-                Getting Started
+              <BannerCardLink to="/edb-postgres-ai/console/quickstart">
+                Quick Start
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/managing">
+                Managing EDB Postgres AI
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/console/estate">
-                Estate
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/agent">
-                Agent
+                Estate and Agents
               </BannerCardLink>
             </BannerSubCard>
 
