@@ -182,8 +182,8 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/console/quickstart">
                 Quick Start
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/managing">
-                Managing EDB Postgres AI
+              <BannerCardLink to="/edb-postgres-ai/console/using">
+                Using EDB Postgres AI
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/console/estate">
                 Estate and Agents
