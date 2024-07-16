@@ -12,6 +12,8 @@ import Icon, { iconNames } from "../components/icon";
 import useSiteMetadata from "../hooks/use-sitemetadata";
 import usePathPrefix from "../hooks/use-path-prefix";
 import { products } from "../constants/products";
+// loaded client-side for use by Algolia
+import aa from "search-insights"; // eslint-disable-line no-unused-vars
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",

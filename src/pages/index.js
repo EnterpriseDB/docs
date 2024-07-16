@@ -270,6 +270,12 @@ const Page = () => {
             </BannerSubCard>
           </BannerCard>
 
+          <BannerWideCard>
+            <BannerWideCardLink to="/repos/" iconName={iconNames.Download}>
+              Downloads and Repositories
+            </BannerWideCardLink>
+          </BannerWideCard>
+
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
               <IndexCardLink to="/epas/latest">
