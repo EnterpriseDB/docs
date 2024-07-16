@@ -15,7 +15,7 @@ Each node in a Failover Manager cluster has a properties file (by default, named
 After completing the Failover Manager installation, make a working copy of the template before modifying the file contents:
 
 ```text
-# cp /etc/edb/efm-4.8/efm.properties.in /etc/edb/efm-4.8/efm.properties
+# cp /etc/edb/efm-4.9/efm.properties.in /etc/edb/efm-4.9/efm.properties
 ```
 
 After copying the template file, change the owner of the file to efm:
@@ -66,7 +66,7 @@ Use the properties in the `efm.properties` file to specify connection, administr
 | [db.service.name](#db_service_name)                           |       |       |                                       | Required if running the database as a service.                                                                                                                  |
 | [db.bin](#db_bin)                                             | Y     |       |                                       | Directory containing the pg_controldata/pg_ctl commands such as '/usr/edb/as*nn*/bin'.                                                                            |
 | [db.data.dir](#db_data_dir)                                   | Y     |       |                                       | Same as the output of query 'show data_directory;'                                                                                                             |
-| [db.config.dir](#db_config_dir)                               |       |       |                                       | Same as the output of query 'show config_file;'. Should be specified if it is not same as *db.data.dir*.                                                        |
+| [db.config.dir](#db_config_dir)                               |       |       |                                       | Same as the output of query 'show config_file;'. Specify if it's not the same as *db.data.dir*.                                                        |
 | [jdbc.sslmode](#jdbc_sslmode)                                 | Y     | Y     | disable                               | See the [note](#jdbc_note).                                                                                                                                     |
 | [user.email](#user_email)                                     |       |       |                                       | This value must be same for all the agents; can be left blank if using a notification script.                                                                  |
 | [from.email](#from_email).                                     |       |       | [efm@localhost](mailto:efm@localhost) | Leave blank to use the default [efm@localhost](mailto:efm@localhost).                                                                                           |
@@ -224,42 +224,15 @@ db.bin=
 
 <div id="db_data_dir" class="registered_link"></div>
 
-Use the `db.data.dir` property to specify the location to write a recovery file on the primary node of the cluster during promotion. This property is required on primary and standby nodes. It isn't required on a dedicated witness node.
+Use the `db.data.dir` property to specify the location where a `standby.signal` or `recovery.conf` file will be created. This property is required on primary and standby nodes. It isn't required on a dedicated witness node.
 
 ```ini
-# For database version 12 and up, this is the directory where a
-# standby.signal file will exist for a standby node. For previous
-# versions, this is the location of the db recovery.conf file on
-# the node.
-# After a failover, the recovery.conf files on remaining standbys are
-# changed to point to the new primary db (a copy of the original is made
-# first). On a primary node, a recovery.conf file will be written during
-# failover and promotion to ensure that the primary node can not be
-# restarted as the primary database.
-# This corresponds to database environment variable PGDATA and should
-# be same as the output of query 'show data_directory;' on respective
-# database.
-db.data.dir=
-```
-
-
-<div id="db_data_dir" class="registered_link"></div>
-
-Use the `db.data.dir` property to specify the location to write a recovery file on the primary node of the cluster during promotion. This property is required on primary and standby nodes. It isn't required on a dedicated witness node.
-
-```ini
-# For database version 12 and up, this is the directory where a
-# standby.signal file will exist for a standby node. For previous
-# versions, this is the location of the db recovery.conf file on
-# the node.
-# After a failover, the recovery.conf files on remaining standbys are
-# changed to point to the new primary db (a copy of the original is made
-# first). On a primary node, a recovery.conf file will be written during
-# failover and promotion to ensure that the primary node can not be
-# restarted as the primary database.
-# This corresponds to database environment variable PGDATA and should
-# be same as the output of query 'show data_directory;' on respective
-# database.
+# This is the directory where a standby.signal file will exist for a standby node.
+# If a primary database fails, a recovery.conf file will be written in this
+# location to ensure that the failed database can not be restarted as the
+# primary database.
+# This corresponds to database environment variable PGDATA and should be same
+# as the output of query 'show data_directory;' on respective database.
 db.data.dir=
 ```
 
@@ -269,14 +242,13 @@ Use the `db.config.dir` property to specify the location of database configurati
 
 ```ini
 # Specify the location of database configuration files if they are
-# not contained in the same location as the recovery.conf or
-# standby.signal file. This is most likely the case for Debian
-# installations. The location specified will be used as the -D value
-# (the location of the data directory for the cluster) when calling
-# pg_ctl to start or stop the database. If this property is blank,
-# the db.data.dir location specified by the db.data.dir property will
-# be used. This corresponds to the output of query 'show config_file;'
-# on respective database.
+# not contained in the same location as the standby.signal
+# file. This is most likely the case for Debian installations. The location
+# specified will be used as the -D value (the location of the data directory
+# for the cluster) when calling pg_ctl to start or stop the database.
+# If this property is blank, the db.data.dir location specified by the
+# db.data.dir property will be used.
+# This corresponds to the output of query 'show config_file;' on respective database.
 db.config.dir=
 ```
 
@@ -304,7 +276,7 @@ jdbc.sslmode=disable
 <div id="jdbc_note" class="registered_link"></div>
 
 !!! Note
-    If you set the value of `jdbc.sslmode` to `verify-ca` and you want to use Java trust store for certificate validation, you need to set the following value:
+    If you set the value of `jdbc.sslmode` to `verify-ca` and you want to use Java trust store for certificate validation, you need to set the following value. This line can be added anywhere in the cluster properties file:
 
     `jdbc.properties=sslfactory=org.postgresql.ssl.DefaultJavaSSLFactory`
 
@@ -315,10 +287,10 @@ For information about configuring and using SSL, see [Secure TCP/IP Connections 
 Use the `user.email` property to specify an email address (or multiple email addresses) to receive notifications sent by Failover Manager.
 
 ```ini
-# Email address(es) for notifications. The value of this
-# property must be the same across all agents. Multiple email
-# addresses must be separated by space. If using a notification
-# script instead, this property can be left blank.
+# Email address(es) for notifications. The value of this property must
+# be the same across all agents. Multiple email addresses must
+# be separated by space. This is required if not using a 'script.notification'
+# script. Either/both can be used.
 user.email=
 ```
 
@@ -506,10 +478,11 @@ Use the `node.timeout` property to specify the number of seconds for an agent to
 node.timeout=50
 ```
 
-!!! Summary/comparison of timeout properties
-    - The `local.*` properties are for failure detection of an agent's local database.
-    - The `node.timeout` property is for failure detection of other nodes.
-    - The `remote.timeout` property limits how long agents wait for responses from other agents.
+!!!note Summary/comparison of timeout properties
+   - The `local.*` properties are for failure detection of an agent's local database.
+   - The `node.timeout` property is for failure detection of other nodes.
+   - The `remote.timeout` property limits how long agents wait for responses from other agents.
+!!!
 
 <div id="encrypt_agent_messages" class="registered_link"></div>
 
@@ -584,7 +557,7 @@ To perform maintenance on the primary database when `primary.shutdown.as.failure
 
 <div id="update_physical_slots_period" class="registered_link"></div>
 
-Use the `update.physical.slots.period` property to define the slot advance frequency for database version 12 and later. When `update.physical.slots.period` is set to a positive integer value, the primary agent reads the current `restart_lsn` of the physical replication slots after every `update.physical.slots.period` seconds and sends this information with its `pg_current_wal_lsn` and `primary_slot_name` (if it is set in the postgresql.conf file) to the standbys. The physical slots must already exist on the primary for the agent to find them. If physical slots do not already exist on the standbys, standby agents create the slots and then update `restart_lsn` parameter for these slots. A non-promotable standby doesn't create new slots but updates them if they exist.
+Use the `update.physical.slots.period` property to define the slot advance frequency. When `update.physical.slots.period` is set to a positive integer value, the primary agent reads the current `restart_lsn` of the physical replication slots after every `update.physical.slots.period` seconds. It sends this information with its `pg_current_wal_lsn` and `primary_slot_name` (if it's set in the `postgresql.conf` file) to the standbys. The physical slots must already exist on the primary for the agent to find them. If physical slots don't already exist on the standbys, standby agents create the slots and then update the `restart_lsn` parameter for these slots. A non-promotable standby doesn't create new slots but updates them if they exist.
 
 Before updating the `restart_lsn` value of a slot, the agent checks to see if an `xmin` value has been set, which may happen if this was previously a primary node. If an `xmin` value has been set for the slot, the agent drops and recreates the slot before updating the `restart_lsn` value.
 
@@ -690,15 +663,14 @@ auto.failover=true
 
 <div id="auto_reconfigure" class="registered_link"></div>
 
-Use the `auto.reconfigure` property to instruct Failover Manager to enable or disable automatic reconfiguration of remaining standby servers after the primary standby is promoted to primary. Set the property to `true` (the default) to enable automatic reconfiguration or `false` to disable automatic reconfiguration. This property isn't required on a dedicated witness node. If you're using EDB Postgres Advanced Server or PostgreSQL version 11, the `recovery.conf` file is backed up during the reconfiguration process.
+Use the `auto.reconfigure` property to instruct Failover Manager to enable or disable automatic reconfiguration of remaining standby servers after the primary standby is promoted to primary. Set the property to `true` (the default) to enable automatic reconfiguration or `false` to disable automatic reconfiguration. This property isn't required on a dedicated witness node.
 
 ```ini
 # After a standby is promoted, Failover Manager will attempt to
-# update the remaining standbys to use the new primary. For database
-# versions before 12, Failover Manager will back up recovery.conf.
-# Then it will change the host parameter of the primary_conninfo entry
-# in recovery.conf or postgresql.auto.conf, and restart the database.
-# The restart command is contained in either the efm_db_functions or
+# update the remaining standbys to use the new primary. Failover
+# Manager will change the host parameter of the primary_conninfo
+# entry in postgresql.auto.conf and restart the database. The
+# restart command is contained in either the efm_db_functions or
 # efm_root_functions file; default when not running db as an os
 # service is: "pg_ctl restart -m fast -w -t <timeout> -D <directory>"
 # where the timeout is the local.timeout property value and the

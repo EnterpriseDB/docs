@@ -288,7 +288,11 @@ function convertNodes(node, root, activeMarks = [], allowedTypes = allTypes) {
     html: NIblock,
     image: NI,
     imageReference: NI,
-    inlineCode: (node) => addMark("code"),
+    inlineCode: (node) =>
+      map("text", {
+        marks: [{ type: "code" }, ...activeMarks],
+        text: node.value,
+      }),
     link: (node) =>
       addMark("link", { href: node.url, title: node.title || undefined }),
     linkReference: (node) => typeConverter["link"](makeLinkForReference(node)),

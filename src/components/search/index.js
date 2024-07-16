@@ -18,6 +18,8 @@ import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
 import { products } from "../../constants/products";
 import { Dropdown, DropdownButton } from "react-bootstrap";
+// loaded client-side for use by Algolia
+import aa from "search-insights"; // eslint-disable-line no-unused-vars
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",

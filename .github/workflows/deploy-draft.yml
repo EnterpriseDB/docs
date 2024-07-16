@@ -11,8 +11,10 @@ concurrency:
 jobs:
   build-deploy:
     if: |
-      (github.event.action == 'labeled' && github.event.label.name == 'deploy') ||
-      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'deploy') ||
+        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+      ) && !github.event.pull_request.head.repo.fork
     runs-on: docs-16c-64gb-600gb
     steps:
       - name: inject slug/short variables
@@ -59,8 +61,10 @@ jobs:
             public/*
             !public/pdfs
             .cache
-          key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
+          key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ github.sha }}
           restore-keys: |
+            ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
+            ${{ runner.os }}-gatsby-build-develop-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}
             ${{ runner.os }}-gatsby-build-develop
 
       - name: Fix mtimes
@@ -70,17 +74,18 @@ jobs:
         run: npm run build
         env:
           APP_ENV: staging
-          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NODE_ENV: ${{ vars.NODE_ENV }}
           NODE_OPTIONS: --max-old-space-size=4096
           FATHOM_SITE_ID: ${{ vars.FATHOM_SITE_ID }}
           ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
-          ALGOLIA_APP_ID: ${{ secrets.ALGOLIA_APP_ID }}
+          ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
+          ALGOLIA_APP_ID: ${{ vars.ALGOLIA_APP_ID }}
           ALGOLIA_INDEX_NAME: edb-docs-staging
           INDEX_ON_BUILD: false
 
       - name: Deploy to Netlify
         id: netlify-deploy
-        uses: nwtgck/actions-netlify@v2
+        uses: nwtgck/actions-netlify@v3
         with:
           publish-dir: "./public"
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -101,6 +101,7 @@ const iconNames = {
   INSTANCES: "Instances",
   INTEGRATION: "Integration",
   KNIGHT: "Knight",
+  KUBERNETES: "Kubernetes",
   LAPTOP_CONFIG: "LaptopConfig",
   LEADER: "Leader",
   LEARNING: "Learning",
@@ -128,6 +129,7 @@ const iconNames = {
   PLANNER: "Planner",
   PLAY_CIRCLE: "PlayCircle",
   PLUS: "Plus",
+  POSTGRESQL: "Postgresql",
   PREFERENCES: "Preferences",
   PRESENTATION: "Presentation",
   PROCESS: "Process",
@@ -277,5 +279,8 @@ const iconNames = {
   NOT_FOUND: "color/NotFound",
   SERVER_ERROR: "color/ServerError",
   SUN: "color/Sun",
+  EDB_POSTGRES_AI_LOOP: "edb_postgres_ai/LoopColor",
+  EDB_POSTGRES_AI_LOOP_BLACK: "edb_postgres_ai/LoopBlack",
+  EDB_POSTGRES_AI_LANDSCAPE_COLOR: "edb_postgres_ai/LandscapeColor",
 };
 export default iconNames;

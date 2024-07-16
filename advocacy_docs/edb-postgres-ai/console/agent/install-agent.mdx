@@ -1,0 +1,226 @@
+---
+title: Installing Beacon Agent
+description: Installing, configuring, testing, and running Beacon Agent
+---
+
+The following steps walk you through how to install and configure Beacon Agent, test it locally, and then run the agent to see the results in your Estates page in the EDB Postgres® AI Console.
+
+Before you begin, you need to have the following:
+
+* The access key for a machine user with the `estate ingester` role assigned to it. For more information, see [Creating a machine user](create-machine-user).
+* The project ID for the project you want to monitor. You can find this in the URL when you are in the project in the EDB Postgres AI Console.
+
+
+
+## Enable your system to download packages
+
+You need to enable the system you are planning on running the agent on to download packages from the EDB repositories for EDB Postgres AI.
+
+Locate your EDB subscription token on the the [EnterpriseDB repos download page](https://www.enterprisedb.com/repos-downloads). 
+
+Using the retrieved subscription token, set an environmental variables (`EDB_SUBSCRIPTION_TOKEN`) to the token's value. Also set an environmental variable for your EDB subscription type (`EDB_SUBSCRIPTION_TYPE`) to one of `standard` or `enterprise` depending on which plan you are signed up to:
+
+```shell
+export EDB_SUBSCRIPTION_TOKEN=<your-repos-token>
+export EBD_SUBSCRIPTION_TYPE=<your-subscription-type>
+```
+
+Depending on your operating system, run the following command to enable your system to enable package downloading from the EDB repositories:
+
+For RHEL-like or SLES:
+
+```shell
+curl -1sSLf 'https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.rpm.sh' | sudo -E bash
+```
+
+For Debian or Ubuntu:
+
+```shell
+curl -1sSLf 'https://downloads.enterprisedb.com/$EDB_SUBSCRIPTION_TOKEN/$EDB_SUBSCRIPTION_TYPE/setup.deb.sh' | sudo -E bash
+```
+
+## Install the beacon-agent package
+
+You can now install packages from EDB's repositories. Install the `beacon-agent` package:
+
+For RHEL-like:
+
+```shell
+dnf install beacon-agent
+```
+
+Or if dnf isn't available:
+
+```shell
+yum install beacon-agent
+```
+
+For SLES:
+
+```shell
+zypper install beacon-agent
+```
+
+For Debian or Ubuntu:
+
+```
+apt install beacon-agent
+```
+
+## Configure Beacon Agent
+
+Create a Beacon configuration directory in your home directory:
+
+```
+mkdir ${HOME}/.beacon
+```
+
+Next, configure Beacon Agent by setting the access key (the one you obtained while [Creating a machine user](create_machine_user)) and project ID:
+
+```
+export BEACON_AGENT_ACCESS_KEY=<your-access-key>
+export BEACON_AGENT_PROJECT_ID=<your-project-id>
+```
+
+Running the `beacon-agent setup` command creates a configuration file in the Beacon configuration directory. using those environment variables.
+
+You also need to specify the Beacon configuration directory for storing the configuration file and the name of the configuration file to generate there. The `$HOME/.beacon/` file is one of the default locations which `beacon_agent` searches for `beacon_agent.yaml` when it starts. Using the `-file` flag tells the agent setup process to create its configuration file in a specific location. 
+
+```
+beacon-agent setup -file="$HOME/.beacon/beacon_agent.yaml"
+```
+
+During the `beacon-agent setup` process, an authentication attempt occurs, using the access key and project ID you provided. This authentication is necessary for Beacon Agent to communicate with the Beacon server and to register with the project.
+
+Upon a successful registration, you should see a message indicating that you have authenticated successfully to your EDB Postgres AI project.
+
+## Configure database connections
+
+Create DSN/connection strings for each database you want to monitor. These should include the database name, the user, the password, the host, and the port. For example:
+
+"user=postgres password=postgres dbname=postgres host=localhost port=5432"
+
+You can also use a DSN in the format `postgres://user:password@host:port/dbname`.
+
+As DSNs can contain sensitive information such as the password, its best practice to create an environmental variable for each database you want to monitor and set each to the a corresponding DSN.
+
+```shell
+export DSN1=<dsn1>
+```
+
+Edit your `$HOME/.beacon/beacon_agent.yaml` configuration file and add an entry for each database you want to connect to, including the environmental variable for each database's DSN. Precede the DSN with a `$` to indicate that it's an environmental variable. Each database entry should also include tags to help you identify the database in the EDB Postgres AI Console.
+
+Entries under `databases` utilize the following format:
+
+```yaml
+databases:
+    <database_name_1>:
+        dsn: "$DSN1"
+        tags:
+            - "<tag-one>"
+            - "<tag-two>"
+    <database_name_2>:
+        dsn: "$DSN2"
+        tags: 
+            - "<tag-one>"
+            - "<tag-two>"
+```
+
+Here is an example `beacon_agent.yaml` file configured for a database named `sales_reporting`:
+
+```yaml
+agent:
+access_key: $BEACON_AGENT_ACCESS_KEY
+access_key_grpc_header: "x-access-key"
+batch_size: 100
+beacon_server: "beacon.biganimal.com:443"
+feature_flag_interval: 10m0s
+project_id: "<project ID>"
+providers:
+- "onprem"
+provider:
+onprem:
+databases:
+    sales_reporting:
+    dsn: “$DSN”
+    tags:
+        - "sales"
+        - "reports"
+host:
+    resource_id: "postgresql.lan"
+    tags: []
+poll_interval: 5m0s
+```
+
+## Test Beacon Agent locally.
+
+For an initial test of the agent, you can get it to send the data that it would normally send to the EDB Enterprise AI control plane to standard output, your terminal session, instead. This allows you to quickly confirm if the agent is successfully able to gather data and what that data looks like.
+
+You can run the agent in standard output mode by modifying the `beacon_agent.yaml` file generated previously to have an `"agent.beacon_server"` value of `"stdout"`. A truncated example of this would be:
+
+```yaml
+agent:
+    beacon_server: "stdout"
+```
+
+Next, run the agent in this mode using the following command:
+
+```shell
+beacon-agent
+```
+
+You should see output similar to the following eventually (it can take around 5 minutes to see the last few lines):
+
+```
+{"level":"debug","data":"$BEACON_AGENT_ACCESS_KEY","time":"2024-05-08T18:40:34Z","message":"expanding environment variable in configuration"}
+{"level":"info","path":"/healthz","time":1715193634,"msg":"serving liveness probe"}
+{"level":"info","path":"/readyz","time":1715193634,"msg":"serving readiness probe"}
+{"level":"info","version":"v1.51.0-snapshot8986075626.97.1.166215e","time":1715193634,"msg":"starting beacon agent"}
+{"level":"info","spiffe_enabled":false,"time":1715193634,"msg":"configuring tls"}
+{"level":"info","server":"stdout","time":1715193634,"msg":"connecting to beacon service"}
+{"level":"info","address":":8081","time":1715193634,"msg":"starting probe server"}
+{"level":"info","target":"stdout","time":1715193634,"msg":"connected to beacon server"}
+{"level":"info","time":1715193634,"msg":"verifying connection to beacon server"}
+{"level":"info","project":"echo","time":1715193634,"msg":"verified connection to beacon server"}
+{"level":"info","interval":"10m0s","time":1715193634,"msg":"loading feature flags periodically"}
+{"level":"info","time":1715193634,"msg":"fetching feature flags"}
+{"level":"info","feature_flags":{"echo_flag":"test","second_flag":false},"time":1715193634,"msg":"loaded feature flags"}
+{"level":"info","id":"onprem","time":1715193634,"msg":"starting provider"}
+{"level":"info","disable_partitioning":false,"batch_size":100,"interval":"10s","time":1715193634,"msg":"starting batch exporter"}
+{"level":"info","provider_id":"onprem","time":1715193634,"msg":"registering ingestion worker in pool"}
+{"level":"info","provider":"onprem","time":1715193634,"msg":"starting provider worker"}
+{"level":"info","ingestions":[{"version":"v0.1.0","type":"onprem/host","id":"ip-10-0-128-121","metadata":{"Data":{"OnPremHostMetadata":{"hostname":"ip-10-0-128-121","operating_system":"linux","platform":"ubuntu","platform_family":"debian","platform_version":"22.04","cpu_limit":1}}}}],"time":1715193934,"msg":"sending ingestions via log client (not actually sending)"}
+{"level":"info","successful_ingestions":1,"failed_ingestions":0,"time":1715193934,"msg":"exported ingestions"}
+```
+
+!!! Note
+The message in the second to last line of the preceding log confirms that we're viewing the gathered data which is being output to stdout and it hasn't gone to the control plane.
+!!!
+
+## Configure Beacon Agent to send data
+
+The next step is to configure Beacon agent to send data to the EDB Postgres AI control plane.
+
+In the `beacon_agent.yaml` file, on the `agent.beacon_server` line, replace `"stdout"` with `"beacon.biganimal.com:443"`:
+
+```
+agent:
+    beacon_server: "beacon.biganimal.com:443"
+
+```
+
+## Run Beacon Agent.
+
+Run the agent using the following command:
+
+```shell
+beacon-agent
+```
+
+The agent will start sending data to the EDB Postgres AI control plane. Follow the logs to monitor the data ingestion process.
+
+## Check the EDB Postgres AI Console to see the data from the agent.
+
+After a few minutes, you should see the data from the agent in the EDB Postgres AI Console. Navigate to the Estates page's  to see the data from the agent.
+
+

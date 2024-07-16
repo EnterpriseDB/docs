@@ -247,7 +247,7 @@ def put_index_first(path, nav_order):
     nav_order = nav_order or [filename]
     indice = 0
     if path.name != "index.mdx":
-        indice = nav_order.index(filename)+1 if filename in nav_order else len(nav_order)
+        indice = nav_order.index(filename)+1 if filename in nav_order else len(nav_order)+1
     return f'{indice:03d}_{filename}'
 
 

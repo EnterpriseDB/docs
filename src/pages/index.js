@@ -1,7 +1,11 @@
-import React, { useEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
+import { updates } from "../constants/updates";
+
+const isBrowser = typeof window !== "undefined";
+const Masonry = isBrowser ? window.Masonry || require("masonry-layout") : null;
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -11,7 +15,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
           <div className="d-inline-block me-3">
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
@@ -24,6 +28,68 @@ const IndexCard = ({ iconName, headingText, children }) => (
   </div>
 );
 
+const BannerCard = ({ iconName, headingText, children }) => (
+  <div className="col-xl-12 width=100">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Icon
+            iconName={iconName}
+            className="fill-aquamarine"
+            width="24"
+            height="24"
+          />
+          <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+        </div>
+        <div className="row">{children}</div>
+      </div>
+    </div>
+  </div>
+);
+
+const BannerSubCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-4 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex align-items-center mb-3">
+          <Link to={to}>
+            <Icon
+              iconName={iconName}
+              className="fill-aquamarine"
+              width="24"
+              height="24"
+            />
+            <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+          </Link>
+        </div>
+        <div className="container-fluid">
+          <div className="row">{children}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const BannerWideCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-12 col-lg-4">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="row">{children}</div>
+    </div>
+  </div>
+);
+
+const BannerWideCardLink = ({ to, className, children }) => (
+  <Link to={to} className={`col py-2 px-5 text-center ${className}`}>
+    {children}
+  </Link>
+);
+
+const BannerCardLink = ({ to, className, children }) => (
+  <Link to={to} className={`col-sm-12 py-1 ${className}`}>
+    {children}
+  </Link>
+);
+
 const IndexCardLink = ({ to, className, children }) => (
   <li>
     <Link to={to} className={`d-block py-2 ps-1 ${className}`}>
@@ -34,12 +100,9 @@ const IndexCardLink = ({ to, className, children }) => (
 
 const Page = () => {
   const layout = useRef(null);
-  useEffect(() => {
-    (async () => {
-      const { default: Masonry } = await import("masonry-layout");
-      layout.current = new Masonry("*[data-masonry]");
-    })();
-    return () => layout.current.destroy();
+  useLayoutEffect(() => {
+    layout.current = layout.current || new Masonry("*[data-masonry]");
+    return () => layout.current?.destroy();
   }, []);
 
   return (
@@ -56,84 +119,162 @@ const Page = () => {
 
           <div className="container">
             <div className="row">
-              <div className="col-sm mb-3 me-1">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link className="homepage-headling-link" to="/pwr/latest/">
-                      Postgres Workload Report v1 released
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.MONITORING}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    PWR is used for building PostgreSQL workload reports,
-                    mimicking those produced by Oracle's Automatic Workload
-                    Repository (AWR) tool.
-                  </p>
-                  <div className="d-flex align-items-center">
-                    <p>
-                      <Link className="btn-sm ms-2" to="/pwr/latest/">
-                        Find out more &rarr;
-                      </Link>
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="col-sm mb-3">
-                <div className="mb-2">
-                  <div
-                    className="new-thing-header"
-                    aria-roledescription="badge"
-                  >
-                    <span className="badge-text fw-bold">What's new</span>
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <h3 className="card-title mb-2 fw-bold">
-                    <Link
-                      className="homepage-headling-link"
-                      to="/pg_extensions/pg_squeeze/"
+              {updates.slice(0, 2).map((update) => (
+                <div className="col-sm mb-3 me-1">
+                  <div className="mb-2">
+                    <div
+                      className="new-thing-header"
+                      aria-roledescription="badge"
                     >
-                      New extension: PG Squeeze
-                    </Link>
-                  </h3>
-                  <p>
-                    <Icon
-                      iconName={iconNames.POSTGRESQL}
-                      className="fill-orange ms-2 float-end"
-                    />
-                    Open-source extension PG Squeeze removes unused space from a
-                    table and optionally sorts tuples according to a particular
-                    index.
-                  </p>
-                  <div className="d-flex align-items-center">
-                    <p>
-                      <Link
-                        className="btn-sm ms-2"
-                        to="/pg_extensions/pg_squeeze/"
-                      >
-                        Find out more &rarr;
+                      <span className="badge-text fw-bold">What's new</span>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <h3 className="card-title mb-2 fw-bold">
+                      <Link className="homepage-headling-link" to={update.url}>
+                        {update.title}
                       </Link>
+                    </h3>
+                    <p>
+                      <Icon
+                        iconName={update.icon}
+                        className="fill-orange ms-2 float-end"
+                      />
+                      {update.description}
                     </p>
+                    <div className="d-flex align-items-center">
+                      <p>
+                        <Link
+                          className="btn-sm ms-2"
+                          to={update.moreUrl || update.url}
+                        >
+                          Find out more &rarr;
+                        </Link>
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Sign Post */}
+          <BannerCard
+            iconName={iconNames.EDB_POSTGRES_AI_LOOP}
+            headingText="EDB Postgres AI"
+          >
+            <BannerWideCard>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/overview-and-concepts">
+                Overview and Concepts
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/guide-and-getting-started">
+                Guide and Getting Started
+              </BannerWideCardLink>
+              <BannerWideCardLink to="/edb-postgres-ai/overview/latest-release-news">
+                Latest Release News
+              </BannerWideCardLink>
+            </BannerWideCard>
+            <BannerSubCard
+              iconName={iconNames.CONTROL}
+              headingText="Console"
+              to="/edb-postgres-ai/console"
+            >
+              <BannerCardLink to="/edb-postgres-ai/console/getstarted">
+                Getting Started
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate">
+                Estate
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/agent">
+                Agent
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.CLOUD_DBA}
+              headingText="Cloud Service"
+              to="/edb-postgres-ai/cloud-service"
+            >
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/hosted">
+                Hosted databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/managed">
+                Managed databases
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/deployment">
+                Deployment options
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.DATABASE}
+              headingText="Databases"
+              to="/edb-postgres-ai/databases"
+            >
+              <BannerCardLink to="/edb-postgres-ai/databases/epas">
+                EDB Postgres Advanced Server
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/databases/pge">
+                EDB Postgres Extended Server
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/databases/pgd">
+                EDB Postgres Distributed
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Lakehouse Analytics"
+              to="/edb-postgres-ai/analytics"
+            >
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+                Quick Start
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.BRAIN_CIRCUIT}
+              headingText="AI/ML"
+              to="/edb-postgres-ai/ai-ml"
+            >
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
+                Overview of pgai
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/install-tech-preview/">
+                Install the Tech Preview
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-ml/using-tech-preview/">
+                Use the Tech Preview
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.TOOLBOX}
+              headingText="Platforms and Tools"
+              to="/edb-postgres-ai/tools"
+            >
+              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
+                Migration and AI
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/tools/management">
+                Management
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/tools/backup">
+                Backup and Recovery
+              </BannerCardLink>
+            </BannerSubCard>
+          </BannerCard>
+
+          <BannerWideCard>
+            <BannerWideCardLink to="/repos/" iconName={iconNames.Download}>
+              Downloads and Repositories
+            </BannerWideCardLink>
+          </BannerWideCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
@@ -191,12 +332,24 @@ const Page = () => {
                 PG Squeeze
               </IndexCardLink>
 
+              <IndexCardLink to="/pg_extensions/wal2json">
+                wal2json
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/system_stats">
+                system_stats
+              </IndexCardLink>
+
               <IndexCardLink to="/pg_extensions/edb_job_scheduler">
                 EDB Job Scheduler
               </IndexCardLink>
 
               <IndexCardLink to="/pg_extensions/pg_failover_slots">
                 PG Failover Slots
+              </IndexCardLink>
+
+              <IndexCardLink to="/pg_extensions/spl_check/">
+                EDB SPL Check
               </IndexCardLink>
 
               <IndexCardLink to="/tools/edb_sqlpatch">
@@ -267,6 +420,10 @@ const Page = () => {
             </IndexCard>
 
             <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
+              <IndexCardLink to="/postgres_distributed_for_kubernetes/latest/">
+                EDB Postgres Distributed for Kubernetes
+              </IndexCardLink>
+
               <IndexCardLink to="/postgres_for_kubernetes/latest/">
                 EDB Postgres for Kubernetes
               </IndexCardLink>

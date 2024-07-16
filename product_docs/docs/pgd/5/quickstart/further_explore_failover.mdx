@@ -11,9 +11,9 @@ In this exercise, you'll create an application that sends data to the database r
 
 ## Your quick started configuration
 
-This exploration assumes that you created your PGD cluster using the [quick start for Docker](quick_start_docker), the [quick start for AWS](quick_start_aws) or the [quick start for Linux hosts](quick_start_linux).
+This exploration assumes that you created your PGD cluster using the [quick start for Docker](quick_start_docker), the [quick start for AWS](quick_start_aws), or the [quick start for Linux hosts](quick_start_linux).
 
-At the end of each quick starts, you'll have a cluster with four nodes and these roles:
+At the end of each quick start, you'll have a cluster with four nodes and these roles:
 
 | Host name  | Host role |
 | --------- | ----------------- |
@@ -24,11 +24,25 @@ At the end of each quick starts, you'll have a cluster with four nodes and these
 
 You'll use these hostnames throughout this exercise.
 
+!!! Note A best practice recommendation
+This example is based on the quick start configuration. For speed
+and simplicity, it uses the Barman backup server in place of creating a bastion
+server. It also uses the Barman login to the Postgres cluster. 
+
+In a production environment, we recommend that you create a separate
+bastion server to run the failover experiment from and that you create an appropriate
+Postgres user to log in to the cluster. 
+!!!
+
 ## Installing xpanes
 
-You'll be using `xpanes`, a utility that allows you to quickly create multiple terminal sessions that you can easily switch between. It isn't installed by default, so you'll have to install it. For this exercise, you'll be launching xpanes from the system where you ran tpaexec to configure your quick-start cluster.
+!!! Note Xpanes optional
+We recommend the xpanes utility for this exercise. It allows you to easily switch between multiple terminal sessions. If you prefer to use multiple terminals, tmux, or another terminal multiplexer, you can do so. Just make sure you can easily switch between multiple terminal sessions.
+!!!
 
-If the system is running Ubuntu, run this:
+You'll use xpanes, a utility that allows you to quickly create multiple terminal sessions that you can easily switch between. It isn't installed by default, so you have to install it. For this exercise, you launch xpanes from the system where you ran tpaexec to configure your quick-start cluster.
+
+If the system is running Ubuntu, run:
 
 ```
 sudo apt install software-properties-common
@@ -48,7 +62,7 @@ cd democluster
 xpanes -d -c "ssh -F ssh_config {}" "kaboom" "kaolin" "kaftan" "kapok"
 ```
 
-After running these commands, there are four panes. The four panes are connected to kaboom, kaolin, kaftan, and kapok and logged in as the root user on each. You need this privilege so you can easily stop and start services later in the exercise.
+After running these commands, there are four panes. The four panes are connected to kaboom, kaolin, kaftan, and kapok and you're logged in as the root user on each. You need this privilege so you can easily stop and start services later in the exercise.
 
 Press **Control-b** followed by **q** to briefly display the numeric values for each pane.
 
@@ -66,14 +80,14 @@ psql -h kaboom -p 6432 bdrdb
 
 This code connects to the proxy on the kaboom host, which also runs a Postgres instance as part of the cluster. 
 
-The next step is to create the table your application will write to:
+The next step is to create the table for your application to write to:
 
 ```
 drop table if exists ping cascade;
 CREATE TABLE ping (id SERIAL PRIMARY KEY, node TEXT, timestamp TEXT) ;
 ```
 
-This code first drop the `ping` table. Then it recreates the `ping` table with an id primary key and two text fields for a node and timestamp. The table should now be ready. To check, use **Control-b &larr; Control-b &uarr;** or **Control-b q 0** to move to the top left pane, which puts you on the kaboom server. In this pane, become the enterprisedb user so you can easily connect to the database:
+This code first drops the `ping` table. Then it re-creates the `ping` table with an id primary key and two text fields for a node and timestamp. The table should now be ready. To verify that it is, use **Control-b &larr; Control-b &uarr;** or **Control-b q 0** to move to the top left pane, which puts you on the kaboom server. In this pane, become the enterprisedb user so you can easily connect to the database:
 
 ```shell
 sudo -iu enterprisedb
@@ -120,7 +134,7 @@ If you want to be sure that this table is replicated, you can connect to another
 You'll see a login message similar to this:
 
 ```console
-psql.bin (15.2.0 (Debian 15.2.0-2.buster), server 15.2.0 (Debian 15.2.0-2.buster)) SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off) 
+psql.bin (16.2.0, server 16.2.0) SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off) 
 You are now connected to database "bdrdb" as user "enterprisedb" on host "kaftan" (address "10.33.25.233") at port "5444".
 bdrdb=#
 ```
@@ -178,7 +192,7 @@ while true;
     done
 ```
 
-In a constant loop, you call the psql command, telling it to connect to any of the three proxies as hosts, giving the proxy port and selecting the bdrdb database. You also pass a command that inserts two values into the ping table. One of the values comes from `bdr.local_node_summary`, which contains the name of the node you're actually connected to. The other value is the current time.
+In a constant loop, you call the `psql` command, telling it to connect to any of the three proxies as hosts, giving the proxy port and selecting the bdrdb database. You also pass a command that inserts two values into the ping table. One of the values comes from `bdr.local_node_summary`, which contains the name of the node you're actually connected to. The other value is the current time.
 
 Once the loop is running, new entries appear in the table. You'll see them in the top-left pane where you set up the monitor.
 
@@ -188,7 +202,7 @@ You can now start testing failover.
 
 For this part of the process, switch to the host kaftan, which is in the lower-left corner. Use **Control-b &larr;** or **Control-b q 2** to switch focus to it. 
 
-To gain appropriate privileges to run `pgd`, at the PGD command line interface, run:
+To gain appropriate privileges to run pgd, at the PGD command line interface, run:
 
 ```shell
 sudo -iu enterprisedb
@@ -237,7 +251,7 @@ switchover is complete
 If you look in the top-left pane, you'll see the inserts from the script switching and being written to the node you just switched to. 
 
 !!!Info Observe the id number
-Notice that the id number being generated is from a completely different range of values, too. That's because the system transparently made the sequence generating the ID a global sequence. Read more about global sequences and how they work in [Sequences](../sequences/).
+Notice that the id number being generated is from a completely different range of values, too. That's because the system transparently made the sequence generating the ID a global sequence. For more about global sequences and how they work, see [Sequences](../sequences/).
 !!!
 
 You might also notice an error in the lower-right pane, as an inflight update is canceled by the switch. The script then continues writing.
@@ -286,7 +300,7 @@ The kaolin node is down, and updates are going to a different write leader.
 
 ## Monitoring lag
 
-While kaolin is down, the logical replication at the heart of PGD is tracking how far out of sync kaolin is with the cluster.  To see that for yourself, run:
+While kaolin is down, the logical replication at the heart of PGD is tracking how far out of sync kaolin is with the cluster. To see the details, run:
 
 ```shell
 psql bdrdb -c "select * from bdr.node_replication_rates;"
@@ -354,7 +368,7 @@ The output looks like this:
 (2 rows)
 ```
 
-As you can see, there's no replay lag now, as kaolin has completely caught up automatically.
+As you can see, there's no replay lag now, as kaolin has completely caught up.
 
 With kaolin fully back in service, you can leave everything as it is. There's no need to change the server that's write leader. The failover mechanism is always ready to bring another server up to write leader when needed.
 
@@ -398,13 +412,13 @@ Bring the proxy service on kaftan back by running:
 systemctl start pgd-proxy.service
 ```
 
-!!!Tip Exiting Tmux
-You can quickly exit Tmux and all the associated sessions. First terminate any running processes, as they otherwise continue running after the session is killed. Press **Control-B** and then enter `:kill-session`. This approach is simpler than quitting each pane's session one at a time using **Control-D** or `exit`. 
+!!!Tip Exiting tmux
+You can quickly exit tmux and all the associated sessions. First terminate any running processes, as they otherwise continue running after the session is killed. Press **Control-B** and then enter `:kill-session`. This approach is simpler than quitting each pane's session one at a time using **Control-D** or `exit`. 
 !!!
 
 ## Other scenarios
 
-This example uses the quick-start configuration of three data nodes and one backup node. You can configure a cluster to have two data nodes and a witness node, which is less resilient to a node failing. Or you can configure five data nodes, which is much more resilient to a node failing. With this configuration, you can explore how failover works for your applications. For clusters with multiple locations, the same basic rules apply: taking a server down elects a new write leader that proxies now point to. 
+This example uses the quick start configuration of three data nodes and one backup node. You can configure a cluster to have two data nodes and a witness node, which is less resilient to a node failing. Or you can configure five data nodes, which is much more resilient to a node failing. With this configuration, you can explore how failover works for your applications. For clusters with multiple locations, the same basic rules apply: taking a server down elects a new write leader that proxies now point to. 
 
 ## Further reading
 
