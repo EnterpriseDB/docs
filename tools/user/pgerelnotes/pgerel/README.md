@@ -1,4 +1,8 @@
-Provisional docs for the XSLT translator
+# Provisional docs for the XSLT translator
+
+
+**Prerequisite - xsltproc is installed on your system**
+
 
 1) You will need to obtain copies of the files at
 
@@ -12,7 +16,9 @@ https://github.com/EnterpriseDB/2ndqpostgres/blob/2QREL_14_STABLE_dev/doc/src/sg
 
 3) set $DOCSHOME to $HOME/docs or wherever you keep your docs tree
 
-4) Ensure that your docs is checkout into a branch where you wish to update the release notes
+4) Ensure that your docs repository is on a branch where you wish to update the release notes
+
+5) cd $DOCSHOME/tools/user/pgerelnotes/pgerel
 
 5) Run
 
@@ -21,6 +27,9 @@ xsltproc --param version 13  transform.xslt pge13wrap.xml >$DOCSHOME/product_doc
 xsltproc --param version 14  transform.xslt pge14wrap.xml >$DOCSHOME/product_docs/docs/pge/14/release_notes/index.mdx
 
 6) Check in the modified files.
+
+
+Note that the xml files in the directory are used in the transformation (they wrap the sgml release notes so they can be consumed).
 
 
 
