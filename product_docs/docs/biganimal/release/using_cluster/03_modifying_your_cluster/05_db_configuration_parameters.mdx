@@ -1,0 +1,103 @@
+---
+title: Modifying database configuration parameters
+---
+
+The database parameters listed on the **DB Configuration** tab are also referred to as Grand Unified Configuration (GUC) variables. See [What Is a GUC Variable?](https://www.enterprisedb.com/blog/what-guc-variable) for more information. 
+
+The list of parameters is populated based on the type of database you selected on the **Operational Settings** tab when you created your cluster. For more information about the parameters for your database type:
+
+- For PostgreSQL parameters, see [Setting Parameters](https://www.postgresql.org/docs/current/config-setting.html) and [Server Configuration](https://www.postgresql.org/docs/current/runtime-config.html) in the Postgres documentation.
+     
+
+- For EDB Postgres Advanced Server, see [Summary of configuration parameters](/epas/latest/reference/database_administrator_reference/02_summary_of_configuration_parameters/) and [Configuration parameters](/epas/latest/database_administration/01_configuration_parameters/).
+
+-  For more information on the types of values parameters accept, see [Parameter Names and Values](https://www.postgresql.org/docs/current/config-setting.html#CONFIG-SETTING-NAMES-VALUES). The types apply to both PostgreSQL and EDB Postgres Advanced Server parameters.
+
+
+!!!note
+Not all database configuration parameters are supported by BigAnimal. Some parameters, such as `wal_level` and `restore_command`, are reserved for EDB to provide the managed database features of BigAnimal. 
+!!!
+
+## Using formulas for parameter values
+
+In addition to entering specific values for parameters, for some parameters you can specify formulas to calculate a value. You can use formulas for parameters of type integer and real in ternary formulas, such as the [shared buffer example](#examples), using the following operators: `+ - / * > >= < <= == != && || ! ? : ( )`. Use `?` and `:` . Use `( )` to specify [order of operations](#order-of-operations), if needed. GUCs used in formulas must also be of type integer or real. All arithmetic is done on 64-bit floating point values rounded to an integer result if the target GUC is of type integer and not real.  
+
+BigAnimal has what we refer to as *psuedo GUCs* to help with creating equations. These read-only GUCs are:
+- `cpu_cores` &mdash; Number of cores provided by the VM running the cluster nodes.
+- `disk_iops` &mdash; Number of IOPS allocated to the disks backing the primary data volume.
+- `disk_size` &mdash; Amount of memory backing the primary data volume, in KB.
+- `ram` &mdash; Amount of memory provided by the VM running the cluster nodes, in KB.
+- `replica_count` &mdash; Total number of nodes in the cluster.
+
+Formulas can calculate a value relative to the specifications you selected for the cluster or relative to other non-pseudo GUCs. If you resize your cluster, BigAnimal recalculates formulas using the new values for the pseudo GUCs. 
+
+### Order of operations
+`*` and `/` are at the same operator precedence. `+` and `-` are at the same operator precedence. `*` and `/` are evaluated before `+` and `-`. Use parentheses to specify additional order of operations. 
+
+### Units
+GUCs can either be a bare number, such as 8, or have a unit, such as GB. Units are categorized into kinds of units, such as size or duration.
+
+The kind of unit of the target GUC must match the kind of unit used in the formula. For example, you can't use a formula that tries to multiply two seconds with three kilobytes (`2s * 3KB`), but you can use a formula that multiplies two sizes even if they have different scales (`2KB * 8GB`). 
+
+The unit of the target GUC must match the unit used in the formula. For example, you can multiply two seconds by four days but you can't assign the result to a GUC of unit KB.
+
+If a target GUC has a unit, a bare number in an equation is assumed to be in the default unit for the target GUC.
+
+### Recursion
+We recommend no more than approximately 100 levels of recursion depth.
+
+### Examples 
+
+Instead of entering a specific value for the `shared_buffers` parameter, with GUC equations you can specify that the value for `shared_buffers` is a certain percentage of RAM but no higher than a certain size. For example: 
+
+`((ram * 0.25) > 8 GB) ? 8 GB : (ram * 0.25)`
+
+What if you want `wal_buffers` to be 3% of `shared_buffers`, up to a maximum of 16MB? The formula is:
+
+`((shared_buffers * 0.03) > 16MB) ? 16MB : (shared_buffers * 0.03)`
+
+The formula refers to the `shared_buffers`, which, in turn, has its own formula in this example. This example shows how GUCs can refer to other GUCs.
+
+### Common errors and error handling
+
+Malformed formulas result in an error. Here are some examples:
+
+- Following a number with two units, for example: 
+
+  `work_mem = 10 GB kB`
+
+  This syntax gives the error:
+
+  `unexpected token "kB" at end of input (line 1, col 7)`
+
+- Creating an infinite evaluation loop by having a GUC referring to itself, for example:
+
+  `effective_cache_size = effective_cache_size`
+
+  This syntax gives the error:
+
+  `cycle in equation; GUC "effective_cache_size" already seen`
+
+- Mixing unit types, for example:
+
+  `work_mem = 10kB * 8s`
+
+  This syntax gives the error:
+
+  `both size and time units used in calculation; cannot proceed`
+
+## Modify a parameter
+
+1.  Go to the parameter you want to modify using these methods:
+    -   To search for a specific parameter, use the search field. 
+    -   To filter the parameters that show, select one of the following in the **Show only** list:
+        -   **Custom Values** &mdash; Shows only parameters that changed from the default values, either in the current session or modified in a previous session and applied to the cluster.
+        -   **Currently Edited Values** &mdash; Shows only parameters that changed during the current editing session.
+
+2.  Enter the new value in the parameter value field. 
+
+    !!! Danger 
+    Parameters identified with a yellow exclamation point icon trigger a restart when you save your changes. The restart terminates all open connections and takes a few minutes to complete. It takes a few more seconds for the new connection to establish. During this process, it isn't possible to connect to the database.
+    !!!
+
+3.  Save your changes.
