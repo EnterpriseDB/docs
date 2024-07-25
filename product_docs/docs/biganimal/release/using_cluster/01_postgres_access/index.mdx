@@ -1,0 +1,154 @@
+---
+title: "Managing Postgres access"
+---
+
+You control access to your Postgres database using database authentication implemented by creating databases with specific roles and privileges. Database authentication differs from portal authentication, which controls access to the BigAnimal portal. 
+
+For information on portal authentication, see:
+
+- [Setting up your identity provider](/biganimal/latest/getting_started/identity_provider/) if you purchased BigAnimal directly from EDB
+- [Setting up your Azure Marketplace account](/biganimal/latest/getting_started/02_azure_market_setup/) if you purchased BigAnimal through Azure Marketplace
+
+## Setting up your database authentication
+Don't use the edb_admin database role and edb_admin database created when creating your cluster in your application. Instead, create a new database role and a new database, which provides a high level of isolation in Postgres. If multiple applications are using the same cluster, each database can also contain multiple schemas, essentially a namespace in the database. If you need strict isolation, use a dedicated cluster or dedicated database. If you don't need that strict isolation level, you can deploy a single database with multiple schemas. See [Privileges](https://www.postgresql.org/docs/current/ddl-priv.html) in the PostgreSQL documentation to further customize ownership and roles to your requirements.
+
+To create a new role and database, first connect using `psql`:
+
+```shell
+psql -W "postgres://edb_admin@xxxxxxxxx.xxxxx.biganimal.io:5432/edb_admin?sslmode=require"
+```
+!!! Note
+    Avoid storing data in the postgres system database.
+
+## Admin roles
+
+### pg_ba_admin
+So that we can effectively manage the cloud resources and ensure users are protected against security threats, BigAnimal provides a special administrative role, pg_ba_admin. The edb_admin user is a member of the pg_ba_admin role. The pg_ba_admin role has privileges similar to a Postgres superuser. Like the edb_admin user, the pg_ba_admin role shouldn't be used for day-to-day application operations and access to the role must be controlled carefully. See [pg_ba_admin role](pg_ba_admin) for details.
+
+### superuser
+
+Superuser access in BigAnimal is available only where the users are in control of their infrastructure. When using your own cloud account, you can grant the edb_admin role superuser privileges for a cluster. See [Superuser access](/biganimal/latest/getting_started/creating_a_cluster/#superuser-access). 
+
+When granting superuser privileges, to avoid degrading service or compromising availability, ensure you limit the number of connections used by superusers. BigAnimal reserves and requires a few superuser connections for the readiness probe for these reasons:
+- To check if the database is up and able to accept connections
+- For creating specific roles required in PostgreSQL instances and some extensions 
+
+!!! note
+    Superuser privileges allow you to make Postgres configuration changes using `ALTER SYSTEM` queries. We recommend that you don't do this because it might lead to an unpredictable or unrecoverable state of the cluster. In addition, `ALTER SYSTEM` changes aren't replicated across the cluster. 
+
+For BigAnimal hosted and distributed high-availability clusters, there's no superuser access option. Use the edb_admin role for most superuser level activities. Unsafe activities aren't available to the edb_admin role.
+
+Distributed high-availability clusters also have a bdr_superuser role. This isn't a general superuser but a specific user/role that has privileges and access to all the bdr schemas and functions. For more information, see [bdr_superuser](/pgd/latest/security/roles/).
+  
+See the [PostgreSQL documentation on superusers](https://www.postgresql.org/docs/current/role-attributes.html) for best practices. 
+
+### Notes on the edb_admin role
+  
+- Changes to system configuration (GUCs) made by edb_admin or other Postgres users don't persist through a reboot or maintenance. Use the BigAnimal portal to modify system configuration.
+
+-   You have to remember your edb_admin password, as EDB doesn't have access to it. If you forget it, you can set a new one in the BigAnimal portal on the Edit Cluster page.
+
+-   Don't use the edb_admin user or the edb_admin database in your applications. Instead, use `CREATE USER; GRANT; CREATE DATABASE.`
+
+-   BigAnimal stores all database-level authentication securely and directly in PostgreSQL. The `edb_admin` user password is `SCRAM-SHA-256` hashed prior to storage. This hash, even if compromised, can't be replayed by an attacker to gain access to the system.
+
+
+
+## One database with one application
+
+For one database hosting a single application, replace `app1` with your preferred user name:
+
+1.  Create a new database user. For example,
+    ```
+    edb_admin=# create user app1 with password 'app1_pwd';
+    ```
+
+2.  Assign the new role to your edb_admin user. Assigning this role allows you to assign ownership to the new user in the next step. For example:
+    ```
+    edb_admin=# grant edb_admin to app1;
+    ```
+
+3.  Create a new database to store application data. For example:
+    ```
+    edb_admin=# create database app1 with owner app1;
+    ```
+
+Using this example, the username and database in your connection string is app1.
+
+## One database with multiple schemas
+
+If you use a single database to host multiple schemas, create a database owner and then roles and schemas for each application. This example shows creating two database roles and two schemas. The default `search_path` for database roles in BigAnimal is `"$user",public`. If the role name and schema match, then objects in that schema match first, and no `search_path` changes or fully qualifying of objects are needed. The [PostgreSQL documentation](https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-PATH) covers the schema search path in detail.
+
+1.  Create a database owner and new database. For example:
+    ```
+    edb_admin=# create user prod_admin with password 'prod_pwd';
+    edb_admin=# create database prod1 with owner prod_admin;
+    ```
+
+2.  Connect to the new database. For example:
+    ```
+    edb_admin=# \c prod1
+    ```
+
+3.  Create new application roles. For example:
+
+    ```
+    prod1=# create user app1 with password 'app1_pwd';
+    prod1=# grant edb_admin to app1;
+
+    prod1=# create user app2 with password 'app2_pwd';
+    prod1=# grant edb_admin to app2;
+    ```
+
+4.  Create a new schema for each application with the `AUTHORIZATION` clause for the application owner. For example:
+    ```
+    prod1=# create schema app1 authorization app1;
+    prod1=# create schema app2 authorization app2;
+    ```
+## IAM authentication for Postgres
+
+Any user with a supported cloud account connected to a BigAnimal subscription who has the Postgres IAM role iam_aws, iam_azure, or iam_gcp can authenticate to the database using their IAM credentials.
+
+### Configuring IAM for Postgres
+
+Provision your cluster before configuring IAM for Postgres.
+
+1. In BigAnimal, turn on the IAM authentication feature when creating or modifying the cluster:
+    1. On the **Additional Settings** tab, under **Authentication**, select **Identity and Access Management (IAM) Authentication**. 
+    1. Select **Create Cluster** or **Save**.
+    !!!note
+       To turn on IAM authentication using the CLI, see [Using IAM authentication on AWS](/biganimal/latest/reference/cli/using_features/#iam-authentication-cli-commands).
+1. From your cloud provider, get the user name of each IAM user requiring database access. In the cloud account connected to BigAnimal, use Identity and Access Management (IAM) to perform user management. 
+
+1. In Postgres, if the IAM role doesn’t exist yet, use the `CREATE ROLE` command. For example, for AWS, use:
+
+    ```
+    CREATE ROLE "iam_aws";
+    ```
+
+1. For each IAM user, run the `CREATE USER` Postgres command. For example, for AWS, use:
+
+    ```
+    CREATE USER "<ARN>" IN ROLE iam_aws;
+    ```
+
+    Where &lt;ARN> is the Amazon resource name. (For Azure, use the user principal name. For GCP, use the email address.)
+
+### Logging in to Postgres using IAM credentials
+
+If IAM integration is configured for your cluster, you can log in to Postgres using your cloud credentials. Alternatively, you can use your token instead of your password. Logging in either way allows you to connect to your Postgres database using your cloud account's IAM standard credentials. 
+
+For either method, you must first authenticate to your cloud service provider IAM to get your password or token.
+
+!!! Note 
+    You can continue to log in using your Postgres username and password. However, doing so doesn’t provide IAM authentication even if this feature is configured.
+
+1. Get your credentials for your IAM-managed cloud account.
+    - For AWS, your password is your access key (in the form &lt;access key id>:&lt;secret access key>). To get your access key, see [get-access-key-info](https://docs.aws.amazon.com/cli/latest/reference/sts/get-access-key-info.html) To get your authorization token, see [get-authorization-token](https://docs.aws.amazon.com/cli/latest/reference/ecr-public/get-authorization-token.html).
+    - For GCP, to get your access token, see [Create a short-lived access token](https://cloud.google.com/iam/docs/create-short-lived-credentials-direct).
+    - For Azure, to get your access token, see [the get-access-token command](https://learn.microsoft.com/en-us/cli/azure/account?view=azure-cli-latest#az-account-get-access-token()).
+1. Connect to Postgres using your IAM credentials.
+
+### Using IAM authentication CLI commands
+
+For information on integrating with IAM on AWS using the CLI, see [IAM authentication CLI commands](/biganimal/latest/reference/cli/using_features/#iam-authentication-cli-commands).

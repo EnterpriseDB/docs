@@ -1,0 +1,142 @@
+---
+title: Creating a cluster on the command line
+navTitle: "Using the command line" 
+indexCards: none
+---
+
+
+We'll be using the [BigAnimal command line interface](/biganimal/latest/reference/cli/), which is a convenient wrapper to the [BigAnimal API](/biganimal/latest/reference/api/). To start, download [the latest binary](/biganimal/latest/reference/cli/) and move it to wherever your system finds executable files (somewhere on your PATH). 
+
+!!! Note Linux and MacOS note
+    If you're on a Linux or MacOS system, you'll need to mark the `biganimal` file as executable by
+    running `chmod +x [/path/to/biganimal]` before you can use it.  
+    
+Example (for Linux or MacOS):
+
+```shell
+curl -LO "https://cli.biganimal.com/download/$(uname -s)/$(uname -m)/latest/biganimal"
+mkdir -p $HOME/bin
+export PATH=$HOME/bin:$PATH
+mv ./biganimal $HOME/bin/biganimal
+chmod +x $HOME/bin/biganimal
+```
+
+Next, you need to create a credential on BigAnimal. You can pick any username you prefer.
+
+```shell
+biganimal credential create -n newuser
+__OUTPUT__
+Visit this URL to login: https://auth.biganimal.com/activate?user_code=XXXX-XXXX
+or press [Enter] to continue in the web browser 
+Then visit: https://auth.biganimal.com/activate 
+press [Enter] to continue in the web browser... 
+```
+
+!!! Note Linux dependencies
+    The BigAnimal CLI uses the xdg-open utility to open a browser on Linux systems.
+    On minimal systems, you might need to install this dependency before creating a credential.
+
+The command will direct you to open a webpage and copy the randomly generated, one-time code. You’ll need to log in (or already be logged in) to activate the credentials. You can see the credentials you've verified on the command line.
+
+```shell
+biganimal credential show
+__OUTPUT__
+┌────────────────────────────────────────────────────────────────────┐
+│ Credentials                                                        │
+├──────────┬─────────────────────────────┬──────┬────────────────────┤
+│ name     │ address                     │ port │ context credential │
+├──────────┼─────────────────────────────┼──────┼────────────────────┤
+│ new-user │ portal.enterprisedb.network │ 443  │ x                  │
+└──────────┴─────────────────────────────┴──────┴────────────────────┘
+```
+
+!!! Note Caution
+    If you add another credential, the newly created credential will be set as the new default context credential. You’ll need to add `--credential [newuser]` to the following commands to override the default credentials. If you have only one, the option isn't needed. You can change the default credential using `biganimal config set context_credential [name]`.
+
+
+Use the `biganimal region show` command to see the available active regions you can pick from for your cluster.
+
+Edit a new file called `create_cluster.yaml`:
+
+```yaml
+clusterName: test_cluster # or a name of your choosing
+password: 
+clusterArchitecture: 
+postgresType: 
+postgresVersion: 
+provider: 
+region:  # Select from the options given by the `region show` command
+instanceType: 
+volumeProperties: 
+volumeType: 
+networking: 
+highAvailability:
+```
+
+Use the config file to create a new cluster:
+
+```shell
+biganimal cluster create --config-file create_cluster.yaml
+__OUTPUT__
+Are you sure you want to create cluster "test_cluster"? [y|N]: 
+```
+Select `y`. 
+
+If successful, `cluster create` will give you the ID of your new cluster (you'll use this to manage it) as well as
+the command you can use to check the status of your new cluster. 
+
+```
+__OUTPUT__
+Create Cluster operation is started
+Cluster ID is "p-xxxxxxxxxx"
+To check current state, run: biganimal cluster show --id p-xxxxxxxxxx
+```
+
+Here's example output from the `cluster show` command:
+
+```shell
+biganimal cluster show --id p-xxxxxxxxxx
+__OUTPUT__
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Clusters                                                                                                                                                                                     │
+├──────────────┬──────────────┬──────────┬──────────────┬───────────────────────────────────┬─────────────┬───────────────┬──────────────────────────────────┬────────────────────┬────────────┤
+│ ID           │ Name         │ Provider │ Architecture │ Status                            │ Region      │ Instance Type │ Postgres Details                 │ Maintenance Window │ FAReplicas │
+├──────────────┼──────────────┼──────────┼──────────────┼───────────────────────────────────┼─────────────┼───────────────┼──────────────────────────────────┼────────────────────┼────────────┤
+│ p-xxxxxxxxxx │ test_cluster │ Azure    │ single       │ Cluster creation request received │ East US 2   │ E2s v3        │ EDB Postgres Advanced Server v15 │ Disabled           │ N/A        │
+│              │              │          │              │                                   │             │               │                                  │                    │            │
+└──────────────┴──────────────┴──────────┴──────────────┴───────────────────────────────────┴─────────────┴───────────────┴──────────────────────────────────┴────────────────────┴────────────┘
+```
+
+It might take a few minutes to create your cluster. When it’s ready,
+the Status column will change to "Cluster in healthy state." 
+
+In the meantime, you can get the connection string for your cluster. For example:
+
+```shell
+biganimal cluster show-connection --id p-xxxxxxxxxxx
+__OUTPUT__
+┌─────────────┬──────────────────────────────────────────────────────────────────────────────────────────┐
+│ Access Type │ Connection String                                                                        │
+├─────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
+│ read-write  │ postgresql://edb_admin@p-xxxxxxxxxxx.pg.biganimal.io:5432/edb_admin?sslmode=require'     │
+│ read-only   │ Not Supported                                                                            │
+└─────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+After the cluster is created, log in by way of psql. Use the password from the `config` file for edb_admin.
+
+```shell
+psql 'postgres://edb_admin@p-xxxxxxxxxx.pg.biganimal.io:5432/edb_admin?sslmode=require'
+```
+
+!!! Note "Other options for connecting"
+    Sure, psql is great, but maybe you want to use another client. See [Connect to your cluster](../connect_to_a_cluster) for other options.
+
+## Next steps
+
+[Connect to your cluster](../connect_to_a_cluster).
+
+## Further reading
+
+[BigAnimal CLI reference](/biganimal/latest/reference/cli/) and 
+[Creating a cluster](/biganimal/latest/getting_started/creating_a_cluster/) in the full version documentation.

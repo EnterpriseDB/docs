@@ -1,0 +1,167 @@
+---
+title: "Viewing metrics and logs from Azure"
+---
+
+BigAnimal sends all metrics and logs from Postgres clusters to Azure. You can view metrics and logs directly from Azure. 
+
+## Azure log analytics
+
+When BigAnimal deploys workloads on Azure, the logs from the Postgres clusters are forwarded to the Azure Log Workspace. To query BigAnimal logs, you must use [Azure log analytics](https://docs.microsoft.com/en-us/azure/azure-monitor/logs/log-analytics-overview) and [Kusto query language](https://azure-training.com/azure-data-science/the-kusto-query-language/).
+
+### Query Postgres cluster logs
+
+All logs from your Postgres clusters are stored in the Customer Log Analytics workspace. To find your Customer Log Analytics workspace:
+
+1.  Sign in to the [Azure portal](https://portal.azure.com).
+
+2.  Select **Resource Groups**.
+
+3.  Select the resource group corresponding to the region where you choose to deploy your BigAnimal cluster. You see resources included in that resource group.
+
+4.  Select the resource of type **Log Analytics workspace** with the prefix `log-workspace-`.
+
+5.  Select the logs in the menu on the left in the **General** section.
+
+6.  Close the dashboard with prebuilt queries, which brings you to the KQL editor.
+
+The following tables containing BigAnimal logs are available in the Customer Log Analytic workspace.
+
+| Table name           | Description                                                         | Logger                          |
+| -------------------- | ------------------------------------------------------------------- | ------------------------------- |
+| PostgresLogs_CL      | Logs of the customer clusters databases (all Postgres-related logs) | `logger = postgres`             |
+| PostgresAuditLogs_CL | Audit logs of the customer clusters databases                       | `logger = pgaudit or edb_audit` |
+
+Logs are split into structured fields matching those of the Postgres
+[csvlog format](https://www.postgresql.org/docs/current/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-CSVLOG)
+with a `record_` prefix and a type suffix. For example, the `application_name`
+is in the `record_application_name_s` log field. The `pg_cluster_id_s` field identifies the specific Postgres cluster that originated the log message.
+
+You can use the KQL Query editor to compose your queries over these tables. For example:
+
+```
+PostgresLogs_CL
+| project record_log_time_s, record_error_severity_s, record_detail_s
+| sort by record_log_time_s desc
+
+PostgresAuditLogs_CL
+| where logger_s == "pgaudit"
+| project record_log_time_s, record_error_severity_s, record_audit_statement_s
+| sort by record_log_time_s desc
+
+PostgresAuditLogs_CL
+| where logger_s == "edb_audit"
+| project record_log_time_s, record_error_severity_s, record_message_s
+| sort by record_log_time_s desc
+```
+ 
+### Using BigAnimal's cloud account
+
+To access your Postgres cluster logs, when using BigAnimal's cloud account, generate a SAS token from BigAnimal and use it to download the logs. 
+
+1. In the BigAnimal portal, select **Clusters**, select your cluster, and select the **Monitoring & Logging** tab. 
+
+1. Select **Generate Token** and copy the SAS token. The SAS token is a sensitive value, so don't make it publicly available. The following is a sample SAS token: 
+
+   ```
+   https://blobsamples.blob.core.windows.net/?sv=2022-11-02&ss=b&srt=sco&sp=rwlc&se=2023-05-24T09:51:36Z&st=2023-05-24T01:51:36Z&spr=https&sig=<signature> 
+   ```
+    
+1. Enter the `azcopy` command to download the Postgres logs from BigAnimal. For example:
+
+   ```
+   azcopy copy '$TOKEN' . --recursive
+   INFO: Scanning...
+   INFO: Any empty folders will not be processed, because source and/or destination doesn't have full folder support
+   
+   Job aa4b74a0-bc92-be4e-551c-47aec1c1cfc3 has started
+   Log file is located at: /Users/sample_user/.azcopy/aa4b74a0-bc92-be4e-551c-47aec1c1cfc3.log
+   
+   100.0 %, 5 Done, 0 Failed, 0 Pending, 0 Skipped, 5 Total, 2-sec Throughput (Mb/s): 0.5375
+   
+   
+   Job aa4b74a0-bc92-be4e-551c-47aec1c1cfc3 summary
+   Elapsed Time (Minutes): 0.0333
+   Number of File Transfers: 5
+   Number of Folder Property Transfers: 0
+   Number of Symlink Transfers: 0
+   Total Number of Transfers: 5
+   Number of File Transfers Completed: 5
+   Number of Folder Transfers Completed: 0
+   Number of File Transfers Failed: 0
+   Number of Folder Transfers Failed: 0
+   Number of File Transfers Skipped: 0
+   Number of Folder Transfers Skipped: 0
+   TotalBytesTransferred: 134416
+   Final Job Status: Completed
+   $ tail p-a1b2c3d4d5/kubernetes-logs/p-a1b2c3d4d5/2023/09/26/13/19/azure_customer_postgresql_cluster.var.log.containers.p-a1b2c3d4d5-1_p-a1b2c3d4d5_postgres-c798aa19ea0481c8d9575f025405b3ad9212816ca7e928f997473055499a692c.log
+   {"@timestamp":"2023-09-26T13:19:19.572442Z","level":"info","ts":"2023-09-26T13:19:19Z","logger":"wal-archive","msg":"Archived WAL file","logging_pod":"p-a1b2c3d4d5-1","walName":"pg_wal/000000010000000000000006","startTime":"2023-09-26T13:19:18Z","endTime":"2023-09-26T13:19:19Z","elapsedWalTime":1.060413255,"stream":"stdout","logtag":"F","message":"{\"level\":\"info\",\"ts\":\"2023-09-26T13:19:19Z\",\"logger\":\"wal-archive\",\"msg\":\"Archived WAL 
+   ```
+
+## Metrics
+
+BigAnimal collects a wide set of metrics about Postgres instances into the `DpMetrics_CL` log analytics table. Most of these metrics are acquired directly from Postgres system tables, views, and functions. The Postgres documentation serves as the main reference for these metrics.
+
+### Available metrics
+
+The following tables in the Customer Log Analytic workspace contain metrics
+specific to BigAnimal.
+
+| Table name           | Description                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| DpMetrics_CL         | Metrics streams from BigAnimal Prometheus                                                                      |
+
+You can use the KQL Query editor in the Log Workspace view to compose queries
+over these tables.
+
+The forwarded Prometheus metrics use structured JSON fields, particularly the `Message` and `Message.labels` fields. To query these fields, you need to use the KQL function
+[`todynamic()`](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/parsejsonfunction)
+in your queries.
+
+Currently, all metrics forwarded from Prometheus are in the `DpMetrics_CL` table. This might change in a future release.
+
+The available set of metrics is subject to change. Metrics might be added, removed or renamed. Where feasible, we will change the metric name when the meaning or type of an existing metric changes.
+
+### Metrics labels
+
+All Postgres metrics share a common labeling scheme. Entries generally have at least the following labels.
+
+| Name                         | Description                                                   |
+| ---------------------------- | ------------------------------------------------------------- |
+| instance                     | IP address of the host the metric originated from             |
+| postgresql                   | BigAnimal postgres cluster identifier, e.g., `p-abcdef012345` |
+| role                         | Postgres instance role: primary or standby replica            |
+| datname                      | Postgres database name (where applicable)                     |
+| pod                          | k8s pod name                                                  |
+| aks_cluster_name             | AKS cluster name                                              |
+
+When querying for labels, for best performance, apply filters that don't require inspecting labels (for example, filters by metric name) before label-based filters.
+
+The `labels` field of a metrics entry is a nested field under the JSON-typed `Message` field. To query the field for individual values, you JSON parse the `Message` field and dot reference (`m.labels`) the labels property. Some uses of values might require explicit casts to another type, for example, `tostring(...)`.
+
+Example usage:
+
+```
+DpMetrics_CL
+| where Message has "cnp_"
+| extend m = todynamic(Message)
+| where m.labels.role == "primary"
+| project postgres_cluster_id = tostring(m.labels.postgresql), metric_name = m.name, metric_value = m.value
+```
+
+For a detailed list of available metrics, see [metrics](../metrics).
+
+## Workbooks
+
+You can view logs from your Postgres clusters using Azure Workbooks. See [Azure Monitor Workbooks](https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview).
+
+To access Azure Workbooks:
+
+1.  Sign in to the [Azure portal](https://portal.azure.com).
+
+2.  Search for `workbooks`.
+
+3.  Filter the search results as needed. For example, you might need to filter by subscription if your account has more than one and the location that corresponds with the region where you deployed your cluster. You can either use the filter controls or search to narrow the search results.
+
+4.  Select the workbook link in the **Name** column to open the workbook details. Names have the format `${GUID} (xxx-rg-${region}-management-xxx-customer)`, for example, `62b6d449-e0e5-480a-9809-cae2ff6510e9 (123-rg-australiaeast-management-abcd-customer)`.
+
+5.  Select **Open Workbook** in the workbook details to launch an interactive workbook with various metrics for your deployed clusters.
