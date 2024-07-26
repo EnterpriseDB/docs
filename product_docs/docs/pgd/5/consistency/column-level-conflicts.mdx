@@ -31,7 +31,7 @@ Applied to the previous example, the result is `(100,100)` on both nodes, despit
 
 When thinking about column-level conflict resolution, it can be useful to see tables as vertically partitioned, so that each update affects data in only one slice. This approach eliminates conflicts between changes to different subsets of columns. In fact, vertical partitioning can even be a practical alternative to column-level conflict resolution.
 
-Column-level conflict resolution requires the table to have `REPLICA IDENTITY FULL`. The `bdr.alter_table_conflict_detection` function checks that and fails with an error if this setting is missing.
+Column-level conflict resolution requires the table to have `REPLICA IDENTITY FULL`. The [bdr.alter_table_conflict_detection()](conflict_functions#bdralter_table_conflict_detection) function checks that and fails with an error if this setting is missing.
 
 ## Enabling and disabling column-level conflict resolution
 
@@ -39,7 +39,7 @@ Column-level conflict resolution requires the table to have `REPLICA IDENTITY FU
 Column-level conflict detection uses the `column_timestamps` type. This type requires any user needing to detect column-level conflicts to have at least the [bdr_application](../security/pgd-predefined-roles/#bdr_application) role assigned.
 !!!
 
-The [bdr.alter_table_conflict_detection()](conflicts#bdralter_table_conflict_detection) function manages column-level conflict resolution.
+The [bdr.alter_table_conflict_detection()](conflict_functions#bdralter_table_conflict_detection) function manages column-level conflict resolution.
 
 ### Example
 
@@ -60,6 +60,17 @@ db(# 'column_modify_timestamp', 'cts');
  t
 
 db=# \d my_app.test_table
+                                       Table "my_app.test_table"
+ Column |         Type          | Collation | Nullable |                     Default
+--------+-----------------------+-----------+----------+--------------------------------------------------
+ id     | integer               |           | not null | nextval('my_app.test_table_id_seq'::regclass)
+ val    | integer               |           |          |
+ cts    | bdr.column_timestamps |           | not null | 's 1 775297963454602 0 0'::bdr.column_timestamps
+Indexes:
+    "test_table_pkey" PRIMARY KEY, btree (id)
+Triggers:
+    bdr_clcd_before_insert BEFORE INSERT ON my_app.test_table FOR EACH ROW EXECUTE FUNCTION bdr.column_timestamps_current_insert()
+    bdr_clcd_before_update BEFORE UPDATE ON my_app.test_table FOR EACH ROW EXECUTE FUNCTION bdr.column_timestamps_current_update()
 ```
 
 The function adds a `cts` column as specified in the function call. It also creates two triggers (`BEFORE INSERT` and `BEFORE UPDATE`) that are responsible for maintaining timestamps in the new column before each change.
@@ -110,7 +121,7 @@ When enabling or disabling column timestamps on a table, the code uses DDL locki
 
 An important decision is the timestamp to assign to modified columns.
 
-By default, the timestamp assigned to modified columns is the current timestamp, as if obtained from `clock_timestamp`. This is simple, and for many cases it is correct (for example, when the conflicting rows modify non-overlapping subsets of columns).
+If `column_modify_timestamp` is selected as the conflict detection method, the timestamp assigned to modified columns is the current timestamp, as if obtained from `clock_timestamp`. This is simple, and for many cases it is correct (for example, when the conflicting rows modify non-overlapping subsets of columns).
 
 It can, however, have various unexpected effects:
 
@@ -118,18 +129,11 @@ It can, however, have various unexpected effects:
 
 -   The timestamp is unrelated to the commit timestamp. Using it to resolve conflicts means that the result isn't equivalent to the commit order, which means it likely can't be serialized.
 
+You can also use the actual commit timestamp, specified with `column_commit_timestamp` as the conflict detection method.
+Commit timestamps currently have restrictions that are explained in [Notes](#notes).
+
 !!! Note
     Statement and transaction timestamps might be added in the future, which will address issues with mixing effects of concurrent statements or transactions. Still, neither of these options can ever produce results equivalent to commit order.
-
-You can also use the actual commit timestamp, although this feature is considered experimental. To use the commit timestamp, set the last parameter to `true` when enabling column-level conflict resolution:
-
-```sql
-SELECT bdr.column_timestamps_enable('test_table'::regclass, 'cts', true);
-```
-
-You can disable it using `bdr.column_timestamps_disable`.
-
-Commit timestamps currently have restrictions that are explained in [Notes](#notes).
 
 ## Inspecting column timestamps
 
