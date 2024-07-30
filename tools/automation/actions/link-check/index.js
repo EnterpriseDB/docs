@@ -22,10 +22,10 @@ const noWarnPaths = [
   "/playground/1/01_examples/link-tests",
   "/playground/1/01_examples/link-test",
 ];
-const basePath = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
-  "../../../..",
-);
+const args = process.argv.slice(2);
+const basePath =
+  args[0] ||
+  path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../..");
 
 let ghCore = core;
 
@@ -249,7 +249,7 @@ Files updated: **${filesUpdated}**`);
     ghCore.summary.addRaw(`
 
 **${linksUpdated}** links could be updated to avoid redirects; 
-run \`node tools/automation/actions/link-check\` locally.`);
+run \`npm run links:check\` locally.`);
 
   ghCore.summary.write();
 
