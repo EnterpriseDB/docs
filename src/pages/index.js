@@ -199,14 +199,14 @@ const Page = () => {
               headingText="Cloud Service"
               to="/edb-postgres-ai/cloud-service"
             >
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/hosted">
-                Hosted databases
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/getting_started">
+                Getting started
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/managed">
-                Managed databases
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/using_cluster">
+                Using your cluster
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/deployment">
-                Deployment options
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
+                Supported configurations
               </BannerCardLink>
             </BannerSubCard>
 
