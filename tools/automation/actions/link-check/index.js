@@ -22,9 +22,11 @@ const noWarnPaths = [
   "/playground/1/01_examples/link-tests",
   "/playground/1/01_examples/link-test",
 ];
+
 const args = process.argv.slice(2);
 const basePath =
   args[0] ||
+  core?.getInput("content-path") ||
   path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../..");
 
 let ghCore = core;
