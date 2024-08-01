@@ -51,7 +51,7 @@ as `Repos 2.0 token`.
 
 Next to the token you'll find a button to copy the token, and an eye icon
 in case you want to view the content of the token as clear text.
-The token shall be used as the *Password* when you try to login to EDB
+The token shall be used as the *Password* when you try to access the EDB
 container registry.
 
 ### Example with `docker login`
@@ -75,8 +75,8 @@ Login Succeeded
 EDB Postgres for Kubernetes supports various PostgreSQL distributions that have
 images available from the same private registries:
 
--   EDB Postgres Advanced
--   EDB Postgres Extended
+-   EDB Postgres Advanced (EPAS)
+-   EDB Postgres Extended (PGE)
 
 !!! Note
     PostgreSQL images are not available in the private registries, but are
@@ -89,10 +89,55 @@ page of the EDB Postgres for Kubernetes documentation.
 
 In the table below you can find the image name prefix for each Postgres distribution:
 
-| Postgres distribution | Image name              | Repositories     |
-| --------------------- | ----------------------- | ---------------- |
-| EDB Postgres Extended | `edb-postgres-extended` | `k8s_standard`   |
-| EDB Postgres Advanced | `edb-postgres-advanced` | `k8s_enterprise` |
+| Postgres distribution        | Image name              | Repositories                     |
+| ---------------------------- | ----------------------- | -------------------------------- |
+| EDB Postgres Extended (PGE)  | `edb-postgres-extended` | `k8s_standard`, `k8s_enterprise` |
+| EDB Postgres Advanced (EPAS) | `edb-postgres-advanced` | `k8s_enterprise`                 |
+
+## How to deploy clusters with EPAS or PGE operands
+
+If you have already installed the EDB Postgres for Kubernetes operator from the
+private registry, you must have already set up an image pull secret. If you
+haven't, the next section may be of interest to you.
+
+If you have an existing installation of the operator, in order to pull images
+for EPAS or PGE from the private registry, you will need to create a
+[`kubernetes.io/dockerconfigjson` pull secret](https://kubernetes.io/docs/concepts/configuration/secret/#secret-types).
+
+You can
+[create a pull secret from credentials](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/#create-a-secret-by-providing-credentials-on-the-command-line).
+
+```sh
+kubectl create secret docker-registry registry-pullsecret \
+  -n <CLUSTER-NAMESPACE> --docker-server=docker.enterprisedb.com \
+  --docker-username=<REGISTRY-NAME> \
+  --docker-password=<TOKEN>
+```
+
+As mentioned above, the `docker-username` is the name of your registry, i.e.
+`k8s_standard` or `k8s_enterprise`. The `docker-password` is the token retrieved
+from the [EDB portal](#how-to-retrieve-the-token).
+
+Once your pull secret is created, remember to set the `imagePullSecrets` field
+in the cluster manifest in addition to the `imageName`.
+The manifest below will create a cluster running PG Extended from the
+`k8s_enterprise` repository.
+
+```yaml
+apiVersion: postgresql.k8s.enterprisedb.io/v1
+kind: Cluster
+metadata:
+  name: postgresql-extended-cluster
+spec:
+  instances: 3
+  imageName: docker.enterprisedb.com/k8s_enterprise/edb-postgres-extended:16.2
+  imagePullSecrets:
+  - name: registry-pullsecret
+
+  storage:
+    storageClass: standard
+    size: 1Gi
+```
 
 ## How to install the operator using the EDB private registry
 
