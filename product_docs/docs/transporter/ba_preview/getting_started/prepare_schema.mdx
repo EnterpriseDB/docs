@@ -2,4 +2,52 @@
 title: "Preparing schema"
 ---
 
-Use [EDB Migration Portal](https://www.enterprisedb.com/docs/migration_portal/latest/) to assess Oracle database sources for schema compatibility before starting the data migration process. Address incompatible schemas or exclude them from the migration and migrate the schema to the new database **without applying constraints**.
+# Oracle to EPAS Migrations
+
+Use [EDB Migration Portal](https://www.enterprisedb.com/docs/migration_portal/latest/) to assess Oracle database sources for schema compatibility before starting the data migration process. 
+
+EDB's Migration Portal offers the ability to [migrate database schema](https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/) through either an offline file export or a live application to the destination cluster.
+
+# Other Migrations
+
+For migrations to and from Postgres we recommend using [EDBs Migration Toolkit](https://deploy-preview-5759--edb-docs-staging.netlify.app/docs/migration_toolkit/latest/) to manage schema. MTK's [offline migration](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability provides an easy way to extract database schema.
+
+Tools such as `pg_dump` and `pg_restore` are another valid route for migrating DDL.
+
+# Destination Database Schema Integrity and Performance Considerations
+
+The presence of destination database constraints, triggers, and WAL logging can impact migration performance. If the target database has limited resources or resource contention is detected during migration consider delayed application of database constraints.
+
+The impact of various constraints and settings are described below.
+
+## Identity and Deduplication constraints
+
+`PRIMARY KEY`
+`UNIQUE`
+
+These types of constraints are implicitly leveraged by EDB Transporter to provide an exactly-once-delivery guarantee when syncing data to the destination database. `PRIMARY KEY` and `UNIQUE` constraints should be applied before the data migration begins, while other types of constraints can be withheld until after data migration completes. `PRIMARY KEY` or `UNIQUE` is sufficient to achieve exactly-once-delivery.
+
+For rows in tables that do not have `PRIMARY KEY` or `UNIQUE` constraints it is only possible to achieve at-least-once delivery. Deduplication can be performed during integrity validation such as with [EDB LiveCompare](https://www.enterprisedb.com/docs/livecompare/latest/).
+
+## Performance Impacting Constraints
+
+The EDB Transporter Writer is able to apply change events in parallel against destination clusters. For data migrations, we can delay application of the following constraints until after data movement is complete:
+
+`FOREIGN KEY` / `REFERENCES`
+`CHECK`
+`CASCADE`
+`EXCLUDE`
+
+These constraints should be applied after a snapshot is done or the user signals the end of a streaming CDC migration.
+
+In particular, data migration can only proceed in serial if `FOREIGN KEY` constraints are present in the destination tables.
+
+Other types of constraints lead to unnecessary CPU and memory utilization given the context of an in-flight data migration from a consistent and referentially integral source database.
+
+For Oracle sources we recommend Migration Portal be used to separate constraints from other destination DDL. This is supported in the [offline migration experience](https://www.enterprisedb.com/docs/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/#offline-migration).
+
+For other sources Migration Toolkit can be used with `-offlineMigration` can be used to [extract source schema](https://www.enterprisedb.com/docs/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options). MTK automatically separates constraints from other DDL objects in the exported DDL.
+
+## Less Impactful Constraints
+
+`NOT NULL` does not impose a significant performance impact for destination clusters.
