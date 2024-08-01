@@ -29,7 +29,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
 );
 
 const BannerCard = ({ iconName, headingText, children }) => (
-  <div className="col-xl-12 width=100">
+  <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
     <div className="card rounded shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
@@ -48,7 +48,7 @@ const BannerCard = ({ iconName, headingText, children }) => (
 );
 
 const BannerSubCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-4 col-lg-4">
+  <div className="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-xs-12">
     <div className="card rounded shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
@@ -71,7 +71,7 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
 );
 
 const BannerWideCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-12 col-lg-4">
+  <div className="col-xl-12 col-lg-12">
     <div className="card rounded shadow-sm mb-4">
       <div className="row">{children}</div>
     </div>
@@ -79,7 +79,11 @@ const BannerWideCard = ({ iconName, headingText, to, children }) => (
 );
 
 const BannerWideCardLink = ({ to, className, children }) => (
-  <Link to={to} className={`col py-2 px-5 text-center ${className}`}>
+  <Link
+    to={to}
+    className={`col-12 col-md-4 py-2 px-5 text-center ${className}`}
+    style={{ minwidth: "14em" }}
+  >
     {children}
   </Link>
 );
@@ -271,7 +275,11 @@ const Page = () => {
           </BannerCard>
 
           <BannerWideCard>
-            <BannerWideCardLink to="/repos/" iconName={iconNames.Download}>
+            <BannerWideCardLink
+              className="col-md-12"
+              to="/repos/"
+              iconName={iconNames.Download}
+            >
               Downloads and Repositories
             </BannerWideCardLink>
           </BannerWideCard>
