@@ -1,0 +1,109 @@
+---
+navTitle: Timestamps
+title: Timestamps in column-level conflict resolution
+redirects:
+  - /pgd/latest/bdr/column-level-conflicts/
+---
+
+When dealing with distributed databases, conflicts can happen. EDB's Postgres Distributed (PGD) provides mechanisms to handle these conflicts, one of which involves using timestamps. Understanding how timestamps work in this context is crucial for ensuring data consistency across nodes.
+
+## Current vs commit timestamp
+
+### Current timestamp 
+
+When using `column_modify_timestamp` as the conflict detection method, the current timestamp is assigned to modified columns. This timestamp is similar to what is obtained from `clock_timestamp()`.
+
+#### Advantages
+
+- Simple to implement.
+- Suitable when conflicting rows modify non-overlapping subsets of columns.
+
+#### Challenges
+
+- **Varying timestamps during execution:** Each row in an `UPDATE` statement may receive a slightly different timestamp, leading to potential mixed effects from concurrent changes on different nodes.
+- **Clock Skew:** Differences in system clocks across nodes can cause unexpected behavior. 
+- **Serialization issues:** The current timestamp does not correlate with commit order, which can affect serializablity.
+
+### Commit timestamp
+
+Using `column_commit_timestamp` as the conflict detection method assigns the commit timestamp to the modified columns. This method aims to align more closely with the commit order of transactions.
+
+#### Future considerations:
+
+- Statement and transaction timestamps might be introduced to address the mixed effects of concurrent statements and transactions. However, these options will still not guarantee results equivalent to commit order.
+
+## Handling Timestamp Conflicts
+
+When using regular timestamps for ordering changes or commits, conflicts might arise if two or more nodes generate the same timestamp. In such cases, the node ID acts as a tie-breaker, with the higher node ID prevailing. This ensures consistent application of changes across all nodes.
+
+## Inspecting column timestamps 
+
+The timestamps for modified columns are managed by triggers, and it is essential not to modify them directly. To investigate how a conflict was resolved, inspecting these timestamps can be helpful.
+
+### Useful functions
+
+#### `bdr.column_timestamps_to_text(bdr.column_timestamps)`
+
+Returns a human-readable representation of the timestamp mapping.
+
+```sql
+SELECT cts::text FROM test_table;
+```
+
+Example output:
+
+```
+{source: current, default: 2018-09-23 19:24:52.118583+02, map: [2 : 2018-09-23 19:25:02.590677+02]}
+```
+
+#### `brd.column_timestamps_to_jsonb(bdr.column_timestamps)`
+
+Returns a JSONB representation of the timestamp mapping.
+
+```sql
+SELECT jsonb_pretty(cts::jsonb) FROM test_table;
+```
+
+Example output:
+
+```json
+{
+    "map": {
+        "2": "2018-09-23T19:24:52.118583+02:00"
+    },
+    "source": "current",
+    "default": "2018-09-23T19:24:52.118583+02:00"
+}
+```
+
+#### `bdr.column_timestamps_resolve(brd.column_timestamps, xid)
+
+Updates the mapping with the commit timestamp for attributes modified by the most recent transaction, if it has already committed.
+
+```sql
+SELECT bdr.column_timestamps_resolve(cts, xmin)::jsonb FROM test_table;
+```
+
+Example output:
+
+```json
+{
+    "map": {
+        "2": "2018-09-23T19:29:55.581823+02:00"
+    },
+    "source": "commit",
+    "default": "2018-09-23T19:29:55.581823+02:00"
+}
+```
+
+## Important considerations
+
+- **Automated Management:** The column storing timestamp mapping is managed automatically. Do not specify or override the value in your queries, as this can lead to unpredictable results.
+- **Trigger order:** The order in which triggers execute is critical. Custom triggers modifying tuples after the pgl_clcd_ triggers may not detect modified columns correctly.
+
+By understanding these concepts, you can effectively manage column-level conflicts in EDB's Postgres Distributed (PGD) and ensure data consistency across your distributed database environment.
+
+
+
+
+
