@@ -1,29 +1,46 @@
 ---
 title: "Troubleshooting with encrypted WAL files"
 navTitle: WAL files
+deepToC: true
 ---
 
-You can encrypt WAL files. When troubleshooting with encrypted WAL falls, you can use WAL command options. 
+When TDE is enabled, WAL files are encrypted. If you want to perform operations on the encrypted WAL files, you will need to allow the operation to decrypt the file. 
+
+When troubleshooting with encrypted WAL files, you can use WAL command options. 
 
 ## Dumping a TDE-encrypted WAL file
 
-To work with an encrypted WAL file, the [pg_waldump](https://www.postgresql.org/docs/15/pgwaldump.html) needs to be aware of the unwrap key. You can either pass the key for the unwrap command using the following options to the `pg_waldump` command or depend on the fallback environment variable:
+To work with an encrypted WAL file, you need to ensure the [pg_waldump](https://www.postgresql.org/docs/15/pgwaldump.html) utility can access the unwrap key and decrypt it. For this purpose, the utility requires awarenes of three values.  
+
+Pass these values using the following options to the `pg_waldump` command:
 
 ### `--data-encryption`
 
-Consider the WAL files to encrypt, and decrypt them before processing them. You must specify this option if the WAL files were encrypted by transparent data encryption. `pg_waldump` can't automatically detect whether WAL files are encrypted. Optionally, specify an AES key length. Valid values are 128 and 256. The default is 128.
+You must specify this option if the WAL files were encrypted by transparent data encryption.
+
+The `--data-encryption` or `-y` option ensures the command is aware of the encryption, as `pg_waldump` can't automatically detect whether WAL files are encrypted.
+
+It considers the WAL files to encrypt, and decrypts them before processing them. Optionally, specify an AES key length. Valid values are 128 and 256. The default is 128.
 
 ### `--key-file-name=<file>`
 
-Load the data encryption key from the given location.
+Use the `--key-file-name=<file>` option to reference the data encryption key required to decrypt the WAL file. Provide the location of the `pg_encryption/key.bin` file. This file is generated when you initialize a cluster with encryption enabled. 
+
+The command can then load the data encryption key from the given location. 
 
 ### `--key-unwrap-command=<command>`
 
-Specifies a command to unwrap (decrypt) the data encryption key. The command must include a placeholder `%p` that specifies the file to read the wrapped key from. The command needs to write the unwrapped key to its standard output. If you don't specify this option, the environment variable `PGDATAKEYUNWRAPCMD` is used. 
-  
-Use the special value `-` if you don't want to apply any key unwrapping command. 
-   
-You must specify this option or the environment variable fallback if you're using data encryption. See [Securing the data encryption key](./key_stores/) for more information.
+For the `--key-unwrap-command=<command>` option, provide the decryption command you specified to unwrap (decrypt) the data encryption key when initializing the TDE cluster. See [Using initdb TDE options](enabling_tde/#using-initdb-tde-options) for more information. 
+
+Alternatively, you can set the `PGDATAKEYUNWRAPCMD` environment variable before running the `pg_waldump` command. `pg_waldump` automatically falls back on `PGDATAKEYUNWRAPCMD`, if the `--key-unwrap-command=<command>` options is not specified. You can see how to export an environment variable in this [cluster intialization example](enabling_tde/#example).
+
+### Example
+
+This example uses `pg_waldump` to display the WAL log of the Postgres cluster: 
+
+```
+pg_wal pg_waldump --data-encryption --key-file-name=pg_encryption/key.bin --key-unwrap-command='openssl enc -d -aes-128-cbc -pass pass:<passphrase> -in %p'
+```
 
 ## Resetting a corrupt TDE-encrypted WAL file
 
