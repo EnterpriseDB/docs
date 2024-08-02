@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
+
+const isBrowser = typeof window !== "undefined";
+const Masonry = isBrowser ? window.Masonry || require("masonry-layout") : null;
 
 const IndexCard = ({ iconName, headingText, children }) => (
   <div className="col-sm-6 col-lg-4">
@@ -12,7 +15,7 @@ const IndexCard = ({ iconName, headingText, children }) => (
           <div className="d-inline-block me-3">
             <Icon
               iconName={iconName}
-              className="fill-orange"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
@@ -26,13 +29,13 @@ const IndexCard = ({ iconName, headingText, children }) => (
 );
 
 const BannerCard = ({ iconName, headingText, children }) => (
-  <div className="col-xl-12 width=100">
+  <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
     <div className="card rounded shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
           <Icon
             iconName={iconName}
-            class="fill: aquamarine"
+            className="fill-aquamarine"
             width="24"
             height="24"
           />
@@ -45,22 +48,22 @@ const BannerCard = ({ iconName, headingText, children }) => (
 );
 
 const BannerSubCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-4 col-lg-4">
+  <div className="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-xs-12">
     <div className="card rounded shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
           <Link to={to}>
             <Icon
               iconName={iconName}
-              class="fill: aquamarine"
+              className="fill-aquamarine"
               width="24"
               height="24"
             />
             <h4 className="d-inline-block card-title m-1">{headingText}</h4>
           </Link>
         </div>
-        <div class="container-fluid">
-          <div class="row">{children}</div>
+        <div className="container-fluid">
+          <div className="row">{children}</div>
         </div>
       </div>
     </div>
@@ -68,7 +71,7 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
 );
 
 const BannerWideCard = ({ iconName, headingText, to, children }) => (
-  <div className="col-xl-12 col-lg-4">
+  <div className="col-xl-12 col-lg-12">
     <div className="card rounded shadow-sm mb-4">
       <div className="row">{children}</div>
     </div>
@@ -76,13 +79,17 @@ const BannerWideCard = ({ iconName, headingText, to, children }) => (
 );
 
 const BannerWideCardLink = ({ to, className, children }) => (
-  <Link to={to} class={`col py-2 px-5 text-center ${className}`}>
+  <Link
+    to={to}
+    className={`col-12 col-md-4 py-2 px-5 text-center ${className}`}
+    style={{ minwidth: "14em" }}
+  >
     {children}
   </Link>
 );
 
 const BannerCardLink = ({ to, className, children }) => (
-  <Link to={to} class={`col-sm-12 py-1 ${className}`}>
+  <Link to={to} className={`col-sm-12 py-1 ${className}`}>
     {children}
   </Link>
 );
@@ -97,12 +104,9 @@ const IndexCardLink = ({ to, className, children }) => (
 
 const Page = () => {
   const layout = useRef(null);
-  useEffect(() => {
-    (async () => {
-      const { default: Masonry } = await import("masonry-layout");
-      layout.current = new Masonry("*[data-masonry]");
-    })();
-    return () => layout.current.destroy();
+  useLayoutEffect(() => {
+    layout.current = layout.current || new Masonry("*[data-masonry]");
+    return () => layout.current?.destroy();
   }, []);
 
   return (
@@ -244,7 +248,7 @@ const Page = () => {
               to="/edb-postgres-ai/ai-ml"
             >
               <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
-                Overview of pgai
+                Overview of aidb
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-ml/install-tech-preview/">
                 Install the Tech Preview
@@ -269,6 +273,16 @@ const Page = () => {
               </BannerCardLink>
             </BannerSubCard>
           </BannerCard>
+
+          <BannerWideCard>
+            <BannerWideCardLink
+              className="col-md-12"
+              to="/repos/"
+              iconName={iconNames.Download}
+            >
+              Downloads and Repositories
+            </BannerWideCardLink>
+          </BannerWideCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">

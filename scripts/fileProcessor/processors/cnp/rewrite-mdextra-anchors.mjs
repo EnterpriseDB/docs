@@ -45,8 +45,6 @@ export const process = async (filename, content) => {
 function headingRewriter() {
   const anchorRE = /{#([^}]+)}/;
   return (tree) => {
-    // link rewriter:
-    // - update links to supported_releases.md to point to /resources/platform-compatibility#pgk8s
     visit(tree, "heading", (node, index, parent) => {
       let text = mdast2string(node);
       let anchor = text.match(anchorRE);
