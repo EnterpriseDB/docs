@@ -79,11 +79,24 @@ if (!process.env.GITHUB_REF) {
           message,
       );
     },
+    context: (filePath, line, column) => {},
   };
 
   function formatErrorPath(filePath, line, column) {
     return `${path.relative(basePath, filePath)}:${line}:${column}`;
   }
+} else {
+  // if this build was triggered by a GH action in response to a PR,
+  // use the head ref (the branch that someone is requesting be merged)
+  let branch = process.env.GITHUB_HEAD_REF;
+  // if this process was otherwise triggered by a GH action, use the current branch name
+  if (!branch) branch = process.env.GITHUB_REF;
+
+  ghCore.context = (filePath, line, column) => {
+    console.log(
+      `in https://github.com/EnterpriseDB/docs/blob/${branch}/${filePath}?plain=1#L${line}`,
+    );
+  };
 }
 
 main().catch((err) => ghCore.setFailed(err));
@@ -214,7 +227,7 @@ async function main() {
     for (let message of result.messages) {
       const props = {
         title: message.ruleId,
-        file: message.file,
+        file: path.relative(basePath, message.file),
         startLine: message.line,
         startColumn: message.column,
       };
@@ -227,6 +240,9 @@ async function main() {
         ghCore.notice(message.reason, props);
       if (message.ruleId === "pathCheck") ++brokenPaths;
       else if (message.ruleId === "slugCheck") ++brokenSlugs;
+
+      if (props.file)
+        ghCore.context(props.file, props.startLine, props.startColumn);
     }
     linksUpdated += metadata.linksUpdated || 0;
     if (metadata.linksUpdated && updateLinks) {
