@@ -1,0 +1,39 @@
+---
+navTitle: Resetting CRDT values
+title: Resetting CRDT values
+---
+
+Resetting CRDT values is possible but requires special handling. The asynchronous nature of the
+cluster means that different nodes might see the reset operation at different places in the change stream no matter how it's implemented. Different nodes might also initiate a reset concurrently, that is, before
+observing the reset from the other node.
+
+In other words, to make the reset operation behave correctly, it needs to be commutative with respect to the regular operations. Many naive ways to reset a value that might work well on a single-node fail
+for this reason.
+
+## Challenges when resetting CRDT values
+
+For example, the simplest approach to resetting a value might be:
+
+```
+UPDATE crdt_table SET cnt = 0 WHERE id = 1;
+```
+
+With state-based CRDTs this doesn't work. It throws away the state for the other nodes but only locally. It's added back by merge functions on remote nodes, causing diverging values and eventually receiving it
+back due to changes on the other nodes.
+
+With operation-based CRDTs, this might seem to work because the update is interpreted as a subtraction of `-cnt`. But it works only in the absence of concurrent resets. Once two nodes attempt to do a reset at the same time, the delta is applied twice, getting a negative value (which isn't expected from a reset).
+
+It might also seem that you can use `DELETE + INSERT` as a reset, but this approach has a couple of weaknesses, too. If the row is reinserted with the same key, it's not guaranteed that all nodes see it at the same position in the stream of operations with respect to changes from other nodes. PGD specifically discourages reusing the same primary key value since it can lead to data anomalies in concurrent cases.
+
+## How to reliably handle resetting CRDT values
+
+State-based CRDT types can reliably handle resets using a special `!` operator like this:
+
+```
+UPDATE tab SET counter = !counter WHERE ...;
+```
+
+"Reliably" means the values don't have the two issues of multiple concurrent resets and divergence.
+
+Operation-based CRDT types can be reset reliably only using [Eager Replication](eager), since this avoids multiple concurrent resets. You can also use Eager Replication to set either kind of CRDT to a specific
+value.

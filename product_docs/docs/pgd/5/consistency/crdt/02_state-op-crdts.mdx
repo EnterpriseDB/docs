@@ -1,0 +1,47 @@
+---
+navTitle: State and operation-based CRDTs
+title: State-based and operation-based CRDTs
+---
+
+## State-based and operation-based CRDTs
+
+Following the notation from [1], both operation-based and state-based CRDTs are implemented.
+
+### Operation-based CRDT types (CmCRDT)
+
+The implementation of operation-based types is trivial because the operation isn't transferred explicitly but computed from the old and new row received from the remote node.
+
+Currently, these operation-based CRDTs are implemented:
+
+-   `crdt_delta_counter` &mdash; `bigint` counter (increments/decrements)
+-   `crdt_delta_sum` &mdash; `numeric` sum (increments/decrements)
+
+These types leverage existing data types with a little bit of code to compute the delta. For example, `crdt_delta_counter` is a domain on a `bigint`. 
+
+This approach is possible only for types for which the method for computing the delta is known, but the result is simple and cheap (both in terms of space and CPU) and has a couple of added benefits. For example, it can leverage operators/syntax for the underlying data type.
+
+The main disadvantage is that you can't reset this value reliably in an asynchronous and concurrent environment.
+
+!!! Note
+    Implementing more complicated operation-based types by creating custom data types is possible, storing the state and the last operation. (Every change is decoded and transferred, so multiple
+    operations aren't needed). But at that point, the main benefits (simplicity, reuse of existing data types) are lost without gaining any advantage compared to state-based types (for example, still no capability to reset) except for the space requirements. (A per-node state isn't needed.)
+
+### State-based CRDT types (CvCRDT)
+
+State-based types require a more complex internal state and so can't use the regular data types directly the way operation-based types do.
+
+Currently, four state-based CRDTs are implemented:
+
+-   `crdt_gcounter` &mdash; `bigint` counter (increment-only)
+-   `crdt_gsum` &mdash; `numeric` sum/counter (increment-only)
+-   `crdt_pncounter` &mdash; `bigint` counter (increments/decrements)
+-   `crdt_pnsum` &mdash; `numeric` sum/counter (increments/decrements)
+
+The internal state typically includes per-node information, increasing the on-disk size but allowing added benefits. The need to implement custom data types implies more code (in/out functions and operators).
+
+The advantage is the ability to reliably reset the values, a somewhat self-healing nature in the presence of lost changes (which doesn't happen in a cluster that operates properly), and the ability to receive changes from other than source nodes.
+
+Consider, for example, that a value is modified on node A, and the change gets replicated to B but not C due to network issue between A and C. If B modifies the value and this change gets replicated to C, it
+includes even the original change from A. With operation-based CRDTs, node C doesn't receive the change until the A-C network connection starts working again.
+
+The main disadvantages of CvCRDTs are higher costs in terms of disk space and CPU usage. A bit of information for each node is needed, including nodes that were already removed from the cluster. The complex nature of the state (serialized into varlena types) means increased CPU use.
