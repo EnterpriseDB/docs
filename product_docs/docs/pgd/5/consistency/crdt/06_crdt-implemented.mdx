@@ -1,0 +1,288 @@
+---
+navTitle: Implemented CRDTs
+title: Implemented CRDTs
+deepToC: true
+---
+
+Currently, six CRDT data types are implemented:
+
+-  Grow-only counter and sum
+-  Positive-negative counter and sum
+-  Delta counter and sum
+
+The counters and sums behave mostly the same, except that the counter types are integer based (`bigint`), while the sum types are decimal-based (`numeric`).
+
+You can list the currently implemented CRDT data types with the following query:
+
+```sql
+SELECT n.nspname, t.typname
+FROM bdr.crdt_handlers c
+JOIN (pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid)
+  ON t.oid = c.crdt_type_id;
+```
+
+### grow-only counter (`crdt_gcounter`)
+
+-   Supports only increments with nonnegative values (`value + int` and `counter + bigint` operators).
+
+-   You can obtain the current value of the counter either using `#` operator or by casting it to `bigint`.
+
+-   Isn't compatible with simple assignments like `counter = value` (which is common pattern when the new value is computed somewhere in the application).
+
+-   Allows simple reset of the counter using the `!` operator ( `counter = !counter` ).
+
+-   You can inspect the internal state using `crdt_gcounter_to_text`.
+
+``` 
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    cnt      bdr.crdt_gcounter NOT NULL DEFAULT 0
+);
+
+INSERT INTO crdt_test VALUES (1, 0);      -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 129824); -- initialized to 129824
+INSERT INTO crdt_test VALUES (3, -4531);  -- error: negative value
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment counters
+UPDATE crdt_test SET cnt = cnt + 1 WHERE id = 1;
+UPDATE crdt_test SET cnt = cnt + 120 WHERE id = 2;
+
+-- error: minus operator not defined
+UPDATE crdt_test SET cnt = cnt - 1 WHERE id = 1;
+
+-- error: increment has to be non-negative
+UPDATE crdt_test SET cnt = cnt + (-1) WHERE id = 1;
+
+-- reset counter
+UPDATE crdt_test SET cnt = !cnt WHERE id = 1;
+
+-- get current counter value
+SELECT id, cnt::bigint, cnt FROM crdt_test;
+
+-- show internal structure of counters
+SELECT id, bdr.crdt_gcounter_to_text(cnt) FROM crdt_test;
+```
+
+### grow-only sum (`crdt_gsum`)
+
+-   Supports only increments with nonnegative values (`sum + numeric`).
+
+-   You can obtain the current value of the sum either by using the `#` operator or by casting it to `numeric`.
+
+-   Isn't compatible with simple assignments like `sum = value`, which is the common pattern when the new value is computed somewhere in the application.
+
+-   Allows simple reset of the sum using the `!` operator (`sum = !sum`).
+
+-   Can inspect internal state using `crdt_gsum_to_text`.
+
+```
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    gsum     bdr.crdt_gsum NOT NULL DEFAULT 0.0
+);
+
+INSERT INTO crdt_test VALUES (1, 0.0);      -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 1298.24); -- initialized to 1298.24
+INSERT INTO crdt_test VALUES (3, -45.31);  -- error: negative value
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment sum
+UPDATE crdt_test SET gsum = gsum + 11.5 WHERE id = 1;
+UPDATE crdt_test SET gsum = gsum + 120.33 WHERE id = 2;
+
+-- error: minus operator not defined
+UPDATE crdt_test SET gsum = gsum - 15.2 WHERE id = 1;
+
+-- error: increment has to be non-negative
+UPDATE crdt_test SET gsum = gsum + (-1.56) WHERE id = 1;
+
+-- reset sum
+UPDATE crdt_test SET gsum = !gsum WHERE id = 1;
+
+-- get current sum value
+SELECT id, gsum::numeric, gsum FROM crdt_test;
+
+-- show internal structure of sums
+SELECT id, bdr.crdt_gsum_to_text(gsum) FROM crdt_test;
+```
+
+### positive-negative counter (`crdt_pncounter`)
+
+-   Supports increments with both positive and negative values (through `counter + int` and `counter + bigint` operators).
+
+-   You can obtain the current value of the counter either by using the `#` operator or by casting to `bigint`.
+
+-   Isn't compatible with simple assignments like `counter = value`, which is the common pattern when the new value is computed somewhere in the application.
+
+-   Allows simple reset of the counter using the `!` operator (`counter = !counter`).
+
+-   You can inspect the internal state using `crdt_pncounter_to_text`.
+
+```
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    cnt      bdr.crdt_pncounter NOT NULL DEFAULT 0
+);
+
+INSERT INTO crdt_test VALUES (1, 0);      -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 129824); -- initialized to 129824
+INSERT INTO crdt_test VALUES (3, -4531);  -- initialized to -4531
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment counters
+UPDATE crdt_test SET cnt = cnt + 1      WHERE id = 1;
+UPDATE crdt_test SET cnt = cnt + 120    WHERE id = 2;
+UPDATE crdt_test SET cnt = cnt + (-244) WHERE id = 3;
+
+-- decrement counters
+UPDATE crdt_test SET cnt = cnt - 73    WHERE id = 1;
+UPDATE crdt_test SET cnt = cnt - 19283 WHERE id = 2;
+UPDATE crdt_test SET cnt = cnt - (-12) WHERE id = 3;
+
+-- get current counter value
+SELECT id, cnt::bigint, cnt FROM crdt_test;
+
+-- show internal structure of counters
+SELECT id, bdr.crdt_pncounter_to_text(cnt) FROM crdt_test;
+
+-- reset counter
+UPDATE crdt_test SET cnt = !cnt WHERE id = 1;
+
+-- get current counter value after the reset
+SELECT id, cnt::bigint, cnt FROM crdt_test;
+```
+
+### positive-negative sum (`crdt_pnsum`)
+
+-   Supports increments with both positive and negative values through `sum + numeric`.
+
+-   You can obtain the current value of the sum either by using then `#` operator or by casting to `numeric`.
+
+-   Isn't compatible with simple assignments like `sum = value`, which is the common pattern when the new value is computed somewhere in the application.
+
+-   Allows simple reset of the sum using the `!` operator (`sum = !sum`).
+
+-   You can inspect the internal state using `crdt_pnsum_to_text`.
+
+```
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    pnsum    bdr.crdt_pnsum NOT NULL DEFAULT 0
+);
+
+INSERT INTO crdt_test VALUES (1, 0);       -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 1298.24); -- initialized to 1298.24
+INSERT INTO crdt_test VALUES (3, -45.31);  -- initialized to -45.31
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment sums
+UPDATE crdt_test SET pnsum = pnsum + 1.44     WHERE id = 1;
+UPDATE crdt_test SET pnsum = pnsum + 12.20    WHERE id = 2;
+UPDATE crdt_test SET pnsum = pnsum + (-24.34) WHERE id = 3;
+
+-- decrement sums
+UPDATE crdt_test SET pnsum = pnsum - 7.3      WHERE id = 1;
+UPDATE crdt_test SET pnsum = pnsum - 192.83   WHERE id = 2;
+UPDATE crdt_test SET pnsum = pnsum - (-12.22) WHERE id = 3;
+
+-- get current sum value
+SELECT id, pnsum::numeric, pnsum FROM crdt_test;
+
+-- show internal structure of sum
+SELECT id, bdr.crdt_pnsum_to_text(pnsum) FROM crdt_test;
+
+-- reset sum
+UPDATE crdt_test SET pnsum = !pnsum WHERE id = 1;
+
+-- get current sum value after the reset
+SELECT id, pnsum::numeric, pnsum FROM crdt_test;
+```
+
+### delta counter (`crdt_delta_counter`)
+
+-   Is defined a `bigint` domain, so works exactly like a `bigint` column.
+
+-   Supports increments with both positive and negative values.
+
+-   Is compatible with simple assignments like `counter = value`, which is common when the new value is computed somewhere in the application.
+
+-   There's no simple way to reset the value reliably.
+
+```
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    cnt      bdr.crdt_delta_counter NOT NULL DEFAULT 0
+);
+
+INSERT INTO crdt_test VALUES (1, 0);      -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 129824); -- initialized to 129824
+INSERT INTO crdt_test VALUES (3, -4531);  -- initialized to -4531
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment counters
+UPDATE crdt_test SET cnt = cnt + 1      WHERE id = 1;
+UPDATE crdt_test SET cnt = cnt + 120    WHERE id = 2;
+UPDATE crdt_test SET cnt = cnt + (-244) WHERE id = 3;
+
+-- decrement counters
+UPDATE crdt_test SET cnt = cnt - 73    WHERE id = 1;
+UPDATE crdt_test SET cnt = cnt - 19283 WHERE id = 2;
+UPDATE crdt_test SET cnt = cnt - (-12) WHERE id = 3;
+
+-- get current counter value
+SELECT id, cnt FROM crdt_test;
+```
+
+### delta sum (`crdt_delta_sum`)
+
+-   Is defined as a `numeric` domain so works exactly like a `numeric` column.
+
+-   Supports increments with both positive and negative values.
+
+-   Is compatible with simple assignments like `sum = value`, which is common when the new value is computed somewhere in the application.
+
+-   There's no simple way to reset the value reliably.
+
+```
+CREATE TABLE crdt_test (
+    id       INT PRIMARY KEY,
+    dsum     bdr.crdt_delta_sum NOT NULL DEFAULT 0
+);
+
+INSERT INTO crdt_test VALUES (1, 0);       -- initialized to 0
+INSERT INTO crdt_test VALUES (2, 129.824); -- initialized to 129824
+INSERT INTO crdt_test VALUES (3, -4.531);  -- initialized to -4531
+
+-- enable CLCD on the table
+ALTER TABLE crdt_test REPLICA IDENTITY FULL;
+SELECT bdr.alter_table_conflict_detection('crdt_test', 'column_modify_timestamp', 'cts');
+
+-- increment counters
+UPDATE crdt_test SET dsum = dsum + 1.32   WHERE id = 1;
+UPDATE crdt_test SET dsum = dsum + 12.01  WHERE id = 2;
+UPDATE crdt_test SET dsum = dsum + (-2.4) WHERE id = 3;
+
+-- decrement counters
+UPDATE crdt_test SET dsum = dsum - 7.33   WHERE id = 1;
+UPDATE crdt_test SET dsum = dsum - 19.83  WHERE id = 2;
+UPDATE crdt_test SET dsum = dsum - (-1.2) WHERE id = 3;
+
+-- get current counter value
+SELECT id, cnt FROM crdt_test;
+```
