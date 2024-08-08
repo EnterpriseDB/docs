@@ -1,5 +1,67 @@
 ---
-title: "Preparing schema"
+title: "Preparing and importing the schema"
+deepToC: true
 ---
 
-Use [EDB Migration Portal](https://www.enterprisedb.com/docs/migration_portal/latest/) to assess Oracle database sources for schema compatibility before starting the data migration process. Address incompatible schemas or exclude them from the migration and migrate the schema to the new database **without applying constraints**.
+Before you use EDB Data Migration Service to configure a data migration, you must prepare and import your schema to the target database. 
+
+Some of your schema's `constraints` must be included before the data migration takes place, whereas others must be applied [after the data migration is completed](apply_constraints). This ensures you can migrate without performance degradation. 
+
+## Schema integrity and performance considerations
+
+The presence of target database constraints, triggers, and WAL logging can impact the data migration performance. When possible, EDB recommends a two-step import of schema constraints.
+
+### `PRIMARY KEY` and `UNIQUE` constraints
+
+`PRIMARY KEY` and `UNIQUE` constraints are leveraged by EDB Data Migration Service to provide an exactly-once delivery when migrating data to the target database. Therefore, `PRIMARY KEY` and `UNIQUE` constraints should be included in the schema import that you perform before the data migration begins. Other types of constraints should be excluded from the schema import. 
+
+For rows in tables that do not have `PRIMARY KEY` or `UNIQUE` constraints it is only possible to achieve at-least-once delivery. Deduplication can be performed during integrity validation such as with [EDB LiveCompare](/livecompare/latest/).
+
+!!!note 
+   `NOT NULL` constraints don't represent a significant performance impact for destination clusters and can also be included in the schema import.
+!!!
+
+### `FOREIGN KEY`, `REFERENCES`, `CHECK`, `CASCADE` and `EXCLUDE` constraints
+
+The EDB Data Migration Service is able to apply change events in parallel against destination clusters. However, migrating some constraint types can negatively affect the performance of the migration. These type of constraints lead to unnecessary CPU and memory utilization in the context of an in-flight data migration from a consistent and referentially integral source database.
+
+EDB recommends applying the following constraints [after the data migration is completed](apply_constraints):
+
+`FOREIGN KEY` / `REFERENCES`
+`CHECK`
+`CASCADE`
+`EXCLUDE`
+
+Apply these constraints on the target database after a snapshot is done or you have signalized the end of a streaming CDC migration.
+
+## Preparing and importing your schema
+
+### Prerequisite 
+
+You created a schema in the target database.
+
+### Prepare your schema 
+
+#### Oracle to EDB Postgres Advanced Server migrations
+
+Use [EDB Migration Portal](/migration_portal/latest/03_mp_using_portal/03_mp_quick_start/) to assess Oracle database sources for schema compatibility before starting the data migration process. 
+
+EDB Migration Portal offers the ability to separate constraints from other destination DDL with the [offline migration option](/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/#offline-migration).
+
+Ensure you exclude `FOREIGN KEY`, `REFERENCES`, `CHECK`, `CASCADE` and `EXCLUDE` constraints from the DDL before importing the schema to the target database.
+
+#### Other migrations
+
+For data migrations to and from Postgres EDB recommends using [EDBs Migration Toolkit](/migration_toolkit/latest/) to manage the schema. MTK's [offline migration](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability provides an easy way to extract a database's schema and separate constraints.
+
+Ensure you exclude `FOREIGN KEY`, `REFERENCES`, `CHECK`, `CASCADE` and `EXCLUDE` constraints from the DDL before importing the schema to the target database.
+
+Tools such as `pg_dump` and `pg_restore` are another valid route for migrating DDL.
+
+### Import your schema to the target database
+
+After you have prepared the DDL, and excluded `FOREIGN KEY`, `REFERENCES`, `CHECK`, `CASCADE` and `EXCLUDE` constraints, connect to the target database and import the DDL (SQL file). 
+
+You can use [pgAdmin](https://www.pgadmin.org/docs/pgadmin4/latest/index.html), [psql](https://www.postgresql.org/docs/7.0/app-psql.htm) or a different tool to perform the import. 
+
+
