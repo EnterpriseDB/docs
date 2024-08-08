@@ -1,0 +1,147 @@
+---
+navTitle: Overview
+title: CRDT Overview
+---
+
+Conflict-free replicated data types (CRDT) support merging values from concurrently modified rows instead of discarding one of the rows as traditional resolution does.
+
+!!! Note Permissions required
+PGD CRDT requires usage access to CRDT types. Therefore, any user needing to access CRDT types must have at least the [bdr_application](../security/pgd-predefined-roles/#bdr_application) role assigned to them.
+!!!
+
+## Introduction to CRDT
+
+Each CRDT type is implemented as a separate PostgreSQL data type with an extra callback added to the `bdr.crdt_handlers` catalog. The merge process happens inside the PGD writer on the apply side without any user action needed.
+
+CRDTs require the table to have column-level conflict resolution enabled, as described in [CLCD](../column-level-conflicts/02_enabling_disabling.mdx).
+
+## Using CRDTs in Tables
+
+The only action you need to take is to use a particular data type in CREATE/ALTER TABLE rather than standard built-in data types such as integer. For example, consider the following table with one regular integer counter and a single row:
+
+### Non-CRDT example
+
+```
+CREATE TABLE non_crdt_example (
+    id      integer				PRIMARY KEY,
+    counter integer				NOT NULL DEFAULT 0
+);
+
+INSERT INTO non_crdt_example (id) VALUES (1);
+```
+
+Suppose you issue the following SQL on two different nodes at same time:
+
+```
+UPDATE non_crdt_example
+   SET counter = counter + 1    -- "reflexive" update
+ WHERE id = 1;
+```
+
+After both updates are applied, you can see the resulting values using this query:
+
+```
+SELECT * FROM non_crdt_example WHERE id = 1;
+   id |   counter
+ -----+-----------
+    1 |         1
+(1 row)
+```
+
+This code shows that you lost one of the increments due to the `update_if_newer` conflict resolver. 
+
+### CRDT example
+
+If you use the CRDT counter data type instead, the result looks like this:
+
+```
+CREATE TABLE crdt_example (
+    id      integer				PRIMARY KEY,
+    counter bdr.crdt_gcounter	NOT NULL DEFAULT 0
+);
+
+ALTER TABLE crdt_example REPLICA IDENTITY FULL;
+
+SELECT bdr.alter_table_conflict_detection('crdt_example',
+			'column_modify_timestamp', 'cts');
+
+INSERT INTO crdt_example (id) VALUES (1);
+```
+
+Again issue the following SQL on two nodes at same time, and then wait for the changes to be applied:
+
+```
+UPDATE crdt_example
+   SET counter = counter + 1    -- "reflexive" update
+ WHERE id = 1;
+
+SELECT id, counter FROM crdt_example WHERE id = 1;
+   id |   counter
+ -----+-----------
+    1 |         2
+(1 row)
+```
+
+This example shows that CRDTs correctly allow accumulator columns to work, even in the face of asynchronous concurrent updates that otherwise conflict.
+
+## Configuration options
+
+The `bdr.crdt_raw_value` configuration option determines whether queries return the current value or the full internal state of the CRDT type. By default, only the current numeric value is returned. When set to `true`, queries return representation of the full state. You can use the special hash operator
+(`#`) to request only the current numeric value without using the special operator (the default behavior). If the full state is dumped using `bdr.crdt_raw_value = on`, then the value can reload only with `bdr.crdt_raw_value = on`.
+
+!!! Note
+    The `bdr.crdt_raw_value` applies formatting only of data returned to clients, that is, simple column references in the select list. Any column references in other parts of the query (such as `WHERE` clause or even expressions in the select list) might still require use of the `#` operator.
+
+## State-based CRDT types
+
+The `crdt_gcounter` type is an example of state-based CRDT types that work only with reflexive UPDATE SQL, such as `x = x + 1`, as the example shows.
+
+## Delta CRDT types
+
+Another class of CRDT data types is referred to as *delta CRDT* types. These are a special subclass of operation-based CRDTs.
+
+With delta CRDTs, any update to a value is compared to the previous value on the same node. Then a change is applied as a delta on all other nodes.
+
+```
+CREATE TABLE crdt_delta_example (
+    id       integer            PRIMARY KEY,
+    counter  bdr.crdt_delta_counter NOT NULL DEFAULT 0
+);
+
+ALTER TABLE crdt_delta_example REPLICA IDENTITY FULL;
+
+SELECT bdr.alter_table_conflict_detection('crdt_delta_example',
+			'column_modify_timestamp', 'cts');
+
+INSERT INTO crdt_delta_example (id) VALUES (1);
+```
+
+Suppose you issue the following SQL on two nodes at same time:
+
+```
+UPDATE crdt_delta_example
+   SET counter = 2          -- notice NOT counter = counter + 2
+ WHERE id = 1;
+```
+
+After both updates are applied, you can see the resulting values using this query:
+
+```
+SELECT id, counter FROM crdt_delta_example WHERE id = 1;
+   id | counter
+ -----+---------
+    1 |       4
+(1 row)
+```
+
+With a regular `integer` column, the result is `2`. But when you update the row with a delta CRDT counter, you start with the OLD row version, make a NEW row version, and send both to the remote node. There, compare them with the version found there (e.g., the LOCAL version). Standard CRDTs merge the NEW and the LOCAL version, while delta CRDTs compare the OLD and NEW versions and apply the delta
+to the LOCAL version.
+
+## CRDT types in PostgreSQL
+
+The CRDT types are installed as part of `bdr` into the `bdr` schema. For convenience, the basic operators (`+`, `#` and `!`) and a number of common aggregate functions (`min`, `max`, `sum`, and `avg`) are created in `pg_catalog`. Thus they are available without having to tweak `search_path`.
+
+## Query planning and optimization
+
+An important question is how query planning and optimization works with these new data types. CRDT types are handled transparently. Both `ANALYZE` and the optimizer work, so estimation and query planning works fine without having to do anything else.
+
