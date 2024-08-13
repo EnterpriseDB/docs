@@ -30,6 +30,8 @@ export const products = {
     iconName: IconNames.HIGH_AVAILABILITY,
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
+  alteruser_utility: { name: "alteruser", iconName: IconNames.TOOLS },
+  edb_sqlpatch: { name: "EDB SQL Patch", iconName: IconNames.TOOLS },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
   lasso: { name: "Lasso" },
   livecompare: { name: "LiveCompare" },
