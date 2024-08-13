@@ -78,8 +78,9 @@ const BannerWideCard = ({ iconName, headingText, to, children }) => (
   </div>
 );
 
-const BannerWideCardLink = ({ to, className, children }) => (
+const BannerWideCardLink = ({ to, className, iconName, children }) => (
   <Link
+    icon={iconName}
     to={to}
     className={`col-12 col-md-4 py-2 px-5 text-center ${className}`}
     style={{ minwidth: "14em" }}
@@ -276,11 +277,18 @@ const Page = () => {
 
           <BannerWideCard>
             <BannerWideCardLink
-              className="col-md-12"
+              className="col-md-6"
               to="/repos/"
-              iconName={iconNames.Download}
+              // iconName={iconNames.DOWNLOAD}
             >
               Downloads and Repositories
+            </BannerWideCardLink>
+            <BannerWideCardLink
+              className="col-md-6"
+              to="/dev-guides/"
+              // iconName={iconNames.CODE_WRITING}
+            >
+              Developer Guides
             </BannerWideCardLink>
           </BannerWideCard>
 
