@@ -85,6 +85,13 @@ const BannerWideCardLink = ({ to, className, iconName, children }) => (
     className={`col-12 col-md-4 py-2 px-5 text-center ${className}`}
     style={{ minwidth: "14em" }}
   >
+    <Icon
+      iconName={iconName || iconNames.DOTTED_BOX}
+      className="fill-aquamarine"
+      width="24"
+      height="24"
+    />
+
     {children}
   </Link>
 );
@@ -169,13 +176,22 @@ const Page = () => {
             headingText="EDB Postgres AI"
           >
             <BannerWideCard>
-              <BannerWideCardLink to="/edb-postgres-ai/overview/overview-and-concepts">
+              <BannerWideCardLink
+                to="/edb-postgres-ai/overview/overview-and-concepts"
+                iconName={iconNames.GLOBE}
+              >
                 Overview and Concepts
               </BannerWideCardLink>
-              <BannerWideCardLink to="/edb-postgres-ai/overview/guide-and-getting-started">
+              <BannerWideCardLink
+                to="/edb-postgres-ai/overview/guide-and-getting-started"
+                iconName={iconNames.ROCKET}
+              >
                 Guide and Getting Started
               </BannerWideCardLink>
-              <BannerWideCardLink to="/edb-postgres-ai/overview/latest-release-news">
+              <BannerWideCardLink
+                to="/edb-postgres-ai/overview/latest-release-news"
+                iconName={iconNames.NEWS}
+              >
                 Latest Release News
               </BannerWideCardLink>
             </BannerWideCard>
@@ -279,14 +295,14 @@ const Page = () => {
             <BannerWideCardLink
               className="col-md-6"
               to="/repos/"
-              // iconName={iconNames.DOWNLOAD}
+              iconName={iconNames.DOWNLOAD}
             >
               Downloads and Repositories
             </BannerWideCardLink>
             <BannerWideCardLink
               className="col-md-6"
               to="/dev-guides/"
-              // iconName={iconNames.CODE_WRITING}
+              iconName={iconNames.CODE_WRITING}
             >
               Developer Guides
             </BannerWideCardLink>
