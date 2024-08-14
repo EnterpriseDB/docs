@@ -13,7 +13,7 @@ To use CRDTs, you need to use a particular data type in CREATE/ALTER TABLE rathe
 
 ### Non-CRDT example
 
-```
+```sql
 CREATE TABLE non_crdt_example (
     id      integer				PRIMARY KEY,
     counter integer				NOT NULL DEFAULT 0
@@ -24,7 +24,7 @@ INSERT INTO non_crdt_example (id) VALUES (1);
 
 Suppose you issue the following SQL on two different nodes at same time:
 
-```
+```sql
 UPDATE non_crdt_example
    SET counter = counter + 1    -- "reflexive" update
  WHERE id = 1;
@@ -32,7 +32,7 @@ UPDATE non_crdt_example
 
 After both updates are applied, you can see the resulting values using this query:
 
-```
+```sql
 SELECT * FROM non_crdt_example WHERE id = 1;
    id |   counter
  -----+-----------
@@ -44,29 +44,43 @@ This code shows that you lost one of the increments due to the `update_if_newer`
 
 ### CRDT example
 
-If you use the CRDT counter data type instead, the result looks like this:
+To use a CRDT counter data type instead, you would follow these steps:
 
-```
+Create the table but with a CRDT (`bdr.crdt_gcounter`) as the counters data type.
+
+```sql
 CREATE TABLE crdt_example (
     id      integer				PRIMARY KEY,
     counter bdr.crdt_gcounter	NOT NULL DEFAULT 0
 );
+```
 
+Configure the table for column-level conflict resolution:
+
+```sql
 ALTER TABLE crdt_example REPLICA IDENTITY FULL;
 
 SELECT bdr.alter_table_conflict_detection('crdt_example',
 			'column_modify_timestamp', 'cts');
+```
 
+And then insert a row with a value for this example.
+
+```
 INSERT INTO crdt_example (id) VALUES (1);
 ```
 
-Again issue the following SQL on two nodes at same time, and then wait for the changes to be applied:
+If you now issue, as before, the same SQL on two nodes at same time. 
 
-```
+```sql
 UPDATE crdt_example
    SET counter = counter + 1    -- "reflexive" update
  WHERE id = 1;
+```
 
+Once the changes are applied, you find that the counter has managed to concurrenct updates.
+
+```sql
 SELECT id, counter FROM crdt_example WHERE id = 1;
    id |   counter
  -----+-----------
@@ -92,7 +106,7 @@ Another class of CRDTs are *delta CRDT* types. These are a special subclass of [
 
 With delta CRDTs, any update to a value is compared to the previous value on the same node. Then a change is applied as a delta on all other nodes.
 
-```
+```sql
 CREATE TABLE crdt_delta_example (
     id       integer            PRIMARY KEY,
     counter  bdr.crdt_delta_counter NOT NULL DEFAULT 0
@@ -108,7 +122,7 @@ INSERT INTO crdt_delta_example (id) VALUES (1);
 
 Suppose you issue the following SQL on two nodes at same time:
 
-```
+```sql
 UPDATE crdt_delta_example
    SET counter = 2          -- notice NOT counter = counter + 2
  WHERE id = 1;
@@ -116,7 +130,7 @@ UPDATE crdt_delta_example
 
 After both updates are applied, you can see the resulting values using this query:
 
-```
+```sql
 SELECT id, counter FROM crdt_delta_example WHERE id = 1;
    id | counter
  -----+---------
