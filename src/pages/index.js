@@ -82,7 +82,7 @@ const BannerWideCardLink = ({ to, className, iconName, children }) => (
   <Link
     icon={iconName}
     to={to}
-    className={`col-12 col-md-4 py-2 px-5 text-center ${className}`}
+    className={`col-12 col-md-4 py-2 px-5 text-center fw-bolder ${className}`}
     style={{ minwidth: "14em" }}
   >
     <Icon
@@ -274,14 +274,23 @@ const Page = () => {
                 Use the Tech Preview
               </BannerCardLink>
             </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.MIGRATION}
+              headingText="Migration and ETL"
+              to="/edb-postgres-ai/migration-etl"
+            >
+              <BannerCardLink to="/pgd/latest/">Test to PGD</BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
+                Migration and AI
+              </BannerCardLink>
+            </BannerSubCard>
+
             <BannerSubCard
               iconName={iconNames.TOOLBOX}
               headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
-              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
-                Migration and AI
-              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/tools/management">
                 Management
               </BannerCardLink>
@@ -293,19 +302,20 @@ const Page = () => {
 
           <BannerWideCard>
             <BannerWideCardLink
-              className="col-md-6"
+              className="col-md-12"
               to="/repos/"
               iconName={iconNames.DOWNLOAD}
             >
               Downloads and Repositories
             </BannerWideCardLink>
-            <BannerWideCardLink
+
+            {/* <BannerWideCardLink
               className="col-md-6"
               to="/dev-guides/"
               iconName={iconNames.CODE_WRITING}
             >
               Developer Guides
-            </BannerWideCardLink>
+            </BannerWideCardLink> */}
           </BannerWideCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
