@@ -8,9 +8,11 @@ redirects:
   - /pem/latest/pem_online_help/09_toc_pem_configure_pgbouncer/02_pem_pgbouncer_preparing_dbserver/
 ---
 
-You must configure the PEM database server to work with PgBouncer. This example shows how to configure the PEM database server.
+You must configure dedicated users and create an SSL key and certificate on the PEM database server to enable connection pooling for PEM with PgBouncer. 
 
-## Creating users and roles for the pgBouncer-PEM connection
+This example shows how to prepare the PEM database server.
+
+## Creating users and roles for PgBouncer-PEM connections
 
 1.  Create a dedicated user named pgbouncer with `pem_agent_pool` membership on the PEM database server:
 
@@ -26,7 +28,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     GRANT ROLE
     ```
 
-2.  Create a user named pem_admin1 (not a superuser) with `pem_admin` and `pem_agent_pool role` membership on the PEM database server:
+1.  Create a user named pem_admin1 (not a superuser) with `pem_admin` and `pem_agent_pool role` membership on the PEM database server:
 
     ```sql
     CREATE ROLE pem_admin1 PASSWORD 'ANY_PASSWORD' LOGIN CREATEROLE;
@@ -46,7 +48,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     GRANT ROLE
     ```
 
-3.  Grant CONNECT privileges to the pgbouncer user on the `pem` database:
+1.  Grant CONNECT privileges to the pgbouncer user on the `pem` database:
 
     ```sql
     GRANT CONNECT ON DATABASE pem TO pgbouncer;
@@ -54,7 +56,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     GRANT
     ```
 
-4.  Grant USAGE privileges to the pgbouncer user for the `pem` schema on the `pem` database:
+1.  Grant USAGE privileges to the pgbouncer user for the `pem` schema on the `pem` database:
 
     ```sql
     GRANT USAGE ON SCHEMA pem TO pgbouncer;
@@ -62,7 +64,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     GRANT
     ```
 
-5.  Grant EXECUTE privileges to the pgbouncer user on the `pem.get_agent_pool_auth(text)` function in the `pem` database. For example:
+1.  Grant EXECUTE privileges to the pgbouncer user on the `pem.get_agent_pool_auth(text)` function in the `pem` database. For example:
 
     ```sql
     GRANT EXECUTE ON FUNCTION pem.get_agent_pool_auth(text) TO pgbouncer;
@@ -70,7 +72,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     GRANT
     ```
 
-6.  Use the `pem.create_proxy_agent_user(varchar)` function to create a user named pem_agent_user1 on the PEM database server:
+1.  Use the `pem.create_proxy_agent_user(varchar)` function to create a user named pem_agent_user1 on the PEM database server:
 
     ```sql
     SELECT pem.create_proxy_agent_user('pem_agent_user1');
@@ -80,9 +82,11 @@ You must configure the PEM database server to work with PgBouncer. This example 
     (1 row)
     ```
 
-    The function creates a user with the same name and a random password and grants pem_agent and pem_agent_pool roles to the user. This approach allows pgBouncer to use a proxy user on behalf of the agent.
+    The function creates a user with the same name and a random password and grants pem_agent and pem_agent_pool roles to the user. This approach allows PgBouncer to use a proxy user on behalf of the agent.
 
-7.  Allow the pgBouncer user to connect to the `pem` database using the SSL authentication method by adding the following entry to the `pg_hba.conf` file of the PEM database server:
+## Updating the configuration files to allow PgBouncer-PEM connections
+
+1.  Allow the pgbouncer user to connect to the `pem` database using the SSL authentication method by adding the following entry to the `pg_hba.conf` file of the PEM database server:
 
     !!!note
        Add the following entry before any `+pem_agent` entries
@@ -95,7 +99,7 @@ You must configure the PEM database server to work with PgBouncer. This example 
     hostssl pem     +pem_agent_pool 127.0.0.1/32  cert map=pem_agent_pool
     ```
 
-8.  Allow the PEM server to identify all users involved in the PEM-pgBouncer connection by adding these lines to the `$PGDATA/pg_ident.conf` user mapping file:
+1.  Allow the PEM server to map all users involved in PgBouncer-PEM connections by adding these lines to the `$PGDATA/pg_ident.conf` user mapping file:
 
     ```shell
     pem_agent_pool  pem_agent_pool  pem_agent_user1
@@ -103,37 +107,35 @@ You must configure the PEM database server to work with PgBouncer. This example 
     pem_agent_pool  pem_agent_pool  pgbouncer
     ```
 
-9.  Reload the PEM server's configuration:
+1.  Reload the PEM server's configuration:
 
     ```shell
     pg_ctl reload -D $PGDATA 
     ``` 
 
-## Creating the SSL key and certificate for pgBouncer-PEM authentication
+## Creating the SSL key and certificate for PgBouncer-PEM authentication
 
-Create a key and certificate for the `pem_agent_pool` group role. Copy them to the pgBouncer instance to allow users with `pem_agent_pool` permissions to connect to PEM. 
+Create a key and certificate for the `pem_agent_pool` group role. Then, move the files to the PgBouncer instance to allow bilateral authentication between the PEM instance and PgBouncer.
 
-1.  Create the signing key:
+1.  Create the signing key with openssl:
 
     ```shell
     openssl genrsa -out pem_agent_pool.key 4096
     ```
 
-1.  Create a certificate-signing request (CSR). Replace the DN attributes in `<...>` as you require, and ensure the Common Name (CN) is set to the `pem_agent_pool` group role name:
+1.  Create a certificate-signing request (CSR). Replace the `-subj` attributes in `<...>` as required. Ensure the Common Name (CN) is set to the `pem_agent_pool` group role name:
   
     ```shell
     openssl req -new -key pem_agent_pool.key -out pem_agent_pool.csr -subj '/C=<COUNTRY>/ST=<STATE>/L=<LOCATION>/O=<ORGANISATION>/CN=pem_agent_pool'
     ```
 
-1.  Use the PEM certificate authority (CA) and key to sign the CSR. 
-
-    Adapt the paths to the key and certificate according to your environment:
+1.  Use the PEM CA and key to sign the CSR:
 
     ```
-    openssl x509 -req -days 365 -in pem_agent_pool.csr -CA /var/lib/edb/as12/data/ca_certificate.crt -CAkey /var/lib/edb/as16/data/ca_key.key -CAcreateserial -out pem_agent_pool.crt
+    openssl x509 -req -days 365 -in pem_agent_pool.csr -CA /var/lib/edb/as16/data/ca_certificate.crt -CAkey /var/lib/edb/as16/data/ca_key.key -CAcreateserial -out pem_agent_pool.crt
     ```
 
-1.  Copy and paste the key and certificate in the pgbouncer user's `~/.postgresql` directory and ensure the `enterprisedb` user has permissions:
+1.  Move the created key and certificate to the pgbouncer user's `~/.postgresql` directory and ensure the `enterprisedb` user has permissions:
 
     ```
     mkdir -p /var/lib/edb/.postgresql
