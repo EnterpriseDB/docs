@@ -41,10 +41,9 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
     ;; 'auth_user' will be used for authenticate the db user (proxy
     ;; agent user in our case)
 
-    pem = port=5444 host=localhost dbname=pem auth_user=pgbouncer
+    pem = port=5444 host=127.0.0.1 dbname=pem auth_user=pgbouncer
     pool_size=80 pool_mode=transaction
-    * = port=5444 host=localhost dbname=pem auth_user=pgbouncer
-    pool_size=10
+    * = port=5444 host=127.0.0.1 dbname=pem auth_user=pgbouncer pool_size=10
 
     [pgbouncer]
     logfile = /var/log/edb/pgbouncer<1.x>/edb-pgbouncer-<1.x>.log
@@ -52,7 +51,7 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
     listen_addr = *
     ;; Agent needs to use this port to connect the pem database now
     listen_port = 6432
-    ;; Require to support for the SSL Certificate authentications
+    ;; Set to require to support SSL Certificate authentication
     ;; for PEM Agents
     client_tls_sslmode = require
     ;; These are the root.crt, server.key, server.crt files present
@@ -61,6 +60,10 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
     client_tls_ca_file = /var/lib/edb/as16/data/root.crt
     client_tls_key_file = /var/lib/edb/as16/data/server.key
     client_tls_cert_file = /var/lib/edb/as16/data/server.crt
+    ;; Allow pgBouncer to use pem_agent_pool certificate
+    ;; and key for connections to the server.
+    server_tls_key_file = /var/lib/edb/.postgresql/pem_agent_pool.key
+    server_tls_cert_file = /var/lib/edb/.postgresql/pem_agent_pool.crt
     ;; Use hba file for client connections
     auth_type = hba
     ;; Authentication file, Reference:
@@ -73,6 +76,10 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
     auth_query = SELECT * FROM pem.get_agent_pool_auth($1)
     ;; DB User for administration of the pgbouncer
     admin_users = pem_admin1
+    ;; auth_dbname and auth_user allow
+    ;; admin console login by admin_users and stats_users
+    auth_dbname = pem
+    auth_user = pgbouncer
     ;; DB User for collecting the statistics of pgbouncer
     stats_users = pem_admin1
     server_reset_query = DISCARD ALL
@@ -86,31 +93,7 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
 !!! Note
     For more information on `auth_user` see [Authentication settings](https://www.pgbouncer.org/config.html#authentication-settings).
 
-4.  Create and update the `/etc/edb/pgbouncer<1.x>/userlist.txt` authentication file for PgBouncer:
-
-    ```sql
-    ## Connect to pem database as a superuser, 
-    ## create the userslist.txt file and add 
-    ## username and their password list in CSV format
-    $ psql -p 5444 -d pem -U enterprisedb
-    
-    pem=# 
-    COPY (
-    SELECT 'pgbouncer'::TEXT, 'pgbouncer_password'
-    UNION ALL
-    SELECT 'pem_admin1'::TEXT, 'pem_admin1_password')
-    TO '/etc/edb/pgbouncer<1.x>/userlist.txt'
-    WITH (FORMAT CSV, DELIMITER ' ', FORCE_QUOTE *);
-    __OUTPUT__
-    COPY 2
-    ```
-
-    This creates `/etc/edb/pgbouncer<1.x>/userlist.txt` file and adds the username and password list.
-
-    !!! Note
-        If the pem_admin user is a superuser, you must add the password to the authentication file (`enterprisedb` in the example). This allows the pem_admin user to invoke the PEM authentication query function `pem.get_proxy_auth(text)`.
-
-5.  Create an HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` for PgBouncer that contains the following content:
+4.  Create an HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` for PgBouncer that contains the following content:
 
     ```ini
     # Use authentication method md5 for the local connections to
@@ -130,14 +113,14 @@ This example runs PgBouncer as the enterprisedb system user and outlines the pro
     hostssl pem pem_agent_user1 0.0.0.0/0 cert
     ```
 
-6.  Change the owner of the HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` to `enterprisedb`, and change the directory permissions to `0600`:
+5.  Change the owner of the HBA file `(/etc/edb/pgbouncer<1.x>/hba_file)` to `enterprisedb`, and change the directory permissions to `0600`:
 
     ```shell
     $ chown enterprisedb:enterprisedb /etc/edb/pgbouncer<1.x>/hba_file
     $ chmod 0600 /etc/edb/pgbouncer<1.x>/hba_file
     ```
 
-7.  Enable the PgBouncer service, and start the service:
+6.  Enable the PgBouncer service, and start the service:
 
     ```shell
     $ systemctl enable edb-pgbouncer-<1.x>
