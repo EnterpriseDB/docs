@@ -10,6 +10,8 @@ redirects:
 
 You must configure the PEM database server to work with PgBouncer. This example shows how to configure the PEM database server.
 
+## Creating users and roles for the pgBouncer-PEM connection
+
 1.  Create a dedicated user named pgbouncer with `pem_agent_pool` membership on the PEM database server:
 
     ```sql
@@ -106,3 +108,37 @@ You must configure the PEM database server to work with PgBouncer. This example 
     ```shell
     pg_ctl reload -D $PGDATA 
     ``` 
+
+## Creating the SSL key and certificate for pgBouncer-PEM authentication
+
+Create a key and certificate for the `pem_agent_pool` group role. Copy them to the pgBouncer instance to allow users with `pem_agent_pool` permissions to connect to PEM. 
+
+1.  Create the signing key:
+
+    ```shell
+    openssl genrsa -out pem_agent_pool.key 4096
+    ```
+
+1.  Create a certificate-signing request (CSR). Replace the DN attributes in `<...>` as you require, and ensure the Common Name (CN) is set to the `pem_agent_pool` group role name:
+  
+    ```shell
+    openssl req -new -key pem_agent_pool.key -out pem_agent_pool.csr -subj '/C=<COUNTRY>/ST=<STATE>/L=<LOCATION>/O=<ORGANISATION>/CN=pem_agent_pool'
+    ```
+
+1.  Use the PEM certificate authority (CA) and key to sign the CSR. 
+
+    Adapt the paths to the key and certificate according to your environment:
+
+    ```
+    openssl x509 -req -days 365 -in pem_agent_pool.csr -CA /var/lib/edb/as12/data/ca_certificate.crt -CAkey /var/lib/edb/as16/data/ca_key.key -CAcreateserial -out pem_agent_pool.crt
+    ```
+
+1.  Copy and paste the key and certificate in the pgbouncer user's `~/.postgresql` directory and ensure the `enterprisedb` user has permissions:
+
+    ```
+    mkdir -p /var/lib/edb/.postgresql
+    mv pem_agent_pool.key pem_agent_pool.crt /var/lib/edb/.postgresql
+    chmod 0600 /var/lib/edb/.postgresql/pem_agent_pool.key
+    chmod 0644 /var/lib/edb/.postgresql/pem_agent_pool.crt
+    chown enterprisedb:enterprisedb /var/lib/edb/.postgresql/pem_agent_pool.*
+    ```
