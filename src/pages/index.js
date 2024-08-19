@@ -408,8 +408,8 @@ const Page = () => {
               <IndexCardLink to="/eprs/latest">
                 Replication Server
               </IndexCardLink>
-              <IndexCardLink to="/transporter/latest">
-                EDB Transporter
+              <IndexCardLink to="/data_migration_service/latest">
+                Data Migration Service
               </IndexCardLink>
             </IndexCard>
 
