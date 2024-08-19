@@ -70,6 +70,29 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
   </div>
 );
 
+const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
+  <div className="col-xl-12 col-lg-12">
+    <div className="card rounded shadow-sm mb-4">
+      <div className="card-body">
+        <div className="d-flex mb-3">
+          <Link to={to}>
+            <Icon
+              iconName={iconName}
+              className="fill-aquamarine"
+              width="24"
+              height="24"
+            />
+            <h4 className="d-inline-block align-bottom card-title m-1">
+              {headingText}
+            </h4>
+          </Link>
+        </div>
+        <div className="row col-12">{children}</div>
+      </div>
+    </div>
+  </div>
+);
+
 const BannerWideCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
     <div className="card rounded shadow-sm mb-4">
@@ -92,6 +115,16 @@ const BannerWideCardLink = ({ to, className, iconName, children }) => (
       height="24"
     />
 
+    {children}
+  </Link>
+);
+
+const BannerWideLink = ({ to, className, children }) => (
+  <Link
+    to={to}
+    className={`col-12 col-md-4 py-2 px-5 ${className}`}
+    style={{ minwidth: "14em" }}
+  >
     {children}
   </Link>
 );
@@ -178,7 +211,7 @@ const Page = () => {
             <BannerWideCard>
               <BannerWideCardLink
                 to="/edb-postgres-ai/overview/overview-and-concepts"
-                iconName={iconNames.GLOBE}
+                iconName={iconNames.EARTH}
               >
                 Overview and Concepts
               </BannerWideCardLink>
@@ -190,7 +223,7 @@ const Page = () => {
               </BannerWideCardLink>
               <BannerWideCardLink
                 to="/edb-postgres-ai/overview/latest-release-news"
-                iconName={iconNames.NEWS}
+                iconName={iconNames.SMALL_DASHBOARD}
               >
                 Latest Release News
               </BannerWideCardLink>
@@ -232,14 +265,14 @@ const Page = () => {
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
-              <BannerCardLink to="/edb-postgres-ai/databases/epas">
+              <BannerCardLink to="/epas/latest">
                 EDB Postgres Advanced Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/pge">
+              <BannerCardLink to="/pge/latest">
                 EDB Postgres Extended Server
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/databases/pgd">
-                EDB Postgres Distributed
+              <BannerCardLink to="/pgd/latest">
+                EDB Postgres Distributed (PGD)
               </BannerCardLink>
             </BannerSubCard>
 
@@ -280,45 +313,46 @@ const Page = () => {
               headingText="Migration and ETL"
               to="/edb-postgres-ai/migration-etl"
             >
-              <BannerCardLink to="/edb-postgres-ai/migration-etl/pgd/">
-                Test to PGD
+              <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
+                Data Migration Service
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
-                Migration and AI
+                Migration Portal with AI Copilot
               </BannerCardLink>
+              <BannerCardLink></BannerCardLink>
             </BannerSubCard>
 
-            <BannerSubCard
+            <BannerWideSubCard
               iconName={iconNames.TOOLBOX}
               headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
-              <BannerCardLink to="/edb-postgres-ai/tools/management">
+              <BannerWideLink to="/edb-postgres-ai/tools/management">
                 Management
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/tools/backup">
+              </BannerWideLink>
+              <BannerWideLink to="/edb-postgres-ai/tools/backup">
                 Backup and Recovery
-              </BannerCardLink>
-            </BannerSubCard>
-          </BannerCard>
+              </BannerWideLink>
+            </BannerWideSubCard>
 
-          <BannerWideCard>
-            <BannerWideCardLink
-              className="col-md-12"
-              to="/repos/"
-              iconName={iconNames.DOWNLOAD}
-            >
-              Downloads and Repositories
-            </BannerWideCardLink>
+            <BannerWideCard>
+              <BannerWideCardLink
+                className="col-md-12"
+                to="/repos/"
+                iconName={iconNames.DOWNLOAD}
+              >
+                Downloads and Repositories
+              </BannerWideCardLink>
 
-            {/* <BannerWideCardLink
+              {/* <BannerWideCardLink
               className="col-md-6"
               to="/dev-guides/"
               iconName={iconNames.CODE_WRITING}
             >
               Developer Guides
             </BannerWideCardLink> */}
-          </BannerWideCard>
+            </BannerWideCard>
+          </BannerCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
             <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
@@ -531,123 +565,152 @@ const Page = () => {
                 Trusted Postgres Architect
               </IndexCardLink>
             </IndexCard>
-
-            <IndexCard
-              iconName={iconNames.CODE_WRITING}
-              headingText="Integration"
-            >
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Connectors
-              </span>
-              <IndexCardLink to="/jdbc_connector/latest">JDBC</IndexCardLink>
-              <IndexCardLink to="/net_connector/latest">.NET</IndexCardLink>
-              <IndexCardLink to="/ocl_connector/latest">OCL</IndexCardLink>
-              <IndexCardLink to="/odbc_connector/latest">ODBC</IndexCardLink>
-
-              <span className="fw-bold mt-4 text-muted text-uppercase small d-block">
-                Connection Poolers
-              </span>
-              <IndexCardLink to="/pgbouncer/latest">PgBouncer</IndexCardLink>
-              <IndexCardLink to="/pgpool/latest">pgPool-II</IndexCardLink>
-
-              <span className="fw-bold mt-4 text-muted text-uppercase small d-block">
-                Foreign Data Wrappers
-              </span>
-              <IndexCardLink to="/hadoop_data_adapter/latest">
-                Hadoop
-              </IndexCardLink>
-              <IndexCardLink to="/mongo_data_adapter/latest">
-                Mongo
-              </IndexCardLink>
-              <IndexCardLink to="/mysql_data_adapter/latest">
-                MySQL
-              </IndexCardLink>
-            </IndexCard>
-
-            <IndexCard
-              iconName={iconNames.HANDSHAKE}
-              headingText="Third Party Integrations"
-            >
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Backup
-              </span>
-              <IndexCardLink to="/partner_docs/CohesityDataProtectforPostgreSQL">
-                Cohesity DataProtect for PostgreSQL
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/CommvaultBackupandRecovery">
-                Commvault Backup &amp; Recovery
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/RepostorDataProtectorforPostgreSQL">
-                Repostor Data Protector for PostgresSQL
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/KastenbyVeeam">
-                Kasten by Veeam for Kasten K10
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/VeritasNetBackupforPostgreSQL">
-                Veritas NetBackup for PostgreSQL
-              </IndexCardLink>
-
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Data Movement
-              </span>
-              <IndexCardLink to="/partner_docs/PreciselyConnectCDC">
-                Precisely Connect CDC
-              </IndexCardLink>
-
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Developer Tools
-              </span>
-              <IndexCardLink to="/partner_docs/DBeaverPRO">
-                DBeaver PRO
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/LiquibasePro">
-                Liquibase Pro
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/QuestToadEdge">
-                Quest Toad Edge
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/SIBVisionsVisionX">
-                SIB Visions VisionX
-              </IndexCardLink>
-
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Security
-              </span>
-              <IndexCardLink to="/partner_docs/HashicorpVault">
-                Hashicorp Vault
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/HashicorpVaultTransitSecretsEngine">
-                Hashicorp Vault Transit Secrets Engine
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ImpervaDataSecurityFabric">
-                Imperva Data Security Fabric
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ThalesCipherTrustManager">
-                Thales CipherTrust Manager
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/ThalesCipherTrustTransparentEncryption">
-                Thales CipherTrust Transparent Encryption
-              </IndexCardLink>
-
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Other
-              </span>
-              <IndexCardLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
-                Chemaxon JChem PostgreSQL Cartridge
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
-                Esri ArcGIS Pro and Esri ArcGIS Enterprise
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/HPE">HPE</IndexCardLink>
-              <IndexCardLink to="/partner_docs/NutanixAHV">
-                Nutanix AHV
-              </IndexCardLink>
-              <IndexCardLink to="/partner_docs/PureStorageFlashArray">
-                Pure Storage FlashArray
-              </IndexCardLink>
-            </IndexCard>
           </div>
 
+          <BannerWideSubCard
+            iconName={iconNames.CODE_WRITING}
+            headingText="Integration"
+          >
+            <span className="fw-bold text-light bg-primary text-center text-secondary text-muted text-uppercase small mt-4 d-block col-12">
+              Connectors
+            </span>
+            <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
+            <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
+            <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
+            <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
+
+            <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
+              Connection Poolers
+            </span>
+            <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
+            <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
+
+            <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
+              Foreign Data Wrappers
+            </span>
+            <BannerWideLink to="/hadoop_data_adapter/latest">
+              Hadoop
+            </BannerWideLink>
+            <BannerWideLink to="/mongo_data_adapter/latest">
+              Mongo
+            </BannerWideLink>
+            <BannerWideLink to="/mysql_data_adapter/latest">
+              MySQL
+            </BannerWideLink>
+          </BannerWideSubCard>
+
+          <BannerWideSubCard
+            iconName={iconNames.HANDSHAKE}
+            headingText="Third Party Integrations"
+          >
+            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
+              Backup
+            </span>
+            <BannerWideLink
+              to="/partner_docs/CohesityDataProtectforPostgreSQL"
+              className="col-3"
+            >
+              Cohesity DataProtect for PostgreSQL
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/CommvaultBackupandRecovery"
+              className="col-3"
+            >
+              Commvault Backup &amp; Recovery
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/RepostorDataProtectorforPostgreSQL"
+              className="col-3"
+            >
+              Repostor Data Protector for PostgresSQL
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/KastenbyVeeam" className="col-3">
+              Kasten by Veeam for Kasten K10
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/VeritasNetBackupforPostgreSQL"
+              className="col-3"
+            >
+              Veritas NetBackup for PostgreSQL
+            </BannerWideLink>
+
+            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
+              Data Movement
+            </span>
+            <BannerWideLink
+              to="/partner_docs/PreciselyConnectCDC"
+              className="col-3"
+            >
+              Precisely Connect CDC
+            </BannerWideLink>
+
+            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
+              Developer Tools
+            </span>
+            <BannerWideLink to="/partner_docs/DBeaverPRO" className="col-3">
+              DBeaver PRO
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/LiquibasePro" className="col-3">
+              Liquibase Pro
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/QuestToadEdge" className="col-3">
+              Quest Toad Edge
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/SIBVisionsVisionX"
+              className="col-3"
+            >
+              SIB Visions VisionX
+            </BannerWideLink>
+            <br />
+            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
+              Security
+            </span>
+            <BannerWideLink to="/partner_docs/HashicorpVault" className="col-3">
+              Hashicorp Vault
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/HashicorpVaultTransitSecretsEngine"
+              className="col-3"
+            >
+              Hashicorp Vault Transit Secrets Engine
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/ImpervaDataSecurityFabric"
+              className="col-3"
+            >
+              Imperva Data Security Fabric
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/ThalesCipherTrustManager"
+              className="col-3"
+            >
+              Thales CipherTrust Manager
+            </BannerWideLink>
+            <BannerWideLink
+              to="/partner_docs/ThalesCipherTrustTransparentEncryption"
+              className="col-3"
+            >
+              Thales CipherTrust Transparent Encryption
+            </BannerWideLink>
+            <br />
+            <span className="fw-bold text-light bg-primary text-muted text-uppercase text-center small mt-4 d-block col-12">
+              Other
+            </span>
+            <BannerWideLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
+              Chemaxon JChem PostgreSQL Cartridge
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/EsriArcGISProandEsriArcGISEnterprise">
+              Esri ArcGIS Pro and Esri ArcGIS Enterprise
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/HPE">HPE</BannerWideLink>
+            <BannerWideLink to="/partner_docs/NutanixAHV">
+              Nutanix AHV
+            </BannerWideLink>
+            <BannerWideLink to="/partner_docs/PureStorageFlashArray">
+              Pure Storage FlashArray
+            </BannerWideLink>
+          </BannerWideSubCard>
           <hr />
           <IndexSubNav />
           <Footer />
