@@ -102,8 +102,8 @@ export const products = {
     name: "EDB Postgres AI",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
   },
-  transporter: {
-    name: "EDB Transporter",
+  data_migration_service: {
+    name: "EDB Data Migration Service",
     iconName: IconNames.EDB_TRANSPORTER,
   },
 };
