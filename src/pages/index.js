@@ -183,14 +183,14 @@ const Page = () => {
               headingText="Console"
               to="/edb-postgres-ai/console"
             >
-              <BannerCardLink to="/edb-postgres-ai/console/getstarted">
-                Getting Started
+              <BannerCardLink to="/edb-postgres-ai/console/quickstart">
+                Quick Start
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/using">
+                Using EDB Postgres AI
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/console/estate">
-                Estate
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/agent">
-                Agent
+                Estate and Agents
               </BannerCardLink>
             </BannerSubCard>
 
@@ -199,14 +199,14 @@ const Page = () => {
               headingText="Cloud Service"
               to="/edb-postgres-ai/cloud-service"
             >
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/hosted">
-                Hosted databases
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/getting_started">
+                Getting started
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/managed">
-                Managed databases
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/using_cluster">
+                Using your cluster
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/deployment">
-                Deployment options
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
+                Supported configurations
               </BannerCardLink>
             </BannerSubCard>
 
@@ -362,6 +362,10 @@ const Page = () => {
 
               <IndexCardLink to="/tools/edb_sqlpatch">
                 EDB SQL Patch
+              </IndexCardLink>
+
+              <IndexCardLink to="/tools/alteruser_utility">
+                alteruser
               </IndexCardLink>
 
               <IndexCardLink to="/language_pack/latest/">
