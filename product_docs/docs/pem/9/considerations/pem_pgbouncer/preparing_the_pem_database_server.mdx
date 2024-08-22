@@ -10,11 +10,23 @@ redirects:
 
 You must configure dedicated users and create an SSL key and certificate on the PEM database server to enable connection pooling for PEM with PgBouncer. 
 
-This example shows how to prepare the PEM database server.
+This example shows how to prepare the PEM database server on a RHEL-based operating system with EDB Postgres Advanced Server version 16. The location of your data, configuration and key files might differ depending on your OS and Postgres distribution.
+
+## Prerequisites 
+
+-   You are connected to the `pem` database of the PEM database server. 
+
+-   You are connected as `enterprisedb` or `postgres` user. The user depends on your Postgres distribution.
+
+    | Postgres distribution        | User         |
+    |------------------------------|--------------|
+    | EDB Postgres Advanced Server | enterprisedb |
+    | EDB Postgres Extended Server | postgres     |
+    | PostgreSQL                   | postgres     |
 
 ## Creating users and roles for PgBouncer-PEM connections
 
-1.  Create a dedicated user named pgbouncer with `pem_agent_pool` membership on the PEM database server:
+1.  Create a dedicated user named pgbouncer with `pem_agent_pool` membership:
 
     ```sql
     CREATE ROLE pgbouncer PASSWORD 'ANY_PASSWORD' LOGIN;
@@ -28,7 +40,7 @@ This example shows how to prepare the PEM database server.
     GRANT ROLE
     ```
 
-1.  Create a user named pem_admin1 (not a superuser) with `pem_admin` and `pem_agent_pool role` membership on the PEM database server:
+1.  Create a user named pem_admin1 (not a superuser) with `pem_admin` and `pem_agent_pool role` membership:
 
     ```sql
     CREATE ROLE pem_admin1 PASSWORD 'ANY_PASSWORD' LOGIN CREATEROLE;
@@ -43,12 +55,12 @@ This example shows how to prepare the PEM database server.
     ```
 
     ```sql
-    GRANT pem_admin TO pem_admin1 WITH ADMIN OPTION;
+    GRANT pem_agent TO pem_admin1 WITH ADMIN OPTION;
     __OUTPUT__
     GRANT ROLE
     ```
 
-1.  Grant CONNECT privileges to the pgbouncer user on the `pem` database:
+1.  Grant CONNECT privileges to the pgbouncer user:
 
     ```sql
     GRANT CONNECT ON DATABASE pem TO pgbouncer;
@@ -56,7 +68,7 @@ This example shows how to prepare the PEM database server.
     GRANT
     ```
 
-1.  Grant USAGE privileges to the pgbouncer user for the `pem` schema on the `pem` database:
+1.  Grant USAGE privileges to the pgbouncer user for the `pem` schema:
 
     ```sql
     GRANT USAGE ON SCHEMA pem TO pgbouncer;
@@ -64,7 +76,7 @@ This example shows how to prepare the PEM database server.
     GRANT
     ```
 
-1.  Grant EXECUTE privileges to the pgbouncer user on the `pem.get_agent_pool_auth(text)` function in the `pem` database. For example:
+1.  Grant EXECUTE privileges to the pgbouncer user on the `pem.get_agent_pool_auth(text)` function. For example:
 
     ```sql
     GRANT EXECUTE ON FUNCTION pem.get_agent_pool_auth(text) TO pgbouncer;
@@ -72,7 +84,7 @@ This example shows how to prepare the PEM database server.
     GRANT
     ```
 
-1.  Use the `pem.create_proxy_agent_user(varchar)` function to create a user named pem_agent_user1 on the PEM database server:
+1.  Use the `pem.create_proxy_agent_user(varchar)` function to create a user named pem_agent_user1:
 
     ```sql
     SELECT pem.create_proxy_agent_user('pem_agent_user1');
@@ -105,10 +117,10 @@ This example shows how to prepare the PEM database server.
     pem_agent_pool  pem_agent_pool  pgbouncer
     ```
 
-1.  Reload the PEM server's configuration:
+1.  Restart the Postgres service. Replace the `<postgres_service>` placeholder with the name of the Postgres instance systemd service name:
 
     ```shell
-    pg_ctl reload -D $PGDATA 
+    systemctl restart <postgres_service> 
     ``` 
 
 ## Creating the SSL key and certificate for PgBouncer-PEM authentication
@@ -133,7 +145,9 @@ Create a key and certificate for the `pem_agent_pool` group role. Then, move the
     openssl x509 -req -days 365 -in pem_agent_pool.csr -CA /var/lib/edb/as16/data/ca_certificate.crt -CAkey /var/lib/edb/as16/data/ca_key.key -CAcreateserial -out pem_agent_pool.crt
     ```
 
-1.  Move the created key and certificate to the pgbouncer user's `~/.postgresql` directory and ensure the `enterprisedb` user has permissions:
+1.  Move the created key and certificate to a path the `enterprisedb` user can access. 
+
+    In this example, create a folder called `~/.postgresql` in the home directory of the `enterprisedb` user and ensure it has permissions:
 
     ```
     mkdir -p /var/lib/edb/.postgresql
