@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "LiveCompare 3.0",
+    icon: IconNames.INTEGRATION,
+    description:
+      "LiveCompare 3.0 is now available with improved performance, easier to configure Oracle support, and enhanced documentation. ",
+    url: "/livecompare/latest/",
+    moreUrl: "/livecompare/latest/rel_notes/3.0_rel_notes/",
+  },
+  {
     title: "EDB Postgres Enterprise Manager 9.7",
     icon: IconNames.EDB_PEM,
     description:

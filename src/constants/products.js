@@ -34,7 +34,7 @@ export const products = {
   edb_sqlpatch: { name: "EDB SQL Patch", iconName: IconNames.TOOLS },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
   lasso: { name: "Lasso" },
-  livecompare: { name: "LiveCompare" },
+  livecompare: { name: "LiveCompare", iconName: IconNames.INTEGRATION },
   "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
     name: "Migration Portal",
