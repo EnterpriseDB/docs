@@ -18,45 +18,45 @@ At the highest level, PGD comprises two main components: Bi-Directional Replicat
 
 ![Diagram showing 3 application nodes, 3 proxy instances, and 3 PGD nodes. Traffic is being directed from each of the proxy instances to the write leader node.](./img/always_on_1x3_updated.png)
 
-Changes are replicated directly, row-by-row between all nodes. [Logical replication](../terminology/#logical-replication) in PGD is asynchronous by default, so only eventual consistency is guaranteed (within seconds usually), but commit scope options offer stronger consistency guarantees via [two-phase commit](../twophase), [group](../durability/group-commit) and [synchronous](../durability/synchronous_commit) commits.
+Changes are replicated directly, row-by-row between all nodes. [Logical replication](../terminology/#logical-replication) in PGD is asynchronous by default, so only eventual consistency is guaranteed (within seconds usually). However, [commit scope](../durability/commit-scopes) options offer stronger consistency guarantees via [two-phase commit](../twophase), [group](../durability/group-commit) and [synchronous](../durability/synchronous_commit) commits.
 
-The RAFT algorithm provides a mechanism for reliably managing metadata, [electing](../routing/raft/04_raft_elections_in_depth/) leaders (both RAFT leader and write leader), deciding which nodes should be added or subtracted from the cluster, and generally ensuring that the distributed system remains consistent and fault-tolerant, even in the face of node failures.
+The RAFT algorithm provides a mechanism for [electing](../routing/raft/04_raft_elections_in_depth/) leaders (both RAFT leader and write leader), deciding which nodes should be added or subtracted from the cluster, and generally ensuring that the distributed system remains consistent and fault-tolerant, even in the face of node failures.
 
 ### Architectural elements
 
-PGD comprises several key architectural elements that work together to provide a robust distributed database solution:
+PGD comprises several key architectural elements that work together to provide its distributed database solution:
 
   - **PGD nodes**: These are individual PostgreSQL instances that store and manage data. They are the basic building blocks of a PGD cluster.
 
-  - **Groups**:  PGD nodes are organized into groups, which enhance manageability and high availability. Each group can contain multiple nodes, allowing for redundancy and failover within the group. Groups facilitate organized replication and data consistency among nodes within the same group and across different groups. Each group has its own write leader.
+  - **Groups**:  PGD nodes are organized into [groups](../node_management/groups_and_subgroups), which enhance manageability and high availability. Each group can contain multiple nodes, allowing for redundancy and failover within the group. Groups facilitate organized replication and data consistency among nodes within the same group and across different groups. Each group has its own write leader.
 
-  - **Replication mechanisms**: PGD's replication mechanisms include Bi-Directional Replication (BDR) for efficient replication across nodes, enabling multi-master replication. BDR supports asynchronous replication by default but can be configured for varying levels of synchronicity, such as Group Commit or Synchronous Commit, to enhance data durabiltiy and consistency. Logical replication is used to replicate changes at the row level, ensuring flexible data propagation without replicating the entire database state​.
+  - **Replication mechanisms**: PGD's replication mechanisms include Bi-Directional Replication (BDR) for efficient replication across nodes, enabling multi-master replication. BDR supports asynchronous replication by default, but can be configured for varying levels of synchronicity, such as [Group Commit](../durability/group-commit) or [Synchronous Commit](../durability/synchronous_commit), to enhance data durabiltiy and consistency. Logical replication is used to replicate changes at the row level, ensuring flexible data propagation without replicating the entire database state​.
 
-  - **Transaction management systems**: PGD's transaction management systems ensure data consistency and reliability across distributed nodes through several key mechanisms. It supports explicit two-phase commit (2PC) for atomic transactions, utilizes different commit scopes (local and group commit) to balance performance and durability, and employs advanced conflict management to handle multi-master write conflicts. Additionally, PGD leverages logical replication for efficient data replication at the row level and includes wait functions to prevent stale reads by ensuring specific transactions are applied locally before proceeding​.
+  - **Transaction management systems**: PGD's transaction management systems ensure data consistency and reliability across distributed nodes through several key mechanisms. It supports explicit [two-phase commit](../twophase) (2PC) for atomic transactions, utilizes different [commit scopes](../durability/commit-scopes) to balance performance with durability and consistency, and employs [advanced conflict management](../consistency) to handle multi-master write conflicts. Additionally, PGD leverages logical replication for efficient data replication at the row level and includes wait functions to prevent stale reads by ensuring specific transactions are applied locally before proceeding​.
 
-  - **Monitoring tools**: To monitor performance, health, and usage with PGD, you can utilize its built-in command-line interface (CLI), which offers several useful commands. For instance, the `pgd show-nodes` command provides a summary of all nodes in the cluster, including their state and status. The `pgd check-health` command checks the health of the cluster, reporting on node accessibility, replication slot health, and other critical metrics. The `pgd show-events` command lists significant events like background worker errors and node membership changes, which helps in tracking the operational status and issues within the cluster.
+  - **Monitoring tools**: To monitor performance, health, and usage with PGD, you can utilize its [built-in command-line interface](../cli) (CLI), which offers several useful commands. For instance, the `pgd show-nodes` command provides a summary of all nodes in the cluster, including their state and status. The `pgd check-health` command checks the health of the cluster, reporting on node accessibility, replication slot health, and other critical metrics. The `pgd show-events` command lists significant events like background worker errors and node membership changes, which helps in tracking the operational status and issues within the cluster. Furthermore, the BDR extension allows for monitoring your cluster using SQL using the [`bdr.monitor`](../security/pgd-predefined-roles/#bdr_monitor) role.
 
 #### Node types and roles
 
-  - **Data nodes**: Store and manage data, handle read and write operations, and participate in replication.
+  - **[Data nodes](../node_management/node_types/#data-nodes)**: Store and manage data, handle read and write operations, and participate in replication.
 
-  - **Subscriber-only nodes**: Subscribe to changes from data nodes for read-only purposes, used in reporting or analytics.
+  - **[Subscriber-only nodes](../node_management/subscriber_only/#subscriber-only-nodes)**: Subscribe to changes from data nodes for read-only purposes, used in reporting or analytics.
 
-  - **Witness nodes**: Participate in concensus proceses without storing data, aiding in achieving quorum and maintaining high availability.
+  - **[Witness nodes](../node_management/witness_nodes/)**: Participate in concensus proceses without storing data, aiding in achieving quorum and maintaining high availability.
 
-  - **Logical standby nodes**: Act as standby nodes that can be promoted to data nodes if needed, ensuring high availability and disaster recovery.
+  - **[Logical standby nodes](../node_management/logical_standby_nodes/)**: Act as standby nodes that can be promoted to data nodes if needed, ensuring high availability and disaster recovery.
 
-  - **Write leader**: Receives all write operations from PGD Proxy.
+  - **[Write leader](../terminology/#write-leader)**: Receives all write operations from PGD Proxy.
 
 ### Architectural aims
 
 #### High availability
 
-PGD ensures high availability through multiple mechanisms. The architecture includes multiple master nodes, providing redundancy and maintaining service availability even if a node fails. Optional [logical standby nodes](../node_management/logical_standby_nodes) can quickly replace any node that goes down, minimizing downtime in case of a failure. In fact, replication continues among connected nodes even if some are temporarily unavailable, and resumes seamlessly when a node recovers, ensuring no data loss. Additionally, PGD supports rolling upgrades, allowing nodes to run different release levels and perform updates without disrupting the cluster’s operation. These combined mechanisms ensure continuous availability and robust disaster recovery in a distributed database environment.
+PGD ensures high availability through multiple mechanisms. The architecture includes multiple master nodes, providing redundancy and maintaining service availability even if a node fails. Optional [logical standby nodes](../node_management/logical_standby_nodes) can quickly replace any node that goes down, minimizing downtime in case of a failure. In fact, replication continues among connected nodes even if some are temporarily unavailable, and resumes seamlessly when a node recovers, ensuring no data loss. Additionally, PGD supports [rolling upgrades of major versions](../upgrades/upgrading_major_rolling/), allowing nodes to run different release levels and perform updates without disrupting the cluster’s operation. These combined mechanisms ensure continuous availability and robust disaster recovery in a distributed database environment.
 
 #### Connection management
 
-In PGD, connection management aims to optimize performance, maintain data consistency, and reduce potential data conflicts. PGD uses a consensus-driven quorum to determine the correct connection endpoint—the write leader. This approach reduces potential data conflicts by ensuring that writes are directed to a single node. The PGD Proxy manages application connections, routing read-heavy queries to replicas and writes to the write leaders, thereby optimizing performance and maintaining data consistency across the distributed environment. 
+In PGD, connection management aims to optimize performance by reducing potential data conflicts. PGD uses a RAFT-based [consensus-driven quorum](../routing/raft/04_raft_elections_in_depth/) to determine the correct connection endpoint—the write leader. This approach reduces potential data conflicts by ensuring that writes are directed to a single node. The [PGD Proxy](../routing) manages application connections, routing read-heavy queries to replicas and writes to the write leaders, thereby optimizing performance and maintaining data consistency across the distributed environment. 
 
 ## Architectural options and performance
 
