@@ -1,32 +1,8 @@
-import React, { useLayoutEffect, useRef } from "react";
+import React from "react";
 import { Container } from "react-bootstrap";
 import Icon, { iconNames } from "../components/icon/";
 import { Footer, IndexSubNav, Layout, Link, MainContent } from "../components";
 import { updates } from "../constants/updates";
-
-const isBrowser = typeof window !== "undefined";
-const Masonry = isBrowser ? window.Masonry || require("masonry-layout") : null;
-
-const IndexCard = ({ iconName, headingText, children }) => (
-  <div className="col-sm-6 col-lg-4">
-    <div className="card rounded shadow-sm mb-4">
-      <div className="card-body">
-        <div className="d-flex align-items-center mb-3">
-          <div className="d-inline-block me-3">
-            <Icon
-              iconName={iconName}
-              className="fill-aquamarine"
-              width="24"
-              height="24"
-            />
-          </div>
-          <h4 className="d-inline-block card-title m-0">{headingText}</h4>
-        </div>
-        <ul className="list-unstyled mb-0">{children}</ul>
-      </div>
-    </div>
-  </div>
-);
 
 const BannerCard = ({ iconName, headingText, children }) => (
   <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
@@ -135,21 +111,7 @@ const BannerCardLink = ({ to, className, children }) => (
   </Link>
 );
 
-const IndexCardLink = ({ to, className, children }) => (
-  <li>
-    <Link to={to} className={`d-block py-2 ps-1 ${className}`}>
-      {children}
-    </Link>
-  </li>
-);
-
 const Page = () => {
-  const layout = useRef(null);
-  useLayoutEffect(() => {
-    layout.current = layout.current || new Masonry("*[data-masonry]");
-    return () => layout.current?.destroy();
-  }, []);
-
   return (
     <Layout
       pageMeta={{
