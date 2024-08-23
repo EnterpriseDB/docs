@@ -327,7 +327,7 @@ const Page = () => {
               headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12 mp-4">
+              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
                 <Icon iconName={iconNames.KUBERNETES} width={30} height={30} />
                 Kubernetes
               </span>
@@ -374,6 +374,15 @@ const Page = () => {
                 EDB LDAP Sync
               </BannerWideLink>
 
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase  py-2 small mt-4 d-block col-12">
+                <Icon iconName={iconNames.INSTANCES} width={30} height={30} />
+                Automation
+              </span>
+
+              <BannerWideLink to="/tpa/latest/">
+                Trusted Postgres Architect
+              </BannerWideLink>
+
               <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
                 <Icon
                   iconName={iconNames.HIGH_AVAILABILITY}
@@ -394,7 +403,24 @@ const Page = () => {
               <BannerWideLink to="/supported-open-source/pglogical2/">
                 pglogical 2
               </BannerWideLink>
+
               <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
+                <Icon
+                  iconName={iconNames.BACKUP_RECOVERY}
+                  width={30}
+                  height={30}
+                />
+                Backup and Recovery
+              </span>
+
+              <BannerWideLink to="/supported-open-source/barman/">
+                Barman
+              </BannerWideLink>
+              <BannerWideLink to="/supported-open-source/pgbackrest/">
+                pgBackRest
+              </BannerWideLink>
 
               <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
                 <Icon iconName={iconNames.MIGRATION} width={30} height={30} />
@@ -409,6 +435,77 @@ const Page = () => {
               </BannerWideLink>
               <BannerWideLink to="/eprs/latest">
                 Replication Server
+              </BannerWideLink>
+            </BannerWideSubCard>
+
+            <BannerWideSubCard
+              iconName={iconNames.EXTENSION}
+              headingText="Extensions and Tools"
+            >
+              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
+                Extensions
+              </span>
+
+              <BannerWideLink to="/pg_extensions/">
+                Supported Postgres extensions
+              </BannerWideLink>
+
+              <BannerWideLink to="//postgis/latest/">PostGIS</BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
+                EDB Advanced Storage Pack
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/pg_tuner">
+                EDB Postgres Tuner
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/query_advisor">
+                EDB Query Advisor
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/wait_states">
+                EDB Wait States
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/pg_squeeze">
+                PG Squeeze
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/wal2json">
+                wal2json
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/system_stats">
+                system_stats
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/edb_job_scheduler">
+                EDB Job Scheduler
+              </BannerWideLink>
+
+              <BannerWideLink to="/pg_extensions/pg_failover_slots">
+                PG Failover Slots
+              </BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
+                Tools
+              </span>
+
+              <BannerWideLink to="/pg_extensions/spl_check/">
+                EDB SPL Check
+              </BannerWideLink>
+
+              <BannerWideLink to="/tools/edb_sqlpatch">
+                EDB SQL Patch
+              </BannerWideLink>
+
+              <BannerWideLink to="/tools/alteruser_utility">
+                alteruser
+              </BannerWideLink>
+
+              <BannerWideLink to="/language_pack/latest/">
+                Language Pack
               </BannerWideLink>
             </BannerWideSubCard>
 
@@ -429,133 +526,39 @@ const Page = () => {
                 Developer Guides
               </BannerWideCardLink>
             </BannerWideCard>
-          </BannerCard>
 
-          <div className="row mb-4" data-masonry='{"percentPosition": true }'>
-            {/* 
-              <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
-                Extensions and Tools
-              </span>
-
-              <IndexCardLink to="/pg_extensions/">
-                Supported Postgres extensions
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/advanced_storage_pack/">
-                EDB Advanced Storage Pack
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/pg_tuner">
-                EDB Postgres Tuner
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/query_advisor">
-                EDB Query Advisor
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/wait_states">
-                EDB Wait States
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/pg_squeeze">
-                PG Squeeze
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/wal2json">
-                wal2json
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/system_stats">
-                system_stats
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/edb_job_scheduler">
-                EDB Job Scheduler
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/pg_failover_slots">
-                PG Failover Slots
-              </IndexCardLink>
-
-              <IndexCardLink to="/pg_extensions/spl_check/">
-                EDB SPL Check
-              </IndexCardLink>
-
-              <IndexCardLink to="/tools/edb_sqlpatch">
-                EDB SQL Patch
-              </IndexCardLink>
-
-              <IndexCardLink to="/tools/alteruser_utility">
-                alteruser
-              </IndexCardLink>
-
-              <IndexCardLink to="/language_pack/latest/">
-                Language Pack
-              </IndexCardLink>
-            </IndexCard> */}
-
-            <IndexCard
-              iconName={iconNames.DRIVES}
-              headingText="Backup & Recovery"
+            <BannerWideSubCard
+              iconName={iconNames.INTEGRATION}
+              headingText="Integration"
             >
-              <IndexCardLink to="/supported-open-source/barman/">
-                Barman
-              </IndexCardLink>
+              <span className="fw-bold text-light bg-primary text-center text-secondary text-muted text-uppercase small mt-4 d-block col-12">
+                Connectors
+              </span>
+              <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
+              <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
+              <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
+              <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-              <IndexCardLink
-                to="/supported-open-source/barman/single-server-streaming/"
-                className="nested-link"
-              >
-                Single Server Streaming
-                <span
-                  className="new-thing"
-                  title="Walk through an interactive demo in Katacoda"
-                >
-                  Demo
-                </span>
-              </IndexCardLink>
-              <IndexCardLink to="/supported-open-source/pgbackrest/">
-                pgBackRest
-              </IndexCardLink>
-            </IndexCard>
-            <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
-              <IndexCardLink to="/tpa/latest/">
-                Trusted Postgres Architect
-              </IndexCardLink>
-            </IndexCard>
-          </div>
+              <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
+                Connection Poolers
+              </span>
+              <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
+              <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
 
-          <BannerWideSubCard
-            iconName={iconNames.CODE_WRITING}
-            headingText="Integration"
-          >
-            <span className="fw-bold text-light bg-primary text-center text-secondary text-muted text-uppercase small mt-4 d-block col-12">
-              Connectors
-            </span>
-            <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
-            <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
-            <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
-            <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
-
-            <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
-              Connection Poolers
-            </span>
-            <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
-            <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
-
-            <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
-              Foreign Data Wrappers
-            </span>
-            <BannerWideLink to="/hadoop_data_adapter/latest">
-              Hadoop
-            </BannerWideLink>
-            <BannerWideLink to="/mongo_data_adapter/latest">
-              Mongo
-            </BannerWideLink>
-            <BannerWideLink to="/mysql_data_adapter/latest">
-              MySQL
-            </BannerWideLink>
-          </BannerWideSubCard>
+              <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
+                Foreign Data Wrappers
+              </span>
+              <BannerWideLink to="/hadoop_data_adapter/latest">
+                Hadoop
+              </BannerWideLink>
+              <BannerWideLink to="/mongo_data_adapter/latest">
+                Mongo
+              </BannerWideLink>
+              <BannerWideLink to="/mysql_data_adapter/latest">
+                MySQL
+              </BannerWideLink>
+            </BannerWideSubCard>
+          </BannerCard>
 
           <BannerWideSubCard
             iconName={iconNames.HANDSHAKE}
