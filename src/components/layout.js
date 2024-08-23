@@ -12,7 +12,6 @@ import {
   Link,
   StubCards,
   IconList,
-  TextBalancer,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
@@ -164,6 +163,10 @@ const Layout = ({
         {meta.description && (
           <meta property="og:description" content={meta.description} />
         )}
+        <meta
+          name="viewport"
+          content={`width=${meta.minDeviceWidth || 960}, initial-scale=1, shrink-to-fit=no`}
+        />
         <meta property="og:image" content={imageUrl} />
         <meta property="og:url" content={url} />
         <link rel="canonical" href={canonicalUrl} />
@@ -171,7 +174,6 @@ const Layout = ({
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
       <MDXProvider components={mdxComponents}>{children}</MDXProvider>
-      <TextBalancer />
     </LayoutContext.Provider>
   );
 };
