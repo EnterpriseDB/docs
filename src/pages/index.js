@@ -155,6 +155,7 @@ const Page = () => {
       pageMeta={{
         description:
           "EDB supercharges Postgres with products, services, and support to help you control database risk, manage costs, and scale efficiently.",
+        minDeviceWidth: 320,
       }}
       background="white"
     >
