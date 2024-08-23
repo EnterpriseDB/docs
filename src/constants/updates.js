@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Trusted Postgres Architect 23.34",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.34 includes enhanced support for EFM, PEM and pgBouncer, and a new output plugin which improves readability of TPA progress.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.34_rel_notes/",
+  },
+  {
     title: "EDB Postgres Enterprise Manager 9.7",
     icon: IconNames.EDB_PEM,
     description:
