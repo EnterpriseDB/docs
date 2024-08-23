@@ -316,7 +316,7 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
                 Data Migration Service
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
+              <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
               </BannerCardLink>
               <BannerCardLink></BannerCardLink>
@@ -327,61 +327,112 @@ const Page = () => {
               headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
-              <BannerWideLink to="/edb-postgres-ai/tools/management">
-                Management
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12 mp-4">
+                <Icon iconName={iconNames.KUBERNETES} width={30} height={30} />
+                Kubernetes
+              </span>
+              <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
+                EDB Postgres Distributed for Kubernetes
               </BannerWideLink>
-              <BannerWideLink to="/edb-postgres-ai/tools/backup">
-                Backup and Recovery
+
+              <BannerWideLink to="/postgres_for_kubernetes/latest/">
+                EDB Postgres for Kubernetes
+              </BannerWideLink>
+
+              <BannerWideLink to="/supported-open-source/cloud_native_pg/">
+                CloudNativePG
+              </BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12 mp-4">
+                <Icon iconName={iconNames.CONTROL} width={30} height={30} />
+                Management and Monitoring
+              </span>
+
+              <BannerWideLink to="/pem/latest">
+                Postgres Enterprise Manager
+              </BannerWideLink>
+              <BannerWideLink to="/supported-open-source/pgadmin/">
+                pgAdmin
+              </BannerWideLink>
+              <BannerWideLink to="/edb_plus/latest">EDB*Plus</BannerWideLink>
+              <BannerWideLink to="/lasso/latest">Lasso</BannerWideLink>
+              <BannerWideLink to="/livecompare/latest">
+                LiveCompare
+              </BannerWideLink>
+              <BannerWideLink to="/pwr/latest">
+                Postgres Workload Report
+              </BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase  py-2 small mt-4 d-block col-12">
+                <Icon iconName={iconNames.SECURITY} width={30} height={30} />
+                Security
+              </span>
+              <BannerWideLink to="/tde/latest">
+                Transparent Data Encryption
+              </BannerWideLink>
+              <BannerWideLink to="/pg_extensions/ldap_sync">
+                EDB LDAP Sync
+              </BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
+                <Icon
+                  iconName={iconNames.HIGH_AVAILABILITY}
+                  width={30}
+                  height={30}
+                />
+                High Availability
+              </span>
+              <BannerWideLink to="/repmgr/latest">
+                Replication Manager (repmgr)
+              </BannerWideLink>
+              <BannerWideLink to="/supported-open-source/patroni/">
+                Patroni
+              </BannerWideLink>
+              <BannerWideLink to="/slony/latest">
+                Slony (Deprecated)
+              </BannerWideLink>
+              <BannerWideLink to="/supported-open-source/pglogical2/">
+                pglogical 2
+              </BannerWideLink>
+              <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
+
+              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
+                <Icon iconName={iconNames.MIGRATION} width={30} height={30} />
+                Migration
+              </span>
+
+              <BannerWideLink to="/migrating/oracle">
+                Migration Handbook
+              </BannerWideLink>
+              <BannerWideLink to="/migration_toolkit/latest">
+                Migration Toolkit
+              </BannerWideLink>
+              <BannerWideLink to="/eprs/latest">
+                Replication Server
               </BannerWideLink>
             </BannerWideSubCard>
 
             <BannerWideCard>
               <BannerWideCardLink
-                className="col-md-12"
+                className="col-md-6"
                 to="/repos/"
                 iconName={iconNames.DOWNLOAD}
               >
                 Downloads and Repositories
               </BannerWideCardLink>
 
-              {/* <BannerWideCardLink
-              className="col-md-6"
-              to="/dev-guides/"
-              iconName={iconNames.CODE_WRITING}
-            >
-              Developer Guides
-            </BannerWideCardLink> */}
+              <BannerWideCardLink
+                className="col-md-6"
+                to="/dev-guides/"
+                iconName={iconNames.CODE_WRITING}
+              >
+                Developer Guides
+              </BannerWideCardLink>
             </BannerWideCard>
           </BannerCard>
 
           <div className="row mb-4" data-masonry='{"percentPosition": true }'>
-            <IndexCard iconName={iconNames.BIG_DATA} headingText="Databases">
-              <IndexCardLink to="/epas/latest">
-                EDB Postgres Advanced Server
-              </IndexCardLink>
-              <IndexCardLink to="/postgis/latest" className="nested-link">
-                PostGIS
-              </IndexCardLink>
-
-              <IndexCardLink to="/pge/latest">
-                EDB Postgres Extended Server
-              </IndexCardLink>
-
-              <IndexCardLink to="/supported-open-source/postgresql/">
-                PostgreSQL
-              </IndexCardLink>
-
-              <span className="font-weight-bold text-muted text-uppercase small mt-4 d-block">
-                Security
-              </span>
-
-              <IndexCardLink to="/tde/latest">
-                Transparent Data Encryption
-              </IndexCardLink>
-              <IndexCardLink to="/pg_extensions/ldap_sync">
-                EDB LDAP Sync
-              </IndexCardLink>
-
+            {/* 
               <span className="fw-bold text-muted text-uppercase small mt-4 d-block">
                 Extensions and Tools
               </span>
@@ -441,79 +492,7 @@ const Page = () => {
               <IndexCardLink to="/language_pack/latest/">
                 Language Pack
               </IndexCardLink>
-            </IndexCard>
-
-            <IndexCard
-              iconName={iconNames.HIGH_AVAILABILITY}
-              headingText="High Availability"
-            >
-              <IndexCardLink to="/pgd/latest">
-                EDB Postgres Distributed (PGD)
-              </IndexCardLink>
-              <IndexCardLink to="/efm/latest">Failover Manager</IndexCardLink>
-              <IndexCardLink to="/repmgr/latest">
-                Replication Manager (repmgr)
-              </IndexCardLink>
-              <IndexCardLink to="/supported-open-source/patroni/">
-                Patroni
-              </IndexCardLink>
-              <IndexCardLink to="/slony/latest">
-                Slony (Deprecated)
-              </IndexCardLink>
-              <IndexCardLink to="/supported-open-source/pglogical2/">
-                pglogical 2
-              </IndexCardLink>
-            </IndexCard>
-
-            <IndexCard iconName={iconNames.CONVERT} headingText="Migration">
-              <IndexCardLink to="/migrating/oracle">
-                Migration Handbook
-              </IndexCardLink>
-              <IndexCardLink to="/migration_portal/latest">
-                Migration Portal
-              </IndexCardLink>
-              <IndexCardLink to="/migration_toolkit/latest">
-                Migration Toolkit
-              </IndexCardLink>
-              <IndexCardLink to="/eprs/latest">
-                Replication Server
-              </IndexCardLink>
-            </IndexCard>
-
-            <IndexCard iconName={iconNames.CLOUD_DB} headingText="Cloud">
-              <IndexCardLink to="/biganimal/latest">
-                EDB BigAnimal
-              </IndexCardLink>
-              <IndexCardLink
-                to="/biganimal/latest/free_trial/"
-                className="nested-link"
-              >
-                Quick Start
-              </IndexCardLink>
-              <IndexCardLink
-                to="/biganimal/latest/using_cluster/06_demonstration_oracle_compatibility/"
-                className="nested-link"
-              >
-                Oracle SQL Compatibility
-                <span className="new-thing" title="Interactive Demo">
-                  Demo
-                </span>
-              </IndexCardLink>
-            </IndexCard>
-
-            <IndexCard iconName={iconNames.KUBERNETES} headingText="Kubernetes">
-              <IndexCardLink to="/postgres_distributed_for_kubernetes/latest/">
-                EDB Postgres Distributed for Kubernetes
-              </IndexCardLink>
-
-              <IndexCardLink to="/postgres_for_kubernetes/latest/">
-                EDB Postgres for Kubernetes
-              </IndexCardLink>
-
-              <IndexCardLink to="/supported-open-source/cloud_native_pg/">
-                CloudNativePG
-              </IndexCardLink>
-            </IndexCard>
+            </IndexCard> */}
 
             <IndexCard
               iconName={iconNames.DRIVES}
@@ -539,27 +518,6 @@ const Page = () => {
                 pgBackRest
               </IndexCardLink>
             </IndexCard>
-
-            <IndexCard
-              iconName={iconNames.CONTROL}
-              headingText="Monitoring & Admin"
-            >
-              <IndexCardLink to="/pem/latest">
-                Postgres Enterprise Manager
-              </IndexCardLink>
-              <IndexCardLink to="/supported-open-source/pgadmin/">
-                pgAdmin
-              </IndexCardLink>
-              <IndexCardLink to="/edb_plus/latest">EDB*Plus</IndexCardLink>
-              <IndexCardLink to="/lasso/latest">Lasso</IndexCardLink>
-              <IndexCardLink to="/livecompare/latest">
-                LiveCompare
-              </IndexCardLink>
-              <IndexCardLink to="/pwr/latest">
-                Postgres Workload Report
-              </IndexCardLink>
-            </IndexCard>
-
             <IndexCard iconName={iconNames.INSTANCES} headingText="Automation">
               <IndexCardLink to="/tpa/latest/">
                 Trusted Postgres Architect
