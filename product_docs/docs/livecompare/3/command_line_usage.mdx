@@ -1,0 +1,239 @@
+---
+navTitle: Command line usage
+title: Command-line usage
+originalFilePath: command_line_usage.md
+
+---
+
+## Compare mode
+
+Copy any `/etc/livecompare/template*.ini` to use in your project and adjust as necessary. See [Settings](settings/).
+
+```
+cp /etc/livecompare/template_basic.ini my_project.ini
+
+livecompare my_project.ini
+```
+
+While LiveCompare executes, N+1 progress bars appear, where N is the number of processes. (You can specify the number of processes in the settings.) The first progress bar shows overall execution. The other progress bars show the current table being processed by a specific process.
+
+The information being shown for each table is, from left to right:
+
+-   Number of the process
+-   Table name
+-   Status, which can be the ID of the comparison round followed by the current table chunk. 
+    
+    `p1/1` means the table wasn't split. A status of `setup` means the table is being analyzed (checking row count and splitting if necessary).
+
+-   Number of rows processed
+-   Number of total rows being considered in this comparison round
+-   Time elapsed
+-   Estimated time to complete
+-   Speed in records per second
+
+While the program is executing, you can cancel it at any time by pressing **Ctrl-C**. A message like the following appears:
+
+```text
+Manually stopping session 6... You can resume the session with:
+
+livecompare my_project.ini 6
+```
+
+!!! Important
+    If LiveCompare is running in the background or running in another shell, you can still softly stop it. It  keeps the `PID` of the master process inside the session folder (`lc_session_6` in the example) in a file named `livemaster.pid`. You can then invoke `kill -2 <PID>` to softly stop it.
+
+Then, at any time you can resume a previously canceled session, for example:
+
+```
+livecompare my_project.ini 6
+```
+
+When the program ends, if it found no inconsistencies, the output is similar to the following:
+
+```text
+Saved file lc_session_5/summary_20190514.out with the complete table summary.
+You can also get the table summary by connecting to the output database and executing:
+select * from livecompare.vw_table_summary where session_id = 5;
+
+Elapsed time: 0:02:10.970954
+Processed 3919015 rows in 6 tables using 3 processes.
+Found 0 inconsistent rows in 0 tables.
+```
+
+If any inconsistencies were found, the output looks like this:
+
+```text
+Comparison finished, waiting for remaining difference checks...
+
+Outstanding differences:
+
++--------------+-------------------+-----------------+------------------+----------------------+-------------------+---------------------------+
+|   session_id | table_name        | elapsed_time    |   num_total_rows |   num_processed_rows |   num_differences |   max_num_ignored_columns |
+|--------------+-------------------+-----------------+------------------+----------------------+-------------------+---------------------------|
+|            6 | public.categories | 00:00:00.027864 |               18 |                   18 |                 4 |                           |
++--------------+-------------------+-----------------+------------------+----------------------+-------------------+---------------------------+
+
+Saved file lc_session_6/summary_20200129.out with the complete table summary.
+You can also get the table summary by connecting to the output database and executing:
+select * from livecompare.vw_table_summary where session_id = 6;
+
+Elapsed time: 0:00:50.149987
+Processed 172718 rows in 8 tables from 3 connections using 2 workers.
+Found 4 inconsistent rows in 1 tables.
+
+Saved file lc_session_6/differences_20200129.out with the list of differences per table.
+You can also get a list of differences per table with:
+select * from livecompare.vw_differences where session_id = 6;
+Too see more details on how LiveCompare determined the differences:
+select * from livecompare.vw_consensus where session_id = 6;
+
+Script lc_session_6/apply_on_the_first_20200129.sql was generated, which can be applied to the first connection and make it consistent with the majority of connections.
+You can also get this script with:
+select difference_fix_dml from livecompare.vw_difference_fix where session_id = 6 and connection_id = 'first';
+```
+
+## Recheck mode
+
+In a PGD environment, any divergence that PGD finds can later not exist, as the replication caught up due to eventual consistency. Depending on several factors, replication lag can cause LiveCompare to report false positives.
+
+To overcome that, in a later moment when replication lag has decreased or data has already caught up, you can manually execute a recheck only on the differences that were previously found. This execution mode is called *recheck*. You can execute it like this:
+
+```
+livecompare my_project.ini 6 --recheck
+```
+
+In this mode, LiveCompare generates separate recheck logs and updates all reports that already exist in the `lc_session_X` directory.
+
+!!! Important
+    If resuming a `compare` or executing under `recheck`, LiveCompare checks whether the settings and connections attributes are the same as when the session was created. If any divergence is found, it quits the execution and gives a message.
+
+## Conflicts mode
+
+To run LiveCompare in `conflicts` mode, invoke it with:
+
+```
+livecompare my_project.ini --conflicts
+```
+
+For more details about the `conflicts` mode, see [PGD support](bdr_support/).
+
+## Dry-run mode
+
+!!! Tip "New Feature"
+   LiveCompare dry-run mode support is available for LiveCompare version 2.2.0 and later. 
+!!!
+
+For example, suppose you have the following INI file:
+
+```ini
+[General Settings]
+logical_replication_mode = off
+difference_tie_breakers = first
+
+[First Connection]
+dsn = dbname=testb
+
+[Second Connection]
+dsn = dbname=testdb2
+
+[Third Connection]
+dsn = dbname=testdb3
+
+[Output Connection]
+dsn = dbname=liveoutpu
+
+[Table Filter]
+schemas = schema_name = 'public'
+```
+
+As the DSN under `Output Connection` (the LiveCompare cache database) is incorrect, running LiveCompare initially fails with:
+
+```
+Output connection is not reachable.
+```
+
+After fixing this, then the output connection is now reachable. But suppose that only one of the data connections is set correctly. In that case, LiveCompare fails again with:
+
+```
+At least two reachable connections are required.
+Following connections are unreachable: first, third.
+Following connections are reachable: second.
+```
+
+LiveCompare can start a comparison with at least two data connections available. So you go ahead and fix the third connection. But LiveCompare still fails with:
+
+```
+A difference_tie_breakers host is not a reachable connection: first.
+```
+
+This happens because the example set `difference_tie_breakers = first`, and any connection set as a tie breaker or source of truth needs to be reachable.
+
+After fixing all those issues, then LiveCompare can start the comparison.
+
+However, when setting up a comparison from scratch, you can check beforehand whether LiveCompare will abort with a configuration error. Further checks of this nature are all shown in the order LiveCompare performs them.
+
+You can do this with the `--dry-run` mode, which:
+
+-   Prints all execution aborts that will happen due to configuration issues.
+-   Prints the list of connections with some details, including if it's reachable.
+-   Prints the table filter.
+-   After applying the table filter, prints the list of tables that are common to the reachable connections.
+
+Here's one sample output, given the example `.ini` file, and all configuration errors regarding unreachable connections:
+
+```
+$ livecompare test.ini --dry-run
+EnterpriseDB LiveCompare 2.2.0, dry-run mode
+
+
+Output connection is not reachable.
+
+At least two reachable connections are required.
+Following connections are unreachable: first, third.
+Following connections are reachable: second.
+
+A difference_tie_breakers host is not a reachable connection: first.
+
+
+Connections
+
++--------+--------------+-----------+---------------+---------------------+-----------+---------------+-------------------+-------------+
+| ID     | Technology   | Version   | PGD Version   | Pglogical Version   | Initial   | Tie Breaker   | Source of Truth   | Reachable   |
+|--------+--------------+-----------+---------------+---------------------+-----------+---------------+-------------------+-------------|
+| second | postgresql   | 110015    | -             | -                   | False     | False         | False             | True        |
+| first  | postgresql   | -         | -             | -                   | False     | True          | False             | False       |
+| third  | postgresql   | -         | -             | -                   | False     | False         | False             | False       |
+| output | postgresql   | -         | -             | -                   | -         | -             | -                 | False       |
++--------+--------------+-----------+---------------+---------------------+-----------+---------------+-------------------+-------------+
+
+
+Table Filter
+
+publications = ''
+replication_sets = ''
+schemas = schema_name = 'public'
+tables = ''
+
+
+Tables
+
++---------------------+--------------+-----------------+-------------------------+
+| Table Name          | Row Filter   | Column Filter   | Custom Comparison Key   |
+|---------------------+--------------+-----------------+-------------------------|
+| public.categories   | -            | -               | -                       |
+| public.cust_hist    | -            | -               | -                       |
+| public.customers    | -            | -               | -                       |
+| public.departments  | -            | -               | -                       |
+| public.dept_emp     | -            | -               | -                       |
+| public.dept_manager | -            | -               | -                       |
+| public.employees    | -            | -               | -                       |
+| public.inventory    | -            | -               | -                       |
+| public.orderlines   | -            | -               | -                       |
+| public.orders       | -            | -               | -                       |
+| public.products     | -            | -               | -                       |
+| public.reorder      | -            | -               | -                       |
+| public.salaries     | -            | -               | -                       |
+| public.tbl          | -            | -               | -                       |
+| public.titles       | -            | -               | -                       |
++---------------------+--------------+-----------------+-------------------------+
+```
