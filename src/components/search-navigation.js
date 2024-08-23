@@ -10,10 +10,12 @@ const LogoLink = () => (
   </Link>
 );
 
-const DocsLink = () => (
+const DocsLink = ({ className }) => (
   <Link
     to="/"
-    className="me-3 lead text-muted pt-2 header-docs-link"
+    className={["me-3 lead text-muted pt-2 header-docs-link", className].join(
+      " ",
+    )}
     title="EDB Docs homepage"
   >
     /<span className="ps-1">docs</span>
@@ -27,18 +29,26 @@ const SearchNavigation = ({
   logo = false,
 }) => {
   return (
-    <Navbar variant="light" className="flex-md-nowrap p-3 border-bottom">
+    <Navbar
+      variant="light"
+      expand="md"
+      className="flex-md-nowrap p-3 border-bottom justify-content-start justify-content-md-between"
+    >
       {logo ? (
         <>
           {/* Homepage */}
           <LogoLink />
-          <DocsLink />
+          <DocsLink className="text-nowrap flex-grow-1" />
         </>
       ) : (
         <></>
       )}
-      <SearchBar searchProduct={searchProduct} searchVersion={searchVersion} />
-      <SearchNavigationLinks />
+      <SearchBar
+        searchProduct={searchProduct}
+        searchVersion={searchVersion}
+        className="order-last order-md-5"
+      />
+      <SearchNavigationLinks className="order-5 order-md-last" />
     </Navbar>
   );
 };
