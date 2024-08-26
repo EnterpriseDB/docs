@@ -2,6 +2,23 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "LiveCompare 3.0",
+    icon: IconNames.INTEGRATION,
+    description:
+      "LiveCompare 3.0 is now available with improved performance, easier to configure Oracle support, and enhanced documentation. ",
+    url: "/livecompare/latest/",
+    moreUrl: "/livecompare/latest/rel_notes/3.0_rel_notes/",
+  },
+  {
+    title: "Trusted Postgres Architect 23.34",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.34 includes enhanced support for EFM, PEM and pgBouncer, and a new output plugin which improves readability of TPA progress.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.34_rel_notes/",
+
+  },
+  {
     title: "EDB Postgres Enterprise Manager 9.7",
     icon: IconNames.EDB_PEM,
     description:
