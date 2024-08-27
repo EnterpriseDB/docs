@@ -77,7 +77,7 @@ const buildSections = (navTree) => {
     }
   });
   if (nextSection) sections.push(nextSection);
-  console.error(sections);
+
   return sections;
 };
 
