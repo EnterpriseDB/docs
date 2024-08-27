@@ -103,10 +103,6 @@ const sourceToPluginConfig = {
     name: "wait_states",
     path: "advocacy_docs/pg_extensions/wait_states",
   },
-  data_migration_service: {
-    name: "data_migration_service",
-    path: "product_docs/docs/data_migration_service",
-  },
 };
 
 const externalSourcePlugins = () => {

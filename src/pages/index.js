@@ -408,7 +408,7 @@ const Page = () => {
               <IndexCardLink to="/eprs/latest">
                 Replication Server
               </IndexCardLink>
-              <IndexCardLink to="/data_migration_service/latest">
+              <IndexCardLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
                 Data Migration Service
               </IndexCardLink>
             </IndexCard>
