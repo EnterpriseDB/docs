@@ -2,9 +2,9 @@
 title: "SQL_OBJECT_NAME"
 ---
 
-The `SQL_OBJECT_NAME` procedure determines whether a string is a valid SQL identifier for a SQL object. An error occurs if the SQL object does not exist.
+The `SQL_OBJECT_NAME` function determines whether an input string is a valid SQL identifier for a SQL object. An error occurs if the SQL object does not exist on the current user.
 
-The object can be a partition or subpartition or a database name. The following list describes the sequence used to validate an object:
+The following list describes the sequence used to validate an object:
 
 1. Table, view, materialized view, index, sequence, foreign table, partition-table, type, object type
 1. Function, procedure, aggregate, routine
@@ -14,14 +14,14 @@ The object can be a partition or subpartition or a database name. The following 
 1. Queue, queue table
 1. Event trigger
 
-For example, if the name is `table_name.column_name`, the procedure validates the `table_name` by searching through table names in the search path. After finding the table name, the procedure validates the basic syntax of `column_name`. Similarly, in the case of `package_name.member_name`, after the procedure finds the package name in the search path, it validates only the basic syntax of `member_name`.
+For example, if the name is `table_name.column_name`, the function validates the `table_name` by searching through table names in the search path. After finding the table name, the function validates the basic syntax of `column_name`. Similarly, in the case of `package_name.member_name`, after the function finds the package name in the search path, it validates only the basic syntax of `member_name`.
 
-The procedure does not validate sub-objects such as columns or package members. 
+The `SQL_OBJECT_NAME` function validates names to four levels: `dbname.schema_name.object_name.object_member`. The function verifies the existence of the first three levels. For the fourth level, `object_member`, only the syntax is verified.
+
+The function does not validate sub-objects such as columns or package members. Also, only objects of the current database can be verified.
 
 ```sql
-SQL_OBJECT_NAME(
-  <str> VARCHAR2 CHARACTER SET ANY_CS)
-RETURN VARCHAR2 CHARACTER SET str%CHARSET;
+SQL_OBJECT_NAME(str VARCHAR2) RETURN VARCHAR2;
 ```
 
 ## Parameters
@@ -30,3 +30,36 @@ RETURN VARCHAR2 CHARACTER SET str%CHARSET;
 
  The input string.
 
+## Examples
+
+```sql
+edb=# CREATE TABLE t1_dbassert (a INT);
+CREATE TABLE
+edb=# SELECT SYS.DBMS_ASSERT.SQL_OBJECT_NAME('t1_dbassert') FROM DUAL;
+ sql_object_name 
+-----------------
+ t1_dbassert
+(1 row)
+
+CREATE OR REPLACE package pkg_dbassert AS
+    i_dbassert NUMBER;
+    PROCEDURE proc_dbassert;
+    FUNCTION func_dbassert(i INT) RETURN NUMBER;
+    t1_table_dbassert t1_dbassert;
+    CURSOR cur(c1 t1_dbassert.a%TYPE) IS SELECT a FROM t1_dbassert;
+    TYPE trec_dbassert IS RECORD ( a INTEGER, b INTEGER );
+    r trec_dbassert := NULL;
+END;
+
+edb=# SELECT DBMS_ASSERT.SQL_OBJECT_NAME('pkg_dbassert.i_dbassert') FROM DUAL;
+     sql_object_name     
+-------------------------
+ pkg_dbassert.i_dbassert
+(1 row)
+
+edb=# SELECT DBMS_ASSERT.SQL_OBJECT_NAME('public.pkg_dbassert.i_dbassert') FROM DUAL;
+        sql_object_name         
+--------------------------------
+ public.pkg_dbassert.i_dbassert
+(1 row)
+```
