@@ -221,7 +221,7 @@ Cluster in healthy state
 Name:               cluster-example
 Namespace:          default
 System ID:          7044925089871458324
-PostgreSQL Image:   quay.io/enterprisedb/postgresql:16.3-3
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:16.4-3
 Primary instance:   cluster-example-1
 Instances:          3
 Ready instances:    3
@@ -297,7 +297,7 @@ kubectl describe cluster <CLUSTER_NAME> -n <NAMESPACE> | grep "Image Name"
 Output:
 
 ```shell
-  Image Name:    quay.io/enterprisedb/postgresql:16.3-3
+  Image Name:    quay.io/enterprisedb/postgresql:16.4-3
 ```
 
 !!! Note
@@ -455,11 +455,6 @@ You can list the backups that have been created for a named cluster with:
 ```shell
 kubectl get backup -l k8s.enterprisedb.io/cluster=<CLUSTER>
 ```
-
-!!! Important
-    Backup labelling has been introduced in version 1.10.0 of EDB Postgres for Kubernetes.
-    So only those resources that have been created with that version or
-    a higher one will contain such a label.
 
 ## Storage information
 
@@ -647,14 +642,24 @@ kubectl cp POD:/var/lib/postgresql/data/pgdata/core.14177 core.14177
 You now have the file. Make sure you free the space on the server by
 removing the core dumps.
 
-## Some common issues
+## Some known issues
 
 ### Storage is full
 
-If one or more pods in the cluster are in `CrashloopBackoff` and logs
-suggest this could be due to a full disk, you probably have to increase the
-size of the instance's `PersistentVolumeClaim`. Please look at the
-["Volume expansion" section](storage.md#volume-expansion) in the documentation.
+In case the storage is full, the PostgreSQL pods will not be able to write new
+data, or, in case of the disk containing the WAL segments being full, PostgreSQL
+will shut down.
+
+If you see messages in the logs about the disk being full, you should increase
+the size of the affected PVC. You can do this by editing the PVC and changing
+the `spec.resources.requests.storage` field. After that, you should also update
+the Cluster resource with the new size to apply the same change to all the pods.
+Please look at the ["Volume expansion" section](storage.md#volume-expansion) in the documentation.
+
+If the space for WAL segments is exhausted, the pod will be crash-looping and
+the cluster status will report `Not enough disk space`. Increasing the size in
+the PVC and then in the Cluster resource will solve the issue. See also
+the ["Disk Full Failure" section](instance_manager.md#disk-full-failure)
 
 ### Pods are stuck in `Pending` state
 
@@ -713,8 +718,7 @@ Cluster is stuck in "Creating a new replica", while pod logs don't show
 relevant problems.
 This has been found to be related to the next issue
 [on connectivity](#networking-is-impaired-by-installed-network-policies).
-From releases 1.20.1, 1.19.3, and 1.18.5, networking issues will be more clearly
-reflected in the status column as follows:
+Networking issues are reflected in the status column as follows:
 
 ```text
 Instance Status Extraction Error: HTTP communication issue
