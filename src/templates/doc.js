@@ -77,7 +77,7 @@ const buildSections = (navTree) => {
     }
   });
   if (nextSection) sections.push(nextSection);
-
+  console.error(sections);
   return sections;
 };
 
@@ -185,13 +185,13 @@ const DocTemplate = ({ data, pageContext }) => {
   const sections = depth === 2 ? buildSections(navTree) : null;
 
   // newtoc will be passed as the toc - this will blend the existing toc with the new sections
-  const newtoc = { items: [] };
+  var newtoc = [];
   if (tableOfContents.items) {
-    newtoc.items.push(...tableOfContents.items);
+    newtoc.push(...tableOfContents.items);
     if (sections) {
       sections.forEach((section) => {
         section.slug = "section-" + slugger.slug(section.title);
-        newtoc.items.push({
+        newtoc.push({
           url: "#" + section.slug,
           title: section.title,
         });
@@ -290,7 +290,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents toc={newtoc.items} deepToC={deepToC} />
+                <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>
