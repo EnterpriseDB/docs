@@ -6,7 +6,7 @@ import { updates } from "../constants/updates";
 
 const BannerCard = ({ iconName, headingText, children }) => (
   <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
-    <div className="card rounded shadow-sm mb-4">
+    <div className="card rounded border-dark shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
           <Icon
@@ -25,9 +25,9 @@ const BannerCard = ({ iconName, headingText, children }) => (
 
 const BannerSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-xs-12">
-    <div className="card rounded shadow-sm mb-4">
+    <div className="card rounded border-dark shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex align-items-center mb-3">
+        <div className="d-flex px-2 bg-light align-items-center mb-3">
           <Link to={to}>
             <Icon
               iconName={iconName}
@@ -48,9 +48,9 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
 
 const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
-    <div className="card rounded shadow-sm mb-4">
+    <div className="card rounded border-dark shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex mb-3">
+        <div className="d-flex mb-2 px-2 bg-light me-3">
           <Link to={to}>
             <Icon
               iconName={iconName}
@@ -71,7 +71,7 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
 
 const BannerWideCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
-    <div className="card rounded shadow-sm mb-4">
+    <div className="card rounded border-dark shadow-sm mb-4">
       <div className="row">{children}</div>
     </div>
   </div>
@@ -109,6 +109,24 @@ const BannerCardLink = ({ to, className, children }) => (
   <Link to={to} className={`col-sm-12 py-1 ${className}`}>
     {children}
   </Link>
+);
+
+const BannerIconDivider = ({ iconName, headingText }) => (
+  <row>
+    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
+      <Icon iconName={iconName} width={20} height={20} />
+      &nbsp;
+      {headingText}
+    </span>
+  </row>
+);
+
+const BannerDivider = ({ headingText }) => (
+  <row>
+    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
+      {headingText}
+    </span>
+  </row>
 );
 
 const Page = () => {
@@ -282,18 +300,37 @@ const Page = () => {
               <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
               </BannerCardLink>
-              <BannerCardLink to="">&nbsp;</BannerCardLink>
+              <BannerCardLink to="/eprs">Replication Server</BannerCardLink>
             </BannerSubCard>
+
+            <BannerWideCard>
+              <BannerWideCardLink
+                className="col-md-6"
+                to="/repos/"
+                iconName={iconNames.DOWNLOAD}
+              >
+                Downloads and Repositories
+              </BannerWideCardLink>
+
+              <BannerWideCardLink
+                className="col-md-6"
+                to="/dev-guides/"
+                iconName={iconNames.CODE_WRITING}
+              >
+                Developer Guides
+              </BannerWideCardLink>
+            </BannerWideCard>
 
             <BannerWideSubCard
               iconName={iconNames.TOOLBOX}
               headingText="Platforms and Tools"
               to="/edb-postgres-ai/tools"
             >
-              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
-                <Icon iconName={iconNames.KUBERNETES} width={30} height={30} />
-                Kubernetes
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.KUBERNETES}
+                headingText="Kubernetes"
+              />
+
               <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
                 EDB Postgres Distributed for Kubernetes
               </BannerWideLink>
@@ -306,10 +343,10 @@ const Page = () => {
                 CloudNativePG
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12 mp-4">
-                <Icon iconName={iconNames.CONTROL} width={30} height={30} />
-                Management and Monitoring
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.CONTROL}
+                headingText="Management and Monitoring"
+              />
 
               <BannerWideLink to="/pem/latest">
                 Postgres Enterprise Manager
@@ -326,10 +363,11 @@ const Page = () => {
                 Postgres Workload Report
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase  py-2 small mt-4 d-block col-12">
-                <Icon iconName={iconNames.SECURITY} width={30} height={30} />
-                Security
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.SECURITY}
+                headingText="Security"
+              />
+
               <BannerWideLink to="/tde/latest">
                 Transparent Data Encryption
               </BannerWideLink>
@@ -337,23 +375,20 @@ const Page = () => {
                 EDB LDAP Sync
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase  py-2 small mt-4 d-block col-12">
-                <Icon iconName={iconNames.INSTANCES} width={30} height={30} />
-                Automation
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.INSTANCES}
+                headingText="Automation"
+              />
 
               <BannerWideLink to="/tpa/latest/">
                 Trusted Postgres Architect
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
-                <Icon
-                  iconName={iconNames.HIGH_AVAILABILITY}
-                  width={30}
-                  height={30}
-                />
-                High Availability
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.HIGH_AVAILABILITY}
+                headingText="High Availability"
+              />
+
               <BannerWideLink to="/repmgr/latest">
                 Replication Manager (repmgr)
               </BannerWideLink>
@@ -369,14 +404,10 @@ const Page = () => {
 
               <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
-                <Icon
-                  iconName={iconNames.BACKUP_RECOVERY}
-                  width={30}
-                  height={30}
-                />
-                Backup and Recovery
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.BACKUP}
+                headingText="Backup and Recovery"
+              />
 
               <BannerWideLink to="/supported-open-source/barman/">
                 Barman
@@ -385,29 +416,27 @@ const Page = () => {
                 pgBackRest
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-muted text-uppercase py-2 small mt-4 d-block col-12">
-                <Icon iconName={iconNames.MIGRATION} width={30} height={30} />
-                Migration
-              </span>
+              <BannerIconDivider
+                iconName={iconNames.MIGRATION}
+                headingText="Migration"
+              />
 
-              <BannerWideLink to="/migrating/oracle">
+              {/* <BannerWideLink to="/migrating/oracle">
                 Migration Handbook
-              </BannerWideLink>
+              </BannerWideLink> */}
               <BannerWideLink to="/migration_toolkit/latest">
                 Migration Toolkit
               </BannerWideLink>
-              <BannerWideLink to="/eprs/latest">
+              {/* <BannerWideLink to="/eprs/latest">
                 Replication Server
-              </BannerWideLink>
+              </BannerWideLink> */}
             </BannerWideSubCard>
 
             <BannerWideSubCard
               iconName={iconNames.EXTENSION}
               headingText="Extensions and Tools"
             >
-              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
-                Extensions
-              </span>
+              <BannerDivider headingText="Extensions" />
 
               <BannerWideLink to="/pg_extensions/">
                 Supported Postgres extensions
@@ -451,13 +480,11 @@ const Page = () => {
                 PG Failover Slots
               </BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-uppercase py-2 small mt-4 d-block col-12 mp-4">
-                Tools
-              </span>
-
               <BannerWideLink to="/pg_extensions/spl_check/">
                 EDB SPL Check
               </BannerWideLink>
+
+              <BannerDivider headingText="Tools" />
 
               <BannerWideLink to="/tools/edb_sqlpatch">
                 EDB SQL Patch
@@ -472,45 +499,23 @@ const Page = () => {
               </BannerWideLink>
             </BannerWideSubCard>
 
-            <BannerWideCard>
-              <BannerWideCardLink
-                className="col-md-6"
-                to="/repos/"
-                iconName={iconNames.DOWNLOAD}
-              >
-                Downloads and Repositories
-              </BannerWideCardLink>
-
-              <BannerWideCardLink
-                className="col-md-6"
-                to="/dev-guides/"
-                iconName={iconNames.CODE_WRITING}
-              >
-                Developer Guides
-              </BannerWideCardLink>
-            </BannerWideCard>
-
             <BannerWideSubCard
               iconName={iconNames.INTEGRATION}
               headingText="Integration"
             >
-              <span className="fw-bold text-light bg-primary text-center text-secondary text-muted text-uppercase small mt-4 d-block col-12">
-                Connectors
-              </span>
+              <BannerDivider headingText="Connectors" />
+
               <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
               <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
               <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
               <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
-                Connection Poolers
-              </span>
+              <BannerDivider headingText="Data Adapters" />
+
               <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
               <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
 
-              <span className="fw-bold text-light bg-primary text-center mt-4 text-muted text-uppercase small d-block col-12">
-                Foreign Data Wrappers
-              </span>
+              <BannerDivider headingText="Data Wrappers" />
               <BannerWideLink to="/hadoop_data_adapter/latest">
                 Hadoop
               </BannerWideLink>
@@ -527,9 +532,7 @@ const Page = () => {
             iconName={iconNames.HANDSHAKE}
             headingText="Third Party Integrations"
           >
-            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
-              Backup
-            </span>
+            <BannerDivider headingText="Backup" />
             <BannerWideLink
               to="/partner_docs/CohesityDataProtectforPostgreSQL"
               className="col-3"
@@ -558,9 +561,7 @@ const Page = () => {
               Veritas NetBackup for PostgreSQL
             </BannerWideLink>
 
-            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
-              Data Movement
-            </span>
+            <BannerDivider headingText="Data Movement" />
             <BannerWideLink
               to="/partner_docs/PreciselyConnectCDC"
               className="col-3"
@@ -568,9 +569,7 @@ const Page = () => {
               Precisely Connect CDC
             </BannerWideLink>
 
-            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
-              Developer Tools
-            </span>
+            <BannerDivider headingText="Developer Tools" />
             <BannerWideLink to="/partner_docs/DBeaverPRO" className="col-3">
               DBeaver PRO
             </BannerWideLink>
@@ -586,10 +585,9 @@ const Page = () => {
             >
               SIB Visions VisionX
             </BannerWideLink>
-            <br />
-            <span className="fw-bold text-light bg-primary text-muted text-uppercase  text-center small mt-4 d-block col-12">
-              Security
-            </span>
+
+            <BannerDivider headingText="Security" />
+
             <BannerWideLink to="/partner_docs/HashicorpVault" className="col-3">
               Hashicorp Vault
             </BannerWideLink>
@@ -617,10 +615,7 @@ const Page = () => {
             >
               Thales CipherTrust Transparent Encryption
             </BannerWideLink>
-            <br />
-            <span className="fw-bold text-light bg-primary text-muted text-uppercase text-center small mt-4 d-block col-12">
-              Other
-            </span>
+            <BannerDivider headingText="Other" />
             <BannerWideLink to="/partner_docs/ChemaxonJChemPostgreSQLCartridge">
               Chemaxon JChem PostgreSQL Cartridge
             </BannerWideLink>
