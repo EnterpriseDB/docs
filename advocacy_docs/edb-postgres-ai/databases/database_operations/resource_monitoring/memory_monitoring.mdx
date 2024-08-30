@@ -4,42 +4,62 @@ navTitle: Memory monitoring
 description: Perform basic memory monitoring.
 ---
 
-A healthy memory configuration is essential for caching, buffering and maintenance operations. Therefore, it is important to ensure your memory configuration can cover the requirements of your applications, and can handle workload peeks.
+It is important to ensure that the memory available to Postgres is sufficient for the workload of the system. 
+Running with insufficient available memory can reduce performance. Running out of memory will result in Postgres restarting.
 
-Postgres databases can crash if memory runs outs. 
+## How Postgres uses memory in EDB Postgres AI Cloud Service
 
-## Healthy memory configuration 
+The key factors that determine how much memory Postgres requires are:
 
-As a general rule, a database server is considered to have a healthy memory configuration when the average **Memory** usage is stable and does not surpass the allotted memory resources. This ensures the database server isn't overburdened.
+- **Shared buffers:** This is a single area of memory, shared by all users of the Postgres instance, where data is cached to speed up read and write. The size of this area is determined by the `shared_buffers` GUC parameter.
+- **Working memory:** Each user connected to Postgres has their own backend process. The amount of memory each backend requires depends on the complexity of the workload that user is running. It will generally be some multiple of the `work_mem` parameter.
+- **Maintenance working memory:** Each maintenance worker requires an amount of memory determined by the `maintenance_work_mem` parameter.
 
-Memory usage mainly depends on the complexity of queries and in-memory operations. A low setting for `shared_buffers`, large settings for `work_mem`, `maintenance_work_mem`, `max_connections`, an inefficient cache size and high number of active and idle connections are other examples of memory-intensive operations.
+In EDB Postgres AI Cloud Service, the memory available to a Postgres instance is shared with the filesystem cache for that node, so using a high percentage of memory is potentially detrimental to I/O speed even if memory is never exhausted.
+If memory *is* exhausted the Postgres pod on the node will be terminated, which will appear to external users as a restart of the Postgres instance - ending all in-flight transactions and dropping all connections. 
+It is therefore important to avoid this scenario.
 
-# The key determining factor is the stability of caching, buffering and maintenance operations. 
+## Healthy memory usage
 
-If you expect an increase of these operations, observe how the usage increases over a period of time to determine when you will have to increase memory.
+Healthy memory usage is characterized by having sufficient available memory to handle any and all peaks in workload, ideally keeping some headroom to ensure the filesystem cache is large enough to be effective.
+Exactly what this looks like depends in the nature of the workload. 
+Very predictable workloads can afford to run closer to 100% on average than highly variable ones. 
+Similarly workloads that perform less I/O (or where the buffer hit rate is already very high) can afford to have less headroom for filesystem cache.
 
-If you don't expect an increase of caching, buffering and maintenance operations, and the metrics are stable over longer period of time, memory isn't an immediate concern, but you should still monitor it regularly, since there are other factors why your memory run out. 
+If the memory usage of the system is trending upwards over time, or if peaks are exceeding 80% usage, this is an indicator that you should assess your memory configuration.
 
-## Symptoms of memory issues 
+If the instance is terminated due to OOM...
 
-Some symptoms that you could encounter when the memory is not sufficient are:
+## Planning for memory usage
 
-- Slow response times 
-- Frequen checkpoints, which consume more resources
-- High CPU usage
-- Connection issues
-- Other
+Assuming you make no changes to configuration, memory usage is driven by the number of connections to Postgres and the complexity of the queries they are performing. 
+If you expect either of these things to increase over time, you should plan to increase memory. 
 
-## Checking your environment's memory state 
+Likewise, if you plan to increase `shared_buffers`, `work_mem`, `maintenance_work_mem`, `autovacuum_max_workers`, or other parameters that affect memory allocation, you should plan to increase memory.
+
+## Checking your memory usage 
 
 On the EDB Postgres AI Console: 
 
 1.  Select a **Project**. 
 1.  Select **Clusters**. If there is more than one cluster, select the cluster for which you want to see the metrics. 
 1.  Select **Monitoring & Logging** tab.
-1.  Use the **Start date** and **End date** to display the average values for a period of time. Start by looking at the first month, then the last three months, the last six months and the last year. 
-1.  For each selected period of time, look at the average value for **Memory**. If the average is higher than 80% for a longer period of time, consider revising your environment's configuration. 
+1.  Use the **Start date** and **End date** to display the average values for a period of time. Look at both the trend over a longer period and the peak values.
 
-## Solutions
+## Solutions to high memory usage
 
-You can always increase the memory by [altering the instance size](/biganimal/latest/using_cluster/03_modifying_your_cluster/#modify-your-clusters-configuration-settings) for a database cluster. However, consider [checking other metrics](causes_solutions) first. Tweaking other configurations can help you improve database performance.
+### Increasing memory
+
+You can increase the memory by [altering the instance size](/biganimal/latest/using_cluster/03_modifying_your_cluster/#modify-your-clusters-configuration-settings) for a database cluster.
+
+### Tuning Postgres
+
+You can tune Postgres to use more or less memory by adjusting configuration parameters. 
+EDB Postgres AI Cloud Service sets sensible default parameters, so if you have not changed the defaults and you are running short of memory it is likely that you need to consider increasing memory or optimizing the workload.
+
+However, if you have a specialized use case or have previously adjusted the configuration, you could see improvements by making adjustments. 
+In particular, if you have a very high number connections and have increased `max_connections` to accommodate this, you should consider enabling pgBouncer instead.
+
+### Optimizing your workload
+
+Placeholder for future content
