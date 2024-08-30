@@ -1,10 +1,13 @@
 ---
-title: list
+title: events list
+navTitle: list
+description: Lists events such as background worker errors and node membership changes
+deepToC: true
 ---
 
 Lists events such as background worker errors and node membership changes
 
-### Synopsis
+## Synopsis
 
 Lists events such as background worker errors and node membership changes.
 Output is sorted by Time column in descending order. Message column is
@@ -18,14 +21,40 @@ For more details on each node state, see 'pgd node list' command help
 pgd events list [flags]
 ```
 
-### Examples
+### Node States
 
-```text
+| State        | Description                                                                                           |
+|--------------|-------------------------------------------------------------------------------------------------------|
+| NONE         | Node state is unset when the worker starts, expected to be set quickly to the current known state.   |
+| CREATED      | bdr.create_node() has been executed, but the node isn't a member of any EDB Postgres Distributed cluster yet. |
+| JOIN_START   | bdr.join_node_group() begins to join the local node to an existing EDB Postgres Distributed cluster. |
+| JOINING      | The node join has started and is currently at the initial sync phase, creating the schema and data on the node. |
+| CATCHUP      | Initial sync phase is complete; now the join is at the last step of retrieving and applying transactions that were performed on the upstream peer node since the join started. |
+| STANDBY      | Node join has finished, but not yet started to broadcast changes. All joins spend some time in this state, but if defined as a Logical Standby, the node will continue in this state. |
+| PROMOTE      | Node was a logical standby and we just called bdr.promote_node to move the node state to ACTIVE. These two PROMOTE states have to be coherent to the fact, that only one node can be with a state higher than STANDBY but lower than ACTIVE. |
+| PROMOTING    | Promotion from logical standby to full BDR node is in progress.                                         |
+| ACTIVE       | The node is a full BDR node and is currently ACTIVE. This is the most common node status.               |
+| PART_START   | Node was ACTIVE or STANDBY and we just called bdr.part_node to remove the node from the EDB Postgres Distributed cluster. |
+| PARTING      | Node disconnects from other nodes and plays no further part in consensus or replication.                |
+| PART_CATCHUP | Non-parting nodes synchronize any missing data from the recently parted node.                           |
+| PARTED       | Node parting operation is now complete on all nodes.                                                    |
 
-  Example 1 (3 node cluster)
 
+## Options
+
+| Flag | Flag,&nbsp;long&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Value       | Description |
+|------|-----------------------------------------------------------------------------|-------------|-------------|
+| `-n` | `--lines`                                                                  | int         | show top n lines |
+
+## Examples
+
+### Viewing events
+
+In this example, we list the events occurring in a three node cluster with a witness.
+
+```sh
   $ pgd events list --lines 10
-
+__OUTPUT__
   Time                          Observer Node Subject Node Source    Type   Subtype      Message
   ----                          ------------- ------------ ------    ----   -------      -------
   2023-03-23 05:38:25.243257+00 witness-a1    witness-a1   consensus RAFT   STATE_CHANGE RAFT_LEADER
@@ -38,23 +67,4 @@ pgd events list [flags]
   2023-03-23 05:38:17.946857+00 bdr-a2        bdr-a1       consensus NODE   STATE_CHANGE ACTIVE
   2023-03-23 05:38:17.91628+00  bdr-a1        bdr-a2       receiver  WORKER ERROR        pglogical worker received fast finish request, exiting
   2023-03-23 05:38:17.915236+00 witness-a1    bdr-a1       consensus NODE   STATE_CHANGE PROMOTING
-
-```
-
-### Options
-
-```text
-  -h, --help        help for list
-  -n, --lines int   show top n lines
-```
-
-### Options inherited from parent commands
-
-```text
-  -f, --config-file string   config file; ignored if 
-                             --dsn flag is present (default "/etc/edb/pgd-cli/pgd-cli-config.yml")
-      --dsn string           database connection string
-                             e.g."host=bdr-a1 port=5432 dbname=bdrdb user=postgres "
-  -L, --log-level string     logging level: debug, info, warn, error (default "error")
-  -o, --output string        output format: json, yaml
 ```
