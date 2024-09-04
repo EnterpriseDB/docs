@@ -138,7 +138,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     "product_docs",
     "docs",
     "pgd",
-    "5",
+    "5.6",
     "reference",
   )}`;
   execSync(command);
