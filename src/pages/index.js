@@ -6,7 +6,7 @@ import { updates } from "../constants/updates";
 
 const BannerCard = ({ iconName, headingText, children }) => (
   <div className="col-xl-12 col-lg-12 col-md-12 col-sm-12 col-xs-12 width=100">
-    <div className="card rounded border-dark shadow-sm mb-4">
+    <div className="card rounded border-secondary shadow-sm mb-4 link-underline">
       <div className="card-body">
         <div className="d-flex align-items-center mb-3">
           <Icon
@@ -15,7 +15,9 @@ const BannerCard = ({ iconName, headingText, children }) => (
             width="24"
             height="24"
           />
-          <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+          <h4 className="d-inline align-center card-title m-1">
+            {headingText}
+          </h4>
         </div>
         <div className="row">{children}</div>
       </div>
@@ -25,17 +27,19 @@ const BannerCard = ({ iconName, headingText, children }) => (
 
 const BannerSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-4 col-lg-4 col-md-4 col-sm-6 col-xs-12">
-    <div className="card rounded border-dark shadow-sm mb-4">
+    <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex px-2 bg-light align-items-center mb-3">
-          <Link to={to}>
+        <div className="d-flex px-2 py-1 bg-light align-items-center mb-3">
+          <Link to={to} className="link-hover-underline-primary">
             <Icon
               iconName={iconName}
               className="fill-aquamarine"
               width="24"
               height="24"
             />
-            <h4 className="d-inline-block card-title m-1">{headingText}</h4>
+            <h4 className="d-inline align-center card-title m-1">
+              {headingText}
+            </h4>
           </Link>
         </div>
         <div className="container-fluid">
@@ -48,17 +52,17 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
 
 const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
-    <div className="card rounded border-dark shadow-sm mb-4">
+    <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex mb-2 px-2 bg-light me-3">
-          <Link to={to}>
+        <div className="d-flex mb-2 px-2 py-1 bg-light me-3">
+          <Link to={to} className="link-hover-underline-primary">
             <Icon
               iconName={iconName}
               className="fill-aquamarine"
               width="24"
               height="24"
             />
-            <h4 className="d-inline-block align-bottom card-title m-1">
+            <h4 className="d-inline align-center card-title m-1">
               {headingText}
             </h4>
           </Link>
@@ -69,9 +73,17 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
   </div>
 );
 
+const BannerWideQuickLinks = ({ children }) => (
+  <div className="col-xl-12 col-lg-12">
+    <div className="mb-4">
+      <div className="row col-12">{children}</div>
+    </div>
+  </div>
+);
+
 const BannerWideCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
-    <div className="card rounded border-dark shadow-sm mb-4">
+    <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="row">{children}</div>
     </div>
   </div>
@@ -223,6 +235,9 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/console/estate">
                 Estate and Agents
               </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate/integrating/">
+                Integrating into Estate
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerSubCard
@@ -238,6 +253,9 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
                 Supported configurations
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/managing_your_cluster/">
+                Managing your cluster
               </BannerCardLink>
             </BannerSubCard>
 
@@ -303,7 +321,9 @@ const Page = () => {
               <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
               </BannerCardLink>
-              <BannerCardLink to="/eprs">Replication Server</BannerCardLink>
+              <BannerCardLink to="/eprs/latest">
+                Replication Server
+              </BannerCardLink>
             </BannerSubCard>
 
             <BannerWideCard>
@@ -327,7 +347,7 @@ const Page = () => {
             <BannerWideSubCard
               iconName={iconNames.TOOLBOX}
               headingText="Platforms and Tools"
-              to="/edb-postgres-ai/tools"
+              to="/edb-postgres-ai/platforms-and-tools"
             >
               <BannerIconDivider
                 iconName={iconNames.KUBERNETES}
@@ -438,12 +458,18 @@ const Page = () => {
             <BannerWideSubCard
               iconName={iconNames.EXTENSION}
               headingText="Extensions and Tools"
+              to="/edb-postgres-ai/extensions-and-tools"
             >
-              <BannerDivider headingText="Extensions" />
+              <BannerWideQuickLinks>
+                <BannerWideLink to="/pg_extensions/" className="col-md-12">
+                  Supported Postgres extensions
+                </BannerWideLink>
+                {/* <BannerWideLink to="/pg_tools/" classname="col-md-6">
+                Supported tools
+              </BannerWideLink> */}
+              </BannerWideQuickLinks>
 
-              <BannerWideLink to="/pg_extensions/">
-                Supported Postgres extensions
-              </BannerWideLink>
+              <BannerDivider headingText="Extensions" />
 
               <BannerWideLink to="//postgis/latest/">PostGIS</BannerWideLink>
 
@@ -505,6 +531,7 @@ const Page = () => {
             <BannerWideSubCard
               iconName={iconNames.INTEGRATION}
               headingText="Integration"
+              to="/edb-postgres-ai/integration"
             >
               <BannerDivider headingText="Connectors" />
 
@@ -513,12 +540,12 @@ const Page = () => {
               <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
               <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-              <BannerDivider headingText="Data Adapters" />
+              <BannerDivider headingText="Connection Poolers" />
 
               <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
               <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
 
-              <BannerDivider headingText="Data Wrappers" />
+              <BannerDivider headingText="Foreign Data Wrappers" />
               <BannerWideLink to="/hadoop_data_adapter/latest">
                 Hadoop
               </BannerWideLink>
