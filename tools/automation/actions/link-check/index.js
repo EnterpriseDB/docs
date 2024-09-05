@@ -16,6 +16,7 @@ import GithubSlugger from "github-slugger";
 import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
+const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
 const docsUrl = "https://www.enterprisedb.com/docs";
 // add path here to ignore link warnings
 const noWarnPaths = [
@@ -156,6 +157,30 @@ async function main() {
     input.data = { allValidUrlPaths, metadata };
     const ast = scanner.parse(input);
     await scanner.run(ast, input);
+  }
+
+  const imageFiles = await glob(
+    imageExts.flatMap((ext) => [
+      "product_docs/**/*" + ext,
+      "advocacy_docs/**/*" + ext,
+    ]),
+  );
+
+  for (const sourcePath of imageFiles) {
+    const metadata = {
+      canonical: fsPathToURLPath(sourcePath),
+      index: false,
+      slugs: [],
+      redirects: [],
+      source: sourcePath,
+    };
+    allValidUrlPaths.set(metadata.canonical, metadata);
+    if (isVersioned(sourcePath)) {
+      const splitPath = metadata.canonical.split(path.posix.sep);
+      metadata.product = splitPath[1];
+      metadata.version = splitPath[2];
+      allValidUrlPaths.set(latestVersionURLPath(sourcePath), metadata);
+    }
   }
 
   // compile product versions
@@ -356,9 +381,16 @@ function cleanup() {
 
     const mapUrlToCanonical = (url, position) => {
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
+      if (
+        test.href ===
+        docsUrl + "/edb-postgres-ai/analytics/images/level-50.png"
+      )
+        debugger;
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
-      if (path.posix.extname(test.pathname)) return url;
+      const ext = path.posix.extname(test.pathname);
+      const isImageUrl = imageExts.includes(ext);
+      if (ext && !isImageUrl) return url;
 
       metadata.linksChecked = metadata.linksChecked || 0 + 1;
 
@@ -440,7 +472,7 @@ function cleanup() {
       return url;
     };
 
-    visitParents(tree, ["link", "element"], (node) => {
+    visitParents(tree, ["link", "image", "element"], (node) => {
       try {
         if (
           node.type === "element" &&
@@ -451,7 +483,7 @@ function cleanup() {
             node.properties.href,
             node.position,
           );
-        else if (node.type === "link")
+        else if (node.type === "link" || node.type === "image")
           node.url = mapUrlToCanonical(node.url, node.position);
       } catch (e) {
         file.message(e, node.position);
@@ -494,11 +526,14 @@ function fsPathToURLPath(fsPath) {
   // 2. strip trailing index.mdx
   // 3. strip trailing .mdx
   // 4. strip trailing /
+  // URL encode
   const docsLocations = /product_docs\/docs|advocacy_docs/;
-  return fsPath
-    .split(docsLocations)[1]
-    .replace(/\/index\.mdx$|\.mdx$/, "")
-    .replace(/\/$/, "");
+  return encodeURI(
+    fsPath
+      .split(docsLocations)[1]
+      .replace(/\/index\.mdx$|\.mdx$/, "")
+      .replace(/\/$/, ""),
+  );
 }
 
 function latestVersionURLPath(fsPath) {
