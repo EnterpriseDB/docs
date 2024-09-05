@@ -1,17 +1,14 @@
 ---
-title: "Enabling TDE on an existing EDB Postgres Advanced Server cluster"
-navTitle: Enabling TDE on an existing EDB Postgres Advanced Server cluster
+title: "Upgrading PostgreSQL to EDB Postgres Extended Server while enabling TDE"
+navTitle: Upgrading PostgreSQL to EDB Postgres Extended Server
 deepToC: true
 ---
 
-## Enabling TDE on an EDB Postgres Advanced Server cluster
-
-Create a new EDB Postgres Advanced Server cluster with TDE enabled 
-and use `pg_upgrade` to transfer data from the existing source cluster to the new encrypted cluster. 
+Create a new EDB Postgres Extended Server cluster with TDE enabled and use `pg_upgrade` to transfer data from the existing PostgreSQL cluster to the new encrypted cluster. 
 
 - [Prepare your upgrade](#preparing-your-upgrade) by performing a backup of the existing instance. 
 - [Create a new database server](#creating-an-encrypted-server)
-    - Create an empty directory for the new server and ensure `enterprisedb` owns it.
+    - Create an empty directory for the new server and ensure `postgres` owns it.
     - Set the environment variables to export the `wrap` and `unwrap` commands for encryption. 
     - Initialize a server with encryption enabled.
     - Change the default port, so the new server is available at another port. 
@@ -28,25 +25,27 @@ and use `pg_upgrade` to transfer data from the existing source cluster to the ne
 
 ## Worked example
 
-This example enables Transparent Data Encryption on an EDB Postgres Advanced Server version 16 running on an Ubuntu 22.04 machine. The location of the BIN and CONFIG directories differs depending on your operating system and Postgres versions.
+This example upgrades a PostgreSQL 16 instance to EDB Postgres Extended Server 16 while enabling Transparent Data Encryption on an Ubuntu 22.04 machine. The location of the BIN and CONFIG directories differs depending on your operating system and Postgres versions.
 
-### Preparing your upgrade 
+### Preparing your upgrade
 
-Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [pgBackRest](/supported-open-source/pgbackrest/), or [Barman](/supported-open-source/barman/) to create a backup of your unencrypted source server. 
+- Install EDB Postgres Extended Server from the [EDB repository](https://www.enterprisedb.com/repos-downloads). Ensure you install a version within the same major version than the source database cluster. Upgrades between different major versions is not supported with `pg_upgrade`.
+
+- Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [pgBackRest](/supported-open-source/pgbackrest/), or [Barman](/supported-open-source/barman/) to create a backup of your unencrypted source server. 
 
 ### Creating an encrypted server 
 
-1.  Create an empty directory for the new server: 
+1.  Create an empty directory for the new server. In this example, the directory name is **TDE**. 
   
     ```
-    mkdir /var/lib/edb-as/16/TDE 
+    mkdir /var/lib/edb-pge/16/TDE 
     ```
 
-1.  Ensure the `enterprisedb` user owns the directory:
+1.  Ensure the `postgres` user owns the directory:
 
     ```
-    sudo chown enterprisedb /var/lib/edb-as/16/TDE
-    sudo chgrp /var/lib/edb-as/16/TDE
+    sudo chown postgres /var/lib/edb-pge/16/TDE
+    sudo chgrp /var/lib/edb-pge/16/TDE
     ```
 
 1.  Set environment variables to export the `wrap` and `unwrap` commands:
@@ -59,17 +58,17 @@ Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [
     !!!note
        Alternatively, use the `--key-unwrap-command=<command>` and `--key-wrap-command=<command>` arguments when initializing the encrypted server to include the `wrap` and `unwrap` commands.
        
-       See [Using initdb TDE options](enabling_tde/#using-initdb-tde-options) for more information on possible configurations.
+       See [Using initdb TDE options](../enabling_tde/#using-initdb-tde-options) for more information on possible configurations.
 
 1.  Initialize the new server with encryption: 
     
     ```
-    /usr/lib/edb-as/16/bin/initdb --data-encryption -D /var/lib/edb-as/16/TDE
+    /usr/lib/edb-pge/16/bin/initdb --data-encryption -D /var/lib/edb-pge/16/TDE
     ```
 
     This command initializes a CONFIG directory with all configuration files for the encrypted server.
 
-1.  Modify the port number in the configuration file of the encrypted instance. Uncomment the line with `#port` and change the port number. For example:
+1.  Modify the default port number in the configuration file of the encrypted instance. Uncomment the line with `#port` and change the port number. For example:
 
     ```
     port                    5590
@@ -78,27 +77,27 @@ Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [
 1.  Start the encrypted server: 
 
     ```
-    /usr/lib/edb-as/16/bin/pg_ctl -D /var/lib/edb-as/16/TDE -l logfile start
+    /usr/lib/edb-pge/16/bin/pg_ctl -D /var/lib/edb-pge/16/TDE start
     ```
 
 1.  Connect to the server: 
 
     ```
-    /usr/lib/edb-as/16/bin/psql -p 5590 edb
+    /usr/lib/edb-pge/16/bin/psql -p 5590
     ```
 
     !!!note
        If you're using two different Postgres versions, use the psql utility of the encrypted server. Otherwise, the system will attempt to use psql from the previous instance.
 
-1.  To ensure the new server is encrypted, [check for TDE presence](enabling_tde/#checking-for-tde-presence-using-sql). 
+1.  To ensure the new server is encrypted, [check for TDE presence](../enabling_tde/#checking-for-tde-presence-using-sql). 
 
 ### Upgrading to the encrypted server
 
 1.  Stop both servers:
     
     ```
-    /usr/lib/edb-as/16/bin/pg_ctl -D /var/lib/edb-as/16/non-TDE stop
-    /usr/lib/edb-as/16/bin/pg_ctl -D /var/lib/edb-as/16/TDE stop
+    /usr/lib/postgresql/16/bin/pg_ctl -D /var/lib/postgresql/16/non-TDE stop
+    /usr/lib/edb-pge/16/bin/pg_ctl -D /var/lib/edb-pge/16/TDE stop
     ```
 
 1.  To test for incompatibilities, run the `pg_upgrade` command in check mode. 
@@ -107,7 +106,7 @@ Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [
     Include the `--copy-by-block` option. 
 
     ```  
-    /usr/lib/edb-as/16/bin/pg_upgrade -b /usr/lib/edb-as/16/bin -B /usr/lib/edb-as/16/bin -d /var/lib/edb-as/16/non-TDE -D /var/lib/edb-as/16/TDE --copy-by-block --check
+    /usr/lib/edb-pge/16/bin/pg_upgrade -b /usr/lib/postgresql/16/bin -B /usr/lib/edb-pge/16/bin -d /var/lib/postgresql/16/non-TDE -D /var/lib/edb-pge/16/TDE --copy-by-block --check
     ```
 
     !!!note
@@ -116,19 +115,19 @@ Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [
 1.  To copy data from the source server to the target server, run the `pg_upgrade` command in normal mode: 
 
     ```
-    /usr/lib/edb-as/16/bin/pg_upgrade -b /usr/lib/edb-as/16/bin -B /usr/lib/edb-as/16/bin -d /var/lib/edb-as/16/non-TDE -D /var/lib/edb-as/16/TDE --copy-by-block
+    /usr/lib/edb-pge/16/bin/pg_upgrade -b /usr/lib/postgresql/16/bin -B /usr/lib/edb-pge/16/bin -d /var/lib/postgresql/16/non-TDE -D /var/lib/edb-pge/16/TDE --copy-by-block
     ```
 
 1.  Restart the encrypted server: 
 
     ```
-    /usr/lib/edb-as/16/bin/pg_ctl -D /var/lib/edb-as/16/TDE start
+    /usr/lib/edb-pge/16/bin/pg_ctl -D /var/lib/edb-pge/16/TDE start
     ```
 
 1.  Connect to the encrypted database server:
 
     ```
-    /usr/lib/edb-as/16/bin/psql -p 5590 edb
+    /usr/lib/edb-pge/16/bin/psql -p 5590
     ```
 
 1.  Perform a spot check to ensure the databases, tables, schemas, and resources you had in the unencrypted server are available in the new server. For example, list all databases:
@@ -148,10 +147,10 @@ Use [pg_dumpall](https://www.postgresql.org/docs/current/app-pg-dumpall.html), [
 
 After you verify that `pg_upgrade` encrypted the data successfully, perform a cleanup. 
 
-1.  Clean up the database and its statistics: 
+1.  As the `postgres` user, clean up the database and its statistics: 
 
     ```
-    /usr/lib/edb-as/16/bin/vacuumdb --all --analyze-in-stages
+    /usr/lib/edb-pge/16/bin/vacuumdb --all --analyze-in-stages
     ```
 
 1.  Remove all data files of the unencrypted server with the script generated by `pg_upgrade`:
