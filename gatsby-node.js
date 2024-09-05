@@ -5,6 +5,8 @@ const gracefulFs = require("graceful-fs");
 gracefulFs.gracefulify(realFs);
 const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
+const util = require("node:util");
+const execAsync = util.promisify(exec);
 
 const {
   replacePathVersion,
@@ -55,6 +57,31 @@ const gitData = (() => {
   return { branch, sha, docsRepoUrl: "https://github.com/EnterpriseDB/docs" };
 })();
 
+const referenceIndexerToolPath = path.join(
+  __dirname,
+  "tools",
+  "automation",
+  "generators",
+  "refbuilder",
+);
+
+exports.onPreBootstrap = ({ reporter }) => {
+  console.log(`
+ _____  ____   _____    ____
+|   __||    \\ | __  |  |    \\  ___  ___  ___
+|   __||  |  || __ -|  |  |  || . ||  _||_ -|
+|_____||____/ |_____|  |____/ |___||___||___|
+
+  `);
+
+  try {
+    execAsync(`npm ci --prefix ${referenceIndexerToolPath}`);
+  } catch (err) {
+    reporter.panicOnBuild(`Failed to install dependencies for reference index generator:
+    ${err}`);
+  }
+};
+
 exports.onCreateNode = async ({
   node,
   getNode,
@@ -81,6 +108,26 @@ exports.onCreateNode = async ({
     if (node.extension === "svg") {
       await makeFileNodePublic(node, createNodeId, actions, {
         mimeType: "image/svg+xml",
+      });
+    }
+
+    if (node.absolutePath.endsWith("index.mdx.src")) {
+      const indexBasePath = path.dirname(node.absolutePath);
+      const referenceIndexNodeDef = {
+        indexBasePath,
+        id: createNodeId("reference" + node.id),
+        parent: node.id,
+        children: [],
+        internal: {
+          type: "ReferenceIndex",
+          contentDigest: node.internal.contentDigest,
+        },
+      };
+      await actions.createNode(referenceIndexNodeDef);
+
+      actions.createParentChildLink({
+        parent: node,
+        child: referenceIndexNodeDef,
       });
     }
   }
@@ -123,26 +170,6 @@ exports.onCreateNode = async ({
 };
 
 exports.createPages = async ({ actions, graphql, reporter }) => {
-  const toolPath = path.join(
-    __dirname,
-    "tools",
-    "automation",
-    "generators",
-    "refbuilder",
-  );
-  command = `cd ${toolPath};npm ci;node ${path.join(
-    toolPath,
-    "refbuilder.js",
-  )} --source ${path.join(
-    __dirname,
-    "product_docs",
-    "docs",
-    "pgd",
-    "5.6",
-    "reference",
-  )}`;
-  execSync(command);
-
   const result = await graphql(`
     query {
       allMdx {
@@ -217,6 +244,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           }
         }
       }
+      allReferenceIndex {
+        nodes {
+          indexBasePath
+        }
+      }
     }
   `);
 
@@ -235,6 +267,43 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   const validPaths = preprocessPathsAndRedirects(nodes, productVersions);
 
   processFileNodes(result.data.allPublicFile.nodes, productVersions, actions);
+
+  // reference indexer - generate an index page for reference material
+  // triggered by the presence of index.mdx.src in a directory. When found,
+  // - scans pages (recursive into subdirectories)
+  // - identifies reference sections matching specific pattern
+  // - (re)generates index.json
+  // - (re)generates index.mdx
+  // THESE GENERATED FILES MUST BE COMMITTED ALONG WITH THE CHANGED
+  // PAGES - we do not want them to be out of sync in the repo
+  // To emphasize this, generation will only happen locally; CI builds
+  //  (identified by the presence of GITHUB_REF in the environment) will skip this step.
+  // For more information, see:
+  // - tools/automation/generators/refbuilder/refbuilder.js
+  if (!process.env.GITHUB_REF) {
+    const activity = reporter.createProgress(
+      "Generating reference indexes",
+      result.data.allReferenceIndex.nodes.length,
+    );
+    activity.start();
+
+    for (let indexBasePath of result.data.allReferenceIndex.nodes.map(
+      (node) => node.indexBasePath,
+    )) {
+      const command = `node ${path.join(
+        referenceIndexerToolPath,
+        "refbuilder.js",
+      )} --source ${indexBasePath}`;
+      try {
+        await execAsync(command);
+      } catch (err) {
+        reporter.panicOnBuild(`Failed to generate index for reference docs in ${indexBasePath}:
+  ${err}`);
+      }
+      activity.tick();
+    }
+    activity.done();
+  }
 
   // perform depth first preorder traversal
   const treeRoot = mdxNodesToTree(nodes);
@@ -523,18 +592,12 @@ exports.createSchemaCustomization = ({ actions }) => {
       ext: String
       extension: String
     }
+
+    type ReferenceIndex implements Node {
+      indexBasePath: String
+    }
   `;
   createTypes(typeDefs);
-};
-
-exports.onPreBootstrap = () => {
-  console.log(`
- _____  ____   _____    ____
-|   __||    \\ | __  |  |    \\  ___  ___  ___
-|   __||  |  || __ -|  |  |  || . ||  _||_ -|
-|_____||____/ |_____|  |____/ |___||___||___|
-
-  `);
 };
 
 exports.onPreBuild = () => {};
@@ -551,24 +614,26 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
   //
   // get rid of compilation hash - speeds up netlify deploys
   //
-  const hashTimer = reporter.activityTimer("Removing compilation hashes");
+  const hashTimer = reporter.createProgress("Removing compilation hashes");
   hashTimer.start();
+
   const { globby } = await import("globby");
   const generatedHTML = await globby([
     path.join(__dirname, "/public/**/*.html"),
   ]);
+  hashTimer.total = generatedHTML.length;
   for (
     let i = 0, filename;
     i < generatedHTML.length, (filename = generatedHTML[i]);
     ++i
   ) {
-    hashTimer.setStatus(`${i + 1}/${generatedHTML.length}`);
     let file = await readFile(filename);
     file = file.replace(
       /window\.___webpackCompilationHash="[^"]+"/,
       'window.___webpackCompilationHash=""',
     );
     await writeFile(filename, file);
+    hashTimer.tick();
   }
   const appDataFilename = path.join(
     __dirname,
@@ -582,7 +647,7 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
       '"webpackCompilationHash":""',
     ),
   );
-  hashTimer.end();
+  hashTimer.done();
 
   //
   // additional headers
