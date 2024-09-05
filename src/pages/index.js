@@ -206,7 +206,7 @@ const Page = () => {
                 to="/edb-postgres-ai/overview/latest-release-news"
                 iconName={iconNames.SMALL_DASHBOARD}
               >
-                Latest Release News
+                Release News - 24Q3
               </BannerWideCardLink>
             </BannerWideCard>
             <BannerSubCard
@@ -254,6 +254,9 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/pgd/latest">
                 EDB Postgres Distributed (PGD)
+              </BannerCardLink>
+              <BannerCardLink to="/supported-open-source/postgresql/">
+                PostgreSQL
               </BannerCardLink>
             </BannerSubCard>
 
