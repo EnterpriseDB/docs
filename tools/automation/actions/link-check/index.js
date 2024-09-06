@@ -161,8 +161,8 @@ async function main() {
 
   const imageFiles = await glob(
     imageExts.flatMap((ext) => [
-      "product_docs/**/*" + ext,
-      "advocacy_docs/**/*" + ext,
+      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "advocacy_docs/**/*" + ext),
     ]),
   );
 
