@@ -55,17 +55,32 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
     <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="card-body">
         <div className="d-flex mb-2 px-2 py-1 bg-light me-3">
-          <Link to={to} className="link-hover-underline-primary">
-            <Icon
-              iconName={iconName}
-              className="fill-aquamarine"
-              width="24"
-              height="24"
-            />
-            <h4 className="d-inline align-center card-title m-1">
-              {headingText}
-            </h4>
-          </Link>
+          {to && (
+            <Link to={to} className="link-hover-underline-primary">
+              <Icon
+                iconName={iconName}
+                className="fill-aquamarine"
+                width="24"
+                height="24"
+              />
+              <h4 className="d-inline align-center card-title m-1">
+                {headingText}
+              </h4>
+            </Link>
+          )}
+          {!to && (
+            <div>
+              <Icon
+                iconName={iconName}
+                className="fill-aquamarine"
+                width="24"
+                height="24"
+              />
+              <h4 className="d-inline align-center card-title m-1">
+                {headingText}
+              </h4>
+            </div>
+          )}
         </div>
         <div className="row col-12">{children}</div>
       </div>
