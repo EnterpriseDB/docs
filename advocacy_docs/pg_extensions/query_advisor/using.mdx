@@ -27,6 +27,27 @@ __OUTPUT__
 | CREATE INDEX ON partsupp USING btree (ps_suppkey);            | 50159616                | 13.254544                    |
 (3 rows)
 ```
+### query_advisor_statistics_recommendations()
+This function recommends potentially useful extended statistics by analyzing the statistics collected from the quals of user queries. 
+
+Statistics play a crucial role in determining the quality of query execution plans chosen by the database query optimizer. Sometimes, there are dependencies between columns, and unless we create combined statistics using extended statistics, the optimizer assumes these columns are independent. This assumption often leads to incorrect cardinality estimates, which in turn results in a poor execution plan, negatively impacting query performance.
+To address this, we monitor queries where multiple-column filters are applied and check for any selectivity estimation errors. If such errors are detected, we treat those multi-column filters as potential candidates for extended statistics.
+Whenever extended statistics recommendations are generated, we process these candidates by exploring various combinations of columns, especially when more than two columns are involved in the filters. Since estimation errors alone don’t definitively indicate which columns are dependent, we try all possible combinations. Currently, to limit the candidate pool, we focus on statistics for no more than two columns at a time.
+We also assign weights to each candidate, prioritizing them based on how many queries would benefit from those extended statistics and what is the execution cost of the queries are.
+
+For example:
+
+```sql
+# running as postgres user
+select * from query_advisor_statistics_recommendations();
+__OUTPUT__
+|                             statistics                                                 |
++----------------------------------------------------------------------------------------+
+| CREATE STATISTICS part_p_brand_p_container ON p_brand, p_container FROM public.part;   |
+| CREATE STATISTICS part_p_brand_p_type ON p_brand, p_type FROM public.part;   |
+| CREATE STATISTICS part_p_brand_p_size ON p_brand, p_size FROM public.part;   |
+(3 rows)
+```
 
 ### query_advisor_qualstat
 This function returns the counts for every qualifier identified by the expression hash. This hash identifies each expression.
