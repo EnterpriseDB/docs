@@ -471,7 +471,7 @@ const Page = () => {
 
               <BannerDivider headingText="Extensions" />
 
-              <BannerWideLink to="//postgis/latest/">PostGIS</BannerWideLink>
+              <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
               <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
                 EDB Advanced Storage Pack
