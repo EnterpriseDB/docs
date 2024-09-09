@@ -158,8 +158,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     }
   }
 
-  console.log(newtoc);
-
   let cardTileMode = indexCards;
   if (!cardTileMode) {
     if (navRoot.depth === 2) cardTileMode = TileModes.Full;
