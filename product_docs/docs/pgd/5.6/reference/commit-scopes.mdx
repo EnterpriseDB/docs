@@ -7,7 +7,7 @@ rootisheading: false
 deepToC: true
 ---
 
-Commit scopes are rules that determine how transaction commits and conflicts are handled within a PGD system. You can read more about them in [Durability](/pgd/latest/commit-scopes/).
+Commit scopes are rules that determine how transaction commits and conflicts are handled within a PGD system. You can read more about them in [Commit Scopes](/pgd/latest/commit-scopes/).
 
 You can manipulate commit scopes using the following functions:
 
@@ -35,13 +35,29 @@ confirmation_level:
     [ ON { received|replicated|durable|visible } ]
 
 commit_scope_kind:
-{ GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ]
+{ GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
   | CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
   | LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
-  | SYNCHRONOUS_COMMIT }
+  | SYNCHRONOUS_COMMIT [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ] }
+
+commit_scope_degrade_operation:
+  { commit_scope_group confirmation_level commit_scope_kind}
+
 ```
 
-Where `node_group` is the name of a PGD data node group.
+Where `node_group` is the name of a PGD data node group. 
+
+### commit_scope_degrade_operation
+
+Moreover, where the `commit_scope_degrade_operation` is either the same commit scope kind with a less restrictive commit scope group as the overall rule being defined, or is asynchronous (`ASYNC`). 
+
+For instance, you can have a degradation from an `ALL SYNCHRONOUS_COMMIT` to a `MAJORITY SYNCHRONOUS_COMMIT` or a `MAJORITY SYNCHRONOUS_COMMIT` to an `ANY 3 SYNCHRONOUS_COMMIT` or even an `ANY 3 SYNCHRONOUS_COMMIT` to an `ANY 2 SYNCHRONOUS_COMMIT`. You can also degrade from `SYNCRHONOUS_COMMIT` to `ASYNC`. However, you cannot degrade from `SYNCHRONOUS_COMMIT` to `GROUP_COMMIT` or the other way around, regardless of the commit scope groups involved. 
+
+It is also possible to combine rules using `AND`, each with their own degradation clause:
+
+```
+ALL ORIGIN_GROUP SYNCHRONOUS_COMMIT DEGRADE ON (timeout = 10s) TO MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP SYNCHRONOUS_COMMIT DEGRADE ON (timeout = 20s) TO ASYNC
+```
 
 ## Commit scope groups
 
@@ -107,22 +123,40 @@ This is the default visibility. A transaction is confirmed after all of its chan
 
 More details of the commit scope kinds and details of their parameters:
 
+-   [Synchronous Commit](#synchronous_commit)
 -   [Group Commit](#group-commit)  
 -   [CAMO (Commit At Most Once)](#camo)  
 -   [Lag Control](#lag-control) 
--   [Synchronous Commit](#synchronous_commit)
+
 
 !!!Note Parameter values
 
 Specify Boolean, enum, int, and interval values using the [Postgres GUC parameter value conventions](https://www.postgresql.org/docs/current/config-setting.html#CONFIG-SETTING-NAMES-VALUES). 
 !!!
 
-## GROUP COMMIT
-
-Allows commits to be confirmed by a consensus of nodes and controls conflict resolution settings.
+## SYNCHRONOUS_COMMIT
 
 ```
-GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ]
+SYNCHRONOUS_COMMIT [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
+```
+
+The `SYNCHRONOUS_COMMIT` has `DEGRADE ON` parameters:
+
+| Parameter          | Type     | Default | Description                                                                                                  |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| timeout            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
+| require_write_lead | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.                   |
+
+These set the conditions by which the commit scope rule will degrade to a less restrictive mode of operation. 
+
+The `commit_scope_degrade_operation` must be `SYNCHRONOUS_COMMIT` with a less restrictive commit scope group or be `ASYNC`.
+
+## GROUP COMMIT
+
+Allows commits to be confirmed by a consensus of nodes, controls conflict resolution settings, and, like [`SYNCHRONOUS_COMMIT`](#synchronous_commit), has optional rule-degredation parameters.
+
+```
+GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
 ```
 
 ### GROUP COMMIT parameters
@@ -139,6 +173,13 @@ GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_o
 | -------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
 | `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units). (0 means not set.)                                           |
 | `require_write_lead` | bool     | false   | CAMO only. If set, then for a transaction to switch to local (async) mode, a consensus request is required. |
+
+### DEGRADE ON parameters
+
+| Parameter          | Type     | Default | Description                                                                                                  |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| timeout            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
+| require_write_lead | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.                   |
 
 ### transaction_tracking settings
 
@@ -170,6 +211,11 @@ The value `raft` means the decision makes use of PGD's built-in Raft consensus. 
 This option must be used when the `ALL` commit scope group is being used to ensure no divergence between the nodes over the decision. This option may have low performance.
 
 See ["Commit decisions" in Group Commit](../commit-scopes/group-commit/#commit-decisions).
+
+### commit_scope_degrade_operation settings 
+
+The `commit_scope_degrade_operation` must be `GROUP_COMMIT` with a less restrictive commit scope group—or be `ASYNC`.
+
 
 ## CAMO
 
@@ -239,10 +285,3 @@ Where:
 -   `diff_secs` is the delta in seconds from the last time the apply rate
     was calculated.
 
-## SYNCHRONOUS_COMMIT
-
-```
-SYNCHRONOUS_COMMIT
-```
-
-The `SYNCHRONOUS_COMMIT` commit scope kind has no parameters. It's effectively configured only by the commit scope group and commit scope visibility.
