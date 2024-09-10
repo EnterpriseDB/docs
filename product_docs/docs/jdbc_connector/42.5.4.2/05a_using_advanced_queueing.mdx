@@ -362,289 +362,460 @@ EDB-JDBC JMS API supports the following message types and can be used in a stand
 | aq$_jms_bytes_message  | javax.jms.BytesMessage  |
 | aq$_jms_object_message | javax.jms.ObjectMessage |
 
+Please note that the corresponding payload types (user-defined types) are not pre-defined and must be created by the user before configuring the queue table. This is discussed in the upcoming sections.
+
+You can specify schema-qualified user-defined types, but the property types and message types must be in the same schema.
+
 #### Message properties
+ 
+All of the above-mentioned message types support setting and getting message properties. Before creating the actual message type, you must create the corresponding user-defined type for message properties.
+
+This example shows how to create the user-defined type for message properties:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_USERPROPERTY
+AS object
+(
+    NAME VARCHAR2(100),
+    VALUE VARCHAR2(2000)
+);
+```
+
+All primitive types of message properties are supported.
 
 #### TextMessage
 
+Text messages can be sent using the TextMessage interface. EDBTextMessageImpl is an implementation of TextMessage, but for most cases, you will be using the standard TextMessage.
+
+Before using the text message, it is necessary to create a user-defined type for it. This example shows how to create the user-defined type for TextMessage:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_TEXT_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[], STRING_VALUE VARCHAR2(4000));
+```
+
+Once the user-defined type is created, you can then proceed to create the queue table using this type:
+
+```sql
+EXEC DBMS_AQADM.CREATE_QUEUE_TABLE (queue_table => 'MSG_QUEUE_TABLE', queue_payload_type => 'AQ$_JMS_TEXT_MESSAGE', comment => 'Message queue table');
+```
+
+After setting up the queue table, you can send and receive TextMessages using the standard procedure outlined in the Java code snippet:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+// Create text message
+TextMessage msg = session.createTextMessage();
+String messageText = "Hello there!";
+msg.setText(messageText);
+msg.setStringProperty("myprop1", "test value 1");
+// Send message
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+// Receive Message
+Message message = messageConsumer.receive();
+TextMessage txtMsg = (TextMessage) message;
+System.out.println(txtMsg.getText());
+System.out.println(txtMsg.getStringProperty("myprop1"));
+```
+
 #### BytesMessage
+
+The BytesMessage is used to send a stream of bytes. EDBBytesMessageImpl is an implementation of BytesMessage, but in most cases, you will use the standard BytesMessage. Before using the bytes message, a user-defined type must be created. 
+
+This example shows how to create the user-defined type for BytesMessage:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_BYTES_MESSAGE AS OBJECT (PROPERTIES AQ$_JMS_USERPROPERTY[], RAW_VALUE CLOB);
+```
+
+Now, BytesMessage can be sent and received in the standard way.
+
+This example shows how to create and use a BytesMessage in Java:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+BytesMessage msg = session.createBytesMessage();
+String messageText = "Hello there!";
+msg.writeBytes(messageText.getBytes());
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+Message message = messageConsumer.receive();
+BytesMessage byteMsg = (BytesMessage) message;
+byteMsg.reset();
+byte[] bytes = new byte[(int) byteMsg.getBodyLength()];
+byteMsg.readBytes(bytes);
+System.out.println(new String(bytes));
+```
 
 #### ObjectMessage
 
+An ObjectMessage is used to send a serializable object as a message. EDBObjectMessageImpl is an implementation of ObjectMessage, but the standard ObjectMessage is most commonly used.
+
+Before using the ObjectMessage, it is necessary to create the user-defined type for the object message. 
+
+This example shows how to create the user-defined type for ObjectMessage:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_OBJECT_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[], OBJECT_VALUE CLOB);
+```
+
+For example we have the following serializable Java class:
+
+```java
+import java.io.Serializable;
+
+public class Emp implements Serializable {
+    private int id;
+    private String name;
+    private String role;
+
+    // Getter and setter methods
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+}
+```
+
+This example shows how to use ObjectMessage to send a message containing an object of this class:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+
+// Create object message
+ObjectMessage msg = session.createObjectMessage();
+Emp emp = new Emp();
+emp.setId(1);
+emp.setName("Joe");
+emp.setRole("Manager");
+msg.setObject(emp);
+
+// Send message
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+
+// Receive Message
+Message message = messageConsumer.receive();
+ObjectMessage objMsg = (ObjectMessage) message;
+Emp empBack = (Emp) objMsg.getObject();
+System.out.println("ID: " + empBack.getId());
+System.out.println("Name: " + empBack.getName());
+System.out.println("Role: " + empBack.getRole());
+```
+
+
 ### Message
+
+A Message can be used to send a message with only properties and no body. EDBMessageImpl is an implementation of a Message, but you will most often use the standard Message.
+Before using a message, it is required to create a user-defined type. 
+
+This example shows how to create the user-defined type for Message:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[]);
+```
+
+This example shows how to send a message that contains only properties and no body:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+// Create message. 
+Message msg = session.createMessage();
+msg.setStringProperty("myprop1", "test value 1");
+msg.setStringProperty("myprop2", "test value 2");
+msg.setStringProperty("myprop3", "test value 3");
+// Send message
+messageProducer.send(msg);
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+// Receive Message 
+message = messageConsumer.receive();
+System.out.println("myprop1: " + message.getStringProperty("myprop1"));
+System.out.println("myprop2: " + message.getStringProperty("myprop2"));
+System.out.println("myprop3: " + message.getStringProperty("myprop3"));
+```
 
 #### Non-standard message
 
-After you create a user-defined type followed by queue table and queue, start the queue. Then, you can enqueue or dequeue a message using EDB-JDBC driver's JMS API.
+EDB-JDBC JMS allows users to send and receive non-standard messages that are fully controlled by the API user. These messages do not support the setting and getting of properties. The process involves creating a user-defined type and setting it as the payload for the queue table. 
 
-Create a Java project and add the `edb-jdbc18.jar` from the `edb-jdbc` installation directory to its libraries.
-
-Create a Java Bean corresponding to the type you created.
+This example shows how to create a Java Bean corresponding to the type you created:
 
 ```java
 package mypackage;
-
+import com.edb.jms.common.CompareValue;
 import java.util.ArrayList;
-import com.edb.aq.UDTType;
-
-public class MyType extends UDTType {
-
-    private int code;
+public class MyType extends com.edb.aq.UDTType {
+    private Integer code;
     private String project;
-
-    public MyType() {}
-
-    /**
-     * @return the code
-     */
-    public int getCode() {
-        return code;
+    private String manager;
+    public MyType() {
     }
-
     /**
      * @param code the code to set
      */
-    public void setCode(int code) {
-        this.code = code;
+    @CompareValue(0)
+    public void setCode(Integer code) {
+      this.code = code;
     }
-
+    /**
+     * @return the code
+     */
+    public Integer getCode() {
+      return code;
+    }
+    /**
+     * @param project the project to set
+     */
+    @CompareValue(1)
+    public void setProject(String project) {
+      this.project = project;
+    }
     /**
      * @return the project
      */
     public String getProject() {
-        return project;
+      return project;
     }
-
-    /**
-     * @param project the project to set
-     */
-    public void setProject(String project) {
-        this.project = project;
+    @CompareValue(2)
+    public void setManager(String manager) {
+      this.manager = manager;
     }
-    /**
-     * Override this method and call getter methods in the same order as in CREATE TYPE statement.
-     * CREATE TYPE mytype AS (code int, project TEXT);
-     * @return
-     */
-    @Override
-    public Object[] getParamValues() {
-        ArrayList<Object> params = new ArrayList<Object>();
-        params.add(getCode());
-        params.add(getProject());
-        return params.toArray(); //To change body of generated methods, choose Tools | Templates.
+    public String getManager() {
+      return manager;
     }
+    public String valueOf() {
+        StringBuilder sql = new StringBuilder("CREATE TYPE ");
+        sql.append(getName() + " ");
+        sql.append("AS (");
+        sql.append("code int, ");
+        sql.append("project TEXT);");
+        return sql.toString();
+    }
+  /**
+   * Override this method and call getter methods in the same order as in CREATE TYPE statement.
+   * CREATE OR REPLACE TYPE mytype AS object (code int, project text, manager varchar(10))
+   * @return object array containing parameters.
+   */
+  @Override
+  public Object[] getParamValues() {
+    ArrayList<Object> params = new ArrayList<>();
+    params.add(getCode());
+    params.add(getProject());
+    params.add(getManager());
+    return params.toArray();
+  }
 }
 ```
 
-### Enqueue and dequeue a message
+!!!note
+- To create a user-defined class, it must extend the com.edb.aq.operations.UDTType class and override the getParamValues() method. In this method, you should add the attribute values to an ArrayList in the same order as they appear in the CREATE TYPE SQL statement in the database.
+- Additionally, make sure to use the annotation @CompareValue(0) with setter methods, as this specifies the order of methods when using the reflection API to reconstruct the object after dequeuing the message from the queue.
 
-To enqueue and dequeue a message:
+Failure to meet these requirements may result in errors.
+!!!
 
-1.  Create a JMS connection factory and create a queue connection.
-2.  Create a queue session.
-
-```java
-edbJmsFact = new EDBJmsConnectionFactory("localhost", 5445, "edb", "edb", "edb");
-
-conn = (EDBJmsQueueConnection) edbJmsFact.createQueueConnection();
-
-session = (EDBJmsQueueSession) conn.createQueueSession(true, Session.CLIENT_ACKNOWLEDGE);
-
-queue = new EDBJmsQueue("MSG_QUEUE");
-```
-
-### Enqueue a message
-
-To enqueue a message:
-
-1.  Create `EDBJmsMessageProducer` from the session.
-2.  Create the enqueue message.
-3.  Call the `EDBJmsMessageProducer.send` method.
+This example shows how to send an object of this class as a message:
 
 ```java
 messageProducer = (EDBJmsMessageProducer) session.createProducer(queue);
-
-MyType udtType1 = new MyType();
-udtType1.setProject("Test Omega");
-udtType1.setCode(321);
-
-udtType1.setName("mytype");
-
-messageProducer.send(udtType1);
+      MyType udtType1 = new MyType();
+      udtType1.setProject("Test Project");
+      udtType1.setManager("Joe");
+      udtType1.setCode(321);
+      udtType1.setName("mytype"); //type name used in "CREATE TYPE"
+      messageProducer.send(udtType1);
 ```
 
-### Dequeue a message
-
-To dequeue a message:
-
-1.  Create `EDBJmsMessageConsumer` from the session.
-2.  Call the `EDBJmsMessageConsumer.Receive` method.
+This example shows how to receive this object as a message:
 
 ```java
 messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue);
-	
-queue.setDequeue_mode(DequeueMode.BROWSE);
-queue.setTypeName("mytype");
-				
+
 Message message = messageConsumer.receive();
+
+MyType myt = (MyType) message;
+System.out.println("Code: "+ myt.getCode());
+System.out.println("Project: "+ myt.getProject());
+System.out.println("Manager: "+ myt.getManager());
 ```
 
-## A complete enqueue and dequeue program
-
-This example shows enqueue and dequeue. User-defined type, queue table, and queue are created using EDB-PSQL, and the queue is started.
+#### InnermostCustom.java:
 
 ```java
 package mypackage;
 
-import com.edb.aq.DequeueMode;
-import com.edb.aq.operations.*;
-import com.edb.jms.client.EDBJmsQueueConnection;
-import com.edb.jms.client.EDBJmsConnectionFactory;
-import com.edb.jms.client.EDBJmsMessageConsumer;
-import com.edb.jms.client.EDBJmsMessageProducer;
-import com.edb.jms.client.EDBJmsQueue;
-import com.edb.jms.client.EDBJmsQueueSession;
-import com.edb.jms.client.EDBQueueTable;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Session;
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
 
-public class JMSClient {
+import java.util.ArrayList;
 
-    public static void main(String args[]) throws JMSException {
+public class InnermostCustom extends UDTType {
 
-        EDBJmsConnectionFactory edbJmsFact = null;
-        EDBJmsQueueConnection conn = null;
-        EDBJmsQueueSession session = null;
-        EDBQueueTable queueTable = null;
-        EDBJmsQueue queue = null;
-        EDBJmsMessageProducer messageProducer = null;
-        EDBJmsMessageConsumer messageConsumer = null;
-
-        try {
-
-            edbJmsFact = new EDBJmsConnectionFactory("localhost", 5444, "edb", "edb", "edb");
-
-            conn = (EDBJmsQueueConnection) edbJmsFact.createQueueConnection();
-
-            session = (EDBJmsQueueSession) conn.createQueueSession(true, Session.CLIENT_ACKNOWLEDGE);
-
-            queue = (EDBJmsQueue) session.createQueue("MSG_QUEUE");
-           
-            messageProducer = (EDBJmsMessageProducer) session.createProducer(queue);
-
-            MyType udtType1 = new MyType();
-            udtType1.setProject("Test Omega");
-            udtType1.setCode(321);
-
-            udtType1.setName("mytype");
-
-            messageProducer.send(udtType1);
-
-            messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue);
-            
-            queue.setDequeue_mode(DequeueMode.BROWSE);
-            queue.setTypeName("mytype");
-                        
-            Message message = messageConsumer.receive();
-            System.out.println("Received: " + message);
-            
-            message = messageConsumer.receive();
-            
-            System.out.println("Received: " + message);
-        } catch (JMSException jmsEx) {
-            System.out.println(jmsEx.getMessage());
-        } finally {
-            if(conn != null) {
-                conn.close();
-            }            
-        }
+    public InnermostCustom() {
     }
+
+    private String testing_field_1;
+
+    public String getTesting_field_1() {
+        return testing_field_1;
+    }
+
+    @CompareValue(0)
+    public void setTesting_field_1(String testing_field_1) {
+        this.testing_field_1 = testing_field_1;
+    }
+  @Override
+  public Object[] getParamValues(){
+    ArrayList<Object> params = new ArrayList<Object>();
+    params.add(getTesting_field_1());
+    return params.toArray();
+  }
 }
 ```
 
-This example shows enqueue, dequeue, and creating the user-defined type, queue table, and queue. It also starts the queue.
+#### InnerCustom.java
 
 ```java
 package mypackage;
 
-import com.edb.aq.DequeueMode;
-import com.edb.aq.operations.*;
-import com.edb.jms.client.EDBJmsQueueConnection;
-import com.edb.jms.client.EDBJmsConnectionFactory;
-import com.edb.jms.client.EDBJmsMessageConsumer;
-import com.edb.jms.client.EDBJmsMessageProducer;
-import com.edb.jms.client.EDBJmsQueue;
-import com.edb.jms.client.EDBJmsQueueSession;
-import com.edb.jms.client.EDBQueueTable;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Session;
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
 
-public class JMSClient {
+import java.util.ArrayList;
 
-    public static void main(String args[]) throws JMSException {
+public class InnerCustom  extends UDTType {
 
-        EDBJmsConnectionFactory edbJmsFact = null;
-        EDBJmsQueueConnection conn = null;
-        EDBJmsQueueSession session = null;
-        EDBQueueTable queueTable = null;
-        EDBJmsQueue queue = null;
-        EDBJmsMessageProducer messageProducer = null;
-        EDBJmsMessageConsumer messageConsumer = null;
+    public InnerCustom() {
+    }
 
-        try {
+    private String testing_field_1;
+    private InnermostCustom innermostCustom;
 
-            edbJmsFact = new EDBJmsConnectionFactory("localhost", 5444, "edb", "edb", "edb");
+    public String getTesting_field_1() {
+        return testing_field_1;
+    }
 
-            conn = (EDBJmsQueueConnection) edbJmsFact.createQueueConnection();
+    @CompareValue(0)
+    public void setTesting_field_1(String testing_field_1) {
+        this.testing_field_1 = testing_field_1;
+    }
 
-            session = (EDBJmsQueueSession) conn.createQueueSession(true, Session.CLIENT_ACKNOWLEDGE);
+  public InnermostCustom getInnermostCustom() {
+    return innermostCustom;
+  }
 
-            String sql = "CREATE TYPE mytype AS (code int, project TEXT);";
-            UDTType udtType = new UDTType(conn.getConn(), sql, "mytype");
-            Operation operation = new UDTTypeOperation(udtType);
-            operation.execute();
+  @CompareValue(1)
+  public void setInnermostCustom(InnermostCustom innermostCustom) {
+    this.innermostCustom = innermostCustom;
+  }
+  @Override
+  public Object[] getParamValues(){
+    ArrayList<Object> params = new ArrayList<Object>();
+    params.add(getTesting_field_1());
+    params.add(getInnermostCustom());
+    return params.toArray();
+  }
+}
+```
 
-            queueTable = session.createQueueTable(conn.getConn(), "MSG_QUEUE_TABLE", "mytype", "Message queue table");
-            Queue queue1 = new Queue(conn.getConn(), "MSG_QUEUE", "MSG_QUEUE_TABLE", "Message Queue");
-            operation = new QueueOperation(queue1);
-            operation.execute();
-            queue = (EDBJmsQueue) session.createQueue("MSG_QUEUE");
-            queue.setEdbQueueTbl(queueTable);
-            queue.start();
+#### CustomType.java
 
-            messageProducer = (EDBJmsMessageProducer) session.createProducer(queue);
+```java
+package mypackage;
 
-            MyType udtType1 = new MyType();
-            udtType1.setProject("Test Omega");
-            udtType1.setCode(321);
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
 
-            udtType1.setName("mytype");
+import java.util.ArrayList;
 
-            messageProducer.send(udtType1);
+public class CustomType extends UDTType {
 
-            messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue);
-            
-            queue.setDequeue_mode(DequeueMode.BROWSE);
-            queue.setTypeName("mytype");
-                        
-            Message message = messageConsumer.receive();
-            System.out.println("Received: " + message);
-            
-            message = messageConsumer.receive();
-            
-            System.out.println("Received: " + message);
-        } catch (JMSException jmsEx) {
-            System.out.println(jmsEx.getMessage());
-        } finally {
-            if(conn != null) {
-                conn.close();
-            }            
-        }
+    private String testing_field;
+    private InnerCustom innerCustom;
+
+    public String getTesting_field() {
+        return testing_field;
+    }
+
+    @CompareValue(0)
+    public void setTesting_field(String testing_field) {
+        this.testing_field = testing_field;
+    }
+
+    public InnerCustom getInnerCustom() {
+        return innerCustom;
+    }
+
+    @CompareValue(1)
+    public void setInnerCustom(InnerCustom innerCustom) {
+        this.innerCustom = innerCustom;
+    }
+
+    public CustomType() {
+
+    }
+
+    public Object[] getParamValues(){
+        ArrayList<Object> params = new ArrayList<Object>();
+        params.add(getTesting_field());
+        params.add(getInnerCustom());
+        return params.toArray();
     }
 }
+```
+
+This example shows how to read such nested types:
+
+```java
+      EDBJmsMessageProducer messageProducer = (EDBJmsMessageProducer) session.createProducer(queue_1);
+
+      InnermostCustom innermostCustom = new InnermostCustom();
+      innermostCustom.setTesting_field_1("Innermost set");
+      innermostCustom.setName("innermostCustom");
+
+      InnerCustom innerCustom = new InnerCustom();
+      innerCustom.setTesting_field_1("Inner set");
+      innerCustom.setInnermostCustom(innermostCustom);
+      innerCustom.setName("innercustom");
+
+      CustomType customType = new CustomType();
+      customType.setTesting_field("EDB");
+      customType.setInnerCustom(innerCustom);
+      customType.setName("custom_type");
+
+      messageProducer.send(customType);
+
+      EDBJmsMessageConsumer messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue_1);
+
+      Message message = messageConsumer.receive();
+
+      CustomType myType = (CustomType) message;
+      InnerCustom innerCustom_1 = myType.getInnerCustom();
+      InnermostCustom innermostCustom1 = innerCustom_1.getInnermostCustom();
+
+      System.out.println("Outer type test field: " + myType.getTesting_field());
+      System.out.println("Inner type test field: " + innerCustom_1.getTesting_field_1());
+      System.out.println("Most Inner type test field: " + innermostCustom1.getTesting_field_1());
 ```
