@@ -1,0 +1,231 @@
+---
+title: Lag Control
+redirects:
+  - /pgd/latest/bdr/lag-control/
+---
+
+Commit scope kind: `LAG CONTROL`
+
+## Overview
+
+Lag Control provides a mechanism where, if replication is running outside of
+limits set, a delay is injected into the origin node's client connections after
+processing transactions that make replicable updates. This delay is designed to
+slow the incoming transactions and bring replication back within the defined
+limits.
+
+## Background
+
+The data throughput of database applications on a PGD origin node can exceed the
+rate at which committed data can replicate to downstream peer nodes.
+
+If this imbalance persists, it can put satisfying organizational objectives, 
+such as RPO, RCO, and GEO, at risk.
+
+-  **Recovery point objective (RPO)** specifies the maximum-tolerated amount of data
+   that can be lost due to unplanned events, usually expressed as an amount of
+   time. In PGD, RPO determines the acceptable amount of committed data that
+   hasn't been applied to one or more peer nodes.
+
+-  **Resource constraint objective (RCO)** acknowledges that finite storage is
+   available. In PGD, the demands on these storage resources increase as lag increases.
+
+-  **Group elasticity objective (GEO)** ensures that any node isn't originating new
+   data at a rate that can't be saved to its peer nodes. 
+
+To allow organizations to achieve their objectives, PGD offers Lag Control. This
+feature provides a means to precisely regulate the potential imbalance without
+intruding on applications. It does so by transparently introducing a delay to READ WRITE
+transactions that modify data. This delay, the PGD commit delay, starts at 0ms.
+
+Using the LAG CONTROL commit scope kind, you can set a maximum time that commits
+can be delayed between nodes in a group, maximum lag time, or maximum lag
+size (based on the size of the WAL). 
+
+If the nodes can process transactions within the specified maximums on enough
+nodes, the PGD commit delay will stay at 0ms or be reduced toward 0ms. If the 
+maximums are exceeded on enough nodes, though, the PGD commit delay on the 
+originating node is increased. It will continue increasing until the Lag Control 
+constraints are met on enough nodes again.
+
+The PGD commit delay happens after a transaction has completed and released all
+its locks and resources. This timing of the delay allows concurrent active
+transactions to carry on observing and modifying the delayed transactions values
+and acquiring its resources.
+
+Strictly speaking, the PGD commit delay isn't a per-transaction delay.
+It's the mean value of commit delays over a stream of transactions for a
+particular client connection. This technique allows the commit delay and
+fine-grained adjustments of the value to escape the coarse granularity of
+OS schedulers, clock interrupts, and variation due to system load. It also
+allows the PGD runtime commit delay to settle within microseconds of the
+lowest duration possible to maintain a lag measure threshold.
+
+!!! Note PGD commit delay != Postgres commit delay
+Don't conflate the PGD commit delay with the [Postgres commit
+delay](https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-COMMIT-DELAY).
+They are unrelated and perform different functions. Don't substitute one for the
+other. 
+!!!
+
+
+## Requirements
+
+To get started using Lag Control:
+
+-   Determine the maximum acceptable commit delay time `max_commit_delay` that
+    all database applications can tolerate.
+
+-   Decide on the lag measure to use. Choose either lag size `max_lag_size` or
+    lag time `max_lag_time`.
+
+-   Decide on the groups or subgroups involved and the minimum number of nodes
+    in each collection required to satisfy confirmation. This information forms
+    the basis for the definition of a commit scope rule.
+
+## Configuration
+
+You specify Lag Control in a commit scope, which allows consistent and
+coordinated parameter settings across the nodes spanned by the commit scope
+rule. You can include a Lag Control specification in the default commit scope of
+a top group or as part of an origin group commit scope.
+
+As in example, take a configuration with two datacenters, `left_dc` and `right_dc`, represented as subgroups:
+
+```sql
+SELECT bdr.create_node_group(
+    node_group_name := 'left_dc',
+    parent_group_name := 'top_group',
+    join_node_group := false
+);
+SELECT bdr.create_node_group(
+    node_group_name := 'right_dc',
+    parent_group_name := 'top_group',
+    join_node_group := false
+);
+```
+
+The following code adds Lag Control rules for those two data centers, using individual rules for each subgroup:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'left_dc',
+    rule := 'ALL (left_dc) LAG CONTROL (max_commit_delay=500ms, max_lag_time=30s) AND ANY 1 (right_dc) LAG CONTROL (max_commit_delay=500ms, max_lag_time=30s)',
+    wait_for_ready := true
+);
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'right_dc',
+    rule := 'ANY 1 (left_dc) LAG CONTROL (max_commit_delay=0.250ms, max_lag_size=100MB) AND ALL (right_dc) LAG CONTROL (max_commit_delay=0.250ms, max_lag_size=100MB)',
+    wait_for_ready := true
+);
+```
+
+You can add a Lag Control commit scope rule to existing commit scope rules that
+also include Group Commit and CAMO rule specifications.
+
+The `max_commit_delay` is an interval, typically specified in milliseconds (1ms).
+Using fractional values for sub-millisecond precision is supported.
+
+The `max_lag_size` is an integer that specifies the maximum allowed lag in
+terms of WAL bytes.
+
+The `max_lag_time` is an interval, typically specified in seconds, that
+specifies the maximum allowed lag in terms of time.
+
+The maximum commit delay (`max_commit_delay`) is a ceiling value representing a hard limit,
+which means that a commit delay never exceeds the configured value.
+
+The maximum lag size and time (`max_lag_size` and `max_lag_time`) are soft limits that can be exceeded.
+When the maximum commit delay is reached,
+there's no additional back pressure on the lag measures to prevent their
+continued increase.
+
+## Confirmation
+
+   Confirmation&nbsp;level    | Lag Control handling
+-------------------------|-------------------------------
+ `received`              | Not applicable, only uses the default, `VISIBLE`.
+ `replicated`            | Not applicable, only uses the default, `VISIBLE`.
+ `durable`               | Not applicable, only uses the default, `VISIBLE`.
+ `visible` (default)     | Not applicable, only uses the default, `VISIBLE`.
+
+
+## Transaction application
+
+The PGD commit delay is applied to all READ WRITE transactions that
+modify data for user applications. This behavior implies that any transaction
+that doesn't modify data, including declared READ WRITE transactions,
+is exempt from the commit delay.
+
+Asynchronous transaction commit also executes a PGD commit delay. This
+might appear counterintuitive, but asynchronous commit, by virtue of its
+performance, can be one of the greatest sources of replication lag.
+
+Postgres and PGD auxillary processes don't delay at transaction commit.
+Most notably, PGD writers don't execute a commit delay when applying
+remote transactions on the local node. This is by design, as PGD writers
+contribute nothing to outgoing replication lag and can reduce incoming
+replication lag the most by not having their transaction commits throttled
+by a delay.
+
+## Limitations
+
+The maximum commit delay is a ceiling value representing a hard limit,
+which means that a commit delay never exceeds the configured value.
+Conversely, the maximum lag measures both by size and time and
+are soft limits that can be exceeded. When the maximum commit delay is reached,
+there's no additional back pressure on the lag measures to prevent their
+continued increase.
+
+There's no way to exempt origin transactions that don't modify PGD
+replication sets from the commit delay. For these transactions, it
+can be useful to SET LOCAL the maximum transaction delay to 0.
+
+## Caveats
+
+Application TPS is one of many factors that can affect replication lag.
+Other factors include the average size of transactions for which PGD commit
+delay can be less effective. In particular, bulk load operations can
+cause replication lag to rise, which can trigger a concomitant rise in
+the PGD runtime commit delay beyond the level reasonably expected by normal
+applications, although still under the maximum allowed delay.
+
+Similarly, an application with a very high OLTP requirement and modest
+data changes can be unduly restrained by the acceptable PGD commit delay
+setting.
+
+In these cases, it can be useful to use the `SET [SESSION|LOCAL]` command to
+custom configure Lag Control settings for those applications or modify
+those applications. For example, bulk load operations are sometimes split
+into multiple smaller transactions to limit transaction snapshot duration
+and WAL retention size or establish a restart point if the bulk load fails.
+In deference to Lag Control, those transaction commits can also schedule very
+long PGD commit delays to allow digestion of the lag contributed by the
+prior partial bulk load.
+
+## Meeting organizational objectives
+
+In the example objectives listed earlier:
+
+-   RPO can be met by setting an appropriate maximum lag time.
+-   RCO can be met by setting an appropriate maximum lag size.
+-   GEO can be met by monitoring the PGD runtime commit delay
+    and the PGD runtime lag measures,
+
+As mentioned, when the maximum PGD runtime commit delay is
+pegged at the PGD-configured commit-delay limit, and the lag
+measures consistently exceed their PGD-configured maximum
+levels, this scenario can be a marker for PGD group expansion.
+
+## Lag Control and extensions
+
+The PGD commit delay is a post-commit delay. It occurs after the transaction has
+committed and after all Postgres resources locked or acquired by the transaction
+are released. Therefore, the delay doesn't prevent concurrent active
+transactions from observing or modifying its values or acquiring its resources.
+The same guarantee can't be made for external resources managed by Postgres
+extensions. Regardless of extension dependencies, the same guarantee can be made
+if the PGD extension is listed before extension-based resource managers in
+postgresql.conf.
