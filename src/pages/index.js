@@ -330,7 +330,7 @@ const Page = () => {
               headingText="Migration and ETL"
               to="/edb-postgres-ai/migration-etl"
             >
-              <BannerCardLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
+              <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
                 Data Migration Service
               </BannerCardLink>
               <BannerCardLink to="/migration_portal/latest">
