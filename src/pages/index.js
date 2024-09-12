@@ -330,14 +330,17 @@ const Page = () => {
               headingText="Migration and ETL"
               to="/edb-postgres-ai/migration-etl"
             >
-              <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
+              {/* <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
                 Data Migration Service
-              </BannerCardLink>
+              </BannerCardLink> */}
               <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
               </BannerCardLink>
               <BannerCardLink to="/eprs/latest">
                 Replication Server
+              </BannerCardLink>
+              <BannerCardLink to="/migration_toolkit/latest">
+                Migration Toolkit
               </BannerCardLink>
             </BannerSubCard>
 
@@ -454,18 +457,18 @@ const Page = () => {
                 pgBackRest
               </BannerWideLink>
 
-              <BannerIconDivider
+              {/* <BannerIconDivider
                 iconName={iconNames.MIGRATION}
                 headingText="Migration"
               />
 
-              {/* <BannerWideLink to="/migrating/oracle">
+              <BannerWideLink to="/migrating/oracle">
                 Migration Handbook
-              </BannerWideLink> */}
+              </BannerWideLink>
               <BannerWideLink to="/migration_toolkit/latest">
                 Migration Toolkit
               </BannerWideLink>
-              {/* <BannerWideLink to="/eprs/latest">
+              <BannerWideLink to="/eprs/latest">
                 Replication Server
               </BannerWideLink> */}
             </BannerWideSubCard>

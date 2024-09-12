@@ -15,6 +15,7 @@ import {
   Tiles,
   TileModes,
 } from "../components";
+import GithubSlugger from "github-slugger";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -72,8 +73,45 @@ const FeedbackButton = ({ githubIssuesLink }) => (
   </a>
 );
 
+const buildSections = (navTree, path) => {
+  const sections = [];
+  let nextSection;
+
+  // Ok, now we have to figure out where we are in this tree
+  // We need to find the current node in the tree
+
+  const findCurrentNode = (root, path) => {
+    if (root.path === path) return root;
+    for (let node of root.items) {
+      const result = findCurrentNode(node, path);
+      if (result) return result;
+    }
+  };
+
+  const currentNode = findCurrentNode(navTree, path);
+
+  currentNode.items.forEach((navEntry) => {
+    if (navEntry.path) {
+      if (!nextSection) return;
+      nextSection.guides.push(navEntry);
+    } else {
+      // new section
+      if (nextSection) sections.push(nextSection);
+      nextSection = {
+        title: navEntry.title,
+        guides: [],
+      };
+    }
+  });
+  if (nextSection) sections.push(nextSection);
+
+  return sections;
+};
+
 const LearnDocTemplate = ({ data, pageContext }) => {
+  const slugger = new GithubSlugger();
   const { mdx, edbGit: gitData } = data;
+  const { fields, tableOfContents } = data.mdx;
   const { frontmatter, pagePath, productVersions, navTree, prevNext } =
     pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
@@ -95,6 +133,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
   };
+  const { path, depth } = fields;
 
   const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
