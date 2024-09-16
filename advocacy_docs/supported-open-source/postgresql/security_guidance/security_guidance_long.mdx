@@ -1,0 +1,372 @@
+---
+title: "Security Guidance for PostgreSQL"
+navTitle: "Security Guidance"
+---
+
+**How to Secure PostgreSQL: Security Hardening Best Practices & Tips**  
+   
+Securing data is mission-critical for the success of any enterprise, as well as for the safety of its customers. This article is intended as a comprehensive overview that will help you examine the security of your Postgres deployment from end to end.   
+The vast majority of the discussion will focus on features, functionality, and techniques that apply equally to both [PostgreSQL](https://www.postgresql.org/) and [EDB Postgres Advanced Server](https://www.enterprisedb.com/enterprise-postgres/edb-postgres-advanced-server) (EPAS); however, it will also touch on a couple of features that are only available in EPAS. These will be clearly noted. This article references the latest version of Postgres currently available: 12.3.  
+As part of the review of the components and process of securing Postgres, we'll look at the following sections:
+
+1. Access  
+2. Authentication  
+3. Roles  
+4. Data access control  
+5. Encryption
+
+**Access**
+
+The first part of any security review is to look at how the server is connected to and accessed. As with any security configuration, follow the [principle of least privilege](https://en.wikipedia.org/wiki/Principle\_of\_least\_privilege) when considering how to configure your system; that is, only allow as much access as is required to implement a working system, and no more.  
+**Physical access**
+
+It can be extremely difficult to prevent someone with physical access to a server from gaining access to the data, but there are a number of measures that can be taken, both physical and technological.  
+First and foremost, the physical access should be limited as much as possible, by ensuring the server is located in a secure facility. This may be a privately owned server room, in which case measures can be taken to ensure that only authorized personnel can enter the room and that monitoring such as CCTV is employed. In the case that a co-location facility is used, ensure that the chosen provider has a strictly enforced security policy appropriately designed to prevent unauthorized access, and in facilities that allow users to enter, that locking racks and cages are available to keep other customers away from your hardware.  
+There's little that can be done in this regard with the major cloud providers, other than to trust that they do implement the high levels of physical security that they claim. However for both cloud providers and co-location facilities it is essential to check that they have appropriate documentation attesting to the level of security they provide, such as [SOC 2 or 3](https://www.datacenterknowledge.com/archives/2011/03/03/sas-70-ssae-16-soc-and-data-center-standards).  
+**Connecting**
+
+There are two ways to connect to a Postgres server; via a [Unix Domain Socket](https://en.wikipedia.org/wiki/Unix\_domain\_socket) or a [TCP/IP Socket](https://en.wikipedia.org/wiki/Network\_socket)  
+**Unix Domain Socket**
+
+Unix Domain Sockets (UDS) are the default method for connecting to a Postgres database on Unix-like platforms. On Windows they are not available at present, but will be in Postgres v13 and later.  
+UDS are only accessible from the machine on which they are present (and therefore are not subject to direct remote attacks), and appear as special files on the file system. This means that access to them is subject to the same access controls as other files (though only write permission is actually needed to use the socket), and can be controlled by managing the permissions and group ownership of the socket through the unix\_socket\_permissions and unix\_socket\_group configuration options, as well as the permissions on the directory in which the socket is created. Sockets are always owned by the user that the Postgres server is running as.  
+To offer even more flexibility, Postgres can create multiple sockets (though by default, only one is created) using the unix\_socket\_directories configuration option, each of which directories can have different permissions as required to segregate different users or applications and help to apply the principle of least privilege.  
+If your application is running on the same host as the database server, give serious consideration to allowing access to the server via one or more UDS only.
+
+ **TCP/IP Socket**
+
+If you need to access your Postgres server from a remote system, as is often the case when implementing applications with multiple tiers or services, or just for remote administration using tools such as [pgAdmin](https://www.pgadmin.org/), you will need to use a TCP/IP network socket.  
+As is generally the case when it comes to security, we want to minimize the potential attack area for anyone attempting to gain access to the system. How this is done depends on how the server is hosted on the network. If it's inside a corporate network, it may be hosted on multiple [VLANs](https://en.wikipedia.org/wiki/Virtual\_LAN) or physical networks, which can be used for different purposes, such as applications, management and storage access for example. The system should only be configured to listen for and accept connections on the networks that are actually required; by default, a source code build of Postgres will listen only on the localhost or loopback address, which prevents connections from other machines. However, some pre-packaged builds of Postgres override this so you should check your installation. Use the listen\_addresses configuration parameter in postgresql.conf to ensure Postgres only listens and accepts connections on the required network addresses, thus preventing access from, say, the storage network.
+
+ **Firewall**
+
+Firewalls are an important tool to prevent access to network ports from unauthorized sources. Many also offer logging facilities which can be used as part of a broader initiative to proactively detect intrusion attempts to help mitigate them before they are actually successful.  
+**Local machine**
+
+Most modern operating systems include firewalls, including the Windows Defender Firewall on Windows and iptables on Linux, plus there are also a number of third party products you might choose.  
+Typical firewalls will allow you to define inbound and outbound rules that specify the traffic that is allowed. These rules will consist of a number of common parameters:
+
+* The protocol, e.g. TCP or IPv6  
+* The local port, e.g. 5432 (the default port for PostgreSQL)  
+* The source address; i.e., where the connection attempt is coming from.
+
+Some firewalls offer additional options to give far greater flexibility; for example, Windows Defender Firewall allows you to specify a program instead of port number.  
+As always, we want to minimize access to Postgres, so it would be quite normal to create a rule for TCP (and/or IPv6) traffic arriving on port 5432 to be rejected (or black-holed) unless it's coming from the address of our application server. The source address can usually be a list of addresses or subnets.  
+If your server has any Foreign Data Wrappers or similar extensions installed, it may also be desirable to create outbound rules to prevent them being used to connect to anything other than a predefined set of servers.  
+While configuring Windows Defender Firewall is quite straightforward, configuring iptables is much more complex. Linux distributions such as Redhat and Ubuntu offer management tools to make this easier, and there are also other open source tools available such as [Ferm](http://ferm.foo-projects.org/) and [Shorewall](https://shorewall.org/).  
+**Minimize access to your server as much as possible through the use of a firewall.**
+
+**Cloud provider**
+
+Most cloud providers recommend against using firewalls in virtual instances, suggesting instead that users make use of the firewalls built into the platform. This typically makes management much easier, allowing rule sets to be created that can be reused and attached to multiple servers, and allowing management through their web and command line interfaces and REST APIs.  
+Firewalls at the cloud providers are implemented as part of their network infrastructure, and generally work in much the same way as the host firewalls described in the previous section; i.e., specify the source addresses, protocol and destination port for traffic to allow.  
+Most cloud providers also offer Virtual Private Clouds (VPC), in which a number of servers can coexist in a single virtual environment with it's own private network or networks. This type of configuration has typically become the default and makes it very easy to deploy a multi-tiered system on the public cloud, while keeping the non-public tiers segregated from the internet in general. The use of multiple subnets within a VPC can make it easy to further segregate servers, keeping the public tiers in a "DMZ" subnet, with only minimal access to the database servers that are in a private subnet with no direct internet connection.  
+**Transport Encryption**
+
+If traffic to the database server is flowing across the network, it is good practice (arguably essential practice) to encrypt that traffic. Postgres uses OpenSSL to provide transport security—though work has been underway for some time to add support for Microsoft Secure Channel or Schannel and Apple Secure Transport—through the use of TLS (previously SSL).  
+To encrypt connections in Postgres you will need at least a server certificate and key, ideally protected with a passphrase that can be securely entered at server startup either manually or using a script that can retrieve the passphrase on behalf of the server, as specified using the ssl\_passphrase\_command configuration parameter. Passphrases are not supported on Windows, at least as of Postgres 12\. The server certificate and key are specified using the ssl\_cert\_file and ssl\_key\_file respectively.  
+If you have an existing Certification Authority (CA) in use you can use certificates provided from that with Postgres. The configuration parameters ssl\_ca\_file and ssl\_crl\_file allow you to provide the CA (and intermediate) certificates and the certificate revocation list to the server. This gives you the flexibility to revoke certificates in response to security incidents and have the server reject client certificates or the client reject server certificates. It also allows you to configure the client and server to reject each other if the identity of either cannot be verified through the chain of trust to prevent as-yet undetected spoofing. The use of certificates for client authentication is discussed below.  
+It's important to ensure that your use of TLS is secure as well. There are a number of configuration parameters that can be set to ensure that you're not using ciphers or other options that may no longer be considered secure. It is recommended that you check and appropriately configure the following configuration parameters in your postgresql.conf configuration file:
+
+* ssl\_ciphers  
+* ssl\_ecdh\_curve  
+* ssl\_dh\_params\_file  
+* ssl\_min\_protocol\_version
+
+No recommendation is made in this article on what those parameters should be set to, as inevitably they will change over time. You should periodically check to ensure you're using options that continue to be regarded as secure, and update them when appropriate.  
+**If traffic to your server flows over the network, ensure it's encrypted using the strongest possible ciphers and other options.**  
+    
+**Authentication**
+
+After access, the next security component to be considered is client authentication; how we authenticate users and control whether or not they can connect to the server successfully through the pg\_hba.conf configuration file.  
+**pg\_hba.conf**
+
+The pg\_hba.conf file (typically found in the Postgres data directory) defines the access rules and authentication methods for the data server. Lines in the file are processed sequentially when a connection is being established, and the first line that matches the properties of the connection is used to determine the authentication method that will be used.  
+There are seven different possible formats for lines in the file (as well as comments, which start with a \#), of which there are three main variants, the rest following the same structure as one of the others, but with a different connection type in the first field. Here are some examples:  
+local     my\_db     my\_user     scram-sha-256  
+In this example, a connection attempt from my\_user to the database my\_db over a local (UDS) connection using scram-sha-256 will be accepted.  
+host   	 my\_db     my\_user     172.16.253.47/32   	 md5  
+In this example, a connection attempt from my\_user to the database my\_db from **172.16.253.47** using md5 as the authentication method will be accepted.  
+Note that the address shown in the example has /32 on the end to denote that all 32 of the high order bits must be matched. To allow connections to match from anywhere on that subnet we could also write it as **172.16.0.0/16** or **172.16.0.0     255.255.0.0** (the third format variant).  
+The fields in each line are always the connection type, the database name(s), the user name(s), the client network address/subnet (where needed) and the authentication method, plus any options that may be applicable. See the [documentation](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) for more information.  
+As a general rule of thumb, any network connections should use either the hostssl or hostgssenc connection types to ensure that connections are encrypted.  
+In the following subsections we will examine a number of the most commonly used authentication methods.   
+**Trust**
+
+The trust authentication method should only be used in exceptional circumstances, if at all, as it allows a matching client to connect to the server with no further authentication.  
+trust is useful for testing and development work on the local machine where connecting via a UDS and when only fully trusted users have access to the machine, and data security is not a concern.  
+It is also a useful mechanism for resetting passwords in the server if there is no other way to login; temporarily allow trust access to connections from a UDS, connect to the server and reset the password, and then disable the trust access again.  
+**Use trust with extreme care. It can be very dangerous\!**
+
+**Peer & Ident**
+
+Peer and Ident are both methods of allowing users to be authenticated by the underlying operating system. Many Postgres packages come pre-configured to use peer authentication.  
+The peer authentication method is only available for local connections. When peer is used, the server gets the username of the client from the operating system and checks that it matches the requested database username.  
+The ident authentication method is only available for network connections. It works in a similar way to peer authentication, except that it relies on an ident server running on the client to confirm the username.   
+Both peer and ident allow the use of connection maps to handle acceptable mismatches between the username known to the client and that known to the database server.  
+Note that ident should not be relied upon, as the client running the ident server is unlikely to be guaranteed trustworthy.  
+**md5 vs. SCRAM**
+
+For many years md5 was the preferred hashing mechanism for use with Postgres, and though still widely used it's strongly recommended that users move to the scram-sha-256, where password authentication is required.  
+Both md5 and scram-sha-256 use a challenge response mechanism to prevent sniffing, and store hashed passwords on the server, however, scram-sha-256 stores the hashes in what is currently considered to be a cryptographically secure form to avoid issues if an attacker gains access to the hash.  
+If you need to support password authentication with a standalone Postgres server, you should be using scram-sha-256 as the authentication method. Do not use md5 in new deployments\!  
+**LDAP vs. Kerberos**
+
+LDAP and Kerberos are often utilised in corporate environments when integrated with Single Sign On (SSO) systems. In such systems, the Postgres server is configured to authenticate the user through an LDAP directory or Kerberos infrastructure.   
+In LDAP systems, there are various ways that user access can be controlled, for example by only granting access to users that are members of a specific Organizational Unit or group. When setting up your pg\_hba.conf file, additional options can be specified on the end of the line, including an LDAP search filter which will only allow users that match the filter to connect to the database.  
+Kerberos authentication is available through the gssapi authentication method in Postgres. Setting it up can be a little more daunting than LDAP and other authentication methods, but not only is it considered secure, it also offers automatic authentication for client software that supports it. There is a related Windows-specific sspi authentication method that can be used in Windows domains.  
+Though LDAP authentication is very popular based on user feedback the author has received, Kerberos authentication should always be preferred as, unlike LDAP, the user's password is never sent to the Postgres server.  
+**TLS Certificates**
+
+TLS (sometimes referred to as SSL) certificates can be used for authentication as well as being required for TLS encryption as discussed in part one of this blog series. Certificate authentication works by trusting a top-level certificate (or one of its children or 'intermediate' certificates) to issue certificates only to trusted clients. Clients in possession of a certificate and key issued by a higher authority that also issued the server certificate and key can be considered trusted.  
+In a simple example, you would first create a Certificate Authority (CA) certificate and key. This is extremely valuable and sensitive so must be kept completely secure. Then, you create a certificate and key for the Postgres server and sign it using the CA certificate and key.  
+Both the server certificate and key are then installed in the Postgres server, along with a copy of the CA's certificate (but not the CA's key).  
+Client certificates and keys can then also be created and signed by the CA as required.  
+When the client connects to Postgres and the cert authentication method is used, the Postgres server will check that the certificate presented by the client is trusted and that the Common Name (CN) field of the certificate matches the username for the client. Username mapping can also be done as with peer and ident.  
+The client can also specify a number of options when connecting to the server, including whether or not (and to what extent) to verify the trustworthiness of the server's certificate. This gives protection against spoofing.  
+Both the client and the server can use certificate revocation lists to keep track of any certificates that should no longer be trusted.  
+Certificates are an ideal way to authenticate automated systems that need to connect across the network to a Postgres server.  
+**Additional Configuration**
+
+There are two additional configuration options that are worth considering:  
+authentication\_timeout is a parameter that can be set in postgresql.conf. Its purpose is to set the maximum amount of time in which authentication must be completed before the server closes the connection. This is to ensure that incomplete connection attempts don't occupy a connection slot indefinitely.  
+[auth\_delay](https://www.postgresql.org/docs/current/auth-delay.html) is a contrib module for Postgres that can be loaded through the shared\_preload\_libraries configuration option in postgresql.conf. Its purpose is to pause briefly when an authentication attempt fails before failure is reported to make brute force attacks much more difficult.  
+**Other authentication methods**
+
+These are some of the more popular authentication methods available in Postgres. There are a number of other [authentication methods available](https://www.postgresql.org/docs/12/client-authentication.html), but these are typically less widely used and have more specialized applications.  
+**Roles**
+
+The next critical component in securing a Postgres deployment is the creation and setting of roles, which can limit database access for specified users.  
+**What is a role?**
+
+Very old (practically prehistoric) versions of PostgreSQL offered users and user groups as ways of grouping user accounts together. In PostgreSQL 8.1 this system was replaced with the SQL Standard compliant roles system.  
+A role can be a member of other roles, or have roles that are members of it. We sometimes refer to this as "granting" a role to another role. Roles have a number of attributes that can be set, including ones that effectively make them user accounts that can be used to login to the database server. An example of granting a role to another role is shown below:  
+GRANT pg\_monitor TO nagios;  
+This makes the nagios role a member of pg\_monitor, thereby giving nagios access to the extended functionality reserved for superusers and members of the pg\_monitor role.  
+**Role attributes**
+
+Roles have a number of fixed attributes that can be set:
+
+* LOGIN \- can this role be used to login to the database server?  
+* SUPERUSER \- is this role a superuser?  
+* CREATEDB \- can this role create databases?  
+* CREATEROLE \- can this role create new roles?  
+* REPLICATION \- can this role initiate streaming replication?  
+* PASSWORD \- the password for the role, if set.  
+* BYPASSRLS \- can this role bypass Row Level Security checks?  
+* VALID UNTIL \- an optional timestamp after which time the password will no longer be valid.
+
+Roles with the SUPERUSER flag set automatically bypass all permission checks except the right to login.  
+There are a number of other less commonly used role attributes that can also be set. See the [documentation](https://www.postgresql.org/docs/12/sql-createrole.html) for more information.  
+Grant SUPERUSER (and potentially dangerous attributes such as CREATEDB and CREATEROLE) with great care. Do not use a role with SUPERUSER privileges for day-to-day work.  
+**Password complexity**
+
+PostgreSQL (as opposed to EDB Postgres Advanced Server) doesn't include any password complexity enforcement functionality by default. It does include a hook that can be used to plugin a module to do password complexity checks, but this will have no effect if the user changes their password using a pre-hashed string.  
+A sample [password check module](https://www.postgresql.org/docs/current/passwordcheck.html) can be found in Postgres' contrib directory in the source tree, and is included with most package sets. This module can be used as an example for developing something more complex that meets an organization's specific requirements, though it does require C development work.  
+The most effective way to enforce password complexity in Postgres is to use an external identity service for authentication, such as LDAP or Kerberos as described above.  
+**Password profiles**
+
+EDB Postgres Advanced Server offers a [password profile feature](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/database-compatibility-for-oracle-developers-guide/12/Database\_Compatibility\_for\_Oracle\_Developers\_Guide.1.030.html\#) that can be used with the password (never use this, as the password will be transferred in plain text\!), md5, and scram-sha-256 authentication methods configured in pg\_hba.conf. Password profiles can be configured by the superuser and applied to one or more roles. A profile allows you to define the following options:
+
+* FAILED\_LOGIN\_ATTEMPTS: The number of failed login attempts that may occur before the role is locked out for the amount of time specified in the PASSWORD\_LOCK\_TIME parameter.  
+* PASSWORD\_LIFE\_TIME: The number of days a password can be used before the user is prompted to change it.  
+* PASSWORD\_GRACE\_TIME: The length of the grace period after a password expires until the user is forced to change their password. When the grace period expires, a user will be allowed to connect, but will not be allowed to execute any command until they update their expired password.  
+* PASSWORD\_REUSE\_TIME: The number of days a user must wait before reusing a password.  
+* PASSWORD\_REUSE\_MAX: The number of password changes that must occur before a password can be reused.  
+* PASSWORD\_VERIFY\_FUNCTION: The name of a PL/SQL function that can check password complexity.
+
+Note that if the user changes their password by supplying a new one in a pre-hashed form, then it is not possible to verify the complexity with the PASSWORD\_VERIFY\_FUNCTION option or re-use with the PASSWORD\_REUSE\_MAX option. In order to mitigate this, the PASSWORD\_ALLOW\_HASHED option may be set to false in the password profile.  
+If you're running EDB Postgres Advanced Server and not using an external authentication provider such as LDAP or Kerberos, consider using password profiles to ensure your users maintain strong, regularly changed passwords.  
+**SET ROLE**
+
+The [SET ROLE](https://www.postgresql.org/docs/current/sql-set-role.html) SQL command may be used by a user to change the user identifier of the current session to the name of any role of which they are a member. This may be used to either add to or restrict privileges on the session, and may be reset using RESET ROLE (thus making SET ROLE unsuitable for use as a multi-tenancy solution).  
+SET ROLE is similar to using the sudo su \- \<user\> on a Unix-like system. It essentially allows you to run SQL commands as that other user.  
+By default when a role is a member of another role, it will automatically inherit the privileges of that role. In order to use SET ROLE effectively, the NOINHERIT keyword should be used when creating the role to prevent it inheriting privileges automatically, requiring the use of SET ROLE to explicitly gain them when needed.  
+In addition to SET ROLE, there is also a SET SESSION AUTHORIZATION command which is only available to superusers. The high-level difference between them is that SET ROLE will change the current\_user value but not session\_user, whilst SET SESSION AUTHORIZATION will change both. In practical terms, this means that after running [SET SESSION AUTHORIZATION](https://www.postgresql.org/docs/current/sql-set-session-authorization.html), any subsequent SET ROLE commands will be restricted to those that the session\_user could perform, regardless of the fact that the original session\_user was a superuser. This allows superusers to more accurately imitate another user.  
+Consider using SET ROLE to allow users to temporarily elevate their privileges when and only when required to perform more potentially dangerous tasks.  
+**Monitoring Roles**
+
+Postgres comes with a number of built-in monitoring roles (originally developed by your humble author\!) that have access to functionality that was restricted to superusers only in earlier versions of Postgres. These roles allow you to grant specific privileges to roles that are used to monitor the system, without having to give them full superuser access:
+
+* pg\_monitor: A role which combines all of the following roles:  
+* pg\_read\_all\_settings: Read all configuration variables, even those normally visible only to superusers.  
+* pg\_read\_all\_stats: Read all pg\_stat\_\* views and use various statistics related extensions, even those normally visible only to superusers.  
+* pg\_stat\_scan\_tables: Execute monitoring functions that may take ACCESS SHARE locks on tables, potentially for a long time.
+
+**Use the monitoring roles to give elevated privileges to the roles that you use to monitor your database servers to avoid the need to give them superuser access. Ensure the roles you have have the minimum privileges required to do what you need.**
+
+**Data Access Control**
+
+As part of examining the security setup of your Postgres deployment, it is important to look at   
+ data access control and how we can prevent users from accessing data that they should not be able to access.  
+**ACLs**
+
+Access Control Lists or ACLs are somewhat cryptic strings that are attached to objects such as tables, functions, views, and even columns in Postgres. They actually contain a list of privileges such as select, insert, execute and so on that are granted to each role, as well as an additional optional flag (\*) for each privilege that, if present, denotes that the role has the ability to grant this privilege to other roles, and the name of the role that granted the privileges.  
+An example of an ACL for a table created by Joe might be as follows:  
+joe=arwdDxt/joe \=r/joe sales\_team=arw/joe  
+The first section tells us that Joe has all the available privileges on the table (INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER), originally granted by Joe (when he created the table).  
+The second section tells us that read access has been granted to PUBLIC (a special, pseudorole that means everyone) by Joe, and the third section tells us that the Sales Team has been granted INSERT, SELECT and UPDATE privileges, again, by Joe.  
+The privilege flags in ACLs vary quite significantly based on the type of object in question; please review the [documentation](https://www.postgresql.org/docs/current/ddl-priv.html) for further details.  
+It's useful to understand how ACLs are written in Postgres, particularly if you prefer working with command line tools, which will typically show them in the internal format. Graphical tools such as [pgAdmin](https://www.pgadmin.org/) will parse and display the ACL in a visual format that is much easier to read.  
+Any well-designed system should use roles in conjunction with ACLs to protect the schema and data in the database. It is good practice to have the schema (i.e., the tables and other objects) be owned by a non-superuser role that is not a role that the application uses to connect to the database or to grant other privileges to login roles. Create group roles that reflect the permissions or roles within your application that have the required database privileges, and grant those roles to login roles as required. It is not usually a good idea to grant privileges directly to login roles used by end users, as that can quickly become difficult to manage.  
+**Spend time fully understanding the privileges required in your system for users and applications to be able to do their jobs. Minimize privileges to only those required, separate schema ownership from data, and make use of group roles to simplify privilege management for individual login roles.**
+
+**GRANT & REVOKE**
+
+ACLs are managed on objects in Postgres through the use of the GRANT and REVOKE SQL commands. In most cases when an object is created, only the owner has any privileges to use or work with that object in any way, exceptions being that PUBLIC are granted EXECUTE permission on functions and procedures, CONNECT and TEMPORARY permission on databases, and USAGE permission on languages, data types, and domains. Any of these privileges can be revoked if required.  
+Permission to modify or drop an object is always reserved for the owner of the object and superusers. The object ownership can be reassigned using the ALTER SQL command.  
+[Default privileges](https://www.postgresql.org/docs/current/sql-alterdefaultprivileges.html) can be overridden using the ALTER DEFAULT PRIVILEGES command for some object types. This allows you to configure the system such that certain privileges are automatically granted to roles on new objects that are created. For example, Joe in the previous example could issue a command such as the one below to grant the Sales Team insert, select, and update privileges on any new tables (but not preexisting ones, which may need to be updated manually):  
+```sql
+    ALTER DEFAULT PRIVILEGES   
+    GRANT INSERT, SELECT, UPDATE   
+    ON TABLES   
+    TO sales\_team;
+```  
+Assuming that when a new object is created it doesn't automatically include the required privileges in the ACL, we can use GRANT and REVOKE to set up the ACL as required. To continue our previous example, Joe might use the following SQL command to grant the Sales Team permissions on the orders table:  
+GRANT INSERT, SELECT, UPDATE ON orders TO sales\_team;  
+In order to revoke any automatically granted privileges, or to revoke previously granted privileges to meet changing business needs, we can use the REVOKE SQL command:  
+REVOKE UPDATE ON orders FROM sales\_team;  
+Assuming the Sales Team previously had the INSERT, SELECT and UPDATE privileges as seen in the earlier example, this would remove the UPDATE privilege, allowing them to view and add orders, but not modify them.  
+It is worth noting that the use of ACLs on columns can sometimes catch people out because the wildcard in a SELECT \* FROM query will not exclude the columns that users don't have access to and will return an access denied message for the table. In such cases the user should explicitly list the columns they have permission to SELECT from.  
+**Having created group roles to organize login users, use the GRANT and REVOKE SQL commands to give the group roles the minimum level of privilege required to work. Use default privileges where appropriate as a time-saver, but be careful that doing so doesn't give more privileges than appropriate in the future. Use GRANT to give the privileges to the required login roles by making them members of the group roles.**
+
+**RLS**
+
+[Row Level Security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) or RLS is a technology available in Postgres that allows you to define policies that limit the visibility of rows in a table to certain roles. Before we dive into the details of how an RLS policy can be set up, there are two important caveats to note:
+
+1. Superusers and roles with the BYPASSRLS attribute always bypass row level security policies, as do table owners unless they force the policy on themselves.  
+2. The existence of a row may be inferred by a user through "covert channels." For example, a unique constraint on a field such as a social security number might prevent the user inserting another row with the same value. The user cannot access the row, but they can infer that a record with that social security number already exists.
+
+By default, row level security is turned off on tables in Postgres. It can be enabled with a command such as ALTER TABLE...ENABLE ROW LEVEL SECURITY, which will enable a restrictive policy preventing access to all data unless or until other policies have been created.  
+The policy itself consists of a name, the table to which the policy applies, the optional role to which it applies, and the USING clause which defines how matching or allowed rows will be identified. For example, we might limit access to orders to the Sales Team member that created them:  
+CREATE POLICY sales\_team\_policy ON orders TO sales\_team  
+    USING (sales\_person \= current\_user);  
+We can also specify operations to which the policy applies. The following example would allow all members of the Sales Team to select any orders, but only the original sales person would be able to update or delete an order:  
+CREATE POLICY sales\_team\_select\_policy ON users  
+    FOR SELECT  
+    USING (true);  
+CREATE POLICY sales\_team\_modify\_policy ON users  
+    USING (sales\_person \= current\_user);  
+By default, permissive policies are used, meaning that where there are multiple policies that apply, they are combined using a boolean OR. It is also possible to use restrictive policies, where a boolean AND is used when evaluating whether or not access to a row satisfies the combined policies.  
+Row Level Security policies can take some effort to set up and index design must also consider them, but there are cases when it may be essential to do so, such as in a medical records system where it may be a legal requirement to restrict access to patient records to the medical staff that are directly responsible for the patient's care.  
+**Consider the legal and ethical requirements to restrict access to specific rows in each of your tables, and design and implement RLS policies to meet those requirements where necessary. Take care to minimize covert channels by avoiding the use of sensitive data in constraints.**
+
+**Views**
+
+Views are obviously useful for encapsulating commonly executed queries into an object that can be queried as if it were also a table, but they can also be useful for preventing unauthorized access to data by ensuring that roles do not have the ability to select from the underlying tables, and have to access the data from the view instead. A classic example is part of Postgres; the pg\_catalog.pg\_authid table contains a row for each role in the database, including a column containing the hash of the password for the role if it's been set. Because the hash is considered sensitive information, the table does not have SELECT privileges for any roles other than the superuser that the database was initialised with.  
+A view (pg\_catalog.pg\_roles)  is provided instead, which can be selected from by any user. When selecting from the view, the password is always returned as \*\*\*\*\*\*\*\*. This is arguably more convenient than simply using an ACL on the password column in the underlying table as that would cause a permissions error if queried with SELECT \* FROM.  
+When using updateable views, a CHECK OPTION is available when defining the view. When omitted, the view will allow the user to insert or update records such that they wouldn't be visible through the view, otherwise the insert or update will only be allowed if the row would be visible to the user. If LOCAL CHECK OPTION is specified, row visibility is checked only against conditions on the view being used directly, but when CASCADED CHECK OPTION is used (the default, if CHECK OPTION is specified), row visibility is checked against the view being used directly as well as any other underlying views.  
+**Consider using views over secured tables as a method of allowing access to a limited subset of the columns in the underlying table to appropriate roles.**
+
+**Security barriers**
+
+Using views to restrict access to a column is quite common, but people often also use them to restrict access to certain rows. While there is certainly value in doing that, one must be mindful of one particularly nasty side effect; it's possible to trick the Postgres optimizer into leaking the hidden data\!   
+This is not actually a bug; it's the way the system is intended to work. Essentially what can happen is that when a query against a view is executed by the user, and the user includes a call to a very low cost function in that outer query, the optimizer may choose to run the query for every row in the data underlying the view, before it applies the selectivity clauses in the view, thus allowing the function to access the restricted data. This is demonstrated nicely in a [blog post](http://rhaas.blogspot.com/2012/03/security-barrier-views.html) by my colleague Robert Haas.  
+To solve this problem, we use a security barrier, which is basically an option that is passed when the view is created that tells Postgres to always execute the qualifiers on the view first, thus ensuring that the function never sees the hidden rows.  
+Related to security barriers is the LEAKPROOF parameter for functions. This can only be used by superusers when creating a function, and serves to certify that the function doesn't leak any information besides the intended return value. This allows Postgres to better optimize queries where a function is used with a security barrier view, safe in the knowledge that the function won't leak any information.  
+**Be careful when using views to hide rows to ensure that they are marked as security barriers to avoid leaking of data. Consider whether RLS might be a better solution for limiting access to specific rows.**
+
+**Security Definer Functions**
+
+By default, functions and procedures in Postgres are what we call SECURITY INVOKER functions. That means that when they are called, they execute with the privileges of the calling role.  
+Passing the SECURITY DEFINER option when creating the function means that whenever the function is called, it will be executed with the privileges of the owner instead of the calling role. This is similar to the [setuid](https://en.wikipedia.org/wiki/Setuid) bit in a Unix file ACL, which when set will allow an executable to run with the permissions of its owner instead of the user that executed it.  
+This ability can be useful in various situations. One example might be a function that is called by a trigger on a table to write a record to an audit log, that all login and group roles are prevented from accessing in any way. It is important to carefully consider the consequences of using SECURITY DEFINER functions though \- in particular, ensure that they are kept as simple as possible and perform only a single task without taking any parameters that may allow them to be used for other purposes for which they were not intended.  
+**Consider using SECURITY DEFINER functions to provide specific functionality to roles that cannot perform that tasks directly themselves. Be careful to consider the possible ramifications and ways in which such functions could be misused, and ensure they are limited to performing only the intended task.**
+
+**Data redaction**
+
+Data redaction is a technique that hides specific pieces of sensitive information from users by dynamically changing the value that is displayed. While this can be done to some extent with views in Postgres as described above, EDB Postgres Advanced Server includes native data redaction functionality.  
+Redaction is implemented in EPAS using [data redaction policies](https://www.enterprisedb.com/edb-docs/d/edb-postgres-advanced-server/user-guides/user-guide/12/EDB\_Postgres\_Advanced\_Server\_Guide.1.56.html) on tables. In short, these policies specify one or more columns on a table to operate on, an expression that determines whether or not the policy should be applied, a function to perform the redaction, a scope, and any exceptions to the policy. See the documentation link above for an example showing how policies can be created.  
+**When using EDB Postgres Advanced Server and working with sensitive data such as credit card numbers, consider using data redaction policies to dynamically change the data displayed to a redacted form such as "XXXX XXXX XXXX XXXX 8397" to prevent users having access to sensitive data unnecessarily.**
+
+**Encryption**
+
+The final component to consider when executing end-to-end security for Postgres is encrypting sensitive data. There are a number of methods and extensions available that can be configured to provide additional security through encryption.  
+**pgcrypto**
+
+[pgcrypto](https://www.postgresql.org/docs/current/pgcrypto.html) is a standard extension of Postgres and EPAS that is included as a contrib module in the source tree and most binary distributions. Its purpose is to provide SQL functions for encryption and hashing that can be utilized as part of the logic in your database design.  
+**Installation**
+
+With most binary distributions of Postgres, pgcrypto can be installed by first ensuring that the contrib modules are installed on the server. With installer-based distributions such as those for Windows and macOS, they are typically installed as part of the database server itself. Linux packages such as Debian/Ubuntu's DEBs and Redhat/SUSE RPMs may include them in a sub-package \- for example, the PostgreSQL Community's packages from yum.postgresql.org have a package called postgresql12-contrib for PostgreSQL 12\.  
+Once the package is installed on your server, simply run the CREATE EXTENSION command in the desired database as a superuser:  
+CREATE EXTENSION pgcrypto;  
+**Consider using the pgcrypto extension in your databases when you require the ability to hash or encrypt individual pieces of data to meet regulatory and similar requirements.**
+
+**Hashing**
+
+Hashing is a method of generating a cryptographically secure representation of a piece of data, typically of a fixed length (the size of which is dependent on the algorithm used). Importantly, it is non-reversible; that is, the original data cannot be extracted from the hash value — however, because the hashed value is unique to the original data, it can be used as a checksum to see if the data has been changed or to see if a user provided value matches the original value.  
+Hashing is most commonly used to store passwords and other sensitive information that may need to be verified, but not returned.  
+As an example, we can use pgcrypto to hash a password that the user will use in the future:  
+INSERT INTO users   
+    (username, email, password)  
+VALUES  
+    ('pgsnake', 'dave.page@enterprisedb.com', crypt('new password', gen\_salt('md5')));  
+To verify this password later we can SELECT the user record from the table:  
+SELECT  
+    \*  
+FROM  
+    users  
+WHERE  
+   username \= 'pgsnake' AND   
+   password \= crypt('entered password', password)  
+If a record is returned, the password was entered correctly — otherwise, it was incorrect.  
+It is important to note that when passwords are included in SQL commands, as shown above, they may end up being written to log files on the database server. Network communications may also leak commands like these, if not protected with encryption.  
+**Never store user passwords in plain text or obfuscated form in the database, and never use a reversible encrypted form unless the functionality of the application absolutely requires it (for example, if writing a password manager application). Use non-reversible hashing wherever possible for application passwords and other information that must be verified but not returned.**
+
+**Encryption**
+
+pgcrypto also provides functionality for encrypting data that is useful when storing information that needs to be retrieved but should be stored in a secure form. There are "raw" encryption/decryption functions provided with pgcrypto as well as PGP functions. The PGP functions are strongly encouraged over use of the raw functions, which use a user-provided key directly as the cipher key, provide no integrity checking, expect the user to manage all encryption parameters, and work with bytea data not text.  
+Symmetric key encryption is the easiest to use, as it doesn't require a PGP key. For example, we can demonstrate encryption and decryption of data as shown with this simple SQL command in which the inner function call encrypts the data and the outer one decrypts it:  
+SELECT pgp\_sym\_decrypt(  
+    pgp\_sym\_encrypt('Hi There', 'password'),   
+    'password');  
+Note that the cipher text returned by the encryption function and passed to the decryption function is in bytea format.  
+To use public key functionality, first a key is required. This can be generated using [GnuPG](https://www.gnupg.org/) with a command such as:  
+gpg \--gen-key  
+The PostgreSQL documentation suggests that the preferred key type is "DSA and Elgamal." Once the key is generated, you'll need to export it:  
+\# List the keys in the keyring:  
+gpg \--list-secret-keys  
+   
+\# Export a public key in ASCII armor format:  
+gpg \-a \--export KEYID \> public.key  
+   
+\# Export a secret key in ASCII armor format:  
+gpg \-a \--export-secret-keys KEYID \> secret.key  
+The public key can now be used to encrypt data using the SQL encryption function:  
+pgp\_pub\_encrypt('\<data\>', '\<public key\>')  
+Similarly, the data can later be decrypted using:  
+pgp\_pub\_decrypt(\<cipher text\>, '\<private key\>')  
+Again, note that the cipher text is in bytea format.  
+**Use encryption when storing pieces of sensitive data in the database that need to be retrieved in the future. Consider carefully whether symmetric or public key encryption is most appropriate for your use case. Public key generally makes more sense when exchanging data with others (because there's no shared secret), while symmetric may make more sense for a self-contained application.**
+
+**Key management** 
+
+One, often major, issue with the use of encryption in a database is key management. In its simplest form, an application may have a hard-coded or centrally configured key that it uses when encrypting and decrypting data. Unless the application has the ability to change the key (which may also be expensive if there's a lot of data to re-encrypt), then that key will be valid for the lifetime of the application and it also means that all users are sharing one single key. These factors greatly increase the chances of that key being known to multiple people (e.g., the administrators of the application), some of whom may leave the organization, taking that knowledge with them.  
+Key management systems alleviate some of these problems by offering ways to store keys in a secure service separately from the database and application, and to potentially use different keys for different users or purposes. Some, such as Bruce Momjian's [pgcryptokey](https://momjian.us/download/pgcryptokey/) extension, also offer functionality for re-encrypting through SQL commands. That can still be expensive of course, but the extension does make it trivial to do. Key management systems can also avoid the need for users to ever see the actual keys; their access to the keys can be controlled through a password or passphrase (which may be authenticated using Kerberos or a similar enterprise identity management system), with the key itself being passed directly to the database server or application as needed.  
+At the time of writing there is an ongoing discussion in the PostgreSQL community about the development of a key management system as a feature of the database server. Those that are interested in this feature or interested in seeing how features are discussed and added to PostgreSQL might want to read the [original](https://www.postgresql.org/message-id/flat/031401d3f41d%245c70ed90%241552c8b0%24%40lab.ntt.co.jp) and [current](https://www.postgresql.org/message-id/flat/CA%2Bfd4k7q5o6Nc\_AaX6BcYM9yqTbC6\_pnH-6nSD%3D54Zp6NBQTCQ%40mail.gmail.com) email threads.  
+**Consider whether the use of a key management system may be appropriate for managing your cryptographic keys to avoid the use of shared keys or to separate their storage from the application.**
+
+**File system and full disk encryption**
+
+When using file system encryption (or full disk encryption, as the benefits are essentially the same for the scope of this blog) we typically encrypt the volumes that are used to store the database and write ahead log, or often the entire system. These types of encryption are transparent to the database server and require no configuration in Postgres.  
+It is important to note that file system and data encryption in Postgres provide protection against different attack vectors. The operating system may make use of a password or key management system very early on in the boot phase to ensure that keys are kept externally, but once a server with file system encryption is booted and running with filesystems mounted, all the data is accessible in the same way as it would be on a machine without encryption. This gives us protection against physical attacks on non-running hardware; for example, a stolen hard disk. File system or full disk encryption does not protect against attacks on a system that is up and running, nor do they enable us to control visibility of data in the database for different users.  
+There are different file system or full disk system encryption options available bundled with most operating systems, commercially, and as open source products. Among the most common options are [FileVault](https://support.apple.com/en-gb/guide/mac-help/mh11785/mac), which is included with Apple macOS, [BitLocker](https://docs.microsoft.com/en-us/windows/security/information-protection/bitlocker/bitlocker-how-to-deploy-on-windows-server) for use with Microsoft Windows, and [LUKS](https://gitlab.com/cryptsetup/cryptsetup/) on Linux systems.  
+Encrypted volumes are also available on all the major cloud providers for protecting your data. For example, Amazon's Elastic Block Service (EBS) provides an option for creating encrypted volumes, which can use a default key or one provided through their key management system. It's worth noting that Amazon does of course have access to both your keys and the physical devices on which the volumes are provisioned, but they go to lengths to ensure that there is separation of duties between the staff that may have access to the keys and staff that may have access to the hardware.  
+**It is a good idea to use file system or full disk encryption on any computer to protect against physical loss of hardware in your humble author's opinion. All popular operating systems have options available to allow this built in.**
+
+**Conclusion**
+
+**In this article, we've looked at the security of your Postgres implementation, from the client perspective through to the on-disk storage. We saw how a number of factors related to server access can affect the security of your Postgres servers, and that the following should be considered as part of any deployment or review:**
+
+* Physical access  
+* Server access via Unix Domain Sockets and the network  
+* Firewalls  
+* Transport encryption
+
+**We also saw how determining user authentication mechanisms to authenticate different connection attempts is critical to securing your Postgres deployment. Roles are also an important part of security in Postgres, and by configuring and securing them properly, we can use them to minimize the risk to our database servers using the principle of least privilege. Techniques for securing and minimizing access to sensitive data in Postgres require planning and careful design, but can significantly improve the security of your data. Finally, we saw how encryption security for your Postgres deployment encompasses both data and file system/full disk encryption; it may also be desirable to integrate with a key management system.** 
+
+**In all aspects of this journey, there are options that are appropriate for one deployment, and other options that are appropriate for others. Additional functionality should also be considered, such as [sepgsql](https://www.postgresql.org/docs/current/sepgsql.html)—which can work with SELinux, and could take an entire blog series to describe on its own\!**
+
+**Hopefully this overview is helpful for reviewing the security of your deployments, but do remember that each deployment scenario is unique and the suggestions made here are not a "one size fits all" solution.**  
+    
+   

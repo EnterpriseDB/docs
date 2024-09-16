@@ -1,0 +1,180 @@
+---
+title: "Intermediate"
+navTitle: "Intermediate Security"
+---
+
+## PostgreSQL Security 201: Intermediate Security Guidance
+
+Once you've mastered the basics of securing your PostgreSQL database, it's time to dive deeper into intermediate topics. 
+This guide will cover advanced security techniques that help further safeguard your data, improve auditability, and reduce risks associated with more sophisticated attacks.
+PostgreSQL’s intermediate security practices are designed to mitigate more advanced attack vectors and meet compliance standards. By focusing on enhanced role management, encryption, fine-grained access control, auditing, and cloud-specific configurations, you can build a robust defense for your databases. 
+Keep evolving your security posture by staying updated on emerging threats and security features in new PostgreSQL releases.
+
+### 1. Advanced Role Management and Privileges
+- **Avoid Use of Superuser Roles**: Limit the use of superuser accounts.
+- **Custom Roles**: Create task-specific roles for finer privilege management.
+- **Role Inheritance**: Use role inheritance to streamline privilege assignments.
+- **Revoke Public Privileges**: Remove default permissions from the `public` role.
+
+Effective management of roles and privileges is essential for maintaining a secure PostgreSQL environment.
+
+Avoid Use of Superuser Roles: Superuser privileges should be limited to only the most essential operations. Always create distinct, minimally privileged roles for day-to-day database tasks.
+
+Custom Roles for Specific Tasks: Rather than using a single, all-encompassing role, create custom roles for different functions like read-only, read-write, and admin tasks. This limits the scope of potential security breaches.
+
+```sql
+CREATE ROLE read_only NOINHERIT;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO read_only;
+```
+
+Role Inheritance: By using PostgreSQL’s role inheritance feature, you can create hierarchies of roles that simplify privilege management. A parent role can be granted a specific set of privileges, which can then be inherited by child roles.
+
+```sql
+CREATE ROLE base_role;
+CREATE ROLE admin_role INHERIT base_role;
+```
+
+Revoking Public Privileges: By default, new databases and tables grant certain privileges to the public role. It’s best practice to revoke these:
+
+```sql
+REVOKE ALL ON DATABASE mydb FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+```
+
+### 2. Fine-Grained Access Control with Row-Level Security (RLS)
+- **Enable Row-Level Security**: Enforce row-level security policies on sensitive tables.
+- **Define Security Policies**: Control access to specific rows based on user roles.
+
+Row-Level Security (RLS) provides fine-grained control over who can access specific rows in a table. This is essential when different users need access to different subsets of data.
+
+Enable Row-Level Security: To activate RLS for a table, you first need to enable it:
+
+```sql
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+```
+
+Define Security Policies: Once RLS is enabled, you can create policies to specify which users can access or modify rows in the table:
+
+```sql
+CREATE POLICY employee_policy ON employees
+FOR SELECT
+USING (employee_id = current_user);
+```
+
+### 3. Database Encryption
+- **Encrypt Sensitive Columns**: Use `pgcrypto` to encrypt sensitive data at the column level.
+- **Full Disk Encryption**: Implement full-disk encryption to protect data at rest.
+
+Encryption is critical for protecting data at rest and in transit. Intermediate PostgreSQL setups often leverage encryption to secure sensitive information.
+
+Encrypting Sensitive Columns: While PostgreSQL doesn’t natively support column-level encryption, you can use client-side encryption libraries (like pgcrypto) to encrypt and decrypt data. For example:
+
+```sql
+SELECT pgp_sym_encrypt('secret data', 'encryption key');
+```
+Ensure that encryption keys are stored securely outside the database, such as in AWS KMS, HashiCorp Vault, or other secure key management systems.
+
+Full Disk Encryption: If column-level encryption is not feasible, full disk encryption should be used to secure the data directory. Encrypting the entire disk ensures that sensitive data is protected in the event of unauthorized physical access to the database server.
+
+
+### 4. `pg_hba.conf` Advanced Configuration
+- **Granular Network Restrictions**: Configure specific IP ranges or hosts for different roles.
+- **Separate Roles by Network**: Allow different roles based on their origin IP.
+
+The pg_hba.conf file controls access to PostgreSQL at the network level. Intermediate configurations involve more complex filtering and control mechanisms.
+
+Granular Network Restrictions: Define access based on user, database, or IP address to create fine-grained network policies. For example, restricting administrative access to a specific IP range:
+
+```bash
+host    all    postgres    10.0.0.0/8    scram-sha-256
+```
+
+Separate Roles for Different Networks: You can create roles that have different levels of access based on their network of origin. For instance, read-only users on a public network, and read-write users on a private network:
+
+```bash
+host    all    read_only_user    0.0.0.0/0    scram-sha-256
+host    all    read_write_user   10.0.0.0/8   scram-sha-256
+```
+
+### 5. Database Auditing and Logging
+- **Enable `pgaudit`**: Use the `pgaudit` extension for detailed logging of database activity.
+- **Fine-Grained Logging**: Customize logging configurations to capture DDL, DML, and more.
+
+Auditing is essential for identifying abnormal behavior and unauthorized access. It also helps in compliance with security standards like PCI-DSS and GDPR.
+
+Enable pgaudit Extension: The pgaudit extension provides detailed logging of SQL statements at various levels (DDL, DML, and more). Install and configure it as follows:
+
+```sql
+CREATE EXTENSION pgaudit;
+```
+
+To configure pgaudit to log SELECT statements:
+
+```bash
+pgaudit.log = 'read'
+```
+Fine-Grained Logging: PostgreSQL offers several levels of logging, but for performance reasons, you should fine-tune it. Enable specific logging for failed login attempts or DDL changes:
+
+```bash
+log_connections = on
+log_disconnections = on
+log_statement = 'ddl'
+```
+
+### 6. Monitoring and Alerting
+- **PostgreSQL Monitoring Tools**: Use `pg_stat_statements`, Prometheus, or Grafana for monitoring.
+- **CloudWatch for AWS Aurora**: Leverage AWS CloudWatch for monitoring Aurora Postgres.
+- **Set Alerts for Suspicious Activity**: Configure alerts for abnormal behaviors (e.g., multiple failed logins).
+
+Intermediate PostgreSQL security requires robust monitoring and alerting. Several tools and configurations can help with this:
+
+PostgreSQL Monitoring Tools: Tools like pg_stat_statements, pgBadger, or third-party tools such as Prometheus and Grafana, provide insights into database activity and performance metrics.
+
+Setting Alerts for Suspicious Activity: Configure alerts for specific actions, such as multiple failed login attempts, database role changes, or connections from unknown IP addresses.
+
+```bash
+log_min_error_statement = 'ERROR'
+log_min_duration_statement = 1000
+```
+
+CloudWatch and RDS Enhanced Monitoring: For AWS Aurora PostgreSQL users, leverage CloudWatch to monitor database performance metrics and set up alarms for unusual patterns in CPU, memory, or I/O usage.
+
+### 7. Database Hardening
+- **Remove Unused Extensions**: Ensure unnecessary extensions are disabled.
+- **Lock Down Data Directory**: Secure PostgreSQL’s data directory with appropriate file permissions.
+
+Hardening your PostgreSQL server is an intermediate security practice that reduces the attack surface by removing or disabling unnecessary features.
+
+Disabling Unnecessary Extensions: Extensions can increase the attack surface of PostgreSQL. Disable or remove any extensions you do not actively use:
+
+```sql
+DROP EXTENSION IF EXISTS plperl;
+```
+
+Restricting Direct Access to Data Directory: Ensure that the PostgreSQL data directory is only accessible by the PostgreSQL user. Use file system permissions (chmod 700) to lock down access.
+
+```bash
+chmod 700 /var/lib/postgresql/data
+```
+
+### 8. Securing PostgreSQL on Cloud Providers
+- **AWS RDS Encryption**: Enable RDS encryption for data at rest using KMS.
+- **Restrict Network Access**: Use VPCs or security groups to limit database access.
+- **IAM Authentication**: For AWS, use IAM roles and policies to secure access.
+
+Cloud environments introduce additional layers of complexity. Here’s how to secure PostgreSQL instances in cloud platforms:
+
+Database Encryption in AWS RDS/Aurora: Use AWS RDS's built-in encryption for data at rest with KMS-managed keys. This is easily enabled during the creation of an RDS instance.
+
+Network Security Groups: Use cloud-level security groups or firewalls to restrict access to the PostgreSQL instance. Only allow trusted IPs or VPCs to connect to the database.
+
+IAM Authentication (AWS): Use AWS IAM roles and policies to manage access to PostgreSQL instances. IAM authentication provides an extra layer of security, reducing the need for password management.
+
+```bash
+aws rds generate-db-auth-token --hostname <endpoint> --port 5432 --region <region> --username <db-user>
+```
+
+### 9. Implementing Multi-Factor Authentication (MFA)
+- **External Identity Providers**: Integrate MFA with identity providers like Okta or AWS IAM for added security.
+
+Using MFA for database access further secures your system by requiring users to provide a second factor beyond just a password. You can integrate PostgreSQL with an external identity provider (IdP) that supports MFA, such as Okta, Google Identity, or Azure AD.
