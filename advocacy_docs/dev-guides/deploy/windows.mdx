@@ -1,0 +1,149 @@
+---
+title: Installing PostgreSQL for development and testing on Microsoft Windows
+navTitle: On Windows
+description: Install PostgreSQL on your local Windows machine for development purposes.
+product: postgresql
+iconName: logos/Windows
+---
+
+## Prerequesites
+
+- Windows 10 build 16299 or later
+- An account with Administrator rights
+
+## Installing
+
+For a development machine, we'll use [WinGet](https://learn.microsoft.com/en-us/windows/package-manager/winget/) to download and install PostgreSQL:
+
+```
+winget install PostgreSQL.PostgreSQL.16
+__OUTPUT__
+Found PostgreSQL 16 [PostgreSQL.PostgreSQL.16] Version 16.4-1
+This application is licensed to you by its owner.
+Microsoft is not responsible for, nor does it grant any licenses to, third-party packages.
+Downloading https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64.exe
+  ██████████████████████████████   356 MB /  356 MB
+Successfully verified installer hash
+Starting package install...
+Successfully installed
+```
+
+...where `16` is the major version of PostgreSQL we wish to install. This will install PostgreSQL in unattended mode, putting it into the default location (`C:\Program Files\PostgreSQL\`) with the default password (`postgres`) and installing both StackBuilder and PGAdmin.
+
+!!! Tip
+
+You can find a list of available PostgreSQL versions by using WinGet's `search` command:
+
+```
+winget search PostgreSQL.PostgreSQL
+___OUTPUT___
+Name          Id                       Version Source
+------------------------------------------------------
+PostgreSQL 10 PostgreSQL.PostgreSQL.10 10      winget
+PostgreSQL 11 PostgreSQL.PostgreSQL.11 11      winget
+PostgreSQL 12 PostgreSQL.PostgreSQL.12 12.20-1 winget
+PostgreSQL 13 PostgreSQL.PostgreSQL.13 13.16-1 winget
+PostgreSQL 14 PostgreSQL.PostgreSQL.14 14.13-1 winget
+PostgreSQL 15 PostgreSQL.PostgreSQL.15 15.8-1  winget
+PostgreSQL 16 PostgreSQL.PostgreSQL.16 16.4-1  winget
+PostgreSQL 9  PostgreSQL.PostgreSQL.9  9       winget
+```
+
+Installers for release candidate versions of PostgreSQL are also available on EDB's website at https://www.enterprisedb.com/downloads/postgres-postgresql-downloads
+!!!
+
+!!! SeeAlso "Further reading"
+For more fine-grained control, you can also download and run the installer interactively by following the instructions in [Installing PostgreSQL on Windows](https://www.enterprisedb.com/docs/supported-open-source/postgresql/installing/windows/). 
+!!!
+
+## Add PostgreSQL commands to your path
+
+PostgreSQL comes with [several useful command-line tools](https://www.postgresql.org/docs/current/reference-client.html) for working with your databases. For convenience, you'll probably want to add their location to your path.
+
+1.  Open the System Properties control panel and select the Advanced tab (or run `SystemPropertiesAdvanced.exe`)
+2.  Activate the "Environment Variables..." button to open the envornment variables editor
+3.  Find the `Path` variable under the "System variables" heading, and click "Edit..."
+4.  Add the path to the bin directory of the PostgreSQL version you installed, e.g.  `C:\Program Files\postgresql\16\bin\` (where *16* is the version of PostgreSQL that you installed).
+
+!!! Warning "This only affects new command prompts"
+If you have a command prompt open already, you'll need to close and reopen in order for your changes to the system path to take effect.
+!!!
+
+## Verifying your installation
+
+If the steps above completed successfully, you'll now have a PostgreSQL service running with the default database and superuser account. Let's verify this by connecting, creating a new user and database, and then connecting using that user.
+
+### Connect with psql
+
+Open a new command prompt, and run
+
+```
+psql -U postgres
+___OUTPUT__
+Password for user postgres:
+
+psql (16.4)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+
+postgres=#
+```
+
+When prompted, enter the default password (`postgres`). 
+
+!!! Warning
+We're setting up an environment for local development, and have no intention of enabling remote connections or working with sensitive data - so leaving the default password is fine. On a production or multi-user system, or when working with sensitive data, you should *at minimum* set a strong password for the superuser - and realistically, should probably disable password authentication for it entirely.
+!!!
+
+It's a good practice to develop with a user and database other than the default - this helps avoid issues later on when you go to deploy and have no idea what permissions your app needs! So let's start off right by creating an app user and giving it its own database:
+
+```
+create user myapp with password 'app-password';
+create database appdb with owner myapp;
+__OUTPUT__
+CREATE ROLE
+CREATE DATABASE
+```
+
+Now let's quit psql and connect with pgAdmin as our new user. Run,
+
+```
+\q
+```
+
+### Connect with pgAdmin
+
+Now launch pgAdmin via the Start menu.
+
+![pgAdmin 4 default view - server groups on left, welcome message on right](images/pgadmin-default.png)
+
+If you poke around a bit, you'll see that pgAdmin comes with a default connection configured for the `postgres` user to the `postgres` database in our local PostgreSQL server.
+
+Let's add a new connection for our app user to our app database.
+
+1. Right-click the Servers entry on the left, select Register and click Server:
+
+  ![pgadmin Servers group menu with register item and server submenu item selected](images/pgadmin-register-server.png)
+
+2. On the General tab, give it a descriptive name like "myapp db"
+
+3. Switch to the Connection tab:
+
+   enter connection information, using the new role and database we created in psql above:
+   
+   - `localhost` for Host name/address
+   - `appdb` for Maintenance database
+   - `myapp` for Username
+   - `app-password` for Password
+  
+  ...and check the *Save password?* option and click the Save button.
+
+    ![pgadmin screen showing two server connections configured under Servers group on left, with PostgreSQL 16 disconnected and myapp db connected and selected, with activity charts for myapp db shown on right](images/pgadmin-connected.png)
+
+You'll note that some actions that require system-level permissions (e.g., logs) are unavailable, as you're not connected as a superuser. For these, you can use the default superuser connection.
+
+## Conclusion
+
+By following these steps, you've created a local environment for developing against PostgreSQL. You've created your own database and limited-access user, and can proceed to create a schema, connect application frameworks, run tests, etc.
