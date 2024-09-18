@@ -9,7 +9,7 @@ In general it's possible to upgrade the cluster with almost zero downtime, by
 using an approach called Rolling Upgrade where nodes are upgraded one by one, and
 the application connections are switched over to already upgraded nodes.
 
-Ii's also possible to stop all nodes, perform the upgrade on all nodes and
+It's also possible to stop all nodes, perform the upgrade on all nodes and
 only then restart the entire cluster, just like with a standard PostgreSQL setup.
 This strategy of upgrading all nodes at the same time avoids running with
 mixed versions of software and therefore is the simplest, but obviously incurs
@@ -108,12 +108,28 @@ new DDL syntax that may have been added to a newer release of Postgres.
 
 ### Upgrading a CAMO-Enabled Cluster
 
-CAMO protection requires at least one of the nodes of a CAMO pair to
-be operational. For upgrades, we recommend to ensure that no CAMO
-protected transactions are running concurrent to the upgrade, or to
-use a rolling upgrade strategy, giving the nodes enough time to
-reconcile in between the upgrades and the corresponding node downtime
-due to the upgrade.
+If upgrading a CAMO-enabled cluster from 3.7 to 4.0, a major version upgrade, it requires upgrading CAMO groups one by one while disabling the CAMO protection for the group being upgraded and reconfiguring it using the new function-based CAMO settings.
+
+We recommended the following approach for upgrading two BDR nodes that constitute a CAMO pair to PGD 5.0:
+
+1. Ensure bdr.enable_camo remains off for transactions on any of the two nodes,
+or redirect clients away from the two nodes. Removing the CAMO pairing while
+attempting to use CAMO leads to errors and prevents further transactions.
+2. Uncouple the pair by deconfiguring CAMO by resetting `bdr.camo_origin_for` and
+`bdr.camo_parter_of` when upgrading from BDR 3.7. 
+3. Upgrade the two nodes to PGD 4.0. 
+4. Create a dedicated node group for the two nodes and move them into that node group.
+5. Enable CAMO using PGD 4.0's function based API. Use `bdr.add_camo_pair` to
+   reconfigure the CAMO pair. Then enable CAMO at a session level using
+   `bdr.enable_camo` and setting it to `on`. See [CAMO
+   Configuration](../camo/#configuration) for details on configuring CAMO pairs.
+6. Reconfigure the clients to connect to the CAMO-protected nodes.
+
+For minor version upgrades, CAMO protection requires at least one of the nodes
+of a CAMO pair to be operational. For upgrades, we recommend to ensure that no
+CAMO protected transactions are running concurrent to the upgrade, or to use a
+rolling upgrade strategy, giving the nodes enough time to reconcile in between
+the upgrades and the corresponding node downtime due to the upgrade.
 
 ## Upgrade Preparation
 
