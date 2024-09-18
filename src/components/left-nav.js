@@ -20,6 +20,8 @@ function getReleaseNotesNode(navTree) {
         return node;
       } else if (node.path.includes("/pem_rel_notes/")) {
         return node;
+      } else if (node.path.includes("/efm_rel_notes/")) {
+        return node;
       }
     }
   }
@@ -47,7 +49,7 @@ const SectionHeading = ({ navTree, path, iconName }) => {
         width="50"
         height="50"
       />
-          
+
       <Link
         to={navTree.path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
@@ -64,7 +66,7 @@ const SectionHeading = ({ navTree, path, iconName }) => {
           to={navTree.path}
           className={
             "d-block align-middle balance-text m-1 h4" +
-            (navTree.path === pagePath
+            (navTree.path === path
               ? " active fw-bold text-dark"
               : " text-primary")
           }
@@ -80,7 +82,7 @@ const SectionHeading = ({ navTree, path, iconName }) => {
                 to={relnotes.path}
                 className={
                   "d-block align-middle balance-text m-1 h5" +
-                  (relnotes.path === pagePath
+                  (relnotes.path === path
                     ? " fw-bold text-dark"
                     : " text-primary")
                 }
