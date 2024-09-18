@@ -21,18 +21,25 @@ const SectionHeading = ({ navTree, path, iconName }) => {
 
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={myIconName}
-        className={className}
-        width="50"
-        height="50"
-      />
       <Link
         to={navTree.path}
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
-        {navTree.title}
+        <Icon
+          iconName={myIconName}
+          className={className}
+          width="50"
+          height="50"
+        />
       </Link>
+      <div>
+        <Link
+          to={navTree.path}
+          className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+        >
+          {navTree.title}
+        </Link>
+      </div>
     </li>
   );
 };
@@ -46,12 +53,17 @@ const SectionHeadingWithVersions = ({
 }) => {
   return (
     <li className="ms-0 mb-4 d-flex align-items-center">
-      <Icon
-        iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
-        className="fill-orange me-3"
-        width="50"
-        height="50"
-      />
+      <Link
+        to={navTree.path}
+        className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
+      >
+        <Icon
+          iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+          className="fill-orange me-3"
+          width="50"
+          height="50"
+        />
+      </Link>
       <div className="rightsidenoclass">
         <Link
           to={navTree.path}

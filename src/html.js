@@ -13,6 +13,7 @@ export default function HTML(props) {
         <meta
           name="viewport"
           content="width=960, initial-scale=1, shrink-to-fit=no"
+          data-react-helmet="true"
         />
         {props.headComponents}
       </head>
