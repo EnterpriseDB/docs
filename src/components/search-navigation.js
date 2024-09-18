@@ -13,12 +13,10 @@ const LogoLink = () => (
 const DocsLink = ({ className }) => (
   <Link
     to="/"
-    className={["me-3 lead text-muted pt-2 header-docs-link", className].join(
-      " ",
-    )}
+    className={["me-3 lead text-muted pt-2", className].join(" ")}
     title="EDB Docs homepage"
   >
-    /<span className="ps-1">docs</span>
+    /<span className="ps-0">docs</span>
   </Link>
 );
 
