@@ -40,7 +40,7 @@ function linkRewriter() {
   return (tree) => {
     let fileMetadata = {};
     // link rewriter:
-    // - update links to supported_releases.md to point to /resources/platform-compatibility#pgk8s
+    // - update links to supported_releases.md to point to https://www.enterprisedb.com/resources/platform-compatibility#pgk8s
     // - update links to release_notes to rel_notes
     // - update links to appendixes/* to /*
     // - update links *from* appendixes/* to /*
@@ -58,7 +58,7 @@ function linkRewriter() {
       if (node.url.startsWith("appendixes"))
         node.url = node.url.replace("appendixes/", "");
       else if (node.url === "supported_releases.md")
-        node.url = "/resources/platform-compatibility#pgk8s";
+        node.url = "https://www.enterprisedb.com/resources/platform-compatibility#pgk8s";
       else if (node.url === "release_notes.md")
         node.url = "rel_notes";
       else if (node.url === "release_notes.md")

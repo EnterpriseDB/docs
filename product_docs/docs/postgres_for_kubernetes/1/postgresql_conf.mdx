@@ -71,6 +71,7 @@ operator by applying the following sections in this order:
 The **global default parameters** are:
 
 ```text
+archive_mode = 'on'
 dynamic_shared_memory_type = 'posix'
 logging_collector = 'on'
 log_destination = 'csvlog'
@@ -86,6 +87,7 @@ shared_memory_type = 'mmap' # for PostgreSQL >= 12 only
 wal_keep_size = '512MB' # for PostgreSQL >= 13 only
 wal_keep_segments = '32' # for PostgreSQL <= 12 only
 wal_level = 'logical'
+wal_log_hints = 'on'
 wal_sender_timeout = '5s'
 wal_receiver_timeout = '5s'
 ```
@@ -116,7 +118,6 @@ The following parameters are **fixed** and exclusively controlled by the operato
 
 ```text
 archive_command = '/controller/manager wal-archive %p'
-archive_mode = 'on'
 full_page_writes = 'on'
 hot_standby = 'true'
 listen_addresses = '*'
@@ -127,8 +128,6 @@ ssl_ca_file = '/controller/certificates/client-ca.crt'
 ssl_cert_file = '/controller/certificates/server.crt'
 ssl_key_file = '/controller/certificates/server.key'
 unix_socket_directories = '/controller/run'
-wal_level = 'logical'
-wal_log_hints = 'on'
 ```
 
 Since the fixed parameters are added at the end, they can't be overridden by the
@@ -477,11 +476,10 @@ exclusive method for altering the configuration of a PostgreSQL cluster. This
 approach guarantees coherence across the entire high-availability cluster and
 aligns with best practices for Infrastructure-as-Code.
 
-In EDB Postgres for Kubernetes version 1.22 and onwards, the default configuration disables
-the use of `ALTER SYSTEM` on new Postgres clusters. This decision is rooted in
-the recognition of potential risks associated with this command. To enable the
-use of `ALTER SYSTEM`, you can explicitly set `.spec.postgresql.enableAlterSystem`
-to `true`.
+In EDB Postgres for Kubernetes the default configuration disables the use of `ALTER SYSTEM`
+on new Postgres clusters. This decision is rooted in the recognition of
+potential risks associated with this command. To enable the use of `ALTER SYSTEM`,
+you can explicitly set `.spec.postgresql.enableAlterSystem` to `true`.
 
 !!! Warning
     Proceed with caution when utilizing `ALTER SYSTEM`. This command operates
@@ -489,9 +487,14 @@ to `true`.
     EDB Postgres for Kubernetes assumes responsibility for certain fixed parameters and complete
     control over others, emphasizing the need for careful consideration.
 
-When `.spec.postgresql.enableAlterSystem` is configured as `false`, any attempt
-to execute `ALTER SYSTEM` will result in an error. The error message might
-resemble the following:
+Starting from PostgreSQL 17, the `.spec.postgresql.enableAlterSystem` setting
+directly controls the [`allow_alter_system` GUC in PostgreSQL](https://www.postgresql.org/docs/17/runtime-config-compatible.html#GUC-ALLOW-ALTER-SYSTEM)
+— a feature directly contributed by EDB Postgres for Kubernetes to PostgreSQL.
+
+Prior to PostgreSQL 17, when `.spec.postgresql.enableAlterSystem` is set to
+`false`, the `postgresql.auto.conf` file is made read-only. Consequently, any
+attempt to execute the `ALTER SYSTEM` command will result in an error. The
+error message might look like this:
 
 ```output
 ERROR:  could not open file "postgresql.auto.conf": Permission denied
@@ -582,6 +585,7 @@ operator. The operator prevents the user from setting them using a webhook.
 Users are not allowed to set the following configuration parameters in the
 `postgresql` section:
 
+-   `allow_alter_system`
 -   `allow_system_table_mods`
 -   `archive_cleanup_command`
 -   `archive_command`
@@ -653,4 +657,3 @@ Users are not allowed to set the following configuration parameters in the
 -   `unix_socket_directories`
 -   `unix_socket_group`
 -   `unix_socket_permissions`
--   `wal_log_hints`

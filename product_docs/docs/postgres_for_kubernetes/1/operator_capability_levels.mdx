@@ -64,6 +64,10 @@ primary/standby architecture directly by setting the `imageName`
 attribute in the CR. The operator also supports `imagePullSecrets`
 to access private container registries, and it supports digests and
 tags for finer control of container image immutability.
+If you prefer not to specify an image name, you can leverage
+[image catalogs](image_catalog.md) by simply referencing the PostgreSQL
+major version. Moreover, image catalogs enable you to effortlessly create
+custom catalogs, directing to images based on your specific requirements.
 
 ### Labels and annotations
 
@@ -99,9 +103,10 @@ PVC template in the CR's `storage` parameter.
 For better performance and finer control, you can also choose to host your
 cluster's write-ahead log (WAL, also known as `pg_wal`) on a separate volume,
 preferably on different storage.
-The [`cnp-bench`](https://github.com/EnterpriseDB/cnp-bench) open source
-project can be used to benchmark both the storage and the database prior to
-production.
+The ["Benchmarking"](benchmarking.md) section of the documentation provides
+detailed instructions on benchmarking both storage and the database before
+production. It relies on the `cnp` plugin to ensure optimal performance and
+reliability.
 
 ### Replica configuration
 
@@ -115,7 +120,22 @@ switchover operations.
 EDB Postgres for Kubernetes manages replication slots for all the replicas
 in the HA cluster. The implementation is inspired by the previously
 proposed patch for PostgreSQL, called
-[failover slots](https://wiki.postgresql.org/wiki/Failover_slots).
+[failover slots](https://wiki.postgresql.org/wiki/Failover_slots), and
+also supports user defined physical replication slots on the primary.
+
+### Service Configuration
+
+By default, EDB Postgres for Kubernetes creates three Kubernetes [services](service_management.md)
+for applications to access the cluster via the network:
+
+-   One pointing to the primary for read/write operations.
+-   One pointing to replicas for read-only queries.
+-   A generic one pointing to any instance for read operations.
+
+You can disable the read-only and read services via configuration.
+Additionally, you can leverage the service template capability
+to create custom service resources, including load balancers, to access
+PostgreSQL outside Kubernetes. This is particularly useful for DBaaS purposes.
 
 ### Database configuration
 
@@ -272,8 +292,8 @@ the [LDAP authentication section of the PostgreSQL documentation](https://www.po
 The operator can be installed through a Kubernetes manifest by way of `kubectl
 apply`, to be used in a traditional Kubernetes installation in public
 and private cloud environments. Additionally, it can be deployed through
-the Operator Lifecycle Manager (OLM) from OperatorHub.io and the OpenShift
-Container Platform by Red Hat. A Helm Chart for the operator is also available.
+the OpenShift Container Platform by Red Hat. A Helm Chart for the operator is
+also available.
 
 ### Convention over configuration
 
@@ -424,18 +444,13 @@ label, or a transaction ID. This capability is built on top of the full restore
 one and supports all the options available in
 [PostgreSQL for PITR](https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET).
 
-### Zero-data-loss clusters through synchronous replication
+### Zero-Data-Loss Clusters Through Synchronous Replication
 
-Achieve  *zero data loss* (RPO=0) in your local high-availability EDB Postgres for Kubernetes
-cluster through quorum-based synchronous replication support. The operator provides
-two configuration options that control the minimum and maximum number of
-expected synchronous standby replicas available at any time. The operator
-reacts accordingly, based on the number of available and ready PostgreSQL
-instances in the cluster. It uses the following formula for the quorum (`q`):
-
-```
-1 <= minSyncReplicas <= q <= maxSyncReplicas <= readyReplicas
-```
+Achieve *zero data loss* (RPO=0) in your local high-availability EDB Postgres for Kubernetes
+cluster with support for both quorum-based and priority-based synchronous
+replication. The operator offers a flexible way to define the number of
+expected synchronous standby replicas available at any time, and allows
+customization of the `synchronous_standby_names` option as needed.
 
 ### Replica clusters
 
@@ -451,7 +466,7 @@ Notably, the source PostgreSQL instance can exist outside the Kubernetes
 environment, whether in a physical or virtual setting.
 
 Replica clusters can be instantiated through various methods, including volume
-snapshots, a recovery object store (utilizing the Barman Cloud backup format),
+snapshots, a recovery object store (using the Barman Cloud backup format),
 or streaming using `pg_basebackup`. Both WAL file shipping and WAL streaming
 are supported. The deployment of replica clusters significantly elevates the
 business continuity posture of PostgreSQL databases within Kubernetes,
@@ -463,6 +478,26 @@ Additionally, the flexibility extends to creating delayed replica clusters
 intentionally lagging behind the primary cluster. This intentional lag aims to
 minimize the Recovery Time Objective (RTO) in the event of unintended errors,
 such as incorrect `DELETE` or `UPDATE` SQL operations.
+
+### Distributed Database Topologies
+
+Leverage replica clusters to
+define [distributed database topologies](replica_cluster.md#distributed-topology)
+for PostgreSQL that span across various Kubernetes clusters, facilitating hybrid
+and multi-cloud deployments. With EDB Postgres for Kubernetes, you gain powerful capabilities,
+including:
+
+-   **Declarative Primary Control**: Easily specify which PostgreSQL cluster acts
+    as the primary.
+-   **Seamless Primary Switchover**: Effortlessly demote the current primary and
+    promote another PostgreSQL cluster, typically located in a different region,
+    without needing to re-clone the former primary.
+
+This setup can efficiently operate across two or more regions, can rely entirely
+on object stores for replication, and guarantees a maximum RPO (Recovery Point
+Objective) of 5 minutes. This advanced feature is uniquely provided by
+EDB Postgres for Kubernetes, ensuring robust data integrity and continuity across diverse
+environments.
 
 ### Tablespace support
 

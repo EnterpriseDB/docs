@@ -300,12 +300,20 @@ module.exports = {
         lessBabel: true,
         gatsbyRemarkPlugins: [
           {
+            resolve: require.resolve("./src/plugins/preserve-image-style"),
+          },
+          {
             resolve: "gatsby-remark-images",
             options: {
               linkImagesToOriginal: false,
               showCaptions: false,
+              disableBgImage: true,
+              backgroundColor: "none",
               maxWidth: 1080,
             },
+          },
+          {
+            resolve: require.resolve("./src/plugins/preserve-image-style"),
           },
           {
             resolve: `gatsby-remark-autolink-headers`,

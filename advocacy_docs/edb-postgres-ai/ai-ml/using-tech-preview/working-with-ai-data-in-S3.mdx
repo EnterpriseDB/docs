@@ -1,0 +1,103 @@
+---
+title: Working with AI data stored in S3-compatible object storage
+navTitle: Working with AI data in S3
+description: How to work with AI data stored in S3-compatible object storage using the aidb extension.
+---
+
+The following examples demonstrate how to use the aidb functions with S3-compatible object storage. You can use the following examples as is, because they use a publicly accessible example S3 bucket. Or you can prepare your own S3 compatible object storage bucket with some test data and try the steps in this section with that data.
+
+These examples also use image data and an appropriate image encoder LLM instead of text data. You could, though, use plain text data on object storage similar to the examples in [Working with AI data in Postgres](working-with-ai-data-in-postgres).
+
+### Creating a retriever
+
+Start by creating a retriever for images stored on s3-compatible object storage as the source using the `aidb.create_s3_retriever` function.
+
+```
+aidb.create_s3_retriever(
+    retriever_name text,
+    schema_name text,
+    model_name text,
+    data_type text,
+    bucket_name text,
+    prefix text,
+    endpoint_url text
+)
+```
+
+* The `retriever_name` is used to identify and reference the retriever; set it to `image_embeddings` for this example. 
+* The `schema_name` is the schema where the source table is located. 
+* The `model_name` is the name of the embeddings encoder model for similarity data; set it to [`clip-vit-base-patch32`](https://huggingface.co/openai/clip-vit-base-patch32) to use the open encoder model for image data from HuggingFace. 
+* The `data_type` is the type of data in the source table, which could be either `img` or `text`; set it to `img`.
+* The `bucket_name` is the name of the S3 bucket where the data is stored; set this to `torsten`. 
+* The `prefix` is the prefix of the objects in the bucket; set this to an empty string because you want all the objects in that bucket. 
+* The `endpoint_url` is the URL of the S3 endpoint; set that to `https://s3.us-south.cloud-object-storage.appdomain.cloud` to access the public example bucket.
+
+This gives the following SQL command:
+
+```sql
+SELECT aidb.create_s3_retriever(
+    'image_embeddings', -- Name of the similarity retrieval setup
+    'public', -- Schema of the source table
+    'clip-vit-base-patch32', -- Embeddings encoder model for similarity data
+    'img', -- data type, could be either img or text
+    'torsten', -- S3 bucket name
+    '', -- prefix
+    'https://s3.us-south.cloud-object-storage.appdomain.cloud' -- s3 endpoint address
+);
+__OUTPUT__
+ create_s3_retriever 
+---------------------
+ 
+(1 row)
+```
+
+### Refreshing the retriever
+
+Next, run the `aidb.refresh_retriever` function.
+
+```sql
+SELECT aidb.refresh_retriever('image_embeddings');
+__OUTPUT__
+ refresh_retriever
+-------------------
+    
+(1 row)
+```
+
+### Retrieving data
+
+Finally, run the `aidb.retrieve_via_s3` function with the required parameters to retrieve the top K most relevant (most similar) AI data items. Be aware that the object type is currently limited to image and text files. The syntax for `aidb.retrieve_via_s3` is:
+
+```sql
+aidb.retrieve_via_s3(
+    retriever_name text, 
+    topk integer, 
+    bucket text, 
+    object text, 
+    s3_endpoint text)
+```
+
+* The `retriever_name` is used to identify and reference the retriever; set it to `image_embeddings` for this example. 
+* The `topk` is the number of most relevant data items to retrieve; set this to 1.
+* The `bucket` is the name of the S3 bucket where the data is stored.
+* The `object` is the name of the object in the bucket.
+* The `endpoint_url` is the URL of the S3 endpoint.
+
+
+Run the `aidb.retrieve_via_s3` function with the required parameters to retrieve the top K most relevant (most similar) AI data items. Be aware that the object type is currently limited to image and text files.
+    
+```sql 
+SELECT data from aidb.retrieve_via_s3(
+    'image_embeddings', -- retriever's name
+     1, -- top K
+    'torsten', -- S3 bucket name
+    'foto.jpg', -- object name
+    'https://s3.us-south.cloud-object-storage.appdomain.cloud'
+);
+__OUTPUT__
+     data        
+--------------------
+ {'img_id': 'foto'}
+ (1 row)
+```
+

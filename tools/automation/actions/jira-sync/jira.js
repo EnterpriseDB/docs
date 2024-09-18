@@ -121,15 +121,15 @@ async function loadGHIssues(issueNumber) {
   return ret;
 }
 
-async function loadSynchedJiraIssues() {
+async function loadSynchedJiraIssues(accumulateIssues) {
   console.log(`Loading synched Jira issues`);
-  const query = `summary ~ "\\"Docs GH #\\"" order by created DESC`;
+  const query = `summary ~ "\\"Docs GH #\\"" order by created ASC`;
 
   try {
     const response = await fetch(
       `https://enterprisedb.atlassian.net/rest/api/3/search?jql=${encodeURIComponent(
         query,
-      )}`,
+      )}&startAt=${(accumulateIssues || []).length}&maxResults=100`,
       {
         method: "GET",
         headers: {
@@ -139,7 +139,10 @@ async function loadSynchedJiraIssues() {
       },
     );
     const json = await response.json();
-    return json?.issues;
+    accumulateIssues = [...(accumulateIssues || []), ...(json?.issues || [])];
+    if (json?.total > json?.startAt + json?.maxResults)
+      return loadSynchedJiraIssues(accumulateIssues);
+    return accumulateIssues;
   } catch (err) {
     console.error(err);
   }
@@ -288,7 +291,11 @@ function convertNodes(node, root, activeMarks = [], allowedTypes = allTypes) {
     html: NIblock,
     image: NI,
     imageReference: NI,
-    inlineCode: (node) => addMark("code"),
+    inlineCode: (node) =>
+      map("text", {
+        marks: [{ type: "code" }, ...activeMarks],
+        text: node.value,
+      }),
     link: (node) =>
       addMark("link", { href: node.url, title: node.title || undefined }),
     linkReference: (node) => typeConverter["link"](makeLinkForReference(node)),

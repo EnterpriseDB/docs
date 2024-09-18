@@ -4,7 +4,6 @@ import { graphql } from "gatsby";
 import { isPathAnIndexPage } from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
-  CardDecks,
   DevFrontmatter,
   Footer,
   Layout,
@@ -13,7 +12,10 @@ import {
   PrevNext,
   SideNavigation,
   TableOfContents,
+  Tiles,
+  TileModes,
 } from "../components";
+import GithubSlugger from "github-slugger";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -40,57 +42,12 @@ const ContentRow = ({ children }) => (
   </div>
 );
 
-const getChildren = (parentNode, navLinks, navigationOrder) => {
-  const order = (a, b) => {
-    const navPosA = navigationOrder?.findIndex(
-      (item) =>
-        item.toLowerCase() ===
-        a.fields.path.split("/").slice(-2)[0].toLowerCase(),
-    );
-    const navPosB = navigationOrder?.findIndex(
-      (item) =>
-        item.toLowerCase() ===
-        b.fields.path.split("/").slice(-2)[0].toLowerCase(),
-    );
-    if (navigationOrder && navPosA >= 0 && navPosB >= 0)
-      return navPosA - navPosB;
-    if (navigationOrder && navPosA >= 0) return -1;
-    if (navigationOrder && navPosB >= 0) return 1;
-    return a.fields.path.localeCompare(b.fields.path);
-  };
-  return navLinks
-    .filter(
-      (node) =>
-        node.fields.path.includes(parentNode.fields.path) &&
-        node.fields.depth === parentNode.fields.depth + 1,
-    )
-    .sort(order);
-};
+const findDescendent = (root, predicate) => {
+  if (predicate(root)) return root;
 
-const TileModes = {
-  None: "none",
-  Simple: "simple",
-  Full: "full",
-};
-const Tiles = ({ mode, mdx, navLinks, navigationOrder }) => {
-  if (mode === TileModes.None) return null;
-
-  if (!mode) {
-    if (mdx.fields.depth === 2) mode = TileModes.Full;
-    else if (mdx.fields.depth >= 3) mode = TileModes.Simple;
-  }
-
-  if (Object.values(TileModes).includes(mode)) {
-    const tiles = getChildren(mdx, navLinks, navigationOrder).map((child) => {
-      if (mode === "simple") return child;
-
-      return {
-        ...child,
-        children: getChildren(child, navLinks),
-      };
-    });
-
-    return <CardDecks cards={tiles} cardType={mode} />;
+  for (let node of root.items) {
+    const result = findDescendent(node, predicate);
+    if (result) return result;
   }
   return null;
 };
@@ -116,26 +73,57 @@ const FeedbackButton = ({ githubIssuesLink }) => (
   </a>
 );
 
+const buildSections = (navTree, path) => {
+  const sections = [];
+  let nextSection;
+
+  // Ok, now we have to figure out where we are in this tree
+  // We need to find the current node in the tree
+
+  const findCurrentNode = (root, path) => {
+    if (root.path === path) return root;
+    for (let node of root.items) {
+      const result = findCurrentNode(node, path);
+      if (result) return result;
+    }
+  };
+
+  const currentNode = findCurrentNode(navTree, path);
+
+  currentNode.items.forEach((navEntry) => {
+    if (navEntry.path) {
+      if (!nextSection) return;
+      nextSection.guides.push(navEntry);
+    } else {
+      // new section
+      if (nextSection) sections.push(nextSection);
+      nextSection = {
+        title: navEntry.title,
+        guides: [],
+      };
+    }
+  });
+  if (nextSection) sections.push(nextSection);
+
+  return sections;
+};
+
 const LearnDocTemplate = ({ data, pageContext }) => {
+  const slugger = new GithubSlugger();
   const { mdx, edbGit: gitData } = data;
-  const { mtime, path, depth } = mdx.fields;
-  const {
-    frontmatter,
-    pagePath,
-    productVersions,
-    navLinks,
-    navTree,
-    prevNext,
-  } = pageContext;
+  const { fields, tableOfContents } = data.mdx;
+  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
+    pageContext;
+  const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
     iconName,
     title,
     description,
     katacodaPanel,
     indexCards,
-    navigation,
     originalFilePath,
     editTarget,
+    deepToC,
     prevNext: showPrevNext,
   } = frontmatter;
   const pageMeta = {
@@ -145,12 +133,36 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
   };
+  const { path, depth } = fields;
 
   const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
+
+  const sections = buildSections(navTree, path);
+
+  // newtoc will be passed as the toc - this will blend the existing toc with the new sections
+  var newtoc = [];
+  if (tableOfContents.items) {
+    newtoc.push(...tableOfContents.items);
+    if (sections) {
+      sections.forEach((section) => {
+        section.slug = "section-" + slugger.slug(section.title);
+        newtoc.push({
+          url: "#" + section.slug,
+          title: section.title,
+        });
+      });
+    }
+  }
+
+  let cardTileMode = indexCards;
+  if (!cardTileMode) {
+    if (navRoot.depth === 2) cardTileMode = TileModes.Full;
+    else if (navRoot.depth >= 3) cardTileMode = TileModes.Simple;
+  }
 
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
@@ -187,7 +199,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         <SideNavigation hideKBLink={frontmatter.hideKBLink}>
           <LeftNav
             navTree={navTree}
-            navLinks={navLinks}
             path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
@@ -207,28 +218,19 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <ContentRow>
             <Col xs={showToc ? 9 : 12}>
               <MDXRenderer>{mdx.body}</MDXRenderer>
-              <Tiles
-                mode={indexCards}
-                mdx={mdx}
-                navLinks={navLinks}
-                navigationOrder={navigation}
-              />
+              <Tiles mode={cardTileMode} node={navRoot} />
             </Col>
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents toc={mdx.tableOfContents.items} />
+                <TableOfContents
+                  toc={mdx.tableOfContents.items}
+                  deepToC={deepToC}
+                />
               </Col>
             )}
           </ContentRow>
-          {showPrevNext && depth > 1 && (
-            <PrevNext
-              prevNext={prevNext}
-              path={path}
-              depth={depth}
-              depthLimit={2}
-            />
-          )}
+          {showPrevNext && <PrevNext prevNext={prevNext} />}
 
           <DevFrontmatter frontmatter={frontmatter} />
 
@@ -255,7 +257,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             !
           </p>
 
-          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
+          <Footer
+            timestamp={mdx.fields.mtime}
+            githubFileLink={githubFileHistoryLink}
+          />
         </MainContent>
       </Container>
     </Layout>
