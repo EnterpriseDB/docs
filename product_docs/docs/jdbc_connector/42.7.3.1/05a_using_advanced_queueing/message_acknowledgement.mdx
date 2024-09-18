@@ -1,0 +1,131 @@
+---
+title: "Message acknowledgement"
+deepToC: true
+indexdepth: 3
+---
+
+Acknowledgement of messages is controlled by the two arguments to the `createSession()` and `createQueueSession()` methods:
+
+```java
+EDBJmsConnection.createSession(boolean transacted, int acknowledgeMode)
+
+EDBJmsQueueConnection.createQueueSession(boolean transacted, int acknowledgeMode)
+```
+
+If the first argument is true, it indicates that the session mode is transacted, and the second argument is ignored. However, if the first argument is false, then the second argument comes into play, and the client can specify different acknowledgment modes. 
+
+These acknowledgment modes include, 
+
+- Session.AUTO_ACKNOWLEDGE
+- Session.CLIENT_ACKNOWLEDGE
+- Session.DUPS_OK_ACKNOWLEDGE
+  
+## Transacted session
+
+In transacted sessions, messages are both sent and received during a transaction. These messages are acknowledged by making an explicit call to `commit()`. If `rollback()` is called, all received messages will be marked as not acknowledged.
+
+A transacted session always has an active transaction. When a client calls the `commit()` or `rollback()` method, the current transaction is either committed or rolled back, and a new transaction is started.
+
+This example explains how the transacted session works:
+
+```java
+    MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+
+	//Send a message in transacted session and commit it.
+
+	//Send message
+	TextMessage msg1 = session.createTextMessage();
+	String messageText1 = "Hello 1";
+	msg1.setText(messageText1);
+	messageProducer.send(msg1);
+
+	//Commit the transaction.
+	session.commit();
+
+	//Now we have one message in the queue.
+	
+	//Next, we want to send and receive in the same transaction.
+
+	MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+
+	//Send a Message in transaction.
+	TextMessage msg2 = session.createTextMessage();
+	String messageText2 = "Hello 2";
+	msg2.setText(messageText2);
+	messageProducer.send(msg2);
+
+	//Receive message in the same transaction. There should be 1 message available.
+	Message message1 = messageConsumer.receive();
+	TextMessage txtMsg1 = (TextMessage) message1;
+
+	//Send another Message in transaction.
+	TextMessage msg3 = session.createTextMessage();
+	String messageText3 = "Hello 3";
+	msg3.setText(messageText3);
+	messageProducer.send(msg3);
+
+	//Commit the transaction.
+	//This should remove the one message we sent initially and received above and send 2 messages.
+	session.commit();
+
+    //2 messages are in the queue so we can receive these 2 messages.
+
+	//Receive 1
+	Message message2 = messageConsumer.receive();
+	TextMessage txtMsg2 = (TextMessage) message2;
+
+	//Receive 2
+	Message message3 = messageConsumer.receive();
+	TextMessage txtMsg3 = (TextMessage) message3;
+
+	//Commit the transaction. This will consume the two messages.
+	session.commit();
+
+	//Receive should fail now as there should be no messages available.
+	Message message4 = messageConsumer.receive();
+	//message4 will be null here.
+```
+
+### AUTO_ACKNOWLEDGE mode
+
+If the first argument to `createSession()` or `createQueueSession()` is false and the second argument is `Session.AUTO_ACKNOWLEDGE`, the messages are automatically acknowledged.
+
+### DUPS_OK_ACKNOWLEDGE mode
+
+This mode instructs the session to lazily acknowledge the message, and it is okay if some messages are redelivered. However, in EDB JMS, this option is implemented the same way as `Session.AUTO_ACKNOWLEDGE`, where messages will be acknowledged automatically.
+
+### CLIENT_ACKNOWLEDGE mode
+
+If the first argument to `createSession()` or `createQueueSession()` is false and the second argument is `Session.CLIENT_ACKNOWLEDGE`, the messages are acknowledged when the client acknowledges the message by calling the `acknowledge()` method on a message. Acknowledging happens at the session level, and acknowledging one message will cause all the received messages to be acknowledged.
+
+For example, if we send 5 messages and then receive the 5 messages, acknowledging the 5th message will cause all 5 messages to be acknowledged.
+
+```java
+    MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+
+  	//Send 5 messages
+  	for(int i=1; i<=5; i++) {
+		TextMessage msg = session.createTextMessage();
+		String messageText = "Hello " + i;
+		msg.setText(messageText);
+		messageProducer.send(msg);
+	}
+
+	MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+      
+	//Receive 4
+	for(int i=1; i<=4; i++) {
+		Message message = messageConsumer.receive();
+		TextMessage txtMsg = (TextMessage) message;
+	}
+
+	//Receive the 5th message
+	Message message5 = messageConsumer.receive();
+	TextMessage txtMsg5 = (TextMessage) message5;
+
+	//Now acknowledge it and all the messages will be acknowledged.
+	txtMsg5.acknowledge();
+
+	//Try to receive again. This should return null as there is no message available.
+	Message messageAgain = messageConsumer.receive();
+```
