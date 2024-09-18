@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect } from "react";
 import { Badge } from "react-bootstrap";
 import {
   useClearRefinements,
@@ -59,10 +59,20 @@ const RadioRefinement = ({
   items,
   refine,
   showBadge,
-  show,
   sortFunction,
   translation = {},
 }) => {
+  const radioRefine = useCallback(
+    (refinement) => {
+      // toggle all current refinements, add new one
+      for (let item of items) {
+        if (item !== refinement && item.isRefined) refine(item.label);
+      }
+      if (refinement) refine(refinement.label);
+    },
+    [items, refine],
+  );
+
   if (items == null) {
     return null;
   }
@@ -80,16 +90,8 @@ const RadioRefinement = ({
         }),
     );
 
-  const radioRefine = (refinement) => {
-    // toggle all current refinements, add new one
-    for (let item of items) {
-      if (item !== refinement && item.isRefined) refine(item.label);
-    }
-    if (refinement) refine(refinement.label);
-  };
-
   return (
-    <div className={`mb-4 ps-1 ${!show && "d-none"}`}>
+    <div className={`mb-4 ps-1`}>
       <div className="mb-2 fw-bold text-muted text-uppercase small">
         {heading || capitalize(attribute)}
       </div>
@@ -121,28 +123,23 @@ const RadioRefinement = ({
 const SingleFacetRefinement = ({
   attribute,
   limit,
-  show,
+  showBadge,
   hideIfEmpty = false,
   sortBy,
 }) => {
   const { items, refine } = useRefinementList({ attribute, limit, sortBy });
-  const empty = !items || items.length === 0;
-  const { algoliaIndex } = useSiteMetadata();
 
-  const { uiState } = useInstantSearch();
-  const query = uiState[algoliaIndex].query;
-
-  return (
-    <RadioRefinement
-      attribute={attribute}
-      items={items}
-      refine={refine}
-      showBadge={query && query.length}
-      show={show && !(hideIfEmpty && empty)}
-      translation={products}
-      sortFunction={null}
-    />
-  );
+  if (!hideIfEmpty || items?.length)
+    return (
+      <RadioRefinement
+        attribute={attribute}
+        items={items}
+        refine={refine}
+        showBadge={showBadge}
+        translation={products}
+        sortFunction={null}
+      />
+    );
 };
 
 const ClearRefinements = () => {
@@ -164,6 +161,9 @@ const ClearRefinements = () => {
 
 export const AdvancedSearchFiltering = () => {
   const { items } = useCurrentRefinements();
+  const { algoliaIndex } = useSiteMetadata();
+  const { uiState } = useInstantSearch();
+  const query = uiState[algoliaIndex].query;
 
   const productFilterApplied = items.some(
     (item) => item.attribute === "product",
@@ -173,23 +173,31 @@ export const AdvancedSearchFiltering = () => {
   );
 
   // if we don't have a product filter applied, wipe any version filters
-  if (versionFilterApplied && !productFilterApplied) {
-    const versionFilter = items.find((item) => item.attribute === "version");
-    for (let refinement of versionFilter.refinements) {
-      versionFilter.refine(refinement);
+  useEffect(() => {
+    if (versionFilterApplied && !productFilterApplied) {
+      const versionFilter = items.find((item) => item.attribute === "version");
+      for (let refinement of versionFilter.refinements) {
+        versionFilter.refine(refinement);
+      }
     }
-  }
+  }, [versionFilterApplied, productFilterApplied, items]);
 
   return (
     <>
-      <SingleFacetRefinement attribute="product" limit={30} show={true} />
       <SingleFacetRefinement
-        attribute="version"
+        attribute="product"
         limit={30}
-        show={productFilterApplied}
-        hideIfEmpty={!versionFilterApplied}
-        sortBy={versionSort}
+        showBadge={query?.length}
       />
+      {productFilterApplied && (
+        <SingleFacetRefinement
+          attribute="version"
+          limit={30}
+          showBadge={query?.length}
+          hideIfEmpty={!versionFilterApplied}
+          sortBy={versionSort}
+        />
+      )}
       <ClearRefinements />
     </>
   );

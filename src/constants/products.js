@@ -30,9 +30,11 @@ export const products = {
     iconName: IconNames.HIGH_AVAILABILITY,
   },
   jdbc_connector: { name: "JDBC Connector", iconName: IconNames.CONNECT },
+  alteruser_utility: { name: "alteruser", iconName: IconNames.TOOLS },
+  edb_sqlpatch: { name: "EDB SQL Patch", iconName: IconNames.TOOLS },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
   lasso: { name: "Lasso" },
-  livecompare: { name: "LiveCompare" },
+  livecompare: { name: "LiveCompare", iconName: IconNames.INTEGRATION },
   "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
     name: "Migration Portal",
@@ -99,5 +101,9 @@ export const products = {
   "EDB Postgres AI": {
     name: "EDB Postgres AI",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
+  "data migration service": {
+    name: "EDB Data Migration Service",
+    iconName: IconNames.EDB_TRANSPORTER,
   },
 };

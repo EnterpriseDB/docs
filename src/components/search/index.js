@@ -18,6 +18,8 @@ import { SlashIndicator, ClearButton, SearchPane } from "./formComps";
 import useSiteMetadata from "../../hooks/use-sitemetadata";
 import { products } from "../../constants/products";
 import { Dropdown, DropdownButton } from "react-bootstrap";
+// loaded client-side for use by Algolia
+import aa from "search-insights"; // eslint-disable-line no-unused-vars
 
 const searchClient = algoliasearch(
   "HXNAF5X3I8",
@@ -225,7 +227,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   );
 };
 
-const SearchBar = ({ searchProduct, searchVersion }) => {
+const SearchBar = ({ searchProduct, searchVersion, className }) => {
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
@@ -248,7 +250,9 @@ const SearchBar = ({ searchProduct, searchVersion }) => {
 
   // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (
-    <div className="global-search w-100 position-relative">
+    <div
+      className={["global-search w-100 position-relative", className].join(" ")}
+    >
       <InstantSearchSSRProvider initialResults={{}}>
         <InstantSearch
           searchClient={searchClient}

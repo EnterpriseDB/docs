@@ -1,31 +1,26 @@
-import React, {
-  useLayoutEffect,
-  useEffect,
-  useCallback,
-  useRef,
-  useState,
-} from "react";
+import React, { useLayoutEffect, useCallback, useRef, useState } from "react";
 import { useSearchBox } from "react-instantsearch";
 import Icon, { iconNames } from "../icon";
 import { SlashIndicator, ClearButton } from "../search/formComps";
 
-export const AdvancedSearchForm = () => {
-  const { clear, refine, query } = useSearchBox();
+export const AdvancedSearchForm = ({ initialQuery }) => {
+  const { clear, refine } = useSearchBox();
   const inputRef = useRef(null);
-  const [inputValue, setInputValue] = useState(query);
+  const [inputValue, setInputValue] = useState(initialQuery);
   const queryLength = (inputValue || "").length;
-
-  useEffect(() => {
-    setInputValue(query);
-  }, [query]);
+  const [lastSetQuery, setLastSetQuery] = useState(initialQuery);
 
   const onInputChange = useCallback(
     (e) => {
       let newValue = e.currentTarget.value;
       setInputValue(newValue);
-      refine(newValue);
+      // todo: debounce
+      if (newValue !== lastSetQuery) {
+        setLastSetQuery(newValue);
+        refine(newValue);
+      }
     },
-    [refine],
+    [refine, lastSetQuery],
   );
 
   const onClearSearch = useCallback(
@@ -81,6 +76,7 @@ export const AdvancedSearchForm = () => {
         aria-label="search"
         placeholder="Search"
         value={inputValue}
+        defaultValue={initialQuery}
         onChange={onInputChange}
         ref={inputRef}
       />
