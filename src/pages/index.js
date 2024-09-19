@@ -54,16 +54,16 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
     <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex mb-2 px-2 py-1 bg-light me-3">
+        <div className="d-flex pt-1 ps-1 pb-1 mb-3 bg-light">
           {to && (
-            <Link to={to} className="link-hover-underline-primary">
+            <Link to={to}>
               <Icon
                 iconName={iconName}
                 className="fill-aquamarine"
                 width="24"
                 height="24"
               />
-              <h4 className="d-inline align-center card-title m-1">
+              <h4 className="link-hover-underline-primary d-inline align-center card-title m-1 ">
                 {headingText}
               </h4>
             </Link>
@@ -362,10 +362,12 @@ const Page = () => {
               </BannerWideCardLink>
             </BannerWideCard>
           </BannerCard>
+
           <BannerWideSubCard
             iconName={iconNames.TOOLBOX}
             headingText="Platforms and Tools"
             to="/edb-postgres-ai/platforms-and-tools"
+            className="primary"
           >
             <BannerIconDivider
               iconName={iconNames.KUBERNETES}
