@@ -473,6 +473,14 @@ const Page = () => {
             <BannerWideLink to="/eprs/latest">
               Replication Server
             </BannerWideLink>
+
+            <BannerIconDivider
+              iconName={iconNames.CONNECT}
+              headingText="Connection Poolers"
+            />
+
+            <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
+            <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
           </BannerWideSubCard>
 
           <BannerWideSubCard
@@ -559,11 +567,6 @@ const Page = () => {
             <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
             <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
             <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
-
-            <BannerDivider headingText="Connection Poolers" />
-
-            <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
-            <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
 
             <BannerDivider headingText="Foreign Data Wrappers" />
             <BannerWideLink to="/hadoop_data_adapter/latest">
