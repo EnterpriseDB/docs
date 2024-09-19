@@ -37,7 +37,7 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
               width="24"
               height="24"
             />
-            <h4 className="d-inline align-center card-title m-1">
+            <h4 className="d-inline align-center text-dark  card-title m-1">
               {headingText}
             </h4>
           </Link>
@@ -63,7 +63,7 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
                 width="24"
                 height="24"
               />
-              <h4 className="link-hover-underline-primary d-inline align-center card-title m-1 ">
+              <h4 className="card-title d-inline align-center text-dark m-1 ">
                 {headingText}
               </h4>
             </Link>
