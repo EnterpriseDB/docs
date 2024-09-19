@@ -258,18 +258,18 @@ const Page = () => {
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
-              iconName={iconNames.TOOLBOX}
-              headingText="Platforms and Tools"
+              iconName={iconNames.MIGRATION}
+              headingText="Migration"
               to="/edb-postgres-ai/tools"
             >
-              <BannerCardLink to="/edb-postgres-ai/tools/migration-and-ai/">
-                Migration and AI
+              <BannerCardLink to="/edb-postgres-ai/migration-etl/data-migration-service">
+               Data Migration Service
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/tools/management">
-                Management
+              <BannerCardLink to="/migration_portal/latest">
+                Migration Portal with AI Copilot
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/tools/backup">
-                Backup and Recovery
+              <BannerCardLink to="/migrating/oracle">
+                Oracle Migration Handbook
               </BannerCardLink>
             </BannerSubCard>
           </BannerCard>
