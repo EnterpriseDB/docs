@@ -198,4 +198,29 @@ In addition, you have options when it comes to what rule you can degrade to depe
 First of all, you can degrade to asynchronous operation in the way CAMO does:
 
 ```
-ALL (left_dc) SYNCHRONOUS_COMMIT 
+ALL (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO ASYNC
+```
+
+Furthermore, you can degrade to a less restrictive commit group with the same commit scope kind (again as long as the kind is either `SYNCHRONOUS_COMMIT` or `GROUP COMMIT`). For instance, you can degrade as follows:
+
+```
+ALL (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO MAJORITY (left_dc) SYNCHRONOUS_COMMIT
+```
+
+or as follows:
+
+```
+ANY 3 (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO ANY 2 (left_dc) SYNCHRONOUS_COMMIT
+```
+
+But you cannot degrade from `SYNCHRONOUS_COMMIT` to `GROUP COMMIT` or the other way around.
+
+### Behavior
+
+There are two parts to how the generalized `DEGRADE` clause behaves as it is applied to transactions. 
+
+Once during the commit, while the commit being processed is waiting for responses that satisfy the commit scope rule, PGD checks for a timeout and, if the timeout has expired, the commit being processed is reconfigured to wait for the commit scope rule in the `DEGRADE` clause. In fact, by this point, the commit scope rule in the `DEGRADE` clause might already be satisfied.
+
+This mechanism alone is insufficient for the intended behvior, as this alone would mean that every transaction must wait for the timeout to expire before degraded mode kicks in, which would severely affect performance in the degrade cluster scenarios.
+
+To avoid this, the PGD manager process also periodically (every 5s) checks the connectivity and apply rate (the one in [bdr.node_replication_rates](/pgd/latest/reference/catalogs-visible/#bdrnode_replication_rates)) and if there are commit scopes that would degrade right now based on the current state of replication, they will be automatically degraded—such that any transaction processing uses the degraded rule from the beginning instead of waiting for timeout.
