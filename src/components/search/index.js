@@ -227,7 +227,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
   );
 };
 
-const SearchBar = ({ searchProduct, searchVersion }) => {
+const SearchBar = ({ searchProduct, searchVersion, className }) => {
   const [currentProduct, setCurrentProduct] = useState(searchProduct);
 
   const { algoliaIndex } = useSiteMetadata();
@@ -250,7 +250,9 @@ const SearchBar = ({ searchProduct, searchVersion }) => {
 
   // use SSR provider just to trigger static rendering of search form. Speeds this up a LOT
   return (
-    <div className="global-search w-100 position-relative">
+    <div
+      className={["global-search w-100 position-relative", className].join(" ")}
+    >
       <InstantSearchSSRProvider initialResults={{}}>
         <InstantSearch
           searchClient={searchClient}
