@@ -327,17 +327,14 @@ const Page = () => {
 
             <BannerSubCard
               iconName={iconNames.MIGRATION}
-              headingText="Migration"
-              to="/edb-postgres-ai/tools"
+              headingText="Migration and ETL"
+              to="/edb-postgres-ai/migration-etl"
             >
-              <BannerCardLink to="/edb-postgres-ai/migration-etl/data-migration-service">
+              <BannerCardLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
                 Data Migration Service
               </BannerCardLink>
               <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
-              </BannerCardLink>
-              <BannerCardLink to="/eprs/latest">
-                Replication Server
               </BannerCardLink>
               <BannerCardLink to="/migration_toolkit/latest">
                 Migration Toolkit
