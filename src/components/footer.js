@@ -64,10 +64,14 @@ const Footer = ({ timestamp, githubFileLink }) => (
       GDPR
     </Link>
     ·
+    <Link className="text-muted mx-2" to="https://trust.enterprisedb.com/">
+      Trust Center
+    </Link>
+    ·
     <Link className="text-muted mx-2" to="/security">
       Security
     </Link>
-    .
+    ·
     <Link
       className="text-muted mx-2"
       to="https://www.enterprisedb.com/privacy-policy"
