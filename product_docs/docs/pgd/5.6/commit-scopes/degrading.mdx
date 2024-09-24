@@ -1,0 +1,59 @@
+---
+title: Commit scope rule degrading options
+navTitle: Degrading options
+deepToC: true
+---
+
+`SYNCHRONOUS_COMMIT`, `GROUP COMMIT`, and `CAMO` each have rule degrade options.
+
+When a node is applying a transaction and that transaction times out, it can be useful to trigger a process of degrading the requirements of the transaction to be completed, rather than just rolling back. 
+
+`DEGRADE ON` offers a route to gracefully degrading the commit scope rule of a transaction. At its simplest, `DEGRADE ON` takes a timeout and a second set of commit scope operations that the commit scope can gracefully degrade to. 
+
+For instance, after 20ms or 30ms timeout, the requirements for satisfying a commit scope could degrade from `ALL (node_group_name) GROUP COMMIT` to `MAJORITY (node_group_name) GROUP COMMIT`, making the transactions apply more steadily.
+
+## SYNCHRONOUS_COMMIT and GROUP COMMIT 
+
+Both `SYNCHRONOUS_COMMIT` and `GROUP COMMIT` have `timeout` and `require_write_lead` parameters, with defaults of `0` and `false` respectively. You should probably always set the `timeout`, as the default of `0` causes an instant degrade. You can also require that the write leader be the originator of the transaction in order to switch to degraded (again, default is `false`).
+
+Both `SYNCHRONOUS_COMMIT` and `GROUP COMMIT` also have options regarding which rule you can degrade to—which depends on which rule you are degrading from.
+
+First of all, you can degrade to asynchronous operation:
+
+```
+ALL (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO ASYNC
+```
+
+You can also degrade to a less restrictive commit group with the same commit scope kind (again as long as the kind is either `SYNCHRONOUS_COMMIT` or `GROUP COMMIT`). For instance, you can degrade as follows:
+
+```
+ALL (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO MAJORITY (left_dc) SYNCHRONOUS_COMMIT
+```
+
+or as follows:
+
+```
+ANY 3 (left_dc) SYNCHRONOUS_COMMIT DEGRADE ON (timeout=20s) TO ANY 2 (left_dc) SYNCHRONOUS_COMMIT
+```
+
+But you cannot degrade from `SYNCHRONOUS_COMMIT` to `GROUP COMMIT` or the other way around.
+
+## CAMO 
+
+While [CAMO](pgd/latest/reference/commit-scopes/#camo) supports both the same `timeout` and `require_write_lead` parameters (with the same defaults, `0` and `false` respectively), the options are simpler in that you can only degrade to asynchronous operation. 
+
+```
+ALL (left_dc) CAMO DEGRADE ON (timeout=20ms, require_write_lead=true) TO ASYNC
+```
+
+Again, you should set the `timeout` parameter, as the default is `0`. 
+
+## Behavior
+
+There are two parts to how the generalized `DEGRADE` clause behaves as it is applied to transactions. 
+
+Once during the commit, while the commit being processed is waiting for responses that satisfy the commit scope rule, PGD checks for a timeout and, if the timeout has expired, the commit being processed is reconfigured to wait for the commit scope rule in the `DEGRADE` clause. In fact, by this point, the commit scope rule in the `DEGRADE` clause might already be satisfied.
+
+This mechanism alone is insufficient for the intended behvior, as this alone would mean that every transaction must wait for the timeout to expire before degraded mode kicks in, which would severely affect performance in the degrade cluster scenarios.
+
+To avoid this, the PGD manager process also periodically (every 5s) checks the connectivity and apply rate (the one in [bdr.node_replication_rates](/pgd/latest/reference/catalogs-visible/#bdrnode_replication_rates)) and if there are commit scopes that would degrade at that point based on the current state of replication, they will be automatically degraded—such that any transaction processing at that time uses the degraded rule instead of waiting for timeout.
