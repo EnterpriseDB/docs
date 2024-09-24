@@ -35,7 +35,7 @@ const SideNavigationFooter = ({ hideKBLink = false }) => (
   <ul className="list-unstyled mt-0">
     <hr />
     {!hideKBLink && (
-      <FooterItem url="https://support.enterprisedb.com/support/s/">
+      <FooterItem url="https://knowledge.enterprisedb.com/">
         Knowledge Base and Technical Alerts
       </FooterItem>
     )}
