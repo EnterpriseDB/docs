@@ -464,9 +464,9 @@ const Page = () => {
             <BannerWideLink to="/migrating/oracle">
               Oracle Migration Handbook
             </BannerWideLink>
-            <BannerWideLink to="/migration_toolkit/latest">
+            {/* <BannerWideLink to="/migration_toolkit/latest">
               Migration Toolkit
-            </BannerWideLink>
+            </BannerWideLink> */}
             <BannerWideLink to="/eprs/latest">
               Replication Server
             </BannerWideLink>
