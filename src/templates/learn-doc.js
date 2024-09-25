@@ -223,10 +223,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col xs={3}>
-                <TableOfContents
-                  toc={mdx.tableOfContents.items}
-                  deepToC={deepToC}
-                />
+                <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>

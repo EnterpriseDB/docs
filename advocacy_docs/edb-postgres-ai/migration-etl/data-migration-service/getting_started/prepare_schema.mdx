@@ -1,0 +1,60 @@
+---
+title: "Preparing and importing the schema"
+deepToC: true
+---
+
+Before you use EDB Data Migration Service (EDB DMS) to configure a data migration, you must prepare and import your schema to the target database. 
+
+Some of your schema's constraints must be included before the data migration takes place, whereas others must be applied [after the data migration is completed](apply_constraints). This ensures you can migrate without performance degradation. 
+
+## Schema integrity and performance considerations
+
+The presence of target database constraints, triggers, and WAL logging can impact the data migration performance. When possible, EDB recommends a two-step import of schema constraints.
+
+### Primary key and unique constraints
+
+Primary key and unique constraints are leveraged by EDB DMS to provide an exactly-once delivery when migrating data to the target database. Therefore, Primary key and unique constraints should be included in the schema import that you perform before the data migration begins. Other types of constraints should be excluded from the schema import. 
+
+For rows in tables that do not have primary key or unique constraints it is only possible to achieve at-least-once delivery. Deduplication can be performed during the [data migration verification](verify_migration).
+
+!!!note 
+   Not null constraints don't represent a significant performance impact for destination servers and can also be included in the schema import.
+!!!
+
+### Foreign key, check, and exclusion constraints
+
+EDB DMS is able to apply change events in parallel against destination database clusters. However, migrating some constraint types can negatively affect the performance of the migration. These type of constraints lead to unnecessary CPU and memory utilization in the context of an in-flight data migration from a consistent and referentially integral source database.
+
+Accordingly, EDB recommends [applying foreign key, check, and exclusion constraints](apply_constraints/#foreign-key-check-and-exclusion-constraints) on the target database only after you have signalized the end of the CDC stream by [marking the migration as completed](mark_completed) in the Console.
+
+## Preparing your schema
+
+You can use several different methods to prepare your schema, exclude unsupported constraints and import it to the target database. This section provides guidelines of how to prepare your Oracle or Postgres source database with Migration Portal or Migration Toolkit, but other tools like `pg_dump` and `pg_restore` are also valid routes for migrating DDL.
+
+### Oracle to EDB Postgres Advanced Server migrations
+
+Use [EDB Migration Portal](/migration_portal/latest/03_mp_using_portal/03_mp_quick_start/) to assess Oracle database sources for schema compatibility before starting the data migration process. 
+
+EDB Migration Portal offers the ability to separate constraints from other destination DDL with the [offline migration option](/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/#offline-migration).
+
+Ensure you exclude foreign key, check, and exclusion constraints from the DDL before importing the schema to the target database.
+
+### Other migrations
+
+For data migrations from Postgres, EDB recommends using [EDB Migration Toolkit](/migration_toolkit/latest/) to manage the schema. MTK's [offline migration](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options) capability provides an easy way to extract a database's schema and separate constraints.
+
+Ensure you exclude foreign key, check, and exclusion constraints from the DDL before importing the schema to the target database.
+
+## Importing your schema to the target database
+
+After you have prepared the DDL and excluded foreign key, check, and exclusion constraints, connect to the target database and import the SQL-formatted DDL file.
+
+Importing the schema to the target database before the migration takes place is important as EDB DMS only migrates data. The target database must have the schemas in place for the migration to populate them with data.
+
+You can use different methods to import the schemas.
+
+If you used Migration Portal to export an Oracle source schema, continue using it to [import the schema in offline or online mode](/migration_portal/latest/04_mp_migrating_database/03_mp_schema_migration/#mp_schema_migration).
+
+If you used Migration Toolkit to export a Postgres source in offline mode, execute the generated [offline migration script to start the import](/migration_toolkit/latest/07_invoking_mtk/08_mtk_command_options/#offline-migration-options). 
+
+Other alternatives to import Postgres schemas include manually creating the schemas in the target database, performing a [pg_restore](https://www.postgresql.org/docs/current/app-pgrestore.html) (for example, if you used [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html) to obtain the schemas), or employing [pgAdmin](https://www.pgadmin.org/docs/pgadmin4/latest/index.html), [psql](https://www.postgresql.org/docs/7.0/app-psql.htm) or the tool of your preference.
