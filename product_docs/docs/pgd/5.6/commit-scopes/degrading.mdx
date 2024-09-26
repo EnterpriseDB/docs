@@ -12,6 +12,8 @@ When a node is applying a transaction and that transaction times out, it can be 
 
 For instance, after 20ms or 30ms timeout, the requirements for satisfying a commit scope could degrade from `ALL (node_group_name) GROUP COMMIT` to `MAJORITY (node_group_name) GROUP COMMIT`, making the transactions apply more steadily.
 
+You can also require that the write leader be the originator of a transaction in order for the degrade clause to be triggered. This can be helpful in "split brain scenarios" where you have, say, 2 data nodes and a witness node. Supposing there is a network split between the two data nodes and you have connections to both of the data nodes, only one of them will be allowed to degrade, because only one of them will be elected leader through the raft election with the witness node.
+
 ## Behavior
 
 There are two parts to how the generalized `DEGRADE` clause behaves as it is applied to transactions. 
@@ -20,7 +22,7 @@ Once during the commit, while the commit being processed is waiting for response
 
 This mechanism alone is insufficient for the intended behvior, as this alone would mean that every transaction—even those that were certain to degrade due to connectivity issues—must wait for the timeout to expire before degraded mode kicks in, which would severely affect performance in such degrading-cluster scenarios.
 
-To avoid this, the PGD manager process also periodically (every 5s) checks the connectivity and apply rate (the one in [bdr.node_replication_rates](/pgd/latest/reference/catalogs-visible/#bdrnode_replication_rates)) and if there are commit scopes that would degrade at that point based on the current state of replication, they will be automatically degraded—such that any transaction processing at that time uses the degraded rule instead of waiting for timeout.
+To avoid this, the PGD manager process also periodically (every 5s) checks the connectivity and apply rate (the one in [bdr.node_replication_rates](/pgd/latest/reference/catalogs-visible/#bdrnode_replication_rates)) and if there are commit scopes that would degrade at that point based on the current state of replication, they will be automatically degraded—such that any transaction processing after that uses the degraded rule instead of waiting for timeout.
 
 ## SYNCHRONOUS_COMMIT and GROUP COMMIT 
 
