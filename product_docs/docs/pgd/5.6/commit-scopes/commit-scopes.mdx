@@ -69,7 +69,8 @@ The `wait_for_ready` controls whether the `bdr.add_commit_scope()` call blocks u
 
 ## Using a commit scope
 
-To use our example scope, we can set `bdr.commit_scope` within a transaction 
+To use our example scope, we can set `bdr.commit_scope` within a transaction
+
 ```sql
 BEGIN;
 SET LOCAL bdr.commit_scope = 'example_scope';
@@ -122,10 +123,9 @@ Set `bdr.commit_scope` to `local` to  use the PGD default async replication.
 
 ## Origin groups
 
-Rules for commit scopes can depend on the node the transaction is committed on, that is, the node that acts as the origin for the transaction. To make this transparent for the application, PGD allows a commit scope to define different rules depending on where the transaction originates from.
+Rules for commit scopes can depend on the node the transaction is committed on, that is, the node that acts as the origin for the transaction. The group to which that node belongs is the transaction's origin group. To make this transparent for the application, PGD allows a commit scope to define different rules depending on where the transaction originates from.
 
-For example, consider an EDB Postgres Distributed cluster with nodes spread across two data centers: a left and a right one. Assume the top-level PGD node group is called `top_group`. You can use the following commands to set up
-subgroups and create a commit scope requiring all nodes in the local data center to confirm the transaction but only one node from the remote one:
+For example, consider an EDB Postgres Distributed cluster with nodes spread across two data centers: a left and a right one. Assume the top-level PGD node group is called `top_group`. You can use the following commands to set up subgroups and create a commit scope requiring all nodes in the local data center to confirm the transaction but only one node from the remote one:
 
 ```sql
 -- create sub-groups
@@ -173,4 +173,36 @@ SELECT bdr.alter_node_group_option(
   config_key := 'default_commit_scope',
   config_value := 'example_scope'
 );
-``` 
+```
+
+### ORIGIN_GROUP syntax sugar
+
+You can also refer to the origin group dynamically when creating a commit scope rule by using `ORIGIN_GROUP` syntax sugar. This can make certain commit scopes like the one above, `example_scope`, even easier to specify in that you can simply specify one rule instead of two.
+
+Again, suppose that for transactions originating from nodes in `right_dc` you want all nodes in `right_dc` to confirm and any 1 from `left_dc` to confirm before the transaction is committed. Also, again suppose that for transactions originating in `left_dc` you want all nodes in `left_dc` and any 1 in `right_dc` to confirm before the transaction is commited. Above we used these two rules for this when defining `example_scope`:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'left_dc',
+    rule := 'ALL (left_dc) GROUP COMMIT (commit_decision=raft) AND ANY 1 (right_dc) GROUP COMMIT',
+    wait_for_ready := true
+);
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'right_dc',
+    rule := 'ANY 1 (left_dc) GROUP COMMIT AND ALL (right_dc) GROUP COMMIT (commit_decision=raft)',
+    wait_for_ready := true
+);
+```
+
+
+However, using `ORIGIN_GROUP`, just adding and using the following commit scope will have the same effect as the two individual rules we used above in `example_scope`:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope_2`,
+    origin_node_group := 'top_group`,
+    rule := 'ALL ORIGIN_GROUP GROUP COMMIT (commit_decision=raft) AND ANY 1 NOT ORIGIN_GROUP GROUP COMMIT';
+    wait_for_ready := true
+);
