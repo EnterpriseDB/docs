@@ -2,62 +2,133 @@
 title: Subscriber-only nodes and groups
 ---
 
-## Subscriber-only nodes
 
-As the name suggests, a subscriber-only node subscribes only to replication
-changes from other nodes in the cluster. However, no other nodes receive
-replication changes from subscriber-only nodes. This is somewhat similar to
-logical standby nodes. But in contrast to logical standby, the subscriber-only
-nodes are fully joined to the cluster. They can receive replication changes from
-all other nodes in the cluster and hence aren't affected by unavailability or
-parting of any one node in the cluster.
+While many use cases rely on accessing a database node which can handle queries and updates, there are also use cases which only require access to a node that can handle read-only database queries.
+Read scaling like this, by moving the read-only traffic away from active database nodes in the cluster, can improve the performance of the core cluster, whilst making database access more widely available.
 
-A subscriber-only node is a fully joined PGD node and hence it receives all
-replicated DDLs and acts on those. It also uses Raft to consistently report its
-status to all nodes in the cluster. The subscriber-only node doesn't have Raft
-voting rights and hence can't become a Raft leader or participate in the leader
-election. Also, while it receives replicated DDLs, it doesn't participate in DDL
-or DML lock acquisition. In other words, a currently down subscriber-only node
-doesn't stop a DML lock from being acquired.
+PGD provides this read scaling functionality through subscriber-only nodes and groups.
+Each subscriber-only group has a node which replicates changes to the other subscriber-only nodes in its group.
+You can have multiple subscriber-only groups, which can address different regions or different application demands.
 
-The subscriber-only node forms the building block for PGD tree topology. In
-this topology, a small number of fully active nodes are replicating changes in
-all directions. A large number of subscriber-only nodes receive only changes
-but never send any changes to any other node in the cluster. This topology
-avoids connection explosion due to a large number of nodes yet provides an
-extremely large number of `leaf` nodes that you can use to consume the data.
-## Subscriber-only groups
+## Subscriber-only nodes and groups
 
-To make use of subscriber-only nodes, first create a PGD group of type
-`subscriber-only`. Make it a subgroup of the group from which the member nodes
-receive the replication changes. Once you create the subgroup, all nodes that
-intend to become subscriber-only nodes must join the subgroup. You can create
-more than one subgroup of `subscriber-only` type, and they can have different
-parent groups.
+Subscriber-Only (SO) nodes subscribe only to the replication changes from other nodes in the cluster.
+A singular SO node would receive changes from all the other nodes in the cluster.
+But, in most environments, many SO nodes are needed.
+For that, there are SO groups. By design, in PGD all SO nodes must be a member of an SO group.
 
-Once a node successfully joins the subscriber-only subgroup, it becomes a
-subscriber-only node and starts receiving replication changes for the parent
-group. Any changes made directly on the subscriber-only node aren't
-replicated.
+A subscriber-only node is a fully joined PGD node and hence it receives all replicated DDLs and acts on those.
 
-See
-[`bdr.create_node_group`](/pgd/latest/reference/nodes-management-interfaces#bdrcreate_node_group)
-to know how to create a subgroup of a specific type and belonging to a specific
-parent group.
+It also uses Raft to consistently report its status to all nodes in the cluster.
 
-!!! Note
+A subscriber-only node doesn't have top-level group Raft voting rights and hence can't become a top-level group Raft leader or participate in the leader election.
 
-Since a subscriber-only node doesn't replicate changes to any node in the
-cluster, it can't act as a source for syncing replication changes when a node is
-parted from the cluster. But if the subscriber-only node already received and
-applied replication changes from the parted node that no other node in the
-cluster currently has, then that causes inconsistency between the nodes.
+While it does receive replicated DDLs, it doesn't participate in DDL or DML lock acquisition.
 
-For now, you can solve this by setting
-[`bdr.standby_slot_names`](/pgd/latest/reference/pgd-settings#bdrstandby_slot_names)
-and
-[`bdr.standby_slots_min_confirmed`](/pgd/latest/reference/pgd-settings#bdrstandby_slots_min_confirmed)
-so that there's always a fully active PGD node that's ahead of the
-subscriber-only nodes. 
+In other words, a currently down subscriber-only node doesn't stop a DML lock from being acquired.
 
-!!!
+### Historical note
+
+In PGD prior to 5.6, subscriber-only (SO) nodes within a SO group behaved as any other data node in PGD cluster would behave; receiving replication from all other nodes in the cluster.
+This is because PGD implemented a strict mesh topology for interconnecting all nodes.
+
+In PGD 5.6, this topology changed for clusters using sub-groups for their data nodes. Subscriber-Only groups moved to a more efficient model which uses a group leader, similar to a write leader in PGD Proxies, to act as replication proxy for incoming changes.
+
+If a cluster has any of the following:
+
+* Data-nodes which are directly members of the top-level group
+* No data-node sub-groups
+* No data-node sub-groups with proxy routing enabled
+
+then the nodes in a subscriber only group will automatically revert to the pre 5.6 behavior.
+
+To get the benefit of the new SO group and node replication, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups.
+
+## Subscriber-only group leaders
+
+With PGD 5.6 and later, each SO group gets assigned a group leader of its own.
+This group leader is responsible for receiving replication from other nodes and replicating that to the other nodes in the SO group.
+The write leaders of the data groups in the cluster will replicate to the SO groups’ group leaders only.
+
+Other nodes within data groups in the cluster will rely on their group’s write leader to replicate changes to the SO group’s group leaders, eliminating unnecessary duplication.
+The cluster’s top level group Raft consensus mechanism handles selection of an SO group’s group leader.
+This is because, unlike data groups, SO groups have no group Raft consensus.
+
+Group leaders in SO groups are regularly tested for connectivity and if unavailable, a new SO node from the SO group is selected to become group leader and announced to the whole cluster.
+Data subgroups write leaders then replicate data to this newly selected group leader node.
+The Subscriber-Only node and group form the building block for PGD tree topologies.
+
+In this topology, a small number of fully active nodes replicate changes to the “write leaders” of SO groups, these write leaders then replicate changes to the other SO group members.
+
+This approach avoids the explosion of connections that can happen when there are large numbers of SO nodes and reduces the amount of replication traffic.
+
+## Configuring subscriber-only groups
+
+To use Subscriber-Only nodes, you must first create a subscriber-only group for it to be a member of.
+
+Adding a node to that group automatically makes it a subscriber-only node.
+
+### Creating a subscriber-only group
+
+To create a subscriber-only group, you must specify the `node_group_type` as `subscriber-only` when creating the group. For example:
+
+#### SQL
+
+```sql
+select bdr.create_node_group('sogroup', NULL, true, 'subscriber-only');
+```
+
+#### TPA
+
+<!--
+
+#### PGD CLI
+
+```bash
+
+``` -->
+
+### Adding a node to a subscriber-only Group
+
+To add a node to a subscriber-only group, you must specify the name of the group as the name of the subscriber-only group when adding the node. For example:
+
+#### SQL
+
+```sql
+
+select bdr.bdr_group_join('subscriber_group', 'node_name');
+
+```
+
+#### TPA
+
+
+<!--
+
+#### PGD CLI
+
+```bash
+
+``` -->
+
+
+### Removing a node from a subscriber-only Group
+
+To remove a node from a subscriber-only group, you must specify the `node_group` as the name of the subscriber-only group when removing the node. For example:
+
+#### SQL
+
+```sql
+
+select bdr.bdr_group_leave( 'subscriber_group', 'node_name');
+
+```
+
+#### TPA
+
+
+<!-- #### PGD CLI
+
+```bash
+
+``` -->
