@@ -60,20 +60,29 @@ to remove WAL corresponding the LCRs, if they aren't otherwise required.
 
 ## LCR file names
 
-For reference, the first 24 characters of an LCR file name are similar to those
-in a WAL file name. The first 8 characters of the name are currently all '0'.
-In the future, they're expected to represent the TimeLineId similar to the first 8
-characters of a WAL segment file name. The following sequence of 16 characters
-of the name is similar to the WAL segment number, which is used to track LCR
-changes against the WAL stream.
+For reference, the first 24 characters of an LCR file name are similar to those in a WAL file name. 
+The first 8 characters of the name are currently all '0'.
+In the future, they're expected to represent the TimeLineId similar to the first 8 characters of a WAL segment file name. 
+The following sequence of 16 characters of the name is similar to the WAL segment number, which is used to track LCR changes against the WAL stream.
 
-However, logical changes are
-reordered according to the commit order of the transactions they belong to.
-Hence their placement in the LCR segments doesn't match the placement of
-corresponding WAL in the WAL segments.
+However, logical changes are reordered according to the commit order of the transactions they belong to.
+Hence their placement in the LCR segments doesn't match the placement of corresponding WAL in the WAL segments.
 
-The set of the last 16 characters represents the
-subsegment number in an LCR segment. Each LCR file corresponds to a
-subsegment. LCR files are binary and variable sized. The maximum size of an
-LCR file can be controlled by `bdr.max_lcr_segment_file_size`, which
-defaults to 1 GB.
+The set of the last 16 characters represents the subsegment number in an LCR segment. 
+Each LCR file corresponds to a subsegment. 
+LCR files are binary and variable sized. 
+You can control the maximum size of an LCR file by adjusting `bdr.max_lcr_segment_file_size`, which defaults to 1 GB.
+
+### Using with transaction streaming
+
+It's possible to enable [transaction streaming](../transaction-streaming) and the decoding worker at the same time. Transaction streaming means that the WAL sender can send a partial transaction before it commits, reducing replication lag. The WAL decoder now supports the decoding of partial transactions, so the decoding worker can decode the partial transaction and store it in an LCR file. The LCR file is then used to apply the transaction on the subscriber node. This in turn reduces CPU usage, by reducing the lag, and reduces disk space usages, since ".spill" files are not generated.
+
+The WAL decoder always streams the transactions to LCRs but based on downstream request the WAL sender either stream transaction or just mimics a normal `BEGIN..COMMIT` scenario.
+
+To support this feature, the system creates additional streaming files. These files have names in that begin with  `STR_TXN_<file-name-format>` and `CAS_TXN_<file-name-format>` and each streamed transaction creates their own pair.
+
+To enable transaction streaming with the WAL decoder, set the PGD group's `bdr.streaming_mode` set to ‘default’ using [`bdr.alter_node_group_option`](/pgd/5.6/reference/nodes-management-interfaces#bdralter_node_group_option).
+
+
+
+
