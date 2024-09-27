@@ -157,14 +157,10 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
     ? splitChildrenIntoCodeAndOutput(children.props.children)
     : [children, ""];
 
-  const startWrapped = childIsComponent
-    ? (children.props.className || "").startsWith("language-wrap-")
-    : false;
+  const startWrapped = false;
 
   const language = childIsComponent
-    ? (children.props.className || "")
-        .replace("language-", "")
-        .replace("wrap-", "")
+    ? (children.props.className || "").replace("language-", "")
     : "text";
 
   const execLanguages = codeLanguages
