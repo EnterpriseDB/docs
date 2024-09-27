@@ -166,8 +166,6 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
         .replace("wrap-", "")
     : "text";
 
-  console.log(children.props.className, language, startWrapped);
-
   const execLanguages = codeLanguages
     ? ["shell"].concat(codeLanguages?.split(",")?.map((l) => l.trim()))
     : [];
