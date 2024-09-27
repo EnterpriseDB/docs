@@ -108,9 +108,7 @@ const CodePre = ({ className, content, runnable, startWrapped }) => {
         <div>
           <OverlayTrigger
             delay={{ hide: 450, show: 300 }}
-            overlay={(props) => (
-              <Tooltip {...props}>Toggle wrapping of the code block</Tooltip>
-            )}
+            overlay={(props) => <Tooltip {...props}>Toggle wrapping</Tooltip>}
             placement="bottom"
           >
             <Button size="sm" variant="link" onClick={wrapClick}>
