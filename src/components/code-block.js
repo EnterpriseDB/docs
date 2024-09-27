@@ -59,10 +59,13 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   return [code, output];
 };
 
+const unwrappedstring = "→ Wrap";
+const wrappedstring = "↩ Unwrap";
+
 const CodePre = ({ className, content, runnable, startWrapped }) => {
   const codeRef = React.createRef();
   const [wrapButtonText, setWrapButtonText] = useState(
-    !startWrapped ? "Unwrapped" : "Wrapped",
+    !startWrapped ? unwrappedstring : wrappedstring,
   );
   const [copyButtonText, setCopyButtonText] = useState("Copy");
   const copyClick = (e) => {
@@ -81,9 +84,9 @@ const CodePre = ({ className, content, runnable, startWrapped }) => {
   const wrapClick = (e) => {
     setWrap(!wrap);
     if (!wrap) {
-      setWrapButtonText("Wrapped");
+      setWrapButtonText(wrappedstring);
     } else {
-      setWrapButtonText("Unwrapped");
+      setWrapButtonText(unwrappedstring);
     }
     e.target.blur();
   };
