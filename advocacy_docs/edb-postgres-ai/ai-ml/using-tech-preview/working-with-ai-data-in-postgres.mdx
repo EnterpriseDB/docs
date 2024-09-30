@@ -1,7 +1,7 @@
 ---
 title: Working with AI data stored in Postgres tables
 navTitle: Working with AI data in Postgres
-description: How to work with AI data stored in Postgres tables using the pgai extension.
+description: How to work with AI data stored in Postgres tables using the aidb extension.
 ---
 
 The examples on this page are about working with AI data stored in columns in the Postgres table. 
@@ -23,10 +23,10 @@ CREATE TABLE
 
 ## Working with auto embedding
 
-Next, you are going to create a retriever with the just created products table as the source using the `pgai.create_pg_retriever` function which has this syntax:
+Next, you are going to create a retriever with the just created products table as the source using the `aidb.create_pg_retriever` function which has this syntax:
 
 ```sql
-pgai.create_pg_retriever(
+aidb.create_pg_retriever(
     retriever_name text,
     schema_name text,
     primary_key text,
@@ -50,7 +50,7 @@ pgai.create_pg_retriever(
 This gives the following SQL command:
 
 ```sql
-SELECT pgai.create_pg_retriever(
+SELECT aidb.create_pg_retriever(
     'product_embeddings_auto', -- Retriever name
     'public', -- Schema
     'product_id', -- Primary key
@@ -85,10 +85,10 @@ __OUTPUT__
 INSERT 0 9
 ```
 
-Now you can use the retriever, by specifying the retriever name, to perform a similarity retrieval of the top K most relevant, in this case most similar, AI data items. You can do this by running the `pgai.retrieve` function with the required parameters:
+Now you can use the retriever, by specifying the retriever name, to perform a similarity retrieval of the top K most relevant, in this case most similar, AI data items. You can do this by running the `aidb.retrieve` function with the required parameters:
 
 ```sql
-pgai.retrieve(
+aidb.retrieve(
     query text,
     top_k integer,
     retriever_name text
@@ -102,28 +102,28 @@ pgai.retrieve(
 This gives the following SQL command:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_auto' -- retriever's name
 );
 __OUTPUT__
-                data                 
--------------------------------------
+                 data
+--------------------------------------
  {'data': 'Hamburger - Tasty'}
  {'data': 'Cheesburger - Very tasty'}
- {'data': 'Fries - Dunno'}
+ {'data': 'Pizza - Mkay'}
  {'data': 'Sandwich - So what'}
  {'data': 'Kebab - Maybe'}
 (5 rows)
 ```
 
-### Working without auto embedding
+## Working without auto embedding
 
 You can now create a retriever without auto embedding. This means that the application has control over when the embeddings computation occurs. It also means that the computation is a bulk operation. For demonstration you can simply create a second retriever for the same products table that you just previously created the first retriever for, but setting `auto_embedding` to false.
 
 ```sql
-SELECT pgai.create_pg_retriever(
+SELECT aidb.create_pg_retriever(
     'product_embeddings_bulk', -- Retriever name
     'public', -- Schema
     'product_id', -- Primary key
@@ -140,10 +140,10 @@ __OUTPUT__
 (1 row)
 ```
 
-The AI records are already in the table though. As this second retriever is newly created, it won't have created any embeddings. Running `pgai.retrieve` using the retriever now doesn't return any results:
+The AI records are already in the table though. As this second retriever is newly created, it won't have created any embeddings. Running `aidb.retrieve` using the retriever now doesn't return any results:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_bulk' -- retriever's name
@@ -154,10 +154,10 @@ __OUTPUT__
 (0 rows)
 ```
 
-You need to run a bulk generation of embeddings before performing any retrieval. You can do this using the `pgai.refresh_retriever` function:
+You need to run a bulk generation of embeddings before performing any retrieval. You can do this using the `aidb.refresh_retriever` function:
 
 ```
-pgai.refresh_retriever(
+aidb.refresh_retriever(
     retriever_name text
 )
 ```
@@ -165,11 +165,11 @@ pgai.refresh_retriever(
 The `retriever_name` is the name of the retriever. Our retriever's name is `product_embeddings_bulk`. So the SQL command is:
 
 ```sql
-SELECT pgai.refresh_retriever(
+SELECT aidb.refresh_retriever(
 'product_embeddings_bulk' -- name of the retriever
 );
 __OUTPUT__
-INFO:  inserted table name public._pgai_embeddings_product_embeddings_bulk
+INFO:  inserted table name public._aidb_embeddings_product_embeddings_bulk
  refresh_retriever
 -------------------
 
@@ -179,17 +179,17 @@ INFO:  inserted table name public._pgai_embeddings_product_embeddings_bulk
 You can now run that retrieve operation using the second retriever and get the same results as with the first retriever:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_bulk' -- retriever's name
 );
 __OUTPUT__
-                data                 
--------------------------------------
+                 data
+--------------------------------------
  {'data': 'Hamburger - Tasty'}
  {'data': 'Cheesburger - Very tasty'}
- {'data': 'Fries - Dunno'}
+ {'data': 'Pizza - Mkay'}
  {'data': 'Sandwich - So what'}
  {'data': 'Kebab - Maybe'}
 (5 rows)
@@ -208,68 +208,68 @@ INSERT 0 2
 The new data is automatically picked up in the retrieval from the first retriever with auto embeddings:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_auto' -- retriever's name
 );
 __OUTPUT__
-                 data                 
+                 data
 --------------------------------------
  {'data': 'Hamburger - Tasty'}
  {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Pizza - Mkay'}
  {'data': 'Sandwich - So what'}
- {'data': 'Kebab - Maybe'}
  {'data': 'Ramen - Delicious'}
 (5 rows)
 ```
 
-The second retriever without auto embedding doesn't reflect the new data. It can only do so when once there has been another explicit call to `pgai.refresh_retriever`. Until then, the results don't change:
+The second retriever without auto embedding doesn't reflect the new data. It can only do so when once there has been another explicit call to `aidb.refresh_retriever`. Until then, the results don't change:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_bulk' -- retriever's name
 );
 __OUTPUT__
-                data                 
--------------------------------------
+                 data
+--------------------------------------
  {'data': 'Hamburger - Tasty'}
  {'data': 'Cheesburger - Very tasty'}
- {'data': 'Fries - Dunno'}
+ {'data': 'Pizza - Mkay'}
  {'data': 'Sandwich - So what'}
  {'data': 'Kebab - Maybe'}
 (5 rows)
 ```
 
-If you now call `pgai.refresh_retriever()` again, the embeddings computation uses the new data to refresh the embeddings:
+If you now call `aidb.refresh_retriever()` again, the embeddings computation uses the new data to refresh the embeddings:
 
 ```sql
-SELECT pgai.refresh_retriever(
+SELECT aidb.refresh_retriever(
 'product_embeddings_bulk' -- name of the retriever
 );
 __OUTPUT__
-INFO:  inserted table name public._pgai_embeddings_product_embeddings_bulk
+INFO:  inserted table name public._aidb_embeddings_product_embeddings_bulk
  refresh_retriever
 -------------------
 ```
 
-And the new data shows up in the results of the query when you call the `pgai.retrieve` function again:
+And the new data shows up in the results of the query when you call the `aidb.retrieve` function again:
 
 ```sql
-SELECT data FROM pgai.retrieve(
+SELECT data FROM aidb.retrieve(
 'I like it', -- The query text to retrieve the top similar data
  5, -- top K
 'product_embeddings_bulk' -- retriever's name
 );
 __OUTPUT__
-                 data                 
+                 data
 --------------------------------------
  {'data': 'Hamburger - Tasty'}
  {'data': 'Cheesburger - Very tasty'}
+ {'data': 'Pizza - Mkay'}
  {'data': 'Sandwich - So what'}
- {'data': 'Kebab - Maybe'}
  {'data': 'Ramen - Delicious'}
 (5 rows)
 ```
@@ -278,4 +278,4 @@ You used the two different retrievers for the same source data just to demonstra
 
 In practice you may want to combine auto embedding and refresh_retriever() in a single retriever to conduct an initial embedding of data that existed before you created the retriever and then rely on auto embedding for any future data that's ingested, updated, or deleted.
 
-You should consider relying on `pgai.refresh_retriever`, and not using auto embedding, if you typically ingest a lot of AI data at once as a batch.
+You should consider relying on `aidb.refresh_retriever`, and not using auto embedding, if you typically ingest a lot of AI data at once as a batch.

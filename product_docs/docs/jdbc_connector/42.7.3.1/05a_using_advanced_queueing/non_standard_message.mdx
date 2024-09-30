@@ -1,0 +1,282 @@
+---
+title: "Non-standard message"
+deepToC: true
+indexdepth: 3
+---
+
+EDB-JDBC JMS allows users to send and receive non-standard messages that are fully controlled by the API user. These messages do not support the setting and getting of properties. The process involves creating a user-defined type and setting it as the payload for the queue table. 
+
+This example shows how to create a Java Bean corresponding to the type you created:
+
+```java
+package mypackage;
+import com.edb.jms.common.CompareValue;
+import java.util.ArrayList;
+public class MyType extends com.edb.aq.UDTType {
+    private Integer code;
+    private String project;
+    private String manager;
+    public MyType() {
+    }
+    /**
+     * @param code the code to set
+     */
+    @CompareValue(0)
+    public void setCode(Integer code) {
+      this.code = code;
+    }
+    /**
+     * @return the code
+     */
+    public Integer getCode() {
+      return code;
+    }
+    /**
+     * @param project the project to set
+     */
+    @CompareValue(1)
+    public void setProject(String project) {
+      this.project = project;
+    }
+    /**
+     * @return the project
+     */
+    public String getProject() {
+      return project;
+    }
+    @CompareValue(2)
+    public void setManager(String manager) {
+      this.manager = manager;
+    }
+    public String getManager() {
+      return manager;
+    }
+    public String valueOf() {
+        StringBuilder sql = new StringBuilder("CREATE TYPE ");
+        sql.append(getName() + " ");
+        sql.append("AS (");
+        sql.append("code int, ");
+        sql.append("project TEXT);");
+        return sql.toString();
+    }
+  /**
+   * Override this method and call getter methods in the same order as in CREATE TYPE statement.
+   * CREATE OR REPLACE TYPE mytype AS object (code int, project text, manager varchar(10))
+   * @return object array containing parameters.
+   */
+  @Override
+  public Object[] getParamValues() {
+    ArrayList<Object> params = new ArrayList<>();
+    params.add(getCode());
+    params.add(getProject());
+    params.add(getManager());
+    return params.toArray();
+  }
+}
+```
+
+!!!note
+- To create a user-defined class, it must extend the `com.edb.aq.operations.UDTType` class and override the `getParamValues()` method. In this method, you should add the attribute values to an `ArrayList` in the same order as they appear in the CREATE TYPE SQL statement in the database.
+- Additionally, make sure to use the annotation @CompareValue(0) with better methods, as this specifies the order of methods when using the reflection API to reconstruct the object after dequeuing the message from the queue.
+
+Failure to meet these requirements may result in errors.
+!!!
+
+This example shows how to send an object of this class as a message:
+
+```java
+messageProducer = (EDBJmsMessageProducer) session.createProducer(queue);
+      MyType udtType1 = new MyType();
+      udtType1.setProject("Test Project");
+      udtType1.setManager("Joe");
+      udtType1.setCode(321);
+      udtType1.setName("mytype"); //type name used in "CREATE TYPE"
+      messageProducer.send(udtType1);
+```
+
+This example shows how to receive this object as a message:
+
+```java
+messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue);
+
+Message message = messageConsumer.receive();
+
+MyType myt = (MyType) message;
+System.out.println("Code: "+ myt.getCode());
+System.out.println("Project: "+ myt.getProject());
+System.out.println("Manager: "+ myt.getManager());
+```
+## Nested types
+
+This example shows how to use nested types in the user-defined types:
+
+```sql
+CREATE OR REPLACE TYPE innermostcustom AS object (testing_field_1 text);
+
+CREATE OR REPLACE TYPE innercustom AS object (testing_field_1 text, innermost innermostcustom);
+
+CREATE OR REPLACE TYPE custom_type AS object (testing_field text, inner innercustom);
+```
+
+In this example, `custom_type` is using `innercustom` as another user-defined type that in turn is using `innermostcustom` user-defined type. EDB Postgres Advanced Server supports the nested types in such fashion, however it may have performance implications at certain level. EDB JMS API also provides flexibility to read such nested types at the cost of an added performance impact.
+
+To illustrate this using the EDB JMS API, you must first create the equivalent objects that represent nested custom types as shown below:
+
+### InnermostCustom.java
+
+```java
+package mypackage;
+
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
+
+import java.util.ArrayList;
+
+public class InnermostCustom extends UDTType {
+
+    public InnermostCustom() {
+    }
+
+    private String testing_field_1;
+
+    public String getTesting_field_1() {
+        return testing_field_1;
+    }
+
+    @CompareValue(0)
+    public void setTesting_field_1(String testing_field_1) {
+        this.testing_field_1 = testing_field_1;
+    }
+  @Override
+  public Object[] getParamValues(){
+    ArrayList<Object> params = new ArrayList<Object>();
+    params.add(getTesting_field_1());
+    return params.toArray();
+  }
+}
+```
+
+### InnerCustom.java
+
+```java
+package mypackage;
+
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
+
+import java.util.ArrayList;
+
+public class InnerCustom  extends UDTType {
+
+    public InnerCustom() {
+    }
+
+    private String testing_field_1;
+    private InnermostCustom innermostCustom;
+
+    public String getTesting_field_1() {
+        return testing_field_1;
+    }
+
+    @CompareValue(0)
+    public void setTesting_field_1(String testing_field_1) {
+        this.testing_field_1 = testing_field_1;
+    }
+
+  public InnermostCustom getInnermostCustom() {
+    return innermostCustom;
+  }
+
+  @CompareValue(1)
+  public void setInnermostCustom(InnermostCustom innermostCustom) {
+    this.innermostCustom = innermostCustom;
+  }
+  @Override
+  public Object[] getParamValues(){
+    ArrayList<Object> params = new ArrayList<Object>();
+    params.add(getTesting_field_1());
+    params.add(getInnermostCustom());
+    return params.toArray();
+  }
+}
+```
+
+### CustomType.java
+
+```java
+package mypackage;
+
+import com.edb.aq.UDTType;
+import com.edb.jms.common.CompareValue;
+
+import java.util.ArrayList;
+
+public class CustomType extends UDTType {
+
+    private String testing_field;
+    private InnerCustom innerCustom;
+
+    public String getTesting_field() {
+        return testing_field;
+    }
+
+    @CompareValue(0)
+    public void setTesting_field(String testing_field) {
+        this.testing_field = testing_field;
+    }
+
+    public InnerCustom getInnerCustom() {
+        return innerCustom;
+    }
+
+    @CompareValue(1)
+    public void setInnerCustom(InnerCustom innerCustom) {
+        this.innerCustom = innerCustom;
+    }
+
+    public CustomType() {
+
+    }
+
+    public Object[] getParamValues(){
+        ArrayList<Object> params = new ArrayList<Object>();
+        params.add(getTesting_field());
+        params.add(getInnerCustom());
+        return params.toArray();
+    }
+}
+```
+
+This example shows how to read such nested types:
+
+```java
+      EDBJmsMessageProducer messageProducer = (EDBJmsMessageProducer) session.createProducer(queue_1);
+
+      InnermostCustom innermostCustom = new InnermostCustom();
+      innermostCustom.setTesting_field_1("Innermost set");
+      innermostCustom.setName("innermostCustom");
+
+      InnerCustom innerCustom = new InnerCustom();
+      innerCustom.setTesting_field_1("Inner set");
+      innerCustom.setInnermostCustom(innermostCustom);
+      innerCustom.setName("innercustom");
+
+      CustomType customType = new CustomType();
+      customType.setTesting_field("EDB");
+      customType.setInnerCustom(innerCustom);
+      customType.setName("custom_type");
+
+      messageProducer.send(customType);
+
+      EDBJmsMessageConsumer messageConsumer = (EDBJmsMessageConsumer) session.createConsumer(queue_1);
+
+      Message message = messageConsumer.receive();
+
+      CustomType myType = (CustomType) message;
+      InnerCustom innerCustom_1 = myType.getInnerCustom();
+      InnermostCustom innermostCustom1 = innerCustom_1.getInnermostCustom();
+
+      System.out.println("Outer type test field: " + myType.getTesting_field());
+      System.out.println("Inner type test field: " + innerCustom_1.getTesting_field_1());
+      System.out.println("Most Inner type test field: " + innermostCustom1.getTesting_field_1());
+```
