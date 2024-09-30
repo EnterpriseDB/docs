@@ -37,7 +37,7 @@ const BannerSubCard = ({ iconName, headingText, to, children }) => (
               width="24"
               height="24"
             />
-            <h4 className="d-inline align-center card-title m-1">
+            <h4 className="d-inline align-center text-dark  card-title m-1">
               {headingText}
             </h4>
           </Link>
@@ -54,16 +54,16 @@ const BannerWideSubCard = ({ iconName, headingText, to, children }) => (
   <div className="col-xl-12 col-lg-12">
     <div className="card rounded border-secondary shadow-sm mb-4">
       <div className="card-body">
-        <div className="d-flex mb-2 px-2 py-1 bg-light me-3">
+        <div className="d-flex pt-1 ps-1 pb-1 mb-3 bg-light">
           {to && (
-            <Link to={to} className="link-hover-underline-primary">
+            <Link to={to}>
               <Icon
                 iconName={iconName}
                 className="fill-aquamarine"
                 width="24"
                 height="24"
               />
-              <h4 className="d-inline align-center card-title m-1">
+              <h4 className="card-title d-inline align-center text-dark m-1 ">
                 {headingText}
               </h4>
             </Link>
@@ -330,14 +330,11 @@ const Page = () => {
               headingText="Migration and ETL"
               to="/edb-postgres-ai/migration-etl"
             >
-              {/* <BannerCardLink to="/edb-postgres-ai/migration-etl/dms/">
+              <BannerCardLink to="/edb-postgres-ai/migration-etl/data-migration-service/">
                 Data Migration Service
-              </BannerCardLink> */}
+              </BannerCardLink>
               <BannerCardLink to="/migration_portal/latest">
                 Migration Portal with AI Copilot
-              </BannerCardLink>
-              <BannerCardLink to="/eprs/latest">
-                Replication Server
               </BannerCardLink>
               <BannerCardLink to="/migration_toolkit/latest">
                 Migration Toolkit
@@ -361,220 +358,224 @@ const Page = () => {
                 Developer Guides
               </BannerWideCardLink>
             </BannerWideCard>
+          </BannerCard>
 
-            <BannerWideSubCard
-              iconName={iconNames.TOOLBOX}
-              headingText="Platforms and Tools"
-              to="/edb-postgres-ai/platforms-and-tools"
-            >
-              <BannerIconDivider
-                iconName={iconNames.KUBERNETES}
-                headingText="Kubernetes"
-              />
+          <BannerWideSubCard
+            iconName={iconNames.TOOLBOX}
+            headingText="Platforms and Tools"
+            to="/edb-postgres-ai/platforms-and-tools"
+            className="primary"
+          >
+            <BannerIconDivider
+              iconName={iconNames.KUBERNETES}
+              headingText="Kubernetes"
+            />
 
-              <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
-                EDB Postgres Distributed for Kubernetes
-              </BannerWideLink>
+            <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
+              EDB Postgres Distributed for Kubernetes
+            </BannerWideLink>
 
-              <BannerWideLink to="/postgres_for_kubernetes/latest/">
-                EDB Postgres for Kubernetes
-              </BannerWideLink>
+            <BannerWideLink to="/postgres_for_kubernetes/latest/">
+              EDB Postgres for Kubernetes
+            </BannerWideLink>
 
-              <BannerWideLink to="/supported-open-source/cloud_native_pg/">
-                CloudNativePG
-              </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/cloud_native_pg/">
+              CloudNativePG
+            </BannerWideLink>
 
-              <BannerIconDivider
-                iconName={iconNames.CONTROL}
-                headingText="Management and Monitoring"
-              />
+            <BannerIconDivider
+              iconName={iconNames.CONTROL}
+              headingText="Management and Monitoring"
+            />
 
-              <BannerWideLink to="/pem/latest">
-                Postgres Enterprise Manager
-              </BannerWideLink>
-              <BannerWideLink to="/supported-open-source/pgadmin/">
-                pgAdmin
-              </BannerWideLink>
-              <BannerWideLink to="/edb_plus/latest">EDB*Plus</BannerWideLink>
-              <BannerWideLink to="/lasso/latest">Lasso</BannerWideLink>
-              <BannerWideLink to="/livecompare/latest">
-                LiveCompare
-              </BannerWideLink>
-              <BannerWideLink to="/pwr/latest">
-                Postgres Workload Report
-              </BannerWideLink>
+            <BannerWideLink to="/pem/latest">
+              Postgres Enterprise Manager
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/pgadmin/">
+              pgAdmin
+            </BannerWideLink>
+            <BannerWideLink to="/edb_plus/latest">EDB*Plus</BannerWideLink>
+            <BannerWideLink to="/lasso/latest">Lasso</BannerWideLink>
+            <BannerWideLink to="/livecompare/latest">
+              LiveCompare
+            </BannerWideLink>
+            <BannerWideLink to="/pwr/latest">
+              Postgres Workload Report
+            </BannerWideLink>
 
-              <BannerIconDivider
-                iconName={iconNames.SECURITY}
-                headingText="Security"
-              />
+            <BannerIconDivider
+              iconName={iconNames.SECURITY}
+              headingText="Security"
+            />
 
-              <BannerWideLink to="/tde/latest">
-                Transparent Data Encryption
-              </BannerWideLink>
-              <BannerWideLink to="/pg_extensions/ldap_sync">
-                EDB LDAP Sync
-              </BannerWideLink>
+            <BannerWideLink to="/tde/latest">
+              Transparent Data Encryption
+            </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/ldap_sync">
+              EDB LDAP Sync
+            </BannerWideLink>
 
-              <BannerIconDivider
-                iconName={iconNames.INSTANCES}
-                headingText="Automation"
-              />
+            <BannerIconDivider
+              iconName={iconNames.INSTANCES}
+              headingText="Automation"
+            />
 
-              <BannerWideLink to="/tpa/latest/">
-                Trusted Postgres Architect
-              </BannerWideLink>
+            <BannerWideLink to="/tpa/latest/">
+              Trusted Postgres Architect
+            </BannerWideLink>
 
-              <BannerIconDivider
-                iconName={iconNames.HIGH_AVAILABILITY}
-                headingText="High Availability"
-              />
+            <BannerIconDivider
+              iconName={iconNames.HIGH_AVAILABILITY}
+              headingText="High Availability"
+            />
 
-              <BannerWideLink to="/repmgr/latest">
-                Replication Manager (repmgr)
-              </BannerWideLink>
-              <BannerWideLink to="/supported-open-source/patroni/">
-                Patroni
-              </BannerWideLink>
-              <BannerWideLink to="/slony/latest">
-                Slony (Deprecated)
-              </BannerWideLink>
-              <BannerWideLink to="/supported-open-source/pglogical2/">
-                pglogical 2
-              </BannerWideLink>
+            <BannerWideLink to="/repmgr/latest">
+              Replication Manager (repmgr)
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/patroni/">
+              Patroni
+            </BannerWideLink>
+            <BannerWideLink to="/slony/latest">
+              Slony (Deprecated)
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/pglogical2/">
+              pglogical 2
+            </BannerWideLink>
 
-              <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
+            <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
 
-              <BannerIconDivider
-                iconName={iconNames.BACKUP}
-                headingText="Backup and Recovery"
-              />
+            <BannerIconDivider
+              iconName={iconNames.BACKUP}
+              headingText="Backup and Recovery"
+            />
 
-              <BannerWideLink to="/supported-open-source/barman/">
-                Barman
+            <BannerWideLink to="/supported-open-source/barman/">
+              Barman
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/pgbackrest/">
+              pgBackRest
+            </BannerWideLink>
+
+            <BannerIconDivider
+              iconName={iconNames.MIGRATION}
+              headingText="Migration"
+            />
+
+            <BannerWideLink to="/migrating/oracle">
+              Oracle Migration Handbook
+            </BannerWideLink>
+            {/* <BannerWideLink to="/migration_toolkit/latest">
+              Migration Toolkit
+            </BannerWideLink> */}
+            <BannerWideLink to="/eprs/latest">
+              Replication Server
+            </BannerWideLink>
+
+            <BannerIconDivider
+              iconName={iconNames.CONNECT}
+              headingText="Connection Poolers"
+            />
+
+            <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
+            <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
+          </BannerWideSubCard>
+
+          <BannerWideSubCard
+            iconName={iconNames.EXTENSION}
+            headingText="Extensions and Tools"
+            to="/edb-postgres-ai/extensions-and-tools"
+          >
+            <BannerWideQuickLinks>
+              <BannerWideLink to="/pg_extensions/" className="col-md-12">
+                Supported Postgres extensions
               </BannerWideLink>
-              <BannerWideLink to="/supported-open-source/pgbackrest/">
-                pgBackRest
-              </BannerWideLink>
-
-              {/* <BannerIconDivider
-                iconName={iconNames.MIGRATION}
-                headingText="Migration"
-              />
-
-              <BannerWideLink to="/migrating/oracle">
-                Migration Handbook
-              </BannerWideLink>
-              <BannerWideLink to="/migration_toolkit/latest">
-                Migration Toolkit
-              </BannerWideLink>
-              <BannerWideLink to="/eprs/latest">
-                Replication Server
-              </BannerWideLink> */}
-            </BannerWideSubCard>
-
-            <BannerWideSubCard
-              iconName={iconNames.EXTENSION}
-              headingText="Extensions and Tools"
-              to="/edb-postgres-ai/extensions-and-tools"
-            >
-              <BannerWideQuickLinks>
-                <BannerWideLink to="/pg_extensions/" className="col-md-12">
-                  Supported Postgres extensions
-                </BannerWideLink>
-                {/* <BannerWideLink to="/pg_tools/" classname="col-md-6">
+              {/* <BannerWideLink to="/pg_tools/" classname="col-md-6">
                 Supported tools
               </BannerWideLink> */}
-              </BannerWideQuickLinks>
+            </BannerWideQuickLinks>
 
-              <BannerDivider headingText="Extensions" />
+            <BannerDivider headingText="Extensions" />
 
-              <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
+            <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
-                EDB Advanced Storage Pack
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/advanced_storage_pack/">
+              EDB Advanced Storage Pack
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/pg_tuner">
-                EDB Postgres Tuner
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/pg_tuner">
+              EDB Postgres Tuner
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/query_advisor">
-                EDB Query Advisor
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/query_advisor">
+              EDB Query Advisor
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/wait_states">
-                EDB Wait States
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/wait_states">
+              EDB Wait States
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/pg_squeeze">
-                PG Squeeze
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/pg_squeeze">
+              PG Squeeze
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/wal2json">
-                wal2json
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/wal2json">
+              wal2json
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/system_stats">
-                system_stats
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/system_stats">
+              system_stats
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/edb_job_scheduler">
-                EDB Job Scheduler
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/edb_job_scheduler">
+              EDB Job Scheduler
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/pg_failover_slots">
-                PG Failover Slots
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/pg_failover_slots">
+              PG Failover Slots
+            </BannerWideLink>
 
-              <BannerWideLink to="/pg_extensions/spl_check/">
-                EDB SPL Check
-              </BannerWideLink>
+            <BannerWideLink to="/pg_extensions/spl_check/">
+              EDB SPL Check
+            </BannerWideLink>
 
-              <BannerDivider headingText="Tools" />
+            <BannerDivider headingText="Tools" />
 
-              <BannerWideLink to="/tools/edb_sqlpatch">
-                EDB SQL Patch
-              </BannerWideLink>
+            <BannerWideLink to="/tools/edb_sqlpatch">
+              EDB SQL Patch
+            </BannerWideLink>
 
-              <BannerWideLink to="/tools/alteruser_utility">
-                alteruser
-              </BannerWideLink>
+            <BannerWideLink to="/tools/alteruser_utility">
+              alteruser
+            </BannerWideLink>
 
-              <BannerWideLink to="/language_pack/latest/">
-                Language Pack
-              </BannerWideLink>
-            </BannerWideSubCard>
+            <BannerWideLink to="/language_pack/latest/">
+              Language Pack
+            </BannerWideLink>
+          </BannerWideSubCard>
 
-            <BannerWideSubCard
-              iconName={iconNames.INTEGRATION}
-              headingText="Integration"
-              to="/edb-postgres-ai/integration"
-            >
-              <BannerDivider headingText="Connectors" />
+          <BannerWideSubCard
+            iconName={iconNames.INTEGRATION}
+            headingText="Integration"
+            to="/edb-postgres-ai/integration"
+          >
+            <BannerDivider headingText="Connectors" />
 
-              <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
-              <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
-              <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
-              <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
+            <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
+            <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
+            <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
+            <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-              <BannerDivider headingText="Connection Poolers" />
-
-              <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
-              <BannerWideLink to="/pgpool/latest">pgPool-II</BannerWideLink>
-
-              <BannerDivider headingText="Foreign Data Wrappers" />
-              <BannerWideLink to="/hadoop_data_adapter/latest">
-                Hadoop
-              </BannerWideLink>
-              <BannerWideLink to="/mongo_data_adapter/latest">
-                Mongo
-              </BannerWideLink>
-              <BannerWideLink to="/mysql_data_adapter/latest">
-                MySQL
-              </BannerWideLink>
-            </BannerWideSubCard>
-          </BannerCard>
+            <BannerDivider headingText="Foreign Data Wrappers" />
+            <BannerWideLink to="/hadoop_data_adapter/latest">
+              Hadoop
+            </BannerWideLink>
+            <BannerWideLink to="/mongo_data_adapter/latest">
+              Mongo
+            </BannerWideLink>
+            <BannerWideLink to="/mysql_data_adapter/latest">
+              MySQL
+            </BannerWideLink>
+          </BannerWideSubCard>
 
           <BannerWideSubCard
             iconName={iconNames.HANDSHAKE}
