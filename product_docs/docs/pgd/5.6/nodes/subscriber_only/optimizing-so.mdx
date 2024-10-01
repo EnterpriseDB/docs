@@ -1,0 +1,46 @@
+---
+title: Optimizing subscriber-only groups
+description: 'Optimizing subscriber-only groups in EDB Postgres Distributed'
+---
+
+While many use cases rely on accessing a database node which can handle queries and updates, there are also use cases which only require access to a node that can handle read-only database queries.
+Read scaling like this, by moving the read-only traffic away from active database nodes in the cluster, can improve the performance of the core cluster, whilst making database access more widely available.
+
+PGD provides this read scaling functionality through subscriber-only nodes and groups.
+
+With PGD 5.6 and later, this topology can be optimized. For clusters using groups for their data nodes, subscriber only groups can use a more efficient model which uses a group leader, similar to a write leader in PGD Proxies.
+
+Each subscriber-only group then has a node which replicates changes to the other subscriber-only nodes in its group.
+You can have multiple subscriber-only groups, which can address different regions or different application demands.
+
+This group leader acts as a replication proxy for incoming changes.
+
+This model cannot be enabled if a cluster has any of the following:
+
+* Data-nodes which are directly members of the top-level group.
+* No data-node sub-groups.
+* No data-node sub-groups with proxy routing enabled.
+
+If this is the case, the nodes in a subscriber only groups automatically revert to the full mesh topology.
+
+To get the benefit of the new SO group and node replication, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups.
+
+## Subscriber-only group leaders
+
+With PGD 5.6 and later, each SO group gets assigned a group leader of its own. It does not have a group Raft consensus mechanism. Instead, the cluster’s top level group Raft consensus mechanism handles selection of an SO group’s group leader.
+
+Group leaders in SO groups are regularly tested for connectivity and if unavailable, a new SO node from the SO group is selected to become group leader and announced to the whole cluster.
+Data subgroups write leaders then replicate data to this newly selected group leader node.
+The Subscriber-Only node and group form the building block for PGD tree topologies.
+
+In this topology, a small number of fully active nodes replicate changes to the “write leaders” of SO groups, these write leaders then replicate changes to the other SO group members.
+
+This approach avoids the explosion of connections that can happen when there are large numbers of SO nodes and reduces the amount of replication traffic.
+
+## Enabling the optimized model
+
+By default, PGD 5.6 will force the full mesh topology. To enable the himesh topology, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups. Then you can set `bdr.force_full_mesh` to `false` to allow the optimization to take effect.
+
+
+
+
