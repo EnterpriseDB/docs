@@ -1,0 +1,42 @@
+---
+title: Using a passphrase
+description: Learn how to secure your encryption key with a passphrase.
+---
+
+You can protect the data key with a passphrase using the openssl command line utility. The following is an example that sets up this protection:
+
+```shell
+initdb -D datadir -y --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"' --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
+```
+
+This example wraps the randomly generated data key (done internally by initdb) by encrypting it with the AES-128-CBC (AESKW) algorithm. The encryption uses a key derived from a passphrase with the PBKDF2 key derivation function and a randomly generated salt. The terminal prompts for the passphrase. (See the openssl-enc manual page for details about these options. Available options vary across versions.) The initdb utility replaces `%p` with the name of the file that stores the wrapped key.
+
+The unwrap command performs the opposite operation. initdb doesn't need the unwrap operation. However, it stores it in the `postgresql.conf` file of the initialized cluster, which uses it when it starts up.
+
+
+The key wrap command receives the plaintext key on standard input and needs to put the wrapped key at the file system location specified by the `%p` placeholder. The key unwrap command needs to read the wrapped key from the file system location specified by the `%p` placeholder and write the unwrapped key to the standard output.
+
+Utility programs like pg_rewind and pg_upgrade operate directly on the data directory or copies, such as backups. These programs also need to be told about the key unwrap command, depending on the circumstances. They each have command-line options for this purpose.
+
+To simplify operations, you can also set the key wrap and unwrap commands in environment variables. These are accepted by all affected applications if you don't provide the corresponding command line options. For example:
+
+```shell
+PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"'
+PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
+export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
+```
+
+Key unwrap commands that prompt for passwords on the terminal don't work when the server is started by pg_ctl or through service managers such as systemd. The server is detached from the terminal in those environments. If you want an interactive password prompt on server start, you need a more elaborate configuration that fetches the password using some indirect mechanism.
+
+For example, for systemd, you can use `systemd-ask-password`:
+
+```
+PGDATAKEYWRAPCMD="bash -c 'openssl enc -e -aes-128-cbc -pbkdf2 -out %p -pass file:<(sudo systemd-ask-password --no-tty)'"
+PGDATAKEYUNWRAPCMD="bash -c 'openssl enc -d -aes-128-cbc -pbkdf2 -in %p -pass file:<(sudo systemd-ask-password --no-tty)'"
+```
+
+You also need an entry like in `/etc/sudoers`:
+
+```
+postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
+```
