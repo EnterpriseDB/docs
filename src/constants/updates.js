@@ -7,7 +7,7 @@ export const updates = [
     description:
       "LiveCompare 3.0 is now available with improved performance, easier to configure Oracle support, and enhanced documentation. ",
     url: "/livecompare/latest/",
-    moreUrl: "/livecompare/latest/rel_notes/3.0_rel_notes/",
+    moreUrl: "/livecompare/latest/rel_notes/3.0.1_rel_notes/",
   },
   {
     title: "Trusted Postgres Architect 23.34",
@@ -16,7 +16,6 @@ export const updates = [
       "TPA 23.34 includes enhanced support for EFM, PEM and pgBouncer, and a new output plugin which improves readability of TPA progress.",
     url: "/tpa/latest/",
     moreUrl: "/tpa/latest/rel_notes/tpa_23.34_rel_notes/",
-
   },
   {
     title: "EDB Postgres Enterprise Manager 9.7",
