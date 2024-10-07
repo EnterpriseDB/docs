@@ -12,10 +12,17 @@ You can use collections to process DML commands more efficiently by passing all 
 
 ```sql
 FORALL <index> IN <lower_bound> .. <upper_bound>
-  { <insert_stmt> | <update_stmt> | <delete_stmt> | <merge_stmt> };
+  [SAVE EXCEPTIONS] { <insert_stmt> | <update_stmt> | <delete_stmt> | <merge_stmt> };
 ```
 
-`index` is the position in the collection given in the `insert_stmt`, `update_stmt`, `delete_stmt`, or `merge_stmt` DML command that iterates from the integer value given as `lower_bound` up to and including `upper_bound.`
+`index` is the position in the collection given in the `insert_stmt`, `update_stmt`, `delete_stmt`, or `merge_stmt` DML command that iterates from the integer value given as `lower_bound` up to and including `upper_bound.` 
+
+Optionally, `SAVE EXCEPTIONS` allows a FORALL statement to continue even if any of the DML statements fail. When a DML statement fails, SPL doesn't raise an exception, it saves information about the failure. After the FORALL statement completes, SPL raises a single exception for the FORALL statement. The error information is stored in the collection of records called `SQL%BULK_EXCEPTIONS`, where:
+
+  - `SQL%BULK_EXCEPTIONS(i).ERROR_INDEX` records the number of the DML statement that failed.
+  - `SQL%BULK_EXCEPTIONS(i).ERROR_CODE` records the database error code for the failure.
+  - `SQL%BULK_EXCEPTIONS.COUNT` records the total number of the DML statements that failed.
+
 
 ## How it works
 
@@ -166,3 +173,75 @@ a  | b
   9 | 10
  10 | 11
 (10 rows)
+```
+
+## Using FORALL with SAVE EXCEPTIONS
+
+This example merges (inserts and updates) the records of test_table2 using `FORALL` statement:
+
+```sql
+CREATE TABLE foo(id NUMBER(6) not null, name VARCHAR2(20));
+INSERT INTO foo values(1, 'Peter');
+```
+
+```sql
+DECLARE  
+
+  TYPE namelist_t IS TABLE OF VARCHAR2 (5000);  
+
+  names_with_errors   namelist_t  
+
+     := namelist_t (RPAD ('ABCD', 1000, 'ABC'),  
+
+                    'George',  
+
+                    RPAD ('ABCD', 3000, 'ABC'),  
+
+                    'Max');  
+
+
+
+   ex_dml_errors EXCEPTION;
+
+   PRAGMA EXCEPTION_INIT(ex_dml_errors, -24381);
+
+
+
+BEGIN  
+
+  FORALL indx IN 1 .. names_with_errors.COUNT SAVE EXCEPTIONS  
+
+     UPDATE foo SET name = names_with_errors (indx);  
+
+ 
+
+EXCEPTION
+
+   WHEN ex_dml_errors THEN
+
+       -- Handling exceptions
+
+       FOR i IN 1..SQL%BULK_EXCEPTIONS.COUNT LOOP
+
+           DBMS_OUTPUT.PUT_LINE('SAVE EXCEPTIONS: The Error at ' || SQL%BULK_EXCEPTIONS(i).ERROR_INDEX ||
+
+                                ' Error Code ' || SQL%BULK_EXCEPTIONS(i).ERROR_CODE);
+
+       END LOOP;
+
+END;
+
+__OUTPUT__
+SAVE EXCEPTIONS: The Error at 1 Error Code -6502
+SAVE EXCEPTIONS: The Error at 3 Error Code -6502
+
+EDB-SPL Procedure successfully completed
+```
+
+```sql
+edb@1924=#select * from foo;
+ id | name 
+----+------
+  1 | Max
+(1 row)
+```
