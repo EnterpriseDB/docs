@@ -3,6 +3,7 @@ import AuthenticatedContentPlaceholder from "./authenticated-content-placeholder
 import BackButton from "./back-button";
 import CardDecks from "./card-decks";
 import CodeBlock from "./code-block";
+import CTA from "./cta";
 import DarkModeToggle from "./dark-mode-toggle";
 import DevOnly from "./dev-only";
 import DevFrontmatter from "./dev-frontmatter";
@@ -38,6 +39,7 @@ export {
   BackButton,
   CardDecks,
   CodeBlock,
+  CTA,
   DarkModeToggle,
   DevOnly,
   DevFrontmatter,
