@@ -26,10 +26,14 @@ commit_scope:
 commit_scope_operation:
     commit_scope_group confirmation_level commit_scope_kind
 
+commit_scope_target:
+    { (node_group [, ...])
+      | ORIGIN_GROUP }
+
 commit_scope_group:
-{ ANY num [NOT] (node_group [, ...])
-  | MAJORITY [NOT] (node_group [, ...])
-  | ALL [NOT] (node_group [, ...]) }
+{ ANY num [NOT] commit_scope_target
+  | MAJORITY [NOT] commit_scope_target
+  | ALL [NOT] commit_scope_target }
 
 confirmation_level:
     [ ON { received|replicated|durable|visible } ]
@@ -46,6 +50,23 @@ commit_scope_degrade_operation:
 ```
 
 Where `node_group` is the name of a PGD data node group. 
+ 
+## Commit scope targets
+
+### ORIGIN_GROUP
+
+Instead of targeting a specific group, you can also use `ORIGIN_GROUP`, which dynamically refers to the bottommost group from which a transaction originates. Therefore, if you have a top level group, `top_group`, and two subgroups as children, `left_dc` and `right_dc`, then adding a commit scope like:
+
+```sql
+SELECT bdr.add_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_level_group',
+    rule := 'MAJORITY ORIGIN_GROUP SYNCHRONOUS_COMMIT',
+    wait_for_ready := true
+);
+```
+
+would mean that for transactions originating on a node in `left_dc`, a majority of the nodes of `left_dc` would need to confirm the transaction synchronously before the transaction is committed. Moreover, the same rule would also mean that for transactions originating from a node in `right_dc`, a majority of nodes from `right_dc` are required to confirm the transaction synchronously before it is committed. This saves the need to add two seperate rules, one for `left_dc` and one for `right_dc`, to the commit scope.
 
 ### commit_scope_degrade_operation
 
