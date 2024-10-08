@@ -90,6 +90,23 @@ The `catchup_state` can be one of the following:
 40 = done
 ```
 
+## Monitoring the manager worker
+
+The manager worker is responsible for many background tasks, including the managing of all the other workers. As such it is important to know what it's doing, especially in cases where it might seem stuck. 
+
+Accordingly, the [`bdr.stat_worker`](/pgd/latest/reference/catalogs-visible/#bdrstat_worker) view provides per worker statistics for PGD workers, including manager workers. With respect to ensuring manager workers do not get stuck, the current task they are executing would be reported in their `query` field prefixed by "pgd manager:".
+
+The `worker_backend_state` field for manager workers also reports whether the manager is idle or busy.
+
+## Monitoring Routing
+
+Routing is a critical part of PGD for ensuring a seemless application experience and conflict avoidance. Routing changes should happen quickly, including the detections of failures. At the same time we want to have as few disruptions as possible. We also want to ensure good load balancing for use-cases where it's supported. 
+
+Monitoring all of these is important for noticing issues, debugging issues, as well as informing more optimal configurations. Accoringly, there are two main views for monitoring statistics to do with routing:
+ 
+-   [`bdr.stat_routing_state`](/pgd/latest/reference/catalogs-visible/#bdrstat_routing_state) for monitoring the state of the connection routing with PGD Proxy uses to route the connections.
+-   [`bdr.stat_routing_candidate_state`](/pgd/latest/reference/catalogs-visible/#bdrstat_routing_candidate_state) for information about routing candidate nodes from the point of view of the Raft leader (the view is empty on other nodes).
+
 ## Monitoring Replication Peers
 
 You use two main views for monitoring of replication activity:
@@ -244,7 +261,7 @@ server's current WAL insert position.
 
 ### Monitoring incoming replication
 
-You can monitor incoming replication (also called subscriptions) by querying
+You can monitor incoming replication (also called subscriptions) at a high level by querying
 the `bdr.subscription_summary` view. This query shows the list of known subscriptions
 to other nodes in the EDB Postgres Distributed cluster and the state of the replication worker:
 
@@ -265,6 +282,8 @@ sub_enabled         | t
 sub_slot_name       | bdr_postgres_bdrgroup_node1
 subscription_status | replicating
 ```
+
+You can further monitor subscriptions by monitoring subscription summary statistics through [`bdr.stat_subscription`](/pgd/latest/reference/catalogs-visible/#bdrstat_subscription), and by monitoring the subscription replication receivers and subscription replication writers, using [`bdr.stat_receiver`](/pgd/latest/reference/catalogs-visible/#bdrstat_receiver) and [`bdr.stat_writer`](/pgd/latest/reference/catalogs-visible/#bdrstat_writer), respectively.
 
 ### Monitoring WAL senders using LCR
 
@@ -307,7 +326,7 @@ So this view offers these insights into the state of a PGD system:
 -   The wait_event column has enhanced information, if
     the reason for waiting is related to PGD.
 -   The `query` column is blank in PGD workers, except
-    when a writer process is executing DDL.
+    when a writer process is executing DDL, or for when a manager worker is active (in which case the entry in the `query` column will be prefixed with "`pgd manager:`").
 
 The `bdr.workers` view shows PGD worker-specific details that aren't
 available from `bdr.stat_activity`.
@@ -339,6 +358,16 @@ might apply different transactions at the same time. The
 means that the writer is the first one to commit. Value `-1` means that
 the commit position isn't yet known, which can happen for a streaming
 transaction or when the writer isn't currently applying any transaction.
+
+## Monitoring commit scopes
+
+Commit scopes are our durability and consistency configuration framework. As such, they affect the performance of transactions, so it is important to get statistics on them. Moreover, because in failure scenarios transactions might appear to be stuck due to the commit scope configuration, we need insight into what commit scope is being used, what it's waiting on, and so on.
+
+Accordingly, these two views show relevant statistics about commit scopes:
+
+-   [bdr.stat_commit_scope](/pgd/latest/reference/catalogs-visible/#bdrstat_commit_scope) for cumulative statistics for each commit scope.
+
+-   [bdr.stat_commit_scope_state](/pgd/latest/reference/catalogs-visible/#bdrstat_commit_scope_state) for information about the current use of commit scopes by backend processes.
 
 ## Monitoring global locks
 
@@ -451,8 +480,9 @@ nddl      | 2
 In this case, the subscription connected three times to the upstream, inserted
 10 rows, and performed two DDL commands inside five transactions.
 
-You can reset the stats counters for these views to zero using the functions
-[`bdr.reset_subscription_stats`](/pgd/latest/reference/functions-internal#bdrreset_subscription_stats) and [`bdr.reset_relation_stats`](/pgd/latest/reference/functions-internal#bdrreset_relation_stats).
+You can reset the stats counters for these views to zero using the functions [`bdr.reset_subscription_stats`](/pgd/latest/reference/functions-internal#bdrreset_subscription_stats) and [`bdr.reset_relation_stats`](/pgd/latest/reference/functions-internal#bdrreset_relation_stats).
+
+PGD also monitors statistics regarding subscription replication receivers and subscription replication writers for each subscription, using [`bdr.stat_receiver`](/pgd/latest/reference/catalogs-visible/#bdrstat_receiver) and [`bdr.stat_writer`](/pgd/latest/reference/catalogs-visible/#bdrstat_writer), respectively.
 
 ## Standard PostgreSQL statistics views
 
@@ -623,8 +653,10 @@ to provide a cluster-wide Raft check. For example:
 bdrdb=# SELECT * FROM bdr.monitor_group_raft();
 node_group_name | status |               message
 ----------------|--------+-------------------------------------
-myroup          | OK     | Raft Consensus is working correctly
+mygroup          | OK     | Raft Consensus is working correctly
 ```
+
+Two further views that can give a finer-grained look at the state of Raft consensus are [`bdr.stat_raft_state`](/pgd/latest/reference/catalogs-visible/#bdrstat_raft_state), which provides the state of the Raft consensus on the local node, and [`bdr.stat_raft_followers_state`](/pgd/latest/reference/catalogs-visible/#bdrstat_raft_followers_state), which provides a view when on the Raft leader (it is empty on other nodes) regarding the state of the followers of that Raft leader.
 
 ## Monitoring replication slots
 

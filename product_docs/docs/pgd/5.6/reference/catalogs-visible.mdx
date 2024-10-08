@@ -852,8 +852,117 @@ for internal PGD bookkeeping.
 
 Dynamic activity for each backend or worker process.
 
-This contains the same information as `pg_stat_activity`, except `wait_event`
+This contains the same information as [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW), except `wait_event`
 is set correctly when the wait relates to PGD.
+
+### `bdr.stat_commit_scope`
+
+A view containing statistics for each commit scope.
+
+#### `bdr.stat_commit_scope` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| commit_scope_name   | name                     | Name of the commit scope
+| group_name          | name                     | Name of group for which the commit scope is defined
+| ncalls              | bigint                   | The number of times the commit scope was used
+| ncommits            | bigint                   | The number of successful commits were made with the commit scope
+| naborts             | bigint                   | The number of times the commit scope used was eventually aborted
+| total_commit_time   | double precision         | Total time spent committing using the commit scope
+| min_commit_time     | double precision         | Minimum time spent committing using the commit scope
+| max_commit_time     | double precision         | Maximum time spend committing using the commit scope
+| mean_commit_time    | double precision         | Mean time spent committing using the commit scope
+| stats_reset         | timestamp with time zone | Time at which all statistics in the view were last reset
+
+### `bdr.stat_commit_scope_state`
+
+A view of information about the current use of commit scopes by backends.
+
+#### `bdr.stat_commit_scope_state` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| pid                 | integer                  | Process ID of the backend
+| commit_scope_name   | name                     | Name of the commit scope being used
+| group_name          | name                     | Name of group for which the commit scope is defined
+| waiting_op_num      | integer                  | Index of the first operation in the commit scope that is not satisfied yet
+| waiting_prepare_confirmations| integer         | The number of PREPARE confirmations that are still needed by the operation
+| waiting_commit_confirmations| integer          | The number of COMMIT confirmations that are still needed by the operation
+| waiting_lsn_confirmations| integer             | The number of LSN confirmations that are still needed by the operation
+
+### `bdr.stat_raft_followers_state`
+
+A view of the state of the raft leader's followers on the Raft leader node (empty on other nodes).
+
+#### `bdr.stat_raft_followers_state` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| group_name          | name                     | The group this information is for (each group can have a separate consensus configured)
+| node_name           | name                     | Name of the follower node
+| sent_commit_index   | bigint                   | Latest Raft index sent to the follower node
+| match_index         | bigint                   | Raft index we expect to match the next response from the follower node
+| last_message_time   | timestamp with time zone | Last message (any, including requests) seen from the follower node
+| last_heartbeat_send_time| timestamp with time zone| Last time the leader sent heartbeat to the follower node
+| last_heartbeat_response_time| Lasat time the leader has seen a heartbeat response from the follower node
+| approx_clock_drift_ms| bigint                  | Approximate clock drift seen by the leader against the follower node in milliseconds
+
+### `bdr.stat_raft_state`
+
+A view describing the state of the Raft consensus on the local node.
+
+#### `bdr.stat_raft_state` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| group_name          | name                     | The group this information is for (each group can have a separate consensus configured)
+| raft_stat           | text                     | State of the local node in the Raft ('LEADER', 'CANDIDATE', 'FOLLOWER', 'STOPPED')
+| leader_name         | name                     | Name of the Raft leader, if any
+| voted_for_name      | name                     | The node the local node voted for as leader last vote
+| is_voting           | boolean                  | The local node part of Raft is voting
+| heartbeat_timeout_ms| bigint                   | The heartbeat timeout on the local node
+| heartbeat_elapsed_ms| bigint                   | The number of milliseconds that have elapsed since the local node has seen a heartbeat from the leader
+| current_term        | bigint                   | The current Raft term the local node is at
+| commit_index        | bigint                   | The current Raft commit index the local node is at
+| apply_index         | bigint                   | The Raft commit index the local node applied to catalogs
+| last_log_term       | bigint                   | Last Raft term in the request log
+| last_log_index      | bigint                   | Last Raft index in the request log
+| oldest_log_index    | bigint                   | Oldest Raft index still in the request log
+| newest_prunable_log_index| bigint              | Newest Raft index that can be safely removed from the request log
+| snapshot_term       | bigint                   | Raft term of the last snapshot
+| snapshot_index      | bigint                   | Raft index of the last snapshot
+| nnodes              | integer                  | Number of nodes in the Raft consensus (should normally be the same as the number of nodes in the group)
+| nvoting_nodes       | integer                  | Number of voting nodes in the Raft consensus
+
+### `bdr.stat_receiver`
+
+A view containing all the necessary info about the replication subscription receiver processes.
+
+#### `bdr.stat_receiver` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| worker_role         | text                     | Role of the BDR worker (always 'receiver')
+| worker_state        | text                     | State of receiver worker (can be 'running', 'down', or 'disabled')
+| worker_pid          | integer                  | Process id of the receiver worker
+| sub_name            | name                     | Name of the subscription the receiver belongs to
+| sub_slot_name       | name                     | Replication slot name used by the receiver
+| source_name         | name                     | Source node for this receiver (the one it connects to), this is normally the same as the origin node, but is different for forward mode subscriptions
+| origin_name         | name                     | The origin node for this receiver (the one it receives forwarded changes from), this is normally the same as the source node, but is different for forward mode subscriptions
+| subscription_mode   | char                     | Mode of the subscription, see [`bdr.subscription_summary`](/pgd/latest/reference/catalogs-visible/#bdrsubscription_summary) for more details
+| sub_replication_sets| text[]                     | Replication sets this receiver is subscribed to
+| sub_apply_delay     | interval                 | Apply delay interval
+| receive_lsn         | pg_lsn                   | LSN of the last change received so far
+| receive_commit_lsn  | pg_lsn                   | LSN of the last commit received so far
+| xact_apply_lsn      | pg_lsn                   | Last applied transaction LSN
+| xact_flush_lsn      | pg_lsn                   | Last flushed transaction LSN
+| xact_apply_timestamp| timestamp with time zone | Last applied transaction (commit) timestamp
+| worker_start        | timestamp with time zone | Time at which the receiver started
+| worker_xact_start   | timestamp with time zome | Time at which the receiver started local db transaction (if it is currently processing a local transaction), usually NULL, see `xact_start` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_backend_state_change | timestamp with time zone | Backend state change timestamp, see `state_change` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_backend_state| text                     | Current backend state, see `state` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| wait_event_type     | text                     | Type of wait event the receiver is currently waiting on (if any), see `wait_event_type` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| wait_event          | text                     | Exact event the receiver is currently waiting on (if any, see `wait_event` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
 
 ### `bdr.stat_relation`
 
@@ -888,6 +997,35 @@ You can reset the stored relation statistics by calling
 | lock_acquire_time   | double precision         | Total time spent acquiring locks on the relation, in milliseconds (if `bdr.track_apply_lock_timing` is enabled, otherwise zero) |
 | stats_reset         | timestamp with time zone | Time of the last statistics reset (performed by `bdr.reset_relation_stats()`)                                                   |
 
+### `bdr.stat_routing_candidate_state`
+
+A view of information about the routing candidate nodes on the Raft leader (empty on other nodes).
+
+#### `bdr.stat_routing_candidate_state` columns
+
+| Column              | Type                     | Description                                                                                                                     |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| node_group_name     | name                     | The group this information is for (each group can have a separate routing proxy)
+| node_name           | name                     | Candidate node name
+| node_route_fence    | boolean                  | The node is fenced (when true it cannot become leader or read-only connection target)
+| node_route_reads    | boolean                  | The node is being considered as a read-only connection target
+| node_route_writes   | boolean                  | The node is being considered as a write lead candidate.
+| last_message_time   | timestamp with time zone | The time of the last Raft message (any, including requests) seen by this node (used to check liveness of node)
+
+### `bdr.stat_routing_state`
+
+A view of the state of the connection routing which PGD Proxy uses to route the connections.
+
+#### `bdr.stat_routing_state` columns
+
+| Column               | Type                     | Description                                                                                                         |
+| -------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| node_group_name      | name                     | The group this is information for (each group can have a separate routing proxy)
+| write_lead_name      | name                     | Name of the write lead node
+| previous_write_lead_name| name                  | Name of the previous write lead node
+| read_names           | name[]                   | Array of nodes to which read-only connections are routed
+| write_candidate_names| name[]                   | Nodes that match all criteria needed to become write lead in case of failover
+| read_candidate_names | name[]                   | Nodes that match all criteria needed to become read-only connection targets in case of failover
 
 ### `bdr.stat_subscription`
 
@@ -948,6 +1086,75 @@ You can reset the stored subscription statistics by calling
 | ntuple_waits         | bigint                   | Number of update/delete operations that waited to be safely applied. See [Parallel Apply](../parallelapply) |
 | ncommit_waits        | bigint                   | Number of fully applied transactions that had to wait before being committed. See [Parallel Apply](../parallelapply) |
 | stats_reset          | timestamp with time zone | Time of the last statistics reset (performed by `bdr.reset_subscription_stats()`)                                   |
+
+### `bdr.stat_worker`
+
+A view containing summary information and per worker statistics for PGD manager workers.
+
+#### `bdr.stat_worker` columns
+
+| Column               | Type                     | Description                                                                                                         |
+| -------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| worker_role          | text                     | Role of the BDR worker
+| worker_pid           | integer                  | Process id of the worker
+| sub_name             | name                     | Name of the subscription the worker is related to, if any
+| worker_start         | timestamp with time zone | Time at which the worker started
+| worker_xact_start    | timestamp with time zone | Time at which the worker started the local db transaction, see `xact_start` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_xid           | xid                      | Transaction id of the worker, see `backend_xid` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_xmin          | xid                      | Oldest transaction id needed by the worker, see `backend_xmin` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_backend_state_change| timestamp with time zone| Backend state change timestamp see `state_change` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| worker_backend_state | text                     | Current backend state see `state` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details
+| wait_event_type      | text                     | The type of wait event the worker is currently waitiing on, if any (see `wait_event_type` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| wait_event           | text                     | The exact event the worker is waiting on, if any (see `wait_event` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| blocked_by_pids      | integer[]                | List of PIDs blocking the worker, if any
+| query                | text                     | Query currently being run by the worker
+| worker_query_start   | timestamp with time zone | Timestamp at which the current query run by the worker started
+
+### `bdr.stat_writer`
+
+A view containing summary information and statistics for each subscription replication writer. There can be multiple writers for each subscription.
+
+#### `bdr.stat_writer` columns
+
+| Column               | Type                     | Description                                                                                                         |
+| -------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| worker_role          | text                     | Role of the BDR worker (always 'writer')
+| worker_state         | text                     | State of the worker (can be 'running', 'down', or 'disabled')
+| worker_pid           | integer                  | Process id of the writer
+| sub_name             | name                     | Name of the subscription the writer belongs to
+| writer_nr            | integer                  | Writer index in the writer group for the same subscription
+| nxacts               | bigint                   | The number of transactions the writer has processed since start
+| ncommits             | bigint                   | The number of commits the writer processed since start
+| naborts              | bigint                   | The number of aborts the writer processed since start
+| commit_queue_position| integer                  | Position in the commit queue, when serializing transactions against other writers in the same writer group
+| xact_source_xid      | xid                      | Transaction id of the currently processed transaction on the source node
+| xact_source_commit_lsn| pg_lsn                  | LSN of the currently processed transaction on the source node
+| xact_nchanges        | bigint                   | The number of changes in the currently processed transaction that have been written (updated every 1000 changes)
+| xact_origin_node_name| name                     | Origin node of the currently processed transaction
+| xact_origin_lsn      | pg_lsn                   | Origin LSN of the currently processed transaction
+| xact_origin_timestamp| timestamp with time zone | Origin commit timestamp of the currently processed transaction
+| streaming_allowed    | boolean                  | The writer can receive direct stream for large transactions
+| is_streaming         | boolean                  | The writer is currently receiving a direct stream of a large transaction
+| nstream_file         | bigint                   | The number of stream files the writer has processed
+| nstream_writer       | bigint                   | The number of directly streamed transactions the writer has processed
+| worker_start         | timestamp with time zone | The time at which the writer started
+| worker_xact_start    | timestamp with time zone | The time at which the writer start the local db transaction (see xact_start in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| worker_xid           | xid                      | Transaction id of the worker (see `backend_xid` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| worker_xmin          | xid                      | Oldest transaction id needed by the worker (see `backend_xmin` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| worker_backend_state_change| timestamp with time zone| Backend state change timestamp (see `state_change` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| worker_backend_state | text                     | Current backend state (see `state` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| wait_event_type      | text                     | The type of wait event the writer is currently waiting on, if any (see `event_type` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| wait_event           | text                     | The exact event the writer is waiting on, if any (see `wait_event` in [`pg_stat_activity`](https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW) for more details)
+| blocked_by_pids      | integer[]                  | List of PIDs blocking the writer, if any
+| query                | text                     | Query currently being run by the writer (normally only set for DDL)
+| worker_query_start   | timestamp with time zone | Timestamp at which the current query run by the worker started
+| command_progress_cmdtag| text                   | For commands with progress tracking, identifies the command current processed by the writer  (can be one of 'CREATE INDEX', 'CREATE INDEX CONCURRENTLY', 'REINDEX', 'REINDEX CONCURRENTLY', 'CLUSTER', and 'VACUUM FULL')
+| command_progress_relation| text                 | For commands with progress tracking, identifies therelation which the command is working on
+| command_progress_phase| text                    | For commands with progress tracking, name of the current phase the command is in, refer to [Progress Reporting](https://www.postgresql.org/docs/current/progress-reporting.html) in the Postgres documentation for details
+| command_progress_count| integer                 | For commands with progress tracking, the number of phases this command has gone through
+| command_progress_phase_nr | integer             | For commands with progress tracking, the number of the phase of `command_progress_count` 
+| command_progress_phase_tuples_total| real       | For commands with progress tracking, the number of rows the current phase of the command has to process (if the phase is process rows)
+| command_progress_tuples_done| bigint            | For commands with progress tracking, the number of rows the current phase of the command has already processed (if the phase is process rows)
 
 ### `bdr.subscription`
 
