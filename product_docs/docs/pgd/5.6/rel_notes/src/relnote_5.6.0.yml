@@ -1,0 +1,281 @@
+product: EDB Postgres Distributed
+version: 5.6.0
+date: 15 October 2024
+intro: |
+ EDB Postgres Distributed 5.6.0 includes a number of enhancements and bug fixes.
+ Please add more text here.
+highlights: |
+ - Streaming Transaction support with SDW.
+ - GROUP COMMIT and SYNCHRONOUS COMMIT support DEGRADE ON.
+ - ORIGIN\_GROUP support to simplify commit scope creation.
+ - Optimized Toplogy support for Subscriber-only groups and nodes.
+ - Please add more highlights here.
+relnotes:
+- relnote: Software Decoding Worker (SDW) support with Streaming Transaction
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    One of the main advantages of streaming is that the WAL sender sends the partial transaction before it commits, which reduces replication lag. Now, with streaming support, the WAL decoder does the same thing, but it streams to the LCRs segments. Eventually, the WAL sender will read the LCRs and mimic the same behavior of streaming large transactions before they commit. This provides the benefits of SDW, such as reduced CPU and disk space, as well as the benefits of streaming, such as reduced lag and disk space, since ".spill" files are not generated.
+    The WAL decoder always streams the transaction to LCRs, but based on downstream requests, the WAL sender either streams the transaction or just mimics the normal BEGIN..COMMIT scenario.
+    In addition to the normal LCRs segment files, we create streaming files with the starting names `TR_TXN_<file-name-format>` and `CAS_TXN_<file-name-format>` for each streamed transaction.
+  jira: BDR-5123
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Fixed buffer overrun in the writer
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Include an extra zero byte at the end of a column value allocation in shared memory queue insert/update/delete messages.
+  jira: BDR-5188
+  addresses: 98966
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Fix some race conditions to prevent node sync from entering a hung state with the main subscription disabled.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Do not use node\_catchup\_info at all for sync.
+  jira: BDR-5041
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Detect and resolve deadlocks between synchronous replication wait-for-disconnected sessions and replication writer.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    This will cancel synchronous replication wait on disconnected sessions if it deadlocks against replication, preventing deadlocks on failovers when using synchronous replication. This only affects commit scopes, not synchronous replication configured via `synchronous_standby_names`.
+  jira: BDR-5445, BDR-5445, BDR-4104
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Do not accidentally drop the autopartition rule when a column of the autopartitioned table is dropped.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    When ALTER TABLE .. DROP COLUMN is used, the object\_access\_hook is fired with `classId` set to RelationRelationId, but the `subId` is set to the attribute number to differentiate it from the DROP TABLE command. 
+    
+    Therefore, we need to check the subId field to make sure that we are not performing actions that should only be triggered when a table is dropped.
+  jira: BDR-5418
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Adjust `bdr.alter_table_conflict_detection()` to propagate correctly to all nodes
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Ensure that the propagation of `bdr.alter_table_conflict_detection()` (as well as the related, deprecated `bdr.column_timestamps_(en|dis)able()` functions) is carried out correctly to all logical standbys. Previously, this propagation did not occur if the logical standby was not directly attached to the node on which the functions were executed.
+  jira: BDR-3850
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Prevent a node group from being created with a duplicate name
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Ensure that a nodegroup is not inadvertently created with the same name as an existing nodegroup. Failure to do so may result in a complete shutdown of the top-level Raft on all nodes, with no possibility of recovery.
+  jira: BDR-5355
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Add bdr.bdr\_show\_all\_file\_settings() and bdr.bdr\_file\_settings view
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Fix: Correct privileges for bdr\_superuser.  Creating wrapper SECURITY DEFINER functions in the bdr schema and granting access to bdr\_superuser to use those: 
+    bdr.bdr\_show\_all\_file\_settings 
+    bdr.bdr\_file\_settings
+  jira: BDR-5070
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add create/drop\_commit\_scope functions
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Add functions for creating and dropping commit scopes that will eventually deprecate the non-standard functions for adding and removing commit scopes. Notify the user that these will be deprecated in a future version, suggesting the use of the new versions.
+  jira: BDR-4073
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Grant additional object permissions to role "bdr\_monitor".
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Permissions for the following objects have been updated to include SELECT and EXECUTE permissions for role "bdr\_monitor":
+    bdr.node\_config
+    Note: Update this information in document at https://www.enterprisedb.com/docs/pgd/latest/security/pgd-predefined-roles/#bdr_monitor for this release
+  jira: BDR-4885, BDR-5354
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add `bdr.raft_vacuum_interval` and `bdr.raft_vacuum_full_interval` GUCs to control frequency of automatic Raft catalog vacuuming.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    This update introduces GUCs to regulate the frequency of automatic vacuuming on the specified catalogs. The GUC `bdr.raft_vacuum_interval` determines the frequency at which tables are examined for VACUUM and ANALYZE. Autovacuum GUCs and table reloptions are utilized to ascertain the necessity of VACUUM/ANALYZE. 
+    The `bdr.raft_vacuum_full_interval` initiates VACUUM FULL on the tables. Users have the ability to deactivate VACUUM FULL if regular VACUUM suffices to manage bloat.
+  jira: BDR-5424
+  addresses: 40412
+  type: Feature
+  severity: High
+  impact: High
+- relnote: Prevent spurious "local info ... not found" errors when parting nodes
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Handle the absence of the expected node record gracefully when a node is being removed, the local node record might have already been deleted, but an attempt could be made to update it anyway. This resulted in harmless "BDR node local info for node ... not found" errors.
+  jira: BDR-5350
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Prevent a corner-case situation from being misdiagnosed as a PGD version problem
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Improve Raft error messages to handle cases where nodes may not be correctly participating in Raft.
+  jira: BDR-5362
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Add "node\_name" to "bdr.node\_config\_summary"
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Add "node\_name" to the view "bdr.node\_config\_summary". This makes it consistent with other summary views, which report the name of the object (node, group, etc.) for which the summary is being generated. 
+  jira: BDR-4818
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: "bdr\_init\_physical: improve local node connection failure logging"
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Ensure that bdr\_init\_physical emits details about connection failure if the "--local-dsn" parameter is syntactically correct but invalid, e.g., due to an incorrect host or port setting.
+  jira: 
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: "`bdr_config`: add PG_FLAVOR output"
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    This shows the PostgreSQL "flavor" which BDR was built against, one of:
+      - COMMUNITY
+      - EPAS
+      - EXTENDED
+      - BDRPG
+  jira: BDR-4428
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Enhance warning messages 
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Enhance messages issued during DML and DDL lock acquisition.
+  jira: BDR-4200
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Handling duplicate requests in RAFT preventing protocol breakage 
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    When processing RAFT entries, it's crucial to handle duplicate requests properly to prevent Raft protocol issues. Duplicate requests can occur when a client retries a request that has already been accepted and applied by the Raft leader. The problem arose when the leader failed to detect the duplicate request due to historical evidence being pruned.
+  jira: BDR-5275, BDR-4091
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: "Handling Raft Snapshots: Consensus Log"
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    When installing or importing a Raft snapshot, discard the consensus log unless it contains an entry matching the snapshot's last included entry and term.
+  jira: BDR-5285
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Do not send Raft snapshot very aggressively 
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Avoid sending Raft snapshots too frequently as it can slow down follower nodes. Limit the snapshot rate to once in every election timeout, unless there is no other communication between the nodes, in which case send a snapshot every 1/3rd of the election timeout. This will help all nodes keep pace with the leader and improve CPU utilization.
+  jira: BDR-5288
+  addresses: 37725
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Group-Specific Configuration Options
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+    Allow some arguments to be used only in the top group or the sub-group.
+    Top group only:
+    Check_constraints
+    Enable_wal_decoder
+    Num_writers
+    streaming_mode
+    Sub-group only:
+    enable_raft
+    All other options are available for both types of groups.
+  jira: BDR-5288
+  addresses: 37725
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Subscriber-only node groups have a leader
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+   Subscriber-only node groups have a leader elected by top-level Raft. There is now a bdr.leader catalog that tracks leadership of subgroups and subscriber-only nodes. If the node that is the leader of a subscriber-only node group goes down or becomes unreachable, a new leader is elected from that group.
+  jira: BDR-5089
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Optimized topology for subscriber-only nodes via the leader of the subscriber-only node group
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+   Subscriber-only nodes earlier used to have subscriptions to each data node. Now if optimized topology is enabled, only the leaders of subscriber-only node groups have subscriptions to routing leaders of data node subsgroups. The subscriber only nodegroup leaders route data to other nodes of that subscriber-only nodegroup. This reduces the load on all data nodes so they do not have to send data to all subscriber-only nodes. The GUC `bdr.force_full_mesh=false` enables this optimized topology. It is off by default.
+  jira: BDR-5214
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Introduce new subscription types to support optimized topology
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+   New subscription types that forward data from all nodes of the subgroup via a routing leader (mode: l), and those that forward data from the entire cluster via a subscriber-only group leader (mode: w) are introduced.
+  jira: BDR-5186
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Introduce version number and timestamp for write leader
+  component: BDR
+  component_version: 5.6.0
+  details: | 
+   A write leader has a version. Every time a new leader is elected, the version is incremented and timestamp noted via Raft. This is to build a foundation for better conflict resolution.
+  jira: BDR-3589
+  type: Enhancement
+  severity: High
+  impact: High
+
