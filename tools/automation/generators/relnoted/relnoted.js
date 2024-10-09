@@ -7,6 +7,7 @@ import { load } from "js-yaml";
 import showdown from "showdown";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import path from "path";
 
 let argv = yargs(hideBin(process.argv))
   .usage("Usage: $0 -f <filename> -o <filename>")
@@ -22,7 +23,23 @@ let argv = yargs(hideBin(process.argv))
     type: "string",
     demandOption: true,
   })
+  .option("p", {
+    alias: "path",
+    describe:
+      "The path to the relnotes directory (when set -o and -f are relative to this)",
+    type: "string",
+    demandOption: false,
+  })
   .parse();
+
+let basedir = false;
+let basepath = "";
+
+if (!(argv.path === undefined)) {
+  basedir = true;
+  basepath = argv.path;
+  console.log(`Using basepath ${basepath}`);
+}
 
 if (argv.filename === undefined) {
   console.error("No filename provided");
@@ -32,6 +49,17 @@ if (argv.filename === undefined) {
 if (argv.output === undefined) {
   console.error("No output filename provided");
   process.exit(1);
+}
+
+let inputfile;
+let outputfile;
+
+if (basedir) {
+  inputfile = path.join(basepath, argv.filename);
+  outputfile = path.join(basepath, argv.output);
+} else {
+  inputfile = argv.filename;
+  outputfile = argv.output;
 }
 
 function parseRelnotes(filename) {
@@ -44,7 +72,7 @@ function parseRelnotes(filename) {
   }
 }
 
-let notes = parseRelnotes(argv.filename);
+let notes = parseRelnotes(inputfile);
 
 function normalizeType(type) {
   switch (type) {
@@ -116,7 +144,7 @@ const converter = new showdown.Converter();
 
 // Open and erase the output file
 
-const rlout = argv.output;
+const rlout = outputfile;
 
 let err = writeFileSync(rlout, "");
 if (err) {
