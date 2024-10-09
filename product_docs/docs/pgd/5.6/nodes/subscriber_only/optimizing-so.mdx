@@ -4,13 +4,11 @@ navTitle: Optimizing
 description: 'Optimizing subscriber-only groups in EDB Postgres Distributed'
 ---
 
-With PGD 5.6 and later, the topology of [subscriber-only groups](overview) can be optimized. 
+With PGD 5.6 and later, it's possible to optimize the topology of [subscriber-only groups](overview). 
 
-For clusters using groups for their data nodes, subscriber only groups can use a more efficient model which uses a group leader, similar to a write leader in PGD Proxies.
+In this optimized topology, a small number of fully active nodes, the write leaders of the data groups, replicate changes to the group leaders of subscriber-only groups, these group leaders then replicate changes to the other members of its subscriber-only group.
 
-Each subscriber-only group then has a node which replicates changes to the other subscriber-only nodes in its group.
-We refer to this node as the group leader.
-The group leader acts as a replication proxy for incoming changes.
+## Requirements for the optimized topology
 
 You can't enable this model if a cluster has any of the following:
 
@@ -22,23 +20,56 @@ If this is the case, the nodes in a subscriber only groups automatically revert 
 
 To get the benefit of the new SO group and node replication, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups.
 
+## How the optimized topology works
+
+For clusters using groups for their data nodes, subscriber only groups can use a more efficient model which uses a subscriber-only group leader, similar to a write leader in PGD Proxies.
+
+Each subscriber-only group uses that group leader to replicate changes to other subscriber-only nodes in its group. The group leader acts as a replication proxy for incoming changes.
+
+The write leader nodes in other non-subscriber-only groups replicate changes to the group leader of the subscriber-only group. Other nodes only replicate within their data groups, both within their own group and in other data groups.
+
 ## Subscriber-only group leaders
 
 With PGD 5.6 and later, each subscriber-only group gets assigned a group leader of its own. 
 This is because subscriber-only groups don't have a group Raft consensus mechanism of their own. 
 Instead, the cluster’s top level group uses its Raft consensus mechanism to handle selection of each subscriber-only group’s group leader.
+This group leader selection is on by default on PGD 5.6, regardless of the topology optimization settings.
 
-Group leaders in subscriber-only groups are regularly tested for connectivity and if unavailable, the voting nodes of top-level group select a new subscriber-only node from the subscriber-only group to become group leader. This decision is announced to the whole cluster and data group's write leaders then replicate data to this newly selected group leader node.
+Group leaders in subscriber-only groups are regularly tested for connectivity and if unavailable, the voting nodes of top-level group select a new subscriber-only node from the subscriber-only group to become group leader. 
+The new group leader is then selected. 
 
-The Subscriber-Only node and group form the building block for PGD tree topologies.
+With optimized technology turned off, this election has no effect on the replication topology. Without the optimized topology, all nodes replicates changes to all other nodes in the  cluster.
 
-In this optimized topology, a small number of fully active nodes, the write leaders of the data groups, replicate changes to the group leaders of subscriber-only groups, these group leaders then replicate changes to the other members of its subscriber-only group.
+## Group leaders in the optimized topology
+
+ With the optimized topology enabled, only the group leader receives changes from other nodes in the cluster and it takes on the responsibility of replicating those changes to the other nodes in the subscriber-only group. 
+
+The other voting nodes choose the group leader from a subscriber-only group's nodes.
+Once selected, the whole cluster becomes aware of the change and any data group's write leaders then replicate data only to this newly selected group leader node. 
+Other data nodes in the data groups don't replicate data to the subscriber-only group's nodes.
 
 This approach avoids the explosion of connections that can happen when there are large numbers of SO nodes and reduces the amount of replication traffic.
 
+The Subscriber-Only node and group form the building block for PGD tree topologies.
+
 ## Enabling the optimized model
 
-By default, PGD 5.6 forces the full mesh topology. This means the optimization described here is turned off. To enable the optimized topology, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups. You can then set the GUC `bdr.force_full_mesh` to `false` to allow the optimization to take effect.
+By default, PGD 5.6 forces the full mesh topology. This means the optimization described here is off. To enable the optimized topology, you must have your data-nodes in subgroups, with proxy routing enabled on the sub groups. You can then set the GUC `bdr.force_full_mesh` to `false` to allow the optimization to take effect.
+
+If any requirements of the optimized topology aren't met, the nodes in a subscriber-only group automatically revert to the full mesh topology. When this happens, you'll find in the logs of the nodes in the cluster messages that explain why the optimization was not possible, such as:
+
+When a data node is part of the top-level node group:
+
+```
+node: <nodename> is part of top-level nodegroup: <toplevelgroupname>: changing to full mesh".
+```
+
+and when a data group does not have proxy routing enabled:
+
+```
+node: <nodename> is in nodegroup: <nodegroupname> that does not have proxy routing: changing to full mesh.
+```
+
 
 
 
