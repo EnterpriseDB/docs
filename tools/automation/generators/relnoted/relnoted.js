@@ -4,10 +4,10 @@
 
 import { readFileSync, writeFileSync, appendFileSync } from "fs";
 import { load } from "js-yaml";
-import showdown from "showdown";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
+import { micromark } from "micromark";
 
 let argv = yargs(hideBin(process.argv))
   .usage("Usage: $0 -f <filename> -o <filename>")
@@ -140,7 +140,10 @@ for (let type of types) {
   rnotes[type] = filterednotes;
 }
 
-const converter = new showdown.Converter();
+//const converter = new showdown.Converter();
+function converter(markdown) {
+  return micromark(markdown);
+}
 
 // Open and erase the output file
 
@@ -189,10 +192,9 @@ for (let type of types) {
       composednote = note.relnote;
     } else {
       const predetails = note.details; // Preprocess here
-      const compactdetailshtml = converter.makeHtml(predetails);
+      const compactdetailshtml = converter(predetails);
       const preheading = note.relnote; // Preprocess here
-      const headinghtml = converter
-        .makeHtml(preheading)
+      const headinghtml = converter(preheading)
         .replace(/<p>/g, "")
         .replace(/<\/p>/g, "");
       composednote = `<details><summary>${headinghtml}</summary><hr/>${compactdetailshtml}</details>`;
