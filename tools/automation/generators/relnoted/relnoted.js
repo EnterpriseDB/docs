@@ -89,6 +89,7 @@ function normalizeType(type) {
     case "Bug Fixes":
     case "Bug-fix":
     case "Bug-fixes":
+    case "Bug fix":
       return "Bug Fix";
     case "Deprecation":
     case "Obsolete":
@@ -131,6 +132,18 @@ function titles(type) {
     case "Other":
       return "Other";
   }
+}
+
+// Highest, High, Medium, Low, Lowest - in that order
+function severitySort(a, b) {
+  const order = ["Highest", "High", "Medium", "Low", "Lowest"];
+  return order.indexOf(a.severity) - order.indexOf(b.severity);
+}
+
+// BDR, Proxy, CLI - in that order
+function componentSort(a, b) {
+  const order = ["BDR", "Proxy", "CLI", "Utilities"];
+  return order.indexOf(a.component) - order.indexOf(b.component);
 }
 
 for (let type of types) {
@@ -184,6 +197,8 @@ for (let type of types) {
   );
 
   // TODO: Depending on type, we should sort the notes
+
+  rnotes[type].sort(componentSort);
 
   for (let note of rnotes[type]) {
     let composednote = "";
