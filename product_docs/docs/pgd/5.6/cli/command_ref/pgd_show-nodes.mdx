@@ -1,0 +1,79 @@
+---
+title: show-nodes
+deepToC: true
+---
+
+Shows all nodes in the EDB Postgres Distributed cluster and their summary.
+
+### Synopsis
+
+Shows all nodes in the EDB Postgres Distributed cluster and their summary,
+including name, node id, group, and current/target state.
+
+#### Node States
+| State        | Description                                                                                                                                                                                                                                  |
+|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| NONE         | Node state is unset when the worker starts, expected to be set quickly to the current known state.                                                                                                                                           |
+| CREATED      | bdr.create_node() has been executed, but the node isn't a member of any EDB Postgres Distributed cluster yet.                                                                                                                                |
+| JOIN_START   | bdr.join_node_group() begins to join the local node to an existing EDB Postgres Distributed cluster.                                                                                                                                         |
+| JOINING      | The node join has started and is currently at the initial sync phase, creating the schema and data on the node.                                                                                                                              |
+| CATCHUP      | Initial sync phase is complete; now the join is at the last step of retrieving and applying transactions that were performed on the upstream peer node since the join started.                                                               |
+| STANDBY      | Node join has finished, but not yet started to broadcast changes. All joins spend some time in this state, but if defined as a Logical Standby, the node will continue in this state.                                                        |
+| PROMOTE      | Node was a logical standby and we just called bdr.promote_node to move the node state to ACTIVE. These two PROMOTE states have to be coherent to the fact, that only one node can be with a state higher than STANDBY but lower than ACTIVE. |
+| PROMOTING    | Promotion from logical standby to full BDR node is in progress.                                                                                                                                                                              |
+| ACTIVE       | The node is a full BDR node and is currently ACTIVE. This is the most common node status.                                                                                                                                                    |
+| PART_START   | Node was ACTIVE or STANDBY and we just called bdr.part_node to remove the node from the EDB Postgres Distributed cluster.                                                                                                                    |
+| PARTING      | Node disconnects from other nodes and plays no further part in consensus or replication.                                                                                                                                                     |
+| PART_CATCHUP | Non-parting nodes synchronize any missing data from the recently parted node.                                                                                                                                                                |
+| PARTED       | Node parting operation is now complete on all nodes.                                                                                                                                                                                         |
+
+
+Only one node at a time can be in either of the states PROMOTE or PROMOTING. 
+STANDBY, in the Current State or Target State columns, indicates that the node is or will be in a read-only state.
+
+```sh
+pgd show-nodes [flags]
+```
+
+### Options
+
+No specific command options. See [global options](../command_ref#global-options) for global options.
+
+### Examples
+
+#### Show all nodes in the cluster with a node down
+
+In this example, there is a multi-node cluster with a data node down.
+
+```bash
+$ pgd show-nodes
+__OUTPUT__
+Node      Node ID    Group   Type    Current State Target State Status      Seq ID
+----      -------    -----   ----    ------------- ------------ ------      ------
+bdr-a1    3136956818 group_a data    ACTIVE        ACTIVE       Up          1
+bdr-a2    2133699692 group_a data    ACTIVE        ACTIVE       Unreachable 2
+witness-a 3889635963 group_a witness ACTIVE        ACTIVE       Up          3
+```
+
+#### Show all nodes in the cluster with different node types
+
+In this example, there is a multi-node cluster with logical standby, witness and subscriber-only nodes.
+Note that, unlike logical standby nodes, the subscriber-only nodes are fully joined node to the cluster.
+
+```bash
+$ pgd show-nodes
+__OUTPUT__
+Node               Node ID    Group    Type            Current State Target State Status Seq ID
+----               -------    -----    ----            ------------- ------------ ------ ------
+bdr-a1             3136956818 group_a  data            ACTIVE        ACTIVE       Up     6
+bdr-a2             2133699692 group_a  data            ACTIVE        ACTIVE       Up     3
+logical-standby-a1 1140256918 group_a  standby         STANDBY       STANDBY      Up     9
+witness-a          3889635963 group_a  witness         ACTIVE        ACTIVE       Up     7
+bdr-b1             2380210996 group_b  data            ACTIVE        ACTIVE       Up     1
+bdr-b2             2244996162 group_b  data            ACTIVE        ACTIVE       Up     2
+logical-standby-b1 3541792022 group_b  standby         STANDBY       STANDBY      Up     10
+witness-b          661050297  group_b  witness         ACTIVE        ACTIVE       Up     5
+witness-c          1954444188 group_c  witness         ACTIVE        ACTIVE       Up     4
+subscriber-only-c1 2448841809 group_so subscriber-only ACTIVE        ACTIVE       Up     8
+```
+

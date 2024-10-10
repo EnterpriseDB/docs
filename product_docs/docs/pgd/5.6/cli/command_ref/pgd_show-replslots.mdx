@@ -1,0 +1,144 @@
+---
+title: show-replslots
+deepToC: true
+---
+
+Shows the status of BDR replication slots.
+
+### Synopsis
+
+Shows the status of BDR replication slots. Output with the verbose flag gives details such as is slot active, replication state (disconnected, streaming, catchup), and approximate lag.
+
+| Symbol | Meaning                                                       |
+|--------|---------------------------------------------------------------|
+| `*`    | ok                                                            |
+| `~`    | warning (lag > 10M)                                           |
+| `!`    | critical (lag > 100M OR slot is 'inactive' OR 'disconnected') |
+| `x`    | down / unreachable                                            |
+| `-`    | n/a                                                           |
+
+In matrix view, sometimes byte lag is shown in parentheses. It is maxOf(WriteLag, FlushLag, ReplayLag, SentLag).
+
+```sh
+pgd show-replslots [flags]
+```
+
+### Options
+
+| Flag      | Description |
+| --------- | ----------- |
+| -v, --verbose | verbose output |
+
+See [global options](../command_ref#global-options) for global options.
+
+### Examples
+
+#### Show replication slots with a node down
+
+In this example, there is a 3 node cluster, bdr-a1 and bdr-c1 are up, bdr-b1 is down.
+
+```bash
+$ pgd show-replslots
+__OUTPUT__
+Node   bdr-a1 bdr-b1  bdr-c1
+----   ------ ------  ------
+bdr-a1 *      !(6.6G) *
+bdr-b1 x      *       x
+bdr-c1 *      !(6.9G) *
+```
+
+Or in Verbose mode:
+
+```bash
+$ pgd show-replslots --verbose
+__OUTPUT__
+Origin Node Target Node Status (active/state) Write Lag (bytes/duration)    Flush Lag (bytes/duration)    Replay Lag (bytes/duration)   Sent Lag (bytes)
+----------- ----------- --------------------- --------------------------    --------------------------    ---------------------------   ----------------
+bdr-a1      bdr-b1      f / disconnected      6.6G / 8 days 02:58:36.243723 6.6G / 8 days 02:58:36.243723 6.6G / 8 days 02:58:36.243723 6.6G
+bdr-a1      bdr-c1      t / streaming         0B / 00:00:00                 0B / 00:00:00                 0B / 00:00:00                 0B
+bdr-c1      bdr-a1      t / streaming         0B / 00:00:00.000812          0B / 00:00:00.000812          0B / 00:00:00.000812          0B
+bdr-c1      bdr-b1      f / disconnected      6.9G / 8 days 02:58:36.004415 6.9G / 8 days 02:58:36.004415 6.9G / 8 days 02:58:36.004415 6.9G
+```
+
+#### Show replication slots with a recently restarted node
+
+In this example, there is a 3 node cluster, bdr-b1 was down and it has just been restarted.
+
+```bash
+$ pgd show-replslots
+__OUTPUT__
+Node   bdr-a1 bdr-b1  bdr-c1
+----   ------ ------  ------
+bdr-a1 *      !(6.9G) *
+bdr-b1 *      *       *
+bdr-c1 *      !(5.8G) *
+```
+
+Or in Verbose mode:
+
+```bash
+$ pgd show-replslots --verbose
+__OUTPUT__
+Origin Node Target Node Status (active/state) Write Lag (bytes/duration) Flush Lag (bytes/duration) Replay Lag (bytes/duration) Sent Lag (bytes)
+----------- ----------- --------------------- -------------------------- -------------------------- --------------------------- ----------------
+bdr-a1      bdr-b1      t / catchup           6.9G / 00:00:00.000778     6.9G / 00:00:00.000778     6.9G / 00:00:00.000778      6.9G
+bdr-a1      bdr-c1      t / streaming         0B / 00:00:00.104121       0B / 00:00:00.104133       0B / 00:00:00.104133        0B
+bdr-b1      bdr-a1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-b1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-c1      bdr-a1      t / streaming         6.8K / 00:00:00            6.8K / 00:00:00            6.8K / 00:00:00             6.8K
+bdr-c1      bdr-b1      t / catchup           5.5G / 00:00:00.008257     5.5G / 00:00:00.008257     5.5G / 00:00:00.008257      5.5G
+```
+
+#### Show replication slots with all nodes working correctly
+
+In this example, there is a 3 node cluster with all nodes are up and in 'streaming' state.
+
+```bash
+$ pgd show-replslots
+__OUTPUT__
+Node   bdr-a1 bdr-b1 bdr-c1
+----   ------ ------ ------
+bdr-a1 *      *      *
+bdr-b1 *      *      *
+bdr-c1 *      *      *
+```
+
+Or in Verbose mode:
+
+```bash
+$ pgd show-replslots --verbose
+__OUTPUT__
+Origin Node Target Node Status (active/state) Write Lag (bytes/duration) Flush Lag (bytes/duration) Replay Lag (bytes/duration) Sent Lag (bytes)
+----------- ----------- --------------------- -------------------------- -------------------------- --------------------------- ----------------
+bdr-a1      bdr-b1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-a1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-b1      bdr-a1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-b1      bdr-c1      t / streaming         0B / 00:00:00              0B / 00:00:00              0B / 00:00:00               0B
+bdr-c1      bdr-a1      t / streaming         0B / 00:00:00              528B / 00:00:00            528B / 00:00:00             0B
+bdr-c1      bdr-b1      t / streaming         528B / 00:00:00            528B / 00:00:00            528B / 00:00:00             0B
+```
+
+#### Show replication slots in a multi-node cluster
+
+In this example, there is a 4 node cluster, with a witness node, a subscriber-only node, and two logical standbys. bdr-a1 and bdr-b1 are up and in 'streaming' state. bdr-a1 is replicating to logical-standby-a1 and bdr-b1 is replicating to logical-standby-b1. bdr-a1 is also replicating to subscriber-only-c1.
+
+Note:
+1. Data for a logical standby is only sent by one source node. No other nodes receive replication changes from the logical standby.
+2. Subscriber-only node subscribes to replication changes from other nodes in the cluster, but no other nodes receive replication changes from it
+
+```bash
+$ pgd show-replslots
+__OUTPUT__
+Node               bdr-a1 bdr-b1 logical-standby-a1 logical-standby-b1 subscriber-only-c1 witness-c1
+----               ------ ------ ------------------ ------------------ ------------------ ----------
+bdr-a1             *      *      *                  -                  *                  *
+bdr-b1             *      *      -                  *                  *                  *
+logical-standby-a1 -      -      *                  -                  -                  -
+logical-standby-b1 -      -      -                  *                  -                  -
+subscriber-only-c1 -      -      -                  -                  *                  -
+witness-c1         *      *      -                  -                  *                  *
+```
+
+
+
+
