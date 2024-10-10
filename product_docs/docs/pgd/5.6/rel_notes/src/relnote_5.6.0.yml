@@ -3,15 +3,21 @@ version: 5.6.0
 date: 15 October 2024
 intro: |
  EDB Postgres Distributed 5.6.0 includes a number of enhancements and bug fixes.
- Please add more text here.
 highlights: |
- - Streaming Transaction support with SDW.
- - GROUP COMMIT and SYNCHRONOUS COMMIT support DEGRADE ON.
- - Improved monitoring
- - ORIGIN\_GROUP support to simplify commit scope creation.
- - Optimized Toplogy support for Subscriber-only groups and nodes. (preview)
- - Improved Postgres compatibility? (exclusion constraints, REINDEX replication, createrole_self_grant, column reference in DEFAULT expressions, CREATE SCHEMA AUTHORIZATION ...)
- - Please add more highlights here.
+  - Improved observability with new monitoring functions and SQL views.
+  - Improvements to commit scopes including:
+     - GROUP COMMIT and SYNCHRONOUS COMMIT supports graceful degrading using DEGRADE ON.
+     - ORIGIN_GROUP support and commit scope inheritance simplify commit scope creation.
+     - Improved synchronous commit behavior around deadlocks.
+     - Metrics for commit scope performance and state.
+  - Optimized Toplogy support for Subscriber-only groups and nodes. (preview)
+  - Improved Postgres compliance with support for:
+      - Exclusion Constraints
+      - REINDEX replications
+      - createrole_self_grant
+      - column reference in DEFAULT expressions
+      - CREATE SCHEMA AUTHORIZATION
+  - Streaming Transaction support with Decoding Worker.
 relnotes:
 - relnote: Decoding Worker supports Streaming Transactions
   component: BDR
@@ -31,19 +37,15 @@ relnotes:
   details: |
    There are several view providing new information as well as making some
    existing information easier to discover:
-
-    - bdr.stat_commit_scope - cumulative statistics for commit scopes
-    - bdr.stat_commit_scope_state - information about current use of commit scopes by backends
-    - bdr.stat_receiver - per subscription receiver statistics
-    - bdr.stat_writer - per writer statistics, there can be multiple writers for each subscription,
-      this also includes additional information about currently applied transaction
-    - bdr.stat_raft_state - state of the Raft consensus on the local node
-    - bdr.stat_raft_followers_state - state of the followers on the Raft leader node (empty on other nodes),
-      also includes approximate clock drift between nodes
-    - bdr.stat_worker - detailed information about PGD workers, including what
-      operation manager worker is currently doing
-    - bdr.stat_routing_state - state of the connection routing which PGD Proxy uses to route the connections
-    - bdr.stat_routing_candidate_state - information about routing candidate nodes on the Raft leader node (empty on other nodes)
+    - [`bdr.stat_commit_scope`](/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope) : Cumulative statistics for commit scopes.
+    - [`bdr.stat_commit_scope_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope_state) : Information about current use of commit scopes by backends.
+    - [`bdr.stat_receiver`](/pgd/5.6/reference/catalogs-visible#bdrstat_receiver) : Per subscription receiver statistics.
+    - [`bdr.stat_writer`](/pgd/5.6/reference/catalogs-visible#bdrstat_writer) : Per writer statistics. There can be multiple writers for each subscription. This also includes additional information about the currently applied transaction.
+    - [`bdr.stat_raft_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_raft_state) : The state of the Raft consensus on the local node.
+    - [`bdr.stat_raft_followers_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_raft_followers_state) : The state of the followers on the Raft leader node (empty on other nodes), also includes approximate clock drift between nodes.
+    - [`bdr.stat_worker`](/pgd/5.6/reference/catalogs-visible#bdrstat_worker) : Detailed information about PGD workers, including what the operation manager worker is currently doing.
+    - [`bdr.stat_routing_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_routing_state) : The state of the connection routing which PGD Proxy uses to route the connections.
+    - [`bdr.stat_routing_candidate_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_routing_candidate_state) : Information about routing candidate nodes on the Raft leader node (empty on other nodes).
   jira: BDR-5316
   type: Enhancement
   severity: High
@@ -69,11 +71,9 @@ relnotes:
   type: Bug Fix
   severity: High
   impact: High
-- relnote: Fix some race conditions to prevent node sync from entering a hung state with the main subscription disabled.
+- relnote: Fixes for some race conditions to prevent node sync from entering a hung state with the main subscription disabled.
   component: BDR
   component_version: 5.6.0
-  details: |
-    Do not use node\_catchup\_info at all for sync.
   jira: BDR-5041
   addresses: ""
   type: Bug Fix
@@ -93,7 +93,7 @@ relnotes:
   component: BDR
   component_version: 5.6.0
   details: |
-    When ALTER TABLE .. DROP COLUMN is used, the object\_access\_hook is fired with `classId` set to RelationRelationId, but the `subId` is set to the attribute number to differentiate it from the DROP TABLE command.
+    When ALTER TABLE .. DROP COLUMN is used, the object_access_hook is fired with `classId` set to RelationRelationId, but the `subId` is set to the attribute number to differentiate it from the DROP TABLE command.
 
     Therefore, we need to check the subId field to make sure that we are not performing actions that should only be triggered when a table is dropped.
   jira: BDR-5418
@@ -121,19 +121,19 @@ relnotes:
   type: Bug Fix
   severity: High
   impact: High
-- relnote: Add bdr.bdr\_show\_all\_file\_settings() and bdr.bdr\_file\_settings view
+- relnote: Add bdr.bdr_show_all_file_settings() and bdr.bdr_file_settings view
   component: BDR
   component_version: 5.6.0
   details: |
-    Fix: Correct privileges for bdr\_superuser.  Creating wrapper SECURITY DEFINER functions in the bdr schema and granting access to bdr\_superuser to use those:
-    bdr.bdr\_show\_all\_file\_settings
-    bdr.bdr\_file\_settings
+    Fix: Correct privileges for bdr_superuser.  Creating wrapper SECURITY DEFINER functions in the bdr schema and granting access to bdr_superuser to use those:
+    - bdr.bdr_show_all_file_settings
+    - bdr.bdr_file_settings
   jira: BDR-5070
   addresses: ""
   type: Enhancement
   severity: High
   impact: High
-- relnote: Add create/drop\_commit\_scope functions
+- relnote: Add create/drop_commit_scope functions
   component: BDR
   component_version: 5.6.0
   details: |
@@ -143,13 +143,11 @@ relnotes:
   type: Enhancement
   severity: High
   impact: High
-- relnote: Grant additional object permissions to role "bdr\_monitor".
+- relnote: Grant additional object permissions to role "bdr_monitor".
   component: BDR
   component_version: 5.6.0
   details: |
-    Permissions for the following objects have been updated to include SELECT and EXECUTE permissions for role "bdr\_monitor":
-    bdr.node\_config
-    Note: Update this information in document at https://www.enterprisedb.com/docs/pgd/latest/security/pgd-predefined-roles/#bdr_monitor for this release
+    Permissions for the following objects have been updated to include SELECT permissions for role "bdr_monitor": bdr.node_config
   jira: BDR-4885, BDR-5354
   addresses: ""
   type: Enhancement
@@ -163,7 +161,7 @@ relnotes:
     The `bdr.raft_vacuum_full_interval` initiates VACUUM FULL on the tables. Users have the ability to deactivate VACUUM FULL if regular VACUUM suffices to manage bloat.
   jira: BDR-5424
   addresses: 40412
-  type: Feature
+  type: Enhancement
   severity: High
   impact: High
 - relnote: Prevent spurious "local info ... not found" errors when parting nodes
@@ -186,21 +184,21 @@ relnotes:
   type: Bug Fix
   severity: High
   impact: High
-- relnote: Add "node\_name" to "bdr.node\_config\_summary"
+- relnote: Add "node_name" to "bdr.node_config_summary"
   component: BDR
   component_version: 5.6.0
   details: |
-    Add "node\_name" to the view "bdr.node\_config\_summary". This makes it consistent with other summary views, which report the name of the object (node, group, etc.) for which the summary is being generated.
+    Add "node_name" to the view "bdr.node_config_summary". This makes it consistent with other summary views, which report the name of the object (node, group, etc.) for which the summary is being generated.
   jira: BDR-4818
   addresses: ""
   type: Enhancement
   severity: High
   impact: High
-- relnote: "bdr\_init\_physical: improve local node connection failure logging"
+- relnote: "bdr_init_physical: improve local node connection failure logging"
   component: BDR
   component_version: 5.6.0
   details: |
-    Ensure that bdr\_init\_physical emits details about connection failure if the "--local-dsn" parameter is syntactically correct but invalid, e.g., due to an incorrect host or port setting.
+    Ensure that bdr_init_physical emits details about connection failure if the "--local-dsn" parameter is syntactically correct but invalid, e.g., due to an incorrect host or port setting.
   jira:
   addresses: ""
   type: Enhancement
@@ -210,13 +208,13 @@ relnotes:
   component: BDR
   component_version: 5.6.0
   details: |
-    This shows the PostgreSQL "flavor" which BDR was built against, one of:
+    `bdr_config` now shows the PostgreSQL "flavor" which BDR was built against, one of:
       - COMMUNITY
       - EPAS
       - EXTENDED
       - BDRPG
   jira: BDR-4428
-  addresses: ""
+  addresses: 
   type: Enhancement
   severity: High
   impact: High
@@ -356,7 +354,7 @@ relnotes:
   severity: High
   impact: High
 - relnote: Support replication of REINDEX
-  component: BDR
+  component: CLI
   component_version: 5.6.0
   details: |
    Both REINDEX and REINDEX CONCURRENTLY are now replicated commands.
@@ -407,5 +405,56 @@ relnotes:
    keyword to reduce the complexity of commit scope setup.
   jira: BDR-5433
   type: Enhancement
+  severity: High
+  impact: High
+- relnote: Update existing Route Watcher to listen for read node list change events on Postgres's bdr_set_read_routing notify/listen channel.
+  component: Proxy
+  component_version: 5.6.0
+  jira: BDR-4535
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add new Read Controller to update read node list based on different Raft related as well as Read routing related events. 
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    Send updated read list on channel which can be listen by Read Handler. While updating the list it will also consider the value of a new proxy related variable - read_consensus_grace_period - which defaults to 1h.
+  jira: BDR-4534
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add new Read Handler for read-only client connections.
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    This handler will listen on read_listen_port if it is set, and manage the creation and closing of client and backend (read nodes) connections. It will also rate-limit based on new proxy options read_max_client_conn and read_max_server_conn.
+  jira: BDR-4533
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Modify existing /health/is-ready http(s) probes to accommodate both listen_port and read_listen_port status.
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    First check listen_port and iff it is false then check read_listen_port.
+    Also, adds 2 new probes - `/health/is-write-ready`, `/health/is-read-only-ready` to get individual port status.
+  jira: BDR-4536
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Use bdr.bdr_file_settings view in verify-settings
+  component: CLI
+  component_version: 5.6.0
+  details: |
+    Use bdr.bdr_file_settings view to get the current settings for the proxy.
+  jira: BDR-4537
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: bdr_pg_upgrade - Create logical slot with twophase set to true for PG 14+
+  component: Utilities
+  component_version: 5.6.0
+  jira: BDR-5306
+  type: Bug Fix
   severity: High
   impact: High
