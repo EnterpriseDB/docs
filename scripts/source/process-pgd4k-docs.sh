@@ -29,6 +29,7 @@ node $DESTINATION_CHECKOUT/scripts/fileProcessor/main.mjs \
   -f "src/**/*.md" \
   -p "cnp/replace-github-urls" \
   -p "pg4k-pgd/replace-beta-urls" \
+  -p "pg4k-pgd/update-links" \
   -p "cnp/update-yaml-links" \
   -p "cnp/add-frontmatters" \
   -p "cnp/cleanup-html" \
