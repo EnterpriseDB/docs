@@ -18,7 +18,7 @@ documentation for more information.
 
 !!! Important
     The EDB Postgres for Kubernetes documentation's Cloud Provider configuration section is
-    available at `spec.backup.barmanObjectStore`. In EDB Postgres Distributed for Kubernetes examples, the object store section is at a 
+    available at `spec.backup.barmanObjectStore`. In EDB Postgres Distributed for Kubernetes examples, the object store section is at a
     different path: `spec.backup.configuration.barmanObjectStore`.
 
 ## WAL archive
@@ -47,15 +47,66 @@ spec:
           maxParallel: 8
 ```
 
-For more information, see the [EDB Postgres for Kubernetes WAL archiving](/postgres_for_kubernetes/latest/wal_archiving/) documentation.
+For more information, see the [EDB Postgres for Kubernetes WAL archiving](/postgres_for_kubernetes/latest/backup/#wal-archive) documentation.
 
 ## Scheduled backups
 
 Scheduled backups are the recommended way to configure your backup strategy in EDB Postgres Distributed for Kubernetes.
-When the PGD group `spec.backup.configuration.barmanObjectStore` stanza is configured, the operator selects one of the
-PGD data nodes as the elected backup node for which it creates a `Scheduled Backup` resource.
+When the PGD group `spec.backup.configuration.barmanObjectStore` and `.spec.backup.schedulers[].schedule` stanza is configured,
+the operator selects one of the PGD data nodes as the elected backup node in which it creates a `Scheduled Backup` resource.
 
-The `.spec.backup.cron.schedule` field allows you to define a cron schedule specification, expressed
+The `.spec.backup.schedulers[].method` field allows you to define the scheduled backup method. Two backup methods are supported:
+
+-   `volumeSnapshot`
+-   `barmanObjectStore` (the default)
+
+You can define more than one scheduler, but each method can only be used by one
+scheduler, i.e. two schedulers are not allowed to use the same method.
+
+For object store backups, with the default `barmanObjectStore` method, the stanza
+`spec.backup.configuration.barmanObjectStore` is used to define the object store information for both backup and wal archiving.
+More information can be found in [EDB Postgres for Kubernetes Backup on Object Stores](/postgres_for_kubernetes/latest/backup_barmanobjectstore/)
+
+To perform volumeSnapshot backups, the `volumeSnapshot` method can be selected.
+The stanza
+`spec.backup.configuration.barmanObjectStore.volumeSnapshot` is used to define the volumeSnapshot configuration.
+More information can be found in [EDB Postgres for Kubernetes Backup on Volume Snapshots](/postgres_for_kubernetes/latest/backup_volumesnapshot/)
+
+The following example shows how to use the `volumeSnapshot` method for backup. WAL archiving is still done onto the barman object store.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+[...]
+spec:
+  backup:
+    configuration:
+      volumeSnapshot:
+        className: csi-hostpath-snapclass
+      barmanObjectStore:
+        destinationPath: "<destination path here>"
+        s3Credentials:
+          accessKeyId:
+            name: backup-storage-creds
+            key: ID
+          secretAccessKey:
+            name: backup-storage-creds
+            key: KEY
+        wal:
+          compression: gzip
+          encryption: AES256
+          maxParallel: 8
+    schedulers:
+    - method: volumeSnapshot
+      schedule: "0 0 0 * * *"
+      backupOwnerReference: self
+      suspend: false
+      immediate: true
+```
+
+For more information about the comparison of two backup methods, see the [EDB Postgres for Kubernetes for Object stores or volume snapshots](/postgres_for_kubernetes/latest/backup/#object-stores-or-volume-snapshots-which-one-to-use)
+
+The `.spec.backup.schedulers[].schedule` field allows you to define a cron schedule, expressed
 in the [Go `cron` package format](https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format).
 
 ```yaml
@@ -64,25 +115,32 @@ kind: PGDGroup
 [...]
 spec:
   backup:
-    cron:
+    schedulers:
+    - method: barmanObjectStore
       schedule: "0 0 0 * * *"
       backupOwnerReference: self
       suspend: false
       immediate: true
 ```
 
-You can suspend scheduled backups if necessary by setting `.spec.backup.cron.suspend` to `true`. Setting this setting 
-to `true` prevents any new backup from being scheduled.
+You can suspend scheduled backups if necessary by setting `.spec.backup.schedulers[].suspend` to `true`.
+This will prevent new backups from being scheduled.
 
 If you want to execute a backup as soon as the `ScheduledBackup` resource is created,
-set `.spec.backup.cron.immediate` to `true`.
+set `.spec.backup.schedulers[].immediate` to `true`.
 
 `.spec.backupOwnerReference` indicates the `ownerReference` to use
 in the created backup resources. The choices are:
 
--   **none** &mdash; No owner reference for created backup objects.
--   **self** &mdash; Sets the `ScheduledBackup` object as owner of the backup.
--   **cluster** &mdash; Sets the cluster as owner of the backup.
+-   **none** — No owner reference for created backup objects.
+-   **self** — Sets the `ScheduledBackup` object as owner of the backup.
+-   **cluster** — Sets the cluster as owner of the backup.
+
+!!! Warning
+    The `.spec.backup.cron` field is now deprecated. Please use
+    `.spec.backup.schedulers` instead.
+    Note that while `.spec.backup.cron` can still be used, it cannot
+    be used simultaneously with `.spec.backup.schedulers`.
 
 !!! Note
     The EDB Postgres for Kubernetes `ScheduledBackup` object contains the `cluster` option to specify the
