@@ -182,11 +182,13 @@ appendFileSync(rlout, `Released: ${notes.date}\n`);
 appendFileSync(rlout, "\n\n");
 appendFileSync(rlout, `${notes.intro}`);
 appendFileSync(rlout, "\n\n");
-appendFileSync(rlout, `## Highlights`);
-appendFileSync(rlout, "\n");
-appendFileSync(rlout, `${notes.highlights}`);
-appendFileSync(rlout, "\n\n");
-appendFileSync(rlout, "");
+
+if (notes.highlights !== undefined) {
+  appendFileSync(rlout, `## Highlights`);
+  appendFileSync(rlout, "\n");
+  appendFileSync(rlout, `${notes.highlights}`);
+  appendFileSync(rlout, "\n\n");
+}
 
 for (let type of types) {
   appendFileSync(rlout, `## ${titles(type)}`);
