@@ -1,0 +1,63 @@
+---
+title: 'SQLMutations'
+originalFilePath: 'src/mutations.md'
+---
+
+SQLMutations consist of a list of SQL queries to be executed on the application
+database via the superuser role after a pgd node joins the pgdgroup. Each
+SQLMutation includes an `isApplied` list of queries and an `exec` list of
+queries.
+The `isApplied` SQL queries are used to check if the mutation has already been
+applied. If any of the `isApplied` queries return false, the `exec` list of SQL
+queries will be added to the execution queue.
+
+Here is a sample of SQLMutations
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+[...]
+spec:
+  pgd:
+    mutations:
+      - isApplied:
+          - |
+             WITH node_route_config AS (
+               SELECT node_name, route_dsn
+               FROM bdr.node_routing_config_summary
+             )
+            SELECT NOT EXISTS(SELECT * FROM node_route_config WHERE regexp_count(route_dsn, 'application_name=') >= 1);
+        exec:
+          - |
+            WITH node_route_config AS (
+              SELECT node_name,
+                     regexp_replace(route_dsn, concat(' application_name=',  node_name), '') as route_dsn
+              FROM bdr.node_routing_config_summary
+            )
+            SELECT bdr.alter_node_option(node_name, 'route_dsn', route_dsn)
+            FROM node_route_config;
+
+```
+
+## SQLMutation Types
+
+The operator offers three types of SQLMutations, which can be specified by `spec.pgd.mutations[].type`, with `always`
+being the default option.
+
+-   beforeSubgroupRaft
+-   always
+-   writeLeader
+
+The `beforeSubgroupRaft` and `always` mutations are evaluated in every reconcile loop. The difference between
+the two mutations lies in their execution phase:
+
+-   For `always` mutations, they are run in each reconcile loop without any restrictions on the pgdgroup.
+-   On the other hand, `beforeSubgroupRaft` mutations are only executed if the pgdgroup has defined data nodes
+    and pgd proxies, and specifically before the subgroup raft becomes ready.
+
+Both `beforeSubgroupRaft` and `always` mutations can run on any pgd node within the pgdgroup, including witness nodes.
+Therefore, they should not be used for making data changes to the application database, as witness nodes do not contain
+application database data.
+
+The `writeLeader` mutation is triggered and executed after the write leader is elected. The `exec` operations
+are carried out exclusively on the write leader node.

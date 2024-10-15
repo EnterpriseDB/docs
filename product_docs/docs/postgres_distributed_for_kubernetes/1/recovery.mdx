@@ -5,12 +5,13 @@ originalFilePath: 'src/recovery.md'
 
 In EDB Postgres Distributed for Kubernetes, recovery is available as a way
 to bootstrap a new PGD group starting from an available physical backup of a PGD node.
-The recovery can't be performed in place on an existing PGD group.
+Recovery can't be performed in-place on an existing PGD group.
+
 EDB Postgres Distributed for Kubernetes also supports point-in-time recovery (PITR), which allows you to restore a PGD group up to
 any point in time, from the first available backup in your catalog to the last archived
-WAL. Having a WAL archive is mandatory in this case.
+WAL. Having a WAL archive is mandatory for PITR.
 
-## Prerequisite
+## Prerequisites
 
 Before recovering from a backup:
 
@@ -25,12 +26,14 @@ For more information, see [EDB Postgres for Kubernetes recovery - Additional con
 
 You can recover from a PGD node backup created by Barman Cloud and stored on supported object storage.
 
-For example, given a PGD group` named `pgdgroup-example` with three instances with backups available, your object storage contains a directory for each node:
+For example, given a PGD group named `pgdgroup-example` with three instances
+with backups available, your object storage will contain a directory for each
+node:
 
 `pgdgroup-example-1`, `pgdgroup-example-2`, `pgdgroup-example-3`
 
 This example defines a full recovery from the object store.
-The operator transparently selects the latest backup between the defined `serverNames` and
+The operator transparently selects the latest backup among the defined `serverNames` and
 replays up to the last available WAL.
 
 ```yaml
@@ -154,14 +157,108 @@ spec:
 ```
 
 !!! Important
-    When a `backupID` is specified, make sure to define only the related PGD node
-    in the `serverNames` option, and avoid defining the other ones.
+    When a `backupID` is specified, make sure to list only the related PGD node
+    in the `serverNames` option, and avoid listing the other ones.
 
 !!! Note
     Defining a specific `backupID` is especially needed when using one of the
     following recovery targets: `targetName`, `targetXID`, and `targetImmediate`.
     In such cases, it's important to specify `backupID`, unless
     the last available backup in the catalog is okay.
+
+## Recovery from volumeSnapshot
+
+You can also recover a pgdgroup from a volumeSnapshot backup. Stanza
+`spec.restore.volumeSnapshots` is used to define the criteria for volumeSnapshots restore
+candidates. The operator transparently selects the latest volumeSnapshot among the candidates.
+
+The operator requires the following annotations/labels in the volumeSnapshot. These
+annotations/labels will be automatically added if volumeSnapshots are taken by the operator.
+
+Annotations:
+
+-   `k8s.enterprisedb.io/backupEndTime` is used to compare and select the latest snapshot.
+-   `k8s.enterprisedb.io/pvcRole` represents the pvcRole of the volumeSnapshot.
+    Supported roles include PG_WAL and PG_DATA.
+
+Labels:
+
+-   `k8s.enterprisedb.io/cluster` indicates the node where the volumeSnapshot is taken, crucial
+    for fetching the serverName in the object store for WAL replaying.
+-   `k8s.enterprisedb.io/backupName` is the backup name of the volumeSnapshot, used to group
+    volumeSnapshots, when more volumes are defined in the backup.
+-   `k8s.enterprisedb.io/tablespaceName` represents the tablespace name of the volumeSnapshot, when
+    the volumeSnapshot role is `PG_TABLESPACE`.
+
+The following example illustrates a full recovery from volumeSnapshots. After the volumeSnapshot recovery,
+WAL replaying for full recovery will target server `pgdgroup-backup-vs-1`.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: pgdgroup-restore
+spec:
+  [...]
+  restore:
+    volumeSnapshots:
+      selector:
+        matchLabels:
+          "k8s.enterprisedb.io/cluster": pgdgroup-backup-vs-1
+          "k8s.pgd.enterprisedb.io/group": pgdgroup-backup-vs
+    barmanObjectStore:
+      destinationPath: "<destination path here>"
+      s3Credentials:
+        accessKeyId:
+          name: backup-storage-creds
+          key: ID
+        secretAccessKey:
+          name: backup-storage-creds
+          key: KEY
+      wal:
+        compression: gzip
+        encryption: AES256
+        maxParallel: 8
+```
+
+For more information, please see [EDB Postgres for Kubernetes recovery from volumeSnapshot objects](/postgres_for_kubernetes/latest/recovery/#recovery-from-volumesnapshot-objects).
+
+## PITR from volumeSnapshot
+
+Same as when doing recovery from an object store, you can instruct PostgreSQL to halt the replay of Write-Ahead Logs (WALs)
+at any specific moment during volumeSnapshot recovery.
+
+This example demonstrates setting a time-based target for recovery using volume snapshots.
+
+```yaml
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: pgdgroup-restore
+spec:
+  [...]
+  restore:
+    recoveryTarget:
+      targetTime: "2023-08-11 11:14:21.00000+02"
+    volumeSnapshots:
+      selector:
+        matchLabels:
+          "k8s.enterprisedb.io/cluster": pgdgroup-backup-vs-1
+          "k8s.pgd.enterprisedb.io/group": pgdgroup-backup-vs
+    barmanObjectStore:
+      destinationPath: "<destination path here>"
+      s3Credentials:
+        accessKeyId:
+          name: backup-storage-creds
+          key: ID
+        secretAccessKey:
+          name: backup-storage-creds
+          key: KEY
+      wal:
+        compression: gzip
+        encryption: AES256
+        maxParallel: 8
+```
 
 ## Recovery targets
 
