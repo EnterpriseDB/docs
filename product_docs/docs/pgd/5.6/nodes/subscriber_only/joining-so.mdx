@@ -1,0 +1,54 @@
+---
+title: Joining nodes to a Subscriber-only group
+navTitle: Joining
+description: 'Joining nodes to a Subscriber-only group in EDB Postgres Distributed'
+---
+
+If you have no subscriber-only groups in your PGD cluster, you must create the groups following the process in [Creating Subscriber-only groups and nodes](creating-so). After you have created a subscriber-only group, you can join subscriber-only nodes to it.
+
+### Joining a node to an existing subscriber-only group
+
+Unlike joining a node to a [new subscriber-only group](creating-so), joining a node to an existing subscriber-only group is a simpler process. 
+
+First create the new node as a subscriber-only node. Run the following SQL command on the new node:
+
+```sql
+select bdr.create_node('so-node-2', 'host=so-host-2 dbname=bdrdb port=5444', 'subscriber-only');
+```
+
+or more explicitly with parameter names:
+
+```sql
+select bdr.create_node(node_name:='so-node-2',
+        dsn:='host=so-host-2 dbname=bdrdb port=5444',
+        node_type:='subscriber-only');
+```
+
+This command creates a new node named `so-node-2` on host `so-host-2` and configures it as a subscriber-only node. 
+The node won't be able to join the cluster until joins a group.
+
+In [creating a new subscriber-only group](creating-so), you created a group named `sogroup` and added a subscriber-only node called `so-node-1` on a host `shost-1`. 
+It used a node in an existing data group to facilitate that join. 
+But you can't use this new subscriber-only node to add another subscriber-only node. 
+You must use any active data node that's fully joined to the cluster. 
+In the [creating](creating-so) examples, they use `host-one` in the cluster's data group for this task. 
+You can use the following SQL command on `shost-2` to join it to the `sogroup` group:
+
+```sql
+select bdr.join_node_group('host=host-one dbname=bdrdb port=5444','sogroup');
+```
+
+or more explicitly with parameter names:
+
+```sql
+select bdr.join_node_group(dsn:='host=host-one dbname=bdrdb port=5444',
+        node_group_name:='sogroup');
+```
+
+This command instructs the new node to join the `sogroup` group. As it has no knowledge of the cluster topology, it connects to the node specified in the DSN to receive the necessary information to join the group. That node must be fully joined to the cluster as it acts as the source of the request for the new node to join the group.
+
+Once the new node has joined the group, it starts by first synchronizing and then begins to receive replication changes from the other nodes in the cluster. 
+
+!!! Note 
+Unless, the group is using the [optimized topology](optimizing-so), in which case it replicates changes from a subscriber-only group leader in the subscriber-only group it has joined.
+!!!

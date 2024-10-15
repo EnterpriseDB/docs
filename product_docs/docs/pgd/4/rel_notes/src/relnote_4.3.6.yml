@@ -1,0 +1,179 @@
+product: EDB Postgres Distributed
+version: 4.3.6
+date: 15 October 2024
+intro: |
+  EDB Postgres Distributed 4.3.6 is a minor release that includes several bug fixes and enhancements.
+highlights: |
+  - HARP proxy settings patches to reduced bloat on consensus request and response journals.
+  - Fix for accidental drop of autopartition rule when a column of the autopartitioned table is dropped.
+relnotes:
+- relnote: "bdr\_consensus: Add GUCs to control automatic Raft vacuum"
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    Aggressive HARP proxy settings may face issues due to
+    increased bloat on consensus request and response journals.
+    This patch adds GUCs to control frequency of automatic vacuum on said
+    catalogs. The `bdr.raft_vacuum_interval` GUC controls how frequently the
+    tables are checked for VACUUM and ANALYZE. The Autovacuum GUCs and table
+    reloptions are used to determine whether VACUUM/ANALYZE is needed or
+    not.
+    The `bdr.raft_vacuum_full_interval` triggers VACUUM FULL on the tables.
+    The user can disable VACUUM FULL if normal VACUUM is sufficient to keep
+    the bloat in control.
+  jira: BDR-5424
+  addresses: 40412
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Do not accidentally drop the autopartition rule when a column of the autopartitioned table is dropped.
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    When ALTER TABLE .. DROP COLUMN is used, the object\_access\_hook is fired with `classId` set to RelationRelationId, but the `subId` is set to the attribute number to differentiate it from the DROP TABLE command. Therefore, we need to check the subId field to make sure that we are not performing actions that should only be triggered when a table is dropped.
+  jira: BDR-5418
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+
+- relnote: Cleanup unwanted data with drop_node
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    When we drop the local node we cleanup all the catalog tables internally.
+  jira: BDR-4986
+  addresses:
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Delete older logs if we get a snapshot that's already applied
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    The follower doesn't need the older logs once a snapshot is applied. If
+    we keep those around, the duplicate request id issue may keep happening.
+    So clear the logs a bit more aggressively once we know they are not
+    needed.
+  jira:
+  addresses:
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Handling duplicate requests in RAFT preventing protocol breakage 
+  component: BDR
+  component_version: 4.3.6
+  details: | 
+    When processing RAFT entries, it's crucial to handle duplicate requests properly to prevent Raft protocol issues. Duplicate requests can occur when a client retries a request that has already been accepted and applied by the Raft leader. The problem arose when the leader failed to detect the duplicate request due to historical evidence being pruned.
+  jira: BDR-5275, BDR-4091
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: "Handling Raft Snapshots: Consensus Log"
+  component: BDR
+  component_version: 4.3.6
+  details: | 
+    When installing or importing a Raft snapshot, discard the consensus log unless it contains an entry matching the snapshot's last included entry and term.
+  jira: BDR-5285
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Allow ANALYZE on temp tables
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    The ANALYZE statement is already not replicated. We dont need to filter
+    if it's analyzing temp tables or not, we allow the user to analyze anything.
+  jira: BDR-5274
+  addresses: 38826
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Re-add function `bdr.column_timestamps_enable_internal()`
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    This function was removed as the code can be merged with
+    `bdr.column_timestamps_disable()`. However, although that function is
+    deprecated, in a mixed-version cluster it could theoretically be called on an
+    older node, resulting in `bdr.column_timestamps_enable_internal()` being
+    replicated and causing an error on the nodes where it is no longer present.
+  jira: BDR-5242
+  addresses:
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Fixed buffer overrun in the writer
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    Include an extra zero byte at the end of a column value allocation in shared memory queue insert/update/delete messages.
+  jira: BDR-5188
+  addresses: 98966
+  type: Bug Fix
+  severity: High
+  impact: High
+
+- relnote: Fix duplicate ids generation for snowflakeid
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    Disallow multiple backends which concurrently increment the sequences 
+    to simultaneously initialize the sequence for same millisecond timestamp value,
+    resulting in duplicate ids both with local seq id component as 0.
+  jira: BDR-5187
+  addresses:
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Adjust `bdr.alter_table_conflict_detection()` to propagate correctly to all nodes
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    Ensure that the propagation of `bdr.alter_table_conflict_detection()` (as well as the related, deprecated `bdr.column_timestamps_(en|dis)able()` functions) is carried out correctly to all logical standbys. Previously, this propagation did not occur if the logical standby was not directly attached to the node on which the functions were executed.
+  jira: BDR-3850
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Raft-related catalog items
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    This adds compatibility objects for:
+    
+    - `bdr.raft_instances`
+    - `bdr.get_raft_status(node_group_name text)`
+    
+    These additions ensure that Raft status queries operate correctly
+    in clusters running multiple major versions.
+  jira: BDR-4926
+  addresses:
+  type: Bug-fix
+  severity: High
+  impact: High
+- relnote: Add `bdr.bdr_show_all_file_settings()` and `bdr.bdr_file_settings` view
+  component: BDR
+  component_version: 4.3.6
+  details: |
+    Fix: Correct privileges for bdr\_superuser.
+    Creating wrapper SECURITY DEFINER functions in the bdr schema
+    and granting access to bdr\_superuser to use those: 
+    - `bdr.bdr_show_all_file_settings`
+    - `bdr.bdr_file_settings`
+  jira: BDR-5070
+  addresses: 
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: bdr_pg_upgrade - Create logical slot with twophase set to true for PG 14+
+  component: Utilities
+  component_version: 4.3.6
+  jira: BDR-5306
+  type: Bug Fix
+  severity: High
+  impact: High
+
+
