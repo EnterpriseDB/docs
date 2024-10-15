@@ -45,6 +45,7 @@ function linkRewriter() {
     // - update links to appendixes/* to /*
     // - update links *from* appendixes/* to /*
     // - update links to cloudnative-pg.v1.md to pg4k.v1.md
+    // - make links to docs content relative
     visit(tree, ["link", "yaml"], (node) => {
       if (node.type === "yaml")
       {
@@ -65,6 +66,9 @@ function linkRewriter() {
         node.url = "rel_notes";
       else if (node.url.includes("cloudnative-pg.v1.md"))
         node.url = node.url.replace("cloudnative-pg.v1.md", "pg4k.v1.md");
+
+      if (node.url.startsWith("https://www.enterprisedb.com/docs/"))
+        node.url = node.url.replace("https://www.enterprisedb.com/docs/", "/")
     });
   };
 }

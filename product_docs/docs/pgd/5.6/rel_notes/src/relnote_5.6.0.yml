@@ -1,0 +1,460 @@
+product: EDB Postgres Distributed
+version: 5.6.0
+date: 15 October 2024
+intro: |
+ EDB Postgres Distributed 5.6.0 includes a number of enhancements and bug fixes.
+highlights: |
+  - Improved observability with new monitoring functions and SQL views.
+  - Improvements to commit scopes including:
+     - GROUP COMMIT and SYNCHRONOUS COMMIT support graceful degrading using DEGRADE ON.
+     - ORIGIN_GROUP support and commit scope inheritance simplify commit scope creation.
+     - Improved synchronous commit behavior around deadlocks.
+     - Metrics for commit scope performance and state.
+  - Optimized Topology support for Subscriber-only groups and nodes. (preview)
+  - Improved Postgres compliance with support for:
+      - Exclusion Constraints
+      - REINDEX replications
+      - createrole_self_grant
+      - column reference in DEFAULT expressions
+      - CREATE SCHEMA AUTHORIZATION
+  - Streaming Transaction support with Decoding Worker.
+relnotes:
+- relnote: Decoding Worker supports Streaming Transactions
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    One of the main advantages of streaming is that the WAL sender sends the partial transaction before it commits, which reduces replication lag. Now, with streaming support, the WAL decoder does the same thing, but it streams to the LCRs segments. Eventually, the WAL sender will read the LCRs and mimic the same behavior of streaming large transactions before they commit. This provides the benefits of decoding worker, such as reduced CPU and disk space, as well as the benefits of streaming, such as reduced lag and disk space, since ".spill" files are not generated.
+    The WAL decoder always streams the transaction to LCRs, but based on downstream requests, the WAL sender either streams the transaction or just mimics the normal BEGIN..COMMIT scenario.
+    In addition to the normal LCRs segment files, we create streaming files with the starting names `TR_TXN_<file-name-format>` and `CAS_TXN_<file-name-format>` for each streamed transaction.
+  jira: BDR-5123
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Introduce several new monitoring views
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   There are several view providing new information as well as making some
+   existing information easier to discover:
+    - [`bdr.stat_commit_scope`](/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope) : Cumulative statistics for commit scopes.
+    - [`bdr.stat_commit_scope_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope_state) : Information about current use of commit scopes by backends.
+    - [`bdr.stat_receiver`](/pgd/5.6/reference/catalogs-visible#bdrstat_receiver) : Per subscription receiver statistics.
+    - [`bdr.stat_writer`](/pgd/5.6/reference/catalogs-visible#bdrstat_writer) : Per writer statistics. There can be multiple writers for each subscription. This also includes additional information about the currently applied transaction.
+    - [`bdr.stat_raft_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_raft_state) : The state of the Raft consensus on the local node.
+    - [`bdr.stat_raft_followers_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_raft_followers_state) : The state of the followers on the Raft leader node (empty on other nodes), also includes approximate clock drift between nodes.
+    - [`bdr.stat_worker`](/pgd/5.6/reference/catalogs-visible#bdrstat_worker) : Detailed information about PGD workers, including what the operation manager worker is currently doing.
+    - [`bdr.stat_routing_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_routing_state) : The state of the connection routing which PGD Proxy uses to route the connections.
+    - [`bdr.stat_routing_candidate_state`](/pgd/5.6/reference/catalogs-visible#bdrstat_routing_candidate_state) : Information about routing candidate nodes on the Raft leader node (empty on other nodes).
+  jira: BDR-5316
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Support conflict detection for exclusion constraints
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   This allows defining `EXCLUDE` constraint on table replicated by PGD either with
+   `CREATE TABLE` or with `ALTER TABLE` and uses similar conflict detection to resolve
+   conflicts as for `UNIQUE` constraints.
+  jira: BDR-4851
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Fixed buffer overrun in the writer
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Include an extra zero byte at the end of a column value allocation in shared memory queue insert/update/delete messages.
+  jira: BDR-5188
+  addresses: 98966
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Fixes for some race conditions to prevent node sync from entering a hung state with the main subscription disabled.
+  component: BDR
+  component_version: 5.6.0
+  jira: BDR-5041
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Detect and resolve deadlocks between synchronous replication wait-for-disconnected sessions and replication writer.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    This will cancel synchronous replication wait on disconnected sessions if it deadlocks against replication, preventing deadlocks on failovers when using synchronous replication. This only affects commit scopes, not synchronous replication configured via `synchronous_standby_names`.
+  jira: BDR-5445, BDR-5445, BDR-4104
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Do not accidentally drop the autopartition rule when a column of the autopartitioned table is dropped.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    When ALTER TABLE .. DROP COLUMN is used, the object_access_hook is fired with `classId` set to RelationRelationId, but the `subId` is set to the attribute number to differentiate it from the DROP TABLE command.
+
+    Therefore, we need to check the subId field to make sure that we are not performing actions that should only be triggered when a table is dropped.
+  jira: BDR-5418
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Adjust `bdr.alter_table_conflict_detection()` to propagate correctly to all nodes
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Ensure that the propagation of `bdr.alter_table_conflict_detection()` (as well as the related, deprecated `bdr.column_timestamps_(en|dis)able()` functions) is carried out correctly to all logical standbys. Previously, this propagation did not occur if the logical standby was not directly attached to the node on which the functions were executed.
+  jira: BDR-3850
+  addresses: 40258
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Prevent a node group from being created with a duplicate name
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Ensure that a nodegroup is not inadvertently created with the same name as an existing nodegroup. Failure to do so may result in a complete shutdown of the top-level Raft on all nodes, with no possibility of recovery.
+  jira: BDR-5355
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Add bdr.bdr_show_all_file_settings() and bdr.bdr_file_settings view
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Fix: Correct privileges for bdr_superuser.  Creating wrapper SECURITY DEFINER functions in the bdr schema and granting access to bdr_superuser to use those:
+    - bdr.bdr_show_all_file_settings
+    - bdr.bdr_file_settings
+  jira: BDR-5070
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add create/drop_commit_scope functions
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Add functions for creating and dropping commit scopes that will eventually deprecate the non-standard functions for adding and removing commit scopes. Notify the user that these will be deprecated in a future version, suggesting the use of the new versions.
+  jira: BDR-4073
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Grant additional object permissions to role "bdr_monitor".
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Permissions for the following objects have been updated to include SELECT permissions for role "bdr_monitor": bdr.node_config
+  jira: BDR-4885, BDR-5354
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add `bdr.raft_vacuum_interval` and `bdr.raft_vacuum_full_interval` GUCs to control frequency of automatic Raft catalog vacuuming.
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    This update introduces GUCs to regulate the frequency of automatic vacuuming on the specified catalogs. The GUC `bdr.raft_vacuum_interval` determines the frequency at which tables are examined for VACUUM and ANALYZE. Autovacuum GUCs and table reloptions are utilized to ascertain the necessity of VACUUM/ANALYZE.
+    The `bdr.raft_vacuum_full_interval` initiates VACUUM FULL on the tables. Users have the ability to deactivate VACUUM FULL if regular VACUUM suffices to manage bloat.
+  jira: BDR-5424
+  addresses: 40412
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Prevent spurious "local info ... not found" errors when parting nodes
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Handle the absence of the expected node record gracefully when a node is being removed, the local node record might have already been deleted, but an attempt could be made to update it anyway. This resulted in harmless "BDR node local info for node ... not found" errors.
+  jira: BDR-5350
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Prevent a corner-case situation from being misdiagnosed as a PGD version problem
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Improve Raft error messages to handle cases where nodes may not be correctly participating in Raft.
+  jira: BDR-5362
+  addresses: ""
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Add "node_name" to "bdr.node_config_summary"
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Add "node_name" to the view "bdr.node_config_summary". This makes it consistent with other summary views, which report the name of the object (node, group, etc.) for which the summary is being generated.
+  jira: BDR-4818
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: "bdr_init_physical: improve local node connection failure logging"
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Ensure that bdr_init_physical emits details about connection failure if the "--local-dsn" parameter is syntactically correct but invalid, e.g., due to an incorrect host or port setting.
+  jira:
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: "`bdr_config`: add PG_FLAVOR output"
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    `bdr_config` now shows the PostgreSQL "flavor" which BDR was built against, one of:
+      - COMMUNITY
+      - EPAS
+      - EXTENDED
+      - BDRPG
+  jira: BDR-4428
+  addresses: 
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Enhance warning messages
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Enhance messages issued during DML and DDL lock acquisition.
+  jira: BDR-4200
+  addresses: ""
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Handling duplicate requests in RAFT preventing protocol breakage
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    When processing RAFT entries, it's crucial to handle duplicate requests properly to prevent Raft protocol issues. Duplicate requests can occur when a client retries a request that has already been accepted and applied by the Raft leader. The problem arose when the leader failed to detect the duplicate request due to historical evidence being pruned.
+  jira: BDR-5275, BDR-4091
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: "Handling Raft Snapshots: Consensus Log"
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    When installing or importing a Raft snapshot, discard the consensus log unless it contains an entry matching the snapshot's last included entry and term.
+  jira: BDR-5285
+  addresses: 37725
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Do not send Raft snapshot very aggressively
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    Avoid sending Raft snapshots too frequently as it can slow down follower nodes. Limit the snapshot rate to once in every election timeout, unless there is no other communication between the nodes, in which case send a snapshot every 1/3rd of the election timeout. This will help all nodes keep pace with the leader and improve CPU utilization.
+  jira: BDR-5288
+  addresses: 37725
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Group-Specific Configuration Options
+  component: BDR
+  component_version: 5.6.0
+  details: |
+    It is now possible to set akk top-level and subgroup level options. The following options are available for top-both groups:
+    - check\_constraints
+    - enable\_wal\_decoder
+    - num\_writers
+    - streaming\_mode
+    - enable\_raft
+    Subgroups inherit settings from their parent group, but can override them if set in the subgroup.
+  jira: BDR-4954
+  addresses: 37725
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Subscriber-only node groups have a leader
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Subscriber-only node groups have a leader elected by top-level Raft. There is now a bdr.leader catalog that tracks leadership of subgroups and subscriber-only nodes. If the node that is the leader of a subscriber-only node group goes down or becomes unreachable, a new leader is elected from that group.
+  jira: BDR-5089
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Optimized topology for subscriber-only nodes via the leader of the subscriber-only node group
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Subscriber-only nodes earlier used to have subscriptions to each data node. Now if optimized topology is enabled, only the leaders of subscriber-only node groups have subscriptions to routing leaders of data node subsgroups. The subscriber only nodegroup leaders route data to other nodes of that subscriber-only nodegroup. This reduces the load on all data nodes so they do not have to send data to all subscriber-only nodes. The GUC `bdr.force_full_mesh=false` enables this optimized topology. It is off by default.
+  jira: BDR-5214
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Introduce new subscription types to support optimized topology
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   New subscription types that forward data from all nodes of the subgroup via a routing leader (mode: l), and those that forward data from the entire cluster via a subscriber-only group leader (mode: w) are introduced.
+  jira: BDR-5186
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Introduce version number and timestamp for write leader
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   A write leader has a version. Every time a new leader is elected, the version is incremented and timestamp noted via Raft. This is to build a foundation for better conflict resolution.
+  jira: BDR-3589
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Be more restrictive about which index to use during replication for REPLICA IDENTITY FULL tables
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   This fixes various index related errors during replication like:
+   'could not lookup equality operator for type, optype in opfamily'
+   or 'function "amgettuple" is not defined for index "brinidx"'
+  jira: BDR-5523 , BDR-5361
+  type: Bug Fix
+  severity: High
+  impact: High
+- relnote: Allow use of column reference in DEFAULT expressions
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Using column references in default expressions is now supported, this is particularly
+   useful with generated columns, for example:
+   `ALTER TABLE gtest_tableoid ADD COLUMN c regclass GENERATED ALWAYS AS (tableoid) STORED;`
+  jira: BDR-5385
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Support `createrole_self_grant`
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   The `createrole_self_grant` configuration option affects inherited grants
+   by newly created roles. In previous versions `CREATE ROLE`/`CREATE USER`
+   replication would not take this into consideration, resulting in different
+   role privileges on different nodes.
+  jira: BDR-5403
+  type: Bug fix
+  severity: High
+  impact: High
+- relnote:  Allow `CREATE SCHEMA AUTHORIZATION ...` combined with other create operations
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Previously, this would throw "cannot change current role within security-restricted operation" error
+  jira: BDR-5368
+  type: Bug fix
+  severity: High
+  impact: High
+- relnote: Support replication of REINDEX
+  component: CLI
+  component_version: 5.6.0
+  details: |
+   Both REINDEX and REINDEX CONCURRENTLY are now replicated commands.
+  jira: BDR-5363
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Use base type instead of domain type while casting values
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   This prevents errors when replicating UPDATEs for domains defined as NOT VALID
+   where tables contain data which would not be allowed by current definition
+   of such domain.
+  jira: BDR-5369
+  type: Bug fix
+  severity: High
+  impact: High
+- relnote: Fix receiver worker being stuck when exiting
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Receiver worker could get stuck when exiting, waiting for a writer that never
+   actually started. This could on rare occasions break replication after
+   configuration changes until Postgres was restarted.
+  jira:
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Reduce performance impact of PGD specific configuration parameters that are sent to client
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   Changes to values of variables `bdr.last_committed_lsn`, `transaction_id`
+   and `bdr.local_node_id` are automatically reported to clients when using
+   CAMO or GROUP COMMIT. This has now been optimized to use less resources.
+  jira: BDR-3212
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Allow use of commit scopes defined in parent groups
+  component: BDR
+  component_version: 5.6.0
+  details: |
+   When there is a commit scope defined for top-level group, it can be used by
+   any node in a subgroup and does not need to be redefined for every subgroup
+   anymore. This is particularly useful when combined with `ORIGIN\_GROUP`
+   keyword to reduce the complexity of commit scope setup.
+  jira: BDR-5433
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Update existing Route Watcher to listen for read node list change events on Postgres's bdr_set_read_routing notify/listen channel.
+  component: Proxy
+  component_version: 5.6.0
+  jira: BDR-4535
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add new Read Controller to update read node list based on different Raft related as well as Read routing related events. 
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    Send updated read list on channel which can be listen by Read Handler. While updating the list it will also consider the value of a new proxy related variable - read_consensus_grace_period - which defaults to 1h.
+  jira: BDR-4534
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Add new Read Handler for read-only client connections.
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    This handler will listen on read_listen_port if it is set, and manage the creation and closing of client and backend (read nodes) connections. It will also rate-limit based on new proxy options read_max_client_conn and read_max_server_conn.
+  jira: BDR-4533
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Modify existing /health/is-ready http(s) probes to accommodate both listen_port and read_listen_port status.
+  component: Proxy
+  component_version: 5.6.0
+  details: |
+    First check listen_port and iff it is false then check read_listen_port.
+    Also, adds 2 new probes - `/health/is-write-ready`, `/health/is-read-only-ready` to get individual port status.
+  jira: BDR-4536
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: Use bdr.bdr_file_settings view in verify-settings
+  component: CLI
+  component_version: 5.6.0
+  details: |
+    Use bdr.bdr_file_settings view to get the current settings for the proxy.
+  jira: BDR-4537
+  type: Enhancement
+  severity: High
+  impact: High
+- relnote: bdr_pg_upgrade - Create logical slot with twophase set to true for PG 14+
+  component: Utilities
+  component_version: 5.6.0
+  jira: BDR-5306
+  type: Bug Fix
+  severity: High
+  impact: High

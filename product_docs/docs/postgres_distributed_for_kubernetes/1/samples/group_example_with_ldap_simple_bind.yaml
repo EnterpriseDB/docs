@@ -1,0 +1,75 @@
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-ldap-simple-bind
+spec:
+  instances: 2
+  proxyInstances: 2
+  witnessInstances: 1
+  pgd:
+    proxySettings:
+      enableReadNodeRouting: true
+    parentGroup:
+      name: world
+      create: true
+  cnp:
+    postgresql:
+      ldap: 
+        server: 'ldap-service.ldap.svc.cluster.local'
+        bindAsAuth:
+          prefix: "uid="
+          suffix: ",dc=example,dc=org"
+    storage:
+      storageClass: csi-hostpath-sc
+      size: 1Gi
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+  backup:
+    schedulers:
+      - method: volumeSnapshot
+        immediate: true
+        schedule: "0 0 8 * * *"
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 0 9 * * *"
+    configuration:
+      volumeSnapshot:
+        className: csi-hostpath-snapclass
+      barmanObjectStore:
+        destinationPath: s3://backups/
+        endpointURL: https://minio-service.minio:9000
+        s3Credentials:
+          accessKeyId:
+            name: minio-secrets
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: minio-secrets
+            key: ACCESS_SECRET_KEY
+        wal:
+          compression: gzip
+          maxParallel: 8
+        data:
+          jobs: 4
+          immediateCheckpoint: true

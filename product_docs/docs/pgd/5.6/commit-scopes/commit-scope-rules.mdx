@@ -1,0 +1,100 @@
+---
+title: Commit scope rules
+---
+
+Commit scope rules are at the core of the commit scope mechanism. They define what the commit scope enforces. 
+
+Commit scope rules are composed of one or more operations that work in combination. Use an AND between rules.
+
+Each operation is made up of two or three parts: the commit scope group, an optional confirmation level, and the kind of commit scope, which can have its own parameters.
+
+```
+commit_scope_group [ confirmation_level ] commit_scope_kind
+```
+
+A full formal syntax diagram is available in the [Commit scopes](/pgd/latest/reference/commit-scopes/#commit-scope-syntax) reference.
+
+A typical commit scope rule, such as `ANY 2 (group) GROUP COMMIT`, can be broken down into its components. `ANY 2 (group)` is the commit scope group specifying, for the rule, which nodes need to respond and confirm they processed the transaction. In this example, any two nodes from the named group must confirm.
+
+No confirmation level is specified, which means that the default is used. You can think of the rule in full, then, as:
+
+```
+ANY 2 (group) ON visible GROUP COMMIT
+```
+
+The `visible` setting means the nodes can confirm once all the transaction's changes are flushed to disk and visible to other transactions.
+
+The last part of this operation is the commit scope kind, which in this example is `GROUP COMMIT`. `GROUP COMMIT` is a synchronous two-phase commit that's confirmed when any two nodes in the named group confirm they've flushed the transactions changes and made them visible.
+
+## The commit scope group
+
+There are three kinds of commit scope groups: `ANY`, `ALL`, and `MAJORITY`. They're all followed by a list of one or more groups in parentheses. This list of groups combines to make a pool of nodes this operation applies to. This list can be preceded by `NOT`, which inverts the pool to be all other groups that aren't in the list. Witness nodes aren't eligible to be included in this pool, as they don't replicate data.
+
+- `ANY n` is followed by an integer value, `n`. It translates to any `n` nodes in the listed groups' nodes.
+- `ALL` is followed by the groups and translates to all nodes in the listed groups' nodes.
+- `MAJORITY` is followed by the groups and translates to requiring a half, plus one, of the listed groups' nodes to confirm, to give a majority.
+- `ANY n NOT` is followed by an integer value, `n`. It translates to any `n` nodes that aren't in the listed groups' nodes.
+- `ALL NOT` is followed by the groups and translates to all nodes that aren't in the listed groups' nodes.
+- `MAJORITY NOT` is followed by the groups and translates to requiring a half, plus one, of the nodes that aren't in the listed groups' nodes to confirm, to give a majority.
+
+
+## The confirmation level
+
+PGD nodes can send confirmations for a transaction at different times. In increasing levels of protection, from the perspective of the confirming node, these are:
+
+- `received` &mdash; A remote PGD node confirms the transaction immediately after receiving it, prior to starting the local application.
+- `replicated` &mdash; Confirms after applying changes of the transaction but before flushing them to disk.
+- `durable` &mdash; Confirms the transaction after all of its changes are flushed to disk.
+- `visible` (default) &mdash; Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions.
+
+In rules for commit scopes, you can append these confirmation levels to the node group definition in parentheses with `ON`, as follows:
+
+- `ANY 2 (right_dc) ON replicated`
+- `ALL (left_dc) ON visible` (default)
+- `ALL (left_dc) ON received AND ANY 1 (right_dc) ON durable`
+
+!!! Note
+If you're familiar with PostgreSQL's `synchronous_standby_names` feature, be aware that while the grammar for `synchronous_standby_names` and commit scopes can look similar, there's a subtle difference. The former doesn't account for the origin node, but the latter does. For example, `synchronous_standby_names = 'ANY 1 (..)'` is equivalent to a commit scope of `ANY 2 (...)`. This difference makes reasoning about majority easier and reflects that the origin node also contributes to the durability and visibility of the transaction.
+!!!
+
+## The commit scope kinds
+
+Currently, there are four commit scope kinds. The following is a summary, with links to more details.
+
+### `SYNCHRONOUS_COMMIT`
+
+Synchronous Commit is a commit scope option that's designed to behave like the native Postgres `synchronous_commit` option, but is usable from within the commit scope environment. Unlike `GROUP COMMIT`, it's a synchronous non-two-phase commit operation. Like `GROUP COMMIT`, it supports an optional `DEGRADE ON` clause. The commit scope group that comes before this option controls the groups and confirmation requirements the `SYNCHRONOUS_COMMIT` uses.
+
+For more details, see [`SYNCHRONOUS_COMMIT`](synchronous_commit).
+
+### `GROUP COMMIT`
+
+Group Commit is a synchronous, two-phase commit that's confirmed according to the requirements of the commit scope group. `GROUP COMMIT` has options that control:
+
+- Whether to track transactions over interruptions (Boolean, defaults to off) 
+- How to resolve conflicts (`async` or `eager`, defaults to `async`)
+- How to obtain a consensus (`group`, `partner` or `raft`, defaults to `group`)
+
+For more details, see [`GROUP COMMIT`](group-commit).
+
+### `CAMO`
+
+Commit At Most Once, or CAMO, allows the client/application, origin node, and partner node to ensure that a transaction is committed to the database at most once. Because the client is involved in the process, an application will require modifications to participate in the CAMO process. 
+
+For more details, see [`CAMO`](camo).
+
+### `LAG CONTROL`
+
+With Lag Control, when the system's replication performance exceeds specified limits, a commit delay can be automatically injected into client interaction with the database, providing a back pressure on clients. Lag Control has parameters to set the maximum commit delay that can be exerted. It also has limits in terms of time to process or queue size that trigger increases in that commit delay.
+
+For more details, see [`LAG CONTROL`](lag-control).
+
+## Combining rules
+
+Commit scope rules are composed of one or more operations that work in combination. Use an AND to form a single rule. For example:
+
+```
+MAJORITY (Region_A) SYNCHRONOUS_COMMIT AND ANY 1 (Region_A) LAG CONTROL (MAX_LAG_SIZE = '50MB')
+```
+
+The first operation sets up a synchronous commit against a majority of `Region_A`. The second operation adds lag control that starts pushing the commit delay up when any one of the nodes in `Region_A` has more than 50MB of lag. This combination of operations allows the lag control to operate when any node is lagging.

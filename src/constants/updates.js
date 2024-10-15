@@ -2,6 +2,23 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "Postgres Distributed for Kubernetes 1.0.1",
+    icon: IconNames.KUBERNETES,
+    description:
+      "PGD4K brings LDAP authentication configuration, tablespace configuration and more in this patch release.",
+    url: "/postgres_distributed_for_kubernetes/latest/",
+    moreUrl:
+      "/postgres_distributed_for_kubernetes/latest/rel_notes/1_0_1_rel_notes/",
+  },
+  {
+    title: "EDB Postgres Distributed 5.6",
+    icon: IconNames.HIGH_AVAILABILITY,
+    description:
+      "PGD 5.6 brings improvements for observability, commit scopes, Postgres compliance, and a preview of a new optimized topology for Subscriber-only groups.",
+    url: "/pgd/latest/",
+    moreUrl: "/pgd/latest/rel_notes/pgd_5.6.0_rel_notes/",
+  },
+  {
     title: "LiveCompare 3.0",
     icon: IconNames.INTEGRATION,
     description:
