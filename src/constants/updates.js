@@ -5,7 +5,7 @@ export const updates = [
     title: "EDB Postgres Distributed 5.6",
     icon: IconNames.HIGH_AVAILABILITY,
     description:
-      "PGD 5.6 brings improvements for observability, commit scopes, Postgres compliance, and a preview of a new optomized topology for Subscriber-only groups",
+      "PGD 5.6 brings improvements for observability, commit scopes, Postgres compliance, and a preview of a new optimized topology for Subscriber-only groups.",
     url: "/pgd/latest/",
     moreUrl: "/pgd/latest/rel_notes/pgd_5.6.0_rel_notes/",
   },
