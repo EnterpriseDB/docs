@@ -429,6 +429,10 @@ const Page = () => {
               headingText="High Availability"
             />
 
+            <BannerWideLink to="/pgd/latest">
+              EDB Postgres Distributed (PGD)
+            </BannerWideLink>
+
             <BannerWideLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </BannerWideLink>
