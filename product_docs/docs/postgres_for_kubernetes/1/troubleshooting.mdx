@@ -135,25 +135,27 @@ The above steps might be integrated into the `cnp` plugin at some stage in the f
 
 ## Logs
 
-Every resource created and controlled by EDB Postgres for Kubernetes logs to
-standard output, as expected by Kubernetes, and directly in [JSON
-format](logging.md). As a result, you should rely on the `kubectl logs`
-command to retrieve logs from a given resource.
+All resources created and managed by EDB Postgres for Kubernetes log to standard output in
+accordance with Kubernetes conventions, using [JSON format](logging.md).
 
-For more information, type:
+While logs are typically processed at the infrastructure level and include
+those from EDB Postgres for Kubernetes, accessing logs directly from the command line
+interface is critical during troubleshooting. You have three primary options
+for doing so:
 
-```shell
-kubectl logs --help
-```
-
-!!! Hint
-    JSON logs are great for machine reading, but hard to read for human beings.
-    Our recommendation is to use the `jq` command to improve usability. For
-    example, you can *pipe* the `kubectl logs` command with `| jq -C`.
+-   Use the `kubectl logs` command to retrieve logs from a specific resource, and
+    apply `jq` for better readability.
+-   Use the [`kubectl cnp logs` command](kubectl-plugin.md#logs) for
+    EDB Postgres for Kubernetes-specific logging.
+-   Leverage specialized open-source tools like
+    [stern](https://github.com/stern/stern), which can aggregate logs from
+    multiple resources (e.g., all pods in a PostgreSQL cluster by selecting the
+    `k8s.enterprisedb.io/clusterName` label), filter log entries, customize output formats,
+    and more.
 
 !!! Note
-    In the sections below, we will show some examples on how to retrieve logs
-    about different resources when it comes to troubleshooting EDB Postgres for Kubernetes.
+    The following sections provide examples of how to retrieve logs for various
+    resources when troubleshooting EDB Postgres for Kubernetes.
 
 ## Operator information
 
@@ -221,7 +223,7 @@ Cluster in healthy state
 Name:               cluster-example
 Namespace:          default
 System ID:          7044925089871458324
-PostgreSQL Image:   quay.io/enterprisedb/postgresql:16.4-3
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:17.0-3
 Primary instance:   cluster-example-1
 Instances:          3
 Ready instances:    3
@@ -280,14 +282,6 @@ kubectl cnp status -n <NAMESPACE> <CLUSTER>
 !!! Tip
     You can print more information by adding the `--verbose` option.
 
-!!! Note
-    Besides knowing cluster status, you can also do the following things with the cnp plugin:
-    Promote a replica.<br />
-    Manage certificates.<br />
-    Make a rollout restart cluster to apply configuration changes.<br />
-    Make a reconciliation loop to reload and apply configuration changes.<br />
-    For more information, please see [`cnp` plugin](kubectl-plugin.md) documentation.
-
 Get EDB PostgreSQL Advanced Server (EPAS) / PostgreSQL container image version:
 
 ```shell
@@ -297,7 +291,7 @@ kubectl describe cluster <CLUSTER_NAME> -n <NAMESPACE> | grep "Image Name"
 Output:
 
 ```shell
-  Image Name:    quay.io/enterprisedb/postgresql:16.4-3
+  Image Name:    quay.io/enterprisedb/postgresql:17.0-3
 ```
 
 !!! Note
@@ -642,24 +636,14 @@ kubectl cp POD:/var/lib/postgresql/data/pgdata/core.14177 core.14177
 You now have the file. Make sure you free the space on the server by
 removing the core dumps.
 
-## Some known issues
+## Some common issues
 
 ### Storage is full
 
-In case the storage is full, the PostgreSQL pods will not be able to write new
-data, or, in case of the disk containing the WAL segments being full, PostgreSQL
-will shut down.
-
-If you see messages in the logs about the disk being full, you should increase
-the size of the affected PVC. You can do this by editing the PVC and changing
-the `spec.resources.requests.storage` field. After that, you should also update
-the Cluster resource with the new size to apply the same change to all the pods.
-Please look at the ["Volume expansion" section](storage.md#volume-expansion) in the documentation.
-
-If the space for WAL segments is exhausted, the pod will be crash-looping and
-the cluster status will report `Not enough disk space`. Increasing the size in
-the PVC and then in the Cluster resource will solve the issue. See also
-the ["Disk Full Failure" section](instance_manager.md#disk-full-failure)
+If one or more pods in the cluster are in `CrashloopBackoff` and logs
+suggest this could be due to a full disk, you probably have to increase the
+size of the instance's `PersistentVolumeClaim`. Please look at the
+["Volume expansion" section](storage.md#volume-expansion) in the documentation.
 
 ### Pods are stuck in `Pending` state
 
@@ -718,7 +702,8 @@ Cluster is stuck in "Creating a new replica", while pod logs don't show
 relevant problems.
 This has been found to be related to the next issue
 [on connectivity](#networking-is-impaired-by-installed-network-policies).
-Networking issues are reflected in the status column as follows:
+From releases 1.20.1, 1.19.3, and 1.18.5, networking issues will be more clearly
+reflected in the status column as follows:
 
 ```text
 Instance Status Extraction Error: HTTP communication issue
@@ -797,3 +782,16 @@ For example:
 Please remember that you must have enough hugepages memory available to schedule
 every Pod in the Cluster (in the example above, at least 512MiB per Pod must be
 free).
+
+### Bootstrap job hangs in running status
+
+If your Cluster's initialization job hangs while in `Running` status with the
+message:
+"error while waiting for the API server to be reachable", you probably have
+a network issue preventing communication with the Kubernetes API server.
+Initialization jobs (like most of jobs) need to access the Kubernetes
+API. Please check your networking.
+
+Another possible cause is when you have sidecar injection configured. Sidecars
+such as Istio may make the network temporarily unavailable during startup. If
+you have sidecar injection enabled, retry with injection disabled.
