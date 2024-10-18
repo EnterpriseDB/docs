@@ -1,0 +1,80 @@
+---
+title: "Examples for SQL injection"
+navTitle: "Examples"
+---
+
+The following examples demonstrate some approaches for using `DBMS_ASSERT` to help prevent SQL injections.
+
+```sql
+edb=# CREATE TABLE open_tab_dbassert (
+  code        VARCHAR2(5),
+  description VARCHAR2(50)
+);
+CREATE TABLE
+
+edb=# INSERT INTO open_tab_dbassert VALUES ('ONE', 'Description for ONE');
+INSERT 0 1
+edb=# INSERT INTO open_tab_dbassert VALUES ('TWO', 'Description for TWO');
+INSERT 0 1
+
+edb=# CREATE TABLE secret_tab_dbassert (
+  code        VARCHAR2(5),
+  description VARCHAR2(50)
+);
+CREATE TABLE
+
+edb=# INSERT INTO secret_tab_dbassert VALUES ('CODE1', 'SECRET 1');
+INSERT 0 1
+edb=# INSERT INTO secret_tab_dbassert VALUES ('CODE2', 'SECRET 2');
+INSERT 0 1
+
+edb=# CREATE OR REPLACE PROCEDURE get_open_data_dbassert(p_code IN VARCHAR2) AS
+  l_sql     VARCHAR2(32767);
+  c_cursor  SYS_REFCURSOR;
+  l_buffer  VARCHAR2(32767);
+BEGIN
+  DBMS_OUTPUT.put_line('Raw input format: (' || p_code || ')');
+  l_sql := 'SELECT description FROM open_tab_dbassert WHERE code = ''' || p_code || '''';
+ DBMS_OUTPUT.put_line(l_sql);
+  OPEN c_cursor FOR l_sql;
+  LOOP
+    FETCH c_cursor INTO  l_buffer;
+    EXIT WHEN c_cursor%NOTFOUND;
+    DBMS_OUTPUT.put_line(l_buffer);
+  END LOOP;
+  close c_cursor;
+  l_buffer:=null;
+
+  DBMS_OUTPUT.put_line('Input with DBMS_ASSERT : DBMS_ASSERT.ENQUOTE_LITERAL(' || p_code || ')');
+  l_sql := 'SELECT description FROM open_tab_dbassert WHERE code = ' || sys.DBMS_ASSERT.ENQUOTE_LITERAL(p_code);
+ DBMS_OUTPUT.put_line(l_sql);
+  OPEN c_cursor FOR l_sql;
+  LOOP
+    FETCH c_cursor INTO  l_buffer;
+    EXIT WHEN c_cursor%NOTFOUND;
+    DBMS_OUTPUT.put_line(l_buffer);
+  END LOOP;
+  close c_cursor;
+END;
+CREATE PROCEDURE
+
+--Output
+edb=# EXEC get_open_data_dbassert('ONE'' OR ''1''=''1');
+Raw input format: (ONE' OR '1'='1)
+SELECT description FROM open_tab_dbassert WHERE code = 'ONE' OR '1'='1'
+Description for ONE
+Description for TWO
+Input with DBMS_ASSERT : DBMS_ASSERT.ENQUOTE_LITERAL(ONE' OR '1'='1)
+ERROR:  numeric or value error
+CONTEXT:  edb-spl function get_open_data_dbassert(character varying) line 19 at assignment
+
+edb=# EXEC get_open_data_dbassert('ONE'' UNION SELECT description FROM secret_tab_dbassert WHERE ''1''=''1');
+Raw input format: (ONE' UNION SELECT description FROM secret_tab_dbassert WHERE '1'='1)
+SELECT description FROM open_tab_dbassert WHERE code = 'ONE' UNION SELECT description FROM secret_tab_dbassert WHERE '1'='1'
+SECRET 1
+SECRET 2
+Description for ONE
+Input with DBMS_ASSERT : DBMS_ASSERT.ENQUOTE_LITERAL(ONE' UNION SELECT description FROM secret_tab_dbassert WHERE '1'='1)
+ERROR:  numeric or value error
+CONTEXT:  edb-spl function get_open_data_dbassert(character varying) line 19 at assignment
+```
