@@ -1,7 +1,6 @@
 ---
 title: 'Installation and upgrades'
 originalFilePath: 'src/installation_upgrade.md'
-deepToC: true
 ---
 
 !!! Seealso "OpenShift"
@@ -15,13 +14,17 @@ deepToC: true
 
 ## Installation on Kubernetes
 
-### Install the EDB pull secret
+### Obtaining an EDB subscription token
 
-Before installing EDB Postgres for Kubernetes, you need to create a pull secret for EDB software in your namespace.
+Installing EDB Postgres for Kubernetes requires an EDB Repos 2.0 token to gain access to the EDB private software repositories. 
+You can obtain the token by visiting the [EDB Repos website](https://www.enterprisedb.com/repos) and signing into your account.
+Your account profile page displays the token to use - by default it is obscured, click the "Show" button (an eye icon) to reveal it.
 
-You will require a Repos 2.0 token to install. You can obtain a token by visiting the [EDB website](https://www.enterprisedb.com/repos) and signing into your account.
+Your token entitles you to access one of two repositories: standard or enterprise. 
 
-Your token entitles you to access one of two repositories; standard or enterprise. 
+* Standard - Includes the operator and operands for EDB Postgres Extended.
+* Enterprise - Includes the operator and operands for EDB Postgres Advanced and EDB Postgres Extended.
+
 Export the appropriate value as an environmental variable EDB_SUBSCRIPTION_PLAN.
 
 ```shell
@@ -35,38 +38,48 @@ export EDB_SUBSCRIPTION_TOKEN=<your-token>
 ```
 
 !!! Warning
-The token is sensitive information. Please ensure that you don't expose it to unauthorized users.
+    The token is sensitive information. Please ensure that you don't expose it to unauthorized users.
 !!!
 
-To create the pull secret, run the following command:
+### Using the Helm Chart
+
+The operator can be installed using the provided [Helm chart](https://github.com/EnterpriseDB/edb-postgres-for-kubernetes-charts).
+
+### Directly using the operator manifest
+
+#### Install the EDB pull secret
+
+Before installing EDB Postgres for Kubernetes, you need to create a pull secret for EDB software in the `postgresql-operator-system` namespace.
+
+
+The pull secret needs to be save in the namespace where the operator will reside. Create a postgresql-operator-system namespace using this command:
 
 ```shell
-kubectl create secret docker-registry edb-pull-secret \
+kubectl create namespace postgresql-operator-system
+```
+
+To create the pull secret itself, run the following command:
+
+```shell
+kubectl create secret -n postgresql-operator-system docker-registry edb-pull-secret \
   --docker-server=docker.enterprisedb.com \
   --docker-username=k8s_$EDB_SUBSCRIPTION_PLAN \
   --docker-password=$EDB_SUBSCRIPTION_TOKEN
 ```
 
+#### Install the operator
 
-### Using the Helm Chart
+The operator can be installed like any other resource in Kubernetes,
+through a YAML manifest applied via `kubectl`. There are two different manifests available depending on your subscription plan:
 
+- Standard: The [latest standard operator manifest](https://get.enterprisedb.io/pg4k/pg4k-standard-1.24.1.yaml).
+- Enterprise: The [latest enterprise operator manifest](https://get.enterprisedb.io/pg4k/pg4k-enterprise-1.24.1.yaml).
 
-### Directly using the operator manifest
-
-The operator can be installed like any other resource in Kubernetes, through a YAML manifest applied via `kubectl`.
-
-There are two operator manifests available:
-
-- Standard: The [latest operator manifest](https://get.enterprisedb.io/pg4k/pg4k-standard-1.24.1.yaml )
-    for the current standard release.
-- Enterprise: The [latest operator manifest](https://get.enterprisedb.io/pg4k/pg4k-enterprise-1.24.1.yaml)
-    for the current enterprise release.
-
-You can apply your manifest with:
+You can install the manifest for the latest version of the operator by running:
 
 ```sh
 kubectl apply --server-side -f \
-  https://get.enterprisedb.io/pg4k/pg4k-$EDB_SUBSCRIPTION_PLAN-1.24.1.yaml
+  https://get.enterprisedb.io/pg4k/pg4k-enterprise-1.24.1.yaml
 ```
 
 You can verify that with:
@@ -103,6 +116,7 @@ for a more comprehensive example.
     You'll need to either change the `targetPort` in the webhook service, to be
     one of the allowed ones, or open the webhooks' port (`9443`) on the
     firewall.
+
 
 ## Details about the deployment
 
@@ -243,12 +257,9 @@ When versions are not directly upgradable, the old version needs to be
 removed before installing the new one. This won't affect user data but
 only the operator itself.
 
-### Upgrading to 1.24.0 or 1.23.4
 
-!!! Important
-    We encourage all existing users of EDB Postgres for Kubernetes to upgrade to version
-    1.24.0 or at least to the latest stable version of the minor release you are
-    currently using (namely 1.23.4).
+
+### Upgrading to 1.24 from a previous minor version
 
 !!! Warning
     Every time you are upgrading to a higher minor release, make sure you
