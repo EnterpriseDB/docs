@@ -182,8 +182,8 @@ function anchorize(text) {
 function makeAbsoluteReferenceLink(filepath, shortname) {
   let parsed = path.parse(filepath);
   let cleanFilename = path.join(parsed.dir, parsed.name);
-  let referenceBase = cleanFilename
-    .slice(cleanFilename.indexOf(productMarker) + productMarker.length)
-    .replace(/\/[0-9]+\//, "/latest/");
+  let referenceBase = cleanFilename.slice(
+    cleanFilename.indexOf(productMarker) + productMarker.length,
+  );
   return `${referenceBase}#${shortname}`;
 }
