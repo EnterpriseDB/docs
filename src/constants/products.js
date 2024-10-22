@@ -7,7 +7,6 @@ export const products = {
     noSearch: true,
   },
   barman: { name: "Barman" },
-  biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
   "EDB Advanced Storage Pack": { name: "EDB Advanced Storage Pack" },
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
