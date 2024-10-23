@@ -41,11 +41,11 @@ function getShortMonthName(monthNumber) {
 
 function printReleaseNotesHeader(currentMonth, currentYear) {
   return `---
-title: BigAnimal ${getMonthName(currentMonth)} ${currentYear} release notes
+title: Cloud Service ${getMonthName(currentMonth)} ${currentYear} release notes
 navTitle: ${getMonthName(currentMonth)} ${currentYear}
 ---
 
-BigAnimal's ${getMonthName(
+EDB Postgres® AI Cloud Service's ${getMonthName(
     currentMonth,
   )} ${currentYear} release includes the following enhancements and bug fixes:
 
