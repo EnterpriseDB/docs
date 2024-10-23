@@ -45,7 +45,7 @@ title: Cloud Service ${getMonthName(currentMonth)} ${currentYear} release notes
 navTitle: ${getMonthName(currentMonth)} ${currentYear}
 ---
 
-EDB Postgres AI Cloud Service's ${getMonthName(
+EDB Postgres® AI Cloud Service's ${getMonthName(
     currentMonth,
   )} ${currentYear} release includes the following enhancements and bug fixes:
 
