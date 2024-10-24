@@ -343,15 +343,23 @@ const Page = () => {
 
             <BannerWideCard>
               <BannerWideCardLink
-                className="col-md-6"
+                className="col-md-4"
                 to="/repos/"
                 iconName={iconNames.DOWNLOAD}
               >
-                Downloads and Repositories
+                Downloads&nbsp;&&nbsp;Repositories
               </BannerWideCardLink>
 
               <BannerWideCardLink
-                className="col-md-6"
+                className="col-md-4"
+                to="/security/"
+                iconName={iconNames.SECURITY}
+              >
+                Security Hub
+              </BannerWideCardLink>
+
+              <BannerWideCardLink
+                className="col-md-4"
                 to="/dev-guides/"
                 iconName={iconNames.CODE_WRITING}
               >

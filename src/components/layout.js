@@ -6,6 +6,7 @@ import {
   Archive,
   AuthenticatedContentPlaceholder,
   CodeBlock,
+  CTA,
   KatacodaPageLink,
   KatacodaPanel,
   LayoutContext,
@@ -138,6 +139,7 @@ const Layout = ({
       IconList,
       Archive,
       AuthenticatedContentPlaceholder,
+      CTA,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );

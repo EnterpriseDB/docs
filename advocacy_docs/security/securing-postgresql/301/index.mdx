@@ -1,0 +1,168 @@
+---
+title: Securing PostgreSQL 301
+navTitle: Security 301
+description: Your guide to Compliance, certifications, auditing and other higher-level issues.
+---
+
+As security requirements increase in complexity, it’s critical to move beyond basic and intermediate configurations. 
+Advanced security in PostgreSQL focuses on hardening systems to meet strict compliance standards, such as Security Technical Implementation Guides (STIGs), GDPR, PCI-DSS, HIPAA, and FISMA. 
+Use the following advanced strategies to secure PostgreSQL in high-stakes environments.
+
+## Security Technical Implementation Guides (STIGs)
+
+STIGs are configuration standards developed by the Defense Information Systems Agency (DISA) to ensure that IT systems meet strict security controls. PostgreSQL has its own specific STIGs, which must be followed when the database is used in government or defense environments.
+
+- **Install PostgreSQL STIG.** Ensure that your PostgreSQL installation meets the guidelines of the PostgreSQL STIG. This includes hardening configurations, removing unnecessary features, and enforcing security controls.
+
+- **Audit STIG compliance.** The stig-postgresql project provides automated scripts to check for STIG compliance. Use pgstigcheck or other security auditing tools to verify your PostgreSQL configurations against STIG guidelines.
+
+- **Implement STIG hardening.** Follow STIG guidelines for logging, encryption, and auditing role changes.
+
+- **Log all activity.** STIGs mandate strict logging of user activity. Configure PostgreSQL to log all SQL commands&mdash;even reads&mdash;to ensure traceability.
+
+```bash
+log_statement = 'all'
+log_connections = on
+log_disconnections = on
+```
+
+- **Encrypt data at rest.** Encrypt the data directory and backups as per STIG requirements. Use encryption standards that follow industry best practices, such as AES-256 encryption.
+
+- **Audit role changes and privileges.** Regularly audit role changes and privilege escalations, logging all role modifications and access control changes:
+
+```bash
+log_statement = 'ddl'
+```
+
+## Compliance requirements
+
+For information on EDB data privacy and compliance policies, see the [EDB Trust Center](https://trust.enterprisedb.com).
+
+### General Data Protection Regulation (GDPR)
+
+The European Union’s GDPR focuses on protecting the privacy and security of personal data. PostgreSQL must be configured to ensure data privacy, security, and accountability.
+
+- **Data minimization and encryption.** Ensure that only essential data is collected and stored. Implement both column-level encryption for sensitive data and full-disk encryption for databases.
+pgcrypto allows you to encrypt/decrypt sensitive columns:
+
+```sql
+SELECT pgp_sym_encrypt('personal data', 'encryption_key');
+```
+
+- **Right to erasure.** Implement functionality to allow for complete and secure deletion of user data upon request. For a compliant data deletion process, ensure that records are fully purged, including from backup systems, to comply with GDPR's "Right to be Forgotten."
+
+- **Data breach notifications.** In the event of a data breach, GDPR mandates prompt notification. PostgreSQL logging, auditing, and alerting help to detect breaches immediately.
+
+### Payment Card Industry Data Security Standard (PCI-DSS)
+
+PCI-DSS ensures the secure handling of payment card information. PostgreSQL must be hardened to prevent unauthorized access to sensitive cardholder data.
+
+- **Encryption.** PCI-DSS mandates encryption of cardholder data both in transit and at rest. Use scram-sha-256 for encrypting connections and client-side encryption for cardholder data.
+
+- **Segregation of duties.** Ensure that users accessing the database are restricted to specific tasks and can't access cardholder data unnecessarily. You can do this using PostgreSQL’s role-based access control (RBAC).
+
+    Use RBAC to separate administrative and data access functions. For example:
+
+```sql
+CREATE ROLE cardholder_data_access;
+GRANT SELECT ON card_data TO cardholder_data_access;
+```
+
+- **Detailed logging.** PCI-DSS requires detailed logging of all access to cardholder data. Use pgaudit to track reads, writes, and role changes to sensitive data.
+
+### Health Insurance Portability and Accountability Act (HIPAA)
+
+HIPAA governs the protection of healthcare data in the United States. PostgreSQL installations dealing with protected health information (PHI) must meet stringent confidentiality, integrity, and availability requirements.
+
+- **Encrypt PHI.** All PHI must be encrypted at rest and in transit. Use pgcrypto or external encryption tools to secure PHI in PostgreSQL.
+
+- **Access control.** Implement strong authentication and authorization. Ensure that users and roles are defined clearly, and use multi-factor authentication (MFA) for administrative access.
+
+- **Audit trails.** HIPAA requires tracking and logging any access to PHI. You can configure PostgreSQL’s logging system and pgaudit to log these actions. For example:
+
+```bash
+log_statement = 'all'
+log_min_duration_statement = 1000
+```
+
+## PostgreSQL in FISMA-compliant environments
+
+The Federal Information Security Management Act (FISMA) establishes security requirements for federal IT systems. To be used in FISMA environments, PostgreSQL must comply with the NIST SP 800-53 framework.
+
+- **FIPS-140-2 encryption.** Ensure PostgreSQL uses FIPS-compliant encryption algorithms for secure communication. PostgreSQL can be integrated with OpenSSL configured for FIPS mode, or you can use external encryption tools.
+
+- **Multi-factor authentication (MFA).** Use MFA for administrative access to the database. Integration with external identity providers (for example, Okta, AWS IAM) can help enforce MFA policies for critical roles.
+
+- **Incident response.** Configure PostgreSQL to detect and respond to security incidents. All security-related events must be logged, and systems must have defined incident response plans.
+
+## Advanced encryption practices
+
+Encryption is a cornerstone of advanced database security. Beyond basic encryption of data in transit and at rest, advanced encryption practices include key management and more sophisticated data protection strategies.
+
+### Key management
+
+- **External key management.** Rather than storing encryption keys within the database or filesystem, use external systems like AWS KMS, HashiCorp Vault, or Azure Key Vault to manage encryption keys. For example:
+
+```bash
+aws kms encrypt --key-id alias/myKey --plaintext fileb://myfile
+```
+
+- **Key rotation.** To limit the potential damage from key compromise, regularly rotate encryption keys. Ensure PostgreSQL encryption supports key rotation without downtime.
+  
+### Transparent data encryption (TDE)
+
+TDE encrypts the entire database at the file level. While not natively supported in PostgreSQL, tools like pgcrypto and external software can implement TDE.
+
+- **Use pgTDE.** You can use the pgTDE extension to encrypt entire databases or specific tablespaces. Data is encrypted transparently as it's written to disk.
+
+## Data masking and tokenization
+
+Data masking and tokenization protect sensitive data by obfuscating it when it isn't needed. This is especially useful in test or staging environments, where real data might be exposed.
+
+- **Dynamic data masking.** PostgreSQL doesn't natively support data masking, but you can implement it using views to hide sensitive data:
+
+```sql
+CREATE VIEW masked_view AS
+SELECT id, '****' AS credit_card FROM customers;
+```
+
+- **Tokenization.** Use external tokenization services to replace sensitive data like credit card numbers or social security numbers with tokens. These tokens can be used for processing without exposing the real data.
+
+## Advanced logging and monitoring
+
+Advanced PostgreSQL setups require more detailed logging and monitoring, especially in environments subject to compliance audits or high-level threat detection.
+
+### pgaudit configuration
+
+- **Log DDL, DML, and role changes.** Configure pgaudit to log detailed events, including access to sensitive tables, role changes, and permission escalations:
+
+```bash
+pgaudit.log = 'ddl, role, read, write'
+```
+
+### Integration with SIEM systems
+
+For real-time monitoring and alerting on suspicious activity, integrate PostgreSQL logs into security information and event management (SIEM) systems, such as Splunk, ELK Stack, or AWS CloudWatch.
+
+- **Log integration.** Ship PostgreSQL logs to a SIEM system for real-time monitoring and alerting on suspicious activity:
+
+```bash
+log_destination = 'stderr'
+logging_collector = on
+log_directory = '/var/log/postgresql'
+```
+
+- **Custom alerts.** Set up custom alerts in your SIEM system to notify administrators of anomalous activities like repeated failed login attempts or unauthorized role changes.
+
+## Database hardening automation
+
+Automating database hardening ensures consistency and repeatability in applying security configurations. Use tools like Ansible, Terraform, or Chef to enforce PostgreSQL hardening at scale.
+
+- **Automation with Ansible/Terraform.** Use Terraform or Ansible scripts to enforce role-based access controls consistently across environments. For example:
+
+```bash
+ansible-playbook -i inventory.yml playbook.yml
+```
+
+- **STIG compliance automation.** Use automation scripts to ensure all PostgreSQL servers comply with STIGs or other regulatory guidelines. Run compliance checks regularly to detect deviations.
+
