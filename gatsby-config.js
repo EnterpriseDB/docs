@@ -19,7 +19,6 @@ const algoliaIndex = process.env.ALGOLIA_INDEX_NAME || "edb-docs-staging";
 const sourceFilename = isBuild ? "build-sources.json" : "dev-sources.json";
 const sourceToPluginConfig = {
   bart: { name: "bart", path: "product_docs/docs/bart" },
-  biganimal: { name: "biganimal", path: "product_docs/docs/biganimal" },
   postgres_for_kubernetes: {
     name: "postgres_for_kubernetes",
     path: "product_docs/docs/postgres_for_kubernetes",
