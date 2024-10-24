@@ -17,6 +17,7 @@ import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
 const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
+const rawExts = [".yaml", ".yml"];
 const docsUrl = "https://www.enterprisedb.com/docs";
 // add path here to ignore link warnings
 const noWarnPaths = [
@@ -159,14 +160,22 @@ async function main() {
     await scanner.run(ast, input);
   }
 
-  const imageFiles = await glob(
-    imageExts.flatMap((ext) => [
+  //
+  // images and "raw" resources - treat paths like normal content files, but obviously don't bother indexing
+  // link resolution for raw resources are treated specially for historical reasons - see normalizeUrl()
+  //
+  const resourceFiles = await glob([
+    ...imageExts.flatMap((ext) => [
       path.resolve(basePath, "product_docs/**/*" + ext),
       path.resolve(basePath, "advocacy_docs/**/*" + ext),
     ]),
-  );
+    ...rawExts.flatMap((ext) => [
+      path.resolve(basePath, "product_docs/**/*" + ext),
+      path.resolve(basePath, "advocacy_docs/**/*" + ext),
+    ]),
+  ]);
 
-  for (const sourcePath of imageFiles) {
+  for (const sourcePath of resourceFiles) {
     const metadata = {
       canonical: fsPathToURLPath(sourcePath),
       index: false,
@@ -234,7 +243,7 @@ async function main() {
   const processor = pipeline().use(cleanup);
 
   console.log(
-    `Cross-referencing pages with ${allValidUrlPaths.size} valid URL paths`,
+    `Cross-referencing links and images with ${allValidUrlPaths.size} valid URL paths`,
   );
 
   let filesUpdated = 0,
@@ -381,16 +390,11 @@ function cleanup() {
 
     const mapUrlToCanonical = (url, position) => {
       let test = normalizeUrl(url, metadata.canonical, metadata.index);
-      if (
-        test.href ===
-        docsUrl + "/edb-postgres-ai/analytics/images/level-50.png"
-      )
-        debugger;
       if (!test.href.startsWith(docsUrl)) return url;
       if (test.href === docsUrl) return url;
       const ext = path.posix.extname(test.pathname);
       const isImageUrl = imageExts.includes(ext);
-      if (ext && !isImageUrl) return url;
+      //if (!(ext || isImageUrl)) return url;
 
       metadata.linksChecked = metadata.linksChecked || 0 + 1;
 
@@ -483,6 +487,15 @@ function cleanup() {
             node.properties.href,
             node.position,
           );
+        else if (
+          node.type === "element" &&
+          node.tagName === "a" &&
+          node.properties.src
+        )
+          node.properties.src = mapUrlToCanonical(
+            node.properties.src,
+            node.position,
+          );
         else if (node.type === "link" || node.type === "image")
           node.url = mapUrlToCanonical(node.url, node.position);
       } catch (e) {
@@ -494,10 +507,13 @@ function cleanup() {
 
 function normalizeUrl(url, pagePath, index) {
   let dest = new URL(url, "local:" + pagePath + (index ? "/" : ""));
+  const ext = path.posix.extname(dest.pathname);
+  const isRawResource = rawExts.includes(ext);
+  if (isRawResource && !index) dest = new URL(url, "local:" + pagePath + "/");
   if (dest.protocol === "local:" && dest.host === "")
     dest = new URL(
       docsUrl +
-        dest.pathname.replace(/\/index\.mdx?$|\.mdx?$/, "").replace(/\/$/, "") +
+        dest.pathname.replace(/\/$/, "").replace(/\/index\.mdx?$|\.mdx?$/, "") +
         dest.hash,
     );
   return dest;
