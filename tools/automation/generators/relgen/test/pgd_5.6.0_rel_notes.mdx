@@ -1,0 +1,167 @@
+---
+title: EDB Postgres Distributed 5.6.0 release notes
+navTitle: Version 5.6.0
+---
+
+
+Released: 15 October 2024
+
+
+EDB Postgres Distributed 5.6.0 includes a number of enhancements and bug fixes.
+
+
+## Highlights
+- Improved observability with new monitoring functions and SQL views.
+- Improvements to commit scopes including:
+   - GROUP COMMIT and SYNCHRONOUS COMMIT support graceful degrading using DEGRADE ON.
+   - ORIGIN_GROUP support and commit scope inheritance simplify commit scope creation.
+   - Improved synchronous commit behavior around deadlocks.
+   - Metrics for commit scope performance and state.
+- Optimized Topology support for Subscriber-only groups and nodes. (preview)
+- Improved Postgres compliance with support for:
+    - Exclusion Constraints
+    - REINDEX replications
+    - createrole_self_grant
+    - column reference in DEFAULT expressions
+    - CREATE SCHEMA AUTHORIZATION
+- Streaming Transaction support with Decoding Worker.
+
+
+## Enhancements
+
+<table class="table"><thead><tr><th>Component</th><th>Version</th><th>Release Note</th><th>Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Decoding Worker supports Streaming Transactions</summary><hr/><p>One of the main advantages of streaming is that the WAL sender sends the partial transaction before it commits, which reduces replication lag. Now, with streaming support, the WAL decoder does the same thing, but it streams to the LCRs segments. Eventually, the WAL sender will read the LCRs and mimic the same behavior of streaming large transactions before they commit. This provides the benefits of decoding worker, such as reduced CPU and disk space, as well as the benefits of streaming, such as reduced lag and disk space, since &quot;.spill&quot; files are not generated.
+The WAL decoder always streams the transaction to LCRs, but based on downstream requests, the WAL sender either streams the transaction or just mimics the normal BEGIN..COMMIT scenario.
+In addition to the normal LCRs segment files, we create streaming files with the starting names <code>TR_TXN_&lt;file-name-format&gt;</code> and <code>CAS_TXN_&lt;file-name-format&gt;</code> for each streamed transaction.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Introduce several new monitoring views</summary><hr/><p>There are several view providing new information as well as making some
+existing information easier to discover:</p>
+<ul>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope"><code>bdr.stat_commit_scope</code></a> : Cumulative statistics for commit scopes.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_commit_scope_state"><code>bdr.stat_commit_scope_state</code></a> : Information about current use of commit scopes by backends.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_receiver"><code>bdr.stat_receiver</code></a> : Per subscription receiver statistics.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_writer"><code>bdr.stat_writer</code></a> : Per writer statistics. There can be multiple writers for each subscription. This also includes additional information about the currently applied transaction.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_raft_state"><code>bdr.stat_raft_state</code></a> : The state of the Raft consensus on the local node.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_raft_followers_state"><code>bdr.stat_raft_followers_state</code></a> : The state of the followers on the Raft leader node (empty on other nodes), also includes approximate clock drift between nodes.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_worker"><code>bdr.stat_worker</code></a> : Detailed information about PGD workers, including what the operation manager worker is currently doing.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_routing_state"><code>bdr.stat_routing_state</code></a> : The state of the connection routing which PGD Proxy uses to route the connections.</li>
+<li><a href="/pgd/5.6/reference/catalogs-visible#bdrstat_routing_candidate_state"><code>bdr.stat_routing_candidate_state</code></a> : Information about routing candidate nodes on the Raft leader node (empty on other nodes).</li>
+</ul>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Support conflict detection for exclusion constraints</summary><hr/><p>This allows defining <code>EXCLUDE</code> constraint on table replicated by PGD either with
+<code>CREATE TABLE</code> or with <code>ALTER TABLE</code> and uses similar conflict detection to resolve
+conflicts as for <code>UNIQUE</code> constraints.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Detect and resolve deadlocks between synchronous replication wait-for-disconnected sessions and replication writer.</summary><hr/><p>This will cancel synchronous replication wait on disconnected sessions if it deadlocks against replication, preventing deadlocks on failovers when using synchronous replication. This only affects commit scopes, not synchronous replication configured via <code>synchronous_standby_names</code>.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Add bdr.bdr_show_all_file_settings() and bdr.bdr_file_settings view</summary><hr/><p>Fix: Correct privileges for bdr_superuser.  Creating wrapper SECURITY DEFINER functions in the bdr schema and granting access to bdr_superuser to use those:</p>
+<ul>
+<li>bdr.bdr_show_all_file_settings</li>
+<li>bdr.bdr_file_settings</li>
+</ul>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Add create/drop_commit_scope functions</summary><hr/><p>Add functions for creating and dropping commit scopes that will eventually deprecate the non-standard functions for adding and removing commit scopes. Notify the user that these will be deprecated in a future version, suggesting the use of the new versions.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Grant additional object permissions to role &quot;bdr_monitor&quot;.</summary><hr/><p>Permissions for the following objects have been updated to include SELECT permissions for role &quot;bdr_monitor&quot;: bdr.node_config</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Add <code>bdr.raft_vacuum_interval</code> and <code>bdr.raft_vacuum_full_interval</code> GUCs to control frequency of automatic Raft catalog vacuuming.</summary><hr/><p>This update introduces GUCs to regulate the frequency of automatic vacuuming on the specified catalogs. The GUC <code>bdr.raft_vacuum_interval</code> determines the frequency at which tables are examined for VACUUM and ANALYZE. Autovacuum GUCs and table reloptions are utilized to ascertain the necessity of VACUUM/ANALYZE.
+The <code>bdr.raft_vacuum_full_interval</code> initiates VACUUM FULL on the tables. Users have the ability to deactivate VACUUM FULL if regular VACUUM suffices to manage bloat.</p>
+</details></td><td>40412</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Add &quot;node_name&quot; to &quot;bdr.node_config_summary&quot;</summary><hr/><p>Add &quot;node_name&quot; to the view &quot;bdr.node_config_summary&quot;. This makes it consistent with other summary views, which report the name of the object (node, group, etc.) for which the summary is being generated.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>bdr_init_physical: improve local node connection failure logging</summary><hr/><p>Ensure that bdr_init_physical emits details about connection failure if the &quot;--local-dsn&quot; parameter is syntactically correct but invalid, e.g., due to an incorrect host or port setting.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary><code>bdr_config</code>: add PG_FLAVOR output</summary><hr/><p><code>bdr_config</code> now shows the PostgreSQL &quot;flavor&quot; which BDR was built against, one of:</p>
+<ul>
+<li>COMMUNITY</li>
+<li>EPAS</li>
+<li>EXTENDED</li>
+<li>BDRPG</li>
+</ul>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Enhance warning messages</summary><hr/><p>Enhance messages issued during DML and DDL lock acquisition.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Do not send Raft snapshot very aggressively</summary><hr/><p>Avoid sending Raft snapshots too frequently as it can slow down follower nodes. Limit the snapshot rate to once in every election timeout, unless there is no other communication between the nodes, in which case send a snapshot every 1/3rd of the election timeout. This will help all nodes keep pace with the leader and improve CPU utilization.</p>
+</details></td><td>37725</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Group-Specific Configuration Options</summary><hr/><p>It is now possible to set akk top-level and subgroup level options. The following options are available for top-both groups:</p>
+<ul>
+<li>check_constraints</li>
+<li>enable_wal_decoder</li>
+<li>num_writers</li>
+<li>streaming_mode</li>
+<li>enable_raft
+Subgroups inherit settings from their parent group, but can override them if set in the subgroup.</li>
+</ul>
+</details></td><td>37725</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Subscriber-only node groups have a leader</summary><hr/><p>Subscriber-only node groups have a leader elected by top-level Raft. There is now a bdr.leader catalog that tracks leadership of subgroups and subscriber-only nodes. If the node that is the leader of a subscriber-only node group goes down or becomes unreachable, a new leader is elected from that group.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Optimized topology for subscriber-only nodes via the leader of the subscriber-only node group</summary><hr/><p>Subscriber-only nodes earlier used to have subscriptions to each data node. Now if optimized topology is enabled, only the leaders of subscriber-only node groups have subscriptions to routing leaders of data node subsgroups. The subscriber only nodegroup leaders route data to other nodes of that subscriber-only nodegroup. This reduces the load on all data nodes so they do not have to send data to all subscriber-only nodes. The GUC <code>bdr.force_full_mesh=false</code> enables this optimized topology. It is off by default.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Introduce new subscription types to support optimized topology</summary><hr/><p>New subscription types that forward data from all nodes of the subgroup via a routing leader (mode: l), and those that forward data from the entire cluster via a subscriber-only group leader (mode: w) are introduced.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Introduce version number and timestamp for write leader</summary><hr/><p>A write leader has a version. Every time a new leader is elected, the version is incremented and timestamp noted via Raft. This is to build a foundation for better conflict resolution.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Allow use of column reference in DEFAULT expressions</summary><hr/><p>Using column references in default expressions is now supported, this is particularly
+useful with generated columns, for example:
+<code>ALTER TABLE gtest_tableoid ADD COLUMN c regclass GENERATED ALWAYS AS (tableoid) STORED;</code></p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Support replication of REINDEX</summary><hr/><p>Both REINDEX and REINDEX CONCURRENTLY are now replicated commands.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Fix receiver worker being stuck when exiting</summary><hr/><p>Receiver worker could get stuck when exiting, waiting for a writer that never
+actually started. This could on rare occasions break replication after
+configuration changes until Postgres was restarted.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Reduce performance impact of PGD specific configuration parameters that are sent to client</summary><hr/><p>Changes to values of variables <code>bdr.last_committed_lsn</code>, <code>transaction_id</code>
+and <code>bdr.local_node_id</code> are automatically reported to clients when using
+CAMO or GROUP COMMIT. This has now been optimized to use less resources.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Allow use of commit scopes defined in parent groups</summary><hr/><p>When there is a commit scope defined for top-level group, it can be used by
+any node in a subgroup and does not need to be redefined for every subgroup
+anymore. This is particularly useful when combined with <code>ORIGIN\_GROUP</code>
+keyword to reduce the complexity of commit scope setup.</p>
+</details></td><td></td></tr>
+<tr><td>CLI</td><td>5.6.0</td><td><details><summary>Use bdr.bdr_file_settings view in verify-settings</summary><hr/><p>Use bdr.bdr_file_settings view to get the current settings for the proxy.</p>
+</details></td><td></td></tr>
+</tbody></table>
+
+
+## Bug Fixes
+
+<table class="table"><thead><tr><th>Component</th><th>Version</th><th>Release Note</th><th>Addresses</th></tr></thead><tbody>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Fixed buffer overrun in the writer</summary><hr/><p>Include an extra zero byte at the end of a column value allocation in shared memory queue insert/update/delete messages.</p>
+</details></td><td>98966</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td>Fixes for some race conditions to prevent node sync from entering a hung state with the main subscription disabled.</td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Do not accidentally drop the autopartition rule when a column of the autopartitioned table is dropped.</summary><hr/><p>When ALTER TABLE .. DROP COLUMN is used, the object_access_hook is fired with <code>classId</code> set to RelationRelationId, but the <code>subId</code> is set to the attribute number to differentiate it from the DROP TABLE command.</p>
+<p>Therefore, we need to check the subId field to make sure that we are not performing actions that should only be triggered when a table is dropped.</p>
+</details></td><td>40258</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Adjust <code>bdr.alter_table_conflict_detection()</code> to propagate correctly to all nodes</summary><hr/><p>Ensure that the propagation of <code>bdr.alter_table_conflict_detection()</code> (as well as the related, deprecated <code>bdr.column_timestamps_(en|dis)able()</code> functions) is carried out correctly to all logical standbys. Previously, this propagation did not occur if the logical standby was not directly attached to the node on which the functions were executed.</p>
+</details></td><td>40258</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Prevent a node group from being created with a duplicate name</summary><hr/><p>Ensure that a nodegroup is not inadvertently created with the same name as an existing nodegroup. Failure to do so may result in a complete shutdown of the top-level Raft on all nodes, with no possibility of recovery.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Prevent spurious &quot;local info ... not found&quot; errors when parting nodes</summary><hr/><p>Handle the absence of the expected node record gracefully when a node is being removed, the local node record might have already been deleted, but an attempt could be made to update it anyway. This resulted in harmless &quot;BDR node local info for node ... not found&quot; errors.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Prevent a corner-case situation from being misdiagnosed as a PGD version problem</summary><hr/><p>Improve Raft error messages to handle cases where nodes may not be correctly participating in Raft.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Handling duplicate requests in RAFT preventing protocol breakage</summary><hr/><p>When processing RAFT entries, it's crucial to handle duplicate requests properly to prevent Raft protocol issues. Duplicate requests can occur when a client retries a request that has already been accepted and applied by the Raft leader. The problem arose when the leader failed to detect the duplicate request due to historical evidence being pruned.</p>
+</details></td><td>37725</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Handling Raft Snapshots: Consensus Log</summary><hr/><p>When installing or importing a Raft snapshot, discard the consensus log unless it contains an entry matching the snapshot's last included entry and term.</p>
+</details></td><td>37725</td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Be more restrictive about which index to use during replication for REPLICA IDENTITY FULL tables</summary><hr/><p>This fixes various index related errors during replication like:
+'could not lookup equality operator for type, optype in opfamily'
+or 'function &quot;amgettuple&quot; is not defined for index &quot;brinidx&quot;'</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Support <code>createrole_self_grant</code></summary><hr/><p>The <code>createrole_self_grant</code> configuration option affects inherited grants
+by newly created roles. In previous versions <code>CREATE ROLE</code>/<code>CREATE USER</code>
+replication would not take this into consideration, resulting in different
+role privileges on different nodes.</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Allow <code>CREATE SCHEMA AUTHORIZATION ...</code> combined with other create operations</summary><hr/><p>Previously, this would throw &quot;cannot change current role within security-restricted operation&quot; error</p>
+</details></td><td></td></tr>
+<tr><td>BDR</td><td>5.6.0</td><td><details><summary>Use base type instead of domain type while casting values</summary><hr/><p>This prevents errors when replicating UPDATEs for domains defined as NOT VALID
+where tables contain data which would not be allowed by current definition
+of such domain.</p>
+</details></td><td></td></tr>
+<tr><td>Utilities</td><td>5.6.0</td><td>bdr_pg_upgrade - Create logical slot with twophase set to true for PG 14+</td><td></td></tr>
+</tbody></table>
+
+
