@@ -283,8 +283,11 @@ function prepareRelnote(meta, file, note) {
 
   // Highest, High, Medium, Low, Lowest - in that order
   function impactSort(a, b) {
-    const order = ["Highest", "High", "Medium", "Low", "Lowest"];
-    return order.indexOf(a.impact) - order.indexOf(b.impact);
+    const order = ["highest", "high", "medium", "low", "lowest"];
+    return (
+      order.indexOf(a.impact.toLowerCase()) -
+      order.indexOf(b.impact.toLowerCase)
+    );
   }
 
   // BDR, Proxy, CLI - in that order
@@ -315,6 +318,12 @@ function prepareRelnote(meta, file, note) {
   appendFileSync(rlout, "\n\n");
   appendFileSync(rlout, `Released: ${note.date}\n`);
   appendFileSync(rlout, "\n\n");
+
+  if (note.updated !== undefined) {
+    appendFileSync(rlout, `Updated: ${note.updated}\n`);
+    appendFileSync(rlout, "\n\n");
+  }
+
   appendFileSync(rlout, `${note.intro}`);
   appendFileSync(rlout, "\n\n");
 

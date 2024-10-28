@@ -9,6 +9,7 @@ All files should reside in the src directory of the release notes in the docs. T
 product: The product name in full - required.
 version: The version number of the product - required.
 date: The release date of the product - required.
+updated: The date the release notes were last updated - optional.
 meta: # Meta key values - required if the index uses them (see meta.yml)
     metakey: metavalue # keyvalue pairs for meta.yml
 intro: |
