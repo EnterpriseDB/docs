@@ -42,6 +42,8 @@ function normalizeType(type) {
     case "Bug-fixes":
     case "Bug fix":
       return "Bug Fix";
+    case "Change":
+      return "Change";
     case "Deprecation":
     case "Obsolete":
       return "Deprecations";
@@ -59,6 +61,8 @@ function titles(type) {
       return "Enhancements";
     case "Security":
       return "Security Fixes";
+    case "Change":
+      return "Changes";
     case "Bug Fix":
       return "Bug Fixes";
     case "Deprecation":
@@ -128,8 +132,8 @@ relnotes[Symbol.iterator] = function* () {
   );
 };
 
-function makeRelnotefilename(meta, relnote) {
-  return `${meta.shortname}_${relnote.version}_rel_notes`;
+function makeRelnotefilename(shortname, version) {
+  return `${shortname}_${version}_rel_notes`;
 }
 
 function makeShortDate(date) {
@@ -169,13 +173,20 @@ appendFileSync(relindexfilename, `navigation:\n`);
 for (let [file, relnote] of relnotes) {
   appendFileSync(
     relindexfilename,
-    `  - ${makeRelnotefilename(meta, relnote)}\n`,
+    `  - ${makeRelnotefilename(meta.shortname, relnote.version)}\n`,
   );
 }
-appendFileSync(relindexfilename, `---\n`);
-appendFileSync(relindexfilename, `\n`);
-appendFileSync(relindexfilename, `${meta.intro}\n`);
-appendFileSync(relindexfilename, `\n`);
+if (meta.precursor !== undefined) {
+  for (let prec of meta.precursor) {
+    appendFileSync(
+      relindexfilename,
+      `  - ${makeRelnotefilename(meta.shortname, prec.version)}\n`,
+    );
+  }
+}
+
+appendFileSync(relindexfilename, "---\n");
+appendFileSync(relindexfilename, "\n\n");
 
 let headers = "|";
 let headers2 = "|";
@@ -193,7 +204,7 @@ for (let [file, relnote] of relnotes) {
     let col = meta.columns[i];
     switch (col.key) {
       case "version-link":
-        line += ` [${relnote.version}](./${makeRelnotefilename(meta, relnote)}.md) |`;
+        line += ` [${relnote.version}](./${makeRelnotefilename(meta.shortname, relnote.version)}) |`;
         break;
       case "shortdate":
         line += ` ${makeShortDate(relnote.date)} |`;
@@ -211,13 +222,40 @@ for (let [file, relnote] of relnotes) {
   appendFileSync(relindexfilename, line + "\n");
 }
 
+// We aren't done yet, check for a precursor
+if (meta.precursor !== undefined) {
+  for (let prec of meta.precursor) {
+    let line = "|";
+    for (let i = 0; i < meta.columns.length; i++) {
+      let col = meta.columns[i];
+      switch (col.key) {
+        case "version-link":
+          line += ` [${prec.version}](./${makeRelnotefilename(meta.shortname, prec.version)}) |`;
+          break;
+        case "shortdate": // This is a precursor, so we need to get the date from the precursor
+          line += ` ${prec.date} |`;
+          break;
+        default:
+          if (col.key.startsWith("$")) {
+            let key = col.key.replace("$", "");
+            line += ` ${prec.meta[key]} |`;
+          } else {
+            console.err(`Unknown column key: ${col.key}`);
+          }
+          break;
+      }
+    }
+    appendFileSync(relindexfilename, line + `\n`);
+  }
+}
+
 // Now let's make some release notes...
 for (let [file, relnote] of relnotes) {
   prepareRelnote(meta, file, relnote);
 }
 
 function prepareRelnote(meta, file, note) {
-  let relnotefilename = makeRelnotefilename(meta, note); // Use this to write the file
+  let relnotefilename = makeRelnotefilename(meta.shortname, note.version); // Use this to write the file
   let alltypes = note.relnotes.map((note) => normalizeType(note.type));
   let types = [...new Set(alltypes)];
 
@@ -233,6 +271,7 @@ function prepareRelnote(meta, file, note) {
       "Feature",
       "Enhancement",
       "Security",
+      "Change",
       "Bug Fix",
       "Deprecation",
       "Other",
@@ -250,7 +289,10 @@ function prepareRelnote(meta, file, note) {
 
   // BDR, Proxy, CLI - in that order
   function componentSort(a, b) {
-    const order = ["BDR", "Proxy", "CLI", "Utilities"];
+    if (meta.components === undefined) {
+      return 0;
+    }
+    const order = meta.components;
     return order.indexOf(a.component) - order.indexOf(b.component);
   }
 
@@ -286,11 +328,17 @@ function prepareRelnote(meta, file, note) {
   for (let type of types) {
     appendFileSync(rlout, `## ${titles(type)}`);
     appendFileSync(rlout, "\n\n");
-    appendFileSync(
-      rlout,
-      `<table class="table"><thead><tr><th>Component</th><th>Version</th><th>Release Note</th><th>Addresses</th></tr></thead><tbody>\n`,
-    );
-
+    if (meta.components !== undefined) {
+      appendFileSync(
+        rlout,
+        `<table class="table w-100"><thead><tr><th>Component</th><th>Version</th><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>\n`,
+      );
+    } else {
+      appendFileSync(
+        rlout,
+        `<table class="table w-100"><thead><tr><th>Description</th><th width="10%">Addresses</th></tr></thead><tbody>\n`,
+      );
+    }
     // TODO: Depending on type, we should sort the notes
 
     rnotes[type].sort(componentSort);
@@ -314,10 +362,17 @@ function prepareRelnote(meta, file, note) {
         linenote.addresses = "";
       }
 
-      appendFileSync(
-        rlout,
-        `<tr><td>${linenote.component}</td><td>${linenote.component_version}</td><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
-      );
+      if (meta.components !== undefined) {
+        appendFileSync(
+          rlout,
+          `<tr><td>${linenote.component}</td><td>${linenote.component_version}</td><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
+        );
+      } else {
+        appendFileSync(
+          rlout,
+          `<tr><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
+        );
+      }
     }
     appendFileSync(rlout, "</tbody></table>\n");
     appendFileSync(rlout, "\n\n");
