@@ -46,7 +46,7 @@ function normalizeType(type) {
       return "Change";
     case "Deprecation":
     case "Obsolete":
-      return "Deprecations";
+      return "Deprecation";
     case "Other":
     default:
       return "Other";
@@ -282,9 +282,9 @@ function prepareRelnote(meta, file, note) {
   let rnotes = {};
 
   // Highest, High, Medium, Low, Lowest - in that order
-  function severitySort(a, b) {
+  function impactSort(a, b) {
     const order = ["Highest", "High", "Medium", "Low", "Lowest"];
-    return order.indexOf(a.severity) - order.indexOf(b.severity);
+    return order.indexOf(a.impact) - order.indexOf(b.impact);
   }
 
   // BDR, Proxy, CLI - in that order
@@ -340,8 +340,8 @@ function prepareRelnote(meta, file, note) {
       );
     }
     // TODO: Depending on type, we should sort the notes
-
-    rnotes[type].sort(componentSort);
+    rnotes[type].sort(impactSort);
+    //rnotes[type].sort(componentSort);
 
     for (let linenote of rnotes[type]) {
       let composednote = "";
