@@ -17,6 +17,10 @@ npm ci
 
 cd $SOURCE_CHECKOUT
 
+# grab some information about what we're importing
+CURRENT_TAG=`git describe --exact-match --tags`
+LATEST_TAG=`git tag | sort -V -r | head -n 1`
+
 # create a temporary worktree to avoid messing up source repo (for local work; CI doesn't care)
 git worktree add --detach ./docs-import
 
@@ -48,6 +52,25 @@ node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
   >> $SOURCE_CHECKOUT/docs-import/files-to-ignore.txt
 
 rsync -av --delete --exclude-from=$SOURCE_CHECKOUT/docs-import/files-to-ignore.txt src/ $DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/
+
+# Archive API docs
+API_REF_DIR="$DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1"
+CURRENT_API_REF="$API_REF_DIR/$CURRENT_TAG.mdx"
+mv "$DESTINATION_CHECKOUT/product_docs/docs/postgres_for_kubernetes/1/pg4k.v1.mdx" "$CURRENT_API_REF"
+# TODO: just install yq
+node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$CURRENT_API_REF" \
+  title="API Reference - $CURRENT_TAG" \
+  navTitle="$CURRENT_TAG"
+if [ $CURRENT_TAG == $LATEST_TAG ]
+then
+  API_REF_INDEX="$API_REF_DIR/index.mdx"
+  cp "$CURRENT_API_REF" "$API_REF_INDEX"
+  node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$API_REF_INDEX" \
+    navTitle="API Reference" \
+    navigation=[`ls "$API_REF_DIR" | grep ^v | sed -e 's/\.mdx$//' | sort -V -r |  paste -sd "," - `]
+fi 
+node "$DESTINATION_CHECKOUT/scripts/source/update-yaml.mjs" "$CURRENT_API_REF" \
+  originalFilePath=null
 
 # cleanup: remove worktree
 cd $SOURCE_CHECKOUT
