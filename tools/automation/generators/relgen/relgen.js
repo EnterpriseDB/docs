@@ -14,10 +14,15 @@ let argv = yargs(hideBin(process.argv))
   .option("p", {
     alias: "path",
     describe:
-      "The path to the relnotes directory (when set -o and -f are relative to this)",
+      "The path to the relnotes directory (should contain a src directory - see schema-readme.md)",
     type: "string",
     demandOption: true,
     default: ".",
+  })
+  .check((argv) => {
+    const metapath = path.resolve(path.join(argv.path, "src", "meta.yml"));
+    if (!existsSync(metapath)) throw new Error("Can't find " + metapath);
+    return true;
   })
   .parse();
 
