@@ -170,6 +170,7 @@ appendFileSync(relindexfilename, `title: ${meta.title}\n`);
 appendFileSync(relindexfilename, `navTitle: Release notes\n`);
 appendFileSync(relindexfilename, `description: ${meta.description}\n`);
 appendFileSync(relindexfilename, `navigation:\n`);
+
 for (let [file, relnote] of relnotes) {
   appendFileSync(
     relindexfilename,
@@ -186,6 +187,9 @@ if (meta.precursor !== undefined) {
 }
 
 appendFileSync(relindexfilename, "---\n");
+appendFileSync(relindexfilename, "\n\n");
+
+appendFileSync(relindexfilename, `${meta.intro}`);
 appendFileSync(relindexfilename, "\n\n");
 
 let headers = "|";
