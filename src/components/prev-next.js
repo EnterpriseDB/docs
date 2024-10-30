@@ -7,7 +7,7 @@ const PrevNext = ({ prevNext }) => {
   let upLink = prevNext.up;
 
   return (
-    <div className="d-flex justify-content-between mt-5">
+    <div className="d-flex justify-content-between mt-5 d-print-none">
       <div className="max-w-40">
         {prevLink && (
           <Link

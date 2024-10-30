@@ -133,7 +133,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
   };
-  const { path, depth } = fields;
+  const { path } = fields;
 
   const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
@@ -212,17 +212,23 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           )}
           <div className="d-flex justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
-            {editOrFeedbackButton}
+            <div className="d-print-none">{editOrFeedbackButton}</div>
           </div>
 
           <ContentRow>
-            <Col xs={showToc ? 9 : 12}>
+            <Col
+              className={[
+                "col-xs-12",
+                "col-lg-" + (showToc ? 9 : 12),
+                "col-print-12",
+              ].join(" ")}
+            >
               <MDXRenderer>{mdx.body}</MDXRenderer>
               <Tiles mode={cardTileMode} node={navRoot} />
             </Col>
 
             {showToc && (
-              <Col xs={3}>
+              <Col className="d-xs-none col-lg-3 d-print-none">
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
