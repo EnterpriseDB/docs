@@ -181,6 +181,8 @@ def combine_mdx(files, output):
     for item in files:
         resource_search_paths.add(item.filename.parent)
         front_matter, content, lines_before_content = parse_mdx(item.filename)
+        if re.search("pdfExclude", front_matter): continue
+
         output.write(f"\n<span data-original-path='{str(item.filename)}:{lines_before_content}'></span>\n\n")
         write_front_matter(front_matter, item.chapter, output)
         write_content(content, output)
