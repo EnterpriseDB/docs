@@ -2,7 +2,13 @@
 
 // Parse the yaml in the relnotetester.yml file and return the data
 
-import { readFileSync, readdirSync, writeFileSync, appendFileSync } from "fs";
+import {
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  appendFileSync,
+  existsSync,
+} from "fs";
 import { load } from "js-yaml";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
