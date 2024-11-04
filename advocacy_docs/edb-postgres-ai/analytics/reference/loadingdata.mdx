@@ -6,60 +6,50 @@ description: How to load data into Lakehouse
 
 ## Loading data with Lakehouse sync
 
-If you have a transactional database running in EDB Postgres AI Cloud Service,
-then you can sync tables from this database into a Managed Storage Location.
-
-A more detailed guide for this is forthcoming. If you want to try it yourself,
-see ["How to lakehouse sync"](../how_to_lakehouse_sync).
+If you have a transactional database running in EDB Postgres AI Cloud Service, then you can sync tables from this database into a Managed Storage Location. See ["How to lakehouse sync"](../how_to_lakehouse_sync) for further details.
 
 ## Bringing your own data
 
-It's possible to point your Lakehouse node at an arbitrary S3 bucket with Delta
-Tables inside of it. However, this comes with some major caveats (which will
-eventually be resolved):
+It's possible to point your Lakehouse node at an arbitrary S3 bucket with Delta Tables inside of it. 
+However, this comes with some major caveats (which will eventually be resolved):
 
 ### Caveats
 
-* The tables must be stored as [Delta Tables](http://github.com/delta-io/delta/blob/master/PROTOCOL.md) within the location
-* A “Delta Table” is a folder of Parquet files along with some JSON metadata.
+* The tables must be stored as [Delta Lake Tables](http://github.com/delta-io/delta/blob/master/PROTOCOL.md) within the location
+* A "Delta Lake Table" (or "Delta Table") is a folder of Parquet files along with some JSON metadata.
 * Each table must be prefixed with a `$schema/$table/` where `$schema` and `$table` are valid Postgres identifiers (i.e. < 64 characters)
   * For example, this is a valid Delta Table that will be recognized by Beacon Analytics:
     * `my_schema/my_table/{part1.parquet, part2.parquet, _delta_log}`
-        * These `$schema` and `$table` identifiers will be queryable in the Lakehouse node, e.g.:
-          * `SELECT count(*) FROM my_schema.my_table;`
-  * This Delta Table will NOT be recognized by Beacon Analytics (missing a schema):
+      * These `$schema` and `$table` identifiers will be queryable in the Lakehouse node, e.g.:
+        * `SELECT count(*) FROM my_schema.my_table;`
+  * This Delta Table will NOT be recognized by Lakehouse Analytics (missing a schema):
     * `my_table/{part1.parquet, part2.parquet, _delta_log}`
 
+### Loading data into your bucket
 
+You can use the `lakehouse-loader` utility to export data from an arbitrary Postgres instance to Delta Tables in a storage bucket. 
+See [Delta Lake Table Tools](delta_tables) for more information on how to obtain and use that utility.
 
+### Querying your own data
 
-### Pointing to your bucket
-
-By default, each Lakehouse node is configured to point to a bucket with
-benchmarking datasets inside. To point it to a different bucket, you can
-call the `pgaa.create_storage_location` function:
+By default, each Lakehouse node is configured to point to a bucket with benchmarking datasets inside.
+To point it to a different bucket, you can call the `pgaa.create_storage_location` function:
 
 ```sql
 SELECT pgaa.create_storage_location.set_bucket_location('mystore', 's3://my-bucket');
 ```
 
-### Querying your own data
-
-In the example above, after you've called `pgaa.create_stn`, you will be able
-to query data in `my_schema.my_table`:
+You will then be able create a table that references the Delta Table in the bucket:
 
 ```sql
 CREATE TABLE public.tablename () USING PGAA WITH (pgaa.storage_location = 'mystore', pgaa.path = 'schemaname/tablename');
 ```
 
-Then you can query the table:
+Which you can then query:
 
 ```sql
 SELECT COUNT(*) FROM public.tablename;
 ```
 
-Note that using an S3 bucket that isn't in the same region as your node
-will 1) be slow because of cross-region latencies, and 2) will incur
-AWS costs (between $0.01 and $0.02 / GB) for data transfer! Currently these
-egress costs are not passed through to you but we do track them and reserve
-the right to terminate an instance.
+For further details, see the [External Tables](../external_tables) documentation.
+

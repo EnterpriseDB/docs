@@ -18,7 +18,7 @@ contents to it.
 If your query is extremely slow, it's possible that's what's happening.
 
 You can check which mode is being used by running an `EXPLAIN` on the query and
-making sure that the top-most query node is `SeafowlDirectScan`. For example:
+making sure that the top-most query node is `DirectScan`. For example:
 
 ```
 explain select count from (select count(*) from tpch_sf_1.lineitem);
@@ -26,32 +26,27 @@ explain select count from (select count(*) from tpch_sf_1.lineitem);
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate  (cost=167.52..167.55 rows=1 width=8)
    ->  Append  (cost=0.00..165.01 rows=1001 width=0)
-         ->  Seq Scan on lineitem lineitem_1  (cost=0.00..0.00 rows=1 width=0)
-         ->  SeafowlScan on "16529" lineitem_2  (cost=100.00..150.00 rows=1000 width=0)
+         ->  CompatScan on "16529" lineitem_2  (cost=100.00..150.00 rows=1000 width=0)
                SeafowlPlan: logical_plan
                  TableScan:  tpch_sf_1.lineitem projection=[l_orderkey, l_partkey, l_suppkey, l_linenumber, l_quantity, l_extendedprice, l_discount, l_tax, l_returnflag, l_linestatus, l_shipdate, l_commitdate, l_receiptdate, l_shipinstruct, l_shipmode, l_comment]
 (6 rows)
 ```
 
 
-In this case, the query is executed by PostgreSQL and Seafowl is only involved
-when scanning the table (see `SeafowlScan` at the bottom). The fix in this case is
-to explicitly name the inner `COUNT(*)` column, since Seafowl gives it an implicit
-name `count(*)` whereas PostgreSQL calls it `count`:
+In this case, the query is executed by PostgreSQL and Seafowl is only involved when scanning the table (see `CompatScan` at the bottom). 
+The fix in this case is to explicitly name the inner `COUNT(*)` column, since Seafowl gives it an implicit name `count(*)` whereas PostgreSQL calls it `count`:
 
-
-```
+```console
 edb_admin=> explain select count from (select count(*) as count from tpch_sf_1.lineitem);
                              QUERY PLAN
 --------------------------------------------------------------------
- SeafowlDirectScan: logical_plan
+ DirectScan: logical_plan
    Projection:  COUNT(*) AS count
      Aggregate:  groupBy=[[]], aggr=[[COUNT(UInt8(1)) AS COUNT(*)]]
        TableScan:  tpch_sf_1.lineitem projection=[]
 (4 rows)
 ```
 
-Here, we can see the `SeafowlDirectScan` at the top, which means that Seafowl is
-running the entire query.
+Here, we can see the `DirectScan` at the top, which means that Seafowl is running the entire query.
 
 If you're having trouble rewording your query to make it run fully on Seafowl, open a support ticket.
