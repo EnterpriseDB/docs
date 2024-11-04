@@ -1,7 +1,7 @@
 ---
-title: Querying Delta tables in S3-compatible object storage
+title: Querying Delta Lake Tables in S3-compatible object storage
 navTitle: External Tables
-description: Access and Query data in S3-compatible object storage using External Tables
+description: Access and Query data stored as Delta Lake Tablles in S3-compatible object storage using External Tables
 deepToC: true
 ---
 
@@ -11,27 +11,51 @@ External tables allow you to access and query data stored in S3-compatible objec
 
 ## Prerequisites
 
-An EDB Postgres AI account and a Lakehouse node.
+* An EDB Postgres AI account and a Lakehouse node.
+* An S3-compatible object storage location with data stored as Delta Lake Tables.
+  * See [Bringing your own data](../loadingdata) for more information on how to prepare your data.
+* Credentials to access the S3-compatible object storage location, unless it is a public bucket.
+  * These credentials will be stored within the database. We recommend creating a separate user with limited permissions for this purpose.
+
+!!! Note Regions, latency and cost
+Using an S3 bucket that isn't in the same region as your node will
+
+* be slow because of cross-region latencies
+* will incur AWS costs (between $0.01 and $0.02 / GB) for data transfer. Currently these egress costs are not passed through to you but we do track them and reserve the right to terminate an instance.
+!!!
 
 ## Creating an External Storage Location
 
-The first step is to create an external storage location which references S3-compatible object storage where your data resides. This is done by using SQL to execute the `pgaa.create_storage_location` function. `pgaa` is the name of the extension and namespace that provides the functionality to query external storage locations.
+The first step is to create an external storage location which references S3-compatible object storage where your data resides. A storage location is an object within the database which you refer to to access the data; each storage location has a name for this purpose. 
 
-The following example creates an external table that references an S3-compatible object storage location:
+Creating a named storage location is performed with SQL by executing the `pgaa.create_storage_location` function.
+`pgaa` is the name of the extension and namespace that provides the functionality to query external storage locations.
+The `create_storage_location` function takes a name for the new storage location, and the URI of the S3-compatible object storage location as parameters.
+The function optionally can take a third parameter, `options`, which is a JSON object for specifying optional settings, detailed in the [functions reference](reference/functions#create_storage_location). 
+For example, in the options, you can specify the access key ID and secret access key for the storage location to enable access to a private bucket.
+
+The following example creates an external table that references a public S3-compatible object storage location:
 
 ```sql
 SELECT pgaa.create_storage_location('sample-data', 's3://pgaa-sample-data-eu-west-1');
 ```
 
-The function takes a name for the new storage location, and the URI of the S3-compatible object storage location.
+The next example creates an external storage location that references a private S3-compatible object storage location:
+
+```sql
+SELECT pgaa.create_storage_location('private-data', 's3://my-private-bucket', '{"access_key_id": "my-access-key-id","secret_access_key": "my-secret-access-key"}');
+```
 
 ## Creating an External Table
 
-After creating the external storage location, you can create an external table that references the data in the storage location. The following example creates an external table that references a Delta table in the S3-compatible object storage location:
+After creating the external storage location, you can create an external table that references the data in the storage location.
+The following example creates an external table that references a Delta Lake Table in the S3-compatible object storage location:
 
 ```sql
 CREATE TABLE public.customer () USING PGAA WITH (pgaa.storage_location = 'sample-data', pgaa.path = 'tpch_sf_1/customer');
 ```
+
+Note that the schema is not defined in the `CREATE TABLE` statement. The pgaa extension expects the schema to be defined in the storage location, and the schema itself is derived from the schema stored at the path specified in the `pgaa.path` option. The pgaa extension will infer the best Postgres-equivelant data types for the columns in the Delta Table.
 
 ## Querying an External Table
 
@@ -40,7 +64,3 @@ After creating the external table, you can query the data in the external table 
 ```sql
 SELECT COUNT(*) FROM public.customer;
 ```
-
-
-
-
