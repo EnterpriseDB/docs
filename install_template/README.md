@@ -254,10 +254,10 @@ In particular, avoid the trap of setting a flag in a leaf template and then chec
    - Update content as necessary. For example, the file may include a reference to "latest-8.noarch.rpm", which should be updated to "latest-9.noarch.rpm". 
    -The number of topics that need to be updated will vary depending on the platform being added. For RHEL 9, two new topics were created: **rhel-9-or-ol-9.njk** and **almalinux-9-or-rocky-linux-9.njk**.
 
-1. Update **templates/platformBase/ppc64le_index.njk** to add an entry in the navigation block in the front matter. For example, for RHEL 9, this entry was added:
+1. I DON"T THINK THIS STEP IS NEEDED.Update **templates/platformBase/ppc64le_index.njk** to add an entry in the navigation block in the front matter. For example, for RHEL 9, this entry was added:
    - {{productShortname}}_rhel_9
 
-1. Update **templates/platformBase/x86_64_index.njk** to add entires in the navigation block in the front matter. For example, for RHEL 9, these entries were added:
+1. I DON"T THINK THIS STEP IS NEEDED.Update **templates/platformBase/x86_64_index.njk** to add entires in the navigation block in the front matter. For example, for RHEL 9, these entries were added:
    - {{productShortname}}_rhel_9
    - {{productShortname}}_other_linux_9
 
