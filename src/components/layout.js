@@ -12,6 +12,7 @@ import {
   Link,
   StubCards,
   IconList,
+  PurlAnchor,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
@@ -138,6 +139,7 @@ const Layout = ({
       IconList,
       Archive,
       AuthenticatedContentPlaceholder,
+      PurlAnchor,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
