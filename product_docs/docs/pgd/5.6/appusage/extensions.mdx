@@ -1,0 +1,76 @@
+---
+title: Using extensions with PGD
+navTitle: Extension usage
+deepToC: true
+---
+
+## PGD and other PostgreSQL extensions
+
+PGD is implemented as a PostgreSQL extension (see [Supported Postgres database servers](../overview/#supported-postgres-database-servers)). It takes advantage of PostgreSQL's expandability and flexibility to modify low-level system behavior to provide multi-master replication.
+
+In principle, extensions provided by community PostgreSQL, EDB Postgres Advanced Server, and third-party extensions can be used with PGD. However, the distributed nature of PGD means that you need to carefully consider and plan the extensions you select and install.
+
+### Extensions providing logical decoding
+
+Extensions providing logical decoding, such as [wal2json](https://github.com/eulerto/wal2json), may in theory work with PGD. However, there's no support for failover, meaning any WAL stream being read from such an extension can be interrupted.
+
+### Extensions providing replication or HA functionality
+
+Any extension extending PostgreSQL with functionality related to replication or HA/failover is unlikely to work well with PGD and may even be detrimental to the health of the PGD cluster. We recommend avoiding these.
+
+## Supported extensions
+
+These extensions are explicitly supported by PGD.
+
+### EDB Advanced Storage table access methods
+
+The [EDB Advanced Storage Pack](/pg_extensions/advanced_storage_pack/) provides a selection of table access methods (TAMs) implemented as extensions. The following TAMs are certified for use with PGD:
+
+ - [Autocluster](/pg_extensions/advanced_storage_pack/#autocluster)
+ - [Refdata](/pg_extensions/advanced_storage_pack/#refdata)
+
+For more details, see [Table access methods](table-access-methods).
+
+### pgaudit
+
+PGD was modified to ensure compatibility with the [pgaudit](https://www.pgaudit.org/) extension.
+See [Postgres settings](../postgres-configuration/#postgres-settings) for configuration information.
+
+
+## Installing extensions
+
+PostgreSQL extensions provide SQL objects, such as functions, datatypes, and, optionally, one or more shared libraries. These must be loaded into the PostgreSQL backend before you can install and use the extension.
+
+!!! Warning
+
+    The relevant extension packages must be available on all nodes in the cluster. Otherwise extension installation can fail and impact cluster stability.
+
+If PGD is deployed using [Trusted Postgres Architect](/tpa/latest/), configure extensions using that tool. 
+For details, see [Adding Postgres extensions](/tpa/latest/reference/postgres_extension_configuration).
+
+The following is relevant for manually configured PGD installations.
+
+### Configuring shared_preload_libraries
+
+If an extension provides a shared library, include this library in the [`shared_preload_libraries`](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES) configuration parameter before installing the extension.
+
+`shared_preload_libraries` consists of a comma-separated list of extension names. 
+It must include `bdr`.
+The order in which you specify other extensions generally doesn't matter. However if you're using the pgaudit extension, `pgaudit` must appear in the list before `bdr`.
+
+Configure `shared_preload_libraries` on all nodes in the cluster before installing the extension with `CREATE EXTENSION`.
+You must restart PostgreSQL to activate the new configuration.
+
+See also [Postgres settings](../postgres-configuration/#postgres-settings).
+
+
+### Installing the extension
+
+Install the extension using the `CREATE EXTENSION` command. 
+You need to do this on only one node in the cluster. PGD's DDL replication will ensure that it propagates to all other nodes.
+
+!!! Warning
+
+    Do not attempt to install extensions manually on each node by, for example, disabling DDL replication before executing `CREATE EXTENSION`.
+
+    Do not use a command such as `bdr.replicate_ddl_command()` to execute `CREATE EXTENSION`.

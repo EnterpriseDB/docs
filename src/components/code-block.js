@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "react-bootstrap";
+import { Tooltip } from "react-bootstrap";
+import { OverlayTrigger } from "react-bootstrap";
 
 const childToString = (child) => {
   if (typeof child === "string") {
@@ -57,8 +59,14 @@ const splitChildrenIntoCodeAndOutput = (rawChildren) => {
   return [code, output];
 };
 
-const CodePre = ({ className, content, runnable }) => {
+const unwrappedstring = "→ Wrap";
+const wrappedstring = "↩ Unwrap";
+
+const CodePre = ({ className, content, runnable, startWrapped }) => {
   const codeRef = React.createRef();
+  const [wrapButtonText, setWrapButtonText] = useState(
+    !startWrapped ? unwrappedstring : wrappedstring,
+  );
   const [copyButtonText, setCopyButtonText] = useState("Copy");
   const copyClick = (e) => {
     const text = codeRef.current && codeRef.current.textContent;
@@ -71,9 +79,15 @@ const CodePre = ({ className, content, runnable }) => {
     e.target.blur();
   };
 
-  const [wrap, setWrap] = useState(false);
+  const [wrap, setWrap] = useState(startWrapped);
+
   const wrapClick = (e) => {
     setWrap(!wrap);
+    if (!wrap) {
+      setWrapButtonText(wrappedstring);
+    } else {
+      setWrapButtonText(unwrappedstring);
+    }
     e.target.blur();
   };
 
@@ -92,9 +106,15 @@ const CodePre = ({ className, content, runnable }) => {
     <>
       <div className="codeblock-controls d-flex">
         <div>
-          <Button size="sm" variant="link" onClick={wrapClick}>
-            Toggle Wrap
-          </Button>
+          <OverlayTrigger
+            delay={{ hide: 450, show: 300 }}
+            overlay={(props) => <Tooltip {...props}>Toggle wrapping</Tooltip>}
+            placement="bottom"
+          >
+            <Button size="sm" variant="link" onClick={wrapClick}>
+              {wrapButtonText}
+            </Button>
+          </OverlayTrigger>
           <Button size="sm" variant="link" onClick={copyClick}>
             {copyButtonText}
           </Button>
@@ -136,6 +156,9 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
   const [codeContent, outputContent] = childIsComponent
     ? splitChildrenIntoCodeAndOutput(children.props.children)
     : [children, ""];
+
+  const startWrapped = false;
+
   const language = childIsComponent
     ? (children.props.className || "").replace("language-", "")
     : "text";
@@ -151,6 +174,7 @@ const CodeBlock = ({ children, codeLanguages, ...otherProps }) => {
           className={`language-${language}`}
           content={codeContent}
           runnable={execLanguages.includes(language)}
+          startWrapped={startWrapped}
         />
         {outputContent.length > 0 && <OutputPre content={outputContent} />}
       </figure>

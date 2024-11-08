@@ -13,20 +13,20 @@ dropping partitions.
 You can create new partitions regularly and then drop them when the
 data retention period expires.
 
-PGD management is primarily accomplished by functions that can be called by SQL.
+You perform PGD management primarily by using functions that can be called by SQL.
 All functions in PGD are exposed in the `bdr` schema. Unless you put it into
-your search_path, you need to schema-qualify the name of each function.
+your search_path, you need to schema qualify the name of each function.
 
 ## Auto creation of partitions
 
-PGD AutoPartition uses the [`bdr.autopartition()`](/pgd/latest/reference/autopartition#bdrautopartition)
+PGD AutoPartition uses the [`bdr.autopartition()`](/pgd/5/reference/autopartition#bdrautopartition)
 function to create or alter the definition of automatic range partitioning for a table. If
 no definition exists, it's created. Otherwise, later executions will alter the
 definition.
 
-PGD Autopartition in PGD 5.5 and later leverages underlying Postgres features that allow a
+PGD AutoPartition in PGD 5.5 and later leverages underlying Postgres features that allow a
 partition to be attached or detached/dropped without locking the rest of the
-table. Versions of PGD prior to 5.5 don't support this feature and will lock the tables.
+table. Versions of PGD earlier than 5.5 don't support this feature and lock the tables.
 
 An error is raised if the table isn't RANGE partitioned or a multi-column
 partition key is used.
@@ -39,10 +39,10 @@ Raft.
 
 You can change this behavior by setting `managed_locally` to `true`. In that
 case, all partitions are managed locally on each node. Managing partitions
-locally is useful when the partitioned table isn't a replicated table, in which
-case you might not need or want to have all partitions on all nodes. For
+locally is useful when the partitioned table isn't a replicated table. In that
+case, you might not need or want to have all partitions on all nodes. For
 example, the built-in
-[`bdr.conflict_history`](/pgd/latest/reference/catalogs-visible#bdrconflict_history)
+[`bdr.conflict_history`](/pgd/5/reference/catalogs-visible#bdrconflict_history)
 table isn't a replicated table. It's managed by AutoPartition locally. Each node
 creates partitions for this table locally and drops them once they're old
 enough.
@@ -87,8 +87,8 @@ bdr.autopartition('Orders', '1000000000',
 
 ## RANGE-partitioned tables
 
-A new partition is added for every `partition_increment` range of values, with
-lower and upper bound `partition_increment` apart. For tables with a partition
+A new partition is added for every `partition_increment` range of values. 
+Lower and upper bound are `partition_increment` apart. For tables with a partition
 key of type `timestamp` or `date`, the `partition_increment` must be a valid
 constant of type `interval`. For example, specifying `1 Day` causes a new
 partition to be added each day, with partition bounds that are one day apart.
@@ -114,11 +114,11 @@ value.
 The system always tries to have a certain minimum number of advance partitions.
 To decide whether to create new partitions, it uses the specified
 `partition_autocreate_expression`. This can be an expression that can be
-evaluated by SQL, which is evaluated every time a check is performed. For
-example, for a partitioned table on column type `date`, if
+evaluated by SQL that's evaluated every time a check is performed. For
+example, for a partitioned table on column type `date`, suppose
 `partition_autocreate_expression` is specified as
-`DATE_TRUNC('day',CURRENT_DATE)`, `partition_increment` is specified as `1 Day`
-and `minimum_advance_partitions` is specified as `2`, then new partitions are
+`DATE_TRUNC('day',CURRENT_DATE)`, `partition_increment` is specified as `1 Day`,
+and `minimum_advance_partitions` is specified as `2`. New partitions are then
 created until the upper bound of the last partition is less than
 `DATE_TRUNC('day', CURRENT_DATE) + '2 Days'::interval`.
 
@@ -127,25 +127,25 @@ The expression is evaluated each time the system checks for new partitions.
 For a partitioned table on column type `integer`, you can specify the
 `partition_autocreate_expression` as `SELECT max(partcol) FROM
 schema.partitioned_table`. The system then regularly checks if the maximum value
-of the partitioned column is within the distance of `minimum_advance_partitions
-* partition_increment` of the last partition's upper bound. Create an index on
+of the partitioned column is within the distance of `minimum_advance_partitions * partition_increment`
+of the last partition's upper bound. Create an index on
 the `partcol` so that the query runs efficiently. If you don't specify the
 `partition_autocreate_expression` for a partition table on column type
 `integer`, `smallint`, or `bigint`, then the system sets it to `max(partcol)`.
 
 If the `data_retention_period` is set, partitions are dropped after this period.
-Partitions are dropped at the same time as new partitions are added, to minimize
-locking. If this value isn't set, you must drop the partitions manually.
+To minimize locking, partitions are dropped at the same time as new partitions are added.
+If you don't set this value, you must drop the partitions manually.
 
-The `data_retention_period` parameter is supported only for timestamp (and
-related) based partitions. The period is calculated by considering the upper
+The `data_retention_period` parameter is supported only for timestamp-based (and
+related) partitions. The period is calculated by considering the upper
 bound of the partition. The partition is dropped if the given period expires, relative to the
 upper bound.
 
 ## Stopping automatic creation of partitions
 
 Use
-[`bdr.drop_autopartition()`](/pgd/latest/reference/autopartition#bdrdrop_autopartition)
+[`bdr.drop_autopartition()`](/pgd/5/reference/autopartition#bdrdrop_autopartition)
 to drop the autopartitioning rule for the given relation. All pending work items
 for the relation are deleted, and no new work items are created.
 
@@ -155,34 +155,32 @@ Partition creation is an asynchronous process. AutoPartition provides a set of
 functions to wait for the partition to be created, locally or on all nodes.
 
 Use
-[`bdr.autopartition_wait_for_partitions()`](/pgd/latest/reference/autopartition#bdrautopartition_wait_for_partitions)
+[`bdr.autopartition_wait_for_partitions()`](/pgd/5/reference/autopartition#bdrautopartition_wait_for_partitions)
 to wait for the creation of partitions on the local node. The function takes the
 partitioned table name and a partition key column value and waits until the
 partition that holds that value is created.
 
 The function waits only for the partitions to be created locally. It doesn't
-guarantee that the partitions also exists on the remote nodes.
+guarantee that the partitions also exist on the remote nodes.
 
 To wait for the partition to be created on all PGD nodes, use the
-[`bdr.autopartition_wait_for_partitions_on_all_nodes()`](/pgd/latest/reference/autopartition#bdrautopartition_wait_for_partitions_on_all_nodes)
+[`bdr.autopartition_wait_for_partitions_on_all_nodes()`](/pgd/5/reference/autopartition#bdrautopartition_wait_for_partitions_on_all_nodes)
 function. This function internally checks local as well as all remote nodes and
 waits until the partition is created everywhere.
 
 ## Finding a partition
 
 Use the
-[`bdr.autopartition_find_partition()`](/pgd/latest/reference/autopartition#bdrautopartition_find_partition)
-function to find the partition for the given partition key value. If partition
-to hold that value doesn't exist, then the function returns NULL. Otherwise Oid
-of the partition is returned.
+[`bdr.autopartition_find_partition()`](/pgd/5/reference/autopartition#bdrautopartition_find_partition)
+function to find the partition for the given partition key value. If a partition
+to hold that value doesn't exist, then the function returns NULL. Otherwise it returns the Oid
+of the partition.
 
 ## Enabling or disabling autopartitioning
 
 Use
-[`bdr.autopartition_enable()`](/pgd/latest/reference/autopartition#bdrautopartition_enable)
+[`bdr.autopartition_enable()`](/pgd/5/reference/autopartition#bdrautopartition_enable)
 to enable autopartitioning on the given table. If autopartitioning is already
 enabled, then no action occurs. Similarly, use
-[`bdr.autopartition_disable()`](/pgd/latest/reference/autopartition#bdrautopartition_disable)
+[`bdr.autopartition_disable()`](/pgd/5/reference/autopartition#bdrautopartition_disable)
 to disable autopartitioning on the given table.
-
-

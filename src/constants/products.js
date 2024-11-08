@@ -7,7 +7,6 @@ export const products = {
     noSearch: true,
   },
   barman: { name: "Barman" },
-  biganimal: { name: "BigAnimal", iconName: IconNames.BIGANIMAL },
   "EDB Advanced Storage Pack": { name: "EDB Advanced Storage Pack" },
   edb_plus: { name: "EDB*Plus" },
   efm: { name: "Failover Manager", iconName: IconNames.EDB_EFM },
@@ -34,7 +33,7 @@ export const products = {
   edb_sqlpatch: { name: "EDB SQL Patch", iconName: IconNames.TOOLS },
   language_pack: { name: "Language Pack", iconName: IconNames.TOOLS },
   lasso: { name: "Lasso" },
-  livecompare: { name: "LiveCompare" },
+  livecompare: { name: "LiveCompare", iconName: IconNames.INTEGRATION },
   "Migration Handbook": { name: "Migration Handbook" },
   migration_portal: {
     name: "Migration Portal",
@@ -101,5 +100,9 @@ export const products = {
   "EDB Postgres AI": {
     name: "EDB Postgres AI",
     iconName: IconNames.EDB_POSTGRES_AI_LOOP_BLACK,
+  },
+  "data migration service": {
+    name: "EDB Data Migration Service",
+    iconName: IconNames.EDB_TRANSPORTER,
   },
 };

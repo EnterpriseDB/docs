@@ -1,5 +1,6 @@
 ---
 title: "Known issues, limitations, and notes"
+deepToC: true
 redirects:
  - /migration_portal/latest/04_mp_migrating_database/01_mp_schema_extraction/known_issues_notes/
 ---
@@ -15,6 +16,22 @@ These are the known issues, limitations, and notes for:
 ### Wrapped objects  
 
 Migration Portal can't assess wrapped objects. If you include them in the extracted DDL, they aren't loaded into Migration Portal and aren't included in the count of objects that are assessed. If you want to assess wrapped objects and migrate them to EDB Postgres Advanced Server, include unwrapped versions of the objects in the DDL file that you upload to Migration Portal. The recommended way of doing this is to replace the wrapped versions in the Oracle database with clear-text versions before performing the schema extraction. After performing the schema extraction, you can replace the objects with the wrapped versions.
+
+### Removed objects
+
+Some unsupported Oracle objects are removed when Migration Portal assesses your source DDL file. These removed objects are excluded from the conversion procedure and aren't flagged as removed in the Migration Portal assessment.
+
+The following objects are removed during the schema assessment:
+
+- Objects related to `MATERIALIZED VIEWS`, for example, backend `TABLE` or `INDEX` statements created to support `MVIEW`
+- Objects related to `Queues`
+- Objects related to `Nested Tables`
+- Objects related to `XMLType Tables`
+- Types that depend on `SYSTEM Schemas`
+- Indexes related to `PRIMARY KEY` and `UNIQUE` constraints
+- Unsupported system `GRANT` privileges
+
+  EDB supports granting only `CREATE DATABASE LINK`, `CREATE PUBLIC DATABASE LINK`, `DROP PUBLIC DATABASE LINK`, and `EXEMPT ACCESS POLICY` system privileges. Other `GRANT` statements aren't supported and are removed from the DDL file. 
 
 ### File encoding
 
@@ -216,6 +233,8 @@ While using the Oracle default case, you may experience a lower compatibility ra
 
 ## EDB DDL Extractor
 
+### General limitations
+
 -   The EDB DDL Extractor script doesn't extract objects restored using `Flashback` that still have names like `BIN$b54+4XlEYwPgUAB/AQBWwA==$0`. If you want to extract these objects, you must change the names of the objects and rerun the extraction process.
 -   The EDB DDL Extractor extracts `nologging` tables as normal tables. Once these tables are migrated to EDB Postgres Advanced Server, WAL log files are created.
 -   The EDB DDL Extractor extracts objects only with `VALID` status. For any objects that have `INVALID` status that you want Migration Portal to assess, first update them to `VALID`.
@@ -225,6 +244,59 @@ While using the Oracle default case, you may experience a lower compatibility ra
 -   The EDB DDL Extractor automatically extracts the information for the profiles, roles, and grants.
 -   The EDB DDL Extractor currently doesn't support the extraction of `ROLES`, `SYSTEM GRANTS ON ROLES`, `OBJECT GRANTS ON ROLES`, and `ROLE GRANTS` from Oracle 11g. This behavior results in error messages being written to the extracted files in the sections corresponding to these object types. These errors don't cause any issue in the assessment of these files by Migration Portal.
 -   The EDB DDL Extractor script may log `object "OBJECT_NAME" of type SYNONYM not found in schema "PUBLIC"` errors in the dependent objects section of the extracted file. This happens only if the user selects the option to extract dependent objects from an Oracle multi tenant environment where the Oracle database is a container database.
+
+### "Snapshot Too Old" error
+
+The EDB DDL Extractor displays the error “ORA-01555: snapshot too old“ at runtime when the database server generates a volume of transactions that can't be properly processed by the UNDO tablespace.
+
+When the database server generates undo transactions at a high rate, it can cause the server to run out of space to store undo data. Since the UNDO tablespace is implemented as a circular buffer, it starts overwriting older undo data blocks. Resolve this error and rerun the EDB DDL Extractor to ensure you extract the DDLs without any errors.
+
+To work around this error, increase the allocated space for the `UNDO_RETENTION` parameter.
+
+First, check the currently allocated total space for undo operations and the currently free space:
+
+1.  Check the existing value of the `UNDO_RETENTION` parameter:
+
+    ```sql
+    SELECT value FROM v$parameter WHERE name = 'undo_retention';
+    ```
+
+1.  Add the results of the two following queries to check the total available space in the UNDO tablespace:
+
+    ```sql
+    SELECT SUM(bytes)/1024/1024 free_mb FROM dba_undo_extents WHERE status='EXPIRED';
+    ```
+
+    ```sql
+    SELECT dfs.tablespace_name, SUM(dfs.bytes) / 1024 / 1024 AS free_mb FROM 
+    dba_free_space dfs 
+    JOIN dba_tablespaces dt ON dfs.tablespace_name = dt.tablespace_name 
+    WHERE dt.contents = 'UNDO' GROUP BY dfs.tablespace_name; 2 3 4
+    ```
+
+Next, determine the number of MB your environment requires and increase the allocated storage space:
+
+1.  Monitor the volume of undo data generated by transactions during peak usage hours:
+    
+    ```sql
+    SELECT SUM(undoblks * 8192)/1024/1024 AS undo_mbs FROM v$undostat;
+    ```
+
+    !!!note 
+    The value reflects the number of undo blocks consumed during a 10-minute interval, converted to MB.
+    !!!
+
+1.  Calculate the total number of MB your environment requires for the UNDO tablespace. For example, if the transaction volume generates X MB of undo data per minute, and the requirement is to retain the data for Y minutes:
+
+    UNDO Space (MB) = X (MB/min) × Y (min)
+
+1.  Update the `UNDO_RETENTION` parameter according to the required space in MB. This example increases the storage space to 2400 MB:
+
+    ```sql
+    ALTER SYSTEM SET UNDO_RETENTION = 2400;
+    __OUTPUT__
+    System altered.
+    ```
 
 ## Oracle Data Pump utilities
 

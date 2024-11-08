@@ -1,0 +1,74 @@
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-vs-restore
+spec:
+  instances: 2
+  proxyInstances: 2
+  witnessInstances: 1
+  pgd:
+    parentGroup:
+      name: world
+      create: true
+  cnp:
+    storage:
+      storageClass: csi-hostpath-sc
+      size: 1Gi
+    walStorage:
+      storageClass: csi-hostpath-sc
+      size: 2Gi
+    tablespaces:
+      - name: ts1
+        storage:
+          storageClass: csi-hostpath-sc
+          size: 1Gi
+      - name: ts2
+        storage:
+          storageClass: csi-hostpath-sc
+          size: 1Gi
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+  restore:
+    volumeSnapshots:
+      selector:
+        matchLabels:
+          ## we select all the backups from the group-example-with-vs-backup group
+          "k8s.pgd.enterprisedb.io/group": group-example-with-vs-backup
+    barmanObjectStore:
+      destinationPath: s3://backups/
+      endpointURL: http://minio-service.minio:9000
+      s3Credentials:
+        accessKeyId:
+          name: minio-secrets
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: minio-secrets
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        maxParallel: 8
+      data:
+        jobs: 4
+        immediateCheckpoint: true

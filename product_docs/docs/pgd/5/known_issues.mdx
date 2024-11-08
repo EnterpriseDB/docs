@@ -8,71 +8,41 @@ These known issues are tracked in PGD's
 ticketing system and are expected to be resolved in a future
 release.
 
--   If the resolver for the `update_origin_change` conflict
-    is set to `skip`, `synchronous_commit=remote_apply` is used, and
-    concurrent updates of the same row are repeatedly applied on two
-    different nodes, then one of the update statements might hang due
-    to a deadlock with the PGD writer. As mentioned in
-    [Conflicts](consistency/conflicts/), `skip` isn't the default
-    resolver for the `update_origin_change` conflict, and this
-    combination isn't intended to be used in production. It discards
-    one of the two conflicting updates based on the order of arrival
-    on that node, which is likely to cause a divergent cluster.
-    In the rare situation that you do choose to use the `skip`
-    conflict resolver, note the issue with the use of the
-    `remote_apply` mode.
+-   If the resolver for the `update_origin_change` conflict is set to `skip`, `synchronous_commit=remote_apply` is used, and concurrent updates of the same row are repeatedly applied on two different nodes, then one of the update statements might hang due
+to a deadlock with the PGD writer. 
+As mentioned in [Conflicts](consistency/conflicts/), `skip` isn't the default resolver for the `update_origin_change` conflict, and this combination isn't intended to be used in production.
+It discards one of the two conflicting updates based on the order of arrival on that node, which is likely to cause a divergent cluster.
+In the rare situation that you do choose to use the `skip` conflict resolver, note the issue with the use of the `remote_apply` mode.
 
 -   The Decoding Worker feature doesn't work with CAMO/Eager/Group Commit.
-    Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder`
-    disabled.
+Installations using CAMO/Eager/Group Commit must keep `enable_wal_decoder` disabled.
 
--   Lag Control doesn't adjust commit delay in any way on a fully
-    isolated node, that is, in case all other nodes are unreachable or not
-    operational. As soon as at least one node is connected, replication
-    Lag Control picks up its work and adjusts the PGD commit delay
-    again.
+-   Lag Control doesn't adjust commit delay in any way on a fully isolated node, that's in case all other nodes are unreachable or not operational. 
+As soon as at least one node connects, replication Lag Control picks up its work and adjusts the PGD commit delay again.
 
--   For time-based Lag Control, PGD currently uses the lag time (measured
-    by commit timestamps) rather than the estimated catchup time that's
-    based on historic apply rates.
+-   For time-based Lag Control, PGD currently uses the lag time, measured by commit timestamps, rather than the estimated catch up time that's based on historic apply rates.
 
 -   Changing the CAMO partners in a CAMO pair isn't currently possible.
-    It's possible only to add or remove a pair.
-    Adding or removing a pair doesn't need a restart of Postgres or even a
-    reload of the configuration.
+It's possible only to add or remove a pair.
+Adding or removing a pair doesn't require a restart of Postgres or even a reload of the configuration.
 
--   Group Commit can't be combined with [CAMO](durability/camo/) or [Eager
-    All-Node Replication](consistency/eager/). Eager Replication currently works
-    only by using the global PGD commit scope.
+-   Group Commit can't be combined with [CAMO](durability/camo/). 
 
--   Transactions using Eager Replication can't yet execute DDL. The TRUNCATE
-    command is allowed.
+-   Transactions using Eager Replication can't yet execute DDL. The TRUNCATE command is allowed.
 
-    -   Parallel apply isn't currently supported in combination with Group Commit. Make sure to disable it when using Group Commit by either:
-    - Setting `num_writers` to 1 for the node group using [`bdr.alter_node_group_config`](/pgd/latest/reference/nodes-management-interfaces/#bdralter_node_group_config).
-    - Using the GUC `bdr.writers_per_subscription`. See [Configuration of generic replication](/pgd/latest/reference/pgd-settings/#generic-replication).
+-   Parallel Apply isn't currently supported in combination with Group Commit. Make sure to disable it when using Group Commit by either (a) Setting `num_writers` to 1 for the node group using [`bdr.alter_node_group_config`](/pgd/5/reference/nodes-management-interfaces/#bdralter_node_group_config) or (b) using the GUC [`bdr.writers_per_subscription`](/pgd/5/reference/pgd-settings#bdrwriters_per_subscription). See [Configuration of generic replication](/pgd/5/reference/pgd-settings#generic-replication).
 
--   There currently is no protection against altering or removing a commit
-    scope. Running transactions in a commit scope that's concurrently being
-    altered or removed can lead to the transaction blocking or replication
-    stalling completely due to an error on the downstream node attempting to
-    apply the transaction. Make sure that any transactions using a specific commit
-    scope have finished before altering or removing it.
+-   There currently is no protection against altering or removing a commit scope. 
+Running transactions in a commit scope that's concurrently being altered or removed can lead to the transaction blocking or replication stalling completely due to an error on the downstream node attempting to apply the transaction.
+Make sure that any transactions using a specific commit scope have finished before altering or removing it.
 
--   The [PGD CLI](cli) can return stale data on the state of the cluster if it's
-    still connecting to nodes that were previously parted from the cluster. Edit
-    the [`pgd-cli-config.yml`](cli/configuring_cli/#using-a-configuration-file)
-    file, or change your
-    [`--dsn`](cli/configuring_cli/#using-database-connection-strings-in-the-command-line)
-    settings to ensure only active nodes in the cluster are listed for
-    connection.
+-   The [PGD CLI](cli) can return stale data on the state of the cluster if it's still connecting to nodes that were previously parted from the cluster. 
+Edit the [`pgd-cli-config.yml`](cli/configuring_cli/#using-a-configuration-file) file, or change your [`--dsn`](cli/configuring_cli/#using-database-connection-strings-in-the-command-line) settings to ensure only active nodes in the cluster are listed for connection.
 
--   When using
-    [`bdr.add_commit_scope`](/pgd/latest/reference/functions#bdradd_commit_scope),
-    if a new commit scope is added which has the same name as a commit scope on
-    any group, then the commit scope silently overwrites the commit scope but
-    retains the original group the scope was associated with (if any). To modify
-    a commit scope safely, use
-    [`bdr.alter_commit_scope`](/pgd/latest/reference/functions#bdralter_commit_scope).
+-   When using [`bdr.add_commit_scope`](/pgd/5/reference/functions#bdradd_commit_scope), if a new commit scope is added that has the same name as a commit scope on any group, then the commit scope silently overwrites the commit scope but retains the original group the scope was associated with (if any). 
+To modify a commit scope safely, use [`bdr.alter_commit_scope`](/pgd/5/reference/functions#bdralter_commit_scope).
+
+- Tables configured with `REPLICA IDENTITY FULL` and include `box`, `polygon` or `json` types in their columns are using PGD aren't able to be replicated. 
+You can mitigate this issue by configuring a primary key for `REPLICA IDENTITY` to use or, for `json` columns only, using the `jsonb` type instead.                                                             
 
 Details of other design or implementation [limitations](planning/limitations) are also available.

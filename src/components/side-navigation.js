@@ -5,10 +5,10 @@ import { DarkModeToggle, Link, Logo } from "./";
 const DocsLink = () => (
   <Link
     to="/"
-    className="me-3 lead text-muted pt-3 header-docs-link"
+    className="ms-1 me-3 lead text-muted pt-3"
     title="EDB Docs homepage"
   >
-    /<span className="ps-1">docs</span>
+    /<span className="ps-0">docs</span>
   </Link>
 );
 
@@ -35,7 +35,7 @@ const SideNavigationFooter = ({ hideKBLink = false }) => (
   <ul className="list-unstyled mt-0">
     <hr />
     {!hideKBLink && (
-      <FooterItem url="https://support.enterprisedb.com/support/s/">
+      <FooterItem url="https://knowledge.enterprisedb.com/">
         Knowledge Base and Technical Alerts
       </FooterItem>
     )}

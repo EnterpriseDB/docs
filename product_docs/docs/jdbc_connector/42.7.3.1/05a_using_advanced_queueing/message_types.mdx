@@ -1,0 +1,207 @@
+---
+title: "Message types"
+deepToC: true
+indexdepth: 3
+---
+
+EDB-JDBC JMS API supports the following message types and can be used in a standard way.
+
+| Message type           | JMS type                |
+|------------------------|-------------------------|
+| aq$_jms_message        | javax.jms.Message       |
+| aq$_jms_text_message   | javax.jms.TextMessage   |
+| aq$_jms_bytes_message  | javax.jms.BytesMessage  |
+| aq$_jms_object_message | javax.jms.ObjectMessage |
+
+!!! Note
+    The corresponding payload types (user-defined types) aren't predefined. You must create them before configuring the queue table, as shown in the examples that follow.
+
+You can specify schema-qualified user-defined types, but the property types and message types must be in the same schema.
+
+## Message properties
+
+All of the supported message types support setting and getting message properties. Before creating the actual message type, you must create the corresponding user-defined type for message properties.
+
+This example shows how to create the user-defined type for message properties:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_USERPROPERTY
+AS object
+(
+    NAME VARCHAR2(100),
+    VALUE VARCHAR2(2000)
+);
+```
+
+All primitive types of message properties are supported.
+
+## TextMessage
+
+You can send text messages using the `TextMessage` interface. `EDBTextMessageImpl` is an implementation of `TextMessage`, but for most cases you use the standard `TextMessage`. Before using the text message, you need to create a user-defined type for it. 
+
+This example shows how to create a user-defined message type for `TextMessage`:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_TEXT_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[], STRING_VALUE VARCHAR2(4000));
+```
+
+Once the user-defined type is created, you can create the queue table using this type. This example shows how to create the queue table using the user-defined message created in the previous example:
+
+```sql
+EXEC DBMS_AQADM.CREATE_QUEUE_TABLE (queue_table => 'MSG_QUEUE_TABLE', queue_payload_type => 'AQ$_JMS_TEXT_MESSAGE', comment => 'Message queue table');
+```
+
+After setting up the queue table, you can send and receive `TextMessages` using the standard procedure outlined in this Java code snippet:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+// Create text message
+TextMessage msg = session.createTextMessage();
+String messageText = "Hello there!";
+msg.setText(messageText);
+msg.setStringProperty("myprop1", "test value 1");
+// Send message
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+// Receive Message
+Message message = messageConsumer.receive();
+TextMessage txtMsg = (TextMessage) message;
+System.out.println(txtMsg.getText());
+System.out.println(txtMsg.getStringProperty("myprop1"));
+```
+
+## BytesMessage
+
+`BytesMessage` is used to send a stream of bytes. `EDBBytesMessageImpl` is an implementation of `BytesMessage`, but in most cases you use the standard `BytesMessage`. Before using `BytesMessage`, you must create a user-defined type. 
+
+This example shows how to create the user-defined type for `BytesMessage`:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_BYTES_MESSAGE AS OBJECT (PROPERTIES AQ$_JMS_USERPROPERTY[], RAW_VALUE CLOB);
+```
+
+Now, you can send and receive `BytesMessage` in the standard way.
+
+This example shows how to create and use a `BytesMessage` in Java:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+BytesMessage msg = session.createBytesMessage();
+String messageText = "Hello there!";
+msg.writeBytes(messageText.getBytes());
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+Message message = messageConsumer.receive();
+BytesMessage byteMsg = (BytesMessage) message;
+byteMsg.reset();
+byte[] bytes = new byte[(int) byteMsg.getBodyLength()];
+byteMsg.readBytes(bytes);
+System.out.println(new String(bytes));
+```
+
+## ObjectMessage
+
+`ObjectMessage` is used to send a serializable object as a message. `EDBObjectMessageImpl` is an implementation of `ObjectMessage`, but the standard `ObjectMessage` is most commonly used.
+
+Before using the `ObjectMessage`, you need to create the user-defined type for the object message. 
+
+This example shows how to create the user-defined type for `ObjectMessage`:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_OBJECT_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[], OBJECT_VALUE CLOB);
+```
+
+For example, consider the following serializable Java class:
+
+```java
+import java.io.Serializable;
+
+public class Emp implements Serializable {
+    private int id;
+    private String name;
+    private String role;
+
+    // Getter and setter methods
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+}
+```
+
+This example shows how to use `ObjectMessage` to send a message containing an object of this class:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+
+// Create object message
+ObjectMessage msg = session.createObjectMessage();
+Emp emp = new Emp();
+emp.setId(1);
+emp.setName("Joe");
+emp.setRole("Manager");
+msg.setObject(emp);
+
+// Send message
+messageProducer.send(msg);
+
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+
+// Receive Message
+Message message = messageConsumer.receive();
+ObjectMessage objMsg = (ObjectMessage) message;
+Emp empBack = (Emp) objMsg.getObject();
+System.out.println("ID: " + empBack.getId());
+System.out.println("Name: " + empBack.getName());
+System.out.println("Role: " + empBack.getRole());
+```
+
+## Message
+
+`Message` can be used to send a message with only properties and no body. `EDBMessageImpl` is an implementation of a `Message`, but you most often use the standard `Message`. Before using `Message`, create a user-defined type. 
+
+This example shows how to create a user-defined type for `Message`:
+
+```sql
+CREATE OR REPLACE TYPE AQ$_JMS_MESSAGE AS object(PROPERTIES AQ$_JMS_USERPROPERTY[]);
+```
+
+This example shows how to send a message that contains only properties and no body:
+
+```java
+MessageProducer messageProducer = (MessageProducer) session.createProducer(queue);
+// Create message. 
+Message msg = session.createMessage();
+msg.setStringProperty("myprop1", "test value 1");
+msg.setStringProperty("myprop2", "test value 2");
+msg.setStringProperty("myprop3", "test value 3");
+// Send message
+messageProducer.send(msg);
+MessageConsumer messageConsumer = (MessageConsumer) session.createConsumer(queue);
+// Receive Message 
+message = messageConsumer.receive();
+System.out.println("myprop1: " + message.getStringProperty("myprop1"));
+System.out.println("myprop2: " + message.getStringProperty("myprop2"));
+System.out.println("myprop3: " + message.getStringProperty("myprop3"));
+```

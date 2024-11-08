@@ -1,0 +1,124 @@
+---
+title: "Setting up the JMS application"
+---
+
+After creating the queue table and queue for the message types and starting the queue, you can set up your JMS application:
+
+1. Create a [connection factory](#connection-factory).
+1. Create a [connection](#connection) using the connection factory.
+1. Create a [session](#session) using the connection.
+1. Get the queue from the session.
+1. Create a [message producer](#message-producer) using the session and queue to send messages.
+1. Create a [message consumer](#message-consumer) using the session and queue to receive messages.
+   
+
+### Connection factory
+
+Use the connection factory to create connections. `EDBJmsConnectionFactory` is an implementation of `ConnectionFactory` and `QueueConnectionFactory`, which you use to create `Connection` and `QueueConnection`. You can create a connection factory using one of the constructors of the `EDBJmsConnectionFactory` class. You can use all three constructors to create either a `ConnectionFactory` or `QueueConnectionFactory`.
+
+```java
+//Constructor with connection related properties.
+public EDBJmsConnectionFactory(String host, int port, String database, 
+     String username, String password);
+//Constructor with connection string, user name and password.
+public EDBJmsConnectionFactory(String connectionString, 
+     String username, String password);
+//Constructor with SQL Connection.
+public EDBJmsConnectionFactory(java.sql.Connection connection);
+```
+
+This example shows how to create a `ConnectionFactory` using an existing `java.sql.Connection`:
+
+```java
+javax.jms.ConnectionFactory connFactory = new EDBJmsConnectionFactory(connection);
+```
+
+This example shows how to create a `QueueConnectionFactory` using a connection string, username, and password:
+
+```java
+javax.jms.QueueConnectionFactory connFactory = new EDBJmsConnectionFactory
+   ("jdbc:edb//localhost:5444/edb", "enterprisedb", "edb");
+```
+
+### Connection
+
+A connection is a client's active connection that can be created from the `ConnectionFactory` and used to create sessions. `EDBJmsConnection` is an implementation of `Connection`, and `EDBJmsQueueConnection` is an implementation of `QueueConnection` and extends `EDBJmsConnection`. You can create a `Connection` using `ConnectionFactory` and a `QueueConnection` from `QueueConnectionFactory`.
+
+This example shows how to create a `Connection` and a `QueueConnection`:
+
+```java
+//Connection from ConnectionFactory. Assuming connFactory is ConnectionFactory.
+javax.jms.Connection connection = connFactory.createConnection();
+
+////Connection from QueueConnectionFactory. Assuming connFactory is QueueConnectionFactory.
+javax.jms.QueueConnection queueConnection = connFactory.createQueueConnection();
+```
+
+You must start a connection for the consumer to receive messages. However, a producer can send messages without starting the connection. 
+
+This example shows how to start a connection:
+
+```java
+queueConnection.start();
+```
+
+You can stop a connection at any time to stop receiving messages, and you can restart it when needed. However, you can't restart a closed connection.
+
+This example shows how to stop and close the connection:
+
+```java
+queueConnection.stop();
+queueConnection.close();
+```
+
+### Session
+
+A session in EDBJms is used for creating producers and consumers and for sending and receiving messages. `EDBJmsSession` implements the basic `Session` functionality, and `EDBJmsQueueSession` extends `EDBJmsSession` and implements `QueueSession`. A `Session` can be created from a `Connection`.
+
+This example shows how to create a `Session` and a `QueueSession`:
+
+```java
+// Session
+javax.jms.Session session = connection.createSession(false, javax.jms.Session.AUTO_ACKNOWLEDGE);
+// QueueSession
+javax.jms.QueueSession session = queueConnection.createQueueSession(false, javax.jms.Session.AUTO_ACKNOWLEDGE);
+```
+
+You can also use a `Session` or `QueueSession` to create queues.
+
+!!! Important
+In this context, "creating a queue" doesn't refer to physically creating the queue. As discussed earlier, you need to create and start the queue as part of the server-side setup. In this context, creating a queue means getting the queue, related queue table, and payload type that were already created.
+!!!
+
+This example shows how to create a queue:
+
+```java
+javax.jms.Queue queue = session.createQueue("MSG_QUEUE");
+```
+
+### Message producer
+
+A message producer is responsible for creating and sending messages. You create it using a session and queue. `EDBJmsMessageProducer` is an implementation of `MessageProducer`, but in most cases you use the standard `MessageProducer`.
+
+This example shows how to create a message producer, create a message, and send it. To create messages of different types, see [Message types](message_types).
+
+```java
+javax.jms.MessageProducer messageProducer = session.createProducer(queue);
+
+javax.jms.Message msg = session.createMessage();
+msg.setStringProperty("myprop1", "test value 1");
+
+messageProducer.send(msg);
+```
+
+### Message consumer
+
+A message consumer receives messages. You create it using a session and a queue. `EDBJmsMessageConsumer` is an implementation of `MessageConsumer`, but you'll most often use the standard `MessageConsumer`.
+
+This example shows how to create a message consumer and receive a message:
+
+```java
+javax.jms.MessageConsumer messageConsumer = session.createConsumer(queue);
+      
+javax.jms.Message message = messageConsumer.receive();
+```
