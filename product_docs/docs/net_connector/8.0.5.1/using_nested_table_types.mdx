@@ -1,0 +1,176 @@
+---
+title: "Using nested tables"
+
+---
+
+EDB Postgres Advanced Server supports nested table collection types created with `CREATE TYPE ... AS TABLE OF` statements. The EDB .NET Connector supports output parameters declared as nested tables out of the box, whether they are free-standing types or declared inside packages.
+
+## Nested table types mapping
+
+Nested table types are mapped to `List<object>`s in C#, as it is preferred over `ArrayList`. These lists contain as many elements as the nested table type’s rows. The nested table items are translated to be compatible with the C# application using the following rules:
+
+- The connector resolves all elements of a nested table into `List<object>` elements of a single object type, making the element types are consistent in C#.
+
+- If the nested type `IS TABLE OF` a domain type (int, varchar, decimal, etc.): all the elements will be their C# counterpart according to the [Supported Types and their Mappings](https://www.npgsql.org/doc/types/basic.html#read-mappings).
+
+- If the nested type `IS TABLE OF` a record or composite type **not mapped** to a C# class: all elements will be a `List<object>` containing as many elements as the record or composite fields, with proper type translation.
+
+- If the nested type `IS TABLE OF` a record or composite type **mapped** to a C# class (for example, `MyComposite`): all elements will be `MyComposite` instances.
+
+## Example: Retrieving nested table output parameter
+
+This program:
+
+- Creates a package with a nested `emp_tbl_typ` table type of `emp_rec_typ`. This packages has a stored procedure that fills the nested table output parameter.
+
+- Maps the nested table type to a C# class via `MapComposite<>`.
+
+- Executes and displays the results.
+
+Create an empty console program and paste the following code.
+
+!!!note
+   Always provide type names in lower case.
+!!!
+
+```text
+internal static class Program
+{
+    const string ConnectionString = "your_connection_string";
+
+    // Composite type, will be mapped to the nested table type
+    // This will work if field types are convertible from database types
+    public class Employee
+    {
+        [PgName("empno")]
+        public decimal Number;
+        [PgName("ename")]
+        public string? Name;
+    }
+
+    public static void Sample_NestedTableTypes(string ConnectionString)
+    {
+        var dataSourceBuilder = new EDBDataSourceBuilder(ConnectionString);
+        dataSourceBuilder.MapComposite<Employee>("pkgextendtest.emp_rec_typ");
+
+        using (var dataSource = dataSourceBuilder.Build())
+        {
+            using (var connection = dataSource.OpenConnection())
+            {
+
+                try
+                {
+                    CreatePackage(connection);
+
+                    var commandText = "pkgExtendTest.nestedTableExtendTest";
+                    var cstmt = new EDBCommand(commandText, connection);
+                    cstmt.CommandType = CommandType.StoredProcedure;
+
+                    var tableOfParam = cstmt.Parameters.Add(new EDBParameter()
+                    {
+                        Direction = ParameterDirection.Output,
+                        DataTypeName = "pkgextendtest.emp_tbl_typ"
+                    });
+
+                    cstmt.Prepare();
+                    cstmt.ExecuteNonQuery();
+
+                    List<object>? employees = tableOfParam.Value as List<object>;
+                    if (employees == null)
+                    {
+                        Console.WriteLine($"No employee found");
+                        return;
+                    }
+
+                    foreach (var employeeRecord in employees)
+                    {
+                        var employee = employeeRecord as Employee;
+                        if (employee != null)
+                        {
+                            Console.WriteLine($"Employee {employee.Number}: {employee.Name}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error: {ex.Message}");
+                }
+                finally
+                {
+                    Cleanup(connection);
+                }
+            }
+        }
+    }
+
+    // helper methods to create package and cleaning up  
+    static void CreatePackage(EDBConnection connection)
+    {
+        var createPackage = 
+"                CREATE OR REPLACE PACKAGE pkgExtendTest IS  \n" +
+"                   TYPE emp_rec_typ IS RECORD (  \n" +
+"                      empno  NUMBER(4),  \n" +
+"                      ename       VARCHAR2(10)  \n" +
+"                     ); \n" +
+"                   TYPE emp_tbl_typ IS TABLE OF emp_rec_typ;  \n" +
+"                   PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ); \n" +
+"                END pkgExtendTest; \n";
+        using (var com = new EDBCommand(createPackage, connection) { CommandType = CommandType.Text })
+        {
+            com.ExecuteNonQuery();
+        }
+
+        var createPackageBody = 
+"                    CREATE OR REPLACE PACKAGE BODY pkgExtendTest IS \n" +
+"                    PROCEDURE nestedTableExtendTest(emp_tbl OUT emp_tbl_typ) IS \n" +
+"                      DECLARE  \n" +
+"                      CURSOR emp_cur IS SELECT empno, ename FROM emp WHERE ROWNUM <= 10 order by empno;  \n" +
+"                      i  INTEGER := 0;  \n" +
+"                    BEGIN \n" +
+"                       emp_tbl := emp_tbl_typ();  \n" +
+"                       FOR r_emp IN emp_cur LOOP  \n" +
+"                          i := i + 1;  \n" +
+"                          emp_tbl.EXTEND;  \n" +
+"                          emp_tbl(i) := r_emp;  \n" +
+"                       END LOOP;  \n" +
+"                    END nestedTableExtendTest; \n" +
+"                    END pkgExtendTest; \n";
+        using (var com = new EDBCommand(createPackageBody, connection) { CommandType = CommandType.Text })
+        {
+            com.ExecuteNonQuery();
+        }
+
+        connection.ReloadTypes();
+    }
+
+    static void Cleanup(EDBConnection connection)
+    {
+        var dropPackageBody = "DROP PACKAGE BODY pkgExtendTest";
+        var dropPackage = "DROP PACKAGE pkgExtendTest";
+
+        using (var com = new EDBCommand(dropPackageBody, connection) { CommandType = CommandType.Text })
+        {
+            com.ExecuteNonQuery();
+        }
+        using (var com = new EDBCommand(dropPackage, connection) { CommandType = CommandType.Text })
+        {
+            com.ExecuteNonQuery();
+        }
+    }
+}
+```
+
+The output should look like this: 
+
+```text
+Employee 7499: ALLEN
+Employee 7521: WARD
+Employee 7566: JONES
+Employee 7654: MARTIN
+Employee 7698: BLAKE
+Employee 7782: CLARK
+Employee 7788: SCOTT
+Employee 7839: KING
+Employee 7844: TURNER
+Employee 7876: ADAMS
+```
