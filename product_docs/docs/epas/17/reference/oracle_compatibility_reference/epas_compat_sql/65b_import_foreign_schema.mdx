@@ -1,0 +1,86 @@
+---
+title: "IMPORT FOREIGN SCHEMA"
+---
+
+## Name
+
+`IMPORT FOREIGN SCHEMA` &mdash; Import a foreign schema from a foreign server or database link.
+
+## Synopsis and parameters
+
+See [IMPORT FOREIGN SCHEMA](https://www.postgresql.org/docs/current/sql-importforeignschema.html) for command syntax, parameters and functionality. 
+
+NOT NULL constraints are imported by  default. Use the `import_not_null` option if you don’t want to import NOT NULL constraints.
+
+## Description
+
+After you [create a public database link](../../../reference/oracle_compatibility_reference/epas_compat_sql/21_create_public_database_link/), you can import a foreign schema with `IMPORT FOREIGN SCHEMA`. You can import foreign schemas with database links created with `edb_dblink_oci` connections as explained in the [database link creation examples](../../../reference/oracle_compatibility_reference/epas_compat_sql/21_create_public_database_link/#examples).
+
+You can then access the imported schema objects locally, instead of remotely.
+
+## Example 
+
+This example uses the `IMPORT FOREIGN SCHEMA` command to import a database schema named `IMP` from an Oracle server to an EDB Postgres Advanced Server. The target schema with the imported table definitions is called `tmp_schema` and uses an `edb_dblink_oci` connection called `oci_link`.
+
+### Prerequisites
+
+- [Create a public database link](../../../reference/oracle_compatibility_reference/epas_compat_sql/21_create_public_database_link/)
+
+- Ensure you have the `connstr` and `foreign data wrapper` names at hand.
+
+### Import schemas 
+
+1.  [Create a server](https://www.postgresql.org/docs/current/sql-createserver.html) (here called `oci_link`) that connects you to the Oracle database. Specify the foreign data wrapper, and the connection string required to reach the Oracle service.
+
+    ```sql
+    CREATE SERVER oci_link FOREIGN DATA WRAPPER link_fdw OPTIONS (connstr :ORACLE_SERVICE);
+    ```
+
+1.  Map the EDB Postgres `edb` user to the Oracle database user for which you want to import the schemas. Use the `oci_link` connection created previously, and specify the Oracle’s user and password:
+
+    ```sql
+    CREATE USER MAPPING FOR edb SERVER oci_link OPTIONS (password c, "user" :ORACLE_USER_NAME);
+    ```
+
+1.  Create a schema where you’ll place the imported objects:
+
+    ```sql 
+    CREATE SCHEMA tmp_schema;
+    ```
+
+1.  Import the `IMP` schema from the source database to EDB Postgres Advanced `tmp_schema` using the `oci_link` connection.
+
+    ```sql
+    IMPORT FOREIGN SCHEMA "IMP" FROM SERVER oci_link INTO tmp_schema;
+    ```
+
+    This command creates foreign tables that represent the tables existing on the Oracle server.  All the tables owned by the `edb`/`oci_link` user are imported.
+
+1.  Verify the imported foreign table contains all the schema objects you expect it to have:
+
+    ```sql
+    SELECT * FROM tmp_schema."FOO";
+    __OUTPUT__
+     a | b | c | d
+    ---+--------+------------+-----
+     1 | 1.1000 | ABC | XYZ
+    (1 row)
+    ```
+
+    ```sql
+    SELECT * FROM tmp_schema."Foo";
+    __OUTPUT__
+     a | b | c | d
+    ---+--------+------------+-----
+     2 | 2.2000 | PQR | STU
+    (1 row)
+    ```
+
+    ```sql
+    SELECT * FROM tmp_schema."V1";
+    __OUTPUT__
+     a | b | c | d
+    ---+--------+------------+-----
+     1 | 1.1000 | ABC | XYZ
+    (1 row)
+    ```
