@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import fetch from "node-fetch";
 import fs from "fs";
 import yargs from "yargs";
@@ -43,6 +45,8 @@ function printReleaseNotesHeader(currentMonth, currentYear) {
   return `---
 title: Cloud Service ${getMonthName(currentMonth)} ${currentYear} release notes
 navTitle: ${getMonthName(currentMonth)} ${currentYear}
+redirect:
+- /edb-postgres-ai/cloud-service/release_notes/${currentYear}_${(currentMonth + 1).toString().padStart(2, "0")}_${getShortMonthName(currentMonth)}_rel_notes/
 ---
 
 EDB Postgres® AI Cloud Service's ${getMonthName(
@@ -85,6 +89,8 @@ async function fetchAndProcess(directory, currentYear, currentMonth) {
     const cleanLines = lines.flat().filter((item) => {
       return (
         item !== "" &&
+        item !== "None" &&
+        item !== "N/A" &&
         !item.startsWith("Improvements and updates for the cloud service")
       );
     });
