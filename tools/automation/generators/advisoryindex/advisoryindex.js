@@ -21,7 +21,7 @@ if (securityRoot == undefined) {
   console.log(`Using ${securityRoot} as working directory`);
 }
 
-let seccount = 5;
+let seccount = 3;
 
 if (argv.count != undefined) {
   seccount = parseInt(argv.count);
@@ -159,7 +159,10 @@ cvelist.forEach((cve) => {
 // Process the assessments
 const assfiles = fs
   .readdirSync(assessmentsDir)
-  .filter((fn) => fn.startsWith("cve") && fn.endsWith("mdx"));
+  .filter(
+    (fn) =>
+      (fn.startsWith("cve") || fn.startsWith("edb")) && fn.endsWith("mdx"),
+  );
 assfiles.sort().reverse();
 const asslist = assfiles.map((file) => {
   return file.replace(/\.[^/.]+$/, "");
@@ -205,6 +208,8 @@ namespace["cves"] = allDocMap;
 namespace["shortasslist"] = shortasslist;
 namespace["asssorted"] = asslist;
 namespace["asss"] = assAllDocMap;
+
+//console.log(JSON.stringify(namespace,null,2));
 
 fs.writeFileSync(advisoriesIndex, njk.render("advisoriesindex.njs", namespace));
 

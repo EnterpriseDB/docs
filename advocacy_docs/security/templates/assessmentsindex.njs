@@ -1,7 +1,7 @@
 ---
 WARNING: THIS IS AN AUTOMATICALLY GENERATED FILE - DO NOT MANUALLY EDIT - SEE tools/automation/generators/advisoryindex
-title: EDB CVE Assessments
-navTitle: CVE Assessments
+title: EDB Assessments
+navTitle: EDB Assessments
 iconName: Security
 hideKBLink: true
 hideToC: false
@@ -25,7 +25,7 @@ The CVEs listed in this section are from PostgreSQL and other parties who have r
 {% endif %}
 
 <tr><td>
-<details><summary><h3 style="display:inline"> {{ thisass.vulnerability_details.cve_id }} </h3>
+<details><summary><h3 style="display:inline"> {{ thisass.open.edb_id }} ({{ thisass.vulnerability_details.cve_id }}) </h3>
 <span>
 &nbsp;&nbsp;<a href="{{ thisass.filename }}">Read Assessment</a>
 &nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>

@@ -23,9 +23,9 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 
 * <h3><a href="advisories/">Full list of advisories issued</a></h3>
 
-## PostgreSQL CVE Assessments
+## EDB Assessments
 
-* <h3><a href="assessments/">Full list of PostgreSQL CVE advisories assessed by EDB</a></h3>
+* <h3><a href="assessments/">Full list of CVE advisories assessed by EDB</a></h3>
 
 ## Most Recent Advisories
 
@@ -55,7 +55,7 @@ This policy outlines how EnterpriseDB handles disclosures related to suspected v
 {% for ass in shortasslist %}
 {% set thisass = asss[ass] %}
 <tr><td>
-<details><summary><h3 style="display:inline"> {{ thisass.vulnerability_details.cve_id }} </h3>
+<details><summary><h3 style="display:inline"> {{ thisass.open.edb_id }} ({{ thisass.vulnerability_details.cve_id }}) </h3>
 <span>
 &nbsp;&nbsp;<a href="assessments/{{ thisass.filename }}">Read Assessment</a>
 &nbsp;&nbsp;Updated: </span><span>{{ thisass.open.last_updated }}</span>
