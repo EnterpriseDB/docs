@@ -160,7 +160,8 @@ cvelist.forEach((cve) => {
 const assfiles = fs
   .readdirSync(assessmentsDir)
   .filter((fn) => fn.startsWith("cve") && fn.endsWith("mdx"));
-assfiles.sort().reverse();
+// assfiles.sort();.reverse();
+assfiles.sort();
 const asslist = assfiles.map((file) => {
   return file.replace(/\.[^/.]+$/, "");
 });
