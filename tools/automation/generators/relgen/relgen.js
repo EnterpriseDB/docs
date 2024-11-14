@@ -91,9 +91,11 @@ let meta = load(readFileSync(path.join(basepath, "src/meta.yml"), "utf8"));
 
 // Now we scan the other files in src, on this pass, acquiring the meta data
 
-let files = readdirSync(path.join(basepath, "src")).filter((file) => {
-  return file !== "meta.yml";
-});
+let files = readdirSync(path.join(basepath, "src"), { withFileTypes: true })
+  .filter((dirent) => {
+    dirent.isFile() && dirent.name !== "meta.yml";
+  })
+  .map((dirent) => dirent.name);
 
 let relnotes = new Map();
 
