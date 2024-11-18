@@ -233,7 +233,7 @@ function cleanup() {
             node.value = code;
             const siblings = ancestors[ancestors.length - 1].children;
             const idx = siblings.indexOf(node);
-            siblings.splice(idx + 1, 0, { type: "code", value: output });
+            siblings.splice(idx + 1, 0, { type: "code", lang: "output", value: output });
             return idx + 2;
           }
         }
