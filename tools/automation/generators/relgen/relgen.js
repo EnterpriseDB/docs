@@ -14,6 +14,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
 import { micromark } from "micromark";
+import { dir } from "console";
 
 let argv = yargs(hideBin(process.argv))
   .usage("Usage: $0 -p <path>")
@@ -93,7 +94,7 @@ let meta = load(readFileSync(path.join(basepath, "src/meta.yml"), "utf8"));
 
 let files = readdirSync(path.join(basepath, "src"), { withFileTypes: true })
   .filter((dirent) => {
-    dirent.isFile() && dirent.name !== "meta.yml";
+    return dirent.isFile() && dirent.name !== "meta.yml";
   })
   .map((dirent) => dirent.name);
 
