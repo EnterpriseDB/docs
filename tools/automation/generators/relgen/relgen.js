@@ -93,7 +93,11 @@ let meta = load(readFileSync(path.join(basepath, "src/meta.yml"), "utf8"));
 
 let files = readdirSync(path.join(basepath, "src"), { withFileTypes: true })
   .filter((dirent) => {
-    dirent.isFile() && dirent.name !== "meta.yml";
+    return (
+      dirent.isFile() &&
+      dirent.name !== "meta.yml" &&
+      dirent.name.endsWith(".yml")
+    );
   })
   .map((dirent) => dirent.name);
 
@@ -204,6 +208,14 @@ appendFileSync(relindexfilename, "\n\n");
 
 appendFileSync(relindexfilename, `${meta.intro}`);
 appendFileSync(relindexfilename, "\n\n");
+
+// Before we process the table, is there a column definition. If not, we'll use a default
+if (meta.columns == undefined) {
+  meta.columns = [
+    { label: "Version", key: "version-link" },
+    { label: "Release Date", key: "shortdate" },
+  ];
+}
 
 let headers = "|";
 let headers2 = "|";
@@ -332,23 +344,23 @@ function prepareRelnote(meta, file, note) {
   );
   appendFileSync(rlout, `navTitle: Version ${note.version}\n`);
   appendFileSync(rlout, `---\n`);
-  appendFileSync(rlout, "\n\n");
+  appendFileSync(rlout, "\n");
   appendFileSync(rlout, `Released: ${note.date}\n`);
-  appendFileSync(rlout, "\n\n");
+  appendFileSync(rlout, "\n");
 
   if (note.updated !== undefined) {
     appendFileSync(rlout, `Updated: ${note.updated}\n`);
-    appendFileSync(rlout, "\n\n");
+    appendFileSync(rlout, "\n");
   }
 
   appendFileSync(rlout, `${note.intro}`);
-  appendFileSync(rlout, "\n\n");
+  appendFileSync(rlout, "\n");
 
   if (note.highlights !== undefined) {
     appendFileSync(rlout, `## Highlights`);
-    appendFileSync(rlout, "\n");
-    appendFileSync(rlout, `${note.highlights}`);
     appendFileSync(rlout, "\n\n");
+    appendFileSync(rlout, `${note.highlights}`);
+    appendFileSync(rlout, "\n");
   }
 
   for (let type of types) {
