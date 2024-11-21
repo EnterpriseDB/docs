@@ -20,6 +20,7 @@ import Logo from "./logo";
 import MainContent from "./main-content";
 import PdfDownload from "./pdf-download.js";
 import PrevNext from "./prev-next";
+import PurlAnchor from "./purl-anchor";
 import SearchNavigationLinks from "./search-navigation-links";
 import SearchNavigation from "./search-navigation";
 import SideNavigation from "./side-navigation";
@@ -55,6 +56,7 @@ export {
   MainContent,
   PdfDownload,
   PrevNext,
+  PurlAnchor,
   SearchNavigationLinks,
   SearchNavigation,
   SideNavigation,
