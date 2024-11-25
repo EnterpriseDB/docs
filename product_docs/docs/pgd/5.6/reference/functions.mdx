@@ -268,11 +268,10 @@ group.
 
 ### `bdr.wait_slot_confirm_lsn`
 
-Allows you to wait until the last write on this session was replayed
-to one or all nodes.
+Allows you to wait until the last write on this session was replayed to one or all nodes.
 
-Waits until a slot passes a certain LSN. If no position is supplied, the
-current write position is used on the local node.
+Waits until a slot passes a certain LSN. 
+If no position is supplied, the current write position is used on the local node.
 
 If no slot name is passed, it waits until all PGD slots pass the LSN.
 
@@ -282,17 +281,60 @@ If a slot is dropped concurrently, the wait ends for that slot.
 If a node is currently down and isn't updating its slot, then the wait continues.
 You might want to set `statement_timeout` to complete earlier in that case.
 
+If you are using [Optimized Topology](../nodes/subscriber_only/optimizing-so), we recommend using [`bdr.wait_node_confirm_lsn`](/pgd/5.6/reference/functions#bdrwait_node_confirm_lsn) instead.
+)
+
 #### Synopsis
 
 ```sql
 bdr.wait_slot_confirm_lsn(slot_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
 ```
 
+#### Notes
+
+Requires `bdr_application` privileges to use.
+
 #### Parameters
 
--   `slot_name` &mdash; Name of replication slot or, if NULL, all PGD slots (only).
--   `target_lsn` &mdash; LSN to wait for or, if NULL, use the current write LSN on the
-    local node.
+| Parameter    | Description                                                                 |
+|--------------|-----------------------------------------------------------------------------|
+| `slot_name`  | Name of the replication slot to wait for. If NULL, waits for all PGD slots. |
+| `target_lsn` | LSN to wait for. If NULL, uses the current write LSN on the local node.     |
+
+### `bdr.wait_node_confirm_lsn`
+
+Wait until a node passes a certain LSN.
+
+This function allows you to wait until the last write on this session was replayed to one or all nodes.
+
+Upon being called, the function waits for a node to pass a certain LSN.
+If no LSN is supplied, the current wal_flush_lsn (using the `pg_current_wal_flush_lsn()` function) position is used on the local node.
+Supplying a node name parameter tells the function to wait for that node to pass the LSN. 
+If no node name is supplied (by passing NULL), the function waits until all the nodes pass the LSN,
+
+We recommend using this function if you are using [Optimized Topology](../nodes/subscriber_only/optimizing-so) instead of [`bdr.wait_slot_confirm_lsn`](/pgd/5.6/reference/functions#bdrwait_slot_confirm_lsn).
+
+This is because in an Optimized Topology, not all nodes have replication slots, so the function `bdr.wait_slot_confirm_lsn` might not work as expected. `bdr.wait_node_confirm_lsn` is designed to work with nodes that don't have replication slots, using alternative straegies to determine the progress of a node.
+
+If a node is currently down, isn't updating or is simply not able to be connected to, the wait will continue indefinately. To avoid this, set the statement_timeout to the maximum amount of time you are prepared to wait.
+
+#### Synopsis
+
+```sql
+bdr.wait_node_confirm_lsn(node_name text DEFAULT NULL, target_lsn pg_lsn DEFAULT NULL)
+```
+
+#### Parameters
+
+| Parameter    | Description                                                                 |
+|--------------|-----------------------------------------------------------------------------|
+| `node_name`  | Name of the node to wait for. If NULL, waits for all nodes.                 |
+| `target_lsn` | LSN to wait for. If NULL, uses the current wal_flush_lsn on the local node. |
+
+#### Notes
+
+Requires `bdr_application` privileges to use.
+
 
 ### `bdr.wait_for_apply_queue`
 
@@ -327,12 +369,10 @@ bdr.wait_for_apply_queue(peer_node_name TEXT, target_lsn pg_lsn)
 
 #### Parameters
 
--   `peer_node_name` &mdash; The name of the peer node from which incoming
-    transactions are expected to be queued and to wait
-    for. If NULL, waits for all peer node's apply queue to be consumed.
--   `target_lsn` &mdash; The LSN in the replication stream from the peer node
-    to wait for, usually learned by way of `bdr.last_committed_lsn` from the
-    peer node.
+| Parameter | Description |
+| --------- | ----------- |
+| `peer_node_name` | The name of the peer node from which incoming transactions are expected to be queued and to wait for. If NULL, waits for all peer node's apply queue to be consumed. |
+| `target_lsn` | The LSN in the replication stream from the peer node to wait for, usually learned by way of `bdr.last_committed_lsn` from the peer node. |
 
 ### `bdr.get_node_sub_receive_lsn`
 
@@ -352,12 +392,10 @@ bdr.get_node_sub_receive_lsn(node_name name, committed bool default true)
 
 #### Parameters
 
--   `node_name` &mdash; The name of the node that's the source of the
-    replication stream whose LSN is being retrieved.
--   `committed` &mdash;; The default (true) makes this function take into
-    account only commits of transactions received rather than the last
-    LSN overall. This includes actions that have no effect on the subscriber
-    node.
+| Parameter | Description |
+| --------- | ----------- |
+| `node_name` | The name of the node that's the source of the replication stream whose LSN is being retrieved. |
+| `committed` | The default (true) makes this function take into account only commits of transactions received rather than the last LSN overall. This includes actions that have no effect on the subscriber node. |
 
 ### `bdr.get_node_sub_apply_lsn`
 
@@ -372,8 +410,9 @@ bdr.get_node_sub_apply_lsn(node_name name)
 
 #### Parameters
 
--   `node_name` &mdash; the name of the node that's the source of the
-    replication stream whose LSN is being retrieved.
+| Parameter | Description |
+| --------- | ----------- |
+| `node_name` | The name of the node that's the source of the replication stream whose LSN is being retrieved. |
 
 ### `bdr.replicate_ddl_command`
 
@@ -390,10 +429,12 @@ bdr.replicate_ddl_command(ddl_cmd text,
 
 #### Parameters
 
-- `ddl_cmd` &mdash; DDL command to execute.
-- `replication_sets` &mdash; An array of replication set names to apply the `ddlcommand` to. If NULL (or the function is only passed the `ddlcommand`), this is set to the active PGD groups's default replication set.
-- `ddl_locking` &mdash; A string that sets the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) value while replicating. Defaults to the GUC value for `bdr.ddl_locking` on the local system that's running `replicate_ddl_command`.
-- `execute_locally` &mdash; A Boolean that determines whether the DDL command executes locally. Defaults to true.
+| Parameter | Description |
+| --------- | ----------- |
+| `ddl_cmd` | DDL command to execute. |
+| `replication_sets` | An array of replication set names to apply the `ddlcommand` to. If NULL (or the function is only passed the `ddlcommand`), this is set to the active PGD groups's default replication set. |
+| `ddl_locking` | A string that sets the [`bdr.ddl_locking`](/pgd/latest/reference/pgd-settings#bdrddl_locking) value while replicating. Defaults to the GUC value for `bdr.ddl_locking` on the local system that's running `replicate_ddl_command`. |
+| `execute_locally` | A Boolean that determines whether the DDL command executes locally. Defaults to true. |
 
 #### Notes
 
@@ -418,7 +459,9 @@ bdr.run_on_all_nodes(query text)
 
 #### Parameters
 
--   `query` &mdash; Arbitrary query to execute.
+| Parameter | Description                 |
+|-----------|-----------------------------|
+| `query`   | Arbitrary query to execute. |
 
 #### Notes
 
@@ -508,8 +551,10 @@ bdr.run_on_nodes(node_names text[], query text)
 
 #### Parameters
 
--   `node_names` &mdash; Text ARRAY of node names where query is executed.
--   `query` &mdash; Arbitrary query to execute.
+| Parameter    | Description                                           |
+|--------------|-------------------------------------------------------|
+| `node_names` | Text ARRAY of node names where the query is executed. |
+| `query`      | Arbitrary query to execute.                           |
 
 #### Notes
 
@@ -547,8 +592,10 @@ bdr.run_on_group(node_group_name text, query text)
 
 #### Parameters
 
--   `node_group_name` &mdash; Name of node group where query is executed.
--   `query` &mdash; Arbitrary query to execute.
+| Parameter | Description                                           |
+|-----------|-------------------------------------------------------|
+| `node_group_name` | Name of the node group where the query is executed. |
+| `query`   | Arbitrary query to execute. |
 
 #### Notes
 
@@ -583,7 +630,9 @@ bdr.global_lock_table(relation regclass)
 
 #### Parameters
 
--   `relation` &mdash; Name or oid of the relation to lock.
+| Parameter  | Description                          |
+|------------|--------------------------------------|
+| `relation` | Name or oid of the relation to lock. |
 
 #### Notes
 
@@ -610,13 +659,11 @@ bdr.wait_for_xid_progress(origin_node_id oid, origin_topxid int4, allnodes boole
 
 #### Parameters
 
--   `origin_node_id` &mdash; Node id of the node where the transaction
-    originated.
-
--   `origin_topxid` &mdash; XID of the transaction.
-
--   `allnodes` &mdash; If `true` then wait for the transaction to progress on
-    all nodes. Otherwise wait only for the current node.
+| Parameter        | Description                                                                                              |
+|------------------|----------------------------------------------------------------------------------------------------------|
+| `origin_node_id` | Node id of the node where the transaction originated.                                                    |
+| `origin_topxid`  | XID of the transaction.                                                                                  |
+| `allnodes`       | If `true`, wait for the transaction to progress on all nodes. Otherwise, wait only for the current node. |
 
 #### Notes
 
@@ -671,8 +718,10 @@ bdr.alter_node_kind(node_name text,
 
 #### Parameters
 
--   `node_name` &mdash; Name of the node to change kind.
--   `node_kind` &mdash; Kind of the node, which can be one of: `data`, `standby`, `witness`, or `subscriber-only`.
+| Parameter  | Description                          |
+|------------|--------------------------------------|
+| `node_name` | Name of the node to change kind.     |
+| `node_kind` | Kind of the node.                    |
 
 
 ### `bdr.alter_subscription_skip_changes_upto`
@@ -829,8 +878,10 @@ bdr.global_advisory_lock(key1 integer, key2 integer)
 
 #### Parameters
 
--   `key1` &mdash; First part of the composite key.
--   `key2` &mdash; second part of the composite key.
+| Parameter | Description |
+|-----------|-------------|
+| `key1`    | First part of the composite key. |
+| `key2`    | Second part of the composite key. |
 
 ### `bdr.global_advisory_unlock`
 
@@ -846,7 +897,10 @@ bdr.global_advisory_unlock(key bigint)
 
 #### Parameters
 
--   `key` &mdash; The object on which an advisory lock is acquired.
+| Parameter | Description                                       |
+|-----------|---------------------------------------------------|
+| `key`     | The object on which an advisory lock is acquired. |
+
 
 #### Synopsis
 
@@ -856,8 +910,10 @@ bdr.global_advisory_unlock(key1 integer, key2 integer)
 
 #### Parameters
 
--   `key1` &mdash; First part of the composite key.
--   `key2` &mdash; Second part of the composite key.
+| Parameter | Description                       |
+|-----------|-----------------------------------|
+| `key1`    | First part of the composite key.  |
+| `key2`    | Second part of the composite key. |
 
 ## Monitoring functions
 
@@ -894,8 +950,9 @@ bdr.monitor_group_raft()
 
 #### Parameters
 
--   `node_group_name` &mdash; The node group name to check.
-
+| Parameter         | Description                   |
+|-------------------|-------------------------------|
+| `node_group_name` | The node group name to check. |
 
 #### Notes
 
@@ -947,13 +1004,12 @@ bdr.wal_sender_stats()
 
 #### Output columns
 
-- `pid` &mdash; PID of the WAL sender (corresponds to the `pid` column of `pg_stat_replication`).
-
-- `is_using_lcr` &mdash; Whether the WAL sender is sending LCR files. The next columns are `NULL` if `is_using_lcr` is `FALSE`.
-
-- `decoder_slot_name` &mdash; The name of the decoder replication slot.
-
-- `lcr_file_name` &mdash; The name of the current LCR file.
+| Column name         | Description                                                                         |
+|---------------------|-------------------------------------------------------------------------------------|
+| `pid`               | PID of the WAL sender.  (corresponds to the `pid` column of `pg_stat_replication`). |
+| `is_using_lcr`      | Whether the WAL sender is sending LCR files.                                        |
+| `decoder_slot_name` | Name of the decoder replication slot.                                               |
+| `lcr_file_name`     | Name of the current LCR file.                                                       |
 
 
 ### `bdr.get_decoding_worker_stat`
@@ -971,13 +1027,12 @@ bdr.get_decoding_worker_stat()
 
 #### Output columns
 
-- `pid` &mdash; The PID of the decoding worker (corresponds to the column `active_pid` in `pg_replication_slots`).
-
-- `decoded_upto_lsn` &mdash; LSN up to which the decoding worker read transactional logs.
-
-- `waiting` &mdash; Whether the decoding worker is waiting for new WAL.
-
-- `waiting_for_lsn` &mdash; The LSN of the next expected WAL.
+| Column name | Description |
+|-------------|-------------|
+| `pid` | The PID of the decoding worker (corresponds to the column `active_pid` in `pg_replication_slots`). |
+| `decoded_upto_lsn` | LSN up to which the decoding worker read transactional logs. |
+| `waiting` | Whether the decoding worker is waiting for new WAL. |
+| `waiting_for_lsn` | The LSN of the next expected WAL. |
 
 #### Notes
 
@@ -997,32 +1052,21 @@ bdr.lag_control()
 
 #### Output columns
 
-- `commit_scope_id` &mdash; OID of the commit scope (see [`bdr.commit_scopes`](/pgd/latest/reference/catalogs-visible#bdrcommit_scopes))).
+| Column name                | Description                                                                                                               |
+|----------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| `commit_scope_id`          | OID of the commit scope (see [`bdr.commit_scopes`](/pgd/latest/reference/catalogs-visible#bdrcommit_scopes)).             |
+| `sessions`                 | Number of sessions referencing the lag control entry.                                                                     |
+| `current_commit_delay`     | Current runtime commit delay, in fractional milliseconds.                                                                 |
+| `maximum_commit_delay`     | Configured maximum commit delay, in fractional milliseconds.                                                              |
+| `commit_delay_adjust`      | Change to runtime commit delay possible during a sample interval, in fractional milliseconds.                             |
+| `current_conforming_nodes` | Current runtime number of nodes conforming to lag measures.                                                               |
+| `minimum_conforming_nodes` | Configured minimum number of nodes required to conform to lag measures, below which a commit delay adjustment is applied. |
+| `lag_bytes_threshold`      | Lag size at which a commit delay is applied, in kilobytes.                                                                |
+| `maximum_lag_bytes`        | Configured maximum lag size, in kilobytes.                                                                                |
+| `lag_time_threshold`       | Lag time at which a commit delay is applied, in milliseconds.                                                             |
+| `maximum_lag_time`         | Configured maximum lag time, in milliseconds.                                                                             |
+| `sample_interval`          | Configured minimum time between lag samples and possible commit delay adjustments, in milliseconds.                       |
 
-- `sessions` &mdash; Number of sessions referencing the lag control entry.
-
-- `current_commit_delay` &mdash; Current runtime commit delay, in fractional milliseconds.
-
-- `maximum_commit_delay` &mdash; Configured maximum commit delay, in fractional milliseconds.
-
-- `commit_delay_adjust` &mdash; Change to runtime commit delay possible during
-  a sample interval, in fractional milliseconds.
-
-- `curent_conforming_nodes` &mdash; Current runtime number of nodes conforming to lag measures.
-
-- `minimum_conforming_nodes` &mdash; Configured minimum number of nodes required to
-  conform to lag measures, below which a commit delay adjustment is applied.
-
-- `lag_bytes_threshold` &mdash; Lag size at which a commit delay is applied, in kilobytes.
-
-- `maximum_lag_bytes` &mdash; Configured maximum lag size, in kilobytes.
-
-- `lag_time_threshold` &mdash; Lag time at which a commit delay is applied, in milliseconds.
-
-- `maximum_lag_time` &mdash; Configured maximum lag time, in milliseconds.
-
-- `sample_interval` &mdash; Configured minimum time between lag samples and possible
-  commit delay adjustments, in milliseconds.
 
 ## CAMO functions
 
@@ -1103,9 +1147,11 @@ bdr.logical_transaction_status(node_id OID, xid OID,
 
 #### Parameters
 
-- `node_id` &mdash; The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `bdr.local_node_id`.
-- `xid` &mdash; The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `transaction_id`.
-- `require_camo_partner` &mdash; Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that wasn't a CAMO transaction.
+| Parameter              | Description                                                                                                                                                                                                                                  |
+|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `node_id`              | The node id of the PGD node the transaction originates from, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `bdr.local_node_id`. |
+| `xid`                  | The transaction id on the origin node, usually retrieved by the client before `COMMIT` from the [PQ parameter](https://www.postgresql.org/docs/current/libpq-status.html#LIBPQ-PQPARAMETERSTATUS) `transaction_id`.                          |
+| `require_camo_partner` | Defaults to true and enables configuration checks. Set to false to disable these checks and query the status of a transaction that wasn't a CAMO transaction.                                                                                |
 
 #### Return value
 

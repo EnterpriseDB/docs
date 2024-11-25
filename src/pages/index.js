@@ -139,21 +139,21 @@ const BannerCardLink = ({ to, className, children }) => (
 );
 
 const BannerIconDivider = ({ iconName, headingText }) => (
-  <row>
+  <div>
     <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
       <Icon iconName={iconName} width={20} height={20} />
       &nbsp;
       {headingText}
     </span>
-  </row>
+  </div>
 );
 
 const BannerDivider = ({ headingText }) => (
-  <row>
+  <div>
     <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
       {headingText}
     </span>
-  </row>
+  </div>
 );
 
 const Page = () => {
@@ -173,7 +173,7 @@ const Page = () => {
           <div className="container">
             <div className="row">
               {updates.slice(0, 2).map((update) => (
-                <div className="col-sm mb-3 me-1">
+                <div className="col-sm mb-3 me-1" key={update.url}>
                   <div className="mb-2">
                     <div
                       className="new-thing-header"
