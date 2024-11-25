@@ -316,7 +316,7 @@ function prepareRelnote(meta, file, note) {
     const order = ["highest", "high", "medium", "low", "lowest"];
     return (
       order.indexOf(a.impact.toLowerCase()) -
-      order.indexOf(b.impact.toLowerCase)
+      order.indexOf(b.impact.toLowerCase())
     );
   }
 
@@ -380,10 +380,11 @@ function prepareRelnote(meta, file, note) {
       );
     }
     // TODO: Depending on type, we should sort the notes
-    rnotes[type].sort(impactSort);
+    let sortednotes = rnotes[type].sort(impactSort);
+
     //rnotes[type].sort(componentSort);
 
-    for (let linenote of rnotes[type]) {
+    for (let linenote of sortednotes) {
       let composednote = "";
 
       if (linenote.details === undefined) {
