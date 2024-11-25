@@ -12,6 +12,7 @@ import {
   Link,
   StubCards,
   IconList,
+  PurlAnchor,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
@@ -111,9 +112,8 @@ const Layout = ({
       h3: (
         props, // eslint-disable-next-line jsx-a11y/heading-has-content
       ) => <h3 {...props} className={(props.className || "") + " mt-4-5"} />,
-      img: (
-        props, // eslint-disable-next-line jsx-a11y/alt-text
-      ) => (
+      img: (props) => (
+        // eslint-disable-next-line jsx-a11y/alt-text
         <img
           {...props}
           src={mapRelativeResourcePath(props.src, meta.path, meta.isIndexPage)}
@@ -138,6 +138,7 @@ const Layout = ({
       IconList,
       Archive,
       AuthenticatedContentPlaceholder,
+      PurlAnchor,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );

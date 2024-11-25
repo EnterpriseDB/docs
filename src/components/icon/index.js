@@ -7,13 +7,18 @@ import * as logosIcons from "@enterprisedb/icons/logos";
 import * as ebd_postgres_aiIcons from "@enterprisedb/icons/edb_logos";
 
 function IconContainer({
-  circle,
-  circleClassName,
-  circleDiameter,
-  circleAutoMargin,
+  circle = false,
+  circleClassName = "",
+  circleDiameter = 100,
+  circleAutoMargin = true,
   iconName: name = "dottedbox",
   ...props
 }) {
+  props = Object.assign(
+    {},
+    { className: "dottedbox", width: 100, height: 100 },
+    props,
+  );
   const iconNameParts = name.split("/");
   const iconCategory = iconNameParts.length === 1 ? "" : iconNameParts[0];
   const iconName = iconNameParts.length === 1 ? name : iconNameParts[1];
@@ -50,16 +55,6 @@ const Icon = ({ category, name, ...props }) => {
   if (!SelectedIcon) SelectedIcon = "span";
 
   return <SelectedIcon {...props} />;
-};
-
-IconContainer.defaultProps = {
-  className: "dottedbox",
-  circleClassName: "",
-  circleDiameter: 100,
-  circleAutoMargin: true,
-  circle: false,
-  width: 100,
-  height: 100,
 };
 
 export { iconNames };

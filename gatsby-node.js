@@ -635,6 +635,26 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
   //
   // additional headers
   //
+  await addHeaders(graphql, reporter, pathPrefix);
+
+  //
+  // redirects cleanup
+  //
+  await rewriteRedirects(pathPrefix, reporter);
+};
+
+/**
+ * Adds content type headers for raw files
+ * @param {function} graphql
+ * @param {GatsbyReporter} reporter
+ * @param {string} pathPrefix
+ */
+async function addHeaders(graphql, reporter, pathPrefix) {
+  const contentHeaderTimer = reporter.activityTimer(
+    "adding content type headers",
+  );
+  contentHeaderTimer.start();
+
   const publicFileData = await graphql(`
     query {
       allPublicFile {
@@ -699,17 +719,38 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
     "public/_headers",
     (await readFile("public/_headers")) + "\n" + newHeaders.join("\n"),
   );
+  contentHeaderTimer.end();
+}
 
-  //
-  // redirects cleanup
-  //
+/**
+ * Rewrites generated headers:
+ *  - fix up unnecessary path prefix for legacy redirects
+ *  - add hash for perma-URLs
+ * @param {string} pathPrefix
+ * @param {GatsbyReporter} reporter
+ */
+async function rewriteRedirects(pathPrefix, reporter) {
+  const redirectTimer = reporter.activityTimer("rewriting redirects");
+  redirectTimer.start();
+
   const originalRedirects = await readFile("public/_redirects");
 
   // rewrite legacy redirects to exclude the /docs prefix
+  // rewrite perma-URL redirects to include hash
   const prefixRE = new RegExp(`^${pathPrefix}/edb-docs/`);
+  const purlRE = new RegExp(
+    `^/docs/purl/(?<product>[^/]+)/(?<component>[^/]+)/?\\s+(?<destination>\\S+)\\s+\\d+`,
+  );
   let rewrittenRedirects = originalRedirects
     .split("\n")
     .map((line) => line.replace(prefixRE, "/edb-docs/"))
+    .map((line) =>
+      line.replace(
+        purlRE,
+        pathPrefix +
+          "/purl/$<product>/$<component>/ $<destination>#$<product>_$<component> 302",
+      ),
+    )
     .join("\n");
 
   if (rewrittenRedirects.length === originalRedirects.length) {
@@ -764,17 +805,18 @@ exports.onPostBuild = async ({ graphql, reporter, pathPrefix }) => {
 # Netlify pathPrefix path rewrite
 ${pathPrefix}/*  /:splat  200`,
   );
-};
+  redirectTimer.end();
+}
 
 /**
  * Strip compilation hashes from generated HTML
  * this speeds up Netlify deploys, as (otherwise unchanged) files don't change every build
  * there probably should be a faster / more elegant way to do this, possibly by overriding one of the
  * default webpack configs... But I've had no luck doing so up to now.
- * @param {*} reporter Gatsby reporter
+ * @param {GatsbyReporter} reporter Gatsby reporter
  */
 async function removeCompilationHashes(reporter) {
-  const hashTimer = reporter.createProgress("Removing compilation hashes");
+  const hashTimer = reporter.createProgress("removing compilation hashes");
   hashTimer.start();
 
   const { globby } = await import("globby");
