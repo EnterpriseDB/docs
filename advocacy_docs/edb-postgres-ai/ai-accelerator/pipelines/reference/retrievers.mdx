@@ -1,0 +1,224 @@
+---
+title: Pipelines reference - Retrievers
+navTitle: Retrievers
+description: Reference documentation for EDB Postgres AI AI Accelerator Pipelines Retrievers.
+deepToC: true
+---
+
+This section provides reference documentation for Pipelines Retrievers. It includes information on the functions and views available in the aidb extension related to [Retrievers](../retrievers/).
+
+## Tables
+
+### `aidb.retrievers`
+
+The `aidb.retrievers` table stores information about the retrievers that have been created in the database.
+
+| Column                        | Type                     | Description |
+|-------------------------------|--------------------------|-------------|
+| id                            | integer                  |             |
+| name                          | text                     |             |
+| vector_table_name             | text                     |             |
+| vector_table_key_column       | text                     |             |
+| vector_table_vector_column    | text                     |             |
+| model_name                    | text                     |             |
+| topk                          | integer                  |             |
+| distance_operator             | aidb.distanceoperator    |             |
+| options                       | jsonb                    |             |
+| source_table_name             | regclass                 |             |
+| source_table_data_column      | text                     |             |
+| source_table_data_column_type | aidb.retriever_data_type |             |
+| source_table_key_column       | text                     |             |
+
+## Functions
+
+### `aidb.register_retriever_for_table`
+
+Registers a retriever for a given table.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| p_name                          | TEXT                           |              |
+| p_source_table_name             | regclass                       |              |                                               |
+| p_source_table_data_column      | TEXT                           |              |                                               |
+| p_source_table_data_column_type | aidb.RetrieverSourceDataFormat |              |                                               |
+| p_source_table_key_column       | TEXT                           | 'id'         |                                               |
+| p_vector_table_name             | TEXT                           | NULL         |                                               |
+| p_vector_table_vector_column    | TEXT                           | 'embeddings' |                                               |
+| p_vector_table_key_column       | TEXT                           | 'id'         |                                               |
+| p_model_name                    | TEXT                           | NULL         | Mandatory argument since NULL is not allowed. |
+| p_topk                          | INTEGER                        | 1            |                                               |
+| p_distance_operator             | aidb.distanceoperator          | 'L2'         |                                               |
+| p_options                       | JSONB                          | '{}'::JSONB  |                                               |
+
+#### Example
+
+```sql
+SELECT aidb.register_retriever_for_table(
+               p_name => 'test_retriever',
+               p_source_table_name => 'test_source_table',
+               p_source_table_data_column => 'content',
+               p_source_table_data_column_type => 'Text',
+               p_model_name => 'simple_model'
+       );
+```
+
+### `aidb.register_retriever_for_volume`
+
+Registers a retriever for a given PGFS volume.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| p_name                          | TEXT                           |              | Name of the retriever.                        |
+| p_source_volume_name            | TEXT                           |              | Name of the volume.                           |
+| p_vector_table_name             | TEXT                           | NULL         | Name of the vector table.                     |
+| p_vector_table_vector_column    | TEXT                           | 'embeddings'  | Name of the vector column.                    |
+| p_vector_table_key_column       | TEXT                           | 'id'         | Name of the key column.                       |
+| p_model_name                    | TEXT                           | NULL         | Name of the model.                            |
+| p_topk                          | INTEGER                        | 1            | Number of results to return.                  |
+| p_distance_operator             | aidb.distanceoperator          | 'L2'         | Distance operator.                            |
+| p_options                       | JSONB                          | '{}'::JSONB  | Options.                                      |
+
+#### Example
+
+```sql
+SELECT aidb.register_retriever_for_volume(
+               p_name => 'demo_vol_retriever',
+               p_source_volume_name => 'demo_bucket_vol',
+               p_model_name => 'simple_model'
+       );
+```
+
+### `aidb.enable_auto_embedding_for_table`
+
+Enables automatic embedding generation for a given table.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| p_name                          | TEXT                           |              | Name of registered table which should have auto-embedding enabled.|
+
+#### Example
+
+```sql
+SELECT aidb.enable_auto_embedding_for_table('test_retriever');
+```
+
+### `aidb.disable_auto_embedding_for_table`
+
+Enables automatic embedding generation for a given table.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| p_name                          | TEXT                           |              | Name of registered table which should have auto_embedding disabled.|
+
+#### Example
+
+```sql
+SELECT aidb.enable_auto_embedding_for_table('test_retriever');
+```
+
+### `aidb.bulk_embedding`
+
+Generates embeddings for all data in a given table if there is existing data in the table.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| retriever_name                          | TEXT                           |              | Name of retriever which  which should have embeddings generated.|
+
+#### Example
+
+```
+edb=# select aidb.bulk_embedding('test_retriever');
+__OUTPUT__
+INFO:  bulk_embedding_text found 3 rows in retriever test_retriever
+ bulk_embedding
+----------------
+
+(1 row)
+```
+
+### `aidb.retrieve_key`
+
+Retrieves a key from matching embeddings without looking up the source data.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| retriever_name                          | TEXT                           |              | Name of retriever which should be used for retrieval.|
+| query_string                          | TEXT                           |              | Query string to be used for retrieval.|
+| number_of_results                          | INTEGER                           | 0            | Number of results to be returned.|
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_key('test_retriever', 'shoes', 2);
+__OUTPUT__
+  key  |      distance
+-------+--------------------
+ 43941 | 0.2938963414490189
+ 19337 | 0.3023805122617119
+(2 rows)
+```
+
+### `aidb.retrieve_text`
+
+Retrieves the source text data from matching embeddings by joining the embeddings with the source table.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| retriever_name                          | TEXT                           |              | Name of retriever which should be used for retrieval.|
+| query_string                          | TEXT                           |              | Query string to be used for retrieval.|
+| number_of_results                          | INTEGER                           | 0            | Number of results to be returned.|
+
+#### Returns
+
+| Column     | Type             | Description                                    |
+|------------|------------------|------------------------------------------------|
+| `key`      | text             | Key of the retrieved data.                     |
+| `value`    | text             | Value of the retrieved data.                   |
+| `distance` | double precision | Distance of the retrieved data from the query. |
+
+#### Example
+
+```sql
+SELECT * FROM aidb.retrieve_text('test_retriever', 'jacket', 2);
+__OUTPUT__
+  key  |                       value                        |      distance
+-------+----------------------------------------------------+--------------------
+ 19337 | United Colors of Benetton Men Stripes Black Jacket | 0.2994317672742334
+ 55018 | Lakme 3 in 1 Orchid  Aqua Shine Lip Color          | 0.3804609668507203
+(2 rows)
+ ```
+
+ ### `aidb.delete_retriever`
+
+Deletes only the retriever's configuration from the database.
+
+#### Parameters
+
+| Parameter                       | Type                           | Default      | Description                                   |
+|---------------------------------|--------------------------------|--------------|-----------------------------------------------|
+| retriever_name                          | TEXT                           |              | Name of retriever which should be deleted.|
+
+#### Example
+
+```sql
+select aidb.delete_retriever('test_retriever');
+__OUTPUT__
+ delete_retriever
+------------------
+
+(1 row)
+```
