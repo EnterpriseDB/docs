@@ -372,11 +372,11 @@ const Page = () => {
             />
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
-              EDB Postgres Distributed for Kubernetes
+              EDB CloudNativePG Global Cluster
             </BannerWideLink>
 
             <BannerWideLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres for Kubernetes
+              EDB CloudNativePG Cluster
             </BannerWideLink>
 
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
