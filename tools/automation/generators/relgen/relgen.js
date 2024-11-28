@@ -186,6 +186,7 @@ appendFileSync(relindexfilename, "---\n");
 appendFileSync(relindexfilename, `title: ${meta.title}\n`);
 appendFileSync(relindexfilename, `navTitle: Release notes\n`);
 appendFileSync(relindexfilename, `description: ${meta.description}\n`);
+appendFileSync(relindexfilename, `indexCards: none\n`);
 appendFileSync(relindexfilename, `navigation:\n`);
 
 for (let [file, relnote] of relnotes) {
@@ -208,7 +209,6 @@ appendFileSync(relindexfilename, "\n\n");
 
 appendFileSync(relindexfilename, `${meta.intro}`);
 appendFileSync(relindexfilename, "\n\n");
-
 
 // Before we process the table, is there a column definition. If not, we'll use a default
 if (meta.columns == undefined) {
@@ -391,6 +391,7 @@ function prepareRelnote(meta, file, note) {
         composednote = linenote.relnote;
       } else {
         const predetails = linenote.details; // Preprocess here
+
         const compactdetailshtml = converter(predetails);
         const preheading = linenote.relnote; // Preprocess here
         const headinghtml = converter(preheading)

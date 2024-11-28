@@ -7,27 +7,77 @@ deepToC: true
 
 This section provides reference documentation for Pipelines Retrievers. It includes information on the functions and views available in the aidb extension related to [Retrievers](../retrievers/).
 
-## Tables
+## Views
 
 ### `aidb.retrievers`
 
-The `aidb.retrievers` table stores information about the retrievers that have been created in the database.
+The `aidb.retrievers` view shows information about the retrievers that have been created in the database.
 
-| Column                        | Type                     | Description |
-|-------------------------------|--------------------------|-------------|
-| id                            | integer                  |             |
-| name                          | text                     |             |
-| vector_table_name             | text                     |             |
-| vector_table_key_column       | text                     |             |
-| vector_table_vector_column    | text                     |             |
-| model_name                    | text                     |             |
-| topk                          | integer                  |             |
-| distance_operator             | aidb.distanceoperator    |             |
-| options                       | jsonb                    |             |
-| source_table_name             | regclass                 |             |
-| source_table_data_column      | text                     |             |
-| source_table_data_column_type | aidb.retriever_data_type |             |
-| source_table_key_column       | text                     |             |
+| Column                        | Type                                           | Description                                                                                                                                                                                                                                 |
+|-------------------------------|------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| id                            | integer                                        |                                                                                                                                                                                                                                             |
+| name                          | text                                           | Name of the retriever.                                                                                                                                                                                                                      |
+| vector_table_name             | text                                           | Name of the table where the embeddings are stored. Gets newly created if it doesn’t exist, managed by aidb.                                                                                                                                 |
+| vector_table_key_column       | text                                           | The column that be used to store the key that references the key in source data when computing embeddings. Recommend to use the default and let aidb manage this table.                                                                     |
+| vector_table_vector_column    | text                                           | The column to store embeddings in. Recommend to use the default and let aidb manage this table.                                                                                                                                             |
+| model_name                    | text                                           | Name of the registered model to use for embedding computation and retrievals.                                                                                                                                                               |
+| topk                          | integer                                        | How many results should be returned during a retrieve by default. Similar to LIMIT in SQL.                                                                                                                                                  |
+| distance_operator             | [aidb.DistanceOperator](#aidbdistanceoperator) | During retrieval, what vector operation should be used to compare the vectors.                                                                                                                                                              |
+| options                       | jsonb                                          | Currently unused.                                                                                                                                                                                                                           |
+| source_type                   | text                                           | Type of source data the retriever is working with. Can be either 'Table' or 'Volume'.                                                                                                                                                       |
+| source_table_name             | regclass                                       | name of the table that has the source data we compute embeddings for, and that we retrieve from. Only applicable to retrievers configured with aidb.register_retriever_for_volume().                                                        |
+| source_table_data_column      | text                                           | column name in the source table that we compute embeddings for. This is also the column that will be returned in retrieve operations.                                                                                                       |
+| source_table_data_column_type | [aidb.RetrieverSourceDataFormat](#aidbretrieversourcedataformat)                 | Type of data the retriever working with. Uses type `[aidb.RetrieverSourceDataFormat](#aidbretrieversourcedataformat)` . Only relevant for table based retrievers. In the case of a volume based retriever, the format/type information is discovered from the volume. |
+| source_table_key_column       | text                                           | column to use as key for storing the embedding in the vector table. This provides a reference from the embedding to the source data                                                                                                         |
+| source_volume_name            | text                                           | Name of the volume to use as a data source. Only applicable to retrievers configured with aidb.register_retriever_for_volume().                                                                                                             |
+
+## Types
+
+### `aidb.DistanceOperator`
+
+The `aidb.DistanceOperator` type is an enum that represents the distance operators that can be used during retrieval.
+
+| Value   | Description         |
+|---------|---------------------|
+| L2      | Euclidean distance. |
+| Inner   | Inner product.      |
+| Cosine  | Cosine similarity.  |
+| L1      | L1 distance.        |
+| Hamming | Hamming distance.   |
+| Jaccard | Jaccard distance.   |
+
+SQL definition:
+
+```sql
+CREATE TYPE DistanceOperator AS ENUM (
+  'L2',
+  'InnerProduct',
+  'Cosine',
+  'L1',
+  'Hamming',
+  'Jaccard'
+);
+```
+
+### `aidb.RetrieverSourceDataFormat`
+
+The `aidb.RetrieverSourceDataFormat` type is an enum that represents the data formats that can be used as source data.
+
+| Value | Description |
+|-------|-------------|
+| Text  | Text data.  |
+| Image | Image data. |
+| Pdf   | PDF data.   |
+
+SQL definition:
+
+```sql
+CREATE TYPE retrieversourcedataformat AS ENUM (
+  'Text',
+  'Image',
+  'Pdf'
+);
+```
 
 ## Functions
 
@@ -40,6 +90,7 @@ Registers a retriever for a given table.
 | Parameter                       | Type                           | Default      | Description                                   |
 |---------------------------------|--------------------------------|--------------|-----------------------------------------------|
 | p_name                          | TEXT                           |              |
+| p_model_name                    | TEXT                           | NULL         |  |
 | p_source_table_name             | regclass                       |              |                                               |
 | p_source_table_data_column      | TEXT                           |              |                                               |
 | p_source_table_data_column_type | aidb.RetrieverSourceDataFormat |              |                                               |
@@ -47,7 +98,7 @@ Registers a retriever for a given table.
 | p_vector_table_name             | TEXT                           | NULL         |                                               |
 | p_vector_table_vector_column    | TEXT                           | 'embeddings' |                                               |
 | p_vector_table_key_column       | TEXT                           | 'id'         |                                               |
-| p_model_name                    | TEXT                           | NULL         | Mandatory argument since NULL is not allowed. |
+
 | p_topk                          | INTEGER                        | 1            |                                               |
 | p_distance_operator             | aidb.distanceoperator          | 'L2'         |                                               |
 | p_options                       | JSONB                          | '{}'::JSONB  |                                               |
@@ -87,8 +138,8 @@ Registers a retriever for a given PGFS volume.
 ```sql
 SELECT aidb.register_retriever_for_volume(
                p_name => 'demo_vol_retriever',
-               p_source_volume_name => 'demo_bucket_vol',
-               p_model_name => 'simple_model'
+               p_model_name => 'simple_model',
+               p_source_volume_name => 'demo_bucket_vol'
        );
 ```
 
