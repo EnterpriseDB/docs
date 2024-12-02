@@ -215,6 +215,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <div className="d-print-none">{editOrFeedbackButton}</div>
           </div>
 
+          {frontmatter.displayBanner ? (
+            <div class="alert alert-warning mt-3" role="alert">
+              {frontmatter.displayBanner}
+            </div>
+          ) : null}
+
           <ContentRow>
             <Col
               className={[
