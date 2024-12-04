@@ -1,76 +1,4 @@
----
-title: EDB Postgres for Kubernetes
-originalFilePath: src/index.md
-indexCards: none
-navigation:
-  - rel_notes
-  - '!commercial_support.mdx'
-  - '!release_notes*'
-  - '!e2e.mdx'
-  - '!supported_releases.mdx'
-  - '#Getting Started'
-  - before_you_start
-  - use_cases
-  - architecture
-  - installation_upgrade
-  - quickstart
-  - '#Configuration'
-  - postgresql_conf
-  - operator_conf
-  - cluster_conf
-  - samples
-  - '#Using'
-  - bootstrap
-  - database_import
-  - security
-  - instance_manager
-  - scheduling
-  - resource_management
-  - failure_modes
-  - rolling_update
-  - replication
-  - backup
-  - recovery
-  - backup_volumesnapshot
-  - backup_barmanobjectstore
-  - wal_archiving
-  - declarative_role_management
-  - storage
-  - labels_annotations
-  - monitoring
-  - logging
-  - certificates
-  - ssl_connections
-  - applications
-  - connection_pooling
-  - replica_cluster
-  - kubernetes_upgrade
-  - expose_pg_services
-  - kubectl-plugin
-  - failover
-  - fencing
-  - declarative_hibernation
-  - postgis
-  - container_images
-  - controller
-  - networking
-  - benchmarking
-  - '#EDB Enhancements'
-  - evaluation
-  - license_keys
-  - openshift
-  - tde
-  - addons
-  - '#Reference'
-  - operator_capability_levels
-  - faq
-  - troubleshooting
-  - pg4k.v1
-  - backup_recovery
-  - '#Appendix'
-  - object_stores
-
----
+# EDB Postgres for Kubernetes
 
 The EDB Postgres for Kubernetes operator is a fork based on [CloudNativePG](https://cloudnative-pg.io).
 It provides additional value such as compatibility with Oracle using EDB
@@ -79,44 +7,40 @@ and OpenShift. It is designed, developed, and supported by EDB and covers the
 full lifecycle of a highly available Postgres database clusters with a
 primary/standby architecture, using native streaming replication.
 
-EDB Postgres for Kubernetes was made generally available on February 4, 2021. Earlier versions were made available to selected customers prior to the GA release. 
-
 !!! Note
-
     The operator has been renamed from Cloud Native PostgreSQL. Existing users
     of Cloud Native PostgreSQL will not experience any change, as the underlying
     components and resources have not changed.
 
 ## Key features in common with CloudNativePG
 
--   Kubernetes API integration for high availability
-    -   CloudNativePG uses the `postgresql.cnpg.io/v1` API version
-    -   EDB Postgres for Kubernetes uses the `postgresql.k8s.enterprisedb.io/v1` API version
--   Self-healing through failover and automated recreation of replicas
--   Capacity management with scale up/down capabilities
--   Planned switchovers for scheduled maintenance
--   Read-only and read-write Kubernetes services definitions
--   Rolling updates for Postgres minor versions and operator upgrades
--   Continuous backup and point-in-time recovery
--   Connection Pooling with PgBouncer
--   Integrated metrics exporter out of the box
--   PostgreSQL replication across multiple Kubernetes clusters
--   Separate volume for WAL files
+- Kubernetes API integration for high availability
+  - CloudNativePG uses the `postgresql.cnpg.io/v1` API version
+  - EDB Postgres for Kubernetes uses the `postgresql.k8s.enterprisedb.io/v1` API version
+- Self-healing through failover and automated recreation of replicas
+- Capacity management with scale up/down capabilities
+- Planned switchovers for scheduled maintenance
+- Read-only and read-write Kubernetes services definitions
+- Rolling updates for Postgres minor versions and operator upgrades
+- Continuous backup and point-in-time recovery
+- Connection Pooling with PgBouncer
+- Integrated metrics exporter out of the box
+- PostgreSQL replication across multiple Kubernetes clusters
+- Separate volume for WAL files
 
 ## Features unique to EDB Postgres of Kubernetes
 
--   [Long Term Support](#long-term-support)
--   Support on IBM Power and z/Linux through partnership with IBM
--   [Oracle compatibility](/epas/latest/fundamentals/epas_fundamentals/epas_compat_ora_dev_guide/) through EDB Postgres Advanced Sever
--   [Transparent Data Encryption (TDE)](/tde/latest/) through EDB Postgres Advanced Server
--   Cold backup support with Kasten and Velero/OADP
--   Generic adapter for third-party Kubernetes backup tools
+- [Long Term Support](#long-term-support)
+- Support on IBM Power and z/Linux through partnership with IBM
+- [Oracle compatibility](https://www.enterprisedb.com/docs/epas/latest/fundamentals/epas_fundamentals/epas_compat_ora_dev_guide/) through EDB Postgres Advanced Sever
+- [Transparent Data Encryption (TDE)](https://www.enterprisedb.com/docs/tde/latest/) through EDB Postgres Advanced Server
+- Cold backup support with Kasten and Velero/OADP
+- Generic adapter for third-party Kubernetes backup tools
 
 You can [evaluate EDB Postgres for Kubernetes for free](evaluation.md).
 You need a valid license key to use EDB Postgres for Kubernetes in production.
 
 !!! Note
-
     Based on the [Operator Capability Levels model](operator_capability_levels.md),
     users can expect a **"Level V - Auto Pilot"** set of capabilities from the
     EDB Postgres for Kubernetes Operator.
@@ -164,7 +88,6 @@ The EDB Postgres for Kubernetes Operator container images support the multi-arch
 format for the following platforms: `linux/amd64`, `linux/arm64`, `linux/ppc64le`, `linux/s390x`.
 
 !!! Warning
-
     EDB Postgres for Kubernetes requires that all nodes in a Kubernetes cluster have the
     same CPU architecture, thus a hybrid CPU architecture Kubernetes cluster is not
     supported. Additionally, EDB supports `linux/ppc64le` and `linux/s390x` architectures
@@ -174,14 +97,14 @@ format for the following platforms: `linux/amd64`, `linux/arm64`, `linux/ppc64le
 
 The following versions of Postgres are currently supported:
 
--   PostgreSQL: 12 - 17
--   EDB Postgres Advanced: 12 - 16
--   EDB Postgres Extended: 12 - 16
+- PostgreSQL: 12 - 17
+- EDB Postgres Advanced: 12 - 16
+- EDB Postgres Extended: 12 - 16
 
 PostgreSQL and EDB Postgres Advanced are available on the following platforms:
-`linux/amd64`, `linux/ppc64le`, `linux/s390x`. \\
-In addition, PostgreSQL is also supported on `linux/arm64`. \\
-EDB Postgres Extended is supported only on `linux/amd64`. \\
+`linux/amd64`, `linux/ppc64le`, `linux/s390x`. \
+In addition, PostgreSQL is also supported on `linux/arm64`. \
+EDB Postgres Extended is supported only on `linux/amd64`. \
 EDB supports operand images for `linux/ppc64le` and `linux/s390x` architectures
 on OpenShift only.
 
@@ -194,7 +117,6 @@ In case you are not familiar with some basic terminology on Kubernetes and Postg
 please consult the ["Before you start" section](before_you_start.md).
 
 !!! Note
-
     Although the guide primarily addresses Kubernetes, all concepts can
     be extended to OpenShift as well.
 
