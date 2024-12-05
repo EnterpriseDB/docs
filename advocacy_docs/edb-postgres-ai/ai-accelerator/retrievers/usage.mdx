@@ -1,0 +1,218 @@
+---
+title: "Pipelines - Retrievers - Usage"
+navTitle: "Usage"
+deepToC: true
+description: "Usage of retrievers in AI Accelerator Pipelines."
+---
+
+## Creating a new retriever configuration
+
+There are two types of retrievers: table and volume. Given the different nature of the data sources, and the options required for each we have different functions to register them.
+
+## Retriever for a table data source
+
+The [aidb.register_retriever_for_table](../reference/retrievers#aidbregister_retriever_for_table) function is used to create a retriever for a table data source. This is the function signature, you can see many of those are optional and have defaults.
+
+```
+register_retriever_for_table(
+-------------------------------------------------------------------------------
+    p_name                              TEXT,
+    p_model_name,                       TEXT,
+    p_source_table_name                 regclass,
+    p_source_table_data_column          TEXT,
+    p_source_table_data_column_type     aidb.RetrieverSourceDataFormat,
+    p_source_table_key_column           TEXT DEFAULT 'id',
+    p_vector_table_name                 TEXT DEFAULT NULL,
+    p_vector_table_vector_column        TEXT DEFAULT 'embeddings',
+    p_vector_table_key_column           TEXT DEFAULT 'id',
+    p_topk                              INTEGER DEFAULT 1,
+    p_distance_operator                 aidb.distanceoperator DEFAULT 'L2',
+    p_options                           JSONB DEFAULT '{}'::JSONB
+)
+```
+
+### Example: Registering a retriever
+
+``` sql
+SELECT aidb.register_retriever_for_table(
+               p_name => 'test_retriever',
+               p_model_name => 'simple_model',
+               p_source_table_name => 'test_source_table',
+               p_source_table_data_column => 'content',
+               p_source_table_data_column_type => 'Text'
+       );
+```
+
+In this example, we use all the defaults.
+
+If you are only using Postgres tables, [skip to the next section](#creating-the-embeddings).
+
+If you are using external data sources, you need to create a volume and register a retriever for it, which is explained in the next section.
+
+## Retriever for a volume data source
+
+### Creating a new volume
+
+Before we can register a retriever for a volume, we need to create a volume. The [aidb.create_volume](../reference/retrievers#aidbcreate_volume) function is used to create a volume. This is the function signature, you can see many of those are optional and have defaults.
+
+```
+aidb.create_volume(
+-------------------------------------------------------------------------------
+    name                              TEXT,
+    server_name                       TEXT,
+    path                              TEXT,
+    mime_type                         TEXT
+)
+```
+
+Note that `mime_type` actually takes only `Text` or `Image` as values.
+
+### Example: Creating a volume
+
+``` sql
+SELECT aidb.create_volume(
+               name => 'test_volume',
+               server_name => 'test_server',
+               path => 'test_path',
+               mime_type => 'Text'
+       );
+```
+
+The `server_name` comes from calling PGFS functions to create a storage location; [pgfs.create_storage_location](../reference/pgfs#pgfscreate_storage_location). The `path` is the path to the data in the storage location.
+
+### Registering a retriever for a volume
+
+The [aidb.register_retriever_for_volume](../reference/retrievers#aidbregister_retriever_for_volume) function is used to create a retriever for a volume data source. This is the function signature, you can see many of those are optional and have defaults.
+
+```
+aidb.register_retriever_for_volume(
+-------------------------------------------------------------------------------
+    p_name                              TEXT,
+    p_source_volume_name                TEXT,
+    p_vector_table_name                 TEXT DEFAULT NULL,
+    p_vector_table_vector_column        TEXT DEFAULT 'embeddings',
+    p_vector_table_key_column           TEXT DEFAULT 'id',
+    p_model_name,                       TEXT,
+    p_topk                              INTEGER DEFAULT 1,
+    p_distance_operator                 aidb.distanceoperator DEFAULT 'L2',
+    p_options                           JSONB DEFAULT '{}'::JSONB
+)
+```
+
+### Example: Registering a retriever for a volume
+
+``` sql
+SELECT aidb.register_retriever_for_volume(
+               p_name => 'test_retriever_volume',
+               p_source_volume_name => 'test_volume',
+               p_model_name => 'simple_model'
+       );
+```
+
+In this example, we use all the defaults.
+
+## Creating the Embeddings
+
+You can use bulk embedding if there is existing data in the source table:
+
+```sql
+SELECT aidb.bulk_embedding('test_retriever'); 
+```
+
+Enable auto-embedding for any future changes:
+
+```sql
+SELECT aidb.enable_auto_embedding_for_table('test_retriever');
+```
+
+You can disable auto-embedding as well:
+
+```sql
+SELECT aidb.disable_auto_embedding_for_table('test_retriever');
+```
+
+## Retrieving
+
+A basic key retriever, `aidb.retrieve_key` is available that does not look up the source data, but just returns the ID/key of the matching embeddings:
+
+### Retrieving the key
+
+```sql
+aidb.retrieve_key(<retriever name>, <query string>, <optional number of results>);
+```
+
+### Example: Retrieving the key
+
+```sql
+SELECT * FROM aidb.retrieve_key('test_retriever', 'shoes', 2);
+__OUTPUT__
+  key  |      distance
+-------+--------------------
+ 43941 | 0.2938963414490189
+ 19337 | 0.3023805122617119
+(2 rows)
+```
+
+This can be used if you want to do a join/lookup yourself based on the key. For retrievers with external (volume) data sources, this is especially useful. Usually the application itself wants to do the retrieval from the external data source. Or you might want to push-down the actual retrieval to a client application.  
+
+The retrieve_text function joins the embeddings with the source data and directly returns the results:
+
+### Retrieving the text
+
+The retrieve_text function joins the embeddings with the source data and directly returns the results:
+
+```sql
+aidb.retrieve_text(<retriever name>, <query string>, <optional number of results>);
+```
+
+### Example
+
+```sql
+SELECT * FROM aidb.retrieve_text('test_retriever', 'jacket', 2);
+__OUTPUT__
+  key  |                       value                        |      distance
+-------+----------------------------------------------------+--------------------
+ 19337 | United Colors of Benetton Men Stripes Black Jacket | 0.2994317672742334
+ 55018 | Lakme 3 in 1 Orchid  Aqua Shine Lip Color          | 0.3804609668507203
+(2 rows)
+ ```
+
+## Listing the retrievers
+
+A view is available that lists all the retrievers. [aidb.retrievers](../reference/retrievers#aidbretrievers) also includes some of the retrievers configuration:
+
+```sql
+SELECT * FROM aidb.retrievers;
+__OUTPUT__
+ id |        name         |     vector_table_name      | vector_table_key_column | vector_table_vector_column |  model_name  | topk | distance_operator | options | source_table_name | source_table_data_column | source_table_data_column_type | source_table_key_column | source_volume_name
+----+---------------------+----------------------------+-------------------------+----------------------------+--------------+------+-------------------+---------+-------------------+--------------------------+-------------------------------+-------------------------+--------------------
+  2 | test_retriever      | test_retriever_vector      | id                      | embeddings                 | simple_model |    5 | InnerProduct      | {}      | test_source_table | content                  | Text                          | id                      |
+  5 | test_retriever_cosa | test_retriever_cosa_vector | id                      | embeddings                 | simple_model |    1 | L2                | {}      | test_source_table | content                  | Text                          | id                      |
+  3 | test_retriever_cos  | test_retriever_cos_vector  | id                      | embeddings                 | simple_model |    5 | Cosine            | {}      | test_source_table | content                  | Text                          | id                      |
+(3 rows)
+```
+
+It is recommended that you just select the columns you are interested in:
+
+```sql
+SELECT name, source_table_name FROM aidb.retrievers;
+__OUTPUT__
+        name         | source_table_name
+---------------------+-------------------
+ test_retriever      | test_source_table
+ test_retriever_cos  | test_source_table
+ test_retriever_cosa | test_source_table
+(3 rows)
+```
+
+## Deleting a retriever
+
+This will not delete the vector table or anything else, just the configuration:
+
+```sql
+SELECT aidb.delete_retriever(<name>);
+```
+
+## End to end example
+
+You can find an end-to-end example for a table/text retriever at on the Retrievers [example](example) page.
