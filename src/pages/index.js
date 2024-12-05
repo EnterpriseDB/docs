@@ -429,6 +429,10 @@ const Page = () => {
               headingText="High Availability"
             />
 
+            <BannerWideLink to="/pgd/latest">
+              EDB Postgres Distributed (PGD)
+            </BannerWideLink>
+
             <BannerWideLink to="/repmgr/latest">
               Replication Manager (repmgr)
             </BannerWideLink>
@@ -516,6 +520,10 @@ const Page = () => {
 
             <BannerWideLink to="/pg_extensions/pg_squeeze">
               PG Squeeze
+            </BannerWideLink>
+
+            <BannerWideLink to="/pg_extensions/pgvector">
+              pgvector
             </BannerWideLink>
 
             <BannerWideLink to="/pg_extensions/wal2json">

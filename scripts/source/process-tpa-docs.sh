@@ -33,4 +33,4 @@ node $DESTINATION_CHECKOUT/scripts/source/merge-indexes.mjs \
   "$SOURCE_CHECKOUT/docs/src/reference/index.mdx" \
   >> $SOURCE_CHECKOUT/files-to-ignore.txt
 
-rsync -av --delete --exclude="*.md" --exclude="architectures" --exclude="templates" --exclude-from=$SOURCE_CHECKOUT/files-to-ignore.txt src/ $DESTINATION_CHECKOUT/product_docs/docs/tpa/$TPAVERSION/
+rsync -av --delete --exclude="*.md" --exclude="architectures" --exclude="templates" --exclude-from=$SOURCE_CHECKOUT/files-to-ignore.txt --exclude="rel_notes" src/ $DESTINATION_CHECKOUT/product_docs/docs/tpa/$TPAVERSION/
