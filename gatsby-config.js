@@ -327,9 +327,12 @@ module.exports = {
               noInlineHighlight: true,
               aliases: {
                 postgresql: "sql",
+                psql: "sql",
                 sh: "shell",
                 "c++": "cpp",
                 console: "shell-session",
+                output: "none",
+                terminal: "none",
               },
             },
           },

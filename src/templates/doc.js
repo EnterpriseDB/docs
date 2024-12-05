@@ -255,7 +255,7 @@ const DocTemplate = ({ data, pageContext }) => {
                 </span>
               )}
             </h1>
-            <div className="d-flex">
+            <div className="d-flex d-print-none">
               {editTarget !== "none" && (
                 <a
                   href={
@@ -280,7 +280,13 @@ const DocTemplate = ({ data, pageContext }) => {
           ) : null}
 
           <ContentRow>
-            <Col xs={showToc ? 9 : 12}>
+            <Col
+              className={[
+                "col-xs-12",
+                "col-lg-" + (showToc ? 9 : 12),
+                "col-print-12",
+              ].join(" ")}
+            >
               <MDXRenderer>{body}</MDXRenderer>
               <Tiles mode={indexCards} node={navRoot} />
               {(!indexCards || indexCards === TileModes.None) && sections && (
@@ -289,7 +295,7 @@ const DocTemplate = ({ data, pageContext }) => {
             </Col>
 
             {showToc && (
-              <Col xs={3}>
+              <Col className="d-xs-none col-lg-3 d-print-none">
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}

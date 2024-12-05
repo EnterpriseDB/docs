@@ -1,0 +1,42 @@
+---
+title: Rotating the data encryption key
+description: Learn how to rotate your data encryption key.
+deepToc: true
+---
+
+To change the master key, manually run the unwrap command, specifying the old key. Then feed the result into the wrap command, specifying the new key. 
+
+If the data key is protected by a passphrase, to change the passphrase, run the unwrap command using the old passphrase. Then feed the result into the wrap command using the new passphrase. 
+
+You can perform these operations while the database server is running. The wrapped data key in the file is used only on startup. It isn't used while the server is running.
+
+## Rotating the passphrase
+
+Building on the example in [Using a passphrase](passphrase), which uses OpenSSL, to change the passphrase, you can use this approach:
+
+```shell
+cd $PGDATA/pg_encryption/
+openssl enc -d -aes-128-cbc -pbkdf2 -in key.bin | openssl enc -e -aes-128-cbc -pbkdf2 -out key.bin.new
+mv key.bin.new key.bin
+```
+With this method, the decryption and the encryption commands ask for the passphrase on the terminal at the same time, which is awkward and confusing. An alternative is:
+
+```shell
+cd $PGDATA/pg_encryption/
+openssl enc -d -aes-128-cbc -pbkdf2 -in key.bin -pass pass:<replaceable>ACTUALPASSPHRASE</replaceable> | openssl enc -e -aes-128-cbc -pbkdf2 -out key.bin.new
+mv key.bin.new key.bin
+```
+This technique leaks the old passphrase, which is being replaced anyway. OpenSSL supports a number of other ways to supply the passphrases.
+
+## Rotating the key store wrapping key
+
+When using a [key store](key_store), you can connect the unwrap and wrap commands similarly. For example:
+
+```shell
+cd $PGDATA/pg_encryption/
+crypt decrypt aws --in key.bin --region us-east-1 | crypt encrypt aws --out key.bin.new --region us-east-1 --kms alias/pg-tde-master-2
+mv key.bin.new key.bin
+```
+
+!!! Note
+    You can't change the data key (the key wrapped by the master key) on an existing data directory. If you need to do that, you need to run the data directory through an upgrade process using pg_dump, pg_upgrade, or logical replication.
