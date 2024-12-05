@@ -522,6 +522,10 @@ const Page = () => {
               PG Squeeze
             </BannerWideLink>
 
+            <BannerWideLink to="/pg_extensions/pgvector">
+              pgvector
+            </BannerWideLink>
+
             <BannerWideLink to="/pg_extensions/wal2json">
               wal2json
             </BannerWideLink>
