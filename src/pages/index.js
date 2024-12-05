@@ -317,10 +317,10 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
                 AI Accelerator Overview
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines/overview/">
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
                 About Pipelines
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines/gettingstarted/">
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
                 Get Started with Pipelines
               </BannerCardLink>
             </BannerSubCard>
