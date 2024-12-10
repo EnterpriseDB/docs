@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import os
+import subprocess
 import sys
 
 parser = argparse.ArgumentParser()
@@ -10,8 +10,8 @@ parser.add_argument("workspace", help="GitHub workplace path", type=str)
 args = parser.parse_args()
 
 commands = {
-    "EnterpriseDB/cloud-native-postgres": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace }/destination",
-    "EnterpriseDB/pg4k-pgd": f"{args.workspace}/destination/scripts/source/process-pgd4k-docs.sh {args.workspace}/source {args.workspace }/destination",
+    "EnterpriseDB/cloud-native-postgres": f"{args.workspace}/destination/scripts/source/process-cnp-docs.sh {args.workspace}/source {args.workspace}/destination",
+    "EnterpriseDB/pg4k-pgd": f"{args.workspace}/destination/scripts/source/process-pgd4k-docs.sh {args.workspace}/source {args.workspace}/destination",
     "EnterpriseDB/fe": f"mkdir -p {args.workspace}/destination/icons-pkg && \
               cp -fr utils/icons-placeholder/output/* {args.workspace}/destination/icons-pkg/",
     "EnterpriseDB/LiveCompare": f"node {args.workspace}/destination/scripts/source/livecompare.js {args.workspace}/source {args.workspace}/destination --unhandled-rejections=strict",
@@ -21,9 +21,9 @@ commands = {
     "EnterpriseDB/tpa": f"{args.workspace}/destination/scripts/source/process-tpa-docs.sh {args.workspace}/source {args.workspace}/destination",
 }
 
-ret = os.system(
+ret = subprocess.call(
     f"cd {args.workspace}/destination/scripts/source && \
-                  npm ci"
+                  npm ci", shell=True
 )
 
 if ret != 0:
@@ -31,7 +31,7 @@ if ret != 0:
 
 if args.repo in commands:
     cmd = commands[args.repo]
-    ret = os.system(cmd)
+    ret = subprocess.call(cmd, shell=True)
 else:
     print(
         f"The workflow has not been configured for the {args.repo} repo",

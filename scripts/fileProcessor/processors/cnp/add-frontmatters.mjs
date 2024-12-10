@@ -51,7 +51,9 @@ navigation:
   const mkdocsYaml = yaml.load(
     await fs.readFile("mkdocs.yml", { encoding: "utf8" }),
   );
-  mkdocsYaml.nav.forEach((line) => {
+  // handle nested / labeled entries (by flattening)
+  const nav = mkdocsYaml.nav.flatMap(l => l.slice ? l : Object.values(l).flatMap(nl => nl))
+  nav.forEach((line) => {
     // make sure file extensions are stripped off.
     modifiedFrontmatter = `${modifiedFrontmatter}  - ${line.slice(0, -3)}\n`;
 
