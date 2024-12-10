@@ -311,17 +311,17 @@ const Page = () => {
             </BannerSubCard>
             <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
-              headingText="AI/ML"
-              to="/edb-postgres-ai/ai-ml"
+              headingText="AI Accelerator"
+              to="/edb-postgres-ai/ai-accelerator"
             >
-              <BannerCardLink to="/edb-postgres-ai/ai-ml/overview">
-                Overview of aidb
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
+                AI Accelerator Overview
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-ml/install-tech-preview/">
-                Install the Tech Preview
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
+                About Pipelines
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-ml/using-tech-preview/">
-                Use the Tech Preview
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
+                Get Started with Pipelines
               </BannerCardLink>
             </BannerSubCard>
 
