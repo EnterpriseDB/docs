@@ -95,6 +95,8 @@ PREVIOUS_TAG=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+1)) | tail -n
 
 cd $DESTINATION_CHECKOUT
 
+git fetch --tags
+
 PREVIOUS_COMMIT=`git rev-list -n 1 product/pg4k/$PREVIOUS_TAG || git rev-list -n 1 HEAD`
 PREVIOUS_COMMIT_DESC=`git rev-list --format=oneline -n 1 $PREVIOUS_COMMIT`
 
