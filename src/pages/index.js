@@ -373,10 +373,18 @@ const Page = () => {
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
               EDB CloudNativePG Global Cluster
+              <br />
+              <small>
+                <small>Formerly EDB Postgres Distributed for Kubernetes</small>
+              </small>
             </BannerWideLink>
 
             <BannerWideLink to="/postgres_for_kubernetes/latest/">
               EDB CloudNativePG Cluster
+              <br />
+              <small>
+                <small>Formerly EDB Postgres for Kubernetes</small>
+              </small>
             </BannerWideLink>
 
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">
