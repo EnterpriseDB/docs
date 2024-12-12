@@ -9,11 +9,74 @@ import {
   appendFileSync,
   existsSync,
 } from "fs";
+import core from "@actions/core";
 import { load } from "js-yaml";
+import SourceMap from "js-yaml-source-map";
+import Ajv from "ajv";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import path from "path";
 import { micromark } from "micromark";
+import { exit } from "process";
+
+let ghCore = core;
+
+if (!process.env.GITHUB_REF) {
+  ghCore = {
+    getInput: (key) => undefined,
+    summary: {
+      addRaw: (markup) => {
+        console.log(markup);
+      },
+      write: () => {},
+      stringify: () => {},
+    },
+    setFailed: (message) => {
+      console.error(message);
+    },
+    error: (message, properties = {}) => {
+      console.error(
+        "⚠️⚠️  " +
+          formatErrorPath(
+            properties.file,
+            properties.startLine,
+            properties.startColumn,
+          ) +
+          "\n\t" +
+          message,
+      );
+    },
+    warning: (message, properties = {}) => {
+      console.warn(
+        "⚠️   " +
+          formatErrorPath(
+            properties.file,
+            properties.startLine,
+            properties.startColumn,
+          ) +
+          "\n\t" +
+          message,
+      );
+    },
+    notice: (message, properties = {}) => {
+      console.log(
+        formatErrorPath(
+          properties.file,
+          properties.startLine,
+          properties.startColumn,
+        ) +
+          "\n\t" +
+          message,
+      );
+    },
+  };
+
+  function formatErrorPath(filePath, line, column) {
+    return filePath
+      ? `${path.relative(docsBase, filePath)}:${line}:${column}`
+      : "";
+  }
+}
 
 let argv = yargs(hideBin(process.argv))
   .usage("Usage: $0 -p <path>")
@@ -37,7 +100,7 @@ function converter(markdown) {
 }
 
 function error_and_exit(message) {
-  console.error(`Error: ${message}`);
+  ghCore.setFailed(`Error: ${message}`);
   process.exit(1);
 }
 
@@ -88,11 +151,50 @@ function titles(type) {
   }
 }
 
+const loadWithSchema = (() => {
+  const ajv = new Ajv({ allErrors: true });
+  const validators = {};
+
+  return (yamlFile, schemaFile) => {
+    let validator = validators[schemaFile];
+    if (!validator) {
+      const schema = JSON.parse(
+        readFileSync(path.join(import.meta.dirname, schemaFile)),
+      );
+      validator = validators[schemaFile] = ajv.compile(schema);
+    }
+
+    const sourceMap = new SourceMap();
+    let result = load(readFileSync(yamlFile, "utf8"), {
+      listener: sourceMap.listen(),
+    });
+    if (!validator(result)) {
+      for (let error of validator.errors) {
+        let yamlPath = error.instancePath.split("/");
+        let targetProp = yamlPath.at(-1);
+        let loc = null;
+        while (!loc && yamlPath.length) {
+          loc = sourceMap.lookup(yamlPath.join("."));
+          yamlPath.pop();
+        }
+        ghCore.warning(`${targetProp}: ${error.message}`, {
+          file: path.relative(docsBase, yamlFile),
+          startLine: loc?.line,
+          startColumn: loc?.column,
+        });
+      }
+    }
+    return result;
+  };
+})();
+
 let basedir = false;
 let basepath = argv.path;
+const docsBase = basepath.split(/product_docs|advocacy_docs/)[0];
 
 // Open the src/meta.yml file and parse it.
-let meta = load(readFileSync(path.join(basepath, "src/meta.yml"), "utf8"));
+const metaFilename = path.join(basepath, "src/meta.yml");
+let meta = loadWithSchema(metaFilename, "meta-schema.json");
 
 // Now we scan the other files in src, on this pass, acquiring the meta data
 
@@ -110,7 +212,10 @@ let relnotes = new Map();
 
 for (let i = 0; i < files.length; i++) {
   let file = files[i];
-  let relnote = load(readFileSync(path.join(basepath, "src", file), "utf8"));
+  let relnote = loadWithSchema(
+    path.join(basepath, "src", file),
+    "relnote-schema.json",
+  );
   relnotes.set(file, relnote);
 }
 
@@ -275,7 +380,10 @@ for (let [file, relnote] of relnotes) {
           let key = col.key.replace("$", "");
           line += ` ${relnote.meta[key]} |`;
         } else {
-          error_and_exit(`${file}: Unknown column key: ${col.key}`);
+          ghCore.error(`Unknown column key: ${col.key}`, {
+            file: path.relative(docsBase, metaFilename),
+          });
+          error_and_exit(`Invalid release notes definition.`);
         }
         break;
     }
@@ -301,7 +409,10 @@ if (meta.precursor !== undefined) {
             let key = col.key.replace("$", "");
             line += ` ${prec.meta[key]} |`;
           } else {
-            error_and_exit(`Unknown column key ${col.key} in meta.yml`);
+            ghCore.error(`Unknown column key: ${col.key}`, {
+              file: path.relative(docsBase, metaFilename),
+            });
+            error_and_exit(`Invalid meta.yml`);
           }
           break;
       }
