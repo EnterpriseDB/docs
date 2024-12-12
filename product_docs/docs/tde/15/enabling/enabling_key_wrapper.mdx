@@ -1,0 +1,45 @@
+---
+title: "Enabling a mechanism to protect the data encryption key on an existing TDE-encrypted cluster" 
+description: Learn how to enable a mechanism to protect the data encryption key on an existing TDE-encrypted database cluster.
+---
+
+When you create a TDE-enabled database cluster, `initdb` generates a data encryption key and stores it in `pg_encryption/key.bin`. Since this file is stored in plaintext, TDE requires an additional mechanism to [secure the data encryption key](../secure_key/).
+
+You can chose to [disable key wrapping](../secure_key/disabling_key) for your data encryption key. Although this setup is not recommended, you might have chosen to leave your key unprotected to facilitate managing the cluster for testing or demo purposes.
+
+If you disabled key wrapping, but later decide to enable a mechanism that secures your encryption key, you can enabled it at a later point.
+
+This example walks you through adding a protection mechanism while updating the data encryption key with a passphrase.
+
+Store the passphrase in a file accesible by initdb: 
+
+```
+echo "edbedbedb" > /var/lib/postgresql/pass.bin
+```
+
+Create a new file 
+
+```
+cat $PGDATA/pg_encryption/key.bin | openssl enc -e -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql pass.bin -out $PGDATA/pg_encryption/key.bin.WRAP
+```
+
+Back up the unwrapped data encryption ket and replace it with the wrapped version:
+
+```
+cp $PGDATA/pg_encryption/key.bin $PGDATA/pg_encryption/key.bin.NOWRAP
+cp $PGDATA/pg_encryption/key.bin.WRAP $PGDATA/pg_encryption/key.bin
+```
+
+Back up and modify your database configuration for unwrapping:
+
+```
+cp $PGDATA/postgresql.conf $PGDATA/postgresql.conf.NOWRAP
+sed -i "s|data_encryption_key_unwrap_command.*|data_encryption_key_unwrap_command = 'openssl enc -d -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -in \"%p\"'|" $PGDATA/postgresql.conf
+cp $PGDATA/postgresql.conf $PGDATA/postgresql.conf.WRAP
+```
+
+Restart your database cluster to populate the updated data encryption key configuration:
+
+```
+pg_ctl start
+```
