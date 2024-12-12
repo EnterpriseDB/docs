@@ -1,0 +1,57 @@
+name: generate release notes
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "**/src/*.yml"
+      - "**/src/*.yaml"
+jobs: 
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          path: content
+          sparse-checkout: |
+            advocacy_docs
+            product_docs
+
+      - name: Checkout relgen tool
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          path: tools
+          sparse-checkout: |
+            tools
+      
+      - name: setup node
+        uses: actions/setup-node@v4
+
+      - name: install dependencies
+        run: npm --prefix ./tools/tools/automation/generators/relgen ci
+
+      # TODO: limit this to paths that have actually *changed*
+      - name: regenerate relnotes
+        run: |
+          shopt -s globstar
+          for rnmetapath in ./content/**/src/meta.yml; do
+          ./tools/tools/automation/generators/relgen/relgen.js -p ${rnmetapath%/src/meta.yml}
+          done
+
+      - name: check for modified files
+        id: changes
+        run: |
+          cd ./content
+          echo "files=`git ls-files --other --modified --exclude-standard | wc -l`" >> $GITHUB_OUTPUT
+        
+      - name: commit modified files
+        if: steps.changes.outputs.files > 0
+        run: |
+          cd ./content
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "update generated release notes"
+          git push

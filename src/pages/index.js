@@ -233,7 +233,7 @@ const Page = () => {
                 to="/edb-postgres-ai/overview/latest-release-news"
                 iconName={iconNames.SMALL_DASHBOARD}
               >
-                Release News - 24Q3
+                Release News - 24Q4
               </BannerWideCardLink>
             </BannerWideCard>
             <BannerSubCard
@@ -372,11 +372,19 @@ const Page = () => {
             />
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
-              EDB Postgres Distributed for Kubernetes
+              EDB CloudNativePG Global Cluster
+              <br />
+              <small>
+                <small>Formerly EDB Postgres Distributed for Kubernetes</small>
+              </small>
             </BannerWideLink>
 
             <BannerWideLink to="/postgres_for_kubernetes/latest/">
-              EDB Postgres for Kubernetes
+              EDB CloudNativePG Cluster
+              <br />
+              <small>
+                <small>Formerly EDB Postgres for Kubernetes</small>
+              </small>
             </BannerWideLink>
 
             <BannerWideLink to="/supported-open-source/cloud_native_pg/">

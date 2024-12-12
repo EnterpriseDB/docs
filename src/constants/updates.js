@@ -2,10 +2,26 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
-    title: "Postgres Distributed for Kubernetes 1.0.1",
+    title: "EDB Postgres AI Q4 Release News",
+    icon: IconNames.SMALL_DASHBOARD,
+    description:
+      "EDB Postgres AI's Q4 announcements include AI Accelerator and previews of EDB's Software Deployment and Analytics Accelerator.",
+    url: "/edb-postgres-ai/overview/latest-release-news/",
+    moreUrl: "/edb-postgres-ai/overview/latest-release-news/",
+  },
+  {
+    title: "EDB Postgres Advanced Server 17.2",
+    icon: IconNames.EDB_EPAS,
+    description:
+      "EDB Postgres Advanced Server 17.2 is built on open-source PostgreSQL 17.2, which introduces myriad enhancements that enable databases to scale up and scale out in more efficient ways.",
+    url: "/epas/latest/",
+    moreUrl: "/epas/latest/epas_rel_notes/epas17_2_rel_notes/",
+  },
+  {
+    title: "EDB CloudNativePG Global Cluster 1.0.1",
     icon: IconNames.KUBERNETES,
     description:
-      "PGD4K brings LDAP authentication configuration, tablespace configuration and more in this patch release.",
+      "EDB CloudNativePG Global Cluster brings LDAP authentication configuration, tablespace configuration and more in this patch release.",
     url: "/postgres_distributed_for_kubernetes/latest/",
     moreUrl:
       "/postgres_distributed_for_kubernetes/latest/rel_notes/1_0_1_rel_notes/",

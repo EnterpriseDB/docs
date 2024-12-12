@@ -6,7 +6,7 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkStringify from "remark-stringify";
 import admonitions from "remark-admonitions";
 import visit from "unist-util-visit";
-import isAbsoluteUrl from "is-absolute-url";
+import path from "path";
 
 export const process = async (filename, content) => {
   const processor = unified()
@@ -41,8 +41,11 @@ function linkRewriter() {
     // link rewriter:
     // - make relative to parent (because gatsby URL paths are always directories)
     visit(tree, "link", (node) => {
-      if (isAbsoluteUrl(node.url) || node.url[0] === "/") return;
-      if (!node.url.includes(".yaml")) return;
+      let url = new URL(node.url, "fake://do/x/");
+      // don't mess with absolute URLs or absolute paths
+      if (!url.href.startsWith("fake://do/x/")) return;
+      // only rewrite yaml file links (for historical reasons, these are resolved differently from ordinary paths)
+      if (!['.yaml', '.yml'].includes(path.extname(url.pathname))) return;
       node.url = node.url.replace(/^\/?/, "../");
     });
   };

@@ -2,47 +2,89 @@ name: sync and process files from another repo
 on:
   repository_dispatch:
     types: [sync-to-docs]
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Repository to source documentation from
+        required: true
+        type: string
+      ref: 
+        description: Ref name in the source repo
+        required: true
+        type: string
+      sha:
+        description: SHA in the source repo, should correspond to ref
+        required: true
+        type: string
+
 jobs:
   sync-and-process-files:
+    permissions:
+      contents: write
+      pull-requests: write    
     env:
+      SOURCE_REPO: ${{ github.event.client_payload.repo || inputs.repo }}
+      SOURCE_REF: ${{ github.event.client_payload.ref || inputs.ref }}
+      SOURCE_SHA: ${{ github.event.client_payload.sha || inputs.sha }}
+
       # The body text of the PR requests that will be created
-      BODY: "Automated changes to pull in and process updates from repo: ${{ github.event.client_payload.repo }} ref: ${{ github.event.client_payload.ref }}"
+      BODY: |
+        Automated changes to pull in and process updates from repo: ${{ github.event.client_payload.repo || inputs.repo }} ref: ${{ github.event.client_payload.ref || inputs.ref }}
+
+        ## Reviewing
+        - Look for formatting that may not work as intended
+        - Watch out for local changes (factual corrections, copy edits, link fixes) that may be overwritten 
+        - You may need to resolve conflicts before merging - check the upstream repo for context when this isn't obvious
 
       # The name of the branch that will be created
-      BRANCH_NAME: automatic_docs_update/repo_${{ github.event.client_payload.repo }}/ref_${{ github.event.client_payload.ref }}
-
-      # The users that should be assigned to the PR as a comma separated list of github usernames.
-      REVIEWERS:
+      BRANCH_NAME: automatic_docs_update/repo_${{ github.event.client_payload.repo || inputs.repo }}/ref_${{ github.event.client_payload.ref || inputs.ref }}
 
       # The title of the PR request that will be created
-      TITLE: "Process changes to docs from: repo: ${{ github.event.client_payload.repo }} ref: ${{ github.event.client_payload.ref }}"
+      TITLE: "Process changes to docs from: repo: ${{ github.event.client_payload.repo || inputs.repo }} ref: ${{ github.event.client_payload.ref || inputs.ref }}"
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
+      - name: Check inputs
+        if: ${{ !env.SOURCE_REPO || !env.SOURCE_REF || !env.SOURCE_SHA }}
+        run: |
+          echo "::error title=missing inputs::must provide source repo, source ref and source SHA"
+          exit 1
+
       - name: Checkout destination
         uses: actions/checkout@v4
         with:
           path: destination
+          lfs: true
 
       - name: Checkout source repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.client_payload.sha }}
-          repository: ${{ github.event.client_payload.repo }}
+          ref: ${{ env.SOURCE_SHA }}
+          repository: ${{ env.SOURCE_REPO }}
           token: ${{ secrets.SYNC_FILES_TOKEN }}
           path: source
 
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: "14"
+          node-version: "18"
 
       - name: update npm
-        run: npm install -g npm@7
+        run: npm install -g npm@10
 
       - name: Process changes
-        run: ${{ github.workspace }}/destination/scripts/source/dispatch_product.py ${{ github.event.client_payload.repo }}  ${{ github.workspace }}
+        id: changes
+        run: ${{ github.workspace }}/destination/scripts/source/dispatch_product.py ${{env.SOURCE_REPO }}  ${{ github.workspace }}
         working-directory: source
+
+      - name: Update PR body
+        if: ${{ steps.changes.outputs.new-tag }}
+        run: |
+          echo 'BODY<<EOF' >> $GITHUB_ENV
+          echo "$BODY" >> $GITHUB_ENV
+          echo '## After merging' >> $GITHUB_ENV
+          echo 'Create a tag named `${{ steps.changes.outputs.new-tag }}` that points to the merge commit' >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV          
 
       - name: Create pull request
         if: ${{ !env.ACT }}
@@ -50,7 +92,9 @@ jobs:
         with:
           body: ${{ env.BODY }}
           branch: ${{ env.BRANCH_NAME }}
+          base: develop
           path: destination/
-          reviewers: ${{ env.REVIEWERS }}
           title: ${{ env.TITLE }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Sync ${{ env.SOURCE_REPO }} ${{ steps.changes.outputs.new-tag }}"
+      
