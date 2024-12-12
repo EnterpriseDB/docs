@@ -2,10 +2,10 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
-    title: "Postgres Distributed for Kubernetes 1.0.1",
+    title: "EDB CloudNativePG Global Cluster 1.0.1",
     icon: IconNames.KUBERNETES,
     description:
-      "PGD4K brings LDAP authentication configuration, tablespace configuration and more in this patch release.",
+      "EDB CloudNativePG Global Cluster brings LDAP authentication configuration, tablespace configuration and more in this patch release.",
     url: "/postgres_distributed_for_kubernetes/latest/",
     moreUrl:
       "/postgres_distributed_for_kubernetes/latest/rel_notes/1_0_1_rel_notes/",
