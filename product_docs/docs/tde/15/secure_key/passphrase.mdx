@@ -19,6 +19,8 @@ The key wrap command receives the plaintext key on standard input and needs to p
 
 Utility programs like pg_rewind and pg_upgrade operate directly on the data directory or copies, such as backups. These programs also need to be told about the key unwrap command, depending on the circumstances. They each have command line options for this purpose.
 
+## Using environment variables to set wrap and unwrap commands
+
 To simplify operations, you can also set the key wrap and unwrap commands in environment variables. These are accepted by all affected applications if you don't provide the corresponding command line options. For example:
 
 ```shell
@@ -41,3 +43,25 @@ You also need an entry like in `/etc/sudoers`:
 ```
 postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
 ```
+
+## Providing the passphrase through a file
+
+Another way to simplify operations is to store the passphrase in plaintext, so you can reference the file containing the passphrase when securing the data encryption files.
+
+!!!important
+   You should only use this method for testing or demonstration purposes. Don't store your passphrase in a plaintext file for production environments.
+!!!
+
+1.  Store the passphrase in a file accessible by initdb named `pass.bin`:
+    
+    ```
+    echo "<passphrase>" > /var/lib/postgresql/pass.bin
+    ```
+
+1.  Reference the file that contains the passphrase when initializing the TDE-enabled database cluster using the `-pass file:<path_to_file>` flag: 
+
+    ```
+    initdb --data-encryption \
+      --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -out "%p"' \
+      --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -in "%p"'
+    ```
