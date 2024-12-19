@@ -32,3 +32,45 @@ The following custom GUCs control the EDB Postgres Tuner extension behavior. If 
 - `edb_pg_tuner.naptime` &mdash; Sets the interval between each check in seconds. The default is 600 seconds (10 minutes).
 
 - `edb_pg_tuner.max_wal_size_limit` &mdash; Sets the maximum value for the `max_wal_size` recommendation. The default is `0`, which sets no limit.
+
+The following custom GUCs control the edb_pg_tuner work_mem tuning behavior for Postgres 14 and higher.  
+
+- `edb_pg_tuner.tune_work_mem` &mdash; Dynamically increase the work mem for queries with disk spill to improve performance. The default is true.
+
+- `edb_pg_tuner.work_mem_pool` &mdash; Maximum additional work_mem reserve that is allocated to queries with disk spill. The default is 2GB.
+
+- `edb_pg_tuner.log_min_duration` &mdash; Execution time threshold in ms for statistics logging. The default is 0, which logs everything. The value -1 will turn off logging.
+
+- `edb_pg_tuner.buffer_size` &mdash; Maximum query count for tracking statistics. The default is 5000.
+
+
+## Auto-tuning work_mem
+
+For Postgres 14 and higher, you can use edb_pg_tuner to optimize query performance by proactively adjusting the `work_mem` parameter based on historical execution data. This can reduce disk I/O and improve overall query performance.
+
+Memory Pool and Usage Limits:
+Before a query is planned and executed, edb_pg_tuner will check the hash table to determine if a previous execution of the query resulted in disk spills. If there was a spill, a new `work_mem` value is calculated using the following formula:
+
+```bash
+new_work_mem = ceil(max(1.75 * previous_sort_spill, 5.0 * previous_hash_spill))
+```
+This calculation aims to allocate sufficient memory to avoid disk spills for the current execution. 
+In-memory sorts and hash aggregates require more memory than when run with disk spills. 
+While calculating the exact amount is non-trivial (if possible at all), the values of 1.75 and 5 have worked well in test cases. 
+
+### Limitations
+
+- The `new_work_mem` value will be subject to the memory pool usage limits.
+- A memory pool of `edb_pg_tuner.work_mem_pool` size is allocated to address these additional memory requirements. 
+- A particular query can utilize a maximum of 25% of this memory pool. 
+- If the required memory exceeds either the remaining space in the pool or the 25% limit, the `work_mem` will not be increased, and the query will execute with the default `work_mem` setting.
+- Because `work_mem` is allocated from a pool on a per-query basis, based on the highest disk spill previously seen for the query, it's possible for memory to be over allocated, because each query might use that amount of memory in each of multiple sort or hash aggregate nodes in the execution plan.
+
+## Logging and Auto-tuning:
+
+- The queries that exceed the `edb_pg_tuner.log_min_duration` execution time are logged. 
+- The sort and hash aggregate nodes of the query plan that caused the biggest spill to disk including the parallel workers are added. 
+- This data along with the number of times executed and query id is stored in a hash table in shared memory.
+- If the `edb_pg_tuner.log_min_duration` is disabled, the auto tuning will still occur for already logged queries.
+- If the `edb_pg_tuner.tune_work_mem` is disabled, only statistics will be logged for eligible queries.
+- If both are disabled, then neither function is performed.
