@@ -107,6 +107,129 @@ ALTER SYSTEM SET maintenance_work_mem = '524 MB';
 ALTER SYSTEM SET shared_buffers = '1474 MB';
 ```
 
+## Auto-tuning `work_mem`
+
+For Postgres 14 and higher, you can use EDB Postgres Tuner to optimize query performance by proactively adjusting the `work_mem` parameter based on historical execution data. This can reduce disk I/O and improve overall query performance.
+
+### Memory Pool and Usage Limits:
+
+Before a query is planned and executed, EDB Postgres Tuner will check the hash table to determine if a previous execution of the query resulted in disk spills. If there was a spill, a new `work_mem` value is calculated using the following formula:
+
+```bash
+new_work_mem = ceil(max(1.75 * previous_sort_spill, 5.0 * previous_hash_spill))
+```
+- This calculation aims to allocate sufficient memory to avoid disk spills for the current execution. 
+- In-memory sorts and hash aggregates require more memory than when run with disk spills. 
+- While calculating the exact amount is non-trivial (if possible at all), the values of 1.75 and 5 have worked well in test cases. 
+
+### Requirements and Limitations for auto-tuning `work_mem`
+
+- The new `work_mem` value will be subject to the memory pool usage limits.
+- A memory pool of `edb_pg_tuner.work_mem_pool` size is allocated to address these additional memory requirements. 
+- A particular query can utilize a maximum of 25% of this memory pool. 
+- If the required memory exceeds either the remaining space in the pool or the 25% limit, the `work_mem` will not be increased, and the query will execute with the default `work_mem` setting.
+- Because `work_mem` is allocated from a pool on a per-query basis, based on the highest disk spill previously seen for the query, it's possible for memory to be over allocated, because each query might use that amount of memory in each of multiple sort or hash aggregate nodes in the execution plan.
+
+- The following example shows `work_mem` automatically bumped based on a disk spill for the previous query execution:
+```sql
+SET client_min_messages='debug2';
+SET
+EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 6680971448440786597, duration: 916.011 ms, disk spill: 209504 KiB
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=215219.55..448152.39 rows=1999999 width=97) (actual time=302.233..845.138 rows=2000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=214219.52..216302.86 rows=833333 width=97) (actual time=298.210..384.456 rows=666667 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 66872kB
+         Worker 0:  Sort Method: external merge  Disk: 71264kB
+         Worker 1:  Sort Method: external merge  Disk: 71368kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..41120.33 rows=833333 width=97) (actual time=0.021..77.510 rows=666667 loops=3)
+ Planning Time: 0.395 ms
+ Execution Time: 919.485 ms
+(11 rows)
+
+EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 6680971448440786597, bumping work_mem from 4096 KiB to 366632 KiB based on disk spill 209504 KiB
+DEBUG:  query: 6680971448440786597, reset work_mem from 366632 KiB to 4096 KiB
+DEBUG:  query: 6680971448440786597, duration: 589.159 ms, disk spill: 0 KiB
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=262102.69..267102.69 rows=2000000 width=97) (actual time=454.984..536.848 rows=2000000 loops=1)
+   Sort Key: abalance, aid
+   Sort Method: quicksort  Memory: 283528kB
+   ->  Seq Scan on pgbench_accounts  (cost=0.00..52787.00 rows=2000000 width=97) (actual time=0.032..198.565 rows=2000000 loops=1)
+ Planning Time: 0.071 ms
+ Execution Time: 628.238 ms
+(6 rows)
+```
+
+- The following example shows that when the disk spill is more than 25% of the reserved memory, `work_mem` is not increased:
+
+```sql
+postgres=# EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+
+DEBUG:  query: 13238408051869520710, duration: 5836.414 ms, disk spill: 732944 KiB
+                                                                    QUERY PLAN
+
+-----------------------------------------------------------------------------------------------
+----------------------------------------------------
+ Gather Merge  (cost=781842.37..1601931.65 rows=7041419 width=97) (actual time=3072.305..5574.8
+60 rows=7000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=780842.35..788177.16 rows=2933925 width=97) (actual time=3011.208..3413.014
+rows=2333333 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 262128kB
+         Worker 0:  Sort Method: external merge  Disk: 234416kB
+         Worker 1:  Sort Method: external merge  Disk: 236400kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..144773.25 rows=2933925 width=97
+) (actual time=0.030..473.394 rows=2333333 loops=3)
+ Planning Time: 0.511 ms
+ Execution Time: 5849.844 ms
+(11 rows)
+
+postgres=# EXPLAIN ANALYZE SELECT * FROM pgbench_accounts ORDER BY abalance, aid;
+DEBUG:  query: 13238408051869520710, duration: 5705.320 ms, disk spill: 732944 KiB
+                                                                    QUERY PLAN
+
+-----------------------------------------------------------------------------------------------
+----------------------------------------------------
+ Gather Merge  (cost=783131.43..1604535.04 rows=7052704 width=97) (actual time=2905.680..5433.5
+50 rows=7000000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort  (cost=782131.41..789477.98 rows=2938627 width=97) (actual time=2865.627..3264.335
+rows=2333333 loops=3)
+         Sort Key: abalance, aid
+         Sort Method: external merge  Disk: 235720kB
+         Worker 0:  Sort Method: external merge  Disk: 241464kB
+         Worker 1:  Sort Method: external merge  Disk: 255760kB
+         ->  Parallel Seq Scan on pgbench_accounts  (cost=0.00..145005.27 rows=2938627 width=97
+) (actual time=0.024..412.503 rows=2333333 loops=3)
+ Planning Time: 0.061 ms
+ Execution Time: 5718.664 ms
+(11 rows)
+```
+
+## Logging 
+
+For Postgres 14 and higher, you can use EDB Postgres Tuner to log query statistics.
+
+### Requirements and Limitations for logging:
+
+- The queries that exceed the `edb_pg_tuner.log_min_duration` execution time are logged. 
+- The sort and hash aggregate nodes of the query plan that caused the biggest spill to disk including the parallel workers are added. 
+- This data along with the number of times executed and query id is stored in a hash table in shared memory.
+- If the `edb_pg_tuner.log_min_duration` is disabled, the auto tuning will still occur for already logged queries.
+- If the `edb_pg_tuner.tune_work_mem` is disabled, only statistics will be logged for eligible queries.
+- If both are disabled, then neither function is performed.
+
 ## Monitoring
 
 You can use the following SQL functions to monitor statistics information:
@@ -159,48 +282,15 @@ postgres=# SELECT * FROM edb_pg_tuner_query_stats() WHERE sort_spill > 0 OR hash
  3595982096380934851 |        3 |    1256528 |          1 |          0 |          0
 (4 rows)
 ```
-## Recommended GUCs
 
-EDB Postgres Tuner can recommend the following GUCs. The `static` category provides fixed recommendation settings. The `dynamic` category uses specific algorithms to suggest a better setting according to your workload or hardware resources.
+!!!Warning
 
-!!! Note
-    If `edb_pg_tuner.autotune` is enabled on EDB Postgres Advanced Server 15 or later, any GUC that requires a restart is set when the service starts. Hence, you don't need to restart the service to apply the recommendations. On earlier EDB Postgres Advanced Server versions (14 and earlier), you do need to restart the service.
+The `edb_pg_tuner_global_stats()` and `edb_pg_tuner_query_stats()` functions are supported for Postgres 14 and higher versions.  For Postgres 13 and lower versions, the functions will return the following error:
 
-| GUC                            | Category | Recommendation    | Version |
-| ------------------------------ | -------- | ----------------- | ------- |
-| autovacuum                     | static   | on                |         |
-| checkpoint_completion_target   | static   | 0.9               |         |
-| effective_cache_size           | dynamic  | based on resources|         |
-| enable_async_append            | static   | on                |         |
-| enable_bitmapscan              | static   | on                |         |
-| enable_gathermerge             | static   | on                |         |
-| enable_group_by_reordering     | static   | on                |         |
-| enable_hashagg                 | static   | on                |         |
-| enable_hashjoin                | static   | on                |         |
-| enable_incremental_sort        | static   | on                | 13+     |
-| enable_indexonlyscan           | static   | on                |         |
-| enable_indexscan               | static   | on                |         |
-| enable_material                | static   | on                |         |
-| enable_memoize                 | static   | on                | 14+     |
-| enable_mergejoin               | static   | on                |         |
-| enable_nestloop                | static   | on                |         |
-| enable_parallel_append         | static   | on                | 11+     |
-| enable_parallel_hash           | static   | on                | 11+     |
-| enable_partition_pruning       | static   | on                | 11+     |
-| enable_partitionwise_aggregate | static   | on                |         |
-| enable_partitionwise_join      | static   | on                |         |
-| enable_seqscan                 | static   | on                |         |
-| enable_sort                    | static   | on                |         |
-| enable_tidscan                 | static   | on                |         |
-| fsync                          | static   | on                |         |
-| full_page_writes               | static   | on                |         |
-| log_checkpoints                | static   | on                |         |
-| max_wal_size                   | dynamic  | based on workload |         |
-| maintenance_work_mem           | dynamic  | based on resources|         |
-| parallel_leader_participation  | static   | on                |         |
-| seq_page_cost                  | static   | 1.0               |         |
-| shared_buffers                 | dynamic  | based on resources|         |
-| track_activities               | static   | on                |         |
-| track_counts                   | static   | on                |         |
-| zero_damaged_pages             | static   | on                |         |
+```sql
+ postgres=# SELECT * FROM edb_pg_tuner_global_stats();
+ERROR:  "edb_pg_tuner_global_stats" is not supported in this version
 
+postgres=# SELECT * FROM edb_pg_tuner_query_stats();
+ERROR:  "edb_pg_tuner_query_stats" is not supported in this version
+```

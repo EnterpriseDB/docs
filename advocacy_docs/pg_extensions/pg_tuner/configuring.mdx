@@ -43,39 +43,48 @@ The following custom GUCs control the EDB Postgres Tuner `work_mem` tuning behav
 
 - `edb_pg_tuner.buffer_size` &mdash; Maximum query count for tracking statistics. The default is 5000.
 
+## Recommended GUCs
 
-## Auto-tuning `work_mem`
+EDB Postgres Tuner can recommend the following GUCs. The `static` category provides fixed recommendation settings. The `dynamic` category uses specific algorithms to suggest a better setting according to your workload or hardware resources.
 
-For Postgres 14 and higher, you can use EDB Postgres Tuner to optimize query performance by proactively adjusting the `work_mem` parameter based on historical execution data. This can reduce disk I/O and improve overall query performance.
+| GUC                            | Category | Recommendation    | Version |
+| ------------------------------ | -------- | ----------------- | ------- |
+| autovacuum                     | static   | on                |         |
+| checkpoint_completion_target   | static   | 0.9               |         |
+| effective_cache_size           | dynamic  | based on resources|         |
+| enable_async_append            | static   | on                |         |
+| enable_bitmapscan              | static   | on                |         |
+| enable_gathermerge             | static   | on                |         |
+| enable_group_by_reordering     | static   | on                |         |
+| enable_hashagg                 | static   | on                |         |
+| enable_hashjoin                | static   | on                |         |
+| enable_incremental_sort        | static   | on                | 13+     |
+| enable_indexonlyscan           | static   | on                |         |
+| enable_indexscan               | static   | on                |         |
+| enable_material                | static   | on                |         |
+| enable_memoize                 | static   | on                | 14+     |
+| enable_mergejoin               | static   | on                |         |
+| enable_nestloop                | static   | on                |         |
+| enable_parallel_append         | static   | on                | 11+     |
+| enable_parallel_hash           | static   | on                | 11+     |
+| enable_partition_pruning       | static   | on                | 11+     |
+| enable_partitionwise_aggregate | static   | on                |         |
+| enable_partitionwise_join      | static   | on                |         |
+| enable_seqscan                 | static   | on                |         |
+| enable_sort                    | static   | on                |         |
+| enable_tidscan                 | static   | on                |         |
+| fsync                          | static   | on                |         |
+| full_page_writes               | static   | on                |         |
+| log_checkpoints                | static   | on                |         |
+| max_wal_size                   | dynamic  | based on workload |         |
+| maintenance_work_mem           | dynamic  | based on resources|         |
+| parallel_leader_participation  | static   | on                |         |
+| seq_page_cost                  | static   | 1.0               |         |
+| shared_buffers                 | dynamic  | based on resources|         |
+| track_activities               | static   | on                |         |
+| track_counts                   | static   | on                |         |
+| zero_damaged_pages             | static   | on                |         |
 
-### Memory Pool and Usage Limits:
-
-Before a query is planned and executed, EDB Postgres Tuner will check the hash table to determine if a previous execution of the query resulted in disk spills. If there was a spill, a new `work_mem` value is calculated using the following formula:
-
-```bash
-new_work_mem = ceil(max(1.75 * previous_sort_spill, 5.0 * previous_hash_spill))
-```
-- This calculation aims to allocate sufficient memory to avoid disk spills for the current execution. 
-- In-memory sorts and hash aggregates require more memory than when run with disk spills. 
-- While calculating the exact amount is non-trivial (if possible at all), the values of 1.75 and 5 have worked well in test cases. 
-
-### Requirements and Limitations
-
-- The `new_work_mem` value will be subject to the memory pool usage limits.
-- A memory pool of `edb_pg_tuner.work_mem_pool` size is allocated to address these additional memory requirements. 
-- A particular query can utilize a maximum of 25% of this memory pool. 
-- If the required memory exceeds either the remaining space in the pool or the 25% limit, the `work_mem` will not be increased, and the query will execute with the default `work_mem` setting.
-- Because `work_mem` is allocated from a pool on a per-query basis, based on the highest disk spill previously seen for the query, it's possible for memory to be over allocated, because each query might use that amount of memory in each of multiple sort or hash aggregate nodes in the execution plan.
-
-## Logging and Auto-tuning
-
-For Postgres 14 and higher, you can use EDB Postgres Tuner to log query statistics.
-
-### Requirements and Limitations
-
-- The queries that exceed the `edb_pg_tuner.log_min_duration` execution time are logged. 
-- The sort and hash aggregate nodes of the query plan that caused the biggest spill to disk including the parallel workers are added. 
-- This data along with the number of times executed and query id is stored in a hash table in shared memory.
-- If the `edb_pg_tuner.log_min_duration` is disabled, the auto tuning will still occur for already logged queries.
-- If the `edb_pg_tuner.tune_work_mem` is disabled, only statistics will be logged for eligible queries.
-- If both are disabled, then neither function is performed.
+!!! Note
+    If `edb_pg_tuner.autotune` is enabled on EDB Postgres Advanced Server 15 or later, any GUC that requires a restart is set when the service starts. Hence, you don't need to restart the service to apply the recommendations. 
+    On earlier EDB Postgres Advanced Server versions (14 and earlier), you do need to restart the service.
