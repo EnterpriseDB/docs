@@ -91,12 +91,14 @@ git fetch --tags
 LATEST_TAG=`git tag | sort -V -r | head -n 1`
 CURRENT_TAG=`git describe --exact-match --tags || echo "$LATEST_TAG-next"`
 CURRENT_TAG_INDEX=`git tag | sort -V -r | grep -n $CURRENT_TAG | cut -d : -f 1 || echo 0`
-PREVIOUS_TAG=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+1)) | tail -n 1`
+PREVIOUS_TAGS=`git tag | sort -V -r | head -n $(($CURRENT_TAG_INDEX+30)) | tail -n 30`
 
 cd $DESTINATION_CHECKOUT
 
 git fetch --tags
 
+PREVIOUS_DOCS_TAGS=`git for-each-ref --format='%(refname:short)' refs/tags/product/pg4k | sort -V -r | cut -d / -f 3`
+PREVIOUS_TAG=`comm -12 <(echo "$PREVIOUS_DOCS_TAGS" | sort) <(echo "$PREVIOUS_TAGS" | sort) | sort -V -r | head -n 1`
 PREVIOUS_COMMIT=`git rev-list -n 1 product/pg4k/$PREVIOUS_TAG || git rev-list -n 1 HEAD`
 PREVIOUS_COMMIT_DESC=`git rev-list --format=oneline -n 1 $PREVIOUS_COMMIT`
 
@@ -108,9 +110,6 @@ fi
 
 echo "Applying diff between $PREVIOUS_TAG and $CURRENT_TAG, including local changes since $PREVIOUS_COMMIT_DESC" 
 set -e
-
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
 # create a temporary worktree to avoid messing up source repo (for local work; CI doesn't care)
 cd $SOURCE_CHECKOUT
@@ -163,4 +162,4 @@ git branch -D temp/docs-import-$PREVIOUS_TAG
 
 cd $CWD
 
-echo "new-tag=product/pg4k/$CURRENT_TAG" >> $GITHUB_OUTPUT
+echo "new-tag=product/pg4k/$CURRENT_TAG" >> ${GITHUB_OUTPUT:-"/dev/null"}
