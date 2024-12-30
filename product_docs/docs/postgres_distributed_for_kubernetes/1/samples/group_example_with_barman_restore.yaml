@@ -1,11 +1,14 @@
+# group-example-with-barman-restore-a is configured to full restore from 
+# backups in barmanObjectStore, will restore from one of servername 
+# group-example-with-barman-bak-1, group-example-with-barman-bak-2 or group-example-with-barman-bak-3
 apiVersion: pgd.k8s.enterprisedb.io/v1beta1
 kind: PGDGroup
 metadata:
-  name: group-example-with-barman-restore
+  name: group-example-with-barman-restore-a
 spec:
-  instances: 2
+  instances: 3
   proxyInstances: 2
-  witnessInstances: 1
+  witnessInstances: 0
   pgd:
     parentGroup:
       name: world
@@ -15,13 +18,6 @@ spec:
       size: 1Gi
     walStorage:
       size: 2Gi
-    tablespaces:
-      - name: ts1
-        storage:
-          size: 1Gi
-      - name: ts2
-        storage:
-          size: 1Gi
   connectivity:
     dns:
       additional:
@@ -47,10 +43,11 @@ spec:
               kind: Issuer
               group: cert-manager.io
   restore:
+  # List all the serverNames, so pgdgroup will find a more suitable server to restore
     serverNames:
-      - group-example-with-barman-bk-1
-      - group-example-with-barman-bk-2
-      - group-example-with-barman-bk-3
+      - group-example-with-barman-backup-1
+      - group-example-with-barman-backup-2
+      - group-example-with-barman-backup-3
     barmanObjectStore:
       destinationPath: s3://backups/
       endpointURL: http://minio-service.minio:9000
@@ -67,3 +64,145 @@ spec:
       data:
         jobs: 4
         immediateCheckpoint: true
+  # The restored pgdgroup also configured with backup, so that it can be used for future restore
+  # the backup here use a different serverName      
+  backup:
+    schedulers:
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 0 9 * * *"
+    configuration:
+      barmanObjectStore:
+        destinationPath: s3://backups/
+        endpointURL: http://minio-service.minio:9000
+        s3Credentials:
+          accessKeyId:
+            name: minio-secrets
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: minio-secrets
+            key: ACCESS_SECRET_KEY
+        wal:
+          compression: gzip
+          maxParallel: 8
+        data:
+          jobs: 4
+          immediateCheckpoint: true
+---
+# group-example-with-barman-restore-b is a three-node data group, it is created from 
+# scratch and configured to join group-example-with-barman-restore-a and group-example-with-barman-restore-c
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-barman-restore-b
+spec:
+  instances: 3
+  proxyInstances: 2
+  witnessInstances: 0
+  pgd:
+    parentGroup:
+      name: world
+    discovery:
+      - host: group-example-with-barman-restore-a-group
+      - host: group-example-with-barman-restore-b-group
+      - host: group-example-with-barman-restore-c-group
+  cnp:
+    storage:
+      size: 1Gi
+    walStorage:
+      size: 2Gi
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+  # The restored pgdgroup also configured with backup, so that it can be used for future restore
+  # the backup here use a different serverName      
+  backup:
+    schedulers:
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 0 9 * * *"
+    configuration:
+      barmanObjectStore:
+        destinationPath: s3://backups/
+        endpointURL: http://minio-service.minio:9000
+        s3Credentials:
+          accessKeyId:
+            name: minio-secrets
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: minio-secrets
+            key: ACCESS_SECRET_KEY
+        wal:
+          compression: gzip
+          maxParallel: 8
+        data:
+          jobs: 4
+          immediateCheckpoint: true
+---
+# group-example-with-barman-restore-c is a witness group, it will not have any instances
+# it is configured to join group-example-with-barman-restore-a or group-example-with-barman-restore-b
+apiVersion: pgd.k8s.enterprisedb.io/v1beta1
+kind: PGDGroup
+metadata:
+  name: group-example-with-barman-restore-c
+spec:
+  instances: 0
+  proxyInstances: 0
+  witnessInstances: 1
+  pgd:
+    parentGroup:
+      name: world
+    discovery:
+      - host: group-example-with-barman-restore-a-group
+      - host: group-example-with-barman-restore-b-group
+      - host: group-example-with-barman-restore-c-group
+  cnp:
+    storage:
+      size: 1Gi
+    walStorage:
+      size: 2Gi
+  connectivity:
+    dns:
+      additional:
+        - domain: alternate.domain
+        - domain: my.domain
+          hostSuffix: -dc1
+    tls:
+      mode: verify-ca
+      clientCert:
+        caCertSecret: client-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: client-ca-issuer
+              kind: Issuer
+              group: cert-manager.io
+      serverCert:
+        caCertSecret: server-ca-key-pair
+        certManager:
+          spec:
+            issuerRef:
+              name: server-ca-issuer
+              kind: Issuer
+              group: cert-manager.io

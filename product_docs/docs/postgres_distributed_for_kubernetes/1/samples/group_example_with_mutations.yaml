@@ -1,7 +1,7 @@
 apiVersion: pgd.k8s.enterprisedb.io/v1beta1
 kind: PGDGroup
 metadata:
-  name: group-example-with-managed
+  name: group-example-with-mutations
 spec:
   instances: 2
   proxyInstances: 2
@@ -10,30 +10,26 @@ spec:
     parentGroup:
       name: world
       create: true
+    mutations:
+      - isApplied:
+          - |
+            WITH node_route_config AS (
+               SELECT node_name, route_dsn
+               FROM bdr.node_routing_config_summary
+            )
+            SELECT NOT EXISTS(SELECT * FROM node_route_config WHERE regexp_count(route_dsn, 'application_name=') >= 1);
+        exec:
+          - |
+            WITH node_route_config AS (
+              SELECT node_name,
+                     regexp_replace(route_dsn, concat(' application_name=',  node_name), '') as route_dsn
+              FROM bdr.node_routing_config_summary
+            )
+            SELECT bdr.alter_node_option(node_name, 'route_dsn', route_dsn)
+            FROM node_route_config;
   cnp:
     storage:
       size: 1Gi
-    managed:
-      roles:
-        - name: foo
-          comment: Foo
-          ensure: present
-          connectionLimit: 100
-          login: true
-          superuser: true
-          createdb: true
-          createrole: true
-          replication: true
-          inherit: true
-        - name: bar
-          ensure: present
-          inRoles:
-            - foo
-          login: true
-      services:
-        disabledDefaultServices:
-          - ro
-          - r
   connectivity:
     dns:
       additional:
