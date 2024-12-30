@@ -5,6 +5,7 @@ export const TileModes = {
   None: "none",
   Simple: "simple",
   Full: "full",
+  Extra: "extra",
 };
 
 const Tiles = ({ mode, node }) => {
