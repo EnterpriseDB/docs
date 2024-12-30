@@ -238,6 +238,8 @@ const DocTemplate = ({ data, pageContext }) => {
             iconName={iconName}
             hideVersion={frontmatter.hideVersion}
             hidePDF={hidePDF}
+            product={product}
+            version={version}
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>

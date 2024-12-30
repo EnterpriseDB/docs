@@ -1,0 +1,91 @@
+name: Generate PDFs
+on:
+  workflow_dispatch:
+    inputs:
+      ref: 
+        description: Ref name to build
+        required: true
+        type: string
+      sha:
+        description: SHA, should correspond to ref
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      ref: 
+        description: Ref name to build
+        required: true
+        type: string
+      sha:
+        description: SHA, should correspond to ref
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: docs-16c-64gb-600gb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          cache-dependency-path: "package-lock.json"
+        env:
+          NODE_ENV: ${{ vars.NODE_ENV }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.6"
+
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: "2.14.1"
+
+      - name: Install wkhtmltopdf
+        run: |
+          curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb > wkhtmltopdf.deb
+          sudo apt update
+          sudo apt install -y ./wkhtmltopdf.deb
+          sudo apt install -y rsync
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Install PDF Node dependencies
+        working-directory: ./scripts/pdf
+        run: |
+          npm install
+
+      - name: Checking PDF cache
+        id: pdf-cache-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            product_docs/**/*.pdf
+            product_docs/**/*.pdf-hash
+            advocacy_docs/**/*.pdf
+            advocacy_docs/**/*.pdf-hash
+          key: ${{ runner.os }}-build-pdfs-${{ hashFiles('scripts/pdf/*', 'scripts/pdf/lib/*') }}-${{ inputs.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-pdfs-${{ hashFiles('scripts/pdf/*', 'scripts/pdf/lib/*') }}  
+        
+      - name: Build all pdfs
+        run: npm run pdf:build-all-ci
+
+      - name: Copy pdfs to build output
+        run: |
+          mkdir -p public/pdfs
+          shopt -s globstar
+          rsync -avm --filter="+ */" --filter="-! *.pdf" advocacy_docs/ public/pdfs/
+          rsync -avm --filter="+ */" --filter="-! *.pdf" product_docs/docs/ public/pdfs/
+
+      - name: Store pdfs
+        uses: actions/upload-artifact@v4
+        with: 
+          name: pdf-build
+          path: public/*

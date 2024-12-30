@@ -209,6 +209,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             }
             hideVersion
             hidePDF
+            pdfExclude
+            pdf
             displayBanner
             directoryDefaults {
               description
@@ -221,6 +223,8 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               showInteractiveBadge
               hideKBLink
               hideVersion
+              hidePDF
+              pdfExclude
               displayBanner
             }
           }
@@ -556,6 +560,8 @@ exports.createSchemaCustomization = ({ actions }) => {
       katacodaPanel: DemoPanel
       hideVersion: Boolean
       hidePDF: Boolean
+      pdfExclude: String
+      pdf: Boolean
       hideKBLink: Boolean
       displayBanner: String
       directoryDefaults: DirectoryDefaults
@@ -596,6 +602,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideVersion: Boolean
       hidePDF: Boolean
+      pdfExclude: Boolean
       hideKBLink: Boolean
       displayBanner: String
     }
