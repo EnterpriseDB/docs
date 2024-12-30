@@ -1,11 +1,11 @@
 apiVersion: pgd.k8s.enterprisedb.io/v1beta1
 kind: PGDGroup
 metadata:
-  name: group-example-with-managed
+  name: group-example-with-barman-backup
 spec:
-  instances: 2
+  instances: 3
   proxyInstances: 2
-  witnessInstances: 1
+  witnessInstances: 0
   pgd:
     parentGroup:
       name: world
@@ -13,27 +13,8 @@ spec:
   cnp:
     storage:
       size: 1Gi
-    managed:
-      roles:
-        - name: foo
-          comment: Foo
-          ensure: present
-          connectionLimit: 100
-          login: true
-          superuser: true
-          createdb: true
-          createrole: true
-          replication: true
-          inherit: true
-        - name: bar
-          ensure: present
-          inRoles:
-            - foo
-          login: true
-      services:
-        disabledDefaultServices:
-          - ro
-          - r
+    walStorage:
+      size: 2Gi
   connectivity:
     dns:
       additional:
@@ -58,3 +39,25 @@ spec:
               name: server-ca-issuer
               kind: Issuer
               group: cert-manager.io
+  backup:
+    schedulers:
+      - method: barmanObjectStore
+        immediate: true
+        schedule: "0 0 9 * * *"
+    configuration:
+      barmanObjectStore:
+        destinationPath: s3://backups/
+        endpointURL: http://minio-service.minio:9000
+        s3Credentials:
+          accessKeyId:
+            name: minio-secrets
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: minio-secrets
+            key: ACCESS_SECRET_KEY
+        wal:
+          compression: gzip
+          maxParallel: 8
+        data:
+          jobs: 4
+          immediateCheckpoint: true
