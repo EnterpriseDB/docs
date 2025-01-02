@@ -36,6 +36,11 @@ function converter(markdown) {
   return micromark(markdown);
 }
 
+function error_and_exit(message) {
+  console.error(`Error: ${message}`);
+  process.exit(1);
+}
+
 function normalizeType(type) {
   switch (type) {
     case "Feature":
@@ -168,16 +173,37 @@ function makeShortDate(date) {
     November: "Nov",
     December: "Dec",
   };
+
+  const valid_short_months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
   let [day, month, year] = date.split(" ");
+  if (month in valid_short_months) {
+    return `${day} ${month} ${year}`;
+  }
   let shortmonth = months[month];
-  return `${day} ${shortmonth} ${year}`;
+  if (shortmonth === undefined) {
+    throw new Error(`Invalid month: ${month}`);
+  }
+  return `${day.toString().padStart(2, "0")} ${shortmonth} ${year}`;
 }
 
 let relindexfilename = path.join(basepath, "index.mdx"); // Use this to write the file
 let err = writeFileSync(relindexfilename, "");
 if (err) {
-  console.error(err);
-  process.exit(1);
+  error_and_exit(`Error writing ${relindexfilename}`);
 }
 
 console.log(`Writing ${relindexfilename}`);
@@ -237,14 +263,19 @@ for (let [file, relnote] of relnotes) {
         line += ` [${relnote.version}](./${makeRelnotefilename(meta.shortname, relnote.version)}) |`;
         break;
       case "shortdate":
-        line += ` ${makeShortDate(relnote.date)} |`;
+        try {
+          let shortdate = makeShortDate(relnote.date);
+          line += ` ${shortdate} |`;
+        } catch (e) {
+          error_and_exit(`${file}: ${e}`);
+        }
         break;
       default:
         if (col.key.startsWith("$")) {
           let key = col.key.replace("$", "");
           line += ` ${relnote.meta[key]} |`;
         } else {
-          console.err(`Unknown column key: ${col.key}`);
+          error_and_exit(`${file}: Unknown column key: ${col.key}`);
         }
         break;
     }
@@ -270,7 +301,7 @@ if (meta.precursor !== undefined) {
             let key = col.key.replace("$", "");
             line += ` ${prec.meta[key]} |`;
           } else {
-            console.err(`Unknown column key: ${col.key}`);
+            error_and_exit(`Unknown column key ${col.key} in meta.yml`);
           }
           break;
       }
@@ -292,8 +323,7 @@ function prepareRelnote(meta, file, note) {
   let rlout = path.join(basepath, relnotefilename + ".mdx");
   let err = writeFileSync(rlout, "");
   if (err) {
-    console.error(err);
-    process.exit(1);
+    error_and_exit(`Error writing ${rlout}`);
   }
 
   types = types.sort((a, b) => {

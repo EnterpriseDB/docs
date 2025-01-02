@@ -576,6 +576,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       none
       simple
       full
+      extra
     }
 
     enum EditTargets {
