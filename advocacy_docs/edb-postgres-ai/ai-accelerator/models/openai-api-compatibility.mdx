@@ -1,0 +1,69 @@
+---
+title: "Using an OpenAI compatible API with Pipelines"
+navTitle: "OpenAI Compatible Models"
+description: "Using an OpenAI compatible API with Pipelines by setting options and credentials."
+---
+
+To make use of an OpenAI compliant API, you can use the openai_embeddings or openai_completions model providers. Note that a retriever will need to encode first so you can only use the embeddings model provider with a retriever.
+
+## Why use an OpenAI compatible API?
+
+Some examples of why you might want to use an OpenAI compatible API include:
+
+* If you have a local system running [Ollama](https://ollama.com) and, assuming you have configured [Ollama as a server](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-do-i-configure-ollama-server), then you may want that local system to handle embeddings.
+
+* If you have access to a service which provides different or specifically tuned models, you can use it instead of other models.
+
+## Registering the model
+
+The starting point for this process is registering a model. When yuou register a model, you can pass `options` and `credentials` to the registration. The defaults will point to the OpenAI service endpoint, so by overriding that, you can point to any service. Here is an example that will register a model that uses a local Ollama server:
+
+```sql
+select aidb.register_model(
+'my_local_ollama',
+'openai_embeddings',
+'{"model":"llama3.3", "url":"http://llama.local:11434/v1/embeddings", "dimensions":8192}'::JSONB,
+'{"api_key":""}'::JSONB);
+```
+
+### Model name and model provider
+
+The model name is the first parameter and set to “my_local_ollama” which we will use later.
+
+We specify the model provider as “openai_embeddings” which is the provider that defaults to using OpenAI servers, but can be overridden by the configuration (the next parameter), to talk to any compliant server.
+
+### Configuration
+
+The next parameter is the configuration. This is a JSON string, which when expanded has three parameters, the model, the url and the dimensions.
+
+```json
+'{"model":"llama3.3", "url":"http://llama.local:11434/v1/embeddings", "dimensions":8192}'::JSONB
+```
+
+In this case, we are setting the model to [“llama3.3”](https://ollama.com/library/llama3.3), a relatively new and powerful model. Remember to run `ollama run llama3.3` to pull and start the model on the server.
+
+The next json setting is the important one, overriding the endpoint that the aidb model will use. 
+
+* Our server is running on a machine called `llama.local`.
+* It has port 11434 (the default port for Ollama) open to service requests over HTTP (not HTTPS in this case).
+* The path to the endpoint on the server `/v1/embeddings`; the same as OpenAI.
+
+Putting those components together we get `[`http://llama.local:11434/v1/embeddings`](http://art.local:11434/v1/embeddings","api_key":"","dimensions":8192}'::JSONB)` as our end point.
+
+The last JSON parameter in this example is “dimensions” which is a hint to the system about how many vector values to expect from the model. If we [look up llama3.3’s properties](https://ollama.com/library/llama3.3/blobs/4824460d29f2) we can see the `llama.embedding_length` value is 8192\. The provider defaults to 1536 (with some hard-wired exceptions depending on model) but it doesn’t know about llama3.3, so we have to pass the dimension value of 8192 in the configuration.
+
+That completes the configuration parameter.
+
+### Credentials
+
+The last parameter is the credentials parameter, which is another JSON string. It’s usually used for carrying the `api_key` for the OpenAI service and any other necessary credential information. It is not part of the configuration and by being separate, it can be securely hidden from users with lesser permissions. For our ollama connection, we don’t need an api\_key, but the model provider currently requires that one is specified. We can specify an empty string for the api\_key to satisfy this requirement.
+
+## Using the model
+
+Use the model name you registered earlier to use the model just like any other Pipelines model. Here is an example of how to use the model to get an embedding:
+
+```sql
+select aidb.encode_text('my_local_ollama','I like it');
+```
+
+Pipelines will take care of all the connection management leaving you to focus on your data and the model results.
