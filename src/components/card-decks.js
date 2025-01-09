@@ -43,6 +43,33 @@ const FullCard = ({ card }) => {
   );
 };
 
+const ExtraCard = ({ card }) => {
+  return (
+    <div className="card rounded shadow-sm p-1 mb-4 w-100">
+      <div className="card-body">
+        <h3 className="card-title balance-text">
+          <Link to={card.path}>{card.navTitle || card.title}</Link>
+        </h3>
+
+        <p className="card-text">{card.description}</p>
+
+        <div className="d-grid gap-2">
+          {card.items.map((child) => (
+            <Link
+              key={child.path}
+              to={child.path}
+              className="btn btn-link text-start p-0"
+            >
+              {child.navTitle || child.title}
+              {child.interactive && <KatacodaBadge />}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SimpleCard = ({ card }) => (
   <div className="card rounded shadow-sm p-1 mb-4 w-100">
     <div className="card-body">
@@ -78,7 +105,10 @@ const CardDecks = ({ cards, cardType = "simple", deckTitle = "" }) => {
                 xl={cardType === "simple" && 4}
                 className="d-flex"
               >
-                {cardType === "full" ? (
+                {" "}
+                {cardType === "extra" ? (
+                  <ExtraCard card={card} />
+                ) : cardType === "full" ? (
                   <FullCard card={card} />
                 ) : (
                   <SimpleCard card={card} />
