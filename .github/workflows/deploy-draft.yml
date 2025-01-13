@@ -38,12 +38,17 @@ jobs:
   # this job will fail only if build-pdfs failed (not if it was skipped)
   # however, it will set an output - check-has-pdfs.steps.check.has-pdfs - true if PDFs were generated
   check-has-pdfs:
+    runs-on: ubuntu-22.04
     needs: build-pdfs
     if: ${{ always() }}
-    runs-on: ubuntu-22.04
+    outputs:
+      cache-key: ${{ steps.check.outputs.cache-key }}
+      has-pdfs: ${{ steps.check.outputs.has-pdfs }}
     steps:
       - name: check
+        id: check
         run: |
+          echo "cache-key=${{ needs.build-pdfs.outputs.cache-key }}" >> "$GITHUB_OUTPUT"
           echo "has-pdfs=${{ needs.build-pdfs.result == 'success' }}" >> "$GITHUB_OUTPUT"
           exit ${{ needs.build-pdfs.result == 'failure' && 1 || 0 }}
   
@@ -53,6 +58,8 @@ jobs:
     if: ${{ !cancelled() && needs.build-pages.result == 'success' && needs.check-has-pdfs.result == 'success' }}
     uses: ./.github/workflows/deploy-to-netlify.yml
     with:
+      pages-cache-key: ${{ needs.build-pages.outputs.cache-key }}
+      pdf-cache-key: ${{ needs.check-has-pdfs.outputs.cache-key }}
       enable-commit-comment: false
       alias: deploy-preview-${{ github.event.number }}
     secrets: inherit

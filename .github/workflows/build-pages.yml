@@ -20,10 +20,16 @@ on:
         description: SHA, should correspond to ref
         required: true
         type: string
+    outputs:
+      cache-key:
+        description: key to use to pull built pages from cache
+        value: ${{ jobs.build.outputs.cache-key }}
 
 jobs:
   build:
     runs-on: docs-16c-64gb-600gb
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,6 +60,11 @@ jobs:
       - name: Run NPM install scripts
         run: |
           npm rebuild
+
+      - name: Compose cache key
+        id: cache-key
+        run: |
+          echo "key=${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ inputs.ref }}-${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
           
       - name: Checking Gatsby cache
         id: gatsby-cache-build
@@ -63,7 +74,7 @@ jobs:
             public/*
             !public/pdfs
             .cache
-          key: ${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ inputs.ref }}-${{ inputs.sha }}
+          key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             ${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ inputs.ref }}
             ${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}
@@ -85,10 +96,3 @@ jobs:
           ALGOLIA_INDEX_NAME: edb-docs-staging
           INDEX_ON_BUILD: ${{ inputs.ref == 'develop' }}
 
-      - name: Store pages
-        uses: actions/upload-artifact@v4
-        with: 
-          name: pages-build
-          path: |
-            public/*
-            !public/pdfs

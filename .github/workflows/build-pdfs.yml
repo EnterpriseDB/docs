@@ -20,10 +20,16 @@ on:
         description: SHA, should correspond to ref
         required: true
         type: string
-
+    outputs:
+      cache-key:
+        description: key to use to pull built pages from cache
+        value: ${{ jobs.build.outputs.cache-key }}
+    
 jobs:
   build:
     runs-on: docs-16c-64gb-600gb
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +67,11 @@ jobs:
         run: |
           npm install
 
+      - name: Compose cache key
+        id: cache-key
+        run: |
+          echo "key=${{ runner.os }}-build-pdfs-${{ hashFiles('scripts/pdf/*', 'scripts/pdf/lib/*') }}-${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
+  
       - name: Checking PDF cache
         id: pdf-cache-build
         uses: actions/cache@v4
@@ -70,22 +81,9 @@ jobs:
             product_docs/**/*.pdf-hash
             advocacy_docs/**/*.pdf
             advocacy_docs/**/*.pdf-hash
-          key: ${{ runner.os }}-build-pdfs-${{ hashFiles('scripts/pdf/*', 'scripts/pdf/lib/*') }}-${{ inputs.sha }}
+          key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             ${{ runner.os }}-build-pdfs-${{ hashFiles('scripts/pdf/*', 'scripts/pdf/lib/*') }}  
         
       - name: Build all pdfs
         run: npm run pdf:build-all-ci
-
-      - name: Copy pdfs to build output
-        run: |
-          mkdir -p public/pdfs
-          shopt -s globstar
-          rsync -avm --filter="+ */" --filter="-! *.pdf" advocacy_docs/ public/pdfs/
-          rsync -avm --filter="+ */" --filter="-! *.pdf" product_docs/docs/ public/pdfs/
-
-      - name: Store pdfs
-        uses: actions/upload-artifact@v4
-        with: 
-          name: pdf-build
-          path: public/*

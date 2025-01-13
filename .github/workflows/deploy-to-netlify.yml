@@ -3,6 +3,14 @@ on:
   workflow_dispatch:
   workflow_call:
     inputs:
+      pages-cache-key:
+        description: key for pages cache
+        required: true
+        type: string
+      pdf-cache-key:
+        description: key for pdf cache
+        required: false
+        type: string
       enable-pull-request-comment: 
         description: whether to comment on the triggering PR
         required: false
@@ -20,14 +28,37 @@ on:
   
 jobs:
   deploy:
-    runs-on: ubuntu-22.04
+    runs-on: docs-16c-64gb-600gb
     steps:
-      - name: Pull build artifacts
-        uses: actions/download-artifact@v4
-        with: 
-          path: ./public
-          merge-multiple: true
+      - name: Pull pages cache
+        uses: actions/cache/restore@v4
+        with:
+          fail-on-cache-miss: true
+          path: |
+            public/*
+            !public/pdfs
+            .cache
+          key: ${{ inputs.pages-cache-key }}
 
+      - name: Pull PDF cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            product_docs/**/*.pdf
+            product_docs/**/*.pdf-hash
+            advocacy_docs/**/*.pdf
+            advocacy_docs/**/*.pdf-hash
+          key: ${{ inputs.pdf-cache-key }}
+
+
+      - name: Copy pdfs to build output
+        run: |
+          sudo apt update
+          sudo apt install -y rsync
+          mkdir -p public/pdfs
+          rsync -avm --filter="+ */" --filter="-! *.pdf" advocacy_docs/ public/pdfs/
+          rsync -avm --filter="+ */" --filter="-! *.pdf" product_docs/docs/ public/pdfs/
+            
       - name: list
         run: ls -lfR ./public
 
