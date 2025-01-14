@@ -49,6 +49,7 @@ const SectionHeadingWithVersions = ({
   versionArray,
   iconName,
   product,
+  preciseVersion,
   hideVersion,
 }) => {
   return (
@@ -72,8 +73,12 @@ const SectionHeadingWithVersions = ({
           {navTree.title}
         </Link>
         {!navTree.hideVersion && versionArray.length > 1 ? (
-          <div>
-            <VersionDropdown versionArray={versionArray} path={path} />
+          <div style={{ "white-space": "nowrap" }}>
+            <VersionDropdown
+              versionArray={versionArray}
+              preciseVersion={preciseVersion}
+              path={path}
+            />
           </div>
         ) : !navTree.hideVersion ? (
           <div className="text-muted">Version {versionArray[0].version}</div>
@@ -94,6 +99,7 @@ const LeftNav = ({
   hideEmptySections = false,
   hideVersion = false,
   hidePDF = false,
+  preciseVersion,
 }) => {
   return (
     <ul className="list-unstyled mt-0">
@@ -105,6 +111,7 @@ const LeftNav = ({
           iconName={iconName}
           product={product}
           hideVersion={hideVersion}
+          preciseVersion={preciseVersion}
         />
       ) : (
         <SectionHeading

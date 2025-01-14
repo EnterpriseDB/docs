@@ -8,13 +8,24 @@ const DropdownItem = ({ to, active, children }) => (
   </Link>
 );
 
-const VersionDropdown = ({ versionArray, pathVersions, path }) => {
+const VersionDropdown = ({
+  versionArray,
+  pathVersions,
+  preciseVersion,
+  path,
+}) => {
   const activeVersion = path.split("/")[2];
+  let roundedVersion = "";
+  if (!preciseVersion) {
+    roundedVersion = activeVersion;
+  } else {
+    roundedVersion = preciseVersion.split(".")[0];
+  }
 
   return (
     <Dropdown>
       <Dropdown.Toggle variant="outline-primary" size="sm">
-        Version {activeVersion}&nbsp;
+        Version {preciseVersion ? preciseVersion : activeVersion}&nbsp;
         {
           // must be a better way to get space between the text and caret
         }
@@ -27,7 +38,10 @@ const VersionDropdown = ({ versionArray, pathVersions, path }) => {
             key={version.url}
             active={activeVersion === version.version}
           >
-            Version {version.version}
+            Version {version.version}{" "}
+            {version.version == roundedVersion && preciseVersion
+              ? `(${preciseVersion})`
+              : ""}
           </DropdownItem>
         ))}
       </Dropdown.Menu>

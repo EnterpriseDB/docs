@@ -150,6 +150,7 @@ const DocTemplate = ({ data, pageContext }) => {
     navTree,
     prevNext,
   } = pageContext;
+
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const versionArray = makeVersionArray(
     versions,
@@ -226,6 +227,8 @@ const DocTemplate = ({ data, pageContext }) => {
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
 
+  let preciseVersion = frontmatter.preciseVersion;
+
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex bg-white">
@@ -240,6 +243,7 @@ const DocTemplate = ({ data, pageContext }) => {
             hidePDF={hidePDF}
             product={product}
             version={version}
+            preciseVersion={preciseVersion}
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>

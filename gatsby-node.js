@@ -197,6 +197,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             hideToC
             deepToC
             hideKBLink
+            preciseVersion
             katacodaPages {
               scenario
               account
@@ -224,6 +225,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               hideKBLink
               hideVersion
               hidePDF
+              preciseVersion
               pdfExclude
               displayBanner
             }
@@ -556,6 +558,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideToC: Boolean
       deepToC: Boolean
+      preciseVersion: String
       katacodaPages: DemoPage
       katacodaPanel: DemoPanel
       hideVersion: Boolean
@@ -602,6 +605,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       showInteractiveBadge: Boolean
       hideVersion: Boolean
       hidePDF: Boolean
+      preciseVersion: String
       pdfExclude: Boolean
       hideKBLink: Boolean
       displayBanner: String
