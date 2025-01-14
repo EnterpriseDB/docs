@@ -9,90 +9,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  build-pages:
     if: |
       (
         (github.event.action == 'labeled' && github.event.label.name == 'deploy') ||
-        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+        (contains(github.event.pull_request.labels.*.name, 'deploy'))
       ) && !github.event.pull_request.head.repo.fork
-    runs-on: docs-16c-64gb-600gb
+    uses: ./.github/workflows/build-pages.yml
+    with:
+      ref: ${{ github.head_ref }}
+      sha: ${{ github.event.pull_request.head.sha }}
+    secrets: inherit
+
+  build-pdfs:
+    if: |
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'deploy-pdfs') ||
+        (contains(github.event.pull_request.labels.*.name, 'deploy-pdfs'))
+      ) && !github.event.pull_request.head.repo.fork
+    uses: ./.github/workflows/build-pdfs.yml
+    with:
+      ref: ${{ github.head_ref }}
+      sha: ${{ github.event.pull_request.head.sha }}
+
+  # this serves to allow building PDFs to be optional without preventing deployment, 
+  # while still failing the workflow if we *try* to build PDFs and fail
+  # there are ways to do this in conditions on a single job, but this keeps things clear
+  # this job will fail only if build-pdfs failed (not if it was skipped)
+  # however, it will set an output - check-has-pdfs.steps.check.has-pdfs - true if PDFs were generated
+  check-has-pdfs:
+    runs-on: ubuntu-22.04
+    needs: build-pdfs
+    if: ${{ always() }}
+    outputs:
+      cache-key: ${{ steps.check.outputs.cache-key }}
+      has-pdfs: ${{ steps.check.outputs.has-pdfs }}
     steps:
-      - name: inject slug/short variables
-        uses: rlespinasse/github-slug-action@v4
-
-      - name: compose a name for the build environment
-        run: echo "BUILD_ENV_NAME=pr-${{ github.event.number }}-${{ env.GITHUB_HEAD_REF_SLUG }}" >> $GITHUB_ENV
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
-          lfs: true
-
-      - name: Adjust file watchers limit
-        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-          cache-dependency-path: "package-lock.json"
-        env:
-          NODE_ENV: ${{ secrets.NODE_ENV }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install dependencies
+      - name: check
+        id: check
         run: |
-          npm run presetup
-          npm ci --ignore-scripts
-        env:
-          NODE_ENV: ${{ secrets.NODE_ENV }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          echo "cache-key=${{ needs.build-pdfs.outputs.cache-key }}" >> "$GITHUB_OUTPUT"
+          echo "has-pdfs=${{ needs.build-pdfs.result == 'success' }}" >> "$GITHUB_OUTPUT"
+          exit ${{ needs.build-pdfs.result == 'failure' && 1 || 0 }}
+  
+  deploy-to-netlify:
+    needs: [build-pages, check-has-pdfs]
+    # succeeded() (the default check) will be false at this point if PDFs were skipped
+    if: ${{ !cancelled() && needs.build-pages.result == 'success' && needs.check-has-pdfs.result == 'success' }}
+    uses: ./.github/workflows/deploy-to-netlify.yml
+    with:
+      pages-cache-key: ${{ needs.build-pages.outputs.cache-key }}
+      pdf-cache-key: ${{ needs.check-has-pdfs.outputs.cache-key }}
+      enable-commit-comment: false
+      alias: deploy-preview-${{ github.event.number }}
+    secrets: 
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN  }}
 
-      - name: Run NPM install scripts
-        run: |
-          npm rebuild
-          
-      - name: Checking Gatsby cache
-        id: gatsby-cache-build
-        uses: actions/cache@v4
-        with:
-          path: |
-            public/*
-            !public/pdfs
-            .cache
-          key: ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-gatsby-build-draft-${{ github.head_ref }}
-            ${{ runner.os }}-gatsby-build-develop-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}
-            ${{ runner.os }}-gatsby-build-develop
-
-      - name: Fix mtimes
-        run: npm run fix-mtimes
-
-      - name: Gatsby build
-        run: npm run build
-        env:
-          APP_ENV: staging
-          NODE_ENV: ${{ vars.NODE_ENV }}
-          NODE_OPTIONS: --max-old-space-size=4096
-          FATHOM_SITE_ID: ${{ vars.FATHOM_SITE_ID }}
-          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
-          ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
-          ALGOLIA_APP_ID: ${{ vars.ALGOLIA_APP_ID }}
-          ALGOLIA_INDEX_NAME: edb-docs-staging
-          INDEX_ON_BUILD: false
-
-      - name: Deploy to Netlify
-        id: netlify-deploy
-        uses: nwtgck/actions-netlify@v3
-        with:
-          publish-dir: "./public"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: ${{ github.event.pull_request.title }}
-          enable-commit-comment: false
-          github-deployment-environment: ${{ env.BUILD_ENV_NAME }}
-          alias: deploy-preview-${{ github.event.number }}
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}

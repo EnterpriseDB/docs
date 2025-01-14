@@ -8,6 +8,7 @@ from pathlib import Path
 from subprocess import run
 from typing import List
 import frontmatter
+import hashlib
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -17,142 +18,152 @@ ANSI_YELLOW = "\033[33m"
 
 
 def main(args):
-    doc_path, product, version, mdx_file, html_file, cover_file, pdf_file = setup(args)
+    doc_path, index_meta, product, version, mdx_file, html_file, cover_file, pdf_file, pdf_hash_file = setup(args)
 
-    files = list_files(doc_path)
+    files = list_files(doc_path, index_meta)
     if len(files) == 0:
         print(f"{ANSI_YELLOW}skipping {pdf_file}{ANSI_STOP}")
         return
 
-    print(f"{ANSI_BLUE}building {pdf_file}{ANSI_STOP}")
+    print(f"{ANSI_BLUE}building {pdf_file}{ANSI_STOP}", flush=True)
     with open(mdx_file, "w") as output:
         resource_search_paths = {doc_path, *combine_mdx(files, output)}
 
-    output = run(
-            [
-                "node",
-                "--max-old-space-size=4096",
-                BASE_DIR / "cleanup_combined_markdown.mjs",
-                mdx_file
-            ]
-        )
-    output.check_returncode()
-
-    # TODO: Pick up refactoring from this point
-    title = get_title(doc_path) or product
-
-    print("generating docs html")
-    output = run(
-        [
-            "pandoc",
-            mdx_file,
-            "--from=gfm",
-            "--self-contained",
-            "--highlight-style=tango",
-            f"--include-in-header={BASE_DIR / 'pdf-script.html'}",
-            f"--css={BASE_DIR / 'pdf-styles.css'}",
-            f"--resource-path={':'.join((str(p) for p in resource_search_paths))}",
-            f"--output={html_file}",
-        ]
-    )
-    output.check_returncode()
-
-    if not html_file.exists():
+    if hash_check(pdf_file, pdf_hash_file, mdx_file):
         mdx_file.unlink()
-        raise Exception(f"\033[91m html file failed to generate for {mdx_file} \033[0m")
+        print(f"{ANSI_YELLOW}skipping {pdf_file} - content unchanged{ANSI_STOP}")
+        return
+    
+    try:
+    
+        output = run(
+                [
+                    "node",
+                    "--max-old-space-size=4096",
+                    BASE_DIR / "cleanup_combined_markdown.mjs",
+                    mdx_file
+                ]
+            )
+        output.check_returncode()
 
-    if args.generate_html_only:
-        run(["open", html_file])
-    else:
-        print("generating cover page")
-        data = (BASE_DIR / "cover.html").read_text()
-        data = data.replace("[PRODUCT]", title)
-        data = data.replace("[VERSION]", version)
-        cover_file.write_text(data)
+        # TODO: Pick up refactoring from this point
+        title = get_title(doc_path) or product
 
-        header_footer_common = [
-            "--header-font-name",
-            "Signika",
-            "--header-font-size",
-            "8",
-            "--header-spacing",
-            "7",
-            "--footer-font-name",
-            "Signika",
-            "--footer-font-size",
-            "8",
-            "--footer-spacing",
-            "7",
-            "--footer-left",
-            f"Copyright © 2009 - {datetime.now().year} EnterpriseDB Corporation. "
-            "All rights reserved.",
-        ]
-
-        header_footer_options = [
-            "--header-right",
-            "[doctitle]",
-            "--footer-right",
-            "[page]",
-        ]
-
-        print("converting html to pdf")
+        print("generating docs html")
         output = run(
             [
-                "wkhtmltopdf",
-                "--log-level",
-                "error",
-                "--title",
-                title,
-                "--margin-top",
-                "15mm",
-                "--margin-bottom",
-                "15mm",
-                *header_footer_common,
-                cover_file,
-                "--footer-right",
-                f"Built at {datetime.utcnow().replace(microsecond=0).isoformat()}",
-                "toc",
-                "--xsl-style-sheet",
-                "scripts/pdf/toc-style.xsl",
-                *header_footer_options,
-                html_file,
-                *header_footer_options,
-                pdf_file,
+                "pandoc",
+                mdx_file,
+                "--from=gfm",
+                "--self-contained",
+                "--highlight-style=tango",
+                f"--include-in-header={BASE_DIR / 'pdf-script.html'}",
+                f"--css={BASE_DIR / 'pdf-styles.css'}",
+                f"--resource-path={':'.join((str(p) for p in resource_search_paths))}",
+                f"--output={html_file}",
             ]
         )
         output.check_returncode()
 
-    if args.open_pdf:
-        run(["open", pdf_file])
+        if not html_file.exists():
+            mdx_file.unlink()
+            raise Exception(f"\033[91m html file failed to generate for {mdx_file} \033[0m")
 
-    mdx_file.unlink()
-    if not args.generate_html_only:
-        html_file.unlink()
-        cover_file.unlink()
+        if args.generate_html_only:
+            run(["open", html_file])
+        else:
+            print("generating cover page")
+            data = (BASE_DIR / "cover.html").read_text()
+            data = data.replace("[PRODUCT]", title)
+            data = data.replace("[VERSION]", version)
+            cover_file.write_text(data)
+
+            header_footer_common = [
+                "--header-font-name",
+                "Signika",
+                "--header-font-size",
+                "8",
+                "--header-spacing",
+                "7",
+                "--footer-font-name",
+                "Signika",
+                "--footer-font-size",
+                "8",
+                "--footer-spacing",
+                "7",
+                "--footer-left",
+                f"Copyright © 2009 - {datetime.now().year} EnterpriseDB Corporation. "
+                "All rights reserved.",
+            ]
+
+            header_footer_options = [
+                "--header-right",
+                "[doctitle]",
+                "--footer-right",
+                "[page]",
+            ]
+
+            print("converting html to pdf")
+            output = run(
+                [
+                    "wkhtmltopdf",
+                    "--log-level",
+                    "error",
+                    "--title",
+                    title,
+                    "--margin-top",
+                    "15mm",
+                    "--margin-bottom",
+                    "15mm",
+                    *header_footer_common,
+                    cover_file,
+                    "--footer-right",
+                    f"Built at {datetime.utcnow().replace(microsecond=0).isoformat()}",
+                    "toc",
+                    "--xsl-style-sheet",
+                    "scripts/pdf/toc-style.xsl",
+                    *header_footer_options,
+                    html_file,
+                    *header_footer_options,
+                    pdf_file,
+                ]
+            )
+            output.check_returncode()
+
+        if args.open_pdf:
+            run(["open", pdf_file])
+
+    finally:
+        mdx_file.unlink(missing_ok=True)
+        if not args.generate_html_only:
+            html_file.unlink(missing_ok=True)
+            cover_file.unlink(missing_ok=True)
 
 
 def setup(args):
     doc_path = args.doc_path
-    product = doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1] 
-    version = doc_path.parts[-1] if len(doc_path.parts) >= 4 else ''
+    index_meta = load_index_metadata(doc_path)
+    product = index_meta.get("product", None) or doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1] 
+    version = index_meta.get("version", None) or doc_path.parts[-1] if len(doc_path.parts) >= 4 else ''
 
-    _file_prefix = f"{product}_v{version}_documentation"
+    _file_prefix = product + (version and "_v" + version or "") + "_documentation"
 
     mdx_file = doc_path / f"{_file_prefix}.mdx"
     html_file = doc_path / f"{_file_prefix}.html"
     cover_file = doc_path / f"{_file_prefix}_cover.html"
     pdf_file = doc_path / f"{_file_prefix}.pdf"
+    pdf_hash_file = doc_path / f"{_file_prefix}.pdf-hash"
 
     for f in [mdx_file, html_file, cover_file]:
         f.unlink(missing_ok=True)
 
-    return doc_path, product, version, mdx_file, html_file, cover_file, pdf_file
+    return doc_path, index_meta, product, version, mdx_file, html_file, cover_file, pdf_file, pdf_hash_file
 
 
-def list_files(doc_path, chapter=None, is_root_dir=True):
+def list_files(doc_path, index_meta, chapter=None, is_root_dir=True):
     chapter = [1] if chapter is None else chapter
     all_files = []
-    nav_order = load_nav_index(doc_path)
+    nav_order = index_meta.get("navigation", {})
     directory_contents = sorted(
         filter(filter_path, doc_path.iterdir()), key=lambda file: put_index_first(file, nav_order)
     )
@@ -171,10 +182,29 @@ def list_files(doc_path, chapter=None, is_root_dir=True):
         if entry.is_file():
             all_files.append(TocItem(filename=entry, chapter=chapter))
         else:
-            all_files += list_files(entry, chapter, is_root_dir=False)
+            all_files += list_files(entry, load_index_metadata(entry), chapter, is_root_dir=False)
 
     return all_files
 
+def hash_check(pdf_file, pdf_hash_file, mdx_file):
+    try:
+        existingHash = "a"
+        newHash = "b"
+
+        if pdf_hash_file.exists():
+            existingHash = pdf_hash_file.read_text()
+        with mdx_file.open(mode="rb") as output:
+            newHash = hashlib.file_digest(output, "md5").hexdigest()
+
+        if pdf_file.exists() and newHash == existingHash: 
+            return True       
+
+        pdf_file.unlink()
+        pdf_hash_file.write_text(newHash)
+        return False
+
+    except (FileNotFoundError):
+        return False
 
 def combine_mdx(files, output):
     resource_search_paths = set()
@@ -238,12 +268,13 @@ def parse_mdx(mdx_file):
         if c == '\n': lines_before_content += 1
     return front_matter.strip(), content.strip(), lines_before_content
 
-def load_nav_index(path):
+def load_index_metadata(path):
     try:
-        index = frontmatter.load(path / "index.mdx")["navigation"]
-        return index
-    except (FileNotFoundError, KeyError):
-        return None
+        indexMeta = frontmatter.load(path / "index.mdx")
+        return indexMeta
+    except (FileNotFoundError):
+        return {}
+
 
 def put_index_first(path, nav_order):
     filename = path.name if path.suffix != ".mdx" else path.stem

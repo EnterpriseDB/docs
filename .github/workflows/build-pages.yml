@@ -1,0 +1,103 @@
+name: Build pages
+on:
+  workflow_dispatch:
+    inputs:
+      ref: 
+        description: Ref name to build
+        required: true
+        type: string
+      sha:
+        description: SHA, should correspond to ref
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      ref: 
+        description: Ref name to build
+        required: true
+        type: string
+      sha:
+        description: SHA, should correspond to ref
+        required: true
+        type: string
+      gtm-id:
+        description: Google Tag Manager ID
+        required: false
+        type: string
+    outputs:
+      cache-key:
+        description: key to use to pull built pages from cache
+        value: ${{ jobs.build.outputs.cache-key }}
+
+jobs:
+  build:
+    runs-on: docs-16c-64gb-600gb
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
+          lfs: true
+
+      - name: Adjust file watchers limit
+        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          cache-dependency-path: "package-lock.json"
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          npm run presetup
+          npm ci --ignore-scripts
+        env:
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Run NPM install scripts
+        run: |
+          npm rebuild
+
+      - name: Compose cache key
+        id: cache-key
+        run: |
+          echo "key=${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ inputs.ref }}-${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
+          
+      - name: Checking Gatsby cache
+        id: gatsby-cache-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            public/*
+            !public/pdfs
+            .cache
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ inputs.ref }}
+            ${{ runner.os }}-gatsby-build-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}
+            ${{ runner.os }}-gatsby-build
+
+      - name: Fix mtimes
+        run: npm run fix-mtimes
+
+      - name: Gatsby build
+        run: npm run build
+        env:
+          APP_ENV: ${{ inputs.ref == 'main' && 'production' || 'staging' }}
+          NODE_ENV: ${{ vars.NODE_ENV }}
+          NODE_OPTIONS: --max-old-space-size=4096
+          FATHOM_SITE_ID: ${{ vars.FATHOM_SITE_ID }}
+          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
+          ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
+          ALGOLIA_APP_ID: ${{ vars.ALGOLIA_APP_ID }}
+          ALGOLIA_INDEX_NAME: ${{ inputs.ref == 'refs/heads/main' && 'edb-docs' || 'edb-docs-staging' }}
+          INDEX_ON_BUILD: ${{ inputs.ref == 'refs/heads/develop' || inputs.ref == 'refs/heads/main' }}
+          GTM_ID: ${{ inputs.gtm-id }}
+

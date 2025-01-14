@@ -374,7 +374,7 @@ module.exports = {
     {
       resolve: "gatsby-plugin-google-tagmanager",
       options: {
-        id: process.env.GTM_ID,
+        id: process.env.GTM_ID || void 0,
       },
     },
     process.env.FATHOM_SITE_ID && {

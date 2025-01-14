@@ -10,101 +10,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
-    runs-on: docs-16c-64gb-600gb
+  build-pages:
+    uses: ./.github/workflows/build-pages.yml
+    with:
+      ref: ${{ github.ref }}
+      sha: ${{ github.sha }}
+    secrets: inherit
+
+  build-pdfs:
+    uses: ./.github/workflows/build-pdfs.yml
+    with:
+      ref: ${{ github.ref }}
+      sha: ${{ github.sha }}
+
+  deploy-to-netlify:
+    needs: [build-pages, build-pdfs]
+    uses: ./.github/workflows/deploy-to-netlify.yml
+    with:
+      production: true
+      pages-cache-key: ${{ needs.build-pages.outputs.cache-key }}
+      pdf-cache-key: ${{ needs.build-pdfs.outputs.cache-key }}
+      enable-pull-request-comment: false
+    secrets: 
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN  }}
+
+  report-failure:
+    needs: [deploy-to-netlify]
+    if: ${{ failure() }}
+    runs-on: ubuntu
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # fetch whole repo so git-restore-mtime can work
-          lfs: true
-
-      - name: Adjust file watchers limit
-        run: echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-          cache-dependency-path: "package-lock.json"
-        env:
-          NODE_ENV: ${{ vars.NODE_ENV }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install dependencies
-        run: |
-          npm run presetup
-          npm ci --ignore-scripts
-        env:
-          NODE_ENV: ${{ vars.NODE_ENV }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Run NPM install scripts
-        run: |
-          npm rebuild
-
-      - name: Checking Gatsby cache
-        id: gatsby-cache-build
-        uses: actions/cache@v4
-        with:
-          path: |
-            public/*
-            !public/pdfs
-            .cache
-          key: ${{ runner.os }}-gatsby-build-develop-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-gatsby-build-develop-${{ hashFiles('package.json', 'gatsby-config.js', 'gatsby-node.js') }}
-            ${{ runner.os }}-gatsby-build-develop
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11.6"
-      - uses: r-lib/actions/setup-pandoc@v2
-        with:
-          pandoc-version: "2.14.1"
-      - name: Install wkhtmltopdf
-        run: |
-          curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb > wkhtmltopdf.deb
-          sudo apt-get install ./wkhtmltopdf.deb
-      - name: Install Python dependencies
-        run: pip install -r requirements-ci.txt
-      - name: Install PDF Node dependencies
-        working-directory: ./scripts/pdf
-        run: |
-          npm install
-      - name: Build all pdfs
-        run: npm run pdf:build-all-ci
-
-      - name: Fix mtimes
-        run: npm run fix-mtimes
-
-      - name: Gatsby build
-        run: npm run build
-        env:
-          APP_ENV: staging
-          NODE_ENV: ${{ vars.NODE_ENV }}
-          NODE_OPTIONS: --max-old-space-size=4096
-          FATHOM_SITE_ID: ${{ vars.FATHOM_SITE_ID }}
-          ALGOLIA_API_KEY: ${{ secrets.ALGOLIA_API_KEY }}
-          ALGOLIA_SEARCH_ONLY_KEY: ${{ vars.ALGOLIA_SEARCH_ONLY_KEY }}
-          ALGOLIA_APP_ID: ${{ vars.ALGOLIA_APP_ID }}
-          ALGOLIA_INDEX_NAME: edb-docs-staging
-          INDEX_ON_BUILD: true
-
-      - name: Deploy to Netlify
-        id: netlify-deploy
-        uses: nwtgck/actions-netlify@v3
-        with:
-          publish-dir: "./public"
-          production-branch: "develop"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-commit-comment: true
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_DEVELOP_SITE_ID }}
-
       - uses: act10ns/slack@v2
         with:
-          status: ${{ job.status }}
-        if: failure()
+          status: ${{ needs.deploy-to-netlify.result }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

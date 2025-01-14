@@ -3,27 +3,18 @@ import { useStaticQuery, graphql } from "gatsby";
 import Icon, { iconNames } from "./icon";
 import usePathPrefix from "../hooks/use-path-prefix";
 
-const PdfDownload = ({ pagePath, hidePDF }) => {
+const PdfDownload = ({ pagePath, product, version, hidePDF }) => {
   const data = useStaticQuery(graphql`
-    {
-      allPublicFile(filter: { ext: { eq: ".pdf" } }) {
+    query {
+      allMdx(filter: { frontmatter: { pdf: { eq: true } } }) {
         nodes {
-          absolutePath
-          urlPath
+          fields {
+            path
+          }
         }
       }
     }
   `);
-
-  const productPath = pagePath.split("/").slice(0, 3).join("/");
-
-  const file = data.allPublicFile.nodes.find((pdf) => {
-    const productVersionPath = pdf.absolutePath
-      .split("/")
-      .slice(-3, -1)
-      .join("/");
-    return `/${productVersionPath}` === productPath;
-  });
 
   const pathPrefix = usePathPrefix();
 
@@ -31,22 +22,34 @@ const PdfDownload = ({ pagePath, hidePDF }) => {
     return null;
   }
 
-  if (file) {
-    return (
-      <div className="mt-4">
-        <a href={pathPrefix + file.urlPath}>
-          <Icon
-            iconName={iconNames.PDF}
-            className="fill-orange me-1 position-relative top-minus-2"
-            width="16"
-            height="auto"
-          />
-          Download PDF
-        </a>
-      </div>
-    );
-  }
-  return null;
+  const pdfBase = data.allMdx.nodes.find((pdfIndex) => {
+    const basePath = pdfIndex.fields.path;
+    return pagePath.startsWith(basePath);
+  })?.fields?.path;
+
+  if (!pdfBase || !product) return null;
+
+  const pdfFile =
+    pathPrefix +
+    "/pdfs" +
+    pdfBase +
+    product +
+    (version ? "_v" + version : "") +
+    "_documentation.pdf";
+
+  return (
+    <div className="mt-4">
+      <a href={pdfFile}>
+        <Icon
+          iconName={iconNames.PDF}
+          className="fill-orange me-1 position-relative top-minus-2"
+          width="16"
+          height="auto"
+        />
+        Download PDF
+      </a>
+    </div>
+  );
 };
 
 export default PdfDownload;

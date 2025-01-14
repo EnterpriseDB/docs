@@ -1,0 +1,85 @@
+name: Deploy build to Netlify
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      pages-cache-key:
+        description: key for pages cache
+        required: true
+        type: string
+      pdf-cache-key:
+        description: key for pdf cache
+        required: false
+        type: string
+      enable-pull-request-comment: 
+        description: whether to comment on the triggering PR
+        required: false
+        default: true
+        type: boolean
+      enable-commit-comment: 
+        description: whether to comment on the triggering commit
+        required: false
+        default: true
+        type: boolean
+      alias: 
+        description: name for the deployment (used to set custom / stable Netlify url)
+        required: false
+        type: string
+      production:
+        description: whether to mark this deployment as the current production deploy for the site
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      NETLIFY_SITE_ID:
+        description: Netlify site ID to deploy to
+        required: true
+      NETLIFY_AUTH_TOKEN:
+        required: true
+  
+jobs:
+  deploy:
+    runs-on: docs-16c-64gb-600gb
+    steps:
+      - name: Pull pages cache
+        uses: actions/cache/restore@v4
+        with:
+          fail-on-cache-miss: true
+          path: |
+            public/*
+            !public/pdfs
+            .cache
+          key: ${{ inputs.pages-cache-key }}
+
+      - name: Pull PDF cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            product_docs/**/*.pdf
+            product_docs/**/*.pdf-hash
+            advocacy_docs/**/*.pdf
+            advocacy_docs/**/*.pdf-hash
+          key: ${{ inputs.pdf-cache-key }}
+
+
+      - name: Copy pdfs to build output
+        run: |
+          sudo apt update
+          sudo apt install -y rsync
+          mkdir -p public/pdfs
+          rsync -avm --filter="+ */" --filter="-! *.pdf" advocacy_docs/ public/pdfs/
+          rsync -avm --filter="+ */" --filter="-! *.pdf" product_docs/docs/ public/pdfs/
+            
+      - name: Deploy to Netlify
+        id: netlify-deploy
+        uses: nwtgck/actions-netlify@v3
+        with:
+          publish-dir: "./public"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          enable-pull-request-comment: ${{ inputs.enable-pull-request-comment }}
+          enable-commit-comment: ${{ inputs.enable-commit-comment }}
+          alias: ${{ inputs.alias }}
+          production-deploy: ${{ inputs.production }}
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

@@ -4,14 +4,13 @@ import VersionDropdown from "./version-dropdown";
 import { products } from "../constants/products";
 import { Link, PdfDownload, TreeNode } from "./";
 
-const productIcon = (path) => {
-  const product = path.split("/")[1];
+const productIcon = (product) => {
   return products[product] ? products[product].iconName : null;
 };
 
-const SectionHeading = ({ navTree, path, iconName }) => {
+const SectionHeading = ({ navTree, path, iconName, product }) => {
   // if iconName starts with "edb_postgres_ai" then set the fill color to black
-  let myIconName = iconName || productIcon(path) || iconNames.DOTTED_BOX;
+  let myIconName = iconName || productIcon(product) || iconNames.DOTTED_BOX;
   let className = "fill-orange me-3";
   if (myIconName && myIconName.startsWith("edb_postgres_ai")) {
     className = "fill-aquamarine me-3";
@@ -49,6 +48,7 @@ const SectionHeadingWithVersions = ({
   path,
   versionArray,
   iconName,
+  product,
   hideVersion,
 }) => {
   return (
@@ -58,7 +58,7 @@ const SectionHeadingWithVersions = ({
         className="d-block py-1 align-middle balance-text h5 m-0 text-dark"
       >
         <Icon
-          iconName={iconName || productIcon(path) || iconNames.DOTTED_BOX}
+          iconName={iconName || productIcon(product) || iconNames.DOTTED_BOX}
           className="fill-orange me-3"
           width="50"
           height="50"
@@ -89,6 +89,8 @@ const LeftNav = ({
   pagePath,
   versionArray,
   iconName,
+  product,
+  version,
   hideEmptySections = false,
   hideVersion = false,
   hidePDF = false,
@@ -101,10 +103,16 @@ const LeftNav = ({
           path={path}
           versionArray={versionArray}
           iconName={iconName}
+          product={product}
           hideVersion={hideVersion}
         />
       ) : (
-        <SectionHeading navTree={navTree} path={path} iconName={iconName} />
+        <SectionHeading
+          navTree={navTree}
+          path={path}
+          product={product}
+          iconName={iconName}
+        />
       )}
       {navTree.items.map((node) => (
         <TreeNode
@@ -115,7 +123,12 @@ const LeftNav = ({
         />
       ))}
       <li>
-        <PdfDownload pagePath={path} hidePDF={hidePDF} />
+        <PdfDownload
+          pagePath={path}
+          hidePDF={hidePDF}
+          product={product}
+          version={version}
+        />
       </li>
     </ul>
   );

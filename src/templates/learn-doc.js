@@ -202,6 +202,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
+            product={frontmatter.product}
+            version={frontmatter.version}
           />
         </SideNavigation>
         <MainContent searchProduct={frontmatter.product}>

@@ -120,7 +120,7 @@ These instructions are for members of the EnterpriseDB Github Org only. The icon
 
    - If you already have a different version of Node installed, you may want to consider using Node Version Manager (NVM) for a simpler way to manage multiple versions of Node.js. Follow the [directions to install NVM](https://github.com/nvm-sh/nvm#installing-and-updating), then run `nvm install` in the cloned repo directory, followed by `nvm use` which will auto-detect the correct version of Node.js to use (currently 20 LTS).
 
-1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.8 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
+1. Install Python 3 with `brew install python3`, if it's not already installed. (Use `python3 -V` to check that you have version 3.11 or higher.) Python is not needed for the core Gatsby system, but is required by several source scripts.
 
 1. NPM 10 is the package manager we're using for this project.
 
