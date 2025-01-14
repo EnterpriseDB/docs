@@ -4,6 +4,141 @@ title: Release Notes for BDR3
 originalFilePath: release-notes.md
 
 ---
+## BDR 3.7.25-ELS(2024 Oct 15)
+
+This is an Extended Lifetime release for BDR 3.7 that includes bug fixes for
+issues identified in previous versions.
+
+### Resolved issues
+
+- bdr_consensus: Add GUCs to control automatic Raft vacuum (BDR-5424, RT40412)
+  Aggressive HARP proxy settings may face issues due to
+  increased bloat on consensus request and response journals.
+  This patch adds GUCs to control frequency of automatic vacuum on said
+  catalogs. The `bdr.raft_vacuum_interval` GUC controls how frequently the
+  tables are checked for VACUUM and ANALYZE. The Autovacuum GUCs and table
+  reloptions are used to determine whether VACUUM/ANALYZE is needed or
+  not.
+  The `bdr.raft_vacuum_full_interval`  triggers VACUUM FULL on the tables.
+  The user can disable VACUUM FULL if normal VACUUM is sufficient to keep
+  the bloat in control.
+
+- Delete older logs if we get a snapshot that's already applied
+  The follower doesn't need the older logs once a snapshot is applied. If
+  we keep those around, the duplicate request id issue may keep happening.
+  So clear the logs a bit more aggressively once we know they are not
+  needed.
+
+- Handling duplicate requests in RAFT preventing protocol breakage (RT37735, BDR-4091, BDR-5285)
+  When processing RAFT entries, it's crucial to handle duplicate requests
+  properly to prevent Raft protocol issues. Duplicate requests can occur when
+  a client retries a request that has already been accepted and applied by the
+  Raft leader. The problem arose when the leader failed to detect the duplicate
+  request due to historical evidence being pruned.
+
+- Handling Raft Snapshots: Consensus Log (BDR-5285, RT37725)
+  When installing or importing a Raft snapshot, discard the
+  consensus log unless it contains an entry matching the
+  snapshot's last included entry and term.
+
+- Fix an infinite loop in consensus worker which results in high cpu
+  consumption (BDR-5307)
+
+## BDR 3.7.24-ELS(2024 Jun 19)
+
+This is an Extended Lifetime release for BDR 3.7 that includes bug fixes for
+issues identified in previous versions.
+
+### Resolved issues
+
+- Fix a memory leak in BDR where a variable is kept beyond its utility. (RT101647, BDR-4755)
+  We have resolved a memory leak issue in the walsender process. This update
+  ensures that the walsender process now correctly releases memory, preventing
+  any increase in memory usage over time. This enhancement improves system
+  stability and performance.
+
+- Fix a segfault during the edge case where the query over bdr.group_versions_details
+  does not return any rows. (RT102290, BDR-4807)
+  We have resolved an issue that previously caused a segmentation fault when the
+  function bdr.monitor_group_versions() was called and the query returned no rows.
+  This edge case is now properly managed, resulting in fewer disruptions and more
+  predictable performance.
+
+- Run ANALYZE on internal Raft tables to keep dead tuple size down. (RT97735, RT102018, BDR-4209)
+  We have implemented a fix to our database maintenance routines by regularly
+  running the Postgres ANALYZE command on several tables, including global_consensus_journal
+  and local_consensus_snapshot. Previously, these tables were excluded from the standard
+  Postgres command ANALYZE due to frequent truncation by PGD. ANALYZE needs to be run
+  regularly in order to collect statistics about the contents of tables within a database;
+  otherwise, there is a risk of inefficient query execution and, in the case of PGD,
+  an additional impact on the performance of raft and the overall cluster.
+
+- Improve local node connection failure logging in bdr_init_physical . (RT99369, BDR-4540)
+  Previously, bdr_init_physical appeared to hang when encountering connection
+  issues without throwing any logs. Now, PGD emits a log every 30 seconds to
+  provide information on the status of the connection it attempts to use.
+
+- Fix debug logging for bdr_init_physicall, allowing underneath pg_ctl output to be captured. (BDR-4546, RT99369)
+  bdr_init_physical accepts the "-v" parameter to increase logging verbosity.
+  With this fix, we also enhance the verbosity of the underlying pg_ctl command
+  by not passing the --silent parameter to display more information on any
+  issues it might have.
+
+- Increase default bdr.raft_keep_min_entries to 1000. (BDR-4367)
+  In a PGD cluster, the Raft leader periodically prunes the global_consensus_journal
+  and global_consensus_response_journal tables. This pruning process does not
+  occur simultaneously across all replicas. 
+  Previously, Raft journal pruning was based on the journal size as set by the
+  bdr.raft_keep_min_entries configuration option. However, because Raft requests
+  are retried using the same origin and request ID for every attempt, a situation
+  could arise where the Raft journal on the leader is pruned while a retried command
+  is sent to a replica that has yet to prune its journal. This discrepancy could
+  lead to duplicate primary keys in the consensus table, causing the consensus
+  worker to crash as it cannot insert new entries.
+  To address this issue, the default value of bdr.raft_keep_min_entries has been
+  increased to 1000. This adjustment ensures more consistent and reliable pruning
+  across replicas, preventing duplicate primary keys and maintaining the stability
+  of the consensus worker.
+
+- Ensure that consensus connections are handled correctly, fixing high CPU usage from the BDR consensus process. (RT97649, BDR-4333)
+  Previously, PGD triggered the consensus process when a connection registered
+  and required a poll of the nodes to confirm their state. In addition, the
+  connection establishment state machine for PGD sometimes failed to progress,
+  due to the omission of the connection socket in the wait events, leading to
+  stalled connection attempts and potential network connectivity issues. Both
+  issues can lead to frequently waking up the consensus process and thus high
+  CPU consumption, in direct proportion to the number of nodes within a cluster.
+
+- Fix a memory leak in long-running SQL function bdr.run_on_all_nodes. (RT99231, RT99853, RT95314, BDR-4334)
+  Previously, while running monitoring queries using the SQL function bdr.run_on_all_nodes,
+  the leader node in a PGD cluster opened connections to other nodes and fetched
+  results over libpq connections, resulting in a memory leak since the function
+  did not free memory allocation, resulting in increased memory usage over time.
+  Now, memory is freed correctly, improving management and system stability.
+
+- PART_CATCHUP is now more resilient to replication slot and node_catchup_info conflict. (RT103510, RT101055, BDR-4860)
+  In a PGD cluster, sometimes removing a node is necessary when upgrading a
+  cluster or if the node has gone offline. Previously, the node being removed
+  could be left in the PART_CATCHUP node state, meaning they could not be
+  successfully removed since the data from the soon-to-be-removed node had not
+  fully synchronized with the remaining nodes in the PGD cluster. With this fix,
+  the catch-up infos are  cleaned up during PART_CATCHUP, ensuring there is no
+  conflict between replication slots and the SQL view node_catchup_info.
+
+- Restart the replication connection for bdr_init_physical in the case of a slow connection. (RT102828, BDR-4897)
+  Previously, in the case of a slow connection, the replication connection for
+  bdr_init_physical was dropped, causing the bdr_init_physical process to break.
+  With this fix instead of waiting for the copy of the upstream data, PGD opens
+  and closes the connection only when needed, as determined by bdr_init_physical.
+
+- Ensure RAFT status queries in multi-version clusters function correctly. (RT104094, BDR-4926)
+  PGD does not support clusters with multiple versions outside of upgrades.
+  When running a cluster with multiple versions of PGD, there may be discrepancies
+  between different aspects of the system. In this case, the catalog version between
+  these versions differed. Since raft status queries depend on the catalog underneath,
+  queries that interrogate raft were updated to know what to look for in older
+  catalog versions.
+
 
 ## BDR 3.7.23 (2023 Nov 14)
 
