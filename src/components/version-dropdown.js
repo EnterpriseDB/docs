@@ -39,7 +39,7 @@ const VersionDropdown = ({
             active={activeVersion === version.version}
           >
             Version {version.version}{" "}
-            {version.version == roundedVersion && preciseVersion
+            {version.version === roundedVersion && preciseVersion
               ? `(${preciseVersion})`
               : ""}
           </DropdownItem>
