@@ -143,8 +143,9 @@ def main(args):
 def setup(args):
     doc_path = args.doc_path
     index_meta = load_index_metadata(doc_path)
-    product = index_meta.get("product", None) or doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1] 
-    version = index_meta.get("version", None) or doc_path.parts[-1] if len(doc_path.parts) >= 4 else ''
+    directoryDefaults = index_meta.get("directoryDefaults", None) or {}
+    product = directoryDefaults.get("product", None) or index_meta.get("product", None) or (doc_path.parts[-2] if len(doc_path.parts) >= 4 else doc_path.parts[-1])
+    version = directoryDefaults.get("version", None) or index_meta.get("version", None) or (doc_path.parts[-1] if len(doc_path.parts) >= 4 else '')
 
     _file_prefix = product + (version and "_v" + version or "") + "_documentation"
 
@@ -199,7 +200,7 @@ def hash_check(pdf_file, pdf_hash_file, mdx_file):
         if pdf_file.exists() and newHash == existingHash: 
             return True       
 
-        pdf_file.unlink()
+        pdf_file.unlink(missing_ok=True)
         pdf_hash_file.write_text(newHash)
         return False
 
@@ -270,8 +271,9 @@ def parse_mdx(mdx_file):
 
 def load_index_metadata(path):
     try:
-        indexMeta = frontmatter.load(path / "index.mdx")
-        return indexMeta
+        with open(path / "index.mdx") as indexFile:
+            indexMeta, content = frontmatter.parse(indexFile.read())
+            return indexMeta
     except (FileNotFoundError):
         return {}
 
