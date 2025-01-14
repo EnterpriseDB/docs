@@ -1,64 +1,24 @@
 ---
-title: "PGD Overview - PGD's basic architecture"
-navTitle: Basic architecture
-description: An overview of EDB Postgres Distributed's basic architecture, including groups, multiple masters, mesh topology, logical replication, connection management, and high availability.
+title: "PGD overview"
+description: An overview of EDB Postgres Distributed architecture and performance characteristics
 deepToC: true
 redirects: 
   - bdr
 ---
 
-EDB Postgres Distributed (PGD) provides multi-master replication and data distribution with advanced conflict management, data-loss protection, and [throughput up to 5X faster than native logical replication](https://www.enterprisedb.com/blog/performance-improvements-edb-postgres-distributed). It also enables distributed Postgres clusters with high availability up to five 9s.
+<div class="container mt-4 mb-4 border border-primary">
+<div class="row bg-light">
+<div class="col-12 text-center px-3 py-3">
+Read about why PostgreSQL is better when it’s distributed with EDB Postgres Distributed in <a href="https://www.enterprisedb.com/distributed-postgresql-always-on-database-availability">Distributed PostgreSQL:The Key to Always On Database Availability</a>
+</div>
+</div>
+<div class="row bg-light">
+<div class="col-6 px-3 py-3 d-flex justify-content-center align-items-center">
+<a href="https://www.enterprisedb.com/products/edb-postgres-distributed" class="btn btn-lg btn-primary text-light px-4 text-nowrap text-center" title="Get a free trial of PGD">PGD Free Trial</a>
+</div>
+<div class="col-6 px-3 py-3 d-flex justify-content-center align-items-center">
+<a href="https://www.enterprisedb.com/contact" class="btn btn-lg btn-primary text-light px-4 text-nowrap text-center" title="Contact sales with any questions">Contact Sales</a>
+</div>
+</div>
+</div>
 
-PGD provides loosely coupled, multimaster logical replication using a mesh topology. This means that you can write to any server and the changes are sent directly, row by row, to all the other servers that are part of the same PGD group.
-
-By default, PGD uses asynchronous replication, applying changes on the peer nodes only after the local commit. Multiple synchronous replication options are also available.
-
-## Basic architecture
-
-### Multiple groups
-
-A PGD node is a member of at least one *node group*. In the most basic architecture, there's a single node group for the whole PGD cluster.
-
-### Multiple masters
-
-Each node (database) participating in a PGD group both receives changes from other members and can be written to directly by the user.
-
-This is distinct from hot or warm standby, where only one master server accepts writes and all the other nodes are standbys that replicate either from the master or from another standby.
-
-You don't have to write to all the masters all of the time. A frequent configuration directs writes mostly to just one master called the [write leader](../terminology/#write-leader).
-
-### Asynchronous, by default
-
-Changes made on one PGD node aren't replicated to other nodes until they're committed locally. As a result, the data isn't exactly the same on all nodes at any given time. Some nodes have data that hasn't yet arrived at other nodes. PostgreSQL's block-based replication solutions default to asynchronous replication as well. In PGD, there are multiple masters and, as a result, multiple data streams. So data on different nodes might differ even when `synchronous_commit` and `synchronous_standby_names` are used.
-
-### Mesh topology
-
-PGD is structured around a mesh network where every node connects to every other node, and all nodes exchange data directly with each other. There's no forwarding of data in PGD except in special circumstances, such as adding and removing nodes. Data can arrive from outside the EDB Postgres Distributed cluster or be sent onward using native PostgreSQL logical replication.
-
-### Logical replication
-
-Logical replication is a method of replicating data rows and their changes based on their replication identity (usually a primary key). We use the term *logical* in contrast to *physical* replication, which uses exact block addresses and byte-by-byte replication. Index changes aren't replicated, thereby avoiding write amplification and reducing bandwidth.
-
-Logical replication starts by copying a snapshot of the data from the source node. Once that's done, later commits are sent to other nodes as they occur in real time. Changes are replicated without executing SQL again, so the exact data written is replicated quickly and accurately.
-
-Nodes apply data in the order in which commits were made on the source node, ensuring transactional consistency is guaranteed for the changes from any single node. Changes from different nodes are applied independently of other nodes to ensure the rapid replication of changes.
-
-Replicated data is sent in binary form when it's safe to do so.
-
-
-### Connection management
-
-[Connection management](../routing) leverages consensus-driven quorum to determine the correct connection endpoint in a semi-exclusive manner to prevent unintended multi-node writes from an application. This approach reduces the potential for data conflicts. The node selected as the correct connection endpoint at any point in time is referred to as the [write leader](../terminology/#write-leader).
-
-[PGD Proxy](../routing/proxy) is the tool for application connection management provided as part of EDB Postgres Distributed.
-
-### High availability
-
-Each master node can be protected by one or more standby nodes, so any node that goes down can be quickly replaced and continue. Each standby node is a logical standby node. 
-(Postgres physical standbys aren't supported by PGD.)
-
-Replication continues between currently connected nodes even if one or more nodes are currently unavailable. When the node recovers, replication can restart from where it left off without missing any changes.
-
-Nodes can run different release levels, negotiating the required protocols to communicate. As a result, EDB Postgres Distributed clusters can use rolling upgrades, even for [major versions](../upgrades/upgrading_major_rolling/) of database software.
-
-DDL is replicated across nodes by default. If you want, you can control DDL execution to allow rolling application upgrades.
