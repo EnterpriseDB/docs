@@ -227,7 +227,7 @@ const DocTemplate = ({ data, pageContext }) => {
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
 
-  let preciseVersion = frontmatter.preciseVersion;
+  let preciseVersion = frontmatter.version;
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
