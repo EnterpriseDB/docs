@@ -407,7 +407,7 @@ if (meta.precursor !== undefined) {
         default:
           if (col.key.startsWith("$")) {
             let key = col.key.replace("$", "");
-            line += ` ${prec.meta[key]} |`;
+            line += ` ${prec[key]} |`;
           } else {
             ghCore.error(`Unknown column key: ${col.key}`, {
               file: path.relative(docsBase, metaFilename),
