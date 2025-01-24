@@ -20,6 +20,9 @@ Use the following functions with EDB Clone Schema:
 -   **remotecopyschema_nb.** This function performs the same purpose as `remotecopyschema`, but as a background job, thus freeing up the terminal from which the function was initiated. This is referred to as a *non-blocking* function. See [remotecopyschema_nb](#remotecopyschema_nb) for information on the `remotecopyschema_nb` function.
 -   **process_status_from_log.** This function displays the status of the cloning functions. The information is obtained from a log file that must be specified when a cloning function is invoked. See [process_status_from_log](#process_status_from_log) for information on the `process_status_from_log` function.
 -   **remove_log_file_and_job.** This function deletes the log file created by a cloning function. This function can also be used to delete a job created by the non-blocking form of the function. See [remove_log_file_and_job](#remove_log_file_and_job) for information on the `remove_log_file_and_job` function.
+-   **create_clone_log_dir.** This function creates a directory to store all the log files.
+-   **grant_clone_schema_privileges.** This function grants the privileges to a non-super user to clone the schema.
+-   **revoke_clone_schema_privileges.** This function revokes the privileges from a non-super user for cloning the schema.
 
 The database objects that can be cloned from one schema to another are the following:
 
@@ -77,7 +80,14 @@ The following describes the steps to install the required extensions and the PL/
 
 **These steps must be performed on any database to be used as the source or target database by an EDB Clone Schema function.**
 
-**Step 1:** The following extensions must be installed on the database:
+**Step 1:** The log directory is required to store all the log files. Create the log directory as a superuser:
+
+```sql
+SELECT edb_util.create_clone_log_dir();
+```
+It returns the value true on successful execution.
+
+**Step 2:** The following extensions must be installed on the database:
 
 -   `postgres_fdw`
 -   `dblink`
@@ -95,11 +105,9 @@ CREATE EXTENSION adminpack;
 CREATE EXTENSION pgagent;
 ```
 
-For more information about using the `CREATE EXTENSION` command, see the PostgreSQL core documentation at:
+For more information, see [CREATE EXTENSION command documentation](https://www.postgresql.org/docs/current/static/sql-createextension.html).
 
-<https://www.postgresql.org/docs/current/static/sql-createextension.html>
-
-**Step 2:** Modify the `postgresql.conf` file.
+**Step 3:** Modify the `postgresql.conf` file.
 
 Modify the `postgresql.conf` file by adding `$libdir/parallel_clone` to the `shared_preload_libraries` configuration parameter as shown by the following example:
 
@@ -107,19 +115,17 @@ Modify the `postgresql.conf` file by adding `$libdir/parallel_clone` to the `sha
 shared_preload_libraries = '$libdir/dbms_pipe,$libdir/dbms_aq,$libdir/parallel_clone'
 ```
 
-**Step 3:** The Perl Procedural Language (PL/Perl) must be installed on the database and the `CREATE TRUSTED LANGUAGE plperl` command must be run. For Linux, install PL/Perl using the `edb-asxx-server-plperl` RPM package where `xx` is the Advanced Server version number. For Windows, use the EDB Postgres Language Pack. For information on EDB Language Pack, see the *EDB Postgres Language Pack Guide* available at:
+Restart the database server to load the libraries with clone schema support.
 
-[https://www.enterprisedb.com/docs](/language_pack/latest/)
+**Step 4:** The Perl Procedural Language (PL/Perl) must be installed on the database and the `CREATE TRUSTED LANGUAGE plperl` command must be run. For Linux, install PL/Perl using the `edb-asxx-server-plperl` RPM package where `xx` is the Advanced Server version number. For Windows, use the EDB Postgres Language Pack. For information, see [EDB Language Pack documentation](/language_pack/latest/).
 
-**Step 4:** Connect to the database as a superuser and run the following command:
+**Step 5:** Connect to the database as a superuser and run the following command:
 
 ```text
 CREATE TRUSTED LANGUAGE plperl;
 ```
 
-For more information about using the `CREATE LANGUAGE` command, see the PostgreSQL core documentation at:
-
-<https://www.postgresql.org/docs/current/static/sql-createlanguage.html>
+For more information on EDB Language Pack, see [EDB Postgres Language Pack](https://www.postgresql.org/docs/current/static/sql-createlanguage.html).
 
 <div id="setting-configuration-parameters-1" class="registered_link"></div>
 
@@ -191,13 +197,25 @@ CREATE EXTENSION edb_cloneschema;
 
 Make sure you create the `parallel_clone` extension before creating the `edb_cloneschema` extension.
 
+### Creating Log directory
+
+The Log directory is required to store all the log files.
+
+After creating the extensions the following statement must be executed, as a superuser, to create the log directory:
+
+  ```sql
+  SELECT edb_util.create_clone_log_dir();
+  ```
+
+It will return the value true on successful execution.
+
 ### Creating the Foreign Servers and User Mappings
 
 When using one of the local cloning functions, `localcopyschema` or `localcopyschema_nb`, one of the required parameters includes a single, foreign server for identifying the database server along with its database that is the source and the receiver of the cloned schema.
 
 When using one of the remote cloning functions, `remotecopyschema` or `remotecopyschema_nb`, two of the required parameters include two foreign servers. The foreign server specified as the first parameter identifies the source database server along with its database that is the provider of the cloned schema. The foreign server specified as the second parameter identifies the target database server along with its database that is the receiver of the cloned schema.
 
-For each foreign server, a user mapping must be created. When a selected database superuser invokes a cloning function, that database superuser who invokes the function must have been mapped to a database user name and password that has access to the foreign server that is specified as a parameter in the cloning function.
+For each foreign server, a user mapping must be created. When a selected database user invokes a cloning function, that database user who invokes the function must have been mapped to a database user name and password that has access to the foreign server that is specified as a parameter in the cloning function.
 
 For general information about foreign data, foreign servers, and user mappings, see the PostgreSQL core documentation at:
 
@@ -215,7 +233,7 @@ The user mapping defines the connection and authentication information for the f
 
 **This foreign server and user mapping must be created within the database of the local server in which the cloning is to occur.**
 
-**The database user for whom the user mapping is defined must be a superuser and the user connected to the local server when invoking an EDB Clone Schema function.**
+**The database user for whom the user mapping is defined must have required privileges and the user must be connected to the local server when invoking an EDB Clone Schema function.**
 
 The following example creates the foreign server for the database containing the schema to be cloned, and to receive the cloned schema as well.
 
@@ -269,7 +287,7 @@ edb=# \deu+
 (1 row)
 ```
 
-When database superuser `enterprisedb` invokes a cloning function, the database user `enterprisedb` with its password is used to connect to `local_server` on the `localhost` with port `5444` to database `edb`.
+When database user `enterprisedb` invokes a cloning function, the database user `enterprisedb` with its password is used to connect to `local_server` on the `localhost` with port `5444` to database `edb`.
 
 In this case, the mapped database user, `enterprisedb`, and the database user, `enterprisedb`, used to connect to the local `edb` database happen to be the same, identical database user, but that is not an absolute requirement.
 
@@ -289,7 +307,7 @@ The user mappings define the connection and authentication information for the f
 
 **All of these foreign servers and user mappings must be created within the target database of the target/local server.**
 
-**The database user for whom the user mappings are defined must be a superuser and the user connected to the local server when invoking an EDB Clone Schema function.**
+**The database user for whom the user mappings are defined must have required privileges and the user must be connected to the local server when invoking an EDB Clone Schema function.**
 
 The following example creates the foreign server for the local, target database that is to receive the cloned schema.
 
@@ -366,7 +384,7 @@ tgtdb=# \deu+
 (2 rows)
 ```
 
-When database superuser `enterprisedb` invokes a cloning function, the database user `tgtuser` with password `tgtpassword` is used to connect to `tgt_server` on the `localhost` with port `5444` to database `tgtdb`.
+When database user `enterprisedb` invokes a cloning function, the database user `tgtuser` with password `tgtpassword` is used to connect to `tgt_server` on the `localhost` with port `5444` to database `tgtdb`.
 
 In addition, database user `srcuser` with password `srcpassword` connects to `src_server` on host `192.168.2.28` with port `5444` to database `srcdb`.
 
@@ -390,7 +408,7 @@ The EDB Clone Schema functions are created in the `edb_util` schema when the `pa
 
 Verify the following conditions before using an EDB Clone Schema function:
 
--   You are connected to the target or local database as the database superuser defined in the `CREATE USER MAPPING` command for the foreign server of the target or local database.
+-   You are connected to the target or local database as the database user defined in the `CREATE USER MAPPING` command for the foreign server of the target or local database.
 -   The `edb_util` schema is in the search path, or the cloning function is to be invoked with the `edb_util` prefix.
 -   The target schema does not exist in the target database.
 -   When using the remote copy functions, if the `on_tblspace` parameter is to be set to `true`, then the target database cluster contains all tablespaces that are referenced by objects in the source schema, otherwise creation of the DDL statements for those database objects will fail in the target schema. This causes a failure of the cloning process.
@@ -472,7 +490,7 @@ The example is for the following environment:
 -   Foreign server (`local_server`) and user mapping with the information of the preceding bullet points
 -   Source schema: `edb`
 -   Target schema: `edbcopy`
--   Database superuser to invoke `localcopyschema: enterprisedb`
+-   Database user to invoke `localcopyschema: enterprisedb`
 
 Before invoking the function, the connection is made by database user `enterprisedb` to database `edb`.
 
@@ -770,7 +788,7 @@ The target server environment:
 -   Database target of the clone: `tgtdb`
 -   Foreign server (`tgt_server`) and user mapping with the information of the preceding bullet points
 -   Target schema: `tgtschema`
--   Database superuser to invoke `remotecopyschema: enterprisedb`
+-   Database user to invoke `remotecopyschema: enterprisedb`
 
 Before invoking the function, the connection is made by database user `enterprisedb` to database `tgtdb`. A `worker_count` of `4` is specified for this function.
 
@@ -1084,6 +1102,339 @@ The following example removes the log file and the job, given both values:
 tgtdb=# SELECT edb_util.remove_log_file_and_job ('clone_rmt_src_tgt',2);
  remove_log_file_and_job
 -------------------------
+ t
+(1 row)
+```
+
+## Cloning schema as a non-super user
+
+You can now clone the schema as a non-super user. These two functions are created while creating the extension:
+
+- GRANT_CLONE_SCHEMA_PRIVILEGES - Grants the privileges to a non-super user to clone the schema.
+- REVOKE_CLONE_SCHEMA_PRIVILEGES - Revokes the privileges from a non-super user for cloning the schema.
+
+### GRANT_CLONE_SCHEMA_PRIVILEGES
+
+You can grant the clone schema privileges to a non-super user using this function.
+
+Syntax:
+
+```sql
+GRANT_CLONE_SCHEMA_PRIVILEGES(<user_name> TEXT, [<allow_remote_schema_clone> BOOLEAN], [<print_commands> BOOLEAN])
+```
+
+Where,
+
+`user_name`
+
+Name of the user to whom privileges are to be granted to do local cloning.
+
+`allow_remote_schema_clone`
+
+Optionally provide a boolean value to this parameter to control the remote cloning by the user. By default the value is set to False. The true value grants user the privileges to do remote cloning.
+
+`print_commands`
+
+Optionally provide a boolean value to this parameter to control printing of the executed commands. By default the value is set to false. The true value prints the executed commands on the terminal.
+
+This example shows how to grant a non-super user ec2-user the privileges for local and remote cloning:
+
+```sql
+SELECT edb_util.grant_clone_schema(user_name => 'ec2-user',
+                                   allow_remote_schema => true,
+                                   print_commands => true);
+__OUTPUT__
+INFO:  Executed command: GRANT USAGE ON SCHEMA edb_util TO "ec2-user"
+INFO:  Executed command: GRANT pg_read_all_settings TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON PACKAGE SYS.UTL_FILE TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON FUNCTION pg_catalog.pg_stat_file(text) TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text, bigint, bigint) TO "ec2-user"
+INFO:  Executed command: GRANT SELECT ON pg_authid TO "ec2-user"
+INFO:  Executed command: GRANT SELECT ON pg_user_mapping TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON FUNCTION dblink_connect_u(text, text) TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON FUNCTION dblink(text, text) TO "ec2-user"
+INFO:  Executed command: GRANT EXECUTE ON FUNCTION pg_catalog.pg_file_write(text, text, boolean) TO "ec2-user"
+INFO:  Executed command: GRANT USAGE ON FOREIGN DATA WRAPPER postgres_fdw TO "ec2-user"
+┌───────────────────────────────┐
+│ grant_clone_schema_privileges │
+├───────────────────────────────┤
+│ t                             │
+└───────────────────────────────┘
+(1 row)
+```
+
+### REVOKE_CLONE_SCHEMA_PRIVILEGES
+
+You can revoke the clone schema privileges from a non-super user using this function.
+
+Syntax:
+
+```sql
+revoke_clone_schema_privileges(<user_name> TEXT[, <revoke_remote_schema> BOOLEAN][,<print_commands> BOOLEAN])
+```
+
+Where,
+
+`user_name`
+
+Name of the user from whom we want to revoke the cloning privileges.
+
+`revoke_remote_schema_clone`
+
+Optionally provide a boolean value to this parameter to control the remote cloning by the user. By default the value is set to False. The true value revokes the remote cloning privileges from the user.
+
+`print_commands`
+
+Optionally provide a boolean value to this parameter to control printing of the executed commands. By default the value is set to false. The true value prints the executed commands on the terminal.
+
+This example shows how to revoke cloning privileges from the ec2-user user.
+
+```sql
+SELECT edb_util.revoke_clone_schema_privileges(user_name => 'ec2-user',
+                                              revoke_remote_schema_clone => true,
+                                              print_commands => true);
+__OUTPUT__
+INFO:  Revoked USAGE on schema edb_util from ec2-user.
+INFO:  Revoked pg_read_all_settings from ec2-user.
+INFO:  Revoked EXECUTE on package SYS.UTL_FILE from ec2-user.
+INFO:  Revoked EXECUTE on function pg_catalog.pg_stat_file(text) from ec2-user.
+INFO:  Revoked EXECUTE on function pg_catalog.pg_read_file(text, bigint, bigint) from ec2-user.
+INFO:  Revoked SELECT on pg_authid from ec2-user.
+INFO:  Revoked SELECT on pg_user_mapping from ec2-user.
+INFO:  Revoked EXECUTE on function dblink_connect_u(text, text) from ec2-user.
+INFO:  Revoked EXECUTE on function dblink(text, text) from ec2-user.
+INFO:  Revoked EXECUTE on function pg_catalog.pg_file_write(text, text, boolean) from ec2-user.
+INFO:  Revoked USAGE on foreign data wrapper postgres_fdw from ec2-user.
+┌────────────────────────────────┐
+│ revoke_clone_schema_privileges │
+├────────────────────────────────┤
+│ t                              │
+└────────────────────────────────┘
+(1 row)
+```
+
+### Example - clone a schema locally as a non-super user
+
+This example shows how to clone a local schema as a non-super user:
+
+Create a non-super user named `forcs` for this example:
+
+```sql
+CREATE USER forcs PASSWORD `abc123`;
+__OUTPUT__
+CREATE ROLE
+```
+
+Give CREATE privileges to `forcs` user on `edb` database:
+
+```sql
+GRANT CREATE on DATABASE edb to forcs;
+__OUTPUT__
+GRANT
+```
+
+Create the following extensions:
+
+```sql
+CREATE EXTENSION postgres_fdw;
+CREATE EXTENSION dblink;
+CREATE EXTENSION adminpack;
+CREATE EXTENSION pgAgent;
+CREATE EXTENSION parallel_clone;
+CREATE EXTENSION edb_cloneschema;
+__OUTPUT__
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+```
+
+Create the log directory for cloning:
+
+```sql
+SELECT edb_util.create_clone_log_dir();
+__OUTPUT__
+ create_clone_log_dir 
+----------------------
+ t
+(1 row)
+```
+
+Give clone schema privilege to `forcs` user:
+
+```sql 
+SELECT edb_util.grant_clone_schema_privileges('forcs', true, true);
+__OUTPUT__
+INFO:  Granted USAGE on schema edb_util to forcs.
+INFO:  Granted CREATE on schema edb_util to forcs.
+INFO:  Granted pg_read_all_settings to forcs.
+INFO:  Granted EXECUTE on package SYS.UTL_FILE to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_stat_file(text) to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_read_file(text, bigint, bigint) to forcs.
+INFO:  Granted SELECT on pg_authid to forcs.
+INFO:  Granted SELECT on pg_user_mapping to forcs.
+INFO:  Granted EXECUTE on function dblink_connect_u(text, text) to forcs.
+INFO:  Granted EXECUTE on function dblink(text, text) to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_file_write(text, text, boolean) to forcs.
+INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
+ grant_clone_schema_privileges 
+-------------------------------
+ t
+(1 row)
+```
+
+Connect to `edb` datbase as `forcs` user:
+
+```
+edb-psql -h 127.0.0.1 -p 6543 -U forcs edb
+__OUTPUT__
+Password for user forcs: 
+edb-psql (13.17.23)
+Type "help" for help.
+```
+
+Create a foreign server and a user mapping:
+
+```sql
+CREATE SERVER local_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '6543', dbname 'edb');
+CREATE USER MAPPING FOR forcs SERVER local_postgres_server OPTIONS (user 'forcs', password 'abc123');
+__OUTPUT__
+CREATE SERVER
+CREATE USER MAPPING
+```
+
+Create a sample schema and tables:
+
+```sql
+CREATE SCHEMA src;
+SET search_path=src, public, "$user$";
+CREATE TABLE t1 AS (SELECT generate_series(1,100000));
+CREATE TABLE t2 AS (SELECT generate_series(1,100000));
+CREATE TABLE t3 AS (SELECT generate_series(1,100000));
+CREATE TABLE t4 AS (SELECT generate_series(1,100000));
+__OUTPUT__
+CREATE SCHEMA
+SET
+SELECT 100000
+SELECT 100000
+SELECT 100000
+SELECT 100000
+```
+
+Clone the schema locally:
+
+```sql
+select edb_util.localcopyschema('local_postgres_server','src','src2','src2_log',true,true,true,4);
+__OUTPUT__
+ localcopyschema 
+-----------------
+ t
+(1 row)
+```
+
+### Example - clone a schema remotely as a non-super user
+
+This example shows how to clone a schema remotely as a non-super user.
+
+Create a non-super user named `forcs` for this example:
+
+```sql
+CREATE USER forcs password `abc123`;
+__OUTPUT__
+CREATE ROLE
+```
+
+Create the following extensions:
+
+```sql 
+CREATE EXTENSION postgres_fdw;
+CREATE EXTENSION dblink;
+CREATE EXTENSION adminpack;
+CREATE EXTENSION pgAgent;
+CREATE EXTENSION parallel_clone;
+CREATE EXTENSION edb_cloneschema;
+__OUTPUT__
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+CREATE EXTENSION
+```
+
+Create the log directory for cloning:
+
+```sql
+SELECT edb_util.create_clone_log_dir();
+__OUTPUT__
+ create_clone_log_dir 
+----------------------
+ t
+(1 row)
+```
+
+Give the clone schema privileges to the non-super user `forcs`:
+
+```sql
+SELECT edb_util.grant_clone_schema_privileges('forcs', true, true);
+__OUTPUT__
+INFO:  Granted USAGE on schema edb_util to forcs.
+INFO:  Granted CREATE on schema edb_util to forcs.
+INFO:  Granted pg_read_all_settings to forcs.
+INFO:  Granted EXECUTE on package SYS.UTL_FILE to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_stat_file(text) to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_read_file(text, bigint, bigint) to forcs.
+INFO:  Granted SELECT on pg_authid to forcs.
+INFO:  Granted SELECT on pg_user_mapping to forcs.
+INFO:  Granted EXECUTE on function dblink_connect_u(text, text) to forcs.
+INFO:  Granted EXECUTE on function dblink(text, text) to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_file_write(text, text, boolean) to forcs.
+INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
+ grant_clone_schema_privileges 
+-------------------------------
+ t
+(1 row)
+```
+
+Connect to the `edb` database as `forcs` user:
+
+```
+edb-psql -h 127.0.0.1 -p 4422 -U forcs edb
+__OUTPUT__
+Password for user forcs: 
+edb-psql (13.17.23)
+Type "help" for help.
+```
+
+Create a foreign server and user mapping in the target database:
+
+```sql
+CREATE SERVER local_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '4422', dbname 'edb');
+CREATE USER MAPPING FOR forcs SERVER local_postgres_server OPTIONS (user 'forcs', password 'abc123');
+__OUTPUT__
+CREATE SERVER
+CREATE USER MAPPING
+```
+
+Create a foregin server and user mapping in the source database:
+
+```sql
+CREATE SERVER src_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '6543', dbname 'edb');
+CREATE USER MAPPING FOR forcs SERVER src_postgres_server OPTIONS (user 'forcs', password 'abc123');
+__OUTPUT__
+CREATE SERVER
+CREATE USER MAPPING
+```
+
+Clone the schema from source to target database using `remotecopyschema` function:
+
+```sql
+select edb_util.remotecopyschema('src_postgres_server','local_postgres_server','src','src','src_log',true,true,true,4);
+__OUTPUT__
+ remotecopyschema 
+------------------
  t
 (1 row)
 ```

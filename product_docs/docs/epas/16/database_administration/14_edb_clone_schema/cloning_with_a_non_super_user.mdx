@@ -1,8 +1,8 @@
 ---
-title: "Cloning schema as a non-super user"
+title: Cloning schema as a non-super user
 ---
 
-You can now clone the schema as a non-super user. This two functions are created while creating the extension:
+You can now clone the schema as a non-super user. These two functions are created while creating the extension:
 
 - GRANT_CLONE_SCHEMA_PRIVILEGES - Grants the privileges to a non-super user to clone the schema.
 - REVOKE_CLONE_SCHEMA_PRIVILEGES - Revokes the privileges from a non-super user for cloning the schema.
@@ -107,15 +107,14 @@ INFO:  Revoked USAGE on foreign data wrapper postgres_fdw from ec2-user.
 (1 row)
 ```
 
-## Examples
+## Example - clone a schema locally as a non-super user
 
-This example shows how to clone a schema locally as a non-super user:
+This example shows how to clone a local schema as a non-super user:
 
 Create a non-super user named `forcs` for this example:
 
 ```sql
-edb-psql -p 6543 -U enterprisedb edb
-CREATE USER forcs password 'abc123';
+CREATE USER forcs PASSWORD `abc123`;
 __OUTPUT__
 CREATE ROLE
 ```
@@ -133,10 +132,10 @@ Create the following extensions:
 ```sql
 CREATE EXTENSION postgres_fdw;
 CREATE EXTENSION dblink;
+CREATE EXTENSION adminpack;
+CREATE EXTENSION pgAgent;
 CREATE EXTENSION parallel_clone;
 CREATE EXTENSION edb_cloneschema;
-CREATE EXTENSION edb_job_scheduler;
-CREATE EXTENSION DBMS_JOB;
 __OUTPUT__
 CREATE EXTENSION
 CREATE EXTENSION
@@ -159,7 +158,7 @@ __OUTPUT__
 
 Give clone schema privilege to `forcs` user:
 
-```sql
+```sql 
 SELECT edb_util.grant_clone_schema_privileges('forcs', true, true);
 __OUTPUT__
 INFO:  Granted USAGE on schema edb_util to forcs.
@@ -170,9 +169,9 @@ INFO:  Granted EXECUTE on function pg_catalog.pg_stat_file(text) to forcs.
 INFO:  Granted EXECUTE on function pg_catalog.pg_read_file(text, bigint, bigint) to forcs.
 INFO:  Granted SELECT on pg_authid to forcs.
 INFO:  Granted SELECT on pg_user_mapping to forcs.
-INFO:  Granted EXECUTE on function dblink_connect(text, text) to forcs.
+INFO:  Granted EXECUTE on function dblink_connect_u(text, text) to forcs.
 INFO:  Granted EXECUTE on function dblink(text, text) to forcs.
-INFO:  Granted ALL on directory edb_cs_lfp to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_file_write(text, text, boolean) to forcs.
 INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
  grant_clone_schema_privileges 
 -------------------------------
@@ -180,13 +179,13 @@ INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
 (1 row)
 ```
 
-Connect to `edb` database as `forcs` user:
+Connect to `edb` datbase as `forcs` user:
 
-```sql
+```
 edb-psql -h 127.0.0.1 -p 6543 -U forcs edb
 __OUTPUT__
-Password for user forcs:
-edb-psql (17.1.0)
+Password for user forcs: 
+edb-psql (13.17.23)
 Type "help" for help.
 ```
 
@@ -205,10 +204,10 @@ Create a sample schema and tables:
 ```sql
 CREATE SCHEMA src;
 SET search_path=src, public, "$user$";
-create table t1 as (select generate_series(1,100000));
-create table t2 as (select generate_series(1,100000));
-create table t3 as (select generate_series(1,100000));
-create table t4 as (select generate_series(1,100000));
+CREATE TABLE t1 AS (SELECT generate_series(1,100000));
+CREATE TABLE t2 AS (SELECT generate_series(1,100000));
+CREATE TABLE t3 AS (SELECT generate_series(1,100000));
+CREATE TABLE t4 AS (SELECT generate_series(1,100000));
 __OUTPUT__
 CREATE SCHEMA
 SET
@@ -221,7 +220,7 @@ SELECT 100000
 Clone the schema locally:
 
 ```sql
-SELECT edb_util.localcopyschema('local_postgres_server','src','src2','src2_log',true,true,true,4);
+select edb_util.localcopyschema('local_postgres_server','src','src2','src2_log',true,true,true,4);
 __OUTPUT__
  localcopyschema 
 -----------------
@@ -229,34 +228,27 @@ __OUTPUT__
 (1 row)
 ```
 
-This example shows how to clone a schema remotely as a non-super user:
+## Example - clone a schema remotely as a non-super user
+
+This example shows how to clone a schema remotely as a non-super user.
 
 Create a non-super user named `forcs` for this example:
 
 ```sql
-edb-psql -p 4422 -U enterprisedb edb
-CREATE USER forcs PASSWORD 'abc123';
+CREATE USER forcs password `abc123`;
 __OUTPUT__
 CREATE ROLE
 ```
 
-Give CREATE privileges on `edb` database to `forcs` user:
-
-```sql
-GRANT CREATE on DATABASE edb to forcs;
-__OUTPUT__
-GRANT
-```
-
 Create the following extensions:
 
-```sql
+```sql 
 CREATE EXTENSION postgres_fdw;
 CREATE EXTENSION dblink;
+CREATE EXTENSION adminpack;
+CREATE EXTENSION pgAgent;
 CREATE EXTENSION parallel_clone;
 CREATE EXTENSION edb_cloneschema;
-CREATE EXTENSION edb_job_scheduler;
-CREATE EXTENSION DBMS_JOB;
 __OUTPUT__
 CREATE EXTENSION
 CREATE EXTENSION
@@ -290,9 +282,9 @@ INFO:  Granted EXECUTE on function pg_catalog.pg_stat_file(text) to forcs.
 INFO:  Granted EXECUTE on function pg_catalog.pg_read_file(text, bigint, bigint) to forcs.
 INFO:  Granted SELECT on pg_authid to forcs.
 INFO:  Granted SELECT on pg_user_mapping to forcs.
-INFO:  Granted EXECUTE on function dblink_connect(text, text) to forcs.
+INFO:  Granted EXECUTE on function dblink_connect_u(text, text) to forcs.
 INFO:  Granted EXECUTE on function dblink(text, text) to forcs.
-INFO:  Granted ALL on directory edb_cs_lfp to forcs.
+INFO:  Granted EXECUTE on function pg_catalog.pg_file_write(text, text, boolean) to forcs.
 INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
  grant_clone_schema_privileges 
 -------------------------------
@@ -302,35 +294,38 @@ INFO:  Granted USAGE on foreign data wrapper postgres_fdw to forcs.
 
 Connect to the `edb` database as `forcs` user:
 
-
-```sql
+```
 edb-psql -h 127.0.0.1 -p 4422 -U forcs edb
-__OUPUT__
+__OUTPUT__
 Password for user forcs: 
-edb-psql (17.1.0)
+edb-psql (13.17.23)
 Type "help" for help.
 ```
 
-Create a foreign server and user mapping in source and target database:
+Create a foreign server and user mapping in the target database:
 
 ```sql
 CREATE SERVER local_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '4422', dbname 'edb');
 CREATE USER MAPPING FOR forcs SERVER local_postgres_server OPTIONS (user 'forcs', password 'abc123');
-
-CREATE SERVER src_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '6543', dbname 'edb');
-CREATE USER MAPPING FOR forcs SERVER src_postgres_server OPTIONS (user 'forcs', password 'abc123');
 __OUTPUT__
 CREATE SERVER
 CREATE USER MAPPING
+```
+
+Create a foreign server and user mapping in the source database:
+
+```sql
+CREATE SERVER src_postgres_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '127.0.0.1', port '6543', dbname 'edb');
+CREATE USER MAPPING FOR forcs SERVER src_postgres_server OPTIONS (user 'forcs', password 'abc123');
+__OUTPUT__
 CREATE SERVER
 CREATE USER MAPPING
 ```
 
 Clone the schema from source to target database using `remotecopyschema` function:
 
-
 ```sql
-SELECT edb_util.remotecopyschema('src_postgres_server','local_postgres_server','src','src','src_log',true,true,true,4);
+select edb_util.remotecopyschema('src_postgres_server','local_postgres_server','src','src','src_log',true,true,true,4);
 __OUTPUT__
  remotecopyschema 
 ------------------
