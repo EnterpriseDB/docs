@@ -3,8 +3,6 @@ title: "Migration errors"
 deepToC: true
 ---
 
-<div id="mtk_errors" class="registered_link"></div>
-
 During the migration process, the migration summary displays the progress of the migration. If an error occurs, the summary displays information about the error. The migration summary is also written to a log file. 
 
 On Linux, the default location for the log files is:
@@ -273,6 +271,37 @@ at java.lang.Thread.run(Thread.java:722)
 By default, the MySQL JDBC driver fetches all of the rows in a table into Migration Toolkit in a single network round trip. This behavior can easily exceed available memory for large tables.
 
 To correct the problem, specify `-fetchSize 1` as a command-line argument when you retry the migration.
+
+### Error: Timeout read operation during snapshot
+
+*When I perform a migration to a target EDB Postgres Advanced Server or PostgreSQL server, Migration Toolkit reports the snapshot has failed:*
+
+```
+DB-08006: com.edb.util.PSQLException: An I/O error occurred while sending to the backend.
+java.net.SocketTimeoutException: Read timed out
+```
+
+The target database server is either EDB Postgres Advanced Server or PostgreSQL and you are performing a snapshot operation. The size of the source tables ranges in the hundreds of gigabytes or the network between the database server and Migration Toolkit is slow, which causes the snapshot operation to take multiple hours.
+
+The error message is reported after a successful data copy at the stage of enabling constraints.
+
+This occurs because the server's default configuration closes idle TCP connections opened by Migration Toolkit to create constraints.
+
+To work around this issue, modify the following parameters in the `postgresql.conf` file of the target database server: 
+
+```
+tcp_keepalives_idle = 60                # TCP_KEEPIDLE, in seconds;
+tcp_keepalives_interval = 10            # TCP_KEEPINTVL, in seconds;
+tcp_keepalives_count = 10               # TCP_KEEPCNT;
+```
+
+Then, reload the configuration to make the changes effective: 
+
+```
+select pg_reload_conf();
+```
+
+This way, tcp_keepalive messages won't let the connection become idle and Migration Toolkit won't report a broken connection.
 
 ### Incorrect timestamps and Daylight Saving Time
 
