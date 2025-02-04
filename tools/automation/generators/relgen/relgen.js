@@ -378,7 +378,7 @@ for (let [file, relnote] of relnotes) {
       default:
         if (col.key.startsWith("$")) {
           let key = col.key.replace("$", "");
-          line += ` ${relnote.meta[key]} |`;
+          line += ` ${relnote.components[key]} |`;
         } else {
           ghCore.error(`Unknown column key: ${col.key}`, {
             file: path.relative(docsBase, metaFilename),
@@ -423,7 +423,7 @@ if (meta.precursor !== undefined) {
 
 // Now let's make some release notes...
 for (let [file, relnote] of relnotes) {
-  prepareRelnote(meta, file, relnote);
+  prepareRelnote(meta, path.join(argv.path, "src", file), relnote);
 }
 
 function prepareRelnote(meta, file, note) {
@@ -485,6 +485,7 @@ function prepareRelnote(meta, file, note) {
     `title: ${note.product} ${note.version} release notes\n`,
   );
   appendFileSync(rlout, `navTitle: Version ${note.version}\n`);
+  appendFileSync(rlout, `originalFilepath: ${file}\n`);
   appendFileSync(rlout, `---\n`);
 
   appendFileSync(rlout, "\n");
@@ -548,7 +549,7 @@ function prepareRelnote(meta, file, note) {
       if (meta.components !== undefined) {
         appendFileSync(
           rlout,
-          `<tr><td>${linenote.component}</td><td>${linenote.component_version}</td><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
+          `<tr><td>${linenote.component}</td><td>${note.components[linenote.component]}</td><td>${composednote}</td><td>${linenote.addresses}</td></tr>\n`,
         );
       } else {
         appendFileSync(
