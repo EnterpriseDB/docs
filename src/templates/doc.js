@@ -137,6 +137,25 @@ const Section = ({ section }) => (
   </div>
 );
 
+const composeEditURL = (
+  editTarget,
+  originalFilePath,
+  docsRepoUrl,
+  branch,
+  fileUrlSegment,
+) => {
+  if (editTarget === "originalFilePath" && originalFilePath) {
+    // two options here:
+    // 1. a full URL (presumably pointing at a file on github, but could be anything)
+    // 2. a path to a file in this repo, relative to the root
+    if (originalFilePath.startsWith("http"))
+      return originalFilePath.replace(/\/blob\//, "/edit/");
+    fileUrlSegment = "/" + originalFilePath;
+  }
+
+  return fileUrlSegment && `${docsRepoUrl}/edit/${branch}${fileUrlSegment}`;
+};
+
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
@@ -171,10 +190,18 @@ const DocTemplate = ({ data, pageContext }) => {
   } = frontmatter;
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment = fileAbsolutePath.split("/product_docs/docs").slice(1);
-  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}/product_docs/docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}/product_docs/docs${fileUrlSegment}`;
-  const githubEditLink = `${gitData.docsRepoUrl}/edit/${branch}/product_docs/docs${fileUrlSegment}`;
+  const fileUrlSegment = (fileAbsolutePath.match(
+    /(?:\/advocacy_docs|\/product_docs\/docs).+$/,
+  ) || [])[0];
+  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}${fileUrlSegment}`;
+  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}${fileUrlSegment}`;
+  const githubEditLink = composeEditURL(
+    editTarget,
+    originalFilePath,
+    gitData.docsRepoUrl,
+    branch,
+    fileUrlSegment,
+  );
   const githubIssuesLink = `${
     gitData.docsRepoUrl
   }/issues/new?title=${encodeURIComponent(
@@ -262,13 +289,9 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </h1>
             <div className="d-flex d-print-none">
-              {editTarget !== "none" && (
+              {editTarget !== "none" && !!githubEditLink && (
                 <a
-                  href={
-                    (editTarget === "originalFilePath" && originalFilePath
-                      ? originalFilePath.replace(/\/blob\//, "/edit/")
-                      : githubEditLink) || "#"
-                  }
+                  href={githubEditLink}
                   className="btn btn-sm btn-primary px-4 text-nowrap"
                   title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
                 >
