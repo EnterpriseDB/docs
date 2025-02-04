@@ -108,6 +108,25 @@ const buildSections = (navTree, path) => {
   return sections;
 };
 
+const composeEditURL = (
+  editTarget,
+  originalFilePath,
+  docsRepoUrl,
+  branch,
+  fileUrlSegment,
+) => {
+  if (editTarget === "originalFilePath" && originalFilePath) {
+    // two options here:
+    // 1. a full URL (presumably pointing at a file on github, but could be anything)
+    // 2. a path to a file in this repo, relative to the root
+    if (originalFilePath.startsWith("http"))
+      return originalFilePath.replace(/\/blob\//, "/edit/");
+    fileUrlSegment = "/" + originalFilePath;
+  }
+
+  return fileUrlSegment && `${docsRepoUrl}/edit/${branch}${fileUrlSegment}`;
+};
+
 const LearnDocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { mdx, edbGit: gitData } = data;
@@ -166,10 +185,18 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   // don't encourage folks to edit on main - set the edit links to develop in production builds
   const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment = mdx.fileAbsolutePath.split("/advocacy_docs").slice(1);
-  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
-  const githubEditLink = `${gitData.docsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
+  const fileUrlSegment = (mdx.fileAbsolutePath.match(
+    /(?:\/advocacy_docs|\/product_docs\/docs).+$/,
+  ) || [])[0];
+  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}${fileUrlSegment}`;
+  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}${fileUrlSegment}`;
+  const githubEditLink = composeEditURL(
+    editTarget,
+    originalFilePath,
+    gitData.docsRepoUrl,
+    branch,
+    fileUrlSegment,
+  );
   const githubIssuesLink = `${
     gitData.docsRepoUrl
   }/issues/new?title=${encodeURIComponent(
@@ -181,16 +208,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
   const editOrFeedbackButton =
-    editTarget === "none" ? (
+    editTarget === "none" || !githubEditLink ? (
       <FeedbackButton githubIssuesLink={githubIssuesLink} />
     ) : (
-      <EditButton
-        githubEditLink={
-          editTarget === "originalFilePath" && originalFilePath
-            ? originalFilePath.replace(/\/blob\//, "/edit/")
-            : githubEditLink
-        }
-      />
+      <EditButton githubEditLink={githubEditLink} />
     );
 
   return (

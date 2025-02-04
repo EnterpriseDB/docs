@@ -335,6 +335,11 @@ if (meta.precursor !== undefined) {
   }
 }
 
+appendFileSync(
+  relindexfilename,
+  `originalFilePath: ${path.relative(docsBase, metaFilename)}\n`,
+);
+appendFileSync(relindexfilename, `editTarget: originalFilePath\n`);
 appendFileSync(relindexfilename, "---\n");
 appendFileSync(relindexfilename, "\n\n");
 
@@ -485,7 +490,8 @@ function prepareRelnote(meta, file, note) {
     `title: ${note.product} ${note.version} release notes\n`,
   );
   appendFileSync(rlout, `navTitle: Version ${note.version}\n`);
-  appendFileSync(rlout, `originalFilepath: ${file}\n`);
+  appendFileSync(rlout, `originalFilePath: ${path.relative(docsBase, file)}\n`);
+  appendFileSync(rlout, `editTarget: originalFilePath\n`);
   appendFileSync(rlout, `---\n`);
 
   appendFileSync(rlout, "\n");
