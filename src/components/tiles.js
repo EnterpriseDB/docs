@@ -30,6 +30,7 @@ const Tiles = ({ mode, node }) => {
           cards={decks[deckName]}
           cardType={mode}
           deckTitle={deckName}
+          key={deckName}
         />
       );
     });

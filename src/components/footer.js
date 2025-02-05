@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "./";
 import { useStaticQuery, graphql } from "gatsby";
 
-const TimestampLink = ({ timestamp, githubFileLink }) => {
+const TimestampLink = ({ timestamp, fileRelativePath }) => {
   const data = useStaticQuery(graphql`
     {
       edbGit {
@@ -13,22 +13,21 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
     }
   `);
 
-  // add the last commit SHA to paths dynamically to minimize page changes
-  const [url, setUrl] = useState(githubFileLink);
+  // to minimize deployment time, static render all paths relative to the develop branch (on staging / draft) or main (production)
+  // then swap in actual ref on first live render.
+  const [historyRef, setHistoryRef] = useState(
+    data.edbGit.branch === "main" ? data.edbGit.branch : "develop",
+  );
+  const [editBranch, setEditBranch] = useState("develop");
   useEffect(() => {
-    if (githubFileLink)
-      setUrl(
-        githubFileLink.replace(
-          `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.branch}/`,
-          `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.sha}/`,
-        ),
-      );
-  }, [
-    githubFileLink,
-    data.edbGit.docsRepoUrl,
-    data.edbGit.branch,
-    data.edbGit.sha,
-  ]);
+    setHistoryRef(data.edbGit.sha);
+    // don't encourage folks to edit on main - set the edit links to develop in production builds
+    setEditBranch(
+      data.edbGit.branch === "main" ? "develop" : data.edbGit.branch,
+    );
+  }, [data.edbGit.branch, data.edbGit.sha]);
+
+  const url = `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
 
   if (timestamp) {
     return (
@@ -57,7 +56,7 @@ const TimestampLink = ({ timestamp, githubFileLink }) => {
   }
 };
 
-const Footer = ({ timestamp, githubFileLink }) => (
+const Footer = ({ timestamp, fileRelativePath }) => (
   <footer className="mt-5 opacity-6 small text-center">
     <span className="text-muted mx-2">© EDB</span>·
     <Link className="text-muted mx-2" to="https://www.enterprisedb.com/gdpr">
@@ -92,7 +91,7 @@ const Footer = ({ timestamp, githubFileLink }) => (
     >
       Trademarks
     </Link>
-    <TimestampLink timestamp={timestamp} githubFileLink={githubFileLink} />
+    <TimestampLink timestamp={timestamp} fileRelativePath={fileRelativePath} />
   </footer>
 );
 
