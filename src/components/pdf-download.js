@@ -44,7 +44,7 @@ const PdfDownload = ({ pagePath, product, version, hidePDF }) => {
           iconName={iconNames.PDF}
           className="fill-orange me-1 position-relative top-minus-2"
           width="16"
-          height="auto"
+          height="100%"
         />
         Download PDF
       </a>
