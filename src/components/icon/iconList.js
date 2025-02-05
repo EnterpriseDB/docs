@@ -3,9 +3,9 @@ import React from "react";
 import Icon, { iconNames } from "../icon/";
 
 export const IconList = () => (
-  <div class="d-flex flex-wrap">
+  <div className="d-flex flex-wrap">
     {Object.keys(iconNames).map((key) => (
-      <div class="d-flex flex-column mb-5 ">
+      <div className="d-flex flex-column mb-5 ">
         <Icon iconName={iconNames[key]} className="me-5" />
         {iconNames[key]}
       </div>

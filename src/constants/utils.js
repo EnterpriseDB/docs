@@ -31,3 +31,6 @@ export const getBaseUrl = (path, depth) => {
 
 export const isPathAnIndexPage = (filePath) =>
   filePath.endsWith("/index.mdx") || filePath === "index.mdx";
+
+export const getRelativeFilePathFromPageAbsolutePath = (absolutePath) =>
+  (absolutePath.match(/(?:\/advocacy_docs|\/product_docs\/docs).+$/) || [])[0];
