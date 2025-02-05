@@ -18,13 +18,8 @@ const TimestampLink = ({ timestamp, fileRelativePath }) => {
   const [historyRef, setHistoryRef] = useState(
     data.edbGit.branch === "main" ? data.edbGit.branch : "develop",
   );
-  const [editBranch, setEditBranch] = useState("develop");
   useEffect(() => {
     setHistoryRef(data.edbGit.sha);
-    // don't encourage folks to edit on main - set the edit links to develop in production builds
-    setEditBranch(
-      data.edbGit.branch === "main" ? "develop" : data.edbGit.branch,
-    );
   }, [data.edbGit.branch, data.edbGit.sha]);
 
   const url = `${data.edbGit.docsRepoUrl}/commits/${historyRef}${fileRelativePath}`;
