@@ -1,11 +1,15 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
 import { graphql, Link } from "gatsby";
-import { isPathAnIndexPage } from "../constants/utils";
+import {
+  isPathAnIndexPage,
+  getRelativeFilePathFromPageAbsolutePath,
+} from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   DevOnly,
   DevFrontmatter,
+  EditLink,
   Footer,
   Layout,
   LeftNav,
@@ -31,10 +35,6 @@ export const query = graphql`
       body
       tableOfContents
       fileAbsolutePath
-    }
-    edbGit {
-      docsRepoUrl
-      branch
     }
   }
 `;
@@ -137,29 +137,9 @@ const Section = ({ section }) => (
   </div>
 );
 
-const composeEditURL = (
-  editTarget,
-  originalFilePath,
-  docsRepoUrl,
-  branch,
-  fileUrlSegment,
-) => {
-  if (editTarget === "originalFilePath" && originalFilePath) {
-    // two options here:
-    // 1. a full URL (presumably pointing at a file on github, but could be anything)
-    // 2. a path to a file in this repo, relative to the root
-    if (originalFilePath.startsWith("http"))
-      return originalFilePath.replace(/\/blob\//, "/edit/");
-    fileUrlSegment = "/" + originalFilePath;
-  }
-
-  return fileUrlSegment && `${docsRepoUrl}/edit/${branch}${fileUrlSegment}`;
-};
-
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
-  const gitData = data.edbGit;
   const { path, mtime, depth } = fields;
   const {
     frontmatter,
@@ -188,27 +168,9 @@ const DocTemplate = ({ data, pageContext }) => {
     deepToC,
     hidePDF,
   } = frontmatter;
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment = (fileAbsolutePath.match(
-    /(?:\/advocacy_docs|\/product_docs\/docs).+$/,
-  ) || [])[0];
-  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}${fileUrlSegment}`;
-  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}${fileUrlSegment}`;
-  const githubEditLink = composeEditURL(
-    editTarget,
-    originalFilePath,
-    gitData.docsRepoUrl,
-    branch,
-    fileUrlSegment,
-  );
-  const githubIssuesLink = `${
-    gitData.docsRepoUrl
-  }/issues/new?title=${encodeURIComponent(
-    `Feedback on ${product} ${version} - "${frontmatter.title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
+
+  const fileUrlSegment =
+    getRelativeFilePathFromPageAbsolutePath(fileAbsolutePath);
 
   const sections = depth === 2 ? buildSections(navTree) : null;
 
@@ -289,21 +251,24 @@ const DocTemplate = ({ data, pageContext }) => {
               )}
             </h1>
             <div className="d-flex d-print-none">
-              {editTarget !== "none" && !!githubEditLink && (
-                <a
-                  href={githubEditLink}
-                  className="btn btn-sm btn-primary px-4 text-nowrap"
-                  title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
-                >
-                  Suggest edits
-                </a>
+              {editTarget !== "none" && (
+                <EditLink
+                  editTarget={editTarget}
+                  fileRelativePath={fileUrlSegment}
+                  originalFilePath={originalFilePath}
+                />
               )}
-              <FeedbackDropdown githubIssuesLink={githubIssuesLink} />
+              <FeedbackDropdown
+                fileRelativePath={fileUrlSegment}
+                product={product}
+                version={version}
+                title={frontmatter.title}
+              />
             </div>
           </div>
 
           {navTree.displayBanner ? (
-            <div class="alert alert-warning mt-3" role="alert">
+            <div className="alert alert-warning mt-3" role="alert">
               {navTree.displayBanner}
             </div>
           ) : null}
@@ -332,7 +297,7 @@ const DocTemplate = ({ data, pageContext }) => {
           {depth > 2 && <PrevNext prevNext={prevNext} />}
           <DevFrontmatter frontmatter={frontmatter} />
 
-          <Footer timestamp={mtime} githubFileLink={githubFileHistoryLink} />
+          <Footer timestamp={mtime} fileRelativePath={fileUrlSegment} />
         </MainContent>
       </Container>
     </Layout>
