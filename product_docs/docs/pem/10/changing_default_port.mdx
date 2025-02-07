@@ -2,18 +2,14 @@
 title: "Changing the default port"
 ---
 
-By default, the 8443 port is assigned for the web services at the time of configuration of the PEM server. You can change the port after configuration by changing a few parameters in the Apache configuration files. The Apache configuration files names and locations are platform specific.
+By default, the 8443 port is assigned for the web services at the time of configuration of the PEM server. 
+You can change the port after configuration by changing a few parameters in the web server configuration files. 
+The names and locations of these files platform specific.
 
 ## For RHEL
 
-
-1. Edit the file `/etc/httpd/conf.d/edb-ssl-pem.conf`, replacing 8443 with your port number in the following parameters:
-   ```text
-   Listen 8443
-   <VirtualHost _default_:8443>
-   ServerName localhost:8443
-   RewriteRule ^(.*)$ https://%{HTTP_HOST}:8443%{REQUEST_URI} [L,R=301]
-   ```
+### Modify the SELinux configuration
+SELinux is enabled by default in RHEL, so you must first ensure access is permitted to your desired port number.
 
 1. If `semanage` isn't installed, install it:
    ```shell
@@ -30,6 +26,56 @@ By default, the 8443 port is assigned for the web services at the time of config
    sudo semanage port -a -t http_port_t -p tcp <your_port_number>
    ```
 
+### Configure the web server (NGINX)
+
+1. Edit the file `/etc/nginx/conf.d/edb-pem.conf`, replacing 8443 with your port number in the section quoted below.
+
+   ```text
+   server {
+      listen  80;
+      listen  [::]:80;
+      server_name  HTTPD-EDBPEM-SERVER-v10;
+
+      location /pem/ {
+         return 301 https://$host:8443$request_uri;
+      }
+   }
+
+   server {
+      listen       8443 ssl;
+      listen       [::]:8443 ssl;
+      server_name  HTTPD-EDBPEM-SERVER-v10;
+
+      ssl_certificate /usr/edb/pem/resources/server-pem.crt;
+      ssl_certificate_key /usr/edb/pem/resources/server-pem.key;
+      ssl_protocols TLSv1.2 TLSv1.3;
+      ssl_prefer_server_ciphers on;
+      ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
+      ssl_ecdh_curve secp384r1;
+
+
+      location /pem/ {
+         include uwsgi_params;
+         uwsgi_pass unix:/var/run/edb-uwsgi/pem.socket;
+      }
+   }
+   ```
+
+1. Restart the nginx service:
+   ```shell
+   sudo systemctl restart nginx
+   ```
+
+### Configure the web server (Apache HTTPD)
+
+1. Edit the file `/etc/httpd/conf.d/edb-ssl-pem.conf`, replacing 8443 with your port number in the following parameters:
+   ```text
+   Listen 8443
+   <VirtualHost _default_:8443>
+   ServerName localhost:8443
+   RewriteRule ^(.*)$ https://%{HTTP_HOST}:8443%{REQUEST_URI} [L,R=301]
+   ```
+
 1. Restart the httpd service:
    ```shell
    sudo systemctl restart httpd
@@ -38,6 +84,47 @@ By default, the 8443 port is assigned for the web services at the time of config
 You can now access the PEM web interface using your port. For more details, see [Accessing the web interface](pem_web_interface).
 
 ## For Debian and Ubuntu
+
+### Configure the web server (NGINX)
+
+1. Edit the file `/etc/nginx/conf.d/edb-pem.conf`, replacing 8443 with your port number in the section quoted below.
+
+   ```text
+   server {
+      listen  80;
+      listen  [::]:80;
+      server_name  HTTPD-EDBPEM-SERVER-v10;
+
+      location /pem/ {
+         return 301 https://$host:8443$request_uri;
+      }
+   }
+
+   server {
+      listen       8443 ssl;
+      listen       [::]:8443 ssl;
+      server_name  HTTPD-EDBPEM-SERVER-v10;
+
+      ssl_certificate /usr/edb/pem/resources/server-pem.crt;
+      ssl_certificate_key /usr/edb/pem/resources/server-pem.key;
+      ssl_protocols TLSv1.2 TLSv1.3;
+      ssl_prefer_server_ciphers on;
+      ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
+      ssl_ecdh_curve secp384r1;
+
+
+      location /pem/ {
+         include uwsgi_params;
+         uwsgi_pass unix:/var/run/edb-uwsgi/pem.socket;
+      }
+   }
+   ```
+1. Restart the nginx service:
+   ```shell
+   sudo systemctl restart apache2
+   ```
+
+### Configure the web server (Apache HTTPD)
 
 1. Edit the file `/etc/apache2/sites-available/edb-ssl-pem.conf`, replacing 8443 with your port number in the following parameters:
    ```ini
