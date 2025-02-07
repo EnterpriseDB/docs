@@ -13,55 +13,70 @@ navigation:
 - regenerating_agent_certificates
 ---
 
-PEM uses self-signed SSL certificates:
+PEM uses SSL certificates:
 
-- To secure requests to the [web server](#web-server-certificates) (Apache httpd), which provides the user interface and REST API.
+- To secure requests to the [web server](#web-server-certificates), which provides the user interface and REST API.
 - To secure and authenticate the [PEM agent connections to the PEM backend database](#pem-backend-database-server-and-agent-connection-certificates).
 
 ## Web-server certificates
 
-PEM uses self-signed SSL certificates for the Apache httpd server. The self-signed SSL certificate and key files for the Apache httpd server are generated during PEM installation.
+PEM generates an SSL certificate and key file for the web server during initial configuration.
+Because the certificate is self-signed, users will see a warning that the site is insecure when they open the PEM web application URL in their browser.
 
-To use your own SSL certificate for PEM, update the Apache HTTP configuration file `edb-ssl-pem.conf`.
+To increase security, and remove this warning, you can replace the self-signed SSL certificate with a certificate signed by a trusted Certificate Authority.
 
-Update these two SSL directives in the PEM VirtualHost section:
+### Replace the web server certificates (NGINX)
 
--   `SSLCertificateFile` is your certificate file, for example, `your_domain_name.crt`.
--   `SSLCertificateKeyFile` is the `.key` file generated when you created the certificate signing request (CSR), for example, `your_private.key`.
+To use your own SSL certificate with NGINX, update the configuration file `/etc/nginx/conf.d/edb-pem.conf`. 
+Change the server name and file paths in the configuration file to match your certificate files.
 
-For example, make the following updates:
+```text
+server {
+   # lines omitted here
+   server_name  yourdomain.com;
+   # lines omitted here
+}
+
+server {
+   # lines omitted here
+   server_name  yourdomain.com;
+
+   ssl_certificate /path/to/your_domain_name.crt
+   ssl_certificate_key /path/to/your_private.key
+   # lines omitted here
+}
+```
+
+### Replace the web server certificates (Apache HTTPD)
+
+To use your own SSL certificate with Apache HTTPD, update the configuration file `edb-ssl-pem.conf`.
+Change the server name and file paths in the configuration file to match your certificate files.
 
 ```shell
-# Change the server name and file names in the configuration file to 
-# match your certificate files.
-SSLEngine on
+ServerName yourdomain.com
+# lines omitted here
 SSLCertificateFile /path/to/your_domain_name.crt
 SSLCertificateKeyFile /path/to/your_private.key
 ```
 
-To increase security, you can replace the httpd self-signed SSL certificates with trusted CA signed certificates in PEM. For more information, see [Replacing httpd self-signed SSL certificates](https://www.enterprisedb.com/postgres-tutorials/how-replacing-httpd-self-signed-ssl-certificates-trusted-ca-signed-certificates).
+!!! Example
+For a worked example, see [Replacing httpd self-signed SSL certificates](https://www.enterprisedb.com/postgres-tutorials/how-replacing-httpd-self-signed-ssl-certificates-trusted-ca-signed-certificates).
+!!!
 
 ## PEM backend database server and agent connection certificates
 
-By default, PEM implements secured SSL/TLS connections between PEM agents and the backend database. It also acts as its own certificate authority (CA) to generate certificates and keys for the PEM server and agent. The self-signed SSL certificates and keys for the PEM server and agent are generated during PEM installation. These certificates and keys encrypt the connection from agent to server. In addition, PEM agents are authenticated using their certificate rather than a password.
+PEM implements secured SSL/TLS connections between PEM agents and the backend database. 
+Each agent has an SSL certificate which is used both to encrypt its communication with the server and to authenticate with the server in place of a password.
 
-You can replace the PEM self-signed SSL certificates and keys with the trusted CA certificates and keys. For more information, see [Trusted CA certificates and keys](#use-certificates-and-keys-signed-by-trusted-ca).
+PEM uses the sslutils extension to allow the PEM server to generate and sign SSL certificates and keys. When a new agent is registered, the PEM server automatically issues it with a certificate.
+Certificates issued by the PEM server are signed by the PEM server, meaning the PEM server is acting as a certificate authority (CA).
 
-### How PEM self-signed SSL certificates work
+If the above is not suitable, you can use SSL certificates and keys generated outside of PEM and signed by a trusted CA. 
+For more information, see [Trusted CA certificates and keys](#use-certificates-and-keys-signed-by-trusted-ca).
 
-The PEM server configuration script generates self-signed SSL certificate and key files for the PEM backend database server. The backend database server uses these certificates and keys to authenticate and encrypt the agent connections. Each certificate has an expiry date. Regenerate the certificates when they near expiration. For more information, see [Regenerating server self-signed SSL certificates](replacing_ssl_certificates).
+### Certificates and key files on the PEM server
 
-The PEM agent connects to the PEM backend database server using the libpq interface, acting as a client of the backend database server. The agent self-signed SSL certificates and keys get generated during [agent registration](../registering_agent). PEM agent establishes the connection with the PEM backend database server using the self-signed SSL certificate and key files. 
-
-Each agent has a unique identifier, and the agent certificates and keys have the corresponding identifier. Each certificate has an expiry date. Regenerate the certificates when they near expiration. For more information, see [Regenerating agent self-signed SSL certificates](regenerating_agent_certificates).
-
-If required, you can use the same certificate for all agents rather than one certificate per agent. For more information, see [Generate common agent certificate and key pair](#generate-a-common-agent-certificate-and-key-pair).
-
-For more information on using the SSL certificates to connect in Postgres, see [Securing TCP/IP connections with SSL](https://www.postgresql.org/docs/current/ssl-tcp.html).
-
-### Certificate and key files generation
-
-The PEM server generates the certificates and key files in the data directory of the backend database server:
+During initial configuration of the PEM server, the following files are generated in the Postgres data directory of the PEM server:
 
 - `ca_certificate.crt`
 - `ca_key.key`
@@ -70,22 +85,55 @@ The PEM server generates the certificates and key files in the data directory of
 - `server.crt`
 - `server.key`
 
-The `ca_certificate.crt` and `ca_key.key` files are used during the agent registration process to generate the agent's SSL certificates and key files.
+The `ca_certificate.crt` and `ca_key.key` files are used by the PEM server to sign certificates generated for agents during agent registration.
+They are also used to sign `server.crt`. Unless replaced manually, the 'ca_certificate.crt' file is a self-signed certificate because is acting as the root CA.
 
-The `root.crt` file is a copy of the `ca_certificate.crt` file. You use the root certificate for the backend database server by setting the `ssl_ca_file` parameter as `root.crt` in the `postgresql.conf` file.
+The `root.crt` file is a copy of the `ca_certificate.crt` file. The `ssl_ca_file` parameter in the `postgresql.conf` file points to this file.
 
-The `root.crl` has the certificate revocation list (CRL) of digital certificates revoked by the issuing CA before their actual or assigned expiration date.
+The `root.crl` is the certificate revocation list (CRL) of certificates revoked by the issuing CA before their actual or assigned expiration date.
+The `ssl_crl_file` parameter in the `postgresql.conf` file points to this file.
 
-The `server.crt` file is the signed certificate for the PEM server, and the `server.key` file is the private key to the certificate. The PEM agent certificates are generated using these server certificate and key files.
+The `server.crt` file is the signed certificate for the PEM server, and the `server.key` file is the private key to the certificate.
+The `ssl_cert_file` parameter in the `postgresql.conf` file points to this file.
 
-### PEM self-signed SSL certificate renewal
+These files are automatically renewed when they near their expiry date, see [PEM CA certificate renewal](#pem-ca-certificate-renewal).
 
+### Certificates and key files for PEM agents
+
+Each agent's SSL certificate and keys are generated during [agent registration](../registering_agent). 
+The PEM agent connects to the PEM backend database server using the libpq interface, acting as a client of the backend database server. 
+The PEM agent connect to the server using the `cert` auth method and with ssl enabled.
+This means that the connection is encrypted using the agent's key and authenticated using the agent's certificate (rather than a password, for example).
+
+Each agent has a unique identifier, and the agent certificates and keys have the corresponding identifier. 
+
+If required, you can use the same certificate for all agents rather than one certificate per agent. For more information, see [Generate common agent certificate and key pair](#generate-a-common-agent-certificate-and-key-pair).
+
+For more information on using the SSL certificates to connect in Postgres, see [Securing TCP/IP connections with SSL](https://www.postgresql.org/docs/current/ssl-tcp.html).
+
+### PEM certificate renewal
+
+SSL certificates have an expiry date. If use certificates and keys generated by PEM, they are automatically replaced before expiring.
 The PEM agent installed with the PEM server monitors the expiration date of the `ca_certificate.crt` file. When the certificate is about to expire, PEM:
 
 - Makes a backup of the existing certificate files
 - Creates new certificate files and appends the new CA certificate file to the `root.crt` file on the PEM server
 - Creates a job to renew the certificate file of any active agents
 - Restarts the PEM server
+
+!!! Important
+If you choose to either provide your own certificates, or use a single certificate for all agents, you should disable the automatic renewal job.
+On the PEM server, execute the following SQL:
+
+```sql
+UPDATE pem.job SET jobenabled='false' WHERE jobname = 'Check CA certificate expiry';
+```
+
+!!!
+
+Should you need to regenerate the server or agent certificates manually, please see:
+  - [Regenerating the server SSL certificates](replacing_ssl_certificates)
+  - [Regenerating agent SSL certificates](regenerating_agent_certificates)
 
 ## Generate a common agent certificate and key pair
 
@@ -176,11 +224,11 @@ Create a user, generate an agent certificate and key pair, and use them for all 
 
 ## Use certificates and keys signed by trusted CA
 
-Replace the PEM self-signed SSL certificates and keys with certificates and keys signed by a trusted CA. 
+You can replace the PEM SSL certificates and keys with certificates and keys signed by a trusted CA. 
 
-After obtaining the trusted CA certificates and keys, replace the [server](#replace-the-self-signed-server-ssl-certificates-with-the-certificates-signed-by-the-trusted-ca) and [agent](#replace-the-self-signed-agent-ssl-certificates-with-the-certificates-signed-by-the-trusted-ca) certificates and keys.
+After obtaining the trusted CA certificates and keys, replace the [server](#replace-the-server-ssl-certificates-with-certificates-signed-by-a-trusted-ca) and [agent](#replace-the-agent-ssl-certificates-with-certificates-signed-by-a-trusted-ca) certificates and keys.
 
-### Replace the self-signed server SSL certificates with the certificates signed by the trusted CA
+### Replace the server SSL certificates with certificates signed by a trusted CA
 
 1. Back up the old server certificate and key files:
 
@@ -244,7 +292,7 @@ After obtaining the trusted CA certificates and keys, replace the [server](#repl
    !!! Note
        Don't restart the PEM server now. If you restart the PEM server, all the registered agents will stop working.
 
-1. Replace each PEM agent SSL certificates with the trusted CA certificates. For more information, see these [instructions](#replace-the-self-signed-agent-ssl-certificates-with-the-certificates-signed-by-the-trusted-ca).
+1. Replace each PEM agent SSL certificates with the trusted CA certificates. For more information, see these [instructions](#replace-the-agent-ssl-certificates-with-certificates-signed-by-a-trusted-ca).
 
 1. Restart the PEM server.
 
@@ -257,9 +305,11 @@ After obtaining the trusted CA certificates and keys, replace the [server](#repl
 
    Restarting the backend database server restarts the PEM server.
 
-### Replace the self-signed agent SSL certificates with the certificates signed by the trusted CA
+### Replace the agent SSL certificates with certificates signed by a trusted CA
 
-Replace the self-signed agent SSL certificates only after replacing the self-signed server certificates `server.crt` and `server.key` and CA certificate `root.crt`.
+??? provide an example of how to register an agent after doing this
+
+Replace the agent SSL certificates only after replacing the server certificates `server.crt` and `server.key` and CA certificate `root.crt`.
 
 1. Use psql to find all the agent identifiers (IDs) needed to replace the SSL certificates:
 
