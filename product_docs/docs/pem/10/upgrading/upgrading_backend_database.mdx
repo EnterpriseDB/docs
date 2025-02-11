@@ -11,8 +11,7 @@ redirects:
 If you're updating PEM components and the PEM backend database, perform PEM component updates on the server and agent before updating the backend database. For more information about updating PEM component software, see [Upgrading a PEM installation](upgrading_pem_installation/).
 
 !!! Note
-    -   From PEM 8.0 onwards, PostgreSQL or EPAS versions 11 or later are only supported as backend database servers. As a result, if 
-        your backend database server is earlier than version 11, you need to first upgrade your backend database server and then upgrade the PEM components.
+    -   If your backend database server is earlier than version 13, first upgrade your backend database server and then upgrade the PEM components.
 
     -   After upgrading the backend database server, if you encounter this error while creating the server in the PEM web interface:
     
@@ -30,83 +29,7 @@ If you're updating PEM components and the PEM backend database, perform PEM comp
 
 The update process uses the pg_upgrade utility to migrate from one version of the backend server to a more recent version. pg_upgrade enables migration between any supported version of Postgres and any subsequent release of Postgres that's supported on the same platform.
 
-If the source PEM server is earlier than the 7.16 version, then you need to replace the following functions before you run pg_upgrade:
-
--  The `abstime`, `reltime`, and `tinterval` datatypes are deprecated from Postgres version 12 or later, hence to replace those dataypes  with `timestamptz` data type use this command:
-
-    ```sql
-    DO
-    $$
-    DECLARE
-        rec record;
-        cnt integer;
-    BEGIN
-        -- Check for the deprecated type in our user info probe
-        SELECT count(*) INTO cnt
-        FROM pem.probe_column
-        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
-            IF cnt = 0 THEN
-                RETURN;
-            END IF;
-        ALTER TABLE pemdata.user_info
-            ALTER COLUMN valuntil SET DATA TYPE timestamptz;
-        ALTER TABLE pemhistory.user_info
-                ALTER COLUMN valuntil SET DATA TYPE timestamptz;
-        -- Now update the pem.probe_column itself
-        UPDATE pem.probe_column
-        SET sql_data_type = ‘timestamptz’
-        WHERE sql_data_type = ‘abstime’ AND internal_name = ‘valuntil’;
-    END;
-    $$ LANGUAGE ‘plpgsql’;
-    ```
-
--   Replace this function to avoid any alert errors:
-
-    ```sql
-    CREATE OR REPLACE FUNCTION pem.check_alert_params_array_size(
-    template_id pem.alert_template.id%type, params text[]
-    )
-    RETURNS bool AS $FUNC$
-    DECLARE
-        res bool := TRUE;
-    BEGIN
-        /*
-        * During restoring the pem database, it does not maintain the order while
-        * inserting data in the table, and uses the sort table based on the
-        * names.
-        * Hence - we need to check the foreign key constraint is present before
-        * validating these values.
-        */
-        IF EXISTS(
-            SELECT 1 FROM information_schema.table_constraints
-            WHERE constraint_name='alert_template_id_fkey' AND
-            table_name='alert' AND table_schema='pem'
-        ) THEN
-      /*
-       * Need to use the IS TRUE construct outside the main query, because
-       * otherwise if there's no template by that ID then the query would return
-       * 0 rows and the result of the function would be undefined and CHECK
-       * constraint would succeed.
-       * Probably this is being over-cautious, because pem.alert.template_id
-       * references pem.alert_template.id. But the SQL standard (probably) does
-       * not define the order in which the CHECK or the FOREIGN KEY constraints
-       * should be validated; in case CHECK is validated first, we want it to
-       * fail.
-       */
-    EXECUTE $SQL$
-        SELECT (
-            SELECT pem.check_array_size_equal(t.param_names, $2)
-            FROM pem.alert_template AS t
-            WHERE id = $1
-        ) IS TRUE
-      $SQL$ INTO res USING template_id, params;
-    END IF;
-     RETURN res;
-    END
-    $FUNC$ LANGUAGE 'plpgsql';
-    ```
-
-pg_upgrade supports a transfer of data between servers of the same type. For example, you can use pg_upgrade to move data from a PostgreSQL 10 backend database to a PostgreSQL 11 backend database but not to an EDB Postgres Advanced Server 11 backend database. If you want to migrate to a different type of backend database (such as from a PostgreSQL server to EDB Postgres Advanced Server), see [Moving the Postgres Enterprise Manager server](moving_pem_server).
+pg_upgrade supports a transfer of data between servers of the same type. For example, you can use pg_upgrade to move data from a PostgreSQL 13 backend database to a PostgreSQL 14 backend database but not to an EDB Postgres Advanced Server 14 backend database. If you want to migrate to a different type of backend database (such as from a PostgreSQL server to EDB Postgres Advanced Server), see [Moving the Postgres Enterprise Manager server](moving_pem_server).
 
 You can find more information about using pg_upgrade at [pg_upgrade](http://www.postgresql.org/docs/current/static/pgupgrade.html).
 
@@ -116,122 +39,9 @@ You can find more information about using pg_upgrade at [pg_upgrade](http://www.
 
     You can optionally use a custom-built PostgreSQL server as a host of the PEM backend database. If you're upgrading from a PostgreSQL backend database listening on port 5432, the new server must be configured to listen on a different port.
 
-2.  Configure SSL utilities on the new server. The new backend database must be running the same version of sslutils that the current backend database is running. You can download the SSL Utils package from the [EDB website](https://www.enterprisedb.com/downloads/modified-gpl-source-code).
+2.  Configure SSL utilities on the new server. The new backend database must be running the same version of sslutils that the current backend database is running.
 
-     You don't need to manually add the sslutils extension when using the EDB Postgres Advanced Server as the new backend database. The process of configuring sslutils is platform specific.
-
-    **On Linux**
-
-    -   On an EDB Postgres Advanced Server backend database, the sslutils extension is installed by default.
-
-    -   If you're using PostgreSQL as a PEM backend database, verify that you have access to the PostgreSQL community repository, and use the command:
-
-        ```shell
-        yum install sslutils_<X>
-        ```
-
-        Where `<X>` is the server version.
-
-    -   If you're using a EDB one-click installer of PostgreSQL as a PEM backend database, use the command:
-
-        ```shell
-         yum install gcc openssl-devel
-        ```
-
-        Set the value of PATH so it can locate the pg_config program
-
-        ```ini
-         export PATH=$PATH:/opt/postgres_inst_dir/<X>/bin/
-        ```
-
-        Move into the `sslutils` folder, and enter:
-
-        ```ini
-         make USE_PGXS=1
-         make USE_PGXS=1 install
-        ```
-
-        Use psql to create the sslutils extension
-
-        ```sql
-         CREATE EXTENSION sslutils
-        ```
-
-        Debian 10 and Ubuntu 20 have increased the requirements to accept the certificates for security reasons. If you want to install the PEM agent on any of the machines, you must upgrade ssltuils to 1.3 where 4096-bit RSA key and sha256 signature algorithm support was added. If you don't upgrade sslutils to 1.3, then PEM agent might fail to connect to the PEM backend database server, and it might log the error "ca md too weak."
-
-    **On Windows**
-
-    -   You must compile sslutils on the new backend database with the same compiler that was used to compile sslutils on the original backend database. If you're moving to a Postgres database that was installed using a PostgreSQL one-click installer (from EDB) or an EDB Postgres Advanced Server installer, use Visual Studio to build sslutils. If you're upgrading to PostgreSQL 10 or later, use Visual Studio 2010.
-
-        For detailed information about building a specific version of Postgres on Windows, consult the core documentation for that version. Core documentation is available at the [PostgreSQL project website](https://www.postgresql.org/docs/current/install-windows.html).
-
-    -   While specific details of the process vary by platform and compiler, the basic steps on each platform are the same. The example that follows shows compiling OpenSSL support for PostgreSQL on a 32-bit Windows system.
-
-        Before compiling the OpenSSL extension, you must locate and install OpenSSL for your version of Windows. Before invoking the OpenSSL installer you might need to download and install a prerequisite redistributable (such as `vcredist_x86.exe`).
-
-        After installing OpenSSL, download and unpack the [sslutils utility package](https://www.enterprisedb.com/downloads/modified-gpl-source-code).
-
-    -   Copy the unpacked `sslutils` folder to the Postgres installation directory (`C:\ProgramFiles\PostgreSQL\<x.x>`).
-
-    -   Open the Visual Studio command line, and navigate into the `sslutils` directory. Use the following commands to build sslutils:
-
-        ```ini
-        SET USE_PGXS=1
-
-        SET GETTEXTPATH=\ <path_to_gettext>
-
-        SET OPENSSLPATH=\ <path_to_openssl>
-
-        SET PGPATH=\ <path_to_pg_installation_dir>
-
-        SET ARCH=x86
-
-        msbuild sslutils.proj /p:Configuration=Release
-        ```
-
-    Where:
-
-    -   `path_to_gettext` specifies the location of the `GETTEXT` library and header files.
-
-    -   `path_to_openssl` specifies the location of the openssl library and header files.
-
-    -   `path_to_pg_installation_dir` specifies the location of the Postgres installation.
-
-    For example, the following set of commands builds OpenSSL support into the PostgreSQL 11 server:
-
-        ```ini
-        SET USE_PGXS=1
-
-        SET OPENSSLPATH=C:\OpenSSL-Win32
-
-        SET GETTEXTPATH="C:\Program Files\PostgreSQL\11"
-
-        SET PGPATH="C:\Program Files\PostgreSQL\11"
-
-        SET ARCH=x86
-
-        msbuild sslutils.proj /p:Configuration=Release
-        ```
-
-    -   When the build completes, the `sslutils` directory contains the following files:
-
-        `sslutils--1.3.sql`
-
-        `sslutils--unpackaged--1.3.sql`
-
-        `sslutils--pemagent.sql.in`
-
-        `sslutils.dll`
-
-    -   Copy the compiled sslutils files to the appropriate directory for your installation; for example:
-
-        ```sql
-        COPY sslutils*.sql "%PGPATH%\share\extension\"
-
-        COPY sslutils.dll "%PGPATH%\lib\"
-
-        COPY sslutils.control "%PGPATH%\share\extension\"
-        ```
+    The process of configuring sslutils is platform specific. Please refer to the [installation documentation for your platform](../installing/) for details of how to install sslutils.
 
 3.  Stop the services of both the old backend database and the new backend database.
 
@@ -361,15 +171,6 @@ You can find more information about using pg_upgrade at [pg_upgrade](http://www.
 
 6.  The `postgresql.conf` file contains parameter settings that specify server behavior. Modify the `postgresql.conf` file on the new server to match the configuration specified in the `postgresql.conf` file of the old server.
 
-    By default, the `postgresql.conf` file is located:
-
-    -   For Postgres version earlier than 10 on Linux, in `/opt/PostgreSQL/<X>/data`
-    -   For Postgres version 10 or later when installed with graphical installers on Linux, in `/opt/PostgreSQL/<X>/data`
-    -   For Postgres version 10 or later when installed with an RPM on Linux, in `/usr/pgsql/<X>/data`
-    -   For any Postgres version on Windows, in `C:\Program Files\PostgreSQL\<X>\data`
-
-    Where `<X>` is the version of Postgres on your system.
-
     Use your choice of editor to update the `postgresql.conf` file of the new server. Modify the following parameters:
 
     -   The `port` parameter to listen on the port monitored by your original backend database (typically set to `5432`).
@@ -402,16 +203,6 @@ You can find more information about using pg_upgrade at [pg_upgrade](http://www.
 
     `hostssl pem +pem_agent 127.0.0.1/32 cert`
 
-    By default, the `pg_hba.conf` file is located at the following location:
-
-    -   For Postgres version earlier than 10 on Linux, in `/opt/PostgreSQL/<X>/data`
-    -   For Postgres version 10 or later when installed with graphical installers on Linux, in `/Opt/PostgreSQL/<X>/data`
-    -   For Postgres version 10 or later when installed with RPMs on Linux, in `/var/lib/pgsql/<X>/data`
-    -   For Advanced Server version 10 or later when installed with RPMs on Linux, in `/var/lib/edb/as<X>/data`
-    -   For any Postgres version on Windows, in `C:\Program Files\PostgreSQL\<X>\data`
-
-    Where `<X>` is the version of Postgres on your system.
-
     Using your editor of choice, copy the entries from the `pg_hba.conf` file of the old server to the `pg_hba.conf` file for the new server.
 
 8.  Restart the service of the new backend database.
@@ -419,7 +210,7 @@ You can find more information about using pg_upgrade at [pg_upgrade](http://www.
     On RHEL 8.x, at the command line as superuser enter:
 
     ```shell
-    systemctl stop <service_name>
+    systemctl restart <service_name>
     ```
 
     Where `service_name` is the name of the backend database server.
