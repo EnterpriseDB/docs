@@ -16,9 +16,15 @@ While solutions to this can be engineered using a subscriber-only node as an int
 
 ## Logical Slot Failover Support
 
-To address this need, PGD 5.7 introduces Logical Slot Failover Support. This is an optionally enabled feature which activates automatic logical slot replication across the cluster. This, in turn, allows a consumer of a logical slot’s replication to receive change data from any node when a failure occurs. 
+To address this need, PGD 5.7 introduces Logical Slot Failover Support. This is an optionally enabled feature which activates automatic logical slot replication across the cluster. This, in turn, allows a consumer of a logical slot’s replication to receive change data from any node when a failure occurs.
 
-Currently Logical Slot Failover support is a global option that is controlled by a top-group option. The failover_slot_scope top-group option can currently be set to (and defaults to) local which disables replication of logical slots or `global` which enables the replication of all non-temporary logical slots created in the PGD database. 
+### How Logical Slot Failover works
+
+When a logical slot is created on a node with Logical Slot Failover Support enabled, the slot is replicated across the cluster. This means that the slot is available for consumption on any node in the cluster. When a node fails, the slot can be consumed from another node in the cluster. This allows for the continuation of the logical replication stream without interruption.
+
+If, though, the consumer of the slot connects to a different node in the cluster, the previous connection the consumer had will be closed by PGD. This is to ensure that the slot is not being consumed from multiple nodes at the same time. In the background, PGD is using its Raft consensus protocol to ensure that the slot is only being consumed from one node at a time; this does mean that the guarantee of only one slot being consumed at a time does not hold in split-brain scenarios.
+
+Currently Logical Slot Failover support is a global option that is controlled by a top-group option. The `failover_slot_scope` top-group option can currently be set to (and defaults to) local which disables replication of logical slots or `global` which enables the replication of all non-temporary logical slots created in the PGD database. 
 
 Temporary logical slots will not be replicated as they have a lifetime scoped to the session that created them and will go away when that session ends.
 
@@ -71,6 +77,10 @@ To create a new globally replicated slot.
 
 Note that logical replication slots created before the option is set to `global` will not be replicated. Only new slots will be replicated.
 
+Failover slots can also be created with the `CREATE_REPLICATION_SLOT` command on a replication connection.
+
+The status of failover slots is tracked in the [`bdr.failover_replication_slots`](/pgd/5/reference/catalogs-visible#bdrfailover_replication_slots) table.
+
 ## Logical Slot Failover Support with Postgres 17+
 
 For Postgres 17 and later, support for failover was added to allow standbys to be resumed, through an option in `pg_create_logical_replication_slot` named `failover`. This new setting requires that, no matter what the setting of `failover_slot_scope`, you must also set `failover` to `true`.
@@ -81,7 +91,7 @@ SELECT pg_create_logical_replication_slot('myslot',
                                           failover=>true);
 ```
 
-## Limitations 
+## Limitations
 
 The Logical Slot Failover Slot support comes with certain limitations. 
 
