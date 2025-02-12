@@ -73,7 +73,7 @@ const SectionHeadingWithVersions = ({
           {navTree.title}
         </Link>
         {!navTree.hideVersion && versionArray.length > 1 ? (
-          <div style={{ "white-space": "nowrap" }}>
+          <div style={{ whiteSpace: "nowrap" }}>
             <VersionDropdown
               versionArray={versionArray}
               preciseVersion={preciseVersion}
