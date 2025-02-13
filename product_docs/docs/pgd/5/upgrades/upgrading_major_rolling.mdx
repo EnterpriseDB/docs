@@ -9,9 +9,11 @@ redirects:
 
 ## Upgrading Postgres major versions
 
-Upgrading a Postgres database's major version to access improved features, performance enhancements, and security updates is a common administration task. Doing the same for an EDB Postgres Distributed (PGD) cluster deployed with Trusted Postgres Architect (TPA) is essentially the same process but performed as a rolling upgrade.
+Upgrading a Postgres database's major version to access improved features, performance enhancements, and security updates is a common administration task. 
+Doing the same for an EDB Postgres Distributed (PGD) cluster deployed with Trusted Postgres Architect (TPA) is essentially the same process but performed as a rolling upgrade.
 
-The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. 
+The rolling upgrade process allows updating individual cluster nodes to a new major Postgres version while maintaining cluster availability and operational continuity. 
+This approach minimizes downtime and ensures data integrity by allowing the rest of the cluster to remain operational as each node is upgraded sequentially. 
 
 The following overview of the general instructions and [worked example](#worked-example) help to provide a smooth and controlled upgrade process.
 
@@ -19,21 +21,25 @@ The following overview of the general instructions and [worked example](#worked-
 
 To prepare for the upgrade, identify the subgroups and nodes you're trying to upgrade and note an initial upgrade order.
 
-To do this, connect to one of the nodes using SSH and run the `pgd show-nodes` command:
+To do this, connect to one of the nodes using SSH and run the `pgd nodes list` command:
 
 ```bash
-sudo -u postgres pgd show-nodes
+sudo -u postgres pgd nodes list
 ```
 
-The `pgd show-nodes` command shows you all the nodes in your PGD cluster and the subgroup to which each node belongs. Then you want to find out which node is the write leader in each subgroup:
+The `pgd nodes list` command shows you all the nodes in your PGD cluster and the subgroup to which each node belongs. 
+Then you want to find out which node is the write leader in each subgroup:
 
 ```bash
-sudo -u postgres pgd show-groups
+sudo -u postgres pgd group <group_name> show --summary
 ```
 
-This command outputs a list of the different groups/subgroups running in your cluster and the write leader of each group. To maintain operational continuity, you need to switch write leaders over to another node in their subgroup before you can upgrade them. To keep the number of planned switchovers to a minimum, when upgrading a subgroup of nodes, upgrade the writer leaders last. 
+This command shows you information about the pgd group tokened by your `<group_name>` running in your cluster, including which node is the write leader. 
+To maintain operational continuity, you need to switch write leaders over to another node in their subgroup before you can upgrade them. 
+To keep the number of planned switchovers to a minimum, when upgrading a subgroup of nodes, upgrade the writer leaders last. 
 
-Even though you verified which node is the current write leader for planning purposes, the write leader of a subgroup could change to another node at any moment for operational reasons before you upgrade that node. Therefore, you still need to verify that a node isn't the write leader just before upgrading that node.
+Even though you verified which node is the current write leader for planning purposes, the write leader of a subgroup could change to another node at any moment for operational reasons before you upgrade that node. 
+Therefore, you still need to verify that a node isn't the write leader just before upgrading that node.
 
 You now have enough information to determine your upgrade order, one subgroup at a time, aiming to upgrade the identified write leader node last in each subgroup. 
 
@@ -48,17 +54,17 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 * **Confirm the current Postgres version**
   * View versions from PGD:
 
-    `sudo -u postgres pgd show-version`.
+    `sudo -u postgres pgd nodes list --versions`.
   * Ensure that the expected major version is running.
 
 
 * **Verify that the target node isn't the write leader**
   * Check whether the target node is the write leader for the group you're upgrading:
 
-    `sudo -u postgres pgd show-groups`
+    `sudo -u postgres pgd group <group_name> show --summary`
   * If the target node is the current write leader for the group/subgroup you're upgrading, perform a [planned switchover](#perform-a-planned-switchover) to another node:
 
-    `sudo -u postgres pgd switchover --group-name <group_name> --node-name <new_write_leader_node_name>`
+    `sudo -u postgres pgd group <group_name> set-leader <new_leader_node_name>` 
 
 
 * **Stop Postgres on the target node**
@@ -79,7 +85,8 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 
     `sudo mkdir -p /opt/postgres/datanew`
   * Ensure that the user postgres has ownership permissions to the directory using `chown`.
-  * Initialize a new PostgreSQL database cluster in the directory you just created. This step involves using the `initdb` command provided by the newly installed version of PostgreSQL. Include the `--data-checksums` flag to ensure the cluster uses data checksums.
+  * Initialize a new PostgreSQL database cluster in the directory you just created. This step involves using the `initdb` command provided by the newly installed version of PostgreSQL. 
+  Include the `--data-checksums` flag to ensure the cluster uses data checksums.
 
     `sudo -u postgres <path_to_postgres_bin>/initdb -D /opt/postgres/datanew --data-checksums`
 
@@ -105,20 +112,21 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 * **Swap PGDATA directories for version upgrade**
   * Rename `/opt/postgres/data` to `/opt/postgres/dataold` and `/opt/postgres/datanew` to `/opt/postgres/data`.
 
-  This step readies your system for the next crucial phase: running pg_upgrade to finalize the PostgreSQL version transition.
+  This step readies your system for the next crucial phase: running pgd node upgrade to finalize the PostgreSQL version transition.
 
 
 * **Verify upgrade feasibility**
-  * The `bdr_pg_upgrade` tool offers a `--check` option designed to perform a preliminary scan of your current setup, identifying any potential issues that could hinder the upgrade process.
+  * The `pgd node upgrade` tool offers a `--check` option designed to perform a preliminary scan of your current setup, identifying any potential issues that could hinder the upgrade process.
 
-    You need to run this check from an upgrade directory with ownership given to user postgres, such as `/home/upgrade/`, so that the upgrade log files created by `bdr_pg_upgrade` can be stored. To initiate the safety check, append the `--check` option to your `bdr_pg_upgrade` command.
+    You need to run this check from an upgrade directory with ownership given to user postgres, such as `/home/upgrade/`, so that the upgrade log files created by `pgd node upgrade` can be stored. 
+    To initiate the safety check, append the `--check` option to your `pgd node upgrade` command.
 
     This operation simulates the upgrade process without making any changes, providing insights into any compatibility issues, deprecated features, or configuration adjustments required for a successful upgrade. 
   * Address any warnings or errors indicated by this check to ensure an uneventful transition to the new version.
 
 
 * **Execute the Postgres major version upgrade**
-  * Execute the upgrade process by running the `bdr_pg_upgrade` command without the `--check` option.
+  * Execute the upgrade process by running the `pgd node <node_name> upgrade` command without the `--check` option.
   * It's essential to monitor the command output for any errors or warnings that require attention. 
   * The time the upgrade process take depends on the size of your database and the complexity of your setup.
 
@@ -141,7 +149,7 @@ Using the [preliminary order](#prepare-the-upgrade), perform the following steps
 * **Validate the new Postgres version**
   * Verify that your PostgreSQL instance is now upgraded:
 
-    `sudo -u postgres pgd show-version`
+    `sudo -u postgres pgd nodes list --versions`
 
 
 * **Clean up post-upgrade**
@@ -169,7 +177,7 @@ The worked example that follows shows upgrading the Postgres major version from 
 
 ## Worked example
 
-This worked example starts with a TPA-managed PGD cluster deployed using the [AWS quick start](/pgd/latest/quickstart/quick_start_aws/). The cluster has three nodes: kaboom, kaolin, and kaftan, all running Postgres 15.
+This worked example starts with a TPA-managed PGD cluster deployed using the [AWS quick start](/pgd/latest/quickstart/quick_start_aws/), which create Debian OS nodes. The cluster has three nodes: kaboom, kaolin, and kaftan, all running Postgres 16.
 
 This example starts with kaboom.
 
@@ -182,17 +190,17 @@ Some steps of this process involve running commands as the Postgres owner. We re
 SSH into kaboom to confirm the major version of Postgres is expected:
 
 ```bash
-sudo -u postgres pgd show-version
+sudo -u postgres pgd nodes list --versions
 ```
 
 The output will be similar to this for your cluster:
 
 ```
-Node   BDR Version Postgres Version               
-----   ----------- ----------------               
-kaboom 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
-kaftan 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
-kaolin 5.4.0       15.6 (Debian 15.6-2EDB.buster) 
+Node Name BDR Version                    Postgres Version                
+--------- ------------------------------ --------------------------------
+kaboom    5.7.0-dev (snapshot 8516bb3ab) 16.6 (Debian 16.6-1EDB.bullseye)
+kaftan    5.7.0-dev (snapshot 8516bb3ab) 16.6 (Debian 16.6-1EDB.bullseye)
+kaolin    5.7.0-dev (snapshot 8516bb3ab) 16.6 (Debian 16.6-1EDB.bullseye)
 
 ```
 
@@ -200,21 +208,25 @@ Confirm that the Postgres version is the expected version.
 
 ### Verify that the target node isn't the write leader
 
-The cluster must be available throughout the process (that is, a *rolling* upgrade). There must always be an available write leader to maintain continuous cluster availability. So, if the target node is the current write leader, you must [perform a planned switchover](#perform-a-planned-switchover) of the [write leader](../terminology/#write-leader) node before upgrading it so that a write leader is always available. 
+The cluster must be available throughout the process (that is, a *rolling* upgrade). There must always be an available write leader to maintain continuous cluster availability. 
+So, if the target node is the current write leader, you must [perform a planned switchover](#perform-a-planned-switchover) of the [write leader](../terminology/#write-leader) node before upgrading it so that a write leader is always available. 
 
-While connected via SSH to kaboom, see which node is the current write leader of the group you're upgrading using the `pgd show-groups` command:
+While connected via SSH to kaboom, see which node is the current write leader of the group you're upgrading using the `pgd group show --summary` command:
 
 ```bash
-sudo -u postgres pgd show-groups
+sudo -u postgres pgd group dc1_subgroup show --summary
 ```
 
 In this case, you can see that kaboom is the current write leader of the sole subgroup `dc1_subgroup`:
 
 ```
-Group        Group ID   Type   Parent Group Location Raft Routing Write Leader 
------        --------   ----   ------------ -------- ---- ------- ------------ 
-democluster  1935823863 global                       true false                
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom  
+Group Property    Value       
+----------------- ------------
+Group Name        dc1_subgroup
+Parent Group Name democluster6
+Group Type        data        
+Write Leader      kaboom      
+Commit Scope       
 ```
 
 So you must perform a planned switchover of the write leader of `dc1_subgroup` to another node in the cluster.
@@ -224,10 +236,11 @@ So you must perform a planned switchover of the write leader of `dc1_subgroup` t
 Change the write leader to kaftan so kaboom's Postgres instance can be stopped:
 
 ```bash
-sudo -u postgres pgd switchover --group-name dc1_subgroup --node-name kaftan
+sudo -u postgres pgd group dc1_subgroup set-leader kaftan
 ```
 
-After the switchover is successful, it's safe to stop Postgres on the target node. Of course, if kaftan is still the write leader when you come to upgrading it, you'll need to perform another planned switchover at that time.
+After the switchover is successful, it's safe to stop Postgres on the target node. 
+Of course, if kaftan is still the write leader when you come to upgrading it, you'll need to perform another planned switchover at that time.
 
 ### Stop Postgres on the target node
 
@@ -256,10 +269,10 @@ sudo mkdir /opt/postgres/datanew
 sudo chown -R postgres:postgres /opt/postgres/datanew
 ```
 
-Then, initialize Postgres 16 in the new directory:
+Then, initialize Postgres 17 in the new directory:
 
 ```bash
-sudo -u postgres /usr/lib/postgresql/16/bin/initdb \
+sudo -u postgres /usr/lib/postgresql/17/bin/initdb \
   -D /opt/postgres/datanew \
   -E UTF8 \
   --lc-collate=en_US.UTF-8 \
@@ -267,11 +280,11 @@ sudo -u postgres /usr/lib/postgresql/16/bin/initdb \
   --data-checksums
 ```
 
-This command creates a PG16 data directory for configuration, `/opt/postgres/datanew`.
+This command populates the PG17 data directory for configuration, `/opt/postgres/datanew`.
 
 ### Migrate configuration to the new Postgres version
 
-The next step copies the configuration files from the old Postgres version (PG15) to the new Postgres version's (PG16). Configuration files reside in each version's data directory.
+The next step copies the configuration files from the old Postgres version (PG16) to the new Postgres version's (PG17). Configuration files reside in each version's data directory.
 
 Copy over the `postgresql.conf`, `postgresql.auto.conf`, and `pg_hba.conf` files and the whole `conf.d` directory:
 
@@ -293,21 +306,19 @@ sudo systemctl status postgres
 The output of the `status` command shows that the Postgres service has stopped running:
 
 ```
-● postgres.service - Postgres 15 (TPA)
-   Loaded: loaded (/etc/systemd/system/postgres.service; enabled; vendor preset: enabled)
-   Active: inactive (dead) since Wed 2024-03-20 15:32:18 UTC; 4min 9s ago
- Main PID: 24396 (code=exited, status=0/SUCCESS)
+● postgres.service - Postgres 16 (TPA)
+     Loaded: loaded (/etc/systemd/system/postgres.service; enabled; vendor preset: enabled)
+     Active: inactive (dead) since Tue 2025-02-11 18:14:25 UTC; 7min ago
+   Main PID: 20370 (code=exited, status=0/SUCCESS)
+        CPU: 11.375s
 
-Mar 20 15:32:18 kaboom postgres[25032]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.89(20108)/[unknown]/bdrdb:25032]: [1] FA
-Mar 20 15:32:18 kaboom postgres[25033]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.89(20124)/[unknown]/bdrdb:25033]: [1] FA
-Mar 20 15:32:18 kaboom postgres[25034]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.88(43534)/[unknown]/bdrdb:25034]: [1] FA
-Mar 20 15:32:18 kaboom postgres[25035]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.88(43538)/[unknown]/bdrdb:25035]: [1] FA
-Mar 20 15:32:18 kaboom postgres[25036]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.87(37292)/[unknown]/bdrdb:25036]: [1] FA
-Mar 20 15:32:18 kaboom postgres[25037]: [22-1] 2024-03-20 15:32:18 UTC [pgdproxy@10.33.125.87(37308)/[unknown]/bdrdb:25037]: [1] FA
-Mar 20 15:32:18 kaboom postgres[24398]: [24-1] 2024-03-20 15:32:18 UTC [@//:24398]: [15] LOG:  checkpoint complete: wrote 394 buffe
-Mar 20 15:32:18 kaboom postgres[24396]: [22-1] 2024-03-20 15:32:18 UTC [@//:24396]: [23] LOG:  database system is shut down
-Mar 20 15:32:18 kaboom systemd[1]: postgres.service: Succeeded.
-Mar 20 15:32:18 kaboom systemd[1]: Stopped Postgres 15 (TPA).
+Feb 11 18:14:25 kaboom postgres[21066]: [22-1] 2025-02-11 18:14:25 UTC [pgdproxy@10.33.217.238(194>
+Feb 11 18:14:25 kaboom postgres[20372]: [24-1] 2025-02-11 18:14:25 UTC [@//:20372]: [15] LOG:  che>
+Feb 11 18:14:25 kaboom postgres[21067]: [22-1] 2025-02-11 18:14:25 UTC [pgdproxy@10.33.217.237(426>
+Feb 11 18:14:25 kaboom postgres[21068]: [22-1] 2025-02-11 18:14:25 UTC [pgdproxy@10.33.217.237(426>
+Feb 11 18:14:25 kaboom postgres[20370]: [22-1] 2025-02-11 18:14:25 UTC [@//:20370]: [23] LOG:  dat>
+Feb 11 18:14:25 kaboom systemd[1]: postgres.service: Succeeded.
+Feb 11 18:14:25 kaboom systemd[1]: Stopped Postgres 16 (TPA).
 ```
 
 ### Swap PGDATA directories for version upgrade
@@ -332,9 +343,9 @@ This rolls back/reverts the node to the previous major version of Postgres.
 
 ### Verify upgrade feasibility
 
-The `bdr_pg_upgrade` tool has a `--check` option, which performs a dry run of some of the upgrade process. You can use this option to ensure the upgrade goes smoothly.
+The `pgd node upgrade` tool has a `--check` option, which performs a dry run of some of the upgrade process. You can use this option to ensure the upgrade goes smoothly.
 
-However, first, you need a directory for the files created by `bdr_pg_upgrade`. For this example, create an `/upgrade` directory in the `/home` directory. Then give ownership of the directory to the user postgres. 
+However, first, you need a directory for the files created by `pgd node upgrade`. For this example, create an `/upgrade` directory in the `/home` directory. Then give ownership of the directory to the user postgres. 
 
 ```bash
 sudo mkdir /home/upgrade
@@ -344,9 +355,9 @@ sudo chown postgres:postgres /home/upgrade
 Next, navigate to `/home/upgrade` and run:
 
 ```bash
-sudo -u postgres /usr/bin/bdr_pg_upgrade \
-  --old-bindir /usr/lib/postgresql/15/bin/ \
-  --new-bindir /usr/lib/postgresql/16/bin/ \
+sudo -u postgres pgd node kaboom upgrade \
+  --old-bindir /usr/lib/postgresql/16/bin/ \
+  --new-bindir /usr/lib/postgresql/17/bin/ \
   --old-datadir /opt/postgres/dataold/ \
   --new-datadir /opt/postgres/data/ \
   --database bdrdb \
@@ -358,31 +369,34 @@ The following is the output:
 ```
 Performing BDR Postgres Checks
 ------------------------------
-Collecting pre-upgrade new cluster control data             ok
-Checking new cluster state is shutdown                      ok
-Checking BDR versions                                       ok
+Getting old PG instance shared directory                      ok
+Getting new PG instance shared directory                      ok
+Collecting pre-upgrade new PG instance control data           ok
+Checking new cluster state is shutdown                        ok
+Checking BDR extension versions                               ok
+Checking Postgres versions                                    ok
 
-Passed all bdr_pg_upgrade checks, now calling pg_upgrade
+Finished BDR pre-upgrade steps, calling pg_upgrade
+--------------------------------------------------
 
 Performing Consistency Checks
 -----------------------------
-Checking cluster versions                                   ok
-Checking database user is the install user                  ok
-Checking database connection settings                       ok
-Checking for prepared transactions                          ok
-Checking for system-defined composite types in user tables  ok
-Checking for reg* data types in user tables                 ok
-Checking for contrib/isn with bigint-passing mismatch       ok
-Checking for presence of required libraries                 ok
-Checking database user is the install user                  ok
-Checking for prepared transactions                          ok
-Checking for new cluster tablespace directories             ok
+Checking cluster versions                                     ok
+Checking database user is the install user                    ok
+Checking database connection settings                         ok
+Checking for prepared transactions                            ok
+Checking for contrib/isn with bigint-passing mismatch         ok
+Checking data type usage                                      ok
+Checking for presence of required libraries                   ok
+Checking database user is the install user                    ok
+Checking for prepared transactions                            ok
+Checking for new cluster tablespace directories               ok
 
-*Clusters are compatible
+*Clusters are compatible*
 ```
 
 !!! Note
-If you didn't initialize Postgres 16 with checksums using the `--data-checksums` option but did initialize checksums with your Postgres 15 instance, an error tells you about the incompatibility:
+If you didn't initialize Postgres 17 with checksums using the `--data-checksums` option but did initialize checksums with your Postgres 16 instance, an error tells you about the incompatibility:
 
 ```bash
 old cluster uses data checksums but the new one does not
@@ -394,12 +408,13 @@ old cluster uses data checksums but the new one does not
 You're ready to run the upgrade. On the target node, run:
 
 ```bash
-sudo -u postgres /usr/bin/bdr_pg_upgrade \
+sudo -u postgres pgd node kaboom upgrade \
   --old-bindir /usr/lib/postgresql/15/bin/ \
   --new-bindir /usr/lib/postgresql/16/bin/ \
   --old-datadir /opt/postgres/dataold/ \
   --new-datadir /opt/postgres/data/ \
-  --database bdrdb
+  --database bdrdb \
+  --username postgres
 ```
 
 The following is the expected output:
@@ -505,12 +520,12 @@ Stopping new cluster
 
 ### Update the Postgres service configuration
 
-The Postgres service on the system is configured to start the old version of Postgres (PG15). You need to modify the `postgres.service` file to start the new version (PG16). 
+The Postgres service on the system is configured to start the old version of Postgres (PG16). You need to modify the `postgres.service` file to start the new version (PG17). 
 
 You can do this using `sed` to replace the old version number `15` with `16` throughout the file. 
 
 ```bash
-sudo sed -i -e  's/15/16/g' /etc/systemd/system/postgres.service
+sudo sed -i -e  's/16/17/g' /etc/systemd/system/postgres.service
 ```
 
 After you've changed the version number, you can tell the systemd daemon to reload the configuration. On the target node, run:
@@ -532,7 +547,7 @@ sudo systemctl start postgres
 Repeating the first step, check the version of Postgres to confirm that you upgraded kaboom correctly. While still on kaboom, run:
 
 ```bash
-sudo -u postgres pgd show-version
+sudo -u postgres pgd nodes list --versions
 ```
 
 Use the output to confirm that kaboom is running the upgraded Postgres version:
@@ -582,7 +597,7 @@ If you followed along with this example and kaftan is the write leader, to ensur
 After completing the upgrade on all nodes, while connected to one of the nodes, you can check your versions again:
 
 ```bash
-sudo -u postgres pgd show-version
+sudo -u postgres pgd nodes list --versions
 ```
 
 The output will be similar to the following:
