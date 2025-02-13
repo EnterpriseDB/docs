@@ -14,6 +14,9 @@ import GithubSlugger from "github-slugger";
 import yaml from "js-yaml";
 import { visitParents } from "unist-util-visit-parents";
 import remarkMdxEmbeddedHast from "./lib/mdast-embedded-hast.mjs";
+import rehypeParse from "rehype-parse";
+import fs from 'node:fs/promises';
+import { optimize } from 'svgo';
 import toVfile from "to-vfile";
 const { read, write } = toVfile;
 
@@ -28,6 +31,8 @@ const formatErrorPath = (path, line, column) => {
     ? `https://github.com/EnterpriseDB/docs/blob/${branch}/${path}?plain=1#L${line}`
     : `${path}:${line}:${column}`;
 };
+
+const imageExts = [".png", ".svg", ".jpg", ".jpeg", ".gif"];
 
 (async () => {
   if (!process.argv[2]) {
@@ -69,7 +74,7 @@ function cleanup() {
   const originalRE =
     /<span data-original-path='(?<originalPath>.+?):(?<originalStartLine>\d+)'><\/span>/;
   const docsUrl = "https://www.enterprisedb.com/docs";
-  return (tree, file) => {
+  return async (tree, file) => {
     const docsLocations = /product_docs\/docs|advocacy_docs/;
     const thisProductPath = path.dirname(file.path).split(docsLocations)[1];
     const isVersioned = file.path.includes("product_docs/")
@@ -92,6 +97,10 @@ function cleanup() {
     const slugger = new GithubSlugger();
 
     const getSlugForOrigPathAndSlug = (origPath, origSlug) => {
+      const ext = path.posix.extname(origPath);
+      const isImageUrl = imageExts.includes(ext);
+      if (isImageUrl) return "";
+
       const normalizedPath = origPath
         .replace(/\/?$/, "")
         .replace(/\.mdx?$/, "");
@@ -144,7 +153,7 @@ function cleanup() {
 
     visitParents(
       tree,
-      ["jsx-hast", "element", "link", "heading", "code", "admonition", "table"],
+      ["jsx-hast", "element", "link", "image", "heading", "code", "admonition", "table"],
       (node, ancestors) => {
         if (node.type === "jsx-hast") {
           let { originalPath, originalStartLine } =
@@ -218,7 +227,14 @@ function cleanup() {
         ) {
           node.properties.href = normalizeUrl(node.properties.href);
         }
-        if (node.type === "link") {
+        else if (
+          node.type === "element" &&
+          node.tagName === "img" &&
+          node.properties.src
+        ) {
+          node.properties.src = normalizeUrl(node.properties.src);
+        }
+        if (node.type === "link" || node.type === "image") {
           node.url = normalizeUrl(node.url);
         }
 
@@ -307,8 +323,19 @@ function cleanup() {
       slugMap[""] = "";
     }
 
+    function urlToFileUrl(url)
+    {
+      if (
+        url.startsWith(thisProductUrl)
+      ) {
+        const dest = new URL(url.replace(thisProductUrl+'/', ''), `file://${path.dirname(path.resolve(file.path))}/`);
+        return dest.toString();
+      }
+    }
+
+    let svgNodes = [];
     let lineOffset = 0;
-    visitParents(tree, ["link", "element", "heading"], (node) => {
+    visitParents(tree, ["link", "image", "element", "heading"], (node) => {
       try {
         if (node.type === "heading" && node.data?.originalFile) {
           currentOriginalFile = node.data.originalFile;
@@ -322,7 +349,21 @@ function cleanup() {
           node.properties.href
         )
           node.properties.href = mapUrlToSlug(node.properties.href);
+        else if (
+          node.type === "element" &&
+          node.tagName === "img" &&
+          node.properties.src
+        ) {
+          node.properties.src = urlToFileUrl(node.properties.src);
+          if (node.properties.src.endsWith(".svg"))
+            svgNodes.push(node);
+        }
         else if (node.type === "link") node.url = mapUrlToSlug(node.url);
+        else if (node.type === "image") {
+          node.url = urlToFileUrl(node.url);
+          if (node.url.endsWith(".svg"))
+            svgNodes.push(node);
+        }
       } catch (e) {
         console.log(
           `${e.severity === 1 ? "⚠️⚠️ " : "⚠️  "} ${formatErrorPath(
@@ -334,5 +375,54 @@ function cleanup() {
         );
       }
     });
+
+    for (let node of svgNodes) {
+      await convertSvgNode(node);
+    }
   };
+}
+
+const svgoPlugins = [
+  {
+    name: 'preset-default',
+    params: {
+      overrides: {
+        // disable plugins
+        removeTitle: false,
+        removeDesc: false,
+      },
+    },
+  },
+  'removeXMLNS',
+];
+
+// adapted from https://github.com/alvinometric/remark-inline-svg to suit the specific needs of this pipeline
+async function convertSvgNode(node) {
+  const url = new URL(node.url || node.properties.src);
+  const image = await fs.readFile(url.pathname, 'utf-8');
+  const result = optimize(image, { path: url.pathname, multipass: true, plugins: svgoPlugins });
+
+  if (node.properties.src) {
+    let hast = unified()
+      .use(rehypeParse, {
+        emitParseErrors: true,
+        verbose: true,
+        fragment: true,
+      })
+      .parse(result.data);  
+    node.tagName = "figure";
+    let style = node.properties.style;
+    if (node.properties.width)
+      style = `${style ? style + '; ' : ''}width: ${node.properties.width}`;
+    delete node.properties;
+    if (style)
+      node.properties = {style};
+    node.children = hast.children;
+  }
+  else {
+    node.type = "jsx";
+    node.value = result.data;
+    delete node.url;
+  }
+
 }
