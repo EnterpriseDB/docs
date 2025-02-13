@@ -3,7 +3,12 @@ import { Dropdown, DropdownButton } from "react-bootstrap";
 import { useStaticQuery, graphql } from "gatsby";
 import Icon, { iconNames } from "./icon";
 
-export const FeedbackDropdown = ({ githubIssuesLink }) => {
+export const FeedbackDropdown = ({
+  fileRelativePath,
+  product,
+  version,
+  title,
+}) => {
   const data = useStaticQuery(graphql`
     {
       edbGit {
@@ -14,26 +19,20 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
     }
   `);
 
-  // add the last commit SHA to paths dynamically to minimize page changes
-  const [url, setUrl] = useState();
+  // to minimize deployment time, static render all paths relative to the develop branch (on staging / draft) or main (production)
+  // then swap in actual ref on first live render.
+  const [historyRef, setHistoryRef] = useState(
+    data.edbGit.branch === "main" ? data.edbGit.branch : "develop",
+  );
   useEffect(() => {
-    if (githubIssuesLink)
-      setUrl(
-        githubIssuesLink.replace(
-          encodeURIComponent(
-            `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.branch}/`,
-          ),
-          encodeURIComponent(
-            `${data.edbGit.docsRepoUrl}/commits/${data.edbGit.sha}/`,
-          ),
-        ),
-      );
-  }, [
-    githubIssuesLink,
-    data.edbGit.docsRepoUrl,
-    data.edbGit.branch,
-    data.edbGit.sha,
-  ]);
+    setHistoryRef(data.edbGit.sha);
+  }, [data.edbGit.branch, data.edbGit.sha]);
+
+  const githubIssuesUrl = `${data.edbGit.docsRepoUrl}/issues/new?title=${encodeURIComponent(
+    `Feedback on ${product} ${version} - "${title}"`,
+  )}&context=${encodeURIComponent(
+    `${data.edbGit.docsRepoUrl}/blob/${historyRef}${fileRelativePath}\n`,
+  )}`;
 
   return (
     <DropdownButton
@@ -52,14 +51,16 @@ export const FeedbackDropdown = ({ githubIssuesLink }) => {
       }
     >
       <Dropdown.Item
-        href={url + "&template=problem-with-topic.yaml"}
+        href={githubIssuesUrl + "&template=problem-with-topic.yaml&labels=bug"}
         target="_blank"
         rel="noreferrer"
       >
         Report a problem
       </Dropdown.Item>
       <Dropdown.Item
-        href={url + "&template=product-feedback.yaml&labels=feedback"}
+        href={
+          githubIssuesUrl + "&template=product-feedback.yaml&labels=feedback"
+        }
         target="_blank"
         rel="noreferrer"
       >

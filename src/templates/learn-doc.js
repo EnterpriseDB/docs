@@ -1,10 +1,15 @@
 import React from "react";
 import { Container, Row, Col } from "react-bootstrap";
 import { graphql } from "gatsby";
-import { isPathAnIndexPage } from "../constants/utils";
+import {
+  isPathAnIndexPage,
+  getRelativeFilePathFromPageAbsolutePath,
+} from "../constants/utils";
 import { MDXRenderer } from "gatsby-plugin-mdx";
 import {
   DevFrontmatter,
+  EditLink,
+  FeedbackLink,
   Footer,
   Layout,
   LeftNav,
@@ -29,10 +34,6 @@ export const query = graphql`
       tableOfContents
       fileAbsolutePath
     }
-    edbGit {
-      docsRepoUrl
-      branch
-    }
   }
 `;
 
@@ -51,27 +52,6 @@ const findDescendent = (root, predicate) => {
   }
   return null;
 };
-
-const EditButton = ({ githubEditLink }) => (
-  <a
-    href={githubEditLink || "#"}
-    className="btn btn-sm btn-primary px-4 text-nowrap"
-    title="Navigate to the GitHub editor for this file, allowing you to propose changes for review by the EDB Documentation Team"
-  >
-    Suggest edits
-  </a>
-);
-
-const FeedbackButton = ({ githubIssuesLink }) => (
-  <a
-    href={githubIssuesLink + "&template=product-feedback.yaml&labels=feedback"}
-    target="_blank"
-    rel="noreferrer"
-    className="btn btn-sm btn-primary px-4 text-nowrap"
-  >
-    Feedback
-  </a>
-);
 
 const buildSections = (navTree, path) => {
   const sections = [];
@@ -110,7 +90,7 @@ const buildSections = (navTree, path) => {
 
 const LearnDocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
-  const { mdx, edbGit: gitData } = data;
+  const { mdx } = data;
   const { fields, tableOfContents } = data.mdx;
   const { frontmatter, pagePath, productVersions, navTree, prevNext } =
     pageContext;
@@ -134,6 +114,9 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     productVersions,
   };
   const { path } = fields;
+  const fileUrlSegment = getRelativeFilePathFromPageAbsolutePath(
+    mdx.fileAbsolutePath,
+  );
 
   const showToc = !!mdx.tableOfContents.items && !frontmatter.hideToC;
   const showInteractiveBadge =
@@ -164,32 +147,24 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     else if (navRoot.depth >= 3) cardTileMode = TileModes.Simple;
   }
 
-  // don't encourage folks to edit on main - set the edit links to develop in production builds
-  const branch = gitData.branch === "main" ? "develop" : gitData.branch;
-  const fileUrlSegment = mdx.fileAbsolutePath.split("/advocacy_docs").slice(1);
-  const githubFileLink = `${gitData.docsRepoUrl}/blob/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
-  const githubFileHistoryLink = `${gitData.docsRepoUrl}/commits/${gitData.branch}/advocacy_docs${fileUrlSegment}`;
-  const githubEditLink = `${gitData.docsRepoUrl}/edit/${branch}/advocacy_docs${fileUrlSegment}`;
-  const githubIssuesLink = `${
-    gitData.docsRepoUrl
-  }/issues/new?title=${encodeURIComponent(
-    `Regarding "${title}"`,
-  )}&context=${encodeURIComponent(
-    `${githubFileLink}\n`,
-  )}&template=problem-with-topic.yaml`;
-
   // CNO isn't editable
   // TODO unify docs/advo to share one smart component that knows what to show
   const editOrFeedbackButton =
     editTarget === "none" ? (
-      <FeedbackButton githubIssuesLink={githubIssuesLink} />
+      <FeedbackLink
+        fileRelativePath={fileUrlSegment}
+        title={`Regarding "${title}"`}
+        target="_blank"
+        rel="noreferrer"
+        className="btn btn-sm btn-primary px-4 text-nowrap"
+      >
+        Feedback
+      </FeedbackLink>
     ) : (
-      <EditButton
-        githubEditLink={
-          editTarget === "originalFilePath" && originalFilePath
-            ? originalFilePath.replace(/\/blob\//, "/edit/")
-            : githubEditLink
-        }
+      <EditLink
+        editTarget={editTarget}
+        fileRelativePath={fileUrlSegment}
+        originalFilePath={originalFilePath}
       />
     );
 
@@ -218,7 +193,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           </div>
 
           {frontmatter.displayBanner ? (
-            <div class="alert alert-warning mt-3" role="alert">
+            <div className="alert alert-warning mt-3" role="alert">
               {frontmatter.displayBanner}
             </div>
           ) : null}
@@ -248,29 +223,29 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           <hr />
           <p>
             Could this page be better?{" "}
-            <a
-              href={
-                githubIssuesLink +
-                "&template=problem-with-topic.yaml&labels=bug"
-              }
+            <FeedbackLink
+              fileRelativePath={fileUrlSegment}
+              title={`Regarding "${title}"`}
+              template="problem-with-topic.yaml"
+              labels={["bug"]}
             >
               Report a problem
-            </a>{" "}
+            </FeedbackLink>{" "}
             or{" "}
-            <a
-              href={
-                githubIssuesLink +
-                "&template=suggest-addition-to-topic.yaml&labels=enhancement"
-              }
+            <FeedbackLink
+              fileRelativePath={fileUrlSegment}
+              title={`Regarding "${title}"`}
+              template="suggest-addition-to-topic.yaml"
+              labels={["enhancement"]}
             >
               suggest an addition
-            </a>
+            </FeedbackLink>
             !
           </p>
 
           <Footer
             timestamp={mdx.fields.mtime}
-            githubFileLink={githubFileHistoryLink}
+            fileRelativePath={fileUrlSegment}
           />
         </MainContent>
       </Container>
