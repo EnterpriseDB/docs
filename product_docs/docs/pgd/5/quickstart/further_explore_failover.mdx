@@ -198,7 +198,7 @@ Once the loop is running, new entries appear in the table. You'll see them in th
 
 You can now start testing failover.
 
-## Displaying the write leader
+## Changing the write leader
 
 For this part of the process, switch to the host kaftan, which is in the lower-left corner. Use **Control-b &larr;** or **Control-b q 2** to switch focus to it. 
 
@@ -211,33 +211,33 @@ sudo -iu enterprisedb
 To see the state of the cluster, run:
 
 ```shell
-pgd show-groups
+pgd groups list -v
 ```
 
 You'll see output like this:
 
 ```console
-Group        Group ID   Type   Parent Group Location Raft Routing Write Leader
------        --------   ----   ------------ -------- ---- ------- ------------
-democluster  1935823863 global                       true false
-dc1_subgroup 1302278103 data   democluster  dc1      true true    kaboom
+Group Name   Parent Group Name Group Type Nodes
+------------ ----------------- ---------- -----
+democluster                    global     0    
+dc1_subgroup democluster       data       3  
 ```
 
 The global group `democluster` includes all the subgroups. The `dc1_subgroup` is the data cluster you're working with. That group name value is derived from the location given in the quick start when you configured this cluster. Each location gets its own subgroup so you can manage it independently of other locations, or clusters.
 
-If you skip to the right of the table, you can see that the current write leader for the group&mdash;the server where all the proxies send their updates&mdash;is kaboom.
-
-Send a `switchover` command to the cluster group to change leader. Run this command:
+Send a `group set-leader` command to the cluster group to change leader. Run this command:
 
 ```shell
-pgd switchover --group-name dc1_subgroup --node-name kaolin
+pgd group dc1_subgroup set-leader kaolin
 ```
 The node name is the host name for another data node in the dc1_subgroup group.
 
-You'll see one of two responses. When you ran the `show-groups` command, if it showed kaolin as the write leader, you'll see:
+You'll see one of two responses. If kaolin was the write leader already. you will see:
 
 ```console
-Error: "kaolin" is already a write leader
+Status Message                                
+------ ---------------------------------------
+OK     Node kaolin is already the write leader
 ```
 
 This means that kaolin was already elected write leader, so switching has no effect. For this exercise, retry the switchover to another host, substituting kaboom or kaftan as the node name.
@@ -245,7 +245,9 @@ This means that kaolin was already elected write leader, so switching has no eff
 When you select a host that wasn't the current write leader, you'll see the other response: 
 
 ```console
-switchover is complete
+Status Message                      
+------ -----------------------------
+OK     Command executed successfully
 ```
 
 If you look in the top-left pane, you'll see the inserts from the script switching and being written to the node you just switched to. 
@@ -254,8 +256,7 @@ If you look in the top-left pane, you'll see the inserts from the script switchi
 Notice that the id number being generated is from a completely different range of values, too. That's because the system transparently made the sequence generating the ID a global sequence. For more about global sequences and how they work, see [Sequences](../sequences/).
 !!!
 
-You might also notice an error in the lower-right pane, as an inflight update is canceled by the switch. The script then continues writing.
-
+You might also notice an error in the lower-right pane, as an inflight update is canceled by the switch in write leader. The script then continues writing.
 
 ## Losing a node
 
@@ -264,7 +265,7 @@ Being able to switch leader is useful for planned maintenance; you tell the clus
 In the lower-left pane, set the leader to kaolin.
 
 ```shell
-pgd switchover --group-name dc1_subgroup --node-name kaolin
+pgd group dc1_subgroup set-leader kaolin
 ```
 
 Then change focus to the top-right pane using **Control-b &uarr; Control-b &rarr;** or **Control-b q 1**, which is the session on the kaolin host.
@@ -282,21 +283,20 @@ In the top-left pane, you'll see the monitored table switch from kaolin to anoth
 Switch to the lower-left pane using **Control-b &darr; Control-b &larr;** or **Control-b q 2**, and run:
 
 ```shell
-pgd show-nodes
+pgd nodes list
 ```
 
 You'll see something like:
 
 ```console
-Node   Node ID    Group        Type Current State Target State Status      Seq ID 
-----   -------    -----        ---- ------------- ------------ ------      ------ 
-kaboom 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up          3 
-kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up          2 
-kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Unreachable 1 
+Node Name Group Name   Node Kind Join State Node Status
+--------- ------------ --------- ---------- -----------
+kaftan    dc1_subgroup data      ACTIVE     Up         
+kaolin    dc1_subgroup data      ACTIVE     Unreachable         
+kaboom    dc1_subgroup data      ACTIVE     Up 
 ```
 
 The kaolin node is down, and updates are going to a different write leader.
-
 
 ## Monitoring lag
 
@@ -339,17 +339,17 @@ sudo systemctl start postgres.service
 You won't see any change. Although the database service is back up and running, the cluster isn't holding an election, and so the leader remains in place. Switch to the lower-left pane using **Control-b &darr; Control-b &larr;** or **Control-b q 2**, and run:
 
 ```shell
-pgd show-nodes
+pgd nodes list
 ```
 
 Now you'll see:
 
 ```console
-Node   Node ID    Group        Type Current State Target State Status Seq ID 
-----   -------    -----        ---- ------------- ------------ ------ ------ 
-kaboom 2710197610 dc1_subgroup data ACTIVE        ACTIVE       Up     3
-kaftan 3490219809 dc1_subgroup data ACTIVE        ACTIVE       Up     2
-kaolin 2111777360 dc1_subgroup data ACTIVE        ACTIVE       Up     1
+Node Name Group Name   Node Kind Join State Node Status
+--------- ------------ --------- ---------- -----------
+kaftan    dc1_subgroup data      ACTIVE     Up         
+kaolin    dc1_subgroup data      ACTIVE     Up         
+kaboom    dc1_subgroup data      ACTIVE     Up 
 ```
 
 As soon as kaolin is back in the cluster, it begins synchronizing with the cluster. It does that by catching up on that replay data. Run:
@@ -375,12 +375,16 @@ With kaolin fully back in service, you can leave everything as it is. There's no
 If you want, you can make kaolin leader again by running:
 
 ```shell
-pgd switchover --group-name dc1_subgroup --node-name kaolin
+pgd group dc1_subgroup set leader kaolin
 ```
 
 This command returns kaolin to write lead. The application's updates will follow, as the proxies track the write leader.
 
 ## Proxy failover
+
+!!!Note
+The command `pgd show-proxies` is deprecated as if PGD v5.7. It is still accessible as a legacy command.
+!!!
 
 Proxies can also failover. To experience this, make sure your focus is still on the lower-left pane, and run:
 
@@ -391,11 +395,11 @@ pgd show-proxies
 You'll see:
 
 ```console
-Proxy  Group        Listen Addresses Listen Port
------  -----        ---------------- -----------
-kaboom dc1_subgroup [0.0.0.0]        6432
-kaftan dc1_subgroup [0.0.0.0]        6432
-kaolin dc1_subgroup [0.0.0.0]        6432
+Proxy  Group        Listen Addrs Listen Port Read Listen Addrs Read Listen Port
+------ ------------ ------------ ----------- ----------------- ----------------
+kaboom dc1_subgroup [0.0.0.0]    6432        [0.0.0.0]         6433            
+kaftan dc1_subgroup [0.0.0.0]    6432        [0.0.0.0]         6433            
+kaolin dc1_subgroup [0.0.0.0]    6432        [0.0.0.0]         6433  
 ```
 
 Enter `exit` to exit the enterprisedb user and return to the admin/root shell. You can now stop the proxy service on this node by running:
