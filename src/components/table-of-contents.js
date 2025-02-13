@@ -1,24 +1,26 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "./";
 import { useScrollRestoration } from "gatsby";
-import { useLocation } from "@reach/router";
+import { useLocation } from "@gatsbyjs/reach-router";
 
 const TableOfContents = ({ toc, deepToC }) => {
   const scrollRestoration = useScrollRestoration("header-navigation-sidebar");
-  const hash = useLocation().hash;
+  const loc = useLocation();
+  const [hash, setHash] = useState("");
+
+  useEffect(() => {
+    setHash(loc.hash);
+  }, [loc]);
 
   return (
-    <ul
-      className="list-unstyled border-start ps-4 lh-12 toc-sticky pt-3"
-      {...scrollRestoration}
-    >
+    <ul className="list-unstyled lh-12 toc-sticky pt-3" {...scrollRestoration}>
       <li className="mb-2 fw-bold text-muted text-uppercase small">
         On this page
       </li>
       {toc
         .filter((item) => item.title)
         .map((item) => (
-          <li key={item.title}>
+          <li key={item.url || item.title}>
             <Link
               className={`d-block py-2 align-middle  ${
                 hash === item.url ? "active" : deepToC ? "fw-normal" : ""
@@ -32,7 +34,7 @@ const TableOfContents = ({ toc, deepToC }) => {
                 {item.items
                   .filter((subitem) => subitem.title)
                   .map((subitem) => (
-                    <li key={subitem.title}>
+                    <li key={subitem.url || subitem.title}>
                       <Link
                         className={`d-block py-1 align-middle  ${
                           hash === subitem.url ? "active" : "fw-lighter"
