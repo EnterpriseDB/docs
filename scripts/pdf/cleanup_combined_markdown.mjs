@@ -250,7 +250,8 @@ function cleanup() {
             const siblings = ancestors[ancestors.length - 1].children;
             const idx = siblings.indexOf(node);
             siblings.splice(idx + 1, 0, { type: "code", lang: "output", value: output });
-            return idx + 2;
+            siblings.splice(idx, 0, { type: "jsx", value: '<div class="next-pre-has-output"></div>' });
+            return idx + 3;
           }
         }
 
