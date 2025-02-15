@@ -55,10 +55,9 @@ def main(args):
                 "pandoc",
                 mdx_file,
                 "--from=gfm",
-                "--self-contained",
                 "--highlight-style=tango",
                 f"--include-in-header={BASE_DIR / 'pdf-script.html'}",
-                f"--css={BASE_DIR / 'pdf-styles.css'}",
+                f"--css=file://{BASE_DIR / 'pdf-styles.css'}",
                 f"--resource-path={':'.join((str(p) for p in resource_search_paths))}",
                 f"--output={html_file}",
             ]
@@ -109,6 +108,7 @@ def main(args):
                     "wkhtmltopdf",
                     "--log-level",
                     "error",
+                    "--enable-local-file-access",
                     "--title",
                     title,
                     "--margin-top",
@@ -133,6 +133,12 @@ def main(args):
         if args.open_pdf:
             run(["open", pdf_file])
 
+    except:
+        # if ANY exception is thrown, treat (likely incomplete) output as suspect and remove
+        # don't remove HTML files, since likely we'll want those for debugging if --html is specified
+        pdf_file.unlink(missing_ok=True)
+        pdf_hash_file.unlink(missing_ok=True)
+        raise
     finally:
         mdx_file.unlink(missing_ok=True)
         if not args.generate_html_only:
