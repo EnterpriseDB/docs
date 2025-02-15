@@ -136,25 +136,7 @@ cvelist.forEach((cve) => {
   allDocMap[cve] = docMap;
 });
 
-let shortcvelist = [];
-let lastyear = "";
-let count = 0;
-cvelist.forEach((cve) => {
-  const year = cve.substring(3, 7);
-  if (lastyear == "") {
-    count = 0;
-    lastyear = year;
-  } else if (lastyear != year) {
-    return;
-  }
-  if (count < seccount) {
-    shortcvelist.push(cve);
-    count++;
-  }
-});
-
-//shortcvelist.forEach(cve => { console.log(allDocMap[cve].summary)})
-//console.log(allDocMap);
+let shortcvelist = cvelist.slice(0, seccount);
 
 // Process the assessments
 const assfiles = fs
@@ -180,25 +162,8 @@ asslist.forEach((ass) => {
   assAllDocMap[ass] = assDocMap;
 });
 
-let shortasslist = [];
-let asslastyear = "";
-let asscount = 0;
-
-asslist.forEach((ass) => {
-  const year = ass.substring(3, 7);
-  if (asslastyear == "") {
-    asscount = 0;
-    asslastyear = year;
-  } else if (asslastyear != year) {
-    return;
-  }
-  if (asscount < seccount) {
-    shortasslist.push(ass);
-    asscount++;
-  }
-});
-
-// Render the cve list
+asslist.reverse();
+let shortasslist = asslist.slice(0, seccount);
 
 namespace["shortcvelist"] = shortcvelist;
 namespace["cvesorted"] = cvelist;
