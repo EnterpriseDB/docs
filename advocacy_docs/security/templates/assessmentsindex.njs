@@ -11,16 +11,16 @@ navigation:{% for ass in asssorted %}
 
 The CVEs listed in this section are from PostgreSQL and other parties who have reported them and that may have an impact on EDB products.
 
-
-{% set updatedYear = -1 %}
+{% set lastYear = -1 %}
 
 {% for ass in asssorted %}
-{% set thisass = asss[ass] %}
-{% set lastUpdatedYear = thisass.open.last_updated.slice(0,4) %}
-{% if  lastUpdatedYear != updatedYear %}
-{% if updatedYear != -1 %}</table>{% endif %}   
-<h2>Updated {{ lastUpdatedYear }}</h2>
-{% set updatedYear = lastUpdatedYear %}
+
+{% set thisass=asss[ass] %}
+{% set releaseYear = thisass.open.first_published.slice(0,4) %}
+{% if lastYear != releaseYear %}
+{% if lastYear !=-1 %}</table>{% endif %}
+<h2>Released {{ releaseYear }}</h2>
+{% set lastYear = releaseYear %}
 <table class="table-bordered">
 {% endif %}
 
@@ -39,5 +39,6 @@ The CVEs listed in this section are from PostgreSQL and other parties who have r
 <a href="{{ thisass.filename }}">Read More...</a>
 </details></td></tr>
 {% endfor %}
+<!-- end of file -->
 </table>
 

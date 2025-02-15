@@ -198,6 +198,8 @@ asslist.forEach((ass) => {
   }
 });
 
+asslist.reverse();
+
 // Render the cve list
 
 namespace["shortcvelist"] = shortcvelist;

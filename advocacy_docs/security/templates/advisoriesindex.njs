@@ -9,15 +9,15 @@ navigation:{% for cve in cvesorted %}
 - {{ cve }}{% endfor %}
 ---
 
-{% set updatedYear = -1 %}
+{% set lastReleasedYear = -1 %}
 
 {% for cve in cvesorted %}
 {% set thiscve = cves[cve] %}
-{% set lastUpdatedYear = thiscve.open.last_updated.slice(0,4) %}
-{% if  lastUpdatedYear != updatedYear %}
-{% if updatedYear != -1 %}</table>{% endif %}   
-<h2>Updated {{ lastUpdatedYear }}</h2>
-{% set updatedYear = lastUpdatedYear %}
+{% set releaseYear = thiscve.open.first_published.slice(0,4) %}
+{% if  lastReleasedYear != releaseYear %}
+{% if lastReleasedYear != -1 %}</table>{% endif %}   
+<h2>Released {{ releaseYear }}</h2>
+{% set lastReleasedYear = releaseYear %}
 <table class="table-bordered">
 {% endif %}
 
