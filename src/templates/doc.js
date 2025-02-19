@@ -231,8 +231,7 @@ const DocTemplate = ({ data, pageContext }) => {
             hideVersion={frontmatter.hideVersion}
             hidePDF={hidePDF}
             product={product}
-            version={version}
-            preciseVersion={preciseVersion}
+            version={preciseVersion || version}
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>

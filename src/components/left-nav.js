@@ -99,7 +99,6 @@ const LeftNav = ({
   hideEmptySections = false,
   hideVersion = false,
   hidePDF = false,
-  preciseVersion,
 }) => {
   return (
     <ul className="list-unstyled mt-0">
@@ -111,7 +110,7 @@ const LeftNav = ({
           iconName={iconName}
           product={product}
           hideVersion={hideVersion}
-          preciseVersion={preciseVersion}
+          preciseVersion={version}
         />
       ) : (
         <SectionHeading
