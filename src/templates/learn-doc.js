@@ -96,15 +96,16 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
-    iconName,
-    title,
-    description,
-    katacodaPanel,
-    indexCards,
-    originalFilePath,
-    editTarget,
+    category,
     deepToC,
+    description,
+    editTarget,
+    iconName,
+    indexCards,
+    katacodaPanel,
+    originalFilePath,
     prevNext: showPrevNext,
+    title,
   } = frontmatter;
   const pageMeta = {
     title: title,
@@ -177,6 +178,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
+            category={category}
             product={frontmatter.product}
             version={frontmatter.version}
           />

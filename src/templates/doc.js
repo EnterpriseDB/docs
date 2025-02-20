@@ -159,14 +159,15 @@ const DocTemplate = ({ data, pageContext }) => {
   const { product, version } = getProductAndVersion(path);
 
   const {
-    iconName,
-    description,
-    katacodaPanel,
-    indexCards,
-    editTarget,
-    originalFilePath,
+    category,
     deepToC,
+    description,
+    editTarget,
     hidePDF,
+    iconName,
+    indexCards,
+    katacodaPanel,
+    originalFilePath,
   } = frontmatter;
 
   const fileUrlSegment =
@@ -228,6 +229,7 @@ const DocTemplate = ({ data, pageContext }) => {
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
+            category={category}
             hideVersion={frontmatter.hideVersion}
             hidePDF={hidePDF}
             product={product}
