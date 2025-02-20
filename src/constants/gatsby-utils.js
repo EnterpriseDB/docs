@@ -4,6 +4,7 @@ const path = require("path");
 const {
   default: expressionReplacement,
 } = require("./expression-replacement.js");
+const GithubSlugger = require("github-slugger");
 
 const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
@@ -70,10 +71,28 @@ const mdxNodesToTree = (nodes, productVersions) => {
     *[Symbol.iterator]() {
       yield this;
       for (let child of this.children) {
+        // ignore fake "children"
+        if (child.parent !== this) continue;
         yield* child;
       }
     }
   }
+
+  Node.prototype.indexes = { categoryPathToNodes: new Map() };
+  Node.prototype.index = function () {
+    if (this.mdxNode?.frontmatter?.directoryDefaults?.category) {
+      const categoryPath =
+        "/" +
+        this.mdxNode.frontmatter.directoryDefaults.category
+          .map((c) => GithubSlugger.slug(c))
+          .join("/") +
+        "/";
+      let list = this.indexes.categoryPathToNodes.get(categoryPath);
+      if (!list)
+        this.indexes.categoryPathToNodes.set(categoryPath, (list = []));
+      list.push(this);
+    }
+  };
 
   const rootNode = new Node("/", null);
 
@@ -94,6 +113,7 @@ const mdxNodesToTree = (nodes, productVersions) => {
       currentNode = findOrInsertNode(currentNode, path);
       if (path === node.fields.path) {
         currentNode.mdxNode = node;
+        currentNode.index();
       }
     }
   };
@@ -131,6 +151,9 @@ const mdxNodesToTree = (nodes, productVersions) => {
           ...replacementArgs,
         });
     }
+    // special-case: if this node is the "category" page for any other pages, integrate those
+    const nodesInCategory =
+      node.indexes.categoryPathToNodes.get(node.path) || [];
 
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = {};
@@ -143,11 +166,17 @@ const mdxNodesToTree = (nodes, productVersions) => {
         continue;
       }
 
-      const navChild = node.children.find((child) => {
-        if (addedChildPaths[child.path]) return false;
-        const navName = child.path.split("/").slice(-2)[0];
-        return navName.toLowerCase() === navEntry.toLowerCase();
-      });
+      const navChild =
+        node.children.find((child) => {
+          if (addedChildPaths[child.path]) return false;
+          const navName = child.path.split("/").slice(-2)[0];
+          return navName.toLowerCase() === navEntry.toLowerCase();
+        }) ||
+        nodesInCategory.find(
+          (cat) =>
+            cat.path.toLowerCase() ===
+            navEntry.toLowerCase().replace(/^(?!\/)|(?<!\/)$/g, "/"),
+        );
       if (!navChild?.mdxNode) continue;
 
       addedChildPaths[navChild.path] = true;
@@ -160,9 +189,9 @@ const mdxNodesToTree = (nodes, productVersions) => {
       ...node.children
         .filter((child) => !addedChildPaths[child.path])
         .sort((a, b) => a.path.localeCompare(b.path)),
+      ...nodesInCategory.filter((child) => !addedChildPaths[child.path]),
     ];
   }
-
   return rootNode;
 };
 
@@ -263,9 +292,12 @@ const treeToNavigation = (treeNode, pageNode) => {
     (path.includes(rootNode.path) ||
       (rootNode.path.includes(path) && rootNode.depth === depth + 1))
   ) {
-    rootNode.items = treeNode.children.map((n) =>
-      treeToNavigation(n, pageNode),
-    );
+    rootNode.items = treeNode.children.map((n) => {
+      const navNode = treeToNavigation(n, pageNode);
+      // mark "fake" children so that they can be made visually distinct, ignored, etc.
+      if (n.parent !== treeNode) navNode.categoryChild = true;
+      return navNode;
+    });
   } else {
     rootNode.items = [];
   }
