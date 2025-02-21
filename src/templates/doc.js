@@ -231,8 +231,7 @@ const DocTemplate = ({ data, pageContext }) => {
             hideVersion={frontmatter.hideVersion}
             hidePDF={hidePDF}
             product={product}
-            version={version}
-            preciseVersion={preciseVersion}
+            version={preciseVersion || version}
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>
@@ -289,7 +288,7 @@ const DocTemplate = ({ data, pageContext }) => {
             </Col>
 
             {showToc && (
-              <Col className="d-xs-none col-lg-3 d-print-none">
+              <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}

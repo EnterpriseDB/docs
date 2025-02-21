@@ -489,7 +489,7 @@ function cleanup() {
           );
         else if (
           node.type === "element" &&
-          node.tagName === "a" &&
+          node.tagName === "img" &&
           node.properties.src
         )
           node.properties.src = mapUrlToCanonical(
