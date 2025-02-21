@@ -2,6 +2,22 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EBD Postgres Advanced Server updates",
+    icon: IconNames.EDB_EPAS,
+    description:
+      "EDB Postgres Advanced Server 17.4 is now available, tracking the Postgres open source community's recent security fixes. EDB Postgres Extended 17.4 is also available",
+    url: "/epas/latest/",
+    moreUrl: "/epas/latest/epas_rel_notes/epas17_4_rel_notes/",
+  },
+  {
+    title: "Trusted Postgres Architect 23.36",
+    icon: IconNames.INSTANCES,
+    description:
+      "TPA 23.36 includes support Ubuntu 24.04 and SLES 15 SP6, enhanced support for EFM and simplifies repository setup to a single command.",
+    url: "/tpa/latest/",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.36_rel_notes/",
+  },
+  {
     title: "EDB Postgres AI Q4 Release News",
     icon: IconNames.SMALL_DASHBOARD,
     description:
