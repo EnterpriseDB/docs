@@ -8,23 +8,23 @@ EDB Query Advisor defines functions and views.
 ## Functions
 
 ### query_advisor_index_recommendations(min_filter, min_selectivity)
+
 Performs a global index suggestion. 
 
 By default, only predicates filtering at least 1000 rows and 30% of the rows in average are considered. You can use the `min_filter` and `min_selectivity` parameters to override the default. 
 
-The function generates the one- and two-column index candidates based on the predicates it collects. It replans all related workload queries in the presence of the hypothetical index with respect to each candidate. It recommends the list of indexes that bring the most value to the workload. It also shows the estimated index size and percentage cost reduction in the workload queries. You can decide, based on the size and benefit ratio, which indexes are the most useful for you.
+The function generates the one- and two-column index candidates based on the predicates it collects. It replans all related workload queries in the presence of the hypothetical index with respect to each candidate. It recommends the list of indexes that bring the most value to the workload. It also shows the estimated index size, estimated percentage cost reduction, total cost, absolute benefit and query ID's of the benefited queries in the workload. You can decide, based on the size and benefit ratio, which indexes are the most useful for you.
 
 For example:
 
 ```sql
 # running as postgres user
-select * from query_advisor_index_recommendations(0,0);
+select * from query_advisor_index_recommendations();
 __OUTPUT__
-|                             index                             | estimated_size_in_bytes | estimated_pct_cost_reduction |
-+---------------------------------------------------------------+-------------------------+------------------------------+
-| CREATE INDEX ON nation USING btree (n_name);                  | 8192                    | 14.619857                    |
-| CREATE INDEX ON supplier USING btree (s_suppkey,s_nationkey); | 933888                  | 0.63003576                   |
-| CREATE INDEX ON partsupp USING btree (ps_suppkey);            | 50159616                | 13.254544                    |
+                     index                     | estimated_size_in_bytes | estimated_pct_cost_reduction | total_cost | abs_benefit |   benefited_queryids   
+-----------------------------------------------+-------------------------+------------------------------+------------+-------------+------------------------
+ CREATE INDEX ON public.test USING btree (a);  |                 2605056 |                     49.87271 |       3386 |     1688.69 | {-4599253246525795071}
+ CREATE INDEX ON public.test1 USING btree (a); |                 2605056 |                     49.87271 |       3386 |     1688.69 | {28196068180564065}
 (3 rows)
 ```
 ### query_advisor_statistics_recommendations(min_err_estimate_num, min_err_estimate_ratio)
@@ -35,7 +35,7 @@ By default, `min_err_estimate_num` and `min_err_estimate_ratio` are set to `0`. 
 
 The function generates potential candidates from the multi-column filters of your queries. Then, these candidates are processed by exploring different possible combinations. Currently the focus is on statistics for two columns at a time. 
 
-It also shows the weights to each candidate. Weights are based on how many queries would benefit from those extended statistics and what the execution cost of the queries would be.
+It also shows the weights to each candidate. Weights are based on how many queries would benefit from those extended statistics and what the execution cost of the queries would be. It shows query ID's of the benefited queries for which the recommendations are beneficial.
 
 For example:
 
@@ -43,11 +43,12 @@ For example:
 # running as postgres user
 select * from query_advisor_statistics_recommendations();
 __OUTPUT__
-|                             statistics                                                 |       weight       |
-+----------------------------------------------------------------------------------------+--------------------+
-| CREATE STATISTICS part_p_brand_p_container ON p_brand, p_container FROM public.part;   | 4940012.436935346  |
-| CREATE STATISTICS part_p_brand_p_type ON p_brand, p_type FROM public.part;             | 306202.2549564565  |
-| CREATE STATISTICS part_p_brand_p_size ON p_brand, p_size FROM public.part;             | 2879764.4054564573 |
+                       statistics                       |  weight  |                       benefited_queryids                       
+--------------------------------------------------------+----------+----------------------------------------------------------------
+ CREATE STATISTICS test1_a_b ON a, b FROM public.test1; |  7506.09 | {238391330592834993}
+ CREATE STATISTICS test_a_b ON a, b FROM public.test;   | 15012.09 | {6121296315499460229,-4518452432473118207,238391330592834993}
+ CREATE STATISTICS test_a_c ON a, c FROM public.test;   | 15012.09 | {-3664340941915161122,-4518452432473118207,238391330592834993}
+ CREATE STATISTICS test_b_c ON b, c FROM public.test;   | 11384.09 | {-4518452432473118207,238391330592834993}
 (3 rows)
 ```
 
