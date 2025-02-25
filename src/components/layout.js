@@ -13,6 +13,7 @@ import {
   StubCards,
   IconList,
   PurlAnchor,
+  Details,
 } from "../components";
 import ProductName from "../components/product-name";
 import ProductVersion from "../components/product-version";
@@ -143,6 +144,7 @@ const Layout = ({
       Archive,
       AuthenticatedContentPlaceholder,
       PurlAnchor,
+      Details,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
