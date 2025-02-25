@@ -34,3 +34,4 @@ export { default as TopBar } from "./top-bar";
 export { default as TreeNode } from "./tree-node";
 export { default as VersionDropdown } from "./version-dropdown";
 export { IconList } from "./icon/iconList";
+export { default as Details } from "./details";
