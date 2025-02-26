@@ -1,0 +1,454 @@
+---
+title: Replication sets
+description: Grouping tables to enable more complex replication topologies.
+redirects: 
+  - ../bdr/repsets
+---
+
+A replication set is a group of tables that a PGD node can subscribe to.
+You can use replication sets to create more complex replication topologies
+than regular symmetric multi-master topologies where each node is an exact copy of the other
+nodes.
+
+Every PGD group creates a replication set with the same name as
+the group. This replication set is the default replication set, which is
+used for all user tables and DDL replication. All nodes are subscribed to it.
+In other words, by default, all user tables are replicated between all nodes.
+
+## Using replication sets
+
+You can create replication sets using [`bdr.create_replication_set`](/pgd/latest/reference/repsets-management#bdrcreate_replication_set),
+specifying whether to include insert, update, delete, or truncate actions.
+One option lets you add existing tables to the set, and
+a second option defines whether to add tables when they're
+created.
+
+You can also manually define the tables to add or remove from a
+replication set.
+
+Tables included in the replication set are maintained when the node
+joins the cluster and afterwards.
+
+Once the node is joined, you can still remove tables from the replication
+set, but you must add new tables using a resync operation.
+
+By default, a newly defined replication set doesn't replicate DDL or PGD
+administration function calls. Use [`bdr.replication_set_add_ddl_filter`](/pgd/latest/reference/repsets-ddl-filtering#bdrreplication_set_add_ddl_filter)
+to define the commands to replicate.
+
+PGD creates replication set definitions on all nodes. Each node can then be
+defined to publish or subscribe to each replication set using
+[`bdr.alter_node_replication_sets`](/pgd/latest/reference/repsets-management#bdralter_node_replication_sets).
+
+You can use functions to alter these definitions later or to drop the replication
+set.
+
+!!! Note
+    Don't use the default replication set for selective replication.
+    Don't drop or modify the default replication set on any of
+    the PGD nodes in the cluster, as it's also used by default for DDL
+    replication and administration function calls.
+
+## Behavior of partitioned tables
+
+PGD supports partitioned tables transparently, meaning that you can add a partitioned
+table to a replication set.
+
+Changes that involve any of the partitions are replicated downstream.
+
+!!! Note
+    When partitions are replicated through a partitioned table, the
+    statements executed directly on a partition are replicated as they
+    were executed on the parent table. The exception is the `TRUNCATE` command,
+    which always replicates with the list of affected tables or partitions.
+
+You can add individual partitions to the replication set, in which case they're
+replicated like regular tables, that is, to the table of the same name as the partition
+on the downstream. This behavior has some performance advantages if the partitioning
+definition is the same on both provider and subscriber, as the partitioning
+logic doesn't have to be executed.
+
+!!! Note
+    If a root partitioned table is part of any replication set, memberships
+    of individual partitions are ignored. Only the membership of that root
+    table is taken into account.
+
+## Behavior with foreign keys
+
+A foreign-key constraint ensures that each row in the referencing table matches
+a row in the referenced table. Therefore, if the referencing table is a member
+of a replication set, the referenced table must also be a member of the same
+replication set.
+
+The current version of PGD doesn't check for or enforce this
+condition. When adding a table to a replication set, the database administrator
+must make sure that all the tables referenced by foreign keys are also added.
+
+You can use the following query to list all the foreign keys and replication
+sets that don't satisfy this requirement. The referencing table is a member of
+the replication set, while the referenced table isn't.
+
+```sql
+SELECT t1.relname,
+       t1.nspname,
+       fk.conname,
+       t1.set_name
+  FROM bdr.tables AS t1
+  JOIN pg_catalog.pg_constraint AS fk
+    ON fk.conrelid = t1.relid
+   AND fk.contype = 'f'
+ WHERE NOT EXISTS (
+  SELECT *
+    FROM bdr.tables AS t2
+   WHERE t2.relid = fk.confrelid
+     AND t2.set_name = t1.set_name
+);
+```
+
+The output of this query looks like this:
+
+```sql
+ relname | nspname |  conname  | set_name
+---------+---------+-----------+----------
+ t2      | public  | t2_x_fkey | s2
+(1 row)
+```
+
+This output means that table `t2` is a member of replication set `s2`, but the
+table referenced by the foreign key `t2_x_fkey` isn't.
+
+The `TRUNCATE CASCADE` command takes into account the
+replication set membership before replicating the command. For example:
+
+```sql
+TRUNCATE table1 CASCADE;
+```
+
+This becomes a `TRUNCATE` without cascade on all the tables that are
+part of the replication set only:
+
+```sql
+TRUNCATE table1, referencing_table1, referencing_table2 ...
+```
+
+
+## Replication set membership
+
+You can add tables to or remove them from one or more replication sets. Doing so
+affects replication only of changes (DML) in those tables. Schema changes (DDL) are
+handled by DDL replication set filters (see [DDL replication filtering](#ddl-replication-filtering)).
+
+The replication uses the table membership in replication sets 
+with the node replication sets configuration to determine the actions to
+replicate and the node to replicate them to. The decision is done using the union of all the
+memberships and replication set options. Suppose that a table is a member
+of replication set A that replicates only INSERT actions and replication set B that
+replicates only UPDATE actions. Both INSERT and UPDATE actions are replicated if the
+target node is also subscribed to both replication set A and B.
+
+You can control membership using [`bdr.replication_set_add_table`](/pgd/latest/reference/repsets-membership#bdrreplication_set_add_table) and [`bdr.replication_set_remove_table`](/pgd/latest/reference/repsets-membership#bdrreplication_set_remove_table).
+
+## Listing replication sets
+
+You can list existing replication sets with the following query:
+
+```sql
+SELECT set_name
+FROM bdr.replication_sets;
+```
+
+You can use this query to list all the tables in a given replication
+set:
+
+```sql
+SELECT nspname, relname
+FROM bdr.tables
+WHERE set_name = 'myrepset';
+```
+
+[Behavior with foreign keys](#behavior-with-foreign-keys) shows a
+query that lists all the foreign keys whose referenced table isn't
+included in the same replication set as the referencing table.
+
+Use the following SQL to show those replication sets that the
+current node publishes and subscribes from:
+
+```sql
+ SELECT node_id,
+        node_name,
+        pub_repsets,
+        sub_repsets
+   FROM bdr.local_node_summary;
+```
+
+This code produces output like this:
+
+```sql
+  node_id   | node_name |    pub_repsets     |   sub_repsets
+------------+-----------+----------------------------------------
+ 1834550102 | s01db01   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+(1 row)
+```
+
+To execute the same query against all nodes in the cluster, you can use the
+following query. This approach gets the replication sets associated with all
+nodes at the same time.
+
+```sql
+WITH node_repsets AS (
+  SELECT jsonb_array_elements(
+    bdr.run_on_all_nodes($$
+        SELECT
+          node_id,
+          node_name,
+          pub_repsets,
+          sub_repsets
+		FROM bdr.local_node_summary;
+    $$)::jsonb
+  ) AS j
+)
+SELECT j->'response'->'command_tuples'->0->>'node_id' AS node_id,
+       j->'response'->'command_tuples'->0->>'node_name' AS node_name,
+       j->'response'->'command_tuples'->0->>'pub_repsets' AS pub_repsets,
+       j->'response'->'command_tuples'->0->>'sub_repsets' AS sub_repsets
+FROM node_repsets;
+```
+
+This shows, for example:
+
+```sql
+  node_id   | node_name |    pub_repsets     |    sub_repsets
+------------+-----------+----------------------------------------
+ 933864801  | s02db01   | {bdrglobal,bdrs02} | {bdrglobal,bdrs02}
+ 1834550102 | s01db01   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+ 3898940082 | s01db02   | {bdrglobal,bdrs01} | {bdrglobal,bdrs01}
+ 1102086297 | s02db02   | {bdrglobal,bdrs02} | {bdrglobal,bdrs02}
+(4 rows)
+```
+
+## DDL replication filtering 
+
+By default, the replication of all supported DDL happens by way of the default
+PGD group replication set. This replication is achieved using a DDL filter with the same name
+as the PGD group. This filter is added to the default PGD group replication set
+when the PGD group is created.
+
+You can adjust this behavior by changing the DDL replication filters for all existing
+replication sets. These filters are independent of table membership in the
+replication sets. Just like data changes, each DDL statement is replicated only
+once, even if it's matched by multiple filters on multiple replication sets.
+
+You can list existing DDL filters with the following query, which shows, for each
+filter, the regular expression applied to the command tag and to the role name:
+
+```sql
+SELECT * FROM bdr.ddl_replication;
+```
+
+You can use [`bdr.replication_set_add_ddl_filter`](/pgd/latest/reference/repsets-ddl-filtering#bdrreplication_set_add_ddl_filter) and [`bdr.replication_set_remove_ddl_filter`](/pgd/latest/reference/repsets-ddl-filtering#bdrreplication_set_remove_ddl_filter) to manipulate DDL filters. 
+They're considered to be `DDL` and are therefore subject to DDL
+replication and global locking.
+
+## Selective replication example
+
+This example configures EDB Postgres Distributed to selectively replicate tables to particular groups of nodes. 
+
+### Cluster configuration
+
+This example assumes you have a cluster of six data nodes, `data-a1` to `data-a3` and `data-b1` to `data-b3` in two locations. The two locations they're members of are represented as `region_a` and `region_b` groups. 
+
+There's also, as we recommend, a witness node named `witness` in `region-c` that isn't mentioned in this example. The cluster is called `sere`.
+
+This configuration looks like this:
+
+![Multi-Region 3 Nodes Configuration](./planning/images/always-on-2x3-aa-updated.png)
+
+This is the standard Always-on Multi-region configuration discussed in [Choosing your architecture](planning/architectures).
+
+### Application requirements
+
+This example works with an application that records the opinions of people who attended performances of musical works. There's a table for attendees, a table for the works, and an opinion table. The opinion table records each work each attendee saw, where and when they saw it, and how they scored the work. Because of data regulation, the example assumes that opinion data must stay only in the region where the opinion was recorded. 
+
+### Creating tables
+
+The first step is to create appropriate tables: 
+
+```sql
+CREATE TABLE attendee (
+   id bigserial PRIMARY KEY, 
+   email text NOT NULL
+);
+
+CREATE TABLE work (
+    id int PRIMARY KEY,
+    title text NOT NULL,
+    author text NOT NULL
+);
+
+CREATE TABLE opinion (
+    id bigserial PRIMARY KEY,
+    work_id int NOT NULL REFERENCES work(id),
+    attendee_id bigint NOT NULL REFERENCES attendee(id),
+    country text NOT NULL,
+    day date NOT NULL,
+    score int NOT NULL
+);
+```
+
+### Viewing groups and replication sets
+
+By default, EDB Postgres Distributed is configured to replicate each table in its entirety to each and every node. This is managed through replication sets.
+
+To view the initial configuration's default replication sets, run:
+
+```sql
+SELECT node_group_name, default_repset, parent_group_name
+FROM bdr.node_group_summary;
+```
+```console
+ node_group_name | default_repset | parent_group_name
+-----------------+----------------+-------------------
+ sere            | sere           |
+ region_a        | region_a       | sere
+ region_b        | region_b       | sere
+ region_c        | region_c       | sere
+```
+
+In the output, you can see there's the top-level group, `sere`, with a default replication set named `sere`. Each of the three subgroups has a replication set with the same name as the subgroup. The `region_a` group has a `region_a` default replication set. 
+
+By default, all existing tables and new tables become members of the replication set of the top-level group. 
+
+### Adding tables to replication sets
+
+The next step is to add tables to the replication sets belonging to the groups that represent the regions. As previously mentioned, all new tables are automatically added to the `sere` replication set. You can confirm that by running:
+
+```sql
+SELECT relname, set_name FROM bdr.tables ORDER BY relname, set_name;
+```
+```console
+ relname  | set_name 
+----------+----------
+ attendee | sere
+ opinion  | sere
+ work     | sere
+(3 rows)
+```
+
+You want the `opinion` table to be replicated only in `region_a` and, separately, only in `region_b`. To do that, you add the table to the replica sets of each region:
+
+```sql
+SELECT bdr.replication_set_add_table('opinion', 'region_a');
+SELECT bdr.replication_set_add_table('opinion', 'region_b');
+```
+
+But you're not done, because `opinion` is still a member of the `sere` replication set. When a table is a member of multiple replication sets, it's replicated in each. This doesn't affect performance, though, as each row is replicated only once on each target node. You don't want `opinion` replicated across all nodes, so you need to remove it from the top-level group's replication set:
+
+```sql
+SELECT bdr.replication_set_remove_table('opinion', 'sere');
+```
+
+You can now review these changes:
+
+```sql
+SELECT relname, set_name FROM bdr.tables ORDER BY relname, set_name;
+```
+```console
+ relname  | set_name
+----------+-------------------
+ attendee | sere
+ opinion  | region_a
+ opinion  | region_b
+ work     | sere
+(4 rows)
+```
+
+This process should provide the selective replication you wanted. To verify whether it did, use the next step to test it.
+
+### Testing selective replication
+
+First create some test data: two works and an attendee. Connect directly to `data-a1` to run this next code:
+
+```sql
+INSERT INTO work VALUES (1, 'Aida', 'Verdi');
+INSERT INTO work VALUES (2, 'Lohengrin', 'Wagner');
+INSERT INTO attendee (email) VALUES ('gv@example.com');
+```
+
+Now that there's some data in these tables, you can insert into the `opinion` table without violating foreign key constraints: 
+
+```sql
+INSERT INTO opinion (work_id, attendee_id, country, day, score)
+SELECT work.id, attendee.id, 'Italy', '1871-11-19', 3
+  FROM work, attendee
+ WHERE work.title = 'Lohengrin'
+   AND attendee.email = 'gv@example.com';
+```
+
+Once you've done the insert, you can validate the contents of the database on the same node:
+
+```sql
+SELECT a.email
+, o.country
+, o.day
+, w.title
+, w.author
+, o.score
+FROM opinion o
+JOIN work w ON w.id = o.work_id
+JOIN attendee a ON a.id = o.attendee_id;
+```
+```console
+    email       | country |    day     |   title   | author | score 
+----------------+---------+------------+-----------+--------+-------
+ gv@example.com | Italy   | 1871-11-19 | Lohengrin | Wagner |     3
+(1 row)
+```
+
+If you now connect to nodes `data-a2` and `data-a3` and run the same query, you get the same result. The data is being replicated in `region_a`. If you connect to `data-b1`, `data-b2`, or `data-b3`, the query returns no rows. That's because, although the `attendee` and `work` tables are populated, there's no `opinion` row to select. That, in turn, is because the replication of `opinion` on `region_a` happens only in that region.
+
+Now connect to `data-b1` and insert an opinion there:
+
+```sql
+INSERT INTO attendee (email) VALUES ('fb@example.com');
+
+INSERT INTO opinion (work_id, attendee_id, country, day, score)
+SELECT work.id, attendee.id, 'Germany', '1850-08-27', 9
+  FROM work, attendee
+ WHERE work.title = 'Lohengrin'
+   AND attendee.email = 'fb@example.com';
+```
+
+This opinion is replicated only on `region_b`. On `data-b1`, `data-b2`, and `data-b3`, you can run:
+
+```sql
+SELECT a.email
+, o.country
+, o.day
+, w.title
+, w.author
+, o.score
+FROM opinion o
+JOIN work w ON w.id = o.work_id
+JOIN attendee a ON a.id = o.attendee_id;
+```
+```console
+    email       | country |    day     |   title   | author | score 
+----------------+---------+------------+-----------+--------+-------
+ fb@example.com | Germany | 1850-08-27 | Lohengrin | Wagner |     9
+(1 row)
+```
+
+You see the same result on each of the `region_b` data nodes. Run the query on `region_a` nodes, and you don't see this particular entry.
+
+Finally, notice that the `attendee` table is shared identically across all nodes. On any node, run the query:
+
+```sql
+SELECT * FROM attendee;
+```
+```console
+         id         |    email
+--------------------+----------------
+ 904252679641903104 | gv@example.com
+ 904261037006536704 | fb@example.com
+(2 rows)
+```
