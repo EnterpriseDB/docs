@@ -3,27 +3,9 @@ import Icon, { iconNames } from "./icon/";
 import VersionDropdown from "./version-dropdown";
 import { products } from "../constants/products";
 import { Link, PdfDownload, TreeNode } from "./";
-import { slug } from "github-slugger";
 
 const productIcon = (product) => {
   return products[product] ? products[product].iconName : null;
-};
-
-const CategoryNav = ({ category, basePath = "" }) => {
-  if (!category?.length) return null;
-  let levelPath = basePath;
-  return (
-    <ul className="breadcrumb">
-      {category.map((l) => {
-        levelPath = levelPath + "/" + slug(l);
-        return (
-          <li className="breadcrumb-item">
-            <Link to={levelPath}>{l}</Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
 };
 
 const SectionHeading = ({ navTree, path, iconName, product }) => {
@@ -112,7 +94,6 @@ const LeftNav = ({
   pagePath,
   versionArray,
   iconName,
-  category,
   product,
   version,
   hideEmptySections = false,
@@ -121,18 +102,12 @@ const LeftNav = ({
 }) => {
   return (
     <ul className="list-unstyled mt-0">
-      {category && (
-        <li>
-          <CategoryNav category={category} />
-        </li>
-      )}
       {versionArray ? (
         <SectionHeadingWithVersions
           navTree={navTree}
           path={path}
           versionArray={versionArray}
           iconName={iconName}
-          category={category}
           product={product}
           hideVersion={hideVersion}
           preciseVersion={version}
@@ -143,7 +118,6 @@ const LeftNav = ({
           path={path}
           product={product}
           iconName={iconName}
-          category={category}
         />
       )}
       {navTree.items.map((node) => (

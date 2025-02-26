@@ -6,7 +6,7 @@ import { Link, Logo } from "./";
 
 const LogoLink = () => (
   <Link to="https://www.enterprisedb.com/" title="EDB Home">
-    <Logo width="120" height="50" className="me-1" />
+    <Logo width="120" height="50" className="me-1 align-baseline" />
   </Link>
 );
 
@@ -29,8 +29,7 @@ const SearchNavigation = ({
   return (
     <Navbar
       variant="light"
-      expand="md"
-      className="flex-md-nowrap p-3 border-bottom justify-content-start justify-content-md-between"
+      className="flex-wrap flex-lg-nowrap p-3 border-bottom justify-content-start justify-content-lg-between"
     >
       {logo ? (
         <>
@@ -44,9 +43,9 @@ const SearchNavigation = ({
       <SearchBar
         searchProduct={searchProduct}
         searchVersion={searchVersion}
-        className="order-last order-md-5"
+        className="order-last order-lg-5"
       />
-      <SearchNavigationLinks className="order-5 order-md-last" />
+      <SearchNavigationLinks className="order-5 order-lg-last" />
     </Navbar>
   );
 };
