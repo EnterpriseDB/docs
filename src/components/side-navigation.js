@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useScrollRestoration } from "gatsby";
 import { DarkModeToggle, Link, Logo } from "./";
+import { slug } from "github-slugger";
 
 const DocsLink = () => (
   <Link
@@ -14,8 +15,11 @@ const DocsLink = () => (
 
 const LogoLink = () => {
   return (
-    <h1 className="h3 p-3 d-flex">
-      <Link to="https://www.enterprisedb.com/" title="EDB Home">
+    <h1 className="h3 p-3 mb-0 d-flex">
+      <label className="open-close-button me-auto d-sm-none">
+        <input type="checkbox" name="navigation visible" />
+      </label>
+      <Link to="https://www.enterprisedb.com/" title="EDB Home" id="sidebar">
         <Logo width="120" height="50" className="me-1" />
       </Link>
       <DocsLink />
@@ -47,23 +51,90 @@ const SideNavigationFooter = ({ hideKBLink = false }) => (
   </ul>
 );
 
-const SideNavigation = ({
+const CategoryNav = ({ category, children, className, ...props }) => {
+  if (!category?.length) return null;
+  let levelPath = "";
+  return (
+    <ul className={`breadcrumb ${className}`} {...props}>
+      {category.map((l) => {
+        levelPath = levelPath + "/" + slug(l);
+        return (
+          <li className="breadcrumb-item">
+            <Link to={levelPath}>{l}</Link>
+          </li>
+        );
+      })}
+      {children}
+    </ul>
+  );
+};
+
+export default function SideNavigation({
   children,
+  category,
   background = "light",
   footer = true,
   hideKBLink = false,
-}) => {
+}) {
   const scrollRestoration = useScrollRestoration("navigation-sidebar");
 
   return (
-    <nav className={`sidebar d-block bg-${background} border-end`}>
-      <div className="sidebar-sticky ps-3 pe-3 pb-4" {...scrollRestoration}>
-        <LogoLink />
+    <nav
+      className={`sidebar sidebar-sticky d-block bg-${background} border-end d-flex flex-column`}
+    >
+      <LogoLink />
+      <div
+        className="ps-3 pe-3 pb-4 flex-shrink-1 overflow-scroll sidebar-nav-links"
+        {...scrollRestoration}
+      >
+        <CategoryNav category={category} className="d-none d-sm-flex" />
         {children}
         {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}
       </div>
     </nav>
   );
-};
+}
 
-export default SideNavigation;
+export function BreadcrumbBar({
+  category,
+  navTree,
+  pagePath,
+  versionArray,
+  iconName,
+  hideVersion,
+  product,
+  version,
+}) {
+  const navStack = useMemo(() => {
+    const stack = [];
+
+    const accumulateAncestors = (root) => {
+      if (root.path === pagePath) return true;
+
+      for (let node of root.items) {
+        if (accumulateAncestors(node)) {
+          stack.unshift(node);
+          return true;
+        }
+      }
+      return false;
+    };
+    accumulateAncestors(navTree);
+    stack.unshift(navTree);
+    stack.pop();
+
+    return stack;
+  }, [navTree, pagePath]);
+
+  return (
+    <nav aria-label="breadcrumb">
+      <CategoryNav category={category} className="d-sm-none">
+        {navStack.map((item) => (
+          <li className="breadcrumb-item">
+            <Link to={item.path}>{item.title}</Link>
+          </li>
+        ))}
+      </CategoryNav>
+    </nav>
+  );
+}

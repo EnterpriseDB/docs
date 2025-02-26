@@ -170,7 +170,7 @@ const Search = ({ searchProduct, onSearchProductChange }) => {
           }
           aria-label="Search in"
           role="menu"
-          className="select-product"
+          className="select-product d-none d-md-block"
           size="lg"
           onSelect={onSearchProductChange}
         >
