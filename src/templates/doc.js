@@ -16,6 +16,7 @@ import {
   MainContent,
   PrevNext,
   SideNavigation,
+  BreadcrumbBar,
   TableOfContents,
   Tiles,
   TileModes,
@@ -207,6 +208,7 @@ const DocTemplate = ({ data, pageContext }) => {
     title: title,
     description: description,
     path: pagePath,
+    minDeviceWidth: 320,
     isIndexPage: isPathAnIndexPage(fileAbsolutePath),
     productVersions,
     canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
@@ -224,15 +226,14 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
+      <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} category={category}>
           <LeftNav
             navTree={navTree}
             path={path}
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
-            category={category}
             hideVersion={frontmatter.hideVersion}
             hidePDF={hidePDF}
             product={product}
@@ -240,12 +241,22 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>
+          <BreadcrumbBar
+            category={category}
+            navTree={navTree}
+            pagePath={pagePath}
+            versionArray={versionArray}
+            iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
+            product={product}
+            version={preciseVersion || version}
+          />
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>
             </div>
           )}
-          <div className="d-flex justify-content-between align-items-center">
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
@@ -254,7 +265,7 @@ const DocTemplate = ({ data, pageContext }) => {
                 </span>
               )}
             </h1>
-            <div className="d-flex d-print-none">
+            <div className="d-flex d-print-none ms-auto">
               {editTarget !== "none" && (
                 <EditLink
                   editTarget={editTarget}
