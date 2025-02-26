@@ -267,9 +267,11 @@ const DocTemplate = ({ data, pageContext }) => {
           </div>
 
           {navTree.displayBanner ? (
-            <div className="alert alert-warning mt-3" role="alert">
-              {navTree.displayBanner}
-            </div>
+            <div
+              className="alert alert-warning mt-3"
+              role="alert"
+              dangerouslySetInnerHTML={{ __html: navTree.displayBanner }}
+            />
           ) : null}
 
           <ContentRow>
