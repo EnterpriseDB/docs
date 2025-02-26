@@ -242,7 +242,7 @@ const Page = () => {
               to="/edb-postgres-ai/databases"
             >
               <BannerCardLink to="/edb-postgres-ai/databases/postgres_distributions">
-                Choosing your Postgres
+                Choosing your Postgres distribution
               </BannerCardLink>
               <BannerCardLink to="/epas/latest">
                 EDB Postgres Advanced Server
