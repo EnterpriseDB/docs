@@ -7,16 +7,12 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 const util = require("node:util");
 const execAsync = util.promisify(exec);
-const asyncFs = require("node:fs/promises");
 
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
