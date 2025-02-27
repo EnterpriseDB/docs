@@ -11,11 +11,8 @@ const execAsync = util.promisify(exec);
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
