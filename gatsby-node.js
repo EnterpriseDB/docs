@@ -14,11 +14,8 @@ let expressionReplacement = import(
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
