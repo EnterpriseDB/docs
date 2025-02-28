@@ -1,14 +1,34 @@
 ---
 title: Using a passphrase
 description: Learn how to secure your encryption key with a passphrase.
+deepToC: true
 ---
 
-You can protect the data key with a passphrase using the OpenSSL command line utility. The following is an example that sets up this protection:
+You can protect the data key with a passphrase using the OpenSSL command line utility.
+
+You must provide this OpenSSL command as [wrapping and unwrapping commands](/tde/latest/secure_key/#configuring-a-wrapping-and-unwrapping-command) to TDE to allow the initdb utility to access the data key when creating a database cluster.
+
+## Providing the wrapping and unwrapping commands
+
+### Via command argument
+
+To enable encryption on a database cluster, you must specify the wrap and unwrap commands during its creation. One option is to specify them via command argument:
+
+#### Linux 
 
 ```shell
 initdb -D datadir --data-encryption \
   --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"' \
   --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
+```
+
+#### Windows 
+
+```shell
+initdb.exe -D c:\cdatadir   
+--key-wrap-command="openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"" 
+--key-unwrap-command="openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"" 
+--data-encryption
 ```
 
 This example wraps the randomly generated data key (done internally by initdb) by encrypting it with the AES-128-CBC (AESKW) algorithm. The encryption uses a key derived from a passphrase with the PBKDF2 key derivation function and a randomly generated salt. The terminal prompts for the passphrase. (See the openssl-enc manual page for details about these options. Available options vary across versions.) The initdb utility replaces `%p` with the name of the file that stores the wrapped key.
@@ -19,32 +39,44 @@ The key wrap command receives the plaintext key on standard input and needs to p
 
 Utility programs like pg_rewind and pg_upgrade operate directly on the data directory or copies, such as backups. These programs also need to be told about the key unwrap command, depending on the circumstances. They each have command line options for this purpose.
 
-## Using environment variables to set wrap and unwrap commands
+### Via environment variable
 
-To simplify operations, you can also set the key wrap and unwrap commands in environment variables. These are accepted by all affected applications if you don't provide the corresponding command line options. For example:
+To simplify operations, you can also set the key wrap and unwrap commands in environment variables before creating the database server. The database creation command will fall back on these environment variables if no wrap and unwrap commands are specified via the command line.
+
+#### Linux
 
 ```shell
-PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"'
-PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
-export PGDATAKEYWRAPCMD PGDATAKEYUNWRAPCMD
+export PGDATAKEYWRAPCMD='openssl enc -e -aes-128-cbc -pbkdf2 -out "%p"'
+export PGDATAKEYUNWRAPCMD='openssl enc -d -aes-128-cbc -pbkdf2 -in "%p"'
 ```
+
+#### Windows 
+
+```shell 
+set PGDATAKEYWRAPCMD=openssl enc -e -aes-128-cbc -pbkdf2 -out %p
+set PGDATAKEYUNWRAPCMD=openssl enc -d -aes-128-cbc -pbkdf2  -in %p
+```
+
+## Other OpenSSL command options 
+
+### Password prompt on server start (Linux)
 
 Key unwrap commands that prompt for passwords on the terminal don't work when the server is started by pg_ctl or through service managers such as systemd. The server is detached from the terminal in those environments. If you want an interactive password prompt on server start, you need a more elaborate configuration that fetches the password using some indirect mechanism.
 
 For example, for systemd, you can use `systemd-ask-password`:
 
 ```
-PGDATAKEYWRAPCMD="bash -c 'openssl enc -e -aes-128-cbc -pbkdf2 -out "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
-PGDATAKEYUNWRAPCMD="bash -c 'openssl enc -d -aes-128-cbc -pbkdf2 -in "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
+export PGDATAKEYWRAPCMD="bash -c 'openssl enc -e -aes-128-cbc -pbkdf2 -out "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
+export PGDATAKEYUNWRAPCMD="bash -c 'openssl enc -d -aes-128-cbc -pbkdf2 -in "%p" -pass file:<(sudo systemd-ask-password --no-tty)'"
 ```
 
-You also need an entry like in `/etc/sudoers`:
+You also need an entry in `/etc/sudoers`:
 
 ```
 postgres ALL = NOPASSWD: /usr/bin/systemd-ask-password
 ```
 
-## Providing the passphrase using a file
+### Providing the passphrase using a file
 
 Another way to simplify operations is to store the passphrase in plaintext so you can reference the file containing the passphrase when securing the data encryption files.
 
@@ -53,15 +85,34 @@ Another way to simplify operations is to store the passphrase in plaintext so yo
 !!!
 
 1.  Store the passphrase in a file accessible by initdb named `pass.bin`:
+
+    #### Linux
     
     ```
     echo "<passphrase>" > /var/lib/postgresql/pass.bin
     ```
 
-1.  Reference the file that contains the passphrase when initializing the TDE-enabled database cluster using the `-pass file:<path_to_file>` flag: 
+    #### Windows
+
+    ```
+    echo "<passphrase>" > c:\secure_location\pass.bin
+    ```
+
+1.  Reference the file that contains the passphrase when initializing the TDE-enabled database cluster using the `-pass file:<path_to_file>` flag:
+
+    #### Linux 
 
     ```
     initdb --data-encryption \
       --key-wrap-command='openssl enc -e -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -out "%p"' \
       --key-unwrap-command='openssl enc -d -aes-128-cbc -pbkdf2 -pass file:/var/lib/postgresql/pass.bin -in "%p"'
+    ```
+
+    #### Windows 
+
+    ```shell
+    initdb.exe -D c:\cdatadir
+    --key-wrap-command="openssl enc -e -aes-128-cbc -pbkdf2 -pass file:c:\secure_location\pass.bin -out "%p"" 
+    --key-unwrap-command="openssl enc -d -aes-128-cbc -pbkdf2 -pass file:c:\secure_location\pass.bin -in "%p""  
+    --data-encryption
     ```
