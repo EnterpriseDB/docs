@@ -1,66 +1,64 @@
 ---
-title: "Retrievers - Concepts"
+title: "Retrievers concepts"
 navTitle: "Concepts"
 deepToC: true
 description: "The concepts behind using retrievers in AI Accelerator Pipelines."
 ---
 
-Retrievers can be used for semantic search or for RAG (retrieval augmented generation).
-A configured retriever can automatically compute embeddings (vectors) for our input data.
-Once this is done, the retriever offers a number of interfaces to return data based on a query.
+Retrievers can be used for semantic search or for retrieval augmented generation (RAG).
+A configured retriever can compute embeddings (vectors) for your input data.
+After the computing is done, the retriever offers interfaces to return data based on a query.
 
-## Concepts
+## Data sources and data types
 
-### Data sources and data types
+A data source is where the data to be embedded/retrieved comes from. The aidb extension supports two types of data sources:
 
-A Data source is where the data to be embedded/retrieved comes from. The aidb extension supports two types of data sources:
+* Table &mdash; A column in a table in the PG database.
+* Volume &mdash; A PGFS *volume*, which is a wrapper for accessing an S3 object store or local file system.
 
-* Table: a column in a table in the PG database.
-* Volume: a PGFS "volume" which is a wrapper for accessing an S3 object store or local file system.
+Data types are:
 
-Data types are
-
-* text
-* image
+* Text
+* Image
 
 You can combine any data source with any data type:
 
-* **Table & Text**: The text, in this case, would be just a column with TEXT/VARCHAR type in a Postgres table. This could be the description for a list of products.
-* **Table & Image**: The image, in this case, would be stored in a BYTEA column in our table which would hold the bytes of the image. We do not support large objects (also known as BLOB) types at this time.
-* **Volume & Text**: For example, this could be text files in an S3 bucket.
-* **Volume & Image**: The images could be stored as objects in an S3 bucket.
+* **Table and text**: The text, in this case, is just a column with TEXT/VARCHAR type in a Postgres table. An example is the description for a list of products.
+* **Table and image**: The image, in this case, would be stored in a BYTEA column in the table, which would hold the bytes of the image. Pipelines doesn't currently support large objects (also known as BLOB) types.
+* **Volume and text**: An example is text files in an S3 bucket.
+* **Volume and image**: The images can be stored as objects in an S3 bucket.
 
-### Embedding
+## Embedding
 
-Retrievers always need a "vector table" to store the vector embeddings that belong to the source data. We use a model with "encoder" capabilities to generate the vectors for the source data.
+Retrievers always need a *vector table* to store the vector embeddings that belong to the source data. Pipelines uses a model with *encoder* capabilities to generate the vectors for the source data.
 
-Each model has a different "dimensionality" i.e. number of dimensions of the vector (the vector [1, 2, 2] has 3 dimensions). We use pgvector "vector" column types to store the embeddings. And those have a fixed number of dimensions. For this reason, the encoder interface on the models returns how many dimensions the vectors will have. 
+Each model has a different *dimensionality*, that is, the number of dimensions of the vector. (The vector [1, 2, 2] has 3 dimensions.) Pipelines uses PGvector *vector* column types to store the embeddings. Those have a fixed number of dimensions. For this reason, the encoder interface on the models returns the number of dimensions the vectors will have. 
 
-We create the vector table, or support using an existing one. The vector column dimensionality must fit the model.
+Pipelines creates the vector table and also supports using an existing one. The vector column dimensionality must fit the model.
 
-### Consistency with source data
+## Consistency with source data
 
-Embeddings must be in-sync with the source data in order to retrieve correct and consistent data. In the case of the table data source, we use triggers in postgres to be notified about changes on the source table.
+To retrieve correct and consistent data, embeddings must be in sync with the source data. In the case of the table data source, Pipelines uses triggers in Postgres to be notified about changes on the source table.
 
-If the source table already has data/rows at the time where the retriever is created, then a manual "bulk embedding" call must be made.
+If the source table already has data/rows when the retriever is created, then a manual bulk embedding call must be made.
 
-Auto embedding can be activated to keep the embeddings in sync going forward.
+To keep the embeddings in sync going forward, you can activate auto-embedding.
 
-### Bulk & Auto embedding
+## Bulk embedding and auto-embedding
 
-Bulk embedding generates the embeddings for all the existing data in a source table. Use this to initialize the retriever if the source table is not empty.
-
-!!! Note
-Bulk embedding does not "sync" the data; it’s best to run this on an empty vector table.
-!!!
-
-Auto embedding can be manually enabled. It creates triggers in PG to keep the embeddings up to data if source data is added, updated or removed.
+Bulk embedding generates the embeddings for all the existing data in a source table. Use it to initialize the retriever if the source table isn't empty.
 
 !!! Note
-Auto embedding only works with the "table" data source today; not the volume source.
+Bulk embedding doesn't sync the data. We recommend running it on an empty vector table.
 !!!
 
-### Synchronous vs. Asynchronous embedding computation
+Auto-embedding can be manually enabled. It creates triggers in Postgres to keep the embeddings up to data if source data is added, updated, or removed.
 
-* Bulk-embedding is a blocking call that can’t be paused.
-* Auto-embedding runs "on top of" other queries during insert/update calls, while waiting on the embedding computation. This means insert/update queries on the source table will be slowed down.
+!!! Note
+Auto-embedding currently works only with the table data source, not the volume source.
+!!!
+
+## Synchronous vs. Asynchronous embedding computation
+
+* Bulk embedding is a blocking call that can’t be paused.
+* Auto-embedding runs along with other queries during insert/update calls, while waiting on the embedding computation. This means insert/update queries on the source table will be slowed down.
