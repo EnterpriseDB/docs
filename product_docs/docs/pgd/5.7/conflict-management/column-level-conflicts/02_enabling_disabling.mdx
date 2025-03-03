@@ -1,0 +1,69 @@
+---
+navTitle: Enabling and disabling
+title: Enabling and disabling column-level conflict resolution
+deepToC: true
+---
+
+!!! Note Permissions required
+Column-level conflict detection uses the `column_timestamps` type. This type requires any user needing to detect column-level conflicts to have at least the [bdr_application](../../security/pgd-predefined-roles/#bdr_application) role assigned.
+!!!
+
+The [bdr.alter_table_conflict_detection()](https://www.enterprisedb.com/docs/pgd/latest/reference/conflict_functions/#bdralter_table_conflict_detection) function manages column-level conflict resolution.
+
+## Using bdr.alter_table_conflict_detection to enable column-level conflict resolution
+
+The [bdr.alter_table_conflict_detection](https://www.enterprisedb.com/docs/pgd/latest/reference/conflict_functions/#bdralter_table_conflict_detection) function takes a table name and column name as its arguments. The column is added to the table as a `column_modify_timestamp` column. The function also adds two triggers (BEFORE INSERT and BEFORE UPDATE) that are responsible for maintaining timestamps in the new column before each change.
+
+```sql
+db=# CREATE TABLE my_app.test_table (id SERIAL PRIMARY KEY, val INT);
+CREATE TABLE
+ 
+db=# ALTER TABLE my_app.test_table REPLICA IDENTITY FULL;
+ALTER TABLE
+
+db=# SELECT bdr.alter_table_conflict_detection(
+db(# 'my_app.test_table'::regclass, 
+db(# 'column_modify_timestamp', 'cts');
+ alter_table_conflict_detection
+--------------------------------
+ t
+
+db=# \d my_app.test_table
+                                       Table "my_app.test_table"
+ Column |         Type          | Collation | Nullable |                     Default
+--------+-----------------------+-----------+----------+--------------------------------------------------
+ id     | integer               |           | not null | nextval('my_app.test_table_id_seq'::regclass)
+ val    | integer               |           |          |
+ cts    | bdr.column_timestamps |           | not null | 's 1 775297963454602 0 0'::bdr.column_timestamps
+Indexes:
+    "test_table_pkey" PRIMARY KEY, btree (id)
+Triggers:
+    bdr_clcd_before_insert BEFORE INSERT ON my_app.test_table FOR EACH ROW EXECUTE FUNCTION bdr.column_timestamps_current_insert()
+    bdr_clcd_before_update BEFORE UPDATE ON my_app.test_table FOR EACH ROW EXECUTE FUNCTION bdr.column_timestamps_current_update()
+```
+
+The new column specifies `NOT NULL` with a default value, which means that `ALTER TABLE ... ADD COLUMN` doesn't perform a table rewrite.
+
+!!! Note 
+Avoid using columns with the `bdr.column_timestamps` data type for other purposes, as doing so can have negative effects. For example, it switches the table to column-level conflict resolution, which doesn't work correctly without the triggers.
+!!!
+
+## Listing tables with column-level conflict resolution
+
+You can list tables having column-level conflict resolution enabled with the following query. 
+
+```sql
+SELECT nc.nspname, c.relname
+FROM pg_attribute a
+JOIN (pg_class c JOIN pg_namespace nc ON c.relnamespace = nc.oid)
+  ON a.attrelid = c.oid
+JOIN (pg_type t  JOIN pg_namespace nt ON t.typnamespace = nt.oid)
+  ON a.atttypid = t.oid
+WHERE NOT pg_is_other_temp_schema(nc.oid)
+  AND nt.nspname = 'bdr'
+  AND t.typname = 'column_timestamps'
+  AND NOT a.attisdropped
+  AND c.relkind IN ('r', 'v', 'f', 'p');
+```
+
+This query detects the presence of a column of type `bdr.column_timestamp`.
