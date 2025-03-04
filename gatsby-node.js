@@ -213,6 +213,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             pdfExclude
             pdf
             displayBanner
+            noindex
             directoryDefaults {
               description
               prevNext
@@ -228,6 +229,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               version
               pdfExclude
               displayBanner
+              noindex
             }
           }
           fields {
@@ -567,6 +569,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       pdf: Boolean
       hideKBLink: Boolean
       displayBanner: String
+      noindex: Boolean
       directoryDefaults: DirectoryDefaults
     }
     
@@ -609,6 +612,8 @@ exports.createSchemaCustomization = ({ actions }) => {
       pdfExclude: Boolean
       hideKBLink: Boolean
       displayBanner: String
+      version: String
+      noindex: Boolean
     }
 
     type PublicFile implements Node {
