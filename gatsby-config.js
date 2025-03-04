@@ -7,9 +7,9 @@ const algoliaTransformer = require("./src/constants/algolia-indexing.js");
 
 const { replacePathVersion } = require("./src/constants/gatsby-utils.js");
 
-const ANSI_BLUE = "\033[34m";
-const ANSI_GREEN = "\033[32m";
-const ANSI_STOP = "\033[0m";
+const ANSI_BLUE = "\x1b[34m";
+const ANSI_GREEN = "\x1b[32m";
+const ANSI_STOP = "\x1b[0m";
 
 const isBuild = process.env.NODE_ENV === "production";
 const isProduction = process.env.APP_ENV === "production";
@@ -228,13 +228,46 @@ module.exports = {
               path
             }
           }
+
+          noindexPages: allMdx(filter: { frontmatter: { noindex: { eq: true } } }) {
+            nodes {
+              fields {
+                path
+              }
+            }
+          }
+          noindexPaths: allMdx(
+            filter: {
+              frontmatter: { directoryDefaults: { noindex: { eq: true } } }
+            }
+          ) {
+            nodes {
+              fields {
+                path
+              }
+            }
+          }          
         }`,
 
         resolvePages: ({
           allSitePage: { nodes: allPages },
           allMdx: { nodes: allMdxNodes },
+          noindexPaths: { nodes: noindexPathNodes },
+          noindexPages: { nodes: noindexPageNodes },
         }) => {
           const knownPaths = new Set(allPages.map((p) => p.path));
+          const noindexPaths = noindexPathNodes.map((n) =>
+            knownPaths.has(n.fields.path)
+              ? n.fields.path
+              : replacePathVersion(n.fields.path),
+          );
+          const noindexPages = new Set(
+            noindexPageNodes.map((n) =>
+              knownPaths.has(n.fields.path)
+                ? n.fields.path
+                : replacePathVersion(n.fields.path),
+            ),
+          );
           const mapPathToTime = allMdxNodes.reduce((acc, node) => {
             if (knownPaths.has(node.fields.path))
               acc[node.fields.path] = { lastmod: node.fields.mtime };
@@ -245,9 +278,17 @@ module.exports = {
             return acc;
           }, {});
 
-          return allPages.map((page) => {
-            return { ...page, ...mapPathToTime[page.path] };
-          });
+          return allPages
+            .filter(
+              (page) =>
+                !(
+                  noindexPages.has(page.path) ||
+                  noindexPaths.some((path) => page.path.startsWith(path))
+                ),
+            )
+            .map((page) => {
+              return { ...page, ...mapPathToTime[page.path] };
+            });
         },
         serialize: ({ path, lastmod }) => {
           return {
@@ -255,7 +296,7 @@ module.exports = {
             lastmod,
           };
         },
-      }, // should produce 5968 <loc>s
+      },
     },
     {
       resolve: `gatsby-plugin-manifest`,
