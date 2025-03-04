@@ -17,87 +17,958 @@ SQL Profiler works with PEM to allow you to profile a server's workload. You can
 SQL Profiler captures and displays a specific SQL workload for analysis in a SQL trace. You can start and review captured SQL traces immediately or save captured traces for review later. You can use SQL Profiler to create and store up to 15 named traces. 
 
 
-## Creating a trace
+## SQL Profiler functions
 
-You can use the Create Trace dialog box to define a SQL trace for any database on which SQL Profiler was installed and configured. To open the dialog box, select the database in the PEM client tree and select **Tools > Server > SQL Profiler > Create trace**.
+The following functions are available in SQL Profiler:
 
-Use the **Trace options** tab to specify details about the new trace:
+- sp_activate
+- sp_deactivate
+- sp_active_traces
+- sp_traces_list
+- sp_load_trace
+- sp_cleanup
+- sp_profiler_version
 
--   Provide a name for the trace in the **Name** field.
--   Use the **User filter** field to specify the roles whose queries to include in the trace. Select **Select All** to include queries from all roles.
--   Use the **Database filter** field to specify the databases to trace. Select **Select All** to include queries against all databases.
--   Specify a trace size in the **Maximum Trace File Size** field. SQL Profiler terminates the trace when it reaches approximately the size specified.
--   Select **Yes** in the **Run Now** field to start the trace when you select **Create**. Select **No** to enable fields on the **Schedule** tab.
+## `sp_activate`
 
-Use the **Schedule** tab to specify scheduling details for the new trace:
+Use this function to start a new trace for the given user(s) and database(s).  You can use create a trace for any database on which SQL Profiler was installed and configured.  
+You can define a trace for logging the statements against specific user(s) and database(s). You can have multiple traces logging the query statements at the same time. 
 
--   Use the **Start time** field to specify the starting time for the trace.
--   Use the **End time** field to specify the ending time for the trace.
--   Select **Yes** in the **Repeat?** field to repeat the trace every day at the times specified. Select **No** to enable fields on the **Periodic job options** tab.
+```sql
+sp_activate(
+	comments character varying(100), 
+    users oidvector, 
+    databases oidvector, 
+    max_log_limit int4, 
+    log_min_duration int4, 
+    time_limit interval = NULL
+)
+```
 
-Use the **Periodic job options** tab to specify scheduing details about a recurring trace. Use the **Days** section to specify the days when the job executes:
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `comments`         | Input           | Any text to describe the purpose for the trace. |
+| `users`            | Input           | Vector of user OID for whom queries needs to be logged. An empty oidvector suggests logging the queries for all the user.|  
+| `databases`        | Input           | Vector of datbase OID for which sql needs to be logged. An empty oidvector suggests logging the queries for all the database. |
+| `max_log_limit`    | Input           | The total size of trace should not go beyond this limit. Unit is in MB. -1 suggests no limit.  SQL Profiler terminates the trace when it reaches approximately the size specified.|
+| `log_min_duration` | Input           | Logs only statements running at least this number of milliseconds.|
+| `time_limit`       | Input           | Run the trace for the given number of time interval. NULL suggests no limit. Interval must be a positive value.| 
 
--   Use the **Week days** field to select the days of the week for the trace to execute.
--   Use the **Month days** field to select the days of the month for the trace to execute.
--   Use the **Months** field to select the months when the trace executes.
 
-Use the **Times** section to specify a schedule for the trace execution. Use the **Hours** and **Minutes** fields to specify the time when the trace executes.
+### Examples:
 
-After you complete the Create Trace dialog box, select **Create** to start the trace or to schedule the trace.
+Start a new trace named 'tracefortestuser', for user with OID 0011, on database with OID 134, with a maximum trace log size of 25MB, for queries that run at least 10 seconds, up to 30 minutes:
 
-If you execute the trace immediately, the trace results appear in the PEM client.
+  ```sql
+  SELECT sp_activate(tracefortestuser,0011,134,25,10000,30);
+  ```
 
-## Opening an existing trace
 
-To view a previous trace, select the profiled database in the PEM client tree and select **Management > SQL Profiler > Open trace**. The Open Trace dialog box opens.
+## `sp_deactivate`
 
-Select an entry in the trace list and select **Open** to open the selected trace in the **SQL Profiler** tab.
+Use this function to stop a trace for the given trace_id.  The function will return true on success.
+```sql
+sp_deactivate(
+	OUT trace_id         text,
+)
+```
 
-## Filtering a trace
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|------------------------------------------|
+| `trace_id`         | Input           | The return value of sp_activate function.|
 
-A filter is a named set of one or more rules, each of which can hide events from the trace view. When you apply a filter to a trace, the hidden events aren't removed from the trace but are excluded from the display.
 
-Select **Filter** to open the Trace Filter dialog box and create a rule or set of rules that define a filter. Each rule screens the events in the current trace based on the identity of the role that invoked the event or the query type invoked during the event.
+### Examples:
 
-To open an existing filter, select **Open**. To define a new filter, select **Add (+)** to add a row to the table displayed on the **General** tab and provide rule details:
+Stop a trace with trace_id 10:
 
--   Use the **Type** list to specify the trace field that the filter rule applies to.
--   Use the **Condition** list to specify the type of operator for SQL Profiler to apply to the value when it filters the trace:
-    -   Select **Matches** to filter events that contain the specified value.
-    -   Select **Does not match** to filter events that don't contain the specified value.
-    -   Select **Is equal to** to filter events that contain an exact match to the string specified in the **Value** field.
-    -   Select **Is not equal to** to filter events that don't contain an exact match to the string specified in the **Value** field.
-    -   Select **Starts with** to filter events that begin with the string specified in the **Value** field.
-    -   Select **Does not start with** to filter events that don't begin with the string specified in the **Value** field.
-    -   Select **Less than** to filter events that have a numeric value less than the number specified in the **Value** field.
-    -   Select **Greater than** to filter events that have a numeric value greater than the number specified in the **Value** field.
-    -   Select **Less than or equal to** to filter events that have a numeric value less than or equal to the number specified in the **Value** field.
-    -   Select **Greater than or equal to** to filter events that have a numeric value greater than or equal to the number specified in the **Value** field.
--   Use the **Value** field to specify the string, number, or regular expression to search for.
+  ```sql
+  SELECT sp_deactivate(10);
+  ```
 
-After you finish defining a rule, select **Add (+)** to add another rule to the filter. To delete a rule from a filter, select the rule and select **Delete**.
+## `sp_active_traces`
 
-Select **Save** to save the filter definition to a file without applying the filter. To apply the filter, select **OK**.
+Use this function to show the details of active traces.
 
-## Deleting a trace
+```sql
+sp_active_traces(
+	OUT trace_id         text,
+	OUT owner            oid,
+	OUT start_time       timestamptz,
+	OUT max_log_size     int4,
+	OUT curr_log_size    int4,
+	OUT log_min_duration int4,
+	OUT running_queries  int4,
+	OUT users            oidvector,
+	OUT databases        oidvector
+)
+```
 
-To delete a trace: 
-1.  Select the profiled database in the PEM client tree. 
-1.  Select **Management > SQL Profiler > Delete trace(s)**.
-1.  In the Delete Traces dialog box, select the icon to the left of a trace name to mark one or more traces for deletion. 
-1.  Select **Delete**. 
-    The PEM client acknowledges that the selected traces were deleted.
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|----------------------------------------------------------------------------------------------------------------|
+| `trace_id`         | Output           | ID of the trace|
+| `owner`            | Output           | Owner of the trace|  
+| `start_time`       | Output           | Starting time of the trace|
+| `max_log_limit`    | Output           | Maximum trace size in MB|
+| `max_log_size`     | Output           | Currently logged trace size in MB|
+| `curr_log_size`    | Output           | Limit for the logging the queries which run at least this number of milliseconds| 
+| `log_min_duration` | Output           | Limit for the logging the queries which run at least this number of milliseconds| 
+| `running_queries`  | Output           | Run the trace for the given number of time interval. NULL suggests no limit. Interval must be a positive value.| 
+| `users`            | Output           | List of User OID(s)| 
+| `databases`        | Output           | List of database OID(s)| 
 
-## Viewing scheduled traces
 
-To view a list of scheduled traces, select the profiled database in the PEM client tree. Select **Management > SQL Profiler > Scheduled traces**.
+### Examples
 
-The Scheduled Traces dialog box displays a list of the traces that are awaiting execution. Select **Edit** to the left of a trace name to see detailed information about the trace:
+```sql
+SELECT sp_active_traces()
+```
+For superusers:  List down all the active trace(s).
+For non-superusers:  List down the active trace(s) initiated by them.
 
--   The **Status** field lists the status of the current trace.
--   The **Enabled?** switch displays Yes if the trace is enabled, No if it is disabled.
--   The **Name** field displays the name of the trace.
--   The **Agent** field displays the name of the agent responsible for executing the trace.
--   The **Last run** field displays the date and time of the last execution of the trace.
--   The **Next run** field displays the date and time of the next scheduled trace.
--   The **Created** field displays the date and time that the trace was defined.
+
+## `sp_traces_list`
+
+Use this function to list the details of all traces.
+
+```sql
+sp_traces_list(
+	OUT trace_id    text,
+	OUT comments    text,
+	OUT start_time  timestamptz,
+	OUT owner       oid,
+	OUT users       oidvector,
+	OUT databases   oidvector,
+	OUT max_size    int4,
+	OUT end_time    timestamptz,
+	OUT finish_time timestamptz,
+	OUT status      int4,
+	OUT version     float8
+)
+```
+
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|----------------------------------------------------------------------------------------------------------------|
+| `trace_id`         | Output          | ID of the trace|
+| `comments`         | Output          | Description that was set by user at the time of trace activation|
+| `start_time`       | Output          | Starting time of the trace|
+| `owner`            | Output          | Owner of the trace| 
+| `users`            | Output          | List of User OID(s)| 
+| `databases`        | Output          | List of database OID(s)|  
+| `max_size`         | Output          | Limit of the maximum trace size in MB|
+| `end_time`         | Output          | The time at which sp_deactivate() was called or scheduled to stop.|
+| `finish_time`      | Output          | The time at which the trace actually stopped.| 
+| `status`           | Output          | 0: Unknown status (Server should have restared), 1. Active, 2. Stopped, 3. Max size exceeded, 4. Time limit exceeded | 
+| `version`          | Output          | Version of the trace | 
+
+
+### Examples
+
+```sql
+SELECT sp_traces_list()
+```
+For superusers:  List down all the active trace(s).
+For non-superusers:  List down the active trace(s) initiated by them.
+
+
+## `sp_load_trace`
+
+Use this function to load all the trace files of a particular trace_id into a temporary table named `_sp_tmp_tbl_sql_profiler`. Returns true on successful loading of the trace.
+
+```sql
+sp_load_trace(
+	IN trace_id  text,
+    IN refresh   bool
+)
+```
+
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|------------------------------------------|
+| `trace_id`         | Input           | ID of the trace|
+| `refresh` TRUE     | Input           | All the temp table data will be removed from the temp table for that particular trace_id, and then reload the data from scratch.|
+| `refresh`FALSE     | Input           | The trace files will be read from the position, where it was successfully loaded last time.|
+
+
+### Examples:
+
+Load the trace files for trace_id 10, removing the temp table data for trace_id 10, and reload it from scratch:
+
+```sql
+SELECT sp_load_trace(10, true)
+```
+
+
+## `sp_cleanup`
+
+Use this function to permanently remove a trace. Returns true on successful removal of the trace.
+
+```sql
+sp_cleanup(
+	IN trace_id  text,
+    IN remove_active   bool
+)
+```
+
+| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
+|--------------------|-----------------|------------------------------------------|
+| `trace_id`         | Input           | ID of the trace|
+| `remove_active` TRUE      | Input    | Suggests you are not accidentally removing the active trace.|
+| `remove_active` FALSE     | Input    | Results in an error if the given trace is still active.|
+
+
+### Examples:
+
+Permanently remove the trace files for trace_id 10, ensusring that trace_id 10 is not the active trace:
+
+```sql
+SELECT sp_cleanup(10, true)
+```
+
+## `sp_profiler_version`
+
+Use this function to show the current version of SQL Profiler. 
+
+```sql
+sp_profiler_version()
+```
+### Examples:
+
+Show the current version of SQL Profiler:
+
+  ```sql
+  SELECT sp_profiler_version();
+  ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***********************************************
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following:
+
+`dbname` &mdash; The session's database.
+
+`username` &mdash; The session's logged-in user.
+
+`query` &mdash; The query running in the session.
+
+`query_start_time`  &mdash; The time when the query started.
+
+`sample_time` &mdash; The time when wait event data was collected.
+
+`wait_event_type` &mdash; The type of wait event the session (backend) is waiting on.
+
+`wait_event` &mdash; The wait event the session (backend) is waiting on.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_data()` function:
+
+```sql
+edb=# SELECT * FROM edb_wait_states_data();
+__OUTPUT__
+-[ RECORD 1 ]----+-------------------------------------------------------------------------
+session_id       | 4398
+dbname           | edb
+username         | enterprisedb
+query            | SELECT schemaname FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+query_start_time | 17-AUG-18 11:56:05.271962 -04:00
+sample_time      | 17-AUG-18 11:56:19.700236 -04:00
+wait_event_type  | Timeout
+wait_event       | PgSleep
+-[ RECORD 2 ]----+-------------------------------------------------------------------------
+session_id       | 4398
+dbname           | edb
+username         | enterprisedb
+query            | SELECT schemaname FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+query_start_time | 17-AUG-18 11:56:05.271962 -04:00
+sample_time      | 17-AUG-18 11:56:18.699938 -04:00
+wait_event_type  | Timeout
+wait_event       | PgSleep
+-[ RECORD 3 ]----+-------------------------------------------------------------------------
+session_id       | 4398
+dbname           | edb
+username         | enterprisedb
+query            | SELECT schemaname FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+query_start_time | 17-AUG-18 11:56:05.271962 -04:00
+sample_time      | 17-AUG-18 11:56:17.700253 -04:00
+wait_event_type  | Timeout
+wait_event       | PgSleep
+                    .
+                    .
+                    .
+```
+
+## `edb_wait_states_directory_size`
+
+This function gives the size of the `$PGDATA/edb_wait_states` directory.
+
+```sql
+edb_wait_states_directory_size(
+  IN start_ts timestampz default '-inifinity'::timestampz,
+  IN end_ts timestampz default 'infinity'::timestampz
+);
+```
+
+The function returns the total size of all the files in the `edb_wait_states` directory in bytes. Optionally specify the `start_ts` and `end_ts` timestamps to get the file size of all the files in the specified interval.
+
+!!!note
+This function calculates and gives the size of all the files with prefix `ews_*` only. It ignores any other file added to the `edb_wait_states` directory manually.
+!!!
+
+### Example
+
+This example shows the sample output from the `edb_wait_states_directory_size()` function:
+
+```sql
+edb=# select edb_wait_states_directory_size();
+__OUTPUT__
+ edb_wait_states_directory_size
+ ------------------------------
+                        1712256
+ (1 row)
+```
+
+## `edb_wait_states_queries`
+
+This function gives information about the queries sampled by the BGW. For example:
+
+```sql
+edb_wait_states_queries(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT query_id int8,
+  OUT <query> text,
+  OUT ref_start_ts timestamptz
+  OUT ref_end_ts timestamptz
+)
+```
+
+A new queries file is created periodically. Multiple query files can be generated corresponding to specific intervals.
+
+This function returns all the queries in query files that overlap with the given time interval. A query gives all the queries in query files that contained queries sampled between `start_ts` and `end_ts`:
+
+```sql
+SELECT query FROM edb_wait_states_queries(start_ts, end_ts);
+```
+
+In other words, the function can output queries that didn't run in the given interval. To do that, use `edb_wait_states_data()`.
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following:
+
+`query` &mdash; Normalized query text.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_queries()` function:
+
+```sql
+edb=# SELECT * FROM edb_wait_states_queries();
+__OUTPUT__
+-[ RECORD 1 ]+-----------------------------------------------------------------------------
+query_id     | 4292540138852956818
+query        | SELECT schemaname FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
+ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
+-[ RECORD 2 ]+-----------------------------------------------------------------------------
+query_id     | 3754591102365859187
+query        | SELECT tablename FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
+ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
+-[ RECORD 3 ]+-----------------------------------------------------------------------------
+query_id     | 349089096300352897
+query        | SELECT tablename, schemaname FROM pg_tables, pg_sleep($1) WHERE schemaname <> $2
+ref_start_ts | 17-AUG-18 11:52:38.698793 -04:00
+ref_end_ts   | 18-AUG-18 11:52:38.698793 -04:00
+```
+
+## `edb_wait_states_sessions`
+
+This function gives information about the sessions sampled by the BGW:
+
+```sql
+edb_wait_states_sessions(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT session_id int4,
+  OUT <dbname> text,
+  OUT <username> text,
+  OUT ref_start_ts timestamptz,
+  OUT ref_end_ts timestamptz,
+  OUT application_name text,
+  OUT client_hostname text,
+  OUT session_start_ts timestamptz
+)
+```
+
+You can use this function to identify the databases that were connected and the users that started those sessions. For example:
+
+```sql
+SELECT dbname, username, session_id
+  FROM edb_wait_states_sessions();
+```
+
+Similar to `edb_wait_states_queries()`, this function outputs all the sessions logged in session files that contain sessions sampled in the given interval. It doesn't necessarily output only the sessions sampled in the given interval. To identify that, use `edb_wait_states_data()`.
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following:
+
+`dbname` &mdash; The database to which the session is connected.
+
+`username` &mdash; Login user of the session.
+
+`application_name` &mdash; Name of the application connection to the session.
+
+`client_hostname` &mdash; Host name of the client machine.
+
+`session_start_ts` &mdash; Actual timestamp when the session started.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_sessions()` function:
+
+```sql
+edb=# SELECT * FROM edb_wait_states_sessions();
+__OUTPUT__
+-[ RECORD 1 ]---+---------------------------------
+session_id       | 184365
+dbname           | postgres
+username         | dilip
+ref_start_ts     | 01-FEB-24 15:59:56.283204 +05:30
+ref_end_ts       | 02-FEB-24 15:59:56.283204 +05:30
+application_name | pgbench
+client_hostname  |
+session_start_ts | 01-FEB-24 16:15:13.267287 +05:30
+-[ RECORD 2 ]---+---------------------------------
+session_id       | 184344
+dbname           | postgres
+username         | dilip
+ref_start_ts     | 01-FEB-24 15:59:56.283204 +05:30
+ref_end_ts       | 02-FEB-24 15:59:56.283204 +05:30
+application_name | pgbench
+client_hostname  |
+session_start_ts | 01-FEB-24 16:15:59.284207 +05:30
+```
+
+## `edb_wait_states_samples`
+
+This function gives information about wait events sampled by the BGW:
+
+```sql
+edb_wait_states_samples(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT query_id int8,
+  OUT session_id int4,
+  OUT <query_start_time> timestamptz,
+  OUT <sample_time> timestamptz,
+  OUT <wait_event_type> text,
+  OUT <wait_event> text,
+  OUT sampling_interval int4
+)
+```
+
+Usually, you don't need to call this function directly.
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following:
+
+`query_start_time` &mdash; The time when the query started in this session.
+
+`sample_time` &mdash; The time when wait event data was collected.
+
+`wait_event_type` &mdash; The type of wait event on which the session is waiting.
+
+`wait_event` &mdash; The wait event on which the session (backend) is waiting.
+
+`sampling_interval` &mdash;  The time interval at which the sample is taken.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_samples()` function:
+
+```sql
+edb=# SELECT * FROM edb_wait_states_samples();
+__OUTPUT__
+-[ RECORD 1 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:41.284071 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1
+-[ RECORD 2 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:42.284278 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1
+-[ RECORD 3 ]-----+---------------------------------
+query_id          | -5489517304104177538
+session_id        | 183864
+query_start_time  | 01-FEB-24 16:04:40.292778 +05:30
+sample_time       | 01-FEB-24 16:04:43.283385 +05:30
+wait_event_type   | Timeout
+wait_event        | PgSleep
+sampling_interval | 1                    .
+                    .
+                    .
+```
+
+## `edb_wait_states_purge`
+
+The function deletes all the sampled data files (queries, sessions, and wait-event samples) that were created after `start_ts` and aged (rotated) before `end_ts`:
+
+```sql
+edb_wait_states_purge(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz
+)
+```
+
+Usually you don't need to run this function. The backend usually purges those according to the retention age. However, if that doesn't happen for some reason, you can use this function.
+
+To find out how long the samples were retained, use `edb_wait_states_data()`.
+
+### Example
+
+This code shows the `$PGDATA/edb_wait_states` directory before running `edb_wait_states_purge()`:
+
+```shell
+[root@localhost data]# pwd
+/var/lib/edb/as14/data
+[root@localhost data]# ls -l edb_wait_states
+total 12
+-rw------- 1 enterprisedb ...  253 Aug 17 11:56 edb_ws_queries_587836358698793_587922758698793
+-rw------- 1 enterprisedb ... 1600 Aug 17 11:56 edb_ws_samples_587836358698793_587839958698793
+-rw------- 1 enterprisedb ...   94 Aug 17 11:56 edb_ws_sessions_587836358698793_587922758698793
+```
+
+This code shows the `$PGDATA/edb_wait_states` directory after running `edb_wait_states_purge()`:
+
+```sql
+edb=# SELECT * FROM edb_wait_states_purge();
+__OUTPUT__
+ edb_wait_states_purge
+-----------------------
+
+(1 row)
+```
+```shell
+[root@localhost data]# pwd
+/var/lib/edb/as14/data
+[root@localhost data]# ls -l edb_wait_states
+total 0
+```
+
+## Deactivating 
+
+To disable EDB Wait States from collecting more data, enter: 
+
+```sql
+ALTER SYSTEM SET edb_wait_states.enable_collection TO OFF;
+SELECT pg_reload_conf();
+```
+
+To reenable EDB Wait States, set `edb_wait_states.enable_collection` to `ON`. 
+
+You can check whether the EDB Wait States is collecting data using a `SHOW` command. In the following example, data collection is enabled in EDB Wait States:
+
+```sql 
+edb=#SHOW edb_wait_states.enable_collection;
+__OUTPUT__
+ edb_wait_states.enable_collection 
+-----------------------------------
+ on
+(1 row) 
+```
+
+## `edb_wait_states_system_info`
+
+The function outputs the hostname, CPU information, and memory information for the server machine.
+
+```sql
+edb_wait_states_system_info(
+  OUT host_name text,
+  OUT cpu_info text,
+  OUT mem_info text
+)
+```
+
+### Parameters
+
+Each row of the output gives the following information:
+
+`host_name` &mdash; The hostname of the server machine.
+
+`cpu_info` &mdash; CPU information about the server machine.
+
+`mem_info` &mdash; Memory information about the server machine.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_system_info()` function:
+
+```sql
+edb=# select * from edb_wait_states_system_info();
+-[ RECORD 1 ]-------------------------------------------------------------------
+host_name | dilip_kumar                                                                                                                                                                                            
+          | 
+cpu_info  | processor       : 0                                                                                                                                                                                    
+          | BogoMIPS        : 48.00                                                                                                                                                                               
+          | Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics 
+          | CPU implementer : 0x61                                                                                                                                                                                 
+          | CPU architecture: 8                                                                                                                                                                                    
+          | CPU variant     : 0x0                                                                                                                                                                                  
+          | CPU part        : 0x000                                                                                                                                                                                
+          | CPU revision    : 0                                                                                                                                                                                    
+          |                                                                                                                                                                                                       
+          | processor       : 1                                                                                                                                                                                  
+          | BogoMIPS        : 48.00                                                                                                                                                                                
+          | Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics
+          | CPU implementer : 0x61                                                                                                                                                                                 
+          | CPU architecture: 8                                                                                                                                                                                    
+          | CPU variant     : 0x0                                                                                                                                                                                  
+          | CPU part        : 0x000                                                                                                                                                                                
+          | CPU revision    : 0                                                                                                                                                                         
+            ...... 
+          | 
+mem_info  | MemTotal:        7786664 kB                                                                                                                                                                            
+          | MemFree:          422544 kB                                                                                                                                                                            
+          | MemAvailable:    2044836 kB                                                                                                                                                                            
+          | Buffers:             256 kB                                                                                                                                                                            
+          | Cached:          1884380 kB                                                                                                                                                                            
+          | SwapCached:       146316 kB                                                                                                                                                                            
+          | Active:          3180572 kB                                                                                                                                                                            
+          | Inactive:        2843108 kB                                                                                                                                                                            
+          | Active(anon):    2448468 kB                                                                                                                                                                            
+          | Inactive(anon):  1960812 kB                                                                                                                                                                            
+          | Active(file):     732104 kB
+          .......   
+```
+
+## `edb_wait_states_wait_events`
+
+The function outputs aggregated wait event information.
+
+```sql
+edb_wait_states_wait_events(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT waitevent TEXT,
+  OUT wait_event_type text,
+  OUT waittime int8,
+  OUT pct_dbtime numeric
+)
+```
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following information:
+
+`waitevent` &mdash; The name of the wait event.
+
+`wait_event_type` &mdash; The type of wait event.
+
+`waittime` &mdash; The approximate wait time of this wait event (in seconds) based on the number of samples and the sampling interval from `edb_wait_states_samples`.
+
+`pct_dbtime` &mdash; The percentage of database time spent on this wait event.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_wait_events()` function:
+
+```sql
+edb=# select * from edb_wait_states_wait_events();
+-[ RECORD 1 ]---+------------------------
+waitevent       | 
+wait_event_type | 
+waittime        | 124
+pct_dbtime      | 36.5781710914454277
+-[ RECORD 2 ]---+------------------------
+waitevent       | DataFileRead
+wait_event_type | IO
+waittime        | 92
+pct_dbtime      | 27.1386430678466077
+-[ RECORD 3 ]---+------------------------
+waitevent       | WALWrite
+wait_event_type | IO
+waittime        | 3
+pct_dbtime      | 0.88495575221238938053
+-[ RECORD 4 ]---+------------------------
+waitevent       | BufFileWrite
+wait_event_type | IO
+waittime        | 3
+pct_dbtime      | 0.88495575221238938053
+                .
+                .
+                .
+```
+
+## `edb_wait_states_sql_statements`
+
+The function outputs database time, CPU time, and wait information for each SQL statement.
+
+```sql
+edb_wait_states_sql_statements(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT query_id int8,
+  OUT dbtime numeric,
+  OUT waittime numeric,
+  OUT cputime numeric,
+  OUT top_waitevent text,
+  OUT query text
+)
+```
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following information:
+
+`query_id` &mdash; The query ID of the SQL statement.
+
+`dbtime` &mdash; The total database time consumed by this statement. (Database time is the total time in seconds used to execute this statement, including
+CPU time as well as wait time).
+
+`waittime` &mdash; The approximate wait time spent by this query.
+
+`cputime` &mdash; The approximate CPU time spent by this query.
+
+`top_waitevent` &mdash; The wait event on which this statement spent maximum time.
+
+`query` &mdash; The actual text of the query.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_sql_statements()` function:
+
+```sql
+edb=# select * from edb_wait_states_sql_statements();
+-[ RECORD 1 ]-+---------------------------------------------------
+query_id      | -1697985474390439145
+dbtime        | 188
+waittime      | 188
+cputime       | 0
+top_waitevent | DataFileRead
+query         | vacuum analyze pgbench_accounts
+-[ RECORD 2 ]-+---------------------------------------------------
+query_id      | 2577670717561330585
+dbtime        | 143
+waittime      | 52
+cputime       | 91
+top_waitevent | WALSync
+query         | copy pgbench_accounts from stdin with (freeze on)
+-[ RECORD 3 ]-+---------------------------------------------------
+query_id      | -7684589253409855891
+dbtime        | 250
+waittime      | 204
+cputime       | 46
+top_waitevent | WALWrite
+query         | alter table pgbench_accounts add primary key (aid)
+```
+
+## `edb_wait_states_cluster_stats`
+
+The function outputs database, WAL, and session count information for a given time period. Each row shows the consolidated information for
+that time period.
+
+```sql
+edb_wait_states_cluster_stats(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT num_sessions int4,
+  OUT num_databases int4,
+  OUT wal_records int8,
+  OUT wal_fpi int8,
+  OUT wal_bytes int8,
+  OUT xact_commit int8,
+  OUT xact_rollback int8,
+  OUT blocks_fetched int8,
+  OUT blocks_hit int8,
+  OUT tuples_returned int8,
+  OUT tuples_fetched int8,
+  OUT tuples_inserted int8,
+  OUT tuples_updated int8,
+  OUT tuples_deleted int8,
+  OUT temp_files int8,
+  OUT temp_bytes int8,
+  OUT sample_ts timestamptz,
+  OUT last_wal_stats_reset timestamptz,
+  OUT last_db_stats_reset timestamptz
+)
+```
+
+### Parameters
+
+In addition to the common parameters described previously, each row of the output gives the following information:
+
+`num_sessions` &mdash; Number of active sessions.
+
+`num_databases` &mdash; Total number of databases.
+
+`wal_records` &mdash; Total number of WAL records generated.
+
+`wal_fpi` &mdash; Total number of WAL full page images generated.
+
+`wal_bytes` &mdash; Total amount of WAL generated in bytes.
+
+`xact_commit` &mdash; Number of transactions that have been committed.
+
+`xact_rollback` &mdash; Number of transactions that have been rolled back.
+
+`blocks_fetched` &mdash; Number of disk blocks accessed.
+
+`blocks_hit` &mdash; Number of times disk blocks were found already in the buffer cache.
+
+`tuples_returned` &mdash; Number of live rows fetched by sequential scans and index entries returned by index scans.
+
+`tuples_fetched` &mdash; Number of live rows fetched by index scans.
+
+`tuples_inserted` &mdash; Number of rows inserted by queries.
+
+`tuples_updated` &mdash; Number of rows updated by queries.
+
+`tuples_deleted`  &mdash; Number of rows deleted by queries.
+
+`temp_files` &mdash; Number of temporary files created by queries.
+
+`temp_bytes` &mdash; Total amount of data written to temporary files by queries.
+
+`sample_ts` &mdash; Timestamp when this sample was taken.
+
+`last_wal_stats_reset` &mdash; Time when WAL statistics were last reset.
+
+`last_db_stats_reset` &mdash; Time when database statistics were last reset.
+
+### Example
+
+This example shows sample output from the `edb_wait_states_cluster_stats()` function:
+
+```sql
+edb=# select * from edb_wait_states_cluster_stats();
+-[ RECORD 1 ]--------+---------------------------------
+num_sessions         | 0
+num_databases        | 4
+wal_records          | 4358683
+wal_fpi              | 8593
+wal_bytes            | 419918702
+xact_commit          | 557135
+xact_rollback        | 143
+blocks_fetched       | 30959799
+blocks_hit           | 30955075
+tuples_returned      | 3968546
+tuples_fetched       | 2179331
+tuples_inserted      | 793226
+tuples_updated       | 1667862
+tuples_deleted       | 2235
+temp_files           | 8
+temp_bytes           | 4063232
+sample_ts            | 01-FEB-24 15:59:57.283591 +05:30
+last_wal_stats_reset | 01-FEB-24 15:49:12.976401 +05:30
+last_db_stats_reset  | 01-JAN-00 05:30:00 +05:30
+-[ RECORD 2 ]--------+---------------------------------
+num_sessions         | 0
+num_databases        | 4
+wal_records          | 4358683
+wal_fpi              | 8593
+wal_bytes            | 419918702
+xact_commit          | 557135
+xact_rollback        | 143
+blocks_fetched       | 30959799
+blocks_hit           | 30955075
+tuples_returned      | 3968546
+tuples_fetched       | 2179331
+tuples_inserted      | 793226
+tuples_updated       | 1667862
+tuples_deleted       | 2235
+temp_files           | 8
+temp_bytes           | 4063232
+sample_ts            | 01-FEB-24 15:59:58.285452 +05:30
+last_wal_stats_reset | 01-FEB-24 15:49:12.976401 +05:30
+last_db_stats_reset  | 01-JAN-00 05:30:00 +05:30
+```
+
+## `edb_wait_states_cluster`
+
+The function outputs differential information for `edb_wait_states_cluster_stats` derived from two snapshots.
+
+```sql
+edb_wait_states_cluster(
+  IN start_ts timestamptz default '-infinity'::timestamptz,
+  IN end_ts timestamptz default 'infinity'::timestamptz,
+  OUT start_session int4,
+  OUT end_session int4,
+  OUT wal_records int8,
+  OUT wal_fpi int8,
+  OUT wal_bytes int8,
+  OUT xact_commit int8,
+  OUT xact_rollback int8,
+  OUT blocks_fetched int8,
+  OUT blocks_hit int8,
+  OUT tuples_returned int8,
+  OUT tuples_fetched int8,
+  OUT tuples_inserted int8,
+  OUT tuples_updated int8,
+  OUT tuples_deleted int8,
+  OUT temp_files int8,
+  OUT temp_bytes int8
+)
+```
+
+### Parameters
+
+The output for this function is the same as `edb_wait_states_cluster_stats()`. But instead of producing one record for each sample the function produces a single record with differential values between `start_ts` and `end_ts`.
+
+!!! Note
+  If the `pg_stat_wal` or `pg_stat_database` is reset or any database is dropped between the `start_ts` and `end_ts`, the output for the respective fields is -1. If the database is dropped and re-created, it might not be reliably detected and differential values might not be accurate. 
+!!!
+
+### Example
+
+This example shows sample output from the `edb_wait_states_cluster()` function:
+
+```sql
+edb# select * from edb_wait_states_cluster();
+-[ RECORD 1 ]---+------------
+start_session   | 0
+end_session     | 1
+wal_records     | 7723654
+wal_fpi         | 481549
+wal_bytes       | 14740067381
+xact_commit     | 550880
+xact_rollback   | 75
+blocks_fetched  | 38997085
+blocks_hit      | 37112621
+tuples_returned | 116057913
+tuples_fetched  | 2203619
+tuples_inserted | 100546427
+tuples_updated  | 1606127
+tuples_deleted  | 125
+temp_files      | 4
+temp_bytes      | 2004926464
+```
