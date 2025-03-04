@@ -172,6 +172,7 @@ const Layout = ({
         <meta property="og:url" content={url} />
         <link rel="canonical" href={canonicalUrl} />
         <meta name="twitter:card" content="summary_large_image" />
+        {meta.noindex && <meta name="robots" content="noindex" />}
         <body className={`bg-${background} fixed-container`} />
       </Helmet>
       <MDXProvider components={mdxComponents}>{children}</MDXProvider>

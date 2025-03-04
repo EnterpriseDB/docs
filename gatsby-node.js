@@ -7,7 +7,6 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 const util = require("node:util");
 const execAsync = util.promisify(exec);
-const asyncFs = require("node:fs/promises");
 
 const {
   replacePathVersion,
@@ -213,6 +212,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             pdfExclude
             pdf
             displayBanner
+            noindex
             directoryDefaults {
               description
               prevNext
@@ -228,6 +228,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
               version
               pdfExclude
               displayBanner
+              noindex
             }
           }
           fields {
@@ -567,6 +568,7 @@ exports.createSchemaCustomization = ({ actions }) => {
       pdf: Boolean
       hideKBLink: Boolean
       displayBanner: String
+      noindex: Boolean
       directoryDefaults: DirectoryDefaults
     }
     
@@ -609,6 +611,8 @@ exports.createSchemaCustomization = ({ actions }) => {
       pdfExclude: Boolean
       hideKBLink: Boolean
       displayBanner: String
+      version: String
+      noindex: Boolean
     }
 
     type PublicFile implements Node {
@@ -735,7 +739,7 @@ async function addHeaders(graphql, reporter, pathPrefix) {
 }
 
 /**
- * Rewrites generated headers:
+ * Rewrites generated redirects:
  *  - fix up unnecessary path prefix for legacy redirects
  *  - add hash for perma-URLs
  * @param {string} pathPrefix
@@ -825,6 +829,9 @@ ${pathPrefix}/*  /:splat  200`,
  * this speeds up Netlify deploys, as (otherwise unchanged) files don't change every build
  * there probably should be a faster / more elegant way to do this, possibly by overriding one of the
  * default webpack configs... But I've had no luck doing so up to now.
+ * Also: sets window.pagePath to an empty string to avoid Google trying to index it.
+ *       This disables a bit of Gatsby logic that we then replace in gatsby-browser.js
+ *
  * @param {GatsbyReporter} reporter Gatsby reporter
  */
 async function removeCompilationHashes(reporter) {
@@ -837,6 +844,8 @@ async function removeCompilationHashes(reporter) {
   ]);
   const hashPattern = /window\.___webpackCompilationHash="[^"]+"/;
   const hashReplace = 'window.___webpackCompilationHash=""';
+  const pagePathPattern = /window\.pagePath="[^"]+\/"/;
+  const pagePathReplace = 'window.pagePath=""';
   hashTimer.total = generatedHTML.length;
   const chunkSize = 100;
   for (let i = 0; i < generatedHTML.length; i += chunkSize) {
@@ -844,7 +853,9 @@ async function removeCompilationHashes(reporter) {
       .slice(i, i + chunkSize)
       .map(async (filename) => {
         let file = await readFile(filename);
-        file = file.replace(hashPattern, hashReplace);
+        file = file
+          .replace(hashPattern, hashReplace)
+          .replace(pagePathPattern, pagePathReplace);
         await writeFile(filename, file);
         hashTimer.tick();
       });

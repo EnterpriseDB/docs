@@ -112,6 +112,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     path: pagePath,
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
+    noindex: frontmatter.noindex,
   };
   const { path } = fields;
   const fileUrlSegment = getRelativeFilePathFromPageAbsolutePath(

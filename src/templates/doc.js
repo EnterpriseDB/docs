@@ -207,6 +207,7 @@ const DocTemplate = ({ data, pageContext }) => {
     isIndexPage: isPathAnIndexPage(fileAbsolutePath),
     productVersions,
     canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
+    noindex: frontmatter.noindex,
   };
 
   const showToc = !!tableOfContents.items && !frontmatter.hideToC;
