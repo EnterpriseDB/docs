@@ -223,7 +223,7 @@ Cluster in healthy state
 Name:               cluster-example
 Namespace:          default
 System ID:          7044925089871458324
-PostgreSQL Image:   quay.io/enterprisedb/postgresql:17.2-3
+PostgreSQL Image:   quay.io/enterprisedb/postgresql:17.4-3
 Primary instance:   cluster-example-1
 Instances:          3
 Ready instances:    3
@@ -291,7 +291,7 @@ kubectl describe cluster <CLUSTER_NAME> -n <NAMESPACE> | grep "Image Name"
 Output:
 
 ```shell
-  Image Name:    quay.io/enterprisedb/postgresql:17.2-3
+  Image Name:    quay.io/enterprisedb/postgresql:17.4-3
 ```
 
 !!! Note
@@ -804,3 +804,21 @@ API. Please check your networking.
 Another possible cause is when you have sidecar injection configured. Sidecars
 such as Istio may make the network temporarily unavailable during startup. If
 you have sidecar injection enabled, retry with injection disabled.
+
+### Replicas take over two minutes to reconnect after a failover
+
+When the primary instance fails, the operator promotes the most advanced standby
+to the primary role. Other standby instances then attempt to reconnect to the
+`-rw` service for replication. However, during this reconnection process,
+`kube-proxy` may not have updated its routing information yet. As a result, the
+initial `SYN` packet sent by the standby instances might fail to reach its
+intended destination.
+
+If the network is configured to silently drop packets instead of rejecting them,
+standby instances will not receive a response and will retry the connection
+after an exponential backoff period. On Linux systems, the default value for the
+`tcp_syn_retries` kernel parameter is 6, meaning the system will attempt to
+establish the connection for approximately 127 seconds before giving up. This
+prolonged retry period can significantly delay the reconnection process.
+For more details, consult the
+[tcp_syn_retries documentation](https://www.kernel.org/doc/Documentation/networking/ip-sysctl.txt).
