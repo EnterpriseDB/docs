@@ -40,6 +40,7 @@ export const FeedbackDropdown = ({
       size="sm"
       variant="outline-info"
       id="page-actions-button"
+      role="menu"
       title={
         //this seems absolutely buck wild to me, but it's what StackOverflow suggests 🤷🏻‍♂️
         <Icon
@@ -54,6 +55,7 @@ export const FeedbackDropdown = ({
         href={githubIssuesUrl + "&template=problem-with-topic.yaml&labels=bug"}
         target="_blank"
         rel="noreferrer"
+        role="menuitem"
       >
         Report a problem
       </Dropdown.Item>
@@ -63,6 +65,7 @@ export const FeedbackDropdown = ({
         }
         target="_blank"
         rel="noreferrer"
+        role="menuitem"
       >
         Give product feedback
       </Dropdown.Item>

@@ -369,6 +369,7 @@ module.exports = {
         fonts: [
           `source code pro\:400`, // you can also specify font weights and styles
         ],
+        display: "swap",
       },
     },
     {
