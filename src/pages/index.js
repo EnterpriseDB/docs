@@ -242,7 +242,7 @@ const Page = () => {
               to="/edb-postgres-ai/databases"
             >
               <BannerCardLink to="/edb-postgres-ai/databases/postgres_distributions">
-                Choosing your Postgres distribution
+                Choosing your Postgres
               </BannerCardLink>
               <BannerCardLink to="/epas/latest">
                 EDB Postgres Advanced Server
@@ -250,11 +250,11 @@ const Page = () => {
               <BannerCardLink to="/pge/latest">
                 EDB Postgres Extended Server
               </BannerCardLink>
-              <BannerCardLink to="/supported-open-source/postgresql/">
-                PostgreSQL
-              </BannerCardLink>
               <BannerCardLink to="/pgd/latest">
                 EDB Postgres Distributed (PGD)
+              </BannerCardLink>
+              <BannerCardLink to="/supported-open-source/postgresql/">
+                PostgreSQL
               </BannerCardLink>
             </BannerSubCard>
 
