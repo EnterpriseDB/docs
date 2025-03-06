@@ -1,0 +1,200 @@
+---
+title: "Preparing Postgres source databases"
+deepToC: true
+---
+
+<div id="preparing_postgres_sources" class="registered_link"></div>
+
+Configuring Postgres for EDB Data Migration Service (EDB DMS) requires administrative privileges. Create a change data capture (CDC) migration role with limited privileges for data migration.
+
+Execute SQL statements with psql or a similar client.
+
+To connect to the source database using `psql`:
+
+```shell
+psql -h <PG_HOST> -p <PG_PORT> -U <PG_USERNAME> -d <PG_DB_NAME>
+```
+
+Where:
+ - `<PG_DB_NAME>` is the name of the Postgres database source to connect to.
+ - `<PG_HOST>` is the Postgres database host.
+ - `<PG_PORT>` is the Postgres database port.
+ - `<PG_USERNAME>` is an administrative user who can create and grant roles, alter ownership of tables to migrate, and create a replication slot.
+
+This command prompts you for the password associated with `<PG_USERNAME>`.
+
+## Postgres database configuration
+
+To prepare the source Postgres database configuration:
+1. [Set the Postgres configuration](#set-the-postgres-configuration).
+1. [Create new roles and grant acccess for CDC migration](#create-new-roles-and-grant-acccess-for-cdc-migration).
+1. [Grant usage of the source schemas to the CDC migration role](#grant-usage-of-the-source-schemas-to-the-cdc-migration-role).
+1. [Grant `SELECT` on source tables to the CDC migration role](#grant-select-on-source-tables-to-the-cdc-migration-role).
+1. [Grant `CREATE` privileges on the source database to the CDC migration role](#grant-create-privileges-on-the-source-database-to-the-cdc-migration-role).
+
+### Set the Postgres configuration
+
+Ensure the following configuration entries for Postgres are set as follows:
+
+1. Ensure `wal_level` is configured as `logical`.
+
+    The CDC migration process leverages Postgres logical decoding. Setting `wal_level` to `logical` enables logical decoding of the Postgres write-ahead log (WAL).
+
+2. Ensure `max_wal_senders` is configured appropriately.
+
+    If EDB Data Migration Service migration is the first streaming client for your database, set `max_wal_senders` to at least `1`. Other streaming clients might be present. Consult your DBA for the appropriate value for streaming client connectivity.
+
+3. Ensure `max_replication_slots` is configured appropriately.
+
+    `max_replication_slots` must be at least `1` for the CDC migration process. This value can be higher if your organization uses Postgres replication.
+
+    See the [Postgres replication documentation](https://www.postgresql.org/docs/current/runtime-config-replication.html) for more information.
+
+4. Ensure `max_wal_size` is configured for adequate WAL LSN lifetime.
+
+    Set the `max_wal_size` value large enough that production traffic is generating mostly timed checkpoints and not requested checkpoints based on WAL size.
+
+    The streaming migration process also requires changes to be available in the WAL until they can be streamed to durable message storage in the cloud infrastructure of EDB DMS. Setting `max_wal_size` too small can affect performance. It can also interfere with the migration process by allowing Postgres LSNs to be dropped from the WAL before they can be streamed.
+
+    For more information, see this [EDB blog post on tuning `max_wal_size`](https://www.enterprisedb.com/blog/tuning-maxwalsize-postgresql) and the [Postgres WAL documentation](https://www.postgresql.org/docs/current/wal-configuration.html).
+
+#### Config validation script
+
+The EDB DMS Reader installation (packaged as `cdcreader`) comes with a helper script that validates the Postgres configuration and helps you identify any issues. After you configure the database, we recommend running the script and ensuring all checks passed.
+
+Run the script without arguments to print the usage:
+
+```shell
+/opt/cdcreader/postgresConfigValidation.sh
+```
+
+### Create new roles and grant acccess for CDC migration
+
+First, create a new role for CDC migration with `LOGIN` and `REPLICATION` abilities granted:
+
+```sql
+CREATE ROLE <MIGRATION_ROLE> WITH REPLICATION LOGIN PASSWORD '<MIGRATION_ROLE_PASSWORD>';
+```
+
+`<MIGRATION_ROLE>` needs to own the source tables to autocreate Postgres publications. Because the source tables are already owned by another role, you create a role/user that can act as the new owner and grant the specified replication group role to both the current table owner and to `<MIGRATION_ROLE>`:
+
+```sql
+CREATE ROLE <REPLICATION_GROUP>;
+GRANT <REPLICATION_GROUP> TO <MIGRATION_ROLE>;
+GRANT <REPLICATION_GROUP> TO <ORIGINAL_OWNER>;
+ALTER TABLE <TABLE_NAME> OWNER TO <REPLICATION_GROUP>
+```
+
+Where:
+
+ - `<MIGRATION_ROLE>` is the name of the Postgres role or user to use for CDC migration database access.
+ - `<ORIGINAL_OWNER>` is the original production owner of the table.
+ - `<REPLICATION_GROUP>` is the name of a role used to own the source tables to migrate for publication autocreation.
+
+### Grant usage of the source schemas to the CDC migration role
+
+To select tables in a schema, the user must grant usage on the schema in addition to granting `SELECT` on the tables of the schema. This is necessary for all source schemas containing tables to be migrated.
+
+You can grant usage on a schema using the following command:
+
+```sql
+GRANT USAGE ON SCHEMA <DB_SCHEMA> TO <MIGRATION_ROLE>;
+```
+
+### Grant `SELECT` on source tables to the CDC migration role
+
+The new `<MIGRATION_ROLE>` now has schema access, but still needs `SELECT` access to the source tables of those schemas. You can grant access across a schema
+or for each table.
+
+For an entire schema's tables, use this command:
+
+```sql
+ALTER DEFAULT PRIVILEGES IN SCHEMA <DB_SCHEMA> GRANT SELECT ON TABLES to <MIGRATION_ROLE>
+```
+
+For each table, use:
+
+```sql
+GRANT SELECT ON <TABLE_NAME> TO <MIGRATION_ROLE>
+```
+
+Where:
+ - `<DB_SCHEMA>` is the database schema name for the tables to migrate.
+ - `<MIGRATION_ROLE>` is the name of the Postgres role or user to use for CDC migration database access.
+ - `<TABLE_NAME>` is the name of a table to migrate.
+
+### Grant `CREATE` privileges on the source database to the CDC migration role
+
+Since the `pgoutput` plugin is being used, the migration user needs to be granted `CREATE` privileges on the source database in order for Debezium to be able to create publications. The `CREATE` privilege can be granted using the following command:
+
+```sql
+GRANT CREATE ON DATABASE <PG_DB_NAME> to <MIGRATION_ROLE>
+```
+
+## SSL configuration
+
+Ensure you configure your source database server to [accept SSL connections](https://www.postgresql.org/docs/current/ssl-tcp.html) to allow the EDB DMS Reader to connect to it. You must create a server certificate and a server private key, for example, with OpenSSL, to enable this configuration.
+
+## Run the config validation script
+
+Now that you have stepped through the entire configuration process, validate your Postgres configuration using the [config validation script](#config-validation-script) with the correct parameters. To illustrate, consider the following example:
+
+1. First, create an array that contains the name of all the tables that need to be migrated in <schema_name>.<table_name> format. In this example:
+
+```bash
+arr=(test1.table1 test1.table2 test1.table3 test1.table4)
+```
+
+2. Next, run the script with the necessary parameters. In this example:
+
+```bash
+PG_USERNAME=postgres PG_PASSWORD=password PG_HOST=localhost PG_PORT=5432 DB_NAME=postgres DBZ_USERNAME=debezium DBZ_PASSWORD=dbz ./postgresConfigValidation.sh "${arr[@]}"
+```
+
+You should get a response similar to the following:
+
+```
+ *** [Transporter] - Validate WAL Level
+wal_level:  logical
+[Pass] wal_level is 'logical'.
+
+ *** [Transporter] - Validate max WAL senders
+max_wal_senders: 10
+[Pass] max_wal_senders is at least 1.
+
+ *** [Transporter] - Validate max replication slots
+max_replication_slots: 10
+[Pass] max_replication_slots is at least 1.
+
+ *** [Transporter] - Validate max WAL size
+max_wal_size: 1 GB
+[Fail] max_wal_size (1 GB) is less than 8 GB
+
+ *** [Transporter] - Validate checkpoints
+checkpoints_timed: 378
+checkpoints_req: 3
+[Pass] Timed checkpoints are more frequent than requested checkpoints.
+
+ *** [Transporter] - Check debezium user role
+[Pass] User 'debezium' is present
+[Pass] User 'debezium' has replication permission
+
+ *** [Transporter] - Check SELECT privilege on the tables to be migrated
+[Pass] User debezium has select privilege on all tables to be migrated.
+
+ *** [Transporter] - Check presence of a replication slot
+[Fail] Replication slot 'debezium' is not present
+
+```
+
+!!! Note 
+In the previous example, the `max_wal_size` check failed, but the migration ran without any issues. Therefore, although this check might fail, a lower setting may be sufficient in certain use cases depending on the workload on the source database.
+
+Additionally, you can ignore the failure message related to the replication slot. This is an outdated check that is no longer required as the EDB DMS Reader automatically creates and manages the required replication slot. The check will be removed in a future version of the `postgresConfigValidation.sh` script.
+!!!
+
+## More information
+
+Your database is ready for CDC migration.
+
+For more information, see the [Debezium Postgres Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) documentation.
