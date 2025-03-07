@@ -29,8 +29,11 @@ const Search = (data) => {
   const { algoliaIndex } = useSiteMetadata();
 
   return (
-    <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
-      <Container fluid className="p-0 d-flex bg-white">
+    <Layout
+      background="white"
+      pageMeta={{ title: "Advanced Search", minDeviceWidth: 320 }}
+    >
+      <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
         <InstantSearch
           searchClient={searchClient}
           indexName={algoliaIndex}
@@ -50,7 +53,7 @@ const Search = (data) => {
             facetFilters={excludedFacets}
           />
 
-          <SideNavigation background="white">
+          <SideNavigation background="white" name="Filter">
             <AdvancedSearchFiltering />
           </SideNavigation>
 
