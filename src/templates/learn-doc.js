@@ -16,6 +16,7 @@ import {
   MainContent,
   PrevNext,
   SideNavigation,
+  BreadcrumbBar,
   TableOfContents,
   Tiles,
   TileModes,
@@ -96,20 +97,22 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
-    iconName,
-    title,
-    description,
-    katacodaPanel,
-    indexCards,
-    originalFilePath,
-    editTarget,
+    category,
     deepToC,
+    description,
+    editTarget,
+    iconName,
+    indexCards,
+    katacodaPanel,
+    originalFilePath,
     prevNext: showPrevNext,
+    title,
   } = frontmatter;
   const pageMeta = {
     title: title,
     description: description,
     path: pagePath,
+    minDeviceWidth: 320,
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
     noindex: frontmatter.noindex,
@@ -171,8 +174,8 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
+      <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} category={category}>
           <LeftNav
             navTree={navTree}
             path={mdx.fields.path}
@@ -183,14 +186,24 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent searchProduct={frontmatter.product}>
+          <BreadcrumbBar
+            category={category}
+            navTree={navTree}
+            pagePath={pagePath}
+            iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
+            product={frontmatter.product}
+            version={frontmatter.version}
+          />
+
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>
             </div>
           )}
-          <div className="d-flex justify-content-between align-items-center">
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
-            <div className="d-print-none">{editOrFeedbackButton}</div>
+            <div className="d-print-none ms-auto">{editOrFeedbackButton}</div>
           </div>
 
           {frontmatter.displayBanner ? (

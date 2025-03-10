@@ -11,11 +11,8 @@ const execAsync = util.promisify(exec);
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
@@ -178,6 +175,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
         nodes {
           id
           frontmatter {
+            category
             title
             navTitle
             description
@@ -214,6 +212,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             displayBanner
             noindex
             directoryDefaults {
+              category
               description
               prevNext
               iconName
@@ -242,6 +241,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
+
       allPublicFile {
         nodes {
           urlPath
@@ -546,6 +546,7 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type Frontmatter {
+      category: [String]
       description: String
       prevNext: Boolean
       iconName: String
@@ -597,6 +598,7 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type DirectoryDefaults {
+      category: [String]
       description: String
       prevNext: Boolean
       iconName: String
