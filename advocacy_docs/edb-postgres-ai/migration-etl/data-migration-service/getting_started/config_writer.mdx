@@ -5,3 +5,210 @@ redirects:
   - /purl/dms/configure_target
 ---
 
+## Getting credentials
+
+1.  Access the [EDB Postgres AI® Console](https://portal.biganimal.com) and log in with your EDB Postgres AI Database Cloud Service credentials.
+
+1.  Select the project where you created the database cluster.
+
+1.  Within your project, select **Migrate** > **Credentials**.
+
+1.  Select **Create Migration Credential** > **Download Credential**.
+
+1.  Unzip the credentials folder and copy it to the host where the writer is installed.
+
+## Configuring the writer
+
+1.  Open the EDB DMS writer located in `/opt/cdcwriter/run-cdcwriter.sh` and ensure you have write permissions.
+
+1.  Set the variables according to your environment and uncomment the edited lines. See [parameters](#parameters) for further guidance. The script is reproduced below.
+
+```shell
+#!/bin/bash -e
+
+### set the following environment variables:
+
+##########################################
+# Transporter Cloud Configuration        #
+##########################################
+
+# This ID is used to identify DMS Writer
+# and is specified by the user.
+#export DBCONFIG_ID=
+
+# Supported options include: appliance (the hybrid PG AI platform), aws
+#export CLOUD_PROVIDER=
+
+# This is the DMS backend service used by the Writer
+# If your CLOUD_PROVIDER is `appliance`, consult your system administrators
+# The default value supports the `aws` CLOUD_PROVIDER
+#export RW_SERVICE_HOST=https://transporter-rw-service.biganimal.com
+
+# You need to create migration credentials in EDB Postgres AI platform
+# and set these fields with the path of the credential files
+#export TLS_PRIVATE_KEY_PATH=$HOME/credentials/client-key.pem
+#export TLS_CERTIFICATE_PATH=$HOME/credentials/client-cert.pem
+#export TLS_CA_PATH=$HOME/credentials/int.crt
+#export APICURIOREQUEST_CLIENT_KEYSTORE_LOCATION=$HOME/credentials/client.keystore.p12
+#export APICURIOREQUEST_TRUSTSTORE_LOCATION=$HOME/credentials/int.truststore.p12
+#export KAFKASECURITY_CLIENT_KEYSTORE_LOCATION=$HOME/credentials/client.keystore.p12
+#export KAFKASECURITY_TRUSTSTORE_LOCATION=$HOME/credentials/int.truststore.p12
+
+##########################################
+# DMS Writer Target DB Configuration    #
+##########################################
+
+# A sample configuration to create a single postgres database connection:
+#export DBCONFIG_DATABASES_0__TYPE=POSTGRES
+#export DBCONFIG_DATABASES_0__HOSTNAME=localhost
+#export DBCONFIG_DATABASES_0__PORT=5332
+# The CATALOG is the database name
+#export DBCONFIG_DATABASES_0__CATALOG=target
+#export DBCONFIG_DATABASES_0__USERNAME=postgres
+# The password env can be set without specifying it here
+# but the env structure looks like this
+#export DBCONFIG_DATABASES_0__PASSWORD=password
+
+##############################################################################
+# DMS Writer Object storage config, only necessary for appliance/local       #
+##############################################################################
+#export AWS_ACCESS_KEY_ID=
+#export AWS_SECRET_ACCESS_KEY=
+#export AWS_REGION=
+#export AWS_CA_BUNDLE=
+#export AWS_ENDPOINT_URL_S3=
+#export BUCKET_NAME=
+
+
+##########################################
+# Optional parameters below              #
+##########################################
+
+# Configure logging
+# Generic loglevel
+#export QUARKUS_LOG_LEVEL=DEBUG
+# Loglevel for a single package
+#export QUARKUS_LOG_CATEGORY__COM_ENTERPRISEDB__LEVEL=DEBUG
+
+cd $(dirname "$0")
+java "${JAVA_OPTS}" -jar quarkus-run.jar
+```
+
+## Parameters
+
+### `DBCONFIG_ID`
+
+This is the name you assign to identify a destination. This name will later appear as a _destination_ in the **Migrate** > **Destinations** section of the EDB Postgres AI Console.
+
+Consider the following ID guidelines:
+
+- The maximum character length for the ID is 255 characters.
+- You can use lowercase and uppercase characters, numbers, underscores(_) and hyphens(-) for the ID. Other special characters are not supported.
+- The ID must be unique. The target instances cannot have the same ID.
+
+### `RW_SERVICE_HOST`
+
+Specifies the URL of the service that will host the migration. `transporter-rw-service` is always https://transporter-rw-service.biganimal.com.
+
+### `TLS_PRIVATE_KEY_PATH`
+
+Directory path to the `client-key.pem` private key you downloaded from the EDB Postgres AI Console.
+
+The HTTP client of the EDB DMS writer uses it to perform mTLS authentication with the `transporter-rw-service`.
+
+### `TLS_CERTIFICATE_PATH`
+
+Directory path to the X509 `client-cert.pem` certificate you downloaded from the EDB Postgres AI Console.
+
+The HTTP client of the EDB DMS writer uses it to perform mTLS authentication with the `transporter-rw-service`.
+
+### `TLS_CA_PATH`
+
+Directory path to the `int.cert` Certificate Authority you downloaded from the EDB Postgres AI Console.
+
+It signs the certificate configured in `TLS_CERTIFICATE_PATH`.
+
+### `APICURIOREQUEST_CLIENT_KEYSTORE_LOCATION`
+
+Directory path to the `client-keystore.p12` keystore location file you downloaded from the EDB Postgres AI Console.
+It is created from the private key and certificate configured in `TLS_PRIVATE_KEY_PATH` and `TLS_CERTIFICATE_PATH`.
+
+The Apicurio client uses it to perform mTLS authentication with the `transporter-rw-service`.
+
+### `APICURIOREQUEST_TRUSTSTORE_LOCATION`
+
+Created from the Certificate Authority configured in `TLS_CA_PATH`.
+
+The Apicurio client uses it to perform mTLS authentication with the `transporter-rw-service`.
+
+### `AWS_ACCESS_KEY_ID`
+1) If you are using AWS S3, set this value to an access key ID that has read and write permissions for the S3 bucket.
+
+2) If you are using S3-compatible storage, like MinIO, set this value to the access key for your object storage.
+
+### `AWS_SECRET_ACCESS_KEY`
+1) If you are using AWS S3, set this value to a secret access key that has read and write permissions for the specified S3 bucket.
+
+2) If you are using S3-compatible storage, like MinIO, set this value to the secret key for your object storage.
+
+### `AWS_REGION` (Optional)
+1) If you are using AWS S3, set this value to match the region specified in `AWS_ENDPOINT_URL_S3`.
+
+2) If you are using S3-compatible storage, such as MinIO, this setting is not required.
+
+### `AWS_CA_BUNDLE` (Optional)
+Set this value only if you are using a self-signed certificate for your object storage. Specify the path to the CA bundle file.
+
+This setting is not required if you are using AWS S3 or S3-compatible storage with publicly trusted certificate authorities (CAs).
+
+### `AWS_ENDPOINT_URL_S3`
+1) If you are using AWS S3, you can find the endpoint URL in the AWS documentation: [AWS S3 Endpoints](https://docs.aws.amazon.com/general/latest/gr/s3.html).
+
+2) If you are using S3-compatible storage, like MinIO, set this value according to your object storage configuration.
+
+### `BUCKET_NAME`
+Specify the name of the bucket you want to use for the migration. The bucket must be created before starting the migration.
+
+### `DBCONFIG_DATABASES`
+
+This is a list of target database information you require for the EDB DMS writer be able to read the correct target database information for the migration.
+
+You can configure the EDB DMS writer to migrate multiple databases. The `DBCONFIG_DATABASES_0__TYPE` section delimits the information for the first database. You can use `DBCONFIG_DATABASES_1__TYPE` to provide data for a second database. Add more sections to the EDB DMS writer (`DBCONFIG_DATABASES_2__TYPE`, `DBCONFIG_DATABASES_3__TYPE`) by increasing the index manually.
+
+#### `DBCONFIG_DATABASES_0__TYPE`
+
+This is the target database type. EDB DMS writer supports `POSTGRES`.
+
+#### `DBCONFIG_DATABASES_0__HOSTNAME`
+
+The hostname of the target database.
+
+#### `DBCONFIG_DATABASES_0__PORT`
+
+The port of the target database.
+
+#### `DBCONFIG_DATABASES_0__CATALOG`
+
+The database name in the target database server.
+
+#### `DBCONFIG_DATABASES_0__USERNAME`
+
+The database username of the target database.
+
+#### `DBCONFIG_DATABASES_0__PASSWORD`
+
+The password for the database username of the target database.
+
+
+## Running the EDB DMS Writer
+
+1.  Start the migration:
+
+    ```shell
+    cd /opt/cdcwriter
+    ./run-cdcwriter.sh
+    ```
+
+1.  Go to the [EDB Postgres AI Console](https://portal.biganimal.com), and verify that a destination with the `DBCONFIG_ID` name is displayed in **Migrate** > **Destinations**.
+
+You can select this destination for your [migration](create_migration).
