@@ -25,7 +25,11 @@ export { default as PrevNext } from "./prev-next";
 export { default as PurlAnchor } from "./purl-anchor";
 export { default as SearchNavigationLinks } from "./search-navigation-links";
 export { default as SearchNavigation } from "./search-navigation";
-export { default as SideNavigation, BreadcrumbBar } from "./side-navigation";
+export {
+  default as SideNavigation,
+  BreadcrumbBar,
+  CategoryList,
+} from "./side-navigation";
 export { default as StubCards } from "./stub-cards";
 export { default as TableOfContents } from "./table-of-contents";
 export { default as TabContainer, Tab } from "./tab-container";

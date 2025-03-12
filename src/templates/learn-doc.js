@@ -17,6 +17,7 @@ import {
   PrevNext,
   SideNavigation,
   BreadcrumbBar,
+  CategoryList,
   TableOfContents,
   Tiles,
   TileModes,
@@ -94,11 +95,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { mdx } = data;
   const { fields, tableOfContents } = data.mdx;
-  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
-    pageContext;
+  const { path: pagePath } = fields;
+  const { frontmatter, productVersions, navTree, prevNext } = pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
-    category,
     deepToC,
     description,
     editTarget,
@@ -118,7 +118,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
     productVersions,
     noindex: frontmatter.noindex,
   };
-  const { path } = fields;
   const fileUrlSegment = getRelativeFilePathFromPageAbsolutePath(
     mdx.fileAbsolutePath,
   );
@@ -129,7 +128,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
 
-  const sections = buildSections(navTree, path);
+  const sections = buildSections(navTree, pagePath);
 
   // newtoc will be passed as the toc - this will blend the existing toc with the new sections
   var newtoc = [];
@@ -176,10 +175,9 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink} category={category}>
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} navTree={navTree}>
           <LeftNav
             navTree={navTree}
-            path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
             product={frontmatter.product}
@@ -188,7 +186,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
         </SideNavigation>
         <MainContent searchProduct={frontmatter.product}>
           <BreadcrumbBar
-            category={category}
             navTree={navTree}
             pagePath={pagePath}
             iconName={iconName}
@@ -206,6 +203,12 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <h1 className="balance-text">{title}</h1>
             <div className="d-print-none ms-auto">{editOrFeedbackButton}</div>
           </div>
+
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : ""}
+          />
 
           {frontmatter.displayBanner ? (
             <div className="alert alert-warning mt-3" role="alert">
@@ -236,6 +239,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
+                <CategoryList navTree={navTree} pagePath={pagePath} />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
