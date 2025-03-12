@@ -17,6 +17,7 @@ import {
   PrevNext,
   SideNavigation,
   BreadcrumbBar,
+  CategoryList,
   TableOfContents,
   Tiles,
   TileModes,
@@ -142,7 +143,7 @@ const Section = ({ section }) => (
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
-  const { path, mtime, depth } = fields;
+  const { path: versionedPath, mtime, depth } = fields;
   const {
     frontmatter,
     pagePath,
@@ -156,12 +157,11 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(
     versions,
     pageContext.pathVersions,
-    path,
+    versionedPath,
   );
-  const { product, version } = getProductAndVersion(path);
+  const { product, version } = getProductAndVersion(versionedPath);
 
   const {
-    category,
     deepToC,
     description,
     editTarget,
@@ -227,10 +227,10 @@ const DocTemplate = ({ data, pageContext }) => {
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
       <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink} category={category}>
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} navTree={navTree}>
           <LeftNav
             navTree={navTree}
-            path={path}
+            versionedPath={versionedPath}
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
@@ -242,7 +242,6 @@ const DocTemplate = ({ data, pageContext }) => {
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>
           <BreadcrumbBar
-            category={category}
             navTree={navTree}
             pagePath={pagePath}
             versionArray={versionArray}
@@ -282,6 +281,12 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : ""}
+          />
+
           {navTree.displayBanner ? (
             <div
               className="alert alert-warning mt-3"
@@ -317,6 +322,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
+                <CategoryList navTree={navTree} pagePath={pagePath} />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
