@@ -1,0 +1,126 @@
+---
+title: Using Nvidia NIM model in your environment
+navTitle: In your environment
+description: Learn how to use Nvidia NIM models in your environment, locally or in your private cloud.
+---
+
+To use a Nvidia NIM that is hosted in your own environemtn, you first need a instance of the model. For this tutorial, we will show how to configure an AWS hosted instance with the Nvidia NIM model. In this tutorial, we will use the Nvidia NIM model llama3-8b-instruct.
+
+## Prerequisites
+
+* A system capable of running Nvidia CUDA Toolkit. We recommend, for this tutorial, using an **EC2 g5.8xlarge instance** with **1024 GB of gp3 storage** running **Ubuntu 24.04 LTS**.
+* An Nvidia NGC account.
+
+## Configuring the system
+
+### 1. Install Nvidia CUDA Toolkit
+
+Download and install the CUDA Toolkit from [Nvidia's official page](https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_local).
+
+### 2. Install Docker
+
+If your system does not have Docker installed, download and install docker.
+Instructions for Ubuntu are [here](https://docs.docker.com/engine/install/ubuntu/).
+Instructions for [other Linux platforms are available](https://docs.docker.com/engine/install/) too.
+
+### 3. Generate an NGC API Key
+
+Obtain an API key from [Nvidia NGC](https://org.ngc.nvidia.com/setup/api-key). This key will be referred to as the NGC API KEY in the following steps.
+
+Login to the NGC container registry:
+
+```shell
+docker login nvcr.io
+```
+
+Use the following credentials:
+
+* Username: `$oauthtoken`
+* Password: `<NGC API KEY>`
+
+### 4. Install Nvidia NGC CLI
+
+Download and install the Nvidia NGC CLI from [here](https://org.ngc.nvidia.com/setup/installers/cli).
+
+### 5. Run the NIM Model
+
+Save the following script as a shell script and execute it (more information can be found from [Nvidia's documentation](https://docs.nvidia.com/nim/large-language-models/latest/getting-started.html#serving-models-from-local-assets)). Remember to substitute the `<NGC API KEY>` with the API key you generated:
+
+```shell
+# Choose a container name
+export CONTAINER_NAME=Llama3-8B-Instruct
+NGC_API_KEY="<NGC API KEY>"
+# Define the repository and image
+Repository=nim/meta/llama3-8b-instruct
+export IMG_NAME="nvcr.io/${Repository}:latest"
+# Set local cache path
+export LOCAL_NIM_CACHE=~/.cache/nim
+mkdir -p "$LOCAL_NIM_CACHE"
+# Start the LLM NIM container
+docker run -it --rm --name=$CONTAINER_NAME \
+--runtime=nvidia \
+--gpus all \
+--shm-size=16GB \
+-e NGC_API_KEY=$NGC_API_KEY \
+-v "$LOCAL_NIM_CACHE:/opt/nim/.cache" \
+-u $(id -u) \
+-p 8000:8000 \
+$IMG_NAME 
+```
+
+### 6. Test the Deployment
+
+Run the following command to verify the model is working:
+
+```shell
+curl -X POST "http://0.0.0.0:8000/v1/chat/completions" \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "meta/llama3-8b-instruct",
+        "messages": [
+        {
+            "role": "user",
+            "content": "Tell me a story"
+        }
+        ]
+    }'
+```
+
+Once you have verified the model is working, you can use it in with EDB Postgres AI Accelerator.
+
+Make a note of the public IP address of the EC2 instance, as you will need it to connect to the model from EDB Postgres AI Accelerator. This will be referred to as `<NIM_HOST>` in the following steps.
+
+## Integrating the Model with AI Accelerator
+
+### 1. Enable AI Accelerator in EDB Postgres AI
+
+With an EDB Postgres Advanced Server instance running, connect to the database and enable the AI Accelerator extension:
+
+```sql
+CREATE EXTENSION aidb CASCADE;
+```
+
+### 2. Register the Model
+
+```sql
+SELECT aidb.create_model(
+'my_nim_llm',
+'nim_completions',
+'{"model": "meta/llama-3.3-70b-instruct", "url": "http://<NIM_HOST>:8000/v1/chat/completions"}'::JSONB
+);
+```
+
+### 3. Run the Model
+
+Execute the following query to interact with the model:
+
+```sql
+SELECT aidb.decode_text('my_nim_llm', 'Tell me a short, one sentence story');
+__OUTPUT__
+                                          decode_text                                       
+    ----------------------------------------------------------------------------------------
+     As the clock struck midnight, a single tear fell from the porcelain doll's glassy eye.
+```
+
+Your output may vary. You have successfully used Nvidia NIM models via EDB’s AI Accelerator.
