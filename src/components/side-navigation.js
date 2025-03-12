@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import { useScrollRestoration } from "gatsby";
 import { DarkModeToggle, Link, Logo } from "./";
-import { slug } from "github-slugger";
 
 const DocsLink = () => (
   <Link
@@ -52,27 +51,46 @@ const SideNavigationFooter = ({ hideKBLink = false }) => (
   </ul>
 );
 
-const CategoryNav = ({ category, children, className, ...props }) => {
-  if (!category?.length && !children) return null;
-  let levelPath = "";
+const BreadcrumbList = ({ children, className }) => {
+  if (!children) return null;
+  return <ul className={`breadcrumb ${className}`}>{children}</ul>;
+};
+
+const BreadcrumbItem = ({ node }) => {
   return (
-    <ul className={`breadcrumb ${className}`} {...props}>
-      {category?.map((l) => {
-        levelPath = levelPath + "/" + slug(l);
-        return (
-          <li className="breadcrumb-item" key={levelPath}>
-            <Link to={levelPath}>{l}</Link>
-          </li>
-        );
-      })}
-      {children}
-    </ul>
+    <li className="breadcrumb-item" key={node.path}>
+      <Link to={node.path}>
+        {node.rootedTo
+          ? node.title || "TITLE NEEDED"
+          : node.navTitle || node.title || "TITLE NEEDED"}
+      </Link>
+    </li>
   );
 };
 
+function getAncestors(tree, pagePath) {
+  const stack = [];
+
+  const accumulateAncestors = (root) => {
+    if (root.path === pagePath) return true;
+
+    for (let item of root.items) {
+      if (accumulateAncestors(item)) {
+        stack.unshift(item);
+        return true;
+      }
+    }
+    return false;
+  };
+  accumulateAncestors(tree);
+  stack.unshift(tree);
+
+  return stack;
+}
+
 export default function SideNavigation({
   children,
-  category,
+  navTree,
   background = "light",
   footer = true,
   hideKBLink = false,
@@ -89,7 +107,11 @@ export default function SideNavigation({
         className="ps-3 pe-3 pb-4 flex-shrink-1 sidebar-nav-links"
         {...scrollRestoration}
       >
-        <CategoryNav category={category} className="d-none d-sm-flex" />
+        <BreadcrumbList className="d-none d-sm-flex">
+          {navTree?.ancestors?.map((a) => (
+            <BreadcrumbItem node={a} key={a.path} />
+          ))}
+        </BreadcrumbList>
         {children}
         {footer && <SideNavigationFooter hideKBLink={hideKBLink} />}
       </div>
@@ -98,7 +120,6 @@ export default function SideNavigation({
 }
 
 export function BreadcrumbBar({
-  category,
   navTree,
   pagePath,
   versionArray,
@@ -108,35 +129,49 @@ export function BreadcrumbBar({
   version,
 }) {
   const navStack = useMemo(() => {
-    const stack = [];
-
-    const accumulateAncestors = (root) => {
-      if (root.path === pagePath) return true;
-
-      for (let item of root.items) {
-        if (accumulateAncestors(item)) {
-          stack.unshift(item);
-          return true;
-        }
-      }
-      return false;
-    };
-    accumulateAncestors(navTree);
-    stack.unshift(navTree);
-    stack.pop();
-
-    return stack;
+    const stack = getAncestors(navTree, pagePath);
+    return stack.slice(0, -1);
   }, [navTree, pagePath]);
 
   return (
     <nav aria-label="breadcrumb">
-      <CategoryNav category={category} className="d-sm-none">
-        {navStack.map((item) => (
-          <li className="breadcrumb-item" key={item.path}>
-            <Link to={item.path}>{item.title}</Link>
-          </li>
+      <BreadcrumbList className="d-sm-none">
+        {navTree.ancestors?.map((a) => (
+          <BreadcrumbItem node={a} key={a.path} />
         ))}
-      </CategoryNav>
+        {navStack.map((item) => (
+          <BreadcrumbItem node={item} key={item.path} />
+        ))}
+      </BreadcrumbList>
     </nav>
+  );
+}
+
+export function CategoryList({ navTree, pagePath, className }) {
+  const categories = useMemo(() => {
+    const categories = getAncestors(navTree, pagePath).at(-1)?.categories;
+    // rooted "ancestors" are also always categories
+    // so only render categories if there are multiple categories or no ancestors
+    if (categories?.length > 1 || !navTree.ancestors) return categories;
+    return null;
+  }, [navTree, pagePath]);
+
+  return (
+    categories && (
+      <nav aria-label="Related Categories" className={className}>
+        <div className="mb-2 fw-bold text-muted text-uppercase small">
+          Related Categories:
+        </div>
+        <ul className="list-unstyled d-flex flex-wrap">
+          {categories.map((category) => (
+            <li key={category.path} className="me-4">
+              <Link to={category.path} className="d-block py-2 align-middle">
+                {category.title}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
   );
 }

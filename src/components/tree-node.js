@@ -35,7 +35,7 @@ const TreeNode = ({ node, path, hideIfEmpty }) => {
       <div className="d-flex align-items-center">
         <Link
           to={node.path}
-          className={`d-inline-block py-1 align-middle lh-12 ${node.childCount ? "section-title" : ""} ${node.categoryChild ? "category-child" : ""} ${
+          className={`d-inline-block py-1 align-middle lh-12 ${node.childCount ? "section-title" : ""} ${node.rootedTo ? "transplanted-child" : ""} ${
             path === node.path ? "active fw-bold text-dark" : ""
           }`}
         >
