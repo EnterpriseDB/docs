@@ -237,48 +237,13 @@ const Page = () => {
               </BannerWideCardLink>
             </BannerWideCard>
             <BannerSubCard
-              iconName={iconNames.CONTROL}
-              headingText="Console"
-              to="/edb-postgres-ai/console"
-            >
-              <BannerCardLink to="/edb-postgres-ai/console/quickstart">
-                Quick Start
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/using">
-                Using EDB Postgres AI
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/estate">
-                Estate and Agents
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/console/estate/integrating/">
-                Integrating into Estate
-              </BannerCardLink>
-            </BannerSubCard>
-
-            <BannerSubCard
-              iconName={iconNames.CLOUD_DBA}
-              headingText="Cloud Service"
-              to="/edb-postgres-ai/cloud-service"
-            >
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/getting_started">
-                Getting started
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/using_cluster">
-                Using your cluster
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
-                Supported configurations
-              </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/cloud-service/managing_your_cluster/">
-                Managing your cluster
-              </BannerCardLink>
-            </BannerSubCard>
-
-            <BannerSubCard
               iconName={iconNames.DATABASE}
               headingText="Databases"
               to="/edb-postgres-ai/databases"
             >
+              <BannerCardLink to="/edb-postgres-ai/databases/postgres_distributions">
+                Choosing your Postgres
+              </BannerCardLink>
               <BannerCardLink to="/epas/latest">
                 EDB Postgres Advanced Server
               </BannerCardLink>
@@ -305,8 +270,17 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
                 Quick Start
               </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
+                External Tables
+              </BannerCardLink>
+
               <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
                 Reference
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/functions/">
+                Functions
               </BannerCardLink>
             </BannerSubCard>
             <BannerSubCard
@@ -317,11 +291,54 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
                 AI Accelerator Overview
               </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
+                AI Accelerator Getting Started
+              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
                 About Pipelines
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
                 Get Started with Pipelines
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
+                PGvector
+              </BannerCardLink>
+            </BannerSubCard>
+            <BannerSubCard
+              iconName={iconNames.CONTROL}
+              headingText="Console"
+              to="/edb-postgres-ai/console"
+            >
+              <BannerCardLink to="/edb-postgres-ai/console/quickstart">
+                Quick Start
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/using">
+                Using EDB Postgres AI
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate">
+                Estate and Agents
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate/integrating/">
+                Integrating into Estate
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.CLOUD_DBA}
+              headingText="Cloud Service"
+              to="/edb-postgres-ai/cloud-service"
+            >
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/getting_started">
+                Getting Started
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/using_cluster">
+                Using your Cluster
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/references">
+                Supported Configurations
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/cloud-service/managing_your_cluster/">
+                Managing your Cluster
               </BannerCardLink>
             </BannerSubCard>
 
@@ -338,6 +355,9 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/migration_toolkit/latest">
                 Migration Toolkit
+              </BannerCardLink>
+              <BannerCardLink to="/migrating/oracle/">
+                Migration Handbook
               </BannerCardLink>
             </BannerSubCard>
 
