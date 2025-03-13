@@ -138,23 +138,32 @@ const BannerCardLink = ({ to, className, children }) => (
   </Link>
 );
 
-const BannerIconDivider = ({ iconName, headingText }) => (
-  <div>
-    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
-      <Icon iconName={iconName} width={20} height={20} />
-      &nbsp;
+const BannerDivider = ({ headingText, iconName = "", toUrl = "" }) => {
+  const content = (
+    <>
+      {iconName && (
+        <>
+          <Icon iconName={iconName} width={20} height={20} /> &nbsp;
+        </>
+      )}
       {headingText}
-    </span>
-  </div>
-);
+    </>
+  );
+  const styles =
+    "fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1";
 
-const BannerDivider = ({ headingText }) => (
-  <div>
-    <span className="fw-bold text-light bg-secondary bg-gradient text-uppercase py-1 px-2 small d-block col-12 mx-1">
-      {headingText}
-    </span>
-  </div>
-);
+  return (
+    <div>
+      {toUrl ? (
+        <Link to={toUrl} className={styles}>
+          {content}
+        </Link>
+      ) : (
+        <span className={styles}>{content}</span>
+      )}
+    </div>
+  );
+};
 
 const Page = () => {
   return (
@@ -383,12 +392,13 @@ const Page = () => {
           <BannerWideSubCard
             iconName={iconNames.TOOLBOX}
             headingText="Platforms and Tools"
-            to="/edb-postgres-ai/platforms-and-tools"
+            to="/edb-postgres-ai/platforms-and-tools/"
             className="primary"
           >
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.KUBERNETES}
               headingText="Kubernetes"
+              toUrl="/edb-postgres-ai/platforms-and-tools/kubernetes/"
             />
 
             <BannerWideLink to="/postgres_distributed_for_kubernetes/latest/">
@@ -411,9 +421,10 @@ const Page = () => {
               CloudNativePG
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.CONTROL}
               headingText="Management and Monitoring"
+              toUrl="/edb-postgres-ai/platforms-and-tools/management/"
             />
 
             <BannerWideLink to="/pem/latest">
@@ -431,9 +442,10 @@ const Page = () => {
               Postgres Workload Report
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.SECURITY}
               headingText="Security"
+              toUrl="/edb-postgres-ai/platforms-and-tools/security/"
             />
 
             <BannerWideLink to="/tde/latest">
@@ -443,7 +455,7 @@ const Page = () => {
               EDB LDAP Sync
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.INSTANCES}
               headingText="Automation"
             />
@@ -452,9 +464,10 @@ const Page = () => {
               Trusted Postgres Architect
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.HIGH_AVAILABILITY}
               headingText="High Availability"
+              toUrl="/edb-postgres-ai/platforms-and-tools/high-availability/"
             />
 
             <BannerWideLink to="/pgd/latest">
@@ -476,9 +489,10 @@ const Page = () => {
 
             <BannerWideLink to="/efm/latest">Failover Manager</BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.BACKUP}
               headingText="Backup and Recovery"
+              toUrl="/edb-postgres-ai/platforms-and-tools/backup/"
             />
 
             <BannerWideLink to="/supported-open-source/barman/">
@@ -488,9 +502,10 @@ const Page = () => {
               pgBackRest
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.MIGRATION}
               headingText="Migration"
+              toUrl="/migrating/"
             />
 
             <BannerWideLink to="/migrating/oracle">
@@ -503,9 +518,10 @@ const Page = () => {
               Replication Server
             </BannerWideLink>
 
-            <BannerIconDivider
+            <BannerDivider
               iconName={iconNames.CONNECT}
               headingText="Connection Poolers"
+              toUrl="/edb-postgres-ai/platforms-and-tools/integration/#connection-poolers"
             />
 
             <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
@@ -526,7 +542,7 @@ const Page = () => {
               </BannerWideLink> */}
             </BannerWideQuickLinks>
 
-            <BannerDivider headingText="Extensions" />
+            <BannerDivider headingText="Extensions" toUrl="/pg_extensions/" />
 
             <BannerWideLink to="/postgis/latest/">PostGIS</BannerWideLink>
 
@@ -574,7 +590,7 @@ const Page = () => {
               EDB SPL Check
             </BannerWideLink>
 
-            <BannerDivider headingText="Tools" />
+            <BannerDivider headingText="Tools" toUrl="/tools" />
 
             <BannerWideLink to="/tools/edb_sqlpatch">
               EDB SQL Patch
