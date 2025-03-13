@@ -105,4 +105,8 @@ export const products = {
     name: "EDB Data Migration Service",
     iconName: IconNames.EDB_TRANSPORTER,
   },
+  pgdsx: {
+    name: "EDB Postgres Distributed SX",
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
 };
