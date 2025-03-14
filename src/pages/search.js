@@ -29,7 +29,10 @@ const Search = (data) => {
   const { algoliaIndex } = useSiteMetadata();
 
   return (
-    <Layout background="white" pageMeta={{ title: "Advanced Search" }}>
+    <Layout
+      background="white"
+      pageMeta={{ title: "Advanced Search", path: "/search/" }}
+    >
       <Container fluid className="p-0 d-flex bg-white">
         <InstantSearch
           searchClient={searchClient}

@@ -842,10 +842,14 @@ async function removeCompilationHashes(reporter) {
   const generatedHTML = await globby([
     path.join(__dirname, "/public/**/*.html"),
   ]);
+  const pageNames = (await globby([path.join(__dirname, "/src/pages/*")])).map(
+    (p) => "/" + path.basename(p).replace(/\..+$/, "") + "/",
+  );
   const hashPattern = /window\.___webpackCompilationHash="[^"]+"/;
   const hashReplace = 'window.___webpackCompilationHash=""';
-  const pagePathPattern = /window\.pagePath="[^"]+\/"/;
-  const pagePathReplace = 'window.pagePath=""';
+  const pagePathPattern = /(?<=window\.pagePath=")([^"]+\/)/;
+  const pagePathReplace = (match, pagePath) =>
+    pageNames.includes(pagePath) ? pagePath : "";
   hashTimer.total = generatedHTML.length;
   const chunkSize = 100;
   for (let i = 0; i < generatedHTML.length; i += chunkSize) {
