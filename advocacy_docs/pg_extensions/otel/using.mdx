@@ -5,6 +5,20 @@ navTitle: Using
 
 The OTEL extension allows metrics to be sent through the OpenTelemetry (OTEL) protocol.
 
+
+## OTEL GUCs
+
+The following GUC variables are available in OTEL:
+
+| Variable                       | Description | Unit | Default | Minimum value |                                                                                                                                                                                                                                                |
+|--------------------------------|------------------------------------------------------------------------------------------------|
+| `edb_otel.edb_otel_endpoint`   | Specifies the OTEL endpoint URL |
+| `edb_otel.interval`            | Interval between two consecutive exports. It translates to the opentelemetry metric reader parameter `exportIntervalMillis`.| Milliseconds | 2 seconds | 1 second|  
+| `edb_otel.timeout`             | Specifies how long the export can run before it's cancelled. It translates to the opentelemetry metric reader parameter `exportTimeoutMillis`.| Milliseconds |500 milliseconds | 100 milliseconds|
+| `edb_otel.worker_nap_time`     | Duration of background worker sleep time before it checks for metrics in the queue and processes them. | Milliseconds | 2 seconds | 1 second |
+| `edb_otel.metrics_queue_size`  | Interval between two consecutive exports. This is the maximum size of the metrics queue. If the queue reaches this size, any subsequent metrics are dropped until the queue is cleared while processing the metrics inside it. | 100 | 100|
+
+
 ## OTEL functions
 
 The following functions are available in OTEL:
@@ -50,178 +64,3 @@ Start a new trace named 'tracefortestuser', for user with OID 0011, on database 
   SELECT sp_activate(tracefortestuser,0011,134,25,10000,30);
   ```
 
-
-## `sp_deactivate`
-
-Use this function to stop a trace for the given trace_id.  The function will return true on success.
-```sql
-sp_deactivate(
-	OUT trace_id         text,
-)
-```
-
-| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
-|--------------------|-----------------|------------------------------------------|
-| `trace_id`         | Input           | The return value of the sp_activate function.|
-
-
-#### Example:
-
-Stop a trace with trace_id 10:
-
-  ```sql
-  SELECT sp_deactivate(10);
-  ```
-
-## `sp_active_traces`
-
-Use this function to show the details of active traces.
-
-```sql
-sp_active_traces(
-	OUT trace_id         text,
-	OUT owner            oid,
-	OUT start_time       timestamptz,
-	OUT max_log_size     int4,
-	OUT curr_log_size    int4,
-	OUT log_min_duration int4,
-	OUT running_queries  int4,
-	OUT users            oidvector,
-	OUT databases        oidvector
-)
-```
-
-| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
-|--------------------|-----------------|----------------------------------------------------------------------------------------------------------------|
-| `trace_id`         | Output           | ID of the trace|
-| `owner`            | Output           | Owner of the trace|  
-| `start_time`       | Output           | Starting time of the trace|
-| `max_log_limit`    | Output           | Maximum trace size in MB|
-| `max_log_size`     | Output           | Maximum logged trace size in MB|
-| `curr_log_size`    | Output           | Currently logged trace file size in MB| 
-| `log_min_duration` | Output           | Minimum duration criteria for logging| 
-| `running_queries`  | Output           | Run the trace for the given number of time interval. NULL suggests no limit. Interval must be a positive value.| 
-| `users`            | Output           | List of User OID(s)| 
-| `databases`        | Output           | List of database OID(s)| 
-
-
-#### Example:
-
-```sql
-SELECT sp_active_traces()
-```
-For superusers:  List down all the active trace(s).
-For non-superusers:  List down the active trace(s) initiated by them.
-
-
-## `sp_traces_list`
-
-Use this function to list the details of all traces.
-
-```sql
-sp_traces_list(
-	OUT trace_id    text,
-	OUT comments    text,
-	OUT start_time  timestamptz,
-	OUT owner       oid,
-	OUT users       oidvector,
-	OUT databases   oidvector,
-	OUT max_size    int4,
-	OUT end_time    timestamptz,
-	OUT finish_time timestamptz,
-	OUT status      int4,
-	OUT version     float8
-)
-```
-
-| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
-|--------------------|-----------------|----------------------------------------------------------------------------------------------------------------|
-| `trace_id`         | Output          | ID of the trace|
-| `comments`         | Output          | Description that was set by user at the time of trace activation|
-| `start_time`       | Output          | Starting time of the trace|
-| `owner`            | Output          | Owner of the trace| 
-| `users`            | Output          | List of User OID(s)| 
-| `databases`        | Output          | List of database OID(s)|  
-| `max_size`         | Output          | Limit of the maximum trace size in MB|
-| `end_time`         | Output          | The time at which sp_deactivate() was called or scheduled to stop.|
-| `finish_time`      | Output          | The time at which the trace actually stopped.| 
-| `status`           | Output          | 0: Unknown status (Server should have restared), 1. Active, 2. Stopped, 3. Max size exceeded, 4. Time limit exceeded | 
-| `version`          | Output          | Version of the trace.  3 - TEXT, 4 - JSON.  Change with the  "format_options" GUC: [EXPLAIN_FORMAT_TEXT,EXPLAIN_FORMAT_JSON] | 
-
-
-#### Example:
-
-```sql
-SELECT sp_traces_list()
-```
-For superusers:  List down all the active trace(s).
-For non-superusers:  List down the active trace(s) initiated by them.
-
-
-## `sp_load_trace`
-
-Use this function to load all the trace files of a particular trace_id into a temporary table named `_sp_tmp_tbl_sql_profiler`. Returns true on successful loading of the trace.
-
-```sql
-sp_load_trace(
-	IN trace_id  text,
-    IN refresh   bool
-)
-```
-
-| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
-|--------------------|-----------------|------------------------------------------|
-| `trace_id`         | Input           | ID of the trace|
-| `refresh` TRUE     | Input           | All the temp table data will be removed from the temp table for that particular trace_id, and then reload the data from scratch.|
-| `refresh`FALSE     | Input           | The trace files will be read from the position from where it was successfully loaded last time.|
-
-
-#### Example:
-
-Load the trace files for trace_id 10, removing the temp table data for trace_id 10, and reload it from scratch:
-
-```sql
-SELECT sp_load_trace(10, true)
-```
-
-
-## `sp_cleanup`
-
-Use this function to permanently remove a trace. Returns true on successful removal of the trace.
-
-```sql
-sp_cleanup(
-	IN trace_id  text,
-    IN remove_active   bool
-)
-```
-
-| Parameter(s)       | Input or output | Description                                                                                                                                                                                                                                                   |
-|--------------------|-----------------|------------------------------------------|
-| `trace_id`         | Input           | ID of the trace|
-| `remove_active` TRUE      | Input    | Suggests you are not accidentally removing the active trace.|
-| `remove_active` FALSE     | Input    | Results in an error if the given trace is still active.|
-
-
-#### Example:
-
-Permanently remove the trace files for trace_id 10, ensusring that trace_id 10 is not the active trace:
-
-```sql
-SELECT sp_cleanup(10, true)
-```
-
-## `sp_profiler_version`
-
-Use this function to show the current version of OTEL. 
-
-```sql
-sp_profiler_version()
-```
-#### Example:
-
-Show the current version of OTEL:
-
-  ```sql
-  SELECT sp_profiler_version();
-  ```
