@@ -1,0 +1,310 @@
+---
+navTitle: Commit scopes
+title: Commit scopes
+indexdepth: 4
+refprefix: cs
+rootisheading: false
+deepToC: true
+---
+
+Commit scopes are rules that determine how transaction commits and conflicts are handled within a PGD system. You can read more about them in [Commit Scopes](/pgd/latest/commit-scopes/).
+
+You can manipulate commit scopes using the following functions:
+
+-   [`bdr.create_commit_scope`](/pgd/latest/reference/functions#bdrcreate_commit_scope)
+-   [`bdr.alter_commit_scope`](/pgd/latest/reference/functions#bdralter_commit_scope)
+-   [`bdr.drop_commit_scope`](/pgd/latest/reference/functions#bdrdrop_commit_scope)
+
+## Commit scope syntax
+
+The overall grammar for commit scope rules is composed as follows:
+
+```
+commit_scope:
+    commit_scope_operation [AND ...]
+
+commit_scope_operation:
+    commit_scope_group confirmation_level commit_scope_kind
+
+commit_scope_target:
+    { (node_group [, ...])
+      | ORIGIN_GROUP }
+
+commit_scope_group:
+{ ANY num [NOT] commit_scope_target
+  | MAJORITY [NOT] commit_scope_target
+  | ALL [NOT] commit_scope_target }
+
+confirmation_level:
+    [ ON { received|replicated|durable|visible } ]
+
+commit_scope_kind:
+{ GROUP COMMIT [ ( group_commit_parameter = value [, ... ] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value [, ... ] ) TO commit_scope_degrade_operation ]
+  | CAMO [ DEGRADE ON ( degrade_on_parameter = value [, ... ] ) TO ASYNC ]
+  | LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
+  | SYNCHRONOUS COMMIT [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ] }
+
+commit_scope_degrade_operation:
+   commit_scope_group confirmation_level commit_scope_kind
+
+```
+
+Where `node_group` is the name of a PGD data node group. 
+ 
+### commit_scope_degrade_operation
+
+The `commit_scope_degrade_operation` is either the same commit scope kind with a less restrictive commit scope group as the overall rule being defined, or is asynchronous (`ASYNC`). 
+
+For instance, [you can degrade](/pgd/latest/commit-scopes/degrading/) from an `ALL SYNCHRONOUS COMMIT` to a `MAJORITY SYNCHRONOUS COMMIT` or a `MAJORITY SYNCHRONOUS COMMIT` to an `ANY 3 SYNCHRONOUS COMMIT` or even an `ANY 3 SYNCHRONOUS COMMIT` to an `ANY 2 SYNCHRONOUS COMMIT`. You can also degrade from `SYNCHRONOUS COMMIT` to `ASYNC`. However, you cannot degrade from `SYNCHRONOUS COMMIT` to `GROUP COMMIT` or the other way around, regardless of the commit scope groups involved. 
+
+It is also possible to combine rules using `AND`, each with their own degradation clause:
+
+```
+ALL ORIGIN_GROUP SYNCHRONOUS COMMIT DEGRADE ON (timeout = 10s) TO MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT AND ANY 1 NOT ORIGIN_GROUP SYNCHRONOUS COMMIT DEGRADE ON (timeout = 20s) TO ASYNC
+```
+
+## Commit scope targets
+
+### ORIGIN_GROUP
+
+Instead of targeting a specific group, you can also use `ORIGIN_GROUP`, which dynamically refers to the bottommost group from which a transaction originates. Therefore, if you have a top level group, `top_group`, and two subgroups as children, `left_dc` and `right_dc`, then adding a commit scope like:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'top_level_group',
+    rule := 'MAJORITY ORIGIN_GROUP SYNCHRONOUS COMMIT',
+    wait_for_ready := true
+);
+```
+
+would mean that for transactions originating on a node in `left_dc`, a majority of the nodes of `left_dc` would need to confirm the transaction synchronously before the transaction is committed. Moreover, the same rule would also mean that for transactions originating from a node in `right_dc`, a majority of nodes from `right_dc` are required to confirm the transaction synchronously before it is committed. This saves the need to add two seperate rules, one for `left_dc` and one for `right_dc`, to the commit scope.
+
+## Commit scope groups
+
+### ANY
+
+Example: `ANY 2 (left_dc)`
+
+A transaction under this commit scope group will be considered committed after any two nodes in the `left_dc` group confirm they processed the transaction.
+
+### ANY NOT
+
+Example: `ANY 2 NOT (left_dc)`
+
+A transaction under this commit scope group will be considered committed if any two nodes that aren't in the `left_dc` group confirm they processed the transaction.
+
+### MAJORITY
+
+Example: `MAJORITY (left_dc)`
+
+A transaction under this commit scope group will be considered committed if a majority of the nodes in the `left_dc` group confirm they processed the transaction.  
+
+### MAJORITY NOT
+
+Example: `MAJORITY NOT (left_dc)`
+
+A transaction under this commit scope group will be considered committed if a majority of the nodes that aren't in the `left_dc` group confirm they processed the transaction.
+
+### ALL
+
+Example: `ALL (left_dc)`
+
+A transaction under this commit scope group will be considered committed if all of the nodes in the `left_dc` group confirm they processed the transaction. 
+
+When `ALL` is used with [`GROUP COMMIT`](#group-commit), the [`commit_decision`](#commit_decision-settings) setting must be set to `raft` to avoid reconciliation issues.
+
+### ALL NOT
+
+Example: `ALL NOT (left_dc)`
+
+A transaction under this commit scope group will be considered committed if all of the nodes that aren't in the `left_dc` group confirm they processed the transaction.
+
+## Confirmation level
+
+The confirmation level sets the point in time when a remote PGD node confirms that it reached a particular point in processing a transaction. 
+
+### ON received
+
+A transaction is confirmed immediately after receiving it, prior to starting the local application.
+
+### ON replicated
+
+A transaction is confirmed after applying changes of the transaction but before flushing them to disk.
+
+### ON durable
+
+A transaction is confirmed after all of its changes are flushed to disk.
+
+### ON visible
+
+This is the default visibility. A transaction is confirmed after all of its changes are flushed to disk and it's visible to concurrent transactions.
+
+## Commit Scope kinds
+
+More details of the commit scope kinds and details of their parameters:
+
+-   [Synchronous Commit](#synchronous-commit)
+-   [Group Commit](#group-commit)  
+-   [CAMO (Commit At Most Once)](#camo)  
+-   [Lag Control](#lag-control) 
+
+
+!!!Note Parameter values
+
+Specify Boolean, enum, int, and interval values using the [Postgres GUC parameter value conventions](https://www.postgresql.org/docs/current/config-setting.html#CONFIG-SETTING-NAMES-VALUES). 
+!!!
+
+## SYNCHRONOUS COMMIT
+
+```
+SYNCHRONOUS COMMIT [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
+```
+
+### DEGRADE ON parameters
+
+| Parameter          | Type     | Default | Description                                                                                                  |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
+| `require_write_lead` | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.                   |
+
+These set the conditions on which the commit scope rule will degrade to a less restrictive mode of operation. 
+
+### commit_scope_degrade_operation
+
+The `commit_scope_degrade_operation` must be `SYNCHRONOUS COMMIT` with a less restrictive commit scope group—or must be asynchronous (`ASYNC`).
+
+## GROUP COMMIT
+
+Allows commits to be confirmed by a consensus of nodes, controls conflict resolution settings, and, like [`SYNCHRONOUS COMMIT`](#synchronous-commit), has optional rule-degredation parameters.
+
+```
+GROUP COMMIT [ ( group_commit_parameter = value [, ...] ) ] [ ABORT ON ( abort_on_parameter = value ) ] [ DEGRADE ON (degrade_on_parameter = value ) TO commit_scope_degrade_operation ]
+```
+
+### GROUP COMMIT parameters
+
+| Parameter              | Type    | Default   | Description                                                                                                                         |
+| ---------------------- | ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `transaction_tracking` | Boolean | Off/False | Specifies whether to track status of transaction. See [transaction_tracking settings](#transaction_tracking-settings).              |
+| `conflict_resolution`  | enum    | async     | Specifies how to handle conflicts. (`async`\|`eager` ).  See [conflict_resolution settings](#conflict_resolution-settings).         |
+| `commit_decision`      | enum    | group     | Specifies how the COMMIT decision is made. (`group`\|`partner`\|`raft`). See [commit_decision settings](#commit_decision-settings). |
+
+### ABORT ON parameters
+
+| Parameter            | Type     | Default | Description                                                                                                 |
+| -------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units). (0 means not set.)                                           |
+| `require_write_lead` | Boolean     | False   | CAMO only. If set, then for a transaction to switch to local (async) mode, a consensus request is required. |
+
+### DEGRADE ON parameters
+
+| Parameter          | Type     | Default | Description                                                                                                  |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation degrades. (0 means not set.) |
+| `require_write_lead` | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to degraded operation.                   |
+
+### transaction_tracking settings
+
+When set to true, two-phase commit transactions:
+
+-   Look up commit decisions when a writer is processing a PREPARE message.
+-   When recovering from an interruption, look up the transactions prepared before the interruption. When found, it then looks up the commit scope of the transaction and any corresponding RAFT commit decision. Suppose the node is the origin of the transaction and doesn't have a RAFT commit decision, and `transaction_tracking` is on in the commit scope. In that case, it periodically looks for a RAFT commit decision for this unresolved transaction until it's committed or aborted.
+
+### conflict_resolution settings
+
+The value `async` means resolve conflicts asynchronously during replication using the conflict resolution policy.
+
+The value `eager` means that conflicts are resolved eagerly during COMMIT by aborting one of the conflicting transactions. 
+
+Eager is only available with `MAJORITY` or `ALL` commit scope groups.
+
+When used with the `ALL` commit scope group, the [`commit_decision`](#commit_decision-settings) must be set to `raft` to avoid reconcilation issue.
+
+See ["Conflict resolution" in Group Commit](../commit-scopes/group-commit/#conflict-resolution).
+
+### commit_decision settings
+
+The value `group` means the preceding `commit_scope_group` specification also affects the COMMIT decision, not just durability. 
+
+The value `partner` means the partner node decides whether transactions can be committed. This value is allowed only on groups with 2 data nodes. 
+
+The value `raft` means the decision makes use of PGD's built-in Raft consensus. Once all the nodes in the selected commit scope group have confirmed the transaction, to ensure that all the nodes in the PGD cluster have noted the transaction, it is noted with the all-node Raft.
+
+This option must be used when the `ALL` commit scope group is being used to ensure no divergence between the nodes over the decision. This option may have low performance.
+
+See ["Commit decisions" in Group Commit](../commit-scopes/group-commit/#commit-decisions).
+
+### commit_scope_degrade_operation settings 
+
+The `commit_scope_degrade_operation` must be `GROUP_COMMIT` with a less restrictive commit scope group—or must be asynchronous (`ASYNC`).
+
+
+## CAMO
+
+With the client's cooperation, enables protection to prevent multiple insertions of the same transaction in failover scenarios.
+
+See ["CAMO" in Durability](../commit-scopes/camo) for more details.
+
+```
+CAMO [ DEGRADE ON ( degrade_on_parameter = value ) TO ASYNC ]
+```
+
+### DEGRADE ON parameters
+
+Allows degrading to asynchronous operation on timeout.
+
+| Parameter          | Type     | Default | Description                                                                                                  |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `timeout`            | interval | 0       | Timeout in milliseconds (accepts other units) after which operation becomes asynchronous. (0 means not set.) |
+| `require_write_lead` | Boolean  | False   | Specifies whether the node must be a write lead to be able to switch to asynchronous mode.                   |
+
+## LAG CONTROL
+
+Allows the configuration of dynamic rate-limiting controlled by replication lag.
+
+See ["Lag Control" in Durability](../commit-scopes/lag-control) for more details.
+
+```
+LAG CONTROL [ ( lag_control_parameter = value [, ... ] ) ] 
+```
+
+### LAG CONTROL parameters
+
+| Parameter          | Type     | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `max_lag_size`     | int      | 0       | The maximum lag in kB that a given node can have in the replication connection to another node. When the lag exceeds this maximum scaled by `max_commit_delay`, lag control adjusts the commit delay.                                                                                                                                                                                                         |
+| `max_lag_time`     | interval | 0       | The maximum replication lag in milliseconds that the given origin can have with regard to a replication connection to a given downstream node.                                                                                                                                                                                                                                                                |
+| `max_commit_delay` | interval | 0       | Configures the maximum delay each commit can take, in fractional milliseconds. If set to 0, it disables Lag Control. After each commit delay adjustment (for example, if the replication is lagging more than `max_lag_size` or `max_lag_time`), the commit delay is recalculated with the weight of the `bdr.lag_control_commit_delay_adjust` GUC. The `max_commit_delay` is a ceiling for the commit delay. |
+
+-   If `max_lag_size` and `max_lag_time` are set to 0, the LAG CONTROL is disabled.
+-   If `max_commit_delay` is not set or set to 0, the LAG CONTROL is disabled.
+
+The lag size is derived from the delta of the `send_ptr` of the walsender to the `apply_ptr` of the receiver.
+
+The lag time is calculated according to the following formula:
+
+```
+  lag_time = (lag_size / apply_rate) * 1000;
+```
+
+Where `lag_size` is the delta between the `send_ptr` and `apply_ptr` (as used for
+`max_lag_size`), and `apply_rate` is a weighted exponential moving average,
+following the simplified formula:
+
+```
+  apply_rate = prev_apply_rate * (1 - apply_rate_weight) +
+                ((apply_ptr_diff * apply_rate_weight) / diff_secs);
+```
+
+Where:
+
+-   `prev_apply_rate` was the previously configured `apply_rate`, before
+    recalculating the new rate.
+-   `apply_rate_weight` is the value of the GUC `bdr.lag_tracker_apply_rate_weight`.
+-   `apply_ptr_diff` is the difference between the current `apply_ptr` and
+    the `apply_ptr` at the point in time when the apply rate was last
+    computed.
+-   `diff_secs` is the delta in seconds from the last time the apply rate
+    was calculated.
+

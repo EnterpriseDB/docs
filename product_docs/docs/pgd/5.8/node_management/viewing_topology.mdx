@@ -1,0 +1,98 @@
+---
+title: Viewing PGD topology
+---
+
+
+## Listing PGD groups
+
+### Using [pgd-cli](../cli)
+
+Use the [pgd-cli](../cli) `groups list` command to list all groups in the PGD cluster:
+
+```shell
+pgd groups list
+```
+```console
+  Group Name  Parent Group Name Group Type     Nodes          
+  ---------- ----------------- --------------- -----
+  bdrgroup   bdrgroup          global          0
+  group_a    bdrgroup          data            4
+  group_b    bdrgroup          data            4    
+  group_c    bdrgroup          data            1
+  group_so   bdrgroup          subscriber-only 1
+```
+
+### Using SQL
+
+The following simple query lists all the PGD node groups of which the current
+node is a member. It currently returns only one row from
+[`bdr.local_node_summary`](/pgd/latest/reference/catalogs-visible#bdrlocal_node_summary).
+
+```sql
+SELECT node_group_name
+FROM bdr.local_node_summary;
+```
+
+You can display the configuration of each node group using a more
+complex query:
+
+```sql
+SELECT g.node_group_name
+, ns.pub_repsets
+, ns.sub_repsets
+, g.node_group_default_repset     AS default_repset
+, node_group_check_constraints    AS check_constraints
+FROM bdr.local_node_summary ns
+JOIN bdr.node_group g USING (node_group_name);
+```
+
+## Listing nodes in a PGD group
+
+### Using [pgd-cli](../cli)
+
+Use the `nodes list` command to list all nodes in the PGD cluster:
+
+```shell
+pgd nodes list
+```
+```console
+  Node Name           Group Name Node Kind       Join State Node Status
+  ------------------- ---------- --------------- ---------- -----------          
+  bdr-a1              group_a    data            ACTIVE     Up
+  bdr-a2              group_a    data            ACTIVE     Up     
+  logical-standby-a1  group_a    standby         ACTIVE     Up
+  witness-a           group_a    witness         ACTIVE     Up
+  bdr-b1              group_b    data            ACTIVE     Up
+  bdr-b2              group_b    data            ACTIVE     Up
+  logical-standby-b1  group_b    standby         ACTIVE     Up
+  witness-b           group_b    witness         ACTIVE     Up
+  witness-c           group_c    witness         ACTIVE     Up
+  subscriber-only-c1  group_so   subscriber-only ACTIVE     Up 
+```
+
+Use `grep` with the group name to filter the list to a specific group:
+
+```shell
+pgd nodes list | grep group_b
+```
+```console
+  bdr-b1             group_b  data      ACTIVE     Up        
+  bdr-b2             group_b  data      ACTIVE     Up    
+  logical-standby-b1 group_b  standby   ACTIVE     Up   
+  witness-b          group_b  witness   ACTIVE     Up  
+```
+
+### Using SQL
+
+You can extract the list of all nodes in a given node group (such as `mygroup`)
+from the [`bdr.node_summary`](/pgd/latest/reference/catalogs-visible#bdrnode_summary)` view. For example:
+
+```sql
+SELECT node_name         AS name
+, node_seq_id            AS ord
+, peer_state_name        AS current_state
+, peer_target_state_name AS target_state
+, interface_connstr      AS dsn
+FROM bdr.node_summary
+WHERE node_group_name = 'mygroup';
+```
