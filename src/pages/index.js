@@ -251,7 +251,7 @@ const Page = () => {
                 EDB Postgres Extended Server
               </BannerCardLink>
               <BannerCardLink to="/pgdsx/latest">
-                EDB Postgres Distributed SX (PGD)
+                EDB Postgres Distributed SiX (PGD)
               </BannerCardLink>
               <BannerCardLink to="/pgd/latest">
                 EDB Postgres Distributed (PGD)

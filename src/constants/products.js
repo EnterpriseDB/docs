@@ -106,7 +106,7 @@ export const products = {
     iconName: IconNames.EDB_TRANSPORTER,
   },
   pgdsx: {
-    name: "EDB Postgres Distributed SX",
+    name: "pgdsx",
     iconName: IconNames.HIGH_AVAILABILITY,
   },
 };
