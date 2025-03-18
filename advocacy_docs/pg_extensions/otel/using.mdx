@@ -12,26 +12,53 @@ The following GUC variables are available in OTEL:
 
 | Variable                       | Description | Unit | Default | Minimum value |                                                                                                                                                                                                                                                |
 |--------------------------------|------------------------------------------------------------------------------------------------|
-| `edb_otel.edb_otel_endpoint`   | Specifies the OTEL endpoint URL |
+| `edb_otel.edb_otel_endpoint`   | Specifies the OTEL endpoint URL | | | |
 | `edb_otel.interval`            | Interval between two consecutive exports. It translates to the opentelemetry metric reader parameter `exportIntervalMillis`.| Milliseconds | 2 seconds | 1 second|  
-| `edb_otel.timeout`             | Specifies how long the export can run before it's cancelled. It translates to the opentelemetry metric reader parameter `exportTimeoutMillis`.| Milliseconds |500 milliseconds | 100 milliseconds|
+| `edb_otel.timeout`             | Specifies how long the export can run before it's cancelled. It translates to the opentelemetry metric reader parameter `exportTimeoutMillis`.| Milliseconds | 500 milliseconds | 100 milliseconds|
 | `edb_otel.worker_nap_time`     | Duration of background worker sleep time before it checks for metrics in the queue and processes them. | Milliseconds | 2 seconds | 1 second |
-| `edb_otel.metrics_queue_size`  | Interval between two consecutive exports. This is the maximum size of the metrics queue. If the queue reaches this size, any subsequent metrics are dropped until the queue is cleared while processing the metrics inside it. | 100 | 100|
+| `edb_otel.metrics_queue_size`  | Interval between two consecutive exports. This is the maximum size of the metrics queue. If the queue reaches this size, any subsequent metrics are dropped until the queue is cleared while processing the metrics inside it.| MB | 100 | 100|
 
 
-## OTEL functions
+## OTEL APIs
 
-The following functions are available in OTEL:
+The following APIs are available in OTEL:
 
-- sp_activate
-- sp_deactivate
-- sp_active_traces
-- sp_traces_list
-- sp_load_trace
-- sp_cleanup
-- sp_profiler_version
+- edb_otel_report_metric
 
-## `sp_activate`
+
+## `edb_otel_report_metric`
+
+Use this function to start a new trace for a provided user and database.  You can use create a trace for any database on which OTEL was installed and configured.  You can define a trace for logging the statements against specific users and databases. You can have multiple traces logging the query statements at the same time. 
+
+```sql
+sp_activate(
+	comments character varying(100), 
+    users oidvector, 
+    databases oidvector, 
+    max_log_limit int4, 
+    log_min_duration int4, 
+    time_limit interval = NULL
+)
+```
+
+| Parameter(s)       | Input or output | Description                                                                                                                                                                       |
+|--------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `meter_name`       | Input           | A name that you want to group a set of metrics against. |
+| `metric_name`      | Input           | The name of the metric. |  
+| `metric_type`      | Input           | The type of the metric. Only the DOUBLE GAUGE type is currently supported, which is represented by the value 4. |
+| `value`            | Input           | A string representing the metric value. It will be converted to an appropriate type depending on the `metric_type`. |
+| `labels`           | Input           | A json string representing additional metadata to be associated with the metric. The maximum size is 1024. If the size is larger than 1024, that metric is silently dropped and a WARNING is emitted to the database log file. If the payload contains an invalid json, that metric is dropped and error information is logged to the log file.| 
+
+
+#### Example:
+
+  ```sql
+  SELECT edb_otel_report_metric('m1', 'foo', 4, '10', '{"dbname": "foo", "schemaname": "bar", "relname": "baz"}');
+  ```
+
+
+## ignore below this...
+## `edb_otel_report_metric`
 
 Use this function to start a new trace for a provided user and database.  You can use create a trace for any database on which OTEL was installed and configured.  You can define a trace for logging the statements against specific users and databases. You can have multiple traces logging the query statements at the same time. 
 
@@ -54,13 +81,4 @@ sp_activate(
 | `max_log_limit`    | Input           | The total size of trace should not go beyond this limit. Unit is in MB. A value of -1 implies no limit.  OTEL terminates the trace when it reaches approximately the specified value.|
 | `log_min_duration` | Input           | Log only the statements that run for at least this number of milliseconds.|
 | `time_limit`       | Input           | Run the trace for the this time interval. NULL implies no limit. Interval must be a positive value.| 
-
-
-#### Example:
-
-Start a new trace named 'tracefortestuser', for user with OID 0011, on database with OID 134, with a maximum trace log size of 25MB, for queries that run at least 10 seconds, up to 30 minutes:
-
-  ```sql
-  SELECT sp_activate(tracefortestuser,0011,134,25,10000,30);
-  ```
 
