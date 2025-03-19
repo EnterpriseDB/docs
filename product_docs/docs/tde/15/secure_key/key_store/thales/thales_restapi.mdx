@@ -5,9 +5,9 @@ description: Learn how to secure your encryption key with a Thales management ke
 deepToC: true
 ---
 
-You can configure TDE to use an external key from Thales CipherTrust Manager to wrap the data encryption key with a key from the Thales key store. This integration uses Thales REST API to allow cryptographic operations to directly connect to Thales CipherTrust Manager, bypassing other intermediate protocols.
+You can configure TDE to use an external key from Thales CipherTrust Manager to wrap the data encryption key. This integration uses Thales REST API to allow cryptographic operations by directly connecting to Thales CipherTrust Manager, bypassing other intermediate protocols.
 
-To implement this integration, EDB provides two scripts that simplify the key creation and configuration of data key encryption/decryption processes:
+To implement this integration, EDB provides two scripts that simplify processes:
 
 - `edb_tde_createkey.py` uses the REST API to help you create an AES key on CipherTrust Manager.
 
@@ -29,8 +29,8 @@ The configuration process consists in the following steps:
 
 ## Prerequisites
 
-- Ensure you have Python3 installed with `python3 --version`. If not, [install it](https://www.python.org/downloads/). 
-- Ensure your Python3 installation includes the base64 encode and decode library (it includes the library per default).
+- Ensure you have Python3 installed. You can check with `python3 --version`. Otherwise, [install it](https://www.python.org/downloads/). 
+- Ensure your Python3 installation includes the base64 encode and decode library (included by default).
 - Install the [/jq command line JSON parser](https://jqlang.org/).
 
 ## Installing the EDB TDE Thales REST API client packages
@@ -85,12 +85,38 @@ You should now have downloaded three pem files: `CSR.pem`, `key.pem` and `Certif
 
 To create an AES 256 key, you can execute the downloaded script, which ensures the necessary key configuration parameters for EDB TDE are given.
 
-1.  In Thales CipherTrust Manager, navigate to **Access Management** > **Users** and select your user. Copy the user `uid` information, which is a sequence of digits and letters, e.g. `local|285xxxfb-xxxb-4xxx-9339-2d58xxx60ae6`.
-
-1.  Execute `edb_tde_createkey.py`. Replace `key_name` in the example with an identifiable name of your choice, and add the `uid` you obtained previously to ensure the key is linked to a Thales user.
+1.  Point at the IP of the server hosting the Thales CipherTrust Manager instance: 
 
     ```shell
-    edb@edb-virtual-machine:~$ python3 edb_tde_createkey.py key_name "local|285xxxfb-xxxb-4xxx-9339-2d58xxx60ae6"
+    export SERVER_IP='44.200.166.163'
+    ```
+
+1.  Provide paths where the `Certificate.pem` and `key.pem` files are stored: 
+
+    ```shell
+    export CERTIFICATE_PATH='/home/edb/Downloads/Certificate.pem'
+    export KEY_PATH='/home/edb/Downloads/key.pem'
+    ```
+
+1.  Reference the Thales username you used to create the AES key: 
+
+    ```shell
+    export SERVER_USER='user' 
+    ```
+
+1.  Execute `edb_tde_createkey.py` to create they key. To execute it correctly, you need:
+
+    - A key name to identify your key. Replace `key_name` in the example with an identifiable name of your choice. 
+    
+    - The `uid` of the user that created the certificate. You can find the user `uid` in the Thales CipherTrust Manager, under **Access Management** > **Users**, select your user. The user `uid` information is a sequence of digits and letters, e.g. `local|285xxxfb-xxxb-4xxx-9339-2d58xxx60ae6`.
+
+    - The path to the `edb_tde_createkey.py` script installed by the packages. In RPM-based systems, the default location is `/usr/edb/tde/rest/client/edb_tde_createkey.py` and in Debian, `/usr/lib/edb/tde/rest/client/edb_tde_createkey.py`.
+
+    Replace these values in the example:
+
+    ```shell
+    python3 /usr/edb/tde/rest/client/edb_tde_createkey.py \
+      key_name "local|285xxxfb-xxxb-4xxx-9339-2d58xxx60ae6"
     __OUTPUT__
     {"id":"f3d59d0a8fce45c7bdf3311bc51c4606292def6195674cf393bda793892f23cb"
     "uri":"kylo:kylo:vault:keys:key_name-v0"
@@ -113,44 +139,34 @@ To create an AES 256 key, you can execute the downloaded script, which ensures t
     e6897"}
     ```
 
+    !!!note
+       Note down the key `id` (first line of output), as you will need it later.
+
 Alternatively, you can create a key manually using the Thales CipherTrust Manager portal.
 
 ## Integrating with TDE for encryption and decryption
 
-Next, export the encryption and decryption commands as environment variables for `initdb` to pick up later for data key wrapping and unwrapping when creating a database server.
-
-1.  Point at IP of the server hosting the Thales CipherTrust Manager instance: 
-
-    ```
-    export SERVER_IP='44.200.166.163'
-    ```
-
-1.  Provide paths where the `Certificate.pem` and `key.pem` files are stored: 
-
-    ```
-    export CERTIFICATE_PATH='/home/edb/Downloads/Certificate.pem'
-    export KEY_PATH='/home/edb/Downloads/key.pem'
-    ```
-
-1.  Reference the Thales username you user to create the AES key: 
-
-    ```
-    export SERVER_USER='admin' 
-    ```
+Next, export the encryption and decryption commands as environment variables for `initdb` to pick up when creating a TDE-enabled database server.
 
 1.  Provide an initialization vector. This can be the Thales default IV or a custom IV:
 
-    ```
+    ```shell
     export SERVER_IV='rPC3svypJzKoNaw6w7iVqw=='
     ```
 
-1.  Set the wrapping and unwrapping commands that will perform encryption and decryption. 
+1.  Set the wrapping and unwrapping commands that will perform encryption and decryption. To set them correctly, you need: 
 
-    To wrap (and unwrap) the TDE data encryption key with a the previously created Thales key, provide the `key_name` and the key `id`.
+    - The `key_name` you assigned to the key during creation.
+    
+    - The key `id`, which you can find in the output of the key creation command or look up in the Thales CipherTrust Manager portal.
 
-    ```
-    export PGDATAKEYWRAPCMD='python3 /home/edb/edb_tde_crypto.py encrypt key_name | jq -r '.ciphertext' > "%p"'
-    export PGDATAKEYUNWRAPCMD='python3 /home/edb/edb_tde_crypto.py decrypt %p  24360eab449640bebdc0b16ec1d65ef61beb363481f34638b82918064ab27ce2 | jq -r '.plaintext' | base64 -d'
+    - The path to the `edb_tde_crypto.py` script installed by the packages. In RPM-based systems, the default location is `/usr/edb/tde/rest/client/edb_tde_crypto.py`, and in Debian, `/usr/lib/edb/tde/rest/client/edb_tde_crypto.py`. 
+
+    Replace these values in the example:
+
+    ```shell
+    export PGDATAKEYWRAPCMD='python3 /usr/edb/tde/rest/client/edb_tde_crypto.py encrypt key_name | jq -r '.ciphertext' > "%p"'
+    export PGDATAKEYUNWRAPCMD='python3 /usr/edb/tde/rest/client/edb_tde_crypto.py decrypt %p  24360eab449640bebdc0b16ec1d65ef61beb363481f34638b82918064ab27ce2 | jq -r '.plaintext' | base64 -d'
     ```
 
 1.  You can now [initialize a TDE-enabled database cluster](/tde/latest/initdb_tde_options/#option---data-encryption-or--y) with `initdb --data-encryption`. TDE will fall back on the exported `PGDATAKEYWRAPCMD` and `PGDATAKEYUNWRAPCMD` commands for the wrapping and unwrapping of data encryption keys. 
