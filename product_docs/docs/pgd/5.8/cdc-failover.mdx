@@ -1,0 +1,105 @@
+---
+title: CDC Failover support
+navTitle: CDC Failover support
+description: CDC Failover support (PGD Logical Slot Failover) with EDB Postgres Advanced Server and EDB Postgres Extended Server (PGD 5.7 and later only).
+deepToC: true
+---
+
+!!!warning Availability
+This is a PGD 5.7 and later feature. It is not supported on earlier versions of PGD.
+!!!
+
+## Background
+
+Earlier versions of PGD have allowed the creation of logical replication slots on nodes that can provide a feed of the logical changes happening to the data within the database. These logical replication slots have been local to the node and not replicated. Apart from only replicating changes on the particular node, this has presented challenges when faced with node failover within the cluster. In that scenario, a consumer of the logical replication off a node which fails has no replica of the slot on another node to continue consuming from.
+
+While solutions to this can be engineered using a subscriber-only node as an intermediary, it does significantly raise the cost of logical replication.
+
+## CDC Failover support
+
+To address this need, PGD 5.7 introduces CDC Failover support. This is an optionally enabled feature which activates automatic logical slot replication across the cluster. This, in turn, allows a consumer of a logical slot’s replication to receive change data from any node when a failure occurs.
+
+### How CDC Failover works
+
+When a logical slot is created on a node with CDC Failover support enabled, the slot is replicated across the cluster. This means that the slot is available for consumption on any node in the cluster. When a node fails, the slot can be consumed from another node in the cluster. This allows for the continuation of the logical replication stream without interruption.
+
+If, though, the consumer of the slot connects to a different node in the cluster, the previous connection the consumer had will be closed by PGD. This is to ensure that the slot is not being consumed from multiple nodes at the same time. In the background, PGD is using its Raft consensus protocol to ensure that the slot is only being consumed from one node at a time; this does mean that the guarantee of only one slot being consumed at a time does not hold in split-brain scenarios.
+
+Currently CDC Failover support is a global option that is controlled by a top-group option. The `failover_slot_scope` top-group option can currently be set to (and defaults to) local which disables replication of logical slots or `global` which enables the replication of all non-temporary logical slots created in the PGD database. 
+
+Temporary logical slots will not be replicated as they have a lifetime scoped to the session that created them and will go away when that session ends.
+
+### At-least-once delivery guarantees
+
+CDC Failover support takes steps to ensure that the consumer receives all changes at least once. This is done by holding back slots until delivery has been confirmed, at which point the slot is then advanced on all nodes in an asynchronous manner. In the case of a failure on the node where the slot was being consumed, the slot would be held until the consumer connected to a node in the cluster. This would then allow the slot to progress.
+
+!!! Important  
+If a consuming application disconnects and doesn’t reconnect the slot will remain on held back on every node in the cluster. As this consumes disk and memory, it is essential that this situation is avoided; applications which consume slots must return to consuming as soon as possible.  
+!!!  
+
+### Exactly-once delivery
+
+Currently, there is no way to ensure exactly-once delivery, and we expect consuming applications to manage the discarding of previously completed transactions. 
+
+## Enabling CDC Failover support
+
+To enable CDC Failover support run the SQL command and call the [`bdr.alter_node_group_option`](/pgd/latest/reference/nodes-management-interfaces#bdralter_node_group_option) function with the following parameters:
+
+```sql
+select bdr.alter_node_group_option(<top-level group name>,
+     'failover_slot_scope',
+     'global');
+
+```
+
+Replacing `<top-level group name>` with the name of your cluster’s top level group.
+
+If you do not know the name, it is the group with a node_group_parent_id equal to 0 in `[`bdr.node_group`](/pgd/latest/reference/catalogs-visible#bdrnode_group)`. You can also use:
+
+```sql
+SELECT bdr.alter_node_group_option(
+     node_group_name,
+     'failover_slot_scope',
+     'global')
+    from bdr.node_group	
+    where node_group_parent_id=0;
+```
+
+To ensure you are setting the correct, top-level group’s option.
+
+Once enabled you can use:
+
+```sql
+SELECT pg_create_logical_replication_slot('myslot',
+                                          'test_decoding');
+```
+
+To create a new globally replicated slot.
+
+Note that logical replication slots created before the option is set to `global` will not be replicated. Only new slots will be replicated.
+
+Failover slots can also be created with the `CREATE_REPLICATION_SLOT` command on a replication connection.
+
+The status of failover slots is tracked in the [`bdr.failover_replication_slots`](/pgd/latest/reference/catalogs-visible#bdrfailover_replication_slots) table.
+
+## CDC Failover support with Postgres 17+
+
+For Postgres 17 and later, support for failover was added to allow standbys to be resumed, through an option in `pg_create_logical_replication_slot` named `failover`. This new setting requires that, no matter what the setting of `failover_slot_scope`, you must also set `failover` to `true`.
+
+```sql
+SELECT pg_create_logical_replication_slot('myslot',
+                                          'test_decoding',
+                                          failover=>true);
+```
+
+## Limitations
+
+The CDC Failover Slot support comes with certain limitations. 
+
+* CDC Failover slot support requires the latest versions of PGD (5.7+) and the latest minor releases of Postgres-Extended or EPAS (available Feb 2025\).
+* CDC Failover support is a global option and cannot be set on a per-slot basis. It is possible though, because changing the enabled status of CDC Failover does not affect previously provisioned slots, to enable it (set to `global`), create a replicated slot, then disable it (set to `local`), to create a singular replicated slot.
+* CDC Failover support is not supported on temporary slots.
+* CDC Failover support is not supported on slots created with the `failover` option set to `false`.
+* CDC Failover support works with EDB Postgres Advanced Server and EDB Postgres Extended Server only. It is not supported on community Postgres installations.  
+* Existing slots are not automatically converted into failover slots when the option is enabled.  
+* While Postgres’s built-in functions such as `pg_logical_slot_get_changes()` can be used they won’t ensure that the slot is not being decoded anywhere else and can’t update replication progress accurately across the cluster. Therefore it’s recommended not to rely on the function to receive decoded changes.
