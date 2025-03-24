@@ -2,6 +2,14 @@ import IconNames from "../components/icon/iconNames";
 
 export const updates = [
   {
+    title: "EDB Postgres Enterprise Manager 10",
+    icon: IconNames.EDB_PEM,
+    description:
+        "PEM 10 is a major release that includes a modernized user interface, support for HA cluster grouping and server tagging, redesigned dashboards for real-time metrics, the latest pgAdmin enhancements,  and advanced query analysis tools.",   
+    url: "/pem/latest/",
+    moreUrl: "/pem/latest/pem_rel_notes/pem_10.0.0_rel_notes/",
+  },
+  {
     title: "EBD Postgres Advanced Server updates",
     icon: IconNames.EDB_EPAS,
     description:
