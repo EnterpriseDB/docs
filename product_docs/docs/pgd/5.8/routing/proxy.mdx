@@ -1,0 +1,105 @@
+---
+title: "EDB Postgres Distributed Proxy overview"
+navTitle: "PGD Proxy overview"
+indexCards: simple
+directoryDefaults:
+  description: "The PGD Proxy service acts as a proxy layer between the client application and Postgres for your PGD cluster."
+---
+
+
+Especially with asynchronous replication, having a consistent write leader node is
+important to avoid conflicts and guarantee availability for the application.
+
+The two parts to EDB Postgres Distributed's proxy layer are:
+
+* Proxy configuration and routing information, which is maintained by the PGD consensus mechanism.
+* The PGD Proxy service, which is installed on a host. It connects to the PGD cluster, where it reads its configuration and listens for changes to the routing information.
+
+This layer is normally installed in a highly available configuration (at least two instances of the proxy service per PGD group).
+
+Once configured, the PGD Proxy service monitors routing changes as decided by the EDB Postgres Distributed cluster. It acts on these changes to ensure that connections are consistently routed to the correct nodes.
+
+Configuration changes to the PGD Proxy service are made through the PGD cluster. 
+The PGD Proxy service reads its configuration from the PGD cluster, but the proxy service must be restarted to apply those changes.
+
+The information about currently selected write and read nodes is visible in
+`bdr.node_group_routing_summary`. This is a node-local view: the proxy
+always reads from Raft leader to get a current and consistent view.
+
+## Leader selection
+
+The write leader is selected by the current Raft leader for the group the proxy is part of. 
+This could be the Raft leader for a subgroup or leader for the entire cluster.
+The leader is selected from candidate nodes that are reachable and meet the criteria based
+on the configuration as described in [PGD Proxy cluster configuration](#pgd-proxy-cluster-configuration). To be a viable candidate, the node must have
+`route_writes` enabled and `route_fence` disabled and be within `route_writer_max_lag`
+(if enabled) from the previous leader. The candidates are ordered by their `route_priority`
+in descending order and by the lag from the previous leader in ascending order.
+
+The new leader selection process is started either when there's no existing leader currently
+or when
+connectivity is lost to the existing leader. (If there's no existing write leader, it could be because there were no valid candidates or because Raft was down.)
+
+A node is considered connected if the last Raft protocol message received from the leader
+isn't older than Raft election timeout
+(see [Internal settings - Raft timeouts](../reference/pgd-settings#internal-settings---raft-timeouts)).
+
+Since the Raft leader is sending heartbeat 3 times every election timeout limit, the leader
+node needs to miss the reply to 3 heartbeats before it's considered disconnected.
+
+## PGD Proxy cluster configuration
+
+The PGD cluster always has at least one top-level group and one data group. PGD elects the write leader for each data group that has the `enable_proxy_routing` and `enable_raft` options set to true. 
+
+The cluster also maintains proxy configurations for each group. Each configuration has a name and is associated with a group. You can attach a proxy to a top-level group or data group. You can attach multiple proxies to each group.
+When a PGD Proxy service starts running on a host, it has a name in its local configuration file and it connects to a node in a group. From there, it uses the name to look up its complete configuration as stored on the group.
+
+## PGD Proxy service
+
+The EDB Postgres Distributed Proxy (PGD Proxy) service is a process that acts as an abstraction layer between the client application and Postgres. It interfaces with the PGD consensus mechanism to get the identity of the current write leader node and redirects traffic to that node. It also optionally supports a read-only mode where it can route read-only queries to nodes that aren't the write leader, improving the overall performance of the cluster.
+
+PGD Proxy is a TCP layer 4 proxy.
+
+## How they work together
+
+Upon starting, PGD Proxy connects to one of the endpoints given in the local config file. It fetches:
+
+-  DB connection information for all nodes.
+-  Proxy options like listen address, listen port.
+-  Routing details including the current write leader in default mode, read nodes in read-only mode, or both in any mode.
+
+The endpoints given in the config file are used only at startup. After that, actual endpoints are taken from the PGD catalog's `route_dsn` field in [`bdr.node_routing_config_summary`](/pgd/latest/reference/catalogs-internal#bdrnode_routing_config_summary).
+
+PGD manages write leader election. PGD Proxy interacts with PGD to get write leader change events notifications on Postgres notify/listen channels and routes client traffic to the current write leader. PGD Proxy disconnects all existing client connections on write leader change or when write leader is unavailable. Write leader election is a Raft-backed activity and is subject to Raft leader availability. PGD Proxy closes the new client connections if the write leader is unavailable.
+
+PGD Proxy responds to write leader change events that can be categorized into two modes of operation: *failover* and *switchover*.
+
+Automatic transfer of write leadership from the current write leader node to a new node in the event of Postgres or operating system crash is called *failover*. PGD elects a new write leader when the current write leader goes down or becomes unresponsive. Once the new write leader is elected by PGD, PGD Proxy closes existing client connections to the old write leader and redirects new client connections to the newly elected write leader.
+
+User-controlled, manual transfer of write leadership from the current write leader to a new target leader is called *switchover*. Switchover is triggered through the [PGD CLI group set-leader](/pgd/latest/cli/command_ref/group/set-leader/) command. The command is submitted to PGD, which attempts to elect the given target node as the new write leader. Similar to failover, PGD Proxy closes existing client connections and redirects new client connections to the newly elected write leader. This is useful during server maintenance, for example, if the current write leader node needs to be stopped for maintenance like a server update or OS patch update.
+
+If the proxy is configured to support read-only routing, it can route read-only queries to a pool of nodes that aren't the write leader. The pool of nodes is maintained by the PGD cluster and proxies listen for changes to the pool. When the pool changes, the proxy updates its routing configuration and starts routing read-only queries to the new pool of nodes and disconnecting existing client connections to nodes that have left the pool.
+
+### Consensus grace period
+
+PGD Proxy provides the `consensus_grace_period` proxy option that can be used to configure the routing behavior upon loss of a Raft leader. PGD Proxy continues to route to the current write leader (if it's available) for this duration. If the new Raft leader isn't elected during this period, the proxy stops routing. If set to `0s`, PGD Proxy stops routing immediately.
+
+The main purpose of this option is to allow users to configure the write behavior when the Raft leader is lost. When the Raft leader isn't present in the cluster, it's not always guaranteed that the current write leader seen by the proxy is the correct one. In some cases, like network partition in the following example, it's possible that the two write leaders may be seen by two different proxies attached to the same group, increasing the chances of write conflicts. If this isn't the behavior you want, then you can set the previously mentioned `consensus_grace_period` to 0s. This setting configures the proxy to stop routing and closes existing open connections immediately when it detects the Raft leader is lost.
+
+#### Network partition example
+
+Consider a 3-data-node group with a proxy on each data node. In this case, if the current write leader gets network partitioned or isolated, then the data nodes present in the majority partition elect a new write leader. If `consensus_grace_period` is set to a non-zero value, for example, `10s`, then the proxy present on the previous write leader continues to route writes for this duration.
+
+In this case, if the grace period is kept too high, then writes continue to happen on the two write leaders. This condition increases the chances of write conflicts.
+
+Having said that, most of the time, upon loss of the current Raft leader, the new Raft leader gets elected by BDR within a few seconds if more than half of the nodes (quorum) are still up. Hence, if the Raft leader is down but the write leader is still up, then proxy can be configured to allow routing by keeping `consensus_grace_period` to a non-zero, positive value. The proxy waits for the Raft leader to get elected during this period before stopping routing. This might be helpful in some cases where availability is more important.
+
+### Read consensus grace period
+
+Similar to the `consensus_grace_period`, a `read_consensus_grace_period` option is available for read-only routing. This option can be used to configure the routing behavior upon loss of a Raft leader for read-only queries. PGD Proxy continues to route to the current read nodes for this duration. If the new Raft leader isn't elected during this period, the proxy stops routing read-only queries. If set to `0s`, PGD Proxy stops routing read-only queries immediately.
+
+### Multi-host connection strings
+
+The PostgreSQL C client library (libpq) allows you to specify multiple host names in a single connection string for simple failover. This ability is also supported by client libraries (drivers) in some other programming languages. It works well for failing over across PGD Proxy instances that are down or inaccessible. 
+
+If an application connects to a proxy instance that doesn't have access to a write leader, the connection will simply fail. No other hosts in the multi-host connection string will be tried. This behavior is consistent with the behavior of PostgreSQL client libraries with other proxies like HAProxy or pgbouncer. Access to a write leader requires the group the instance is part of has been able to select a write leader for the group. 

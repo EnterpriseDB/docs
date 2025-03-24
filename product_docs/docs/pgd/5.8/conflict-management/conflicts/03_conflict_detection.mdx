@@ -1,0 +1,80 @@
+---
+title: Conflict detection
+Description: How PGD detects database conflicts.
+deepToC: true
+---
+
+PGD provides these mechanisms for conflict detection:
+
+-   [Origin conflict detection](#origin-conflict-detection) (default)
+-   [Row version conflict detection](#row-version-conflict-detection)
+-   [Column-level conflict detection](../column-level-conflicts)
+
+## Origin conflict detection
+
+Origin conflict detection uses and relies on commit timestamps as recorded on the node the transaction originates from. This requires clocks to be in sync to work correctly or to be within a tolerance of the fastest message between two nodes. If this isn't the case, conflict resolution tends to favor the node that's further ahead. You can manage clock skew between nodes using the parameters `bdr.maximum_clock_skew` and `bdr.maximum_clock_skew_action`.
+
+Row origins are available only if `track_commit_timestamp = on`.
+
+Conflicts are first detected based on whether the replication origin changed, so conflict triggers are called in situations that might not turn out to be conflicts. Hence, this mechanism isn't precise, since it can generate false-positive conflicts.
+
+Origin info is available only up to the point where a row is frozen. Updates arriving for a row after it was frozen don't raise a conflict so are applied in all cases. This is the normal case when adding a new node by `bdr_init_physical`, so raising conflicts causes many false-positive results in that case.
+
+A node that was offline that reconnects and begins sending data changes can cause divergent
+errors if the newly arrived updates are older than the frozen rows that they update. Inserts and deletes aren't affected by this situation.
+
+We suggest that you don't leave down nodes for extended outages, as discussed in [Node restart and down node recovery](../../node_management/node_recovery/).
+
+On EDB Postgres Extended Server and EDB Postgres Advanced Server, PGD holds back the freezing of rows while a node is down. This mechanism handles this situation gracefully so you don't need to change parameter settings.
+
+On other variants of Postgres, you might need to manage this situation with some care.
+
+Freezing normally occurs when a row being vacuumed is older than `vacuum_freeze_min_age` xids from the current xid, which means that you need to configure suitably high values for these parameters:
+
+-   `vacuum_freeze_min_age`
+-   `vacuum_freeze_table_age`
+-   `autovacuum_freeze_max_age`
+
+Choose values based on the transaction rate, giving a grace period of downtime before removing any conflict data from the database node. For example, when `vacuum_freeze_min_age` is set to 500 million, a node performing 1000 TPS can be down for just over 5.5 days before conflict data is removed. The CommitTS data structure takes on-disk space of 5 GB with that setting, so lower transaction rate systems can benefit from lower settings.
+
+Initially, recommended settings are:
+
+```sql
+# 1 billion = 10GB
+autovacuum_freeze_max_age = 1000000000
+
+vacuum_freeze_min_age = 500000000
+
+# 90% of autovacuum_freeze_max_age
+vacuum_freeze_table_age = 900000000
+```
+
+Note that:
+
+-   You can set `autovacuum_freeze_max_age` only at node start.
+-   You can set `vacuum_freeze_min_age`, so using a low value freezes rows early and can result in conflicts being ignored. You can also set `autovacuum_freeze_min_age` and `toast.autovacuum_freeze_min_age` for individual tables.
+-   Running the `CLUSTER` or `VACUUM FREEZE` commands also freezes rows early and can result in conflicts being ignored.
+
+## Row version conflict detection
+
+PGD provides the option to use row versioning and make conflict detection independent of the nodes' system clock.
+
+Row version conflict detection requires that you enable three things. If any of these steps aren't performed correctly then [origin conflict detection](#origin-conflict-detection) is used.
+
+-  Enable `check_full_tuple` or the PGD node group.
+
+-  Enable `REPLICA IDENTITY FULL` on all tables that use row version conflict detection.
+
+-  Enable row version tracking on the table by using `bdr.alter_table_conflict_detection`. This function adds a column with a name you specify and an `UPDATE` trigger that manages the new column value. The column is created as `INTEGER` type.
+
+Although the counter is incremented only on `UPDATE`, this technique allows conflict detection for both `UPDATE` and `DELETE`.
+
+This approach resembles Lamport timestamps and fully prevents the ABA problem for conflict detection.
+
+!!! Note
+    The row-level conflict resolution is still handled based on the [conflict resolution](04_conflict_resolution) configuration even with row versioning. The way the row version is generated is useful only for detecting conflicts. Don't rely on it as authoritative information about which
+    version of row is newer.
+
+To determine the current conflict detection strategy used for a specific table, refer to the column `conflict_detection` of the view `bdr.tables`.
+
+To change the current conflict detection strategy, use [bdr.alter_table_conflict_detection](../../reference/conflict_functions/#bdralter_table_conflict_detection).
