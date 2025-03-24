@@ -1,0 +1,251 @@
+---
+title: Group Commit
+redirects:
+  - /pgd/latest/bdr/group-commit/
+deepToC: true
+---
+
+Commit scope kind: `GROUP COMMIT`
+
+## Overview
+
+The goal of Group Commit is to protect against data loss in case of single node
+failures or temporary outages. You achieve this by requiring more than one PGD
+node to successfully confirm a transaction at COMMIT time. Confirmation can be sent
+at a number of points in the transaction processing but defaults to "visible" when
+the transaction has been flushed to disk and is visible to all other transactions.
+
+!!! Warning
+    Group commit is currently offered as an experimental feature intended for preview and
+    evaluation purposes. While it provides valuable capabilities, it has known limitations
+    and challenges that make it unsuitable for production environments. We recommend that
+    customers avoid using this feature in production scenarios until these limitations
+    are addressed in future releases.
+
+
+## Example
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'example_scope',
+    origin_node_group := 'left_dc',
+    rule := 'ALL (left_dc) GROUP COMMIT(commit_decision=raft) AND ANY 1 (right_dc) GROUP COMMIT',
+    wait_for_ready := true
+);
+```
+
+This example creates a commit scope where all the nodes in the `left_dc` group and any one of the nodes in the `right_dc` group must receive and successfully confirm a committed transaction.
+
+
+## Requirements
+
+During normal operation, Group Commit is transparent to the application.
+Transactions that were in progress during failover need the reconciliation phase
+triggered or consolidated by either the application or a proxy in between. This
+activity currently happens only when either the origin node recovers or when
+it's parted from the cluster. This behavior is the same as with Postgres legacy
+built-in synchronous replication.
+
+Transactions committed with Group Commit use [two-phase
+commit](../terminology/#two-phase-commit-2pc) underneath. Therefore, configure
+`max_prepared_transactions` high enough to handle all such transactions
+originating per node.
+
+## Limitations
+
+See the Group Commit section of [Limitations](limitations#group-commit).
+
+
+## Configuration
+
+`GROUP_COMMIT` supports optional `GROUP COMMIT` parameters, as well as `ABORT ON` and `DEGRADE ON` clauses. For a full description of configuration parameters, see the [GROUP_COMMIT](/pgd/latest/reference/commit-scopes/#group-commit) commit scope reference or for more regarding `DEGRADE ON` options in general, see the [Degrade options](degrading) section.
+
+## Confirmation
+
+   Confirmation&nbsp;level    | Group Commit handling
+-------------------------|-------------------------------
+ `received`              | A remote PGD node confirms the transaction immediately after receiving it, prior to starting the local application.
+ `replicated`            |  Confirms after applying changes of the transaction but before flushing them to disk.
+ `durable`               |  Confirms the transaction after all of its changes are flushed to disk.
+ `visible` (default)     | Confirms the transaction after all of its changes are flushed to disk and it's visible to concurrent transactions.
+
+## Behavior
+
+The behavior of Group Commit depends on the configuration applied by the commit
+scope.
+
+### Commit decisions
+
+You can configure Group Commit to decide commits in three different ways: `group`,
+`partner`, and `raft`.
+
+The `group` decision is the default. It specifies that the commit is confirmed
+by the origin node upon receiving as many confirmations as required by the
+commit scope group. The difference is that the commit decision is made based on
+PREPARE replication while the durability checks COMMIT (PREPARED) replication.
+
+The `partner` decision is what [Commit At Most Once](camo) (CAMO) uses. This approach
+works only when there are two data nodes in the node group. These two nodes are
+partners of each other, and the replica rather than origin decides whether
+to commit something. This approach requires application changes to use
+the CAMO transaction protocol to work correctly, as the application is in some way
+part of the consensus. For more on this approach, see [CAMO](camo).
+
+The `raft` decision uses PGDs built-in Raft consensus for commit decisions. Use of the `raft` decision can reduce performance. It's currently required only when using `GROUP COMMIT`
+with an ALL commit scope group.
+
+Using an ALL commit scope group requires that the commit decision must be set to
+`raft` to avoid [reconciliation](#transaction-reconciliation) issues. 
+
+### Conflict resolution
+
+Conflict resolution can be `async` or `eager`.
+
+Async means that PGD does optimistic conflict resolution during replication
+using the row-level resolution as configured for a given node. This happens
+regardless of whether the origin transaction committed or is still in progress.
+See [Conflicts](../conflict-management/conflicts) for details about how the asynchronous
+conflict resolution works.
+
+Eager means that conflicts are resolved eagerly (as part of agreement on
+COMMIT), and conflicting transactions get aborted with a serialization error.
+This approach provides greater isolation than the asynchronous resolution at the
+price of performance. 
+
+Using an ALL commit scope group requires that the [commit
+decision](#commit-decisions) must be set to `raft` to avoid reconciliation
+issues.
+
+For details about how Eager conflict resolution works,
+see [Eager conflict resolution](#eager-conflict-resolution). 
+
+### Aborts
+
+To prevent a transaction that can't get consensus on the COMMIT from hanging
+forever, the `ABORT ON` clause allows specifying timeout. After the timeout, the
+transaction abort is requested. If the transaction is already
+decided to be committed at the time the abort request is sent, the transaction
+does eventually COMMIT even though the client might receive an abort message.
+
+See also [Limitations](limitations). 
+
+### Transaction reconciliation
+
+A Group Commit transaction's commit on the origin node is implicitly converted 
+into a two-phase commit. 
+
+In the first phase (prepare), the transaction is prepared locally and made ready to commit.
+The data is made durable but is uncomitted at this stage, so other transactions
+can't see the changes made by this transaction. This prepared transaction gets
+copied to all remaining nodes through normal logical replication.
+
+The origin node seeks confirmations from other nodes, as per rules in the Group
+Commit grammar. If it gets confirmations from the minimum required nodes in the
+cluster, it decides to commit this transaction moving onto the second phase (commit). 
+In the commit phase, it also sends this decision by way of replication to other nodes. Those nodes will also eventually commit on getting this message.
+
+There's a possibility of failure at various stages. For example, the origin
+node may crash after preparing the transaction. Or the origin and one or more
+replicas may crash.
+
+This leaves the prepared transactions in the system. The `pg_prepared_xacts`
+view in Postgres can show prepared transactions on a system. The prepared
+transactions might be holding locks and other resources. To release those locks and resources, either abort or commit the transaction. 
+That decision must be made with a consensus
+of nodes. 
+
+When `commit_decision` is `raft`, then, Raft acts as the reconciliator, and these
+transactions are eventually reconciled automatically. 
+
+When the `commit_decision` is `group`, then, transactions don't use Raft. Instead 
+the write lead in the cluster performs the role of reconciliator. This is because 
+it's the node that's most ahead with respect to changes in its subgroup. It 
+detects when a node is down and initiates reconciliation for such a node by looking
+for prepared transactions it has with the down node as the origin. 
+
+For all such transactions, it sees if the nodes as per the rules of the commit
+scope have the prepared transaction, it takes a decision. This decision is
+conveyed over Raft and needs the majority of the nodes to be up to do
+reconciliation.
+
+This process happens in the background. There's no command for you to use to
+control or issue this.
+
+## Eager conflict resolution
+
+Eager conflict resolution (also known as Eager Replication) prevents conflicts by aborting transactions that conflict with each other with serializable errors during the COMMIT decision process.
+
+You configure it using [commit scopes](commit-scopes) as one of the conflict resolution options for [Group Commit](#overview).
+
+### Usage
+
+To enable Eager conflict resolution, the client needs to switch to a commit scope, which uses it at session level or for individual transactions as shown here:
+
+```sql
+BEGIN;
+
+SET LOCAL bdr.commit_scope = 'eager_scope';
+
+... other commands possible...
+```
+
+The client can continue to issue a `COMMIT` at the end of the transaction and let PGD manage the two phases:
+
+```sql
+COMMIT;
+```
+
+In this case, the `eager_scope` commit scope is defined something like this:
+
+```sql
+SELECT bdr.create_commit_scope(
+    commit_scope_name := 'eager_scope',
+    origin_node_group := 'top_group',
+    rule := 'ALL (top_group) GROUP COMMIT (conflict_resolution = eager, commit_decision = raft) ABORT ON (timeout = 60s)',
+    wait_for_ready := true
+);
+```
+
+!!! note Upgrading?
+    The old `global` commit scope doesn't exist anymore. The above command creates a scope that's the same as the old `global` scope with `bdr.global_commit_timeout` set to `60s`.
+
+The commit scope group for the Eager conflict resolution rule can only be `ALL` or `MAJORITY`. Where `ALL` is used, the `commit_decision` setting must also be set to `raft`.
+
+### Error handling
+
+Given that PGD manages the transaction, the client needs to check only the result of the `COMMIT`. This is advisable in any case, including single-node Postgres.
+
+In case of an origin node failure, the remaining nodes eventually (after at least `ABORT ON timeout`) decide to roll back the globally prepared transaction. Raft prevents inconsistent commit versus rollback decisions. However, this requires a majority of connected nodes. Disconnected nodes keep the transactions prepared to eventually commit them (or roll back) as needed to reconcile with the majority of nodes that might have decided and made further progress.
+
+### Effects of Eager Replication in general
+
+#### Increased abort rate
+
+With single-node Postgres, or even with PGD in its default asynchronous
+replication mode, errors at `COMMIT` time are rare. The added synchronization 
+step due to the use of a commit scope using `eager`
+for conflict resolution also adds a source of errors. Applications need to be
+prepared to properly handle such errors, usually by applying a retry loop.
+
+The rate of aborts depends solely on the workload. Large transactions changing many rows are much more likely to conflict with other concurrent transactions.
+
+### Effects of MAJORITY and ALL node replication in general
+
+#### Increased commit latency
+
+Adding a synchronization step due to the use of a commit scope means more
+communication between the nodes, resulting in more latency at commit time. When
+`ALL` is used in the commit scope, this also means that the availability of the
+system is reduced, since any node going down causes transactions to fail. 
+
+If one or more nodes are lagging behind, the round-trip delay in getting
+confirmations can be large, causing high latencies. ALL or MAJORITY node replication adds
+roughly two network round trips (to the furthest peer node in the worst case).
+Logical standby nodes and nodes still in the process of joining or catching up
+aren't included but eventually receive changes.
+
+Before a peer node can confirm its local preparation of the transaction, it also
+needs to apply it locally. This further adds to the commit latency, depending on
+the size of the transaction. This setting is independent of the
+`synchronous_commit` setting.
+
