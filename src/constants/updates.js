@@ -7,7 +7,7 @@ export const updates = [
     description:
       "TPA 23.37 adds minor-version upgrads of Postgres in Patroni and EFM clusters and improved repmgr cluster upgrades.",
     url: "/tpa/latest/",
-    moreUrl: "/tpa/latest/rel_notes/tpa_23.37.0_rel_notes",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.37.0_rel_notes/",
   },
   {
     title: "EBD Postgres Advanced Server updates",
@@ -23,7 +23,7 @@ export const updates = [
     description:
       "TPA 23.36 includes support Ubuntu 24.04 and SLES 15 SP6, enhanced support for EFM and simplifies repository setup to a single command.",
     url: "/tpa/latest/",
-    moreUrl: "/tpa/latest/rel_notes/tpa_23.36.0_rel_notes",
+    moreUrl: "/tpa/latest/rel_notes/tpa_23.36.0_rel_notes/",
   },
   {
     title: "EDB Postgres AI Q4 Release News",
