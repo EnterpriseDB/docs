@@ -5,7 +5,7 @@ export const updates = [
     title: "Trusted Postgres Architect 23.37",
     icon: IconNames.INSTANCES,
     description:
-      "TPA 23.37 adds minor-version upgrads of Postgres in Patroni and EFM clusters and improved repmgr cluster upgrades.",
+      "TPA 23.37 adds minor-version upgrades of Postgres in Patroni and EFM clusters and improved repmgr cluster upgrades.",
     url: "/tpa/latest/",
     moreUrl: "/tpa/latest/rel_notes/tpa_23.37.0_rel_notes/",
   },
