@@ -1,0 +1,88 @@
+---
+title: Configuring EDB OTEL
+navTitle: Configuring
+---
+
+The following configuration options are available with edb_otel.
+
+## Permissions
+
+No permissions changes are required for edb_otel.
+
+## Prerequisites
+
+Before using edb_otel to export metrics, you must set up an OpenTelemetry collector endpoint that edb_otel can communicate with.  For detailed information on how to set up a quick test of the Opentelemetry endpoint using docker, see [OTLP Exporter Example](https://github.com/open-telemetry/opentelemetry-cpp/tree/main/examples/otlp).
+
+## GUCs
+
+The following GUC variables are available in edb_otel:
+
+| Variable                       | Description | Unit | Default | Minimum value |                                                                                                                                                                                                                                                |
+|--------------------------------|-------------|------|---------|---------------|
+| `edb_otel.edb_otel_endpoint`   | Specifies the OTEL endpoint URL. | | | |
+| `edb_otel.interval`            | Interval between two consecutive exports. It translates to the opentelemetry metric reader parameter `exportIntervalMillis`.| Milliseconds | 2 seconds | 1 second|  
+| `edb_otel.timeout`             | Specifies how long the export can run before it's cancelled. It translates to the opentelemetry metric reader parameter `exportTimeoutMillis`.| Milliseconds | 500 milliseconds | 100 milliseconds|
+| `edb_otel.worker_nap_time`     | Duration of background worker sleep time before it checks for metrics in the queue and processes them. | Milliseconds | 2 seconds | 1 second |
+| `edb_otel.metrics_queue_size`  | Interval between two consecutive exports. This is the maximum size of the metrics queue. If the queue reaches this size, any subsequent metrics are dropped until the queue is cleared while processing the metrics inside it.| MB | 100 | 100|
+
+## Configuring to be used by an SQL interface
+
+To use the edb_otel extension from a SQL interface, use the following steps:
+
+In `postgresql.conf`:
+
+1. Set the parameter `edb_otel.edb_otel_endpoint` to point to the collector endpoint.  Example: 
+```bash
+edb_otel.edb_otel_endpoint='localhost:4317'
+```
+2. Add `edb_otel` to the `shared_preload_libraries`. Example: 
+```bash
+shared_preload_libraries = '$libdir/dbms_pipe,$libdir/edb_gen,$libdir/dbms_aq,$libdir/edb_otel'
+```
+## Configuring to be used within C code
+
+To use the edb_otel extension from your C code, use the following steps:
+
+1. Ensure the `edb_otel_ext.h` file is within reach of your extension at build time. The file is placed in `$prefix/include/server/extension/edb_otel/` when the edb_otel dev/devel package is installed. Your Makefile must add `pg_config --includedir-server` to its include search paths, so your extension can use it as:
+```C
+#include "extension/edb_otel/edb_otel_ext.h"
+```
+This header contains the signature of the function that is used to send metrics to the OTEL endpoint.
+
+2. When the edb_otel extension is loaded, it places a function pointer in the rendezvous variable identified by `edb_otel_metric_func`. So the next step is to get that function pointer:
+```C
+edb_otel_metric_func_type * p_edb_otel_metric =
+    (edb_otel_metric_func_type *) find_rendezvous_variable("edb_otel_metric_func");
+```
+The function pointer may be stored in a session-long variable, but care should be taken in case edb_otel gets loaded after the calling code.
+
+Since the instrumented code must continue to work even when edb_otel isn't in use, if the function pointer returns NULL, no error should be raised, and the function must not be called.
+
+For example, instrumenting pg_stat_statements to send the number of plans may look similar to this:
+
+```C
+if (*p_edb_otel_metric) {
+    char val[100] = {0};
+    sprintf(val, "%ld", e->counters.calls[PGSS_PLAN]);
+    (*p_edb_otel_metric)("pg_stat_statements",
+                         "plans",
+                         EDB_OTEL_GAUGE,
+                         val,
+                         labels);
+}
+```
+
+The `edb_otel_metric` function has the following parameters:
+
+| Parameter(s)       | Input or output | Description                                                                                                                                                                       |
+|--------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `meter_name`       | Input           | A name to identify a group of metrics. |
+| `metric_name`      | Input           | A name to identify an actual measurement of the metric. |  
+| `metric_type`      | Input           | Identified by one of the enums in `edb_otel_ext.h`.|
+| `measurement`      | Input           | A string value.|
+| `labels`           | Input           | A jsonb string representing additional metadata to be associated with the metric, for example, attaching the query text to the measurement of `pg_stat_statements`.|
+
+!!!Note
+Care should be taken when calling the function that sends metrics. It's important to avoid using it in hot paths and while holding locks, since it currently enters third party code.  In the future, it may still perform non-trivial work, if only pushing data through a shm_mq to a background worker.
+!!!
+For a detailed example of this C API usage where `pg_stat_statements` was instrumented to send all metrics through OTEL, see this [example](https://github.com/EnterpriseDB/opentelemetry-work/blob/arthur/pg17/contrib/pg_stat_statements/pg_stat_statements.c).

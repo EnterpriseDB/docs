@@ -28,7 +28,39 @@ redirects:
 
 Now requests to https://www.enterprisedb.com/docs/epas/13/epas_inst_linux/02_supported_platforms/ OR https://www.enterprisedb.com/docs/epas/13/epas_inst_linux/supported_platforms/ will take me to the same file.
 
-But what about https://www.enterprisedb.com/docs/epas/latest/epas_inst_linux/02_supported_platforms/? That will work too - up UNTIL version 13 is no longer the latest version. Suppose I want to write this redirect rule such that it will work for EPAS 13 OR any later version (assuming the file is copied into later versions without modifications to the Frontmatter)? To accomplish this, I can use a relative path:
+But what about https://www.enterprisedb.com/docs/epas/latest/epas_inst_linux/02_supported_platforms/? That will work too, but the behavior will change once version 13 is no longer the latest version. The redirects system special-cases redirects where the path of the page containing the redirect and the path of the redirect both refer to the same product, such that...
+
+- ...when the redirect path's version is "latest", it will be interpreted as referring to the *version of the containing page*.
+- ...when the redirect path's version is the most recent available version of the product, it'll create an *additional* redirect from `<product>/latest/<path>` to the containing page.
+
+So we could rewrite the example above as,
+
+```yaml
+---
+#...
+
+redirects:
+  - /epas/latest/epas_inst_linux/02_supported_platforms   
+---
+```
+
+This same rule will work, without modification, for ANY version in which `supported_platforms.mdx` exists and `02_supported_platforms.mdx` does not. For the latest version, it'll result in two paths redirecting to `supported_platforms`: 
+
+1. `/epas/<whatever_the_latest_version_of_epas_is>/epas_inst_linux/02_supported_platforms`
+2. `/epas/latest/epas_inst_linux/02_supported_platforms`
+
+...while for older versions, it'll result in only one path redirecting:
+
+- `/epas/<an_older_version_of_epas>/epas_inst_linux/02_supported_platforms`
+
+It thus avoids the housekeeping task of having to modify versions contained within
+redirects when forking a version of the documentation (though do note that if a 
+documentation tree has ALREADY been forked for the next version when I rename the 
+file in the current version, I'll need to also make the same changes to the next version).
+
+### Relative paths in redirects
+
+It's also possible to use relative paths in redirects - they're interpreted as being relative to the URL path of the file containing the redirect. 
 
 ```yaml
 ---
@@ -41,8 +73,10 @@ redirects:
 ---
 ```
 
-This same rule will work, without modification, for ANY version in which `supported_platforms.mdx` exists and `02_supported_platforms.mdx` does not. It thus avoids the housekeeping task of having to modify versions contained within
-redirects when forking a version of the documentation (though do note that if a documentation tree has ALREADY been forked when I rename the file I'll need to make the same changes to both the current version and the next version).
+This is convenient for a simple rename, but beware: it can be difficult to keep track of where these 
+were supposed to point once you start moving files around between directories. I previously recommended this approach
+as a way to avoid versioning issues, but the behavior described above provides a more robust way to accomplish this; 
+therefore, please avoid relative redirects for anything beyond very simple filesystem structures.
 
 ## Relocating a file
 
@@ -57,7 +91,8 @@ redirects:
 ---
 ```
 
-This is just a variation on what is shown above (renaming). I could also use a relative path here as well.
+This is just a variation on what is shown above (renaming). I can use versioned paths (with `latest`) 
+or relative paths here as well (but relative paths will tend to become awkward very quickly when moving files around).
 
 ## Consolidating files
 
