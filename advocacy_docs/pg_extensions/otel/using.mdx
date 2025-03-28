@@ -10,18 +10,18 @@ The edb_otel extension allows metrics to be sent through the OpenTelemetry (OTEL
 
 The following functions are available in edb_otel:
 
-- edb_otel.report_metric
-- edb_otel.command_from_pg_exporter_definition
-- edb_otel.schedule_from_pg_exporter_definition
+- `edb_otel.report_metric`
+- `edb_otel.command_from_pg_exporter_definition`
+- `edb_otel.schedule_from_pg_exporter_definition`
 
 The following views are available in edb_otel:
 
-- edb_otel.pg_exporter_base_definitions
+- `edb_otel.pg_exporter_base_definitions`
 
 
 ## `edb_otel.report_metric`
 
-Use this function to define and group metrics.
+Use this function to define and group metrics:
 
 ```sql
 edb_otel.report_metric(
@@ -33,13 +33,13 @@ edb_otel.report_metric(
 )
 ```
 
-| Parameter(s)       | Input or output | Description                                                                                                                                                                       |
+| Parameters         | Input or output | Description                                                                                                                                                                       |
 |--------------------|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `meter_name`       | Input           | A name that you want to group a set of metrics against. |
 | `metric_name`      | Input           | The name of the metric. |  
 | `metric_type`      | Input           | The type of the metric. Only the DOUBLE GAUGE type is currently supported, which is represented by the value 4. |
-| `value`            | Input           | A string representing the metric value. It will be converted to an appropriate type depending on the `metric_type`. |
-| `labels`           | Input           | A json string representing additional metadata to be associated with the metric. The maximum size is 1024. If the size is larger than 1024, that metric is silently dropped and a WARNING is emitted to the database log file. If the payload contains an invalid json, that metric is dropped and error information is logged to the log file.| 
+| `value`            | Input           | A string representing the metric value. It's converted to an appropriate type depending on the value of `metric_type`. |
+| `labels`           | Input           | A JSON string representing additional metadata to associate with the metric. The maximum size is 1024. If the size is larger than 1024, that metric is silently dropped, and a warning is emitted to the database log file. If the payload contains invalid JSON, that metric is dropped, and error information is logged to the log file.| 
 
 
 #### Example:
@@ -50,7 +50,8 @@ edb_otel.report_metric(
 
 
 ## `edb_otel.command_from_pg_exporter_definition`
-Use this function to generate a command that can run the query and send the results through `edb_otel`.  It accepts a jsonb value containing the same fields as `pg_exporter` definitions.
+
+Use this function to generate a command that can run the query and send the results through edb_otel. It accepts a JSONB value containing the same fields as `pg_exporter` definitions.
 
 ```sql
 edb_otel.command_from_pg_exporter_definition(
@@ -61,7 +62,7 @@ edb_otel.command_from_pg_exporter_definition(
 
 ## `edb_otel.schedule_from_pg_exporter_definition`
 
-Use this function to define and schedule custom queries.  The query and its metadata, such as metric types and tags, must use the a jsonb structure.  It accepts a jsonb value containing the parameters that are usually consumed by pg_exporter, and schedules a pg_cron job that runs the query periodically and sends the results to the OpenTelemetry endpoint.
+Use this function to define and schedule custom queries. The query and its metadata, such as metric types and tags, must use a JSONB structure. It accepts a JSONB value containing the parameters that are usually consumed by pg_exporter. It also schedules a pg_cron job that runs the query periodically and sends the results to the OpenTelemetry endpoint.
 
 
 ```sql
@@ -71,9 +72,9 @@ edb_otel.schedule_from_pg_exporter_definition(
 )
 ```
 
-#### Example:
+### Example:
 
-This custom query  adds a count of client backends to the schedule:
+This custom query adds a count of client backends to the schedule:
 
   ```sql
   SELECT edb_otel.schedule_from_pg_exporter_definition(
@@ -90,7 +91,7 @@ This custom query  adds a count of client backends to the schedule:
 
 ## `edb_otel.pg_exporter_base_definitions`
 
-This view contains the meter (queries and their metrics) definitions that `pg_exporter` brings by default.  They can be refreshed from the [upm-metrics-pg-exporter](https://github.com/EnterpriseDB/upm-metrics-pg-exporter/tree/main/config/collector) or the [pg_exporter collector](https://github.com/Vonng/pg_exporter/tree/main/config/collector) by running `yq` on the directory:
+This view contains the meter (queries and their metrics) definitions that pg_exporter brings by default.  You can refresh them from the [upm-metrics-pg-exporter](https://github.com/EnterpriseDB/upm-metrics-pg-exporter/tree/main/config/collector) or the [pg_exporter collector](https://github.com/Vonng/pg_exporter/tree/main/config/collector) by running `yq` on the directory:
 
 ```yq
 yq eval-all -o=json '. as $item ireduce ({}; . * $item)' [...]/config/collector/*.yml
@@ -98,25 +99,29 @@ yq eval-all -o=json '. as $item ireduce ({}; . * $item)' [...]/config/collector/
 
 ## Job scheduling
 
-You can use pg_cron to schedule jobs for the pg_exporter.  edb_otel has auxiliary functions to ease the scheduling of monitoring queries. To start using pg_exporter queries, you will need the following: 
+You can use pg_cron to schedule jobs for the pg_exporter. edb_otel has auxiliary functions to ease the scheduling of monitoring queries. To start using pg_exporter queries, you need the following: 
 
-- the meter name:  this is the top key in the YAML files
-- a scheduling definition:  this is a schedule that pg_cron will accept
+- The meter name. This is the top key in the YAML files.
+- A scheduling definition. This is a schedule that pg_cron will accept,
 
-For example, the [410-pg_activity.yml](https://github.com/Vonng/pg_exporter/blob/main/config/collector/410-pg_activity.yml) query pulls output from pg_stat_activity. To run this every minute, the cron syntax is: '* * * * *'.  To create the job in pg_cron:
+For example, the [410-pg_activity.yml](https://github.com/Vonng/pg_exporter/blob/main/config/collector/410-pg_activity.yml) query pulls output from pg_stat_activity. To run this every minute, use the cron syntax: '* * * * *'.  To create the job in pg_cron:
 
 ```sql
 SELECT edb_otel.schedule_from_pg_exporter_definition(meters->'pg_activity', '* * * * *')
 FROM edb_otel.pg_exporter_base_definitions;
 ```
-The view `edb_otel.pg_exporter_base_definitions` contains the metadata of the pg_activity task, which is filtered by the jsonb `->` operator, and sent into the function `edb_otel.schedule_from_pg_exporter_definition`.  The `edb_otel.schedule_from_pg_exporter_definition` function then uses the `edb_otel.command_from_pg_exporter_definition` function to convert the jsonb metadata into a text command, which gets scheduled in pg_cron. 
+
+The view `edb_otel.pg_exporter_base_definitions` contains the metadata of the pg_activity task, which is filtered by the JSONB `->` operator, and sent into the function `edb_otel.schedule_from_pg_exporter_definition`. The `edb_otel.schedule_from_pg_exporter_definition` function then uses the `edb_otel.command_from_pg_exporter_definition` function to convert the JSONB metadata into a text command, which gets scheduled in pg_cron. 
+
 The function returns the same jobid that pg_cron returns:
+
 ```bash
 -[ RECORD 1 ]------------------------+---
 schedule_from_pg_exporter_definition | 29
 ```
 
-This can then be viewed in the pg_cron job table:
+You can then view this in the pg_cron job table:
+
 ```sql
 SELECT jobname, active, jobid, schedule FROM cron.job;
 
