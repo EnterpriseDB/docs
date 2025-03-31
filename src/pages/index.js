@@ -259,31 +259,6 @@ const Page = () => {
             </BannerSubCard>
 
             <BannerSubCard
-              iconName={iconNames.IMPROVE}
-              headingText="Lakehouse Analytics"
-              to="/edb-postgres-ai/analytics"
-            >
-              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
-                Concepts
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
-                Quick Start
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
-                External Tables
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
-                Reference
-              </BannerCardLink>
-
-              <BannerCardLink to="/edb-postgres-ai/analytics/reference/functions/">
-                Functions
-              </BannerCardLink>
-            </BannerSubCard>
-            <BannerSubCard
               iconName={iconNames.BRAIN_CIRCUIT}
               headingText="AI Accelerator"
               to="/edb-postgres-ai/ai-accelerator"
@@ -291,14 +266,14 @@ const Page = () => {
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/overview/">
                 AI Accelerator Overview
               </BannerCardLink>
-              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
-                AI Accelerator Getting Started
-              </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pipelines-overview/">
                 About Pipelines
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/gettingstarted/">
                 Get Started with Pipelines
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/ai-accelerator/preparers/">
+                New: AI Accelerator Preparers
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
                 PGvector
@@ -320,6 +295,9 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/console/estate/integrating/">
                 Integrating into Estate
+              </BannerCardLink>
+              <BannerCardLink to="/edb-postgres-ai/console/estate/reference/">
+                Console Reference
               </BannerCardLink>
             </BannerSubCard>
 
@@ -358,6 +336,28 @@ const Page = () => {
               </BannerCardLink>
               <BannerCardLink to="/migrating/oracle/">
                 Migration Handbook
+              </BannerCardLink>
+            </BannerSubCard>
+
+            <BannerSubCard
+              iconName={iconNames.IMPROVE}
+              headingText="Lakehouse Analytics"
+              to="/edb-postgres-ai/analytics"
+            >
+              <BannerCardLink to="/edb-postgres-ai/analytics/concepts/">
+                Concepts
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/quick_start/">
+                Quick Start
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/external_tables/">
+                External Tables
+              </BannerCardLink>
+
+              <BannerCardLink to="/edb-postgres-ai/analytics/reference/">
+                Reference
               </BannerCardLink>
             </BannerSubCard>
 
