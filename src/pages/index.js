@@ -273,7 +273,7 @@ const Page = () => {
                 Get Started with Pipelines
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/preparers/">
-                New: AI Accelerator Prepapers
+                New: AI Accelerator Preparers
               </BannerCardLink>
               <BannerCardLink to="/edb-postgres-ai/ai-accelerator/pgvector/">
                 PGvector
