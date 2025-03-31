@@ -233,7 +233,7 @@ const Page = () => {
                 to="/edb-postgres-ai/overview/latest-release-news"
                 iconName={iconNames.SMALL_DASHBOARD}
               >
-                Release News - 24Q4
+                Release News - 25Q1
               </BannerWideCardLink>
             </BannerWideCard>
             <BannerSubCard
