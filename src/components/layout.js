@@ -14,6 +14,8 @@ import {
   IconList,
   PurlAnchor,
   Details,
+  TabContainer,
+  Tab,
 } from "../components";
 import ProductName from "../components/product-name";
 import ProductVersion from "../components/product-version";
@@ -145,6 +147,8 @@ const Layout = ({
       AuthenticatedContentPlaceholder,
       PurlAnchor,
       Details,
+      TabContainer,
+      Tab,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );

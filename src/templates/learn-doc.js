@@ -19,7 +19,6 @@ import {
   TableOfContents,
   Tiles,
   TileModes,
-  Details,
 } from "../components";
 import GithubSlugger from "github-slugger";
 import ProductContext from "../components/product-context";
