@@ -14,6 +14,8 @@ import {
   IconList,
   PurlAnchor,
   Details,
+  TabContainer,
+  Tab,
 } from "../components";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
@@ -141,6 +143,8 @@ const Layout = ({
       AuthenticatedContentPlaceholder,
       PurlAnchor,
       Details,
+      TabContainer,
+      Tab,
     }),
     [katacodaPanelData, meta.path, meta.isIndexPage, meta.productVersions],
   );
