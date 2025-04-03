@@ -81,7 +81,9 @@ const SectionHeadingWithVersions = ({
             />
           </div>
         ) : !navTree.hideVersion ? (
-          <div className="text-muted">Version {versionArray[0].version}</div>
+          <div className="text-muted">
+            Version {preciseVersion || versionArray[0].version}
+          </div>
         ) : null}
       </div>
     </li>

@@ -193,6 +193,7 @@ const DocTemplate = ({ data, pageContext }) => {
   }
 
   let title = frontmatter.title;
+  let preciseVersion = frontmatter.version;
 
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
@@ -221,8 +222,6 @@ const DocTemplate = ({ data, pageContext }) => {
     frontmatter.showInteractiveBadge != null
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
-
-  let preciseVersion = frontmatter.version;
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
@@ -260,7 +259,7 @@ const DocTemplate = ({ data, pageContext }) => {
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
                 <span className="fw-light ms-2 text-muted bg-light px-2 rounded text-smaller position-relative lh-1 top-minus-3">
-                  v{version}
+                  v{preciseVersion || version}
                 </span>
               )}
             </h1>
