@@ -7,6 +7,9 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 const util = require("node:util");
 const execAsync = util.promisify(exec);
+let expressionReplacement = import(
+  "./src/constants/expression-replacement.mjs"
+).then((module) => (expressionReplacement = module.default));
 
 const {
   replacePathVersion,
@@ -156,12 +159,12 @@ exports.onCreateNode = async ({
     Object.assign(nodeFields, {
       product: relativeFilePath.split("/")[1],
       version: relativeFilePath.split("/")[2],
-      topic: "null",
+      topic: "",
     });
   } else if (nodeFields.docType === "advocacy") {
     Object.assign(nodeFields, {
-      product: "null",
-      version: "0",
+      product: "",
+      version: "",
       topic: relativeFilePath.split("/")[2],
     });
   }
@@ -192,6 +195,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirects
             legacyRedirectsGenerated
             navigation
+            product
             showInteractiveBadge
             hideToC
             deepToC
@@ -291,6 +295,21 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     const node = curr.mdxNode;
+
+    // do expression replacements in frontmatter
+    const replacementArgs = {
+      currentProduct: node.fields.product || node.frontmatter.product,
+      currentVersion: node.fields.version || node.frontmatter.version,
+      currentFullVersion: node.frontmatter.version,
+      productVersions,
+      filename: node.fileAbsolutePath,
+    };
+    for (let fmk of ["title", "navTitle", "description", "displayBanner"]) {
+      node.frontmatter[fmk] = expressionReplacement({
+        text: node.frontmatter[fmk],
+        ...replacementArgs,
+      });
+    }
 
     // build navigation tree
     const navigationDepth = 1;
