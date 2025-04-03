@@ -7,9 +7,6 @@ const { createFilePath } = require(`gatsby-source-filesystem`);
 const { exec, execSync } = require("child_process");
 const util = require("node:util");
 const execAsync = util.promisify(exec);
-let expressionReplacement = import(
-  "./src/constants/expression-replacement.mjs"
-).then((module) => (expressionReplacement = module.default));
 
 const {
   replacePathVersion,
@@ -285,7 +282,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   await processReferenceIndexes(result.data.allReferenceIndex.nodes, reporter);
 
   // perform depth first preorder traversal
-  const treeRoot = mdxNodesToTree(nodes);
+  const treeRoot = mdxNodesToTree(nodes, productVersions);
   for (let curr of treeRoot) {
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode && !curr.path) continue;
@@ -295,21 +292,6 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     }
 
     const node = curr.mdxNode;
-
-    // do expression replacements in frontmatter
-    const replacementArgs = {
-      currentProduct: node.fields.product || node.frontmatter.product,
-      currentVersion: node.fields.version || node.frontmatter.version,
-      currentFullVersion: node.frontmatter.version,
-      productVersions,
-      filename: node.fileAbsolutePath,
-    };
-    for (let fmk of ["title", "navTitle", "description", "displayBanner"]) {
-      node.frontmatter[fmk] = expressionReplacement({
-        text: node.frontmatter[fmk],
-        ...replacementArgs,
-      });
-    }
 
     // build navigation tree
     const navigationDepth = 1;

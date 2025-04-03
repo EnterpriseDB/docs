@@ -1,6 +1,9 @@
 const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
+let expressionReplacement = import("./expression-replacement.mjs").then(
+  (module) => (expressionReplacement = module.default),
+);
 
 const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;
@@ -53,7 +56,7 @@ const pathToDepth = (path) => {
 //
 // Do not confuse this with treeToNavigation(), which transforms (a subset of) this tree
 // into a somewhat more svelt structure for use in page context
-const mdxNodesToTree = (nodes) => {
+const mdxNodesToTree = (nodes, productVersions) => {
   class Node {
     constructor(path, parent) {
       Object.assign(this, {
@@ -101,8 +104,33 @@ const mdxNodesToTree = (nodes) => {
   // - compute inherited frontmatter
   // - re-order according to frontmatter-specified navigation
   for (let node of rootNode) {
-    if (node.mdxNode)
+    if (node.mdxNode) {
       node.mdxNode.frontmatter = computeFrontmatterForTreeNode(node);
+
+      // do expression replacements in frontmatter
+      const replacementArgs = {
+        currentProduct:
+          node.mdxNode.fields.product || node.mdxNode.frontmatter.product,
+        currentVersion:
+          node.mdxNode.fields.version || node.mdxNode.frontmatter.version,
+        currentFullVersion: node.mdxNode.frontmatter.version,
+        productVersions,
+        filename: node.mdxNode.fileAbsolutePath,
+      };
+      for (let fmk of ["title", "navTitle", "description", "displayBanner"]) {
+        if (!node.mdxNode.frontmatter[fmk]) continue;
+        node.mdxNode.frontmatter[fmk] = expressionReplacement({
+          text: node.mdxNode.frontmatter[fmk],
+          ...replacementArgs,
+        });
+      }
+      // special case for special reasons
+      if (node._origFrontmatter.description)
+        node._origFrontmatter.description = expressionReplacement({
+          text: node._origFrontmatter.description,
+          ...replacementArgs,
+        });
+    }
 
     // re-order according to navigation order, inserting nodes for headers when present
     const addedChildPaths = {};
