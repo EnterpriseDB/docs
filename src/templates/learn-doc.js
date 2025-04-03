@@ -21,6 +21,7 @@ import {
   TileModes,
 } from "../components";
 import GithubSlugger from "github-slugger";
+import ProductContext from "../components/product-context";
 
 export const query = graphql`
   query ($nodeId: String!) {
@@ -207,7 +208,16 @@ const LearnDocTemplate = ({ data, pageContext }) => {
                 "col-print-12",
               ].join(" ")}
             >
-              <MDXRenderer>{mdx.body}</MDXRenderer>
+              <ProductContext
+                value={{
+                  product: frontmatter.product,
+                  version: frontmatter.version,
+                  productVersions,
+                  fileAbsolutePath: mdx.fileAbsolutePath,
+                }}
+              >
+                <MDXRenderer>{mdx.body}</MDXRenderer>
+              </ProductContext>
               <Tiles mode={cardTileMode} node={navRoot} />
             </Col>
 

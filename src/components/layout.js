@@ -14,6 +14,8 @@ import {
   IconList,
   PurlAnchor,
 } from "../components";
+import ProductName from "../components/product-name";
+import ProductVersion from "../components/product-version";
 import { MDXProvider } from "@mdx-js/react";
 import Icon from "../components/icon/";
 
@@ -129,6 +131,8 @@ const Layout = ({
           }
         ></blockquote>
       ),
+      name: ProductName,
+      version: ProductVersion,
       KatacodaPanel: () => (
         <KatacodaPanel katacodaPanelData={katacodaPanelData} />
       ),
@@ -148,6 +152,7 @@ const Layout = ({
       value={{
         dark: dark,
         toggleDark: toggleDark,
+        baseUrl: baseUrl,
       }}
     >
       <Helmet>
