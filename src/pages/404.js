@@ -156,7 +156,7 @@ const NotFound = ({ location: { pathname, href } }) => {
   );
 
   return (
-    <Layout pageMeta={{ title: "Page Not Found" }}>
+    <Layout pageMeta={{ title: "Page Not Found", minDeviceWidth: 320 }}>
       <Container fluid className="p-0 d-flex bg-white">
         <MainContent searchNavLogo={true}>
           <div className="d-flex align-items-center flex-column">

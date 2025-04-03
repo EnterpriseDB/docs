@@ -16,6 +16,8 @@ import {
   MainContent,
   PrevNext,
   SideNavigation,
+  BreadcrumbBar,
+  CategoryList,
   TableOfContents,
   Tiles,
   TileModes,
@@ -141,7 +143,7 @@ const Section = ({ section }) => (
 const DocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { fields, body, tableOfContents, fileAbsolutePath } = data.mdx;
-  const { path, mtime, depth } = fields;
+  const { path: versionedPath, mtime, depth } = fields;
   const {
     frontmatter,
     pagePath,
@@ -155,19 +157,19 @@ const DocTemplate = ({ data, pageContext }) => {
   const versionArray = makeVersionArray(
     versions,
     pageContext.pathVersions,
-    path,
+    versionedPath,
   );
-  const { product, version } = getProductAndVersion(path);
+  const { product, version } = getProductAndVersion(versionedPath);
 
   const {
-    iconName,
-    description,
-    katacodaPanel,
-    indexCards,
-    editTarget,
-    originalFilePath,
     deepToC,
+    description,
+    editTarget,
     hidePDF,
+    iconName,
+    indexCards,
+    katacodaPanel,
+    originalFilePath,
   } = frontmatter;
 
   const fileUrlSegment =
@@ -206,6 +208,7 @@ const DocTemplate = ({ data, pageContext }) => {
     title: title,
     description: description,
     path: pagePath,
+    minDeviceWidth: 320,
     isIndexPage: isPathAnIndexPage(fileAbsolutePath),
     productVersions,
     canonicalPath: pageContext.pathVersions.filter((p) => !!p)[0],
@@ -223,11 +226,11 @@ const DocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
+      <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} navTree={navTree}>
           <LeftNav
             navTree={navTree}
-            path={path}
+            versionedPath={versionedPath}
             pagePath={pagePath}
             versionArray={versionArray}
             iconName={iconName}
@@ -238,12 +241,21 @@ const DocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent searchProduct={product} searchVersion={version}>
+          <BreadcrumbBar
+            navTree={navTree}
+            pagePath={pagePath}
+            versionArray={versionArray}
+            iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
+            product={product}
+            version={preciseVersion || version}
+          />
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>
             </div>
           )}
-          <div className="d-flex justify-content-between align-items-center">
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center">
             <h1 className="balance-text">
               {frontmatter.title}{" "}
               {!navTree.hideVersion && (
@@ -252,7 +264,7 @@ const DocTemplate = ({ data, pageContext }) => {
                 </span>
               )}
             </h1>
-            <div className="d-flex d-print-none">
+            <div className="d-flex d-print-none ms-auto">
               {editTarget !== "none" && (
                 <EditLink
                   editTarget={editTarget}
@@ -268,6 +280,12 @@ const DocTemplate = ({ data, pageContext }) => {
               />
             </div>
           </div>
+
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : ""}
+          />
 
           {navTree.displayBanner ? (
             <div
@@ -304,6 +322,7 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
+                <CategoryList navTree={navTree} pagePath={pagePath} />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
