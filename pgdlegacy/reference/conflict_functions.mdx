@@ -1,0 +1,117 @@
+---
+title: Conflict functions
+indexdepth: 2
+---
+
+## `bdr.alter_table_conflict_detection`
+
+Allows the table owner to change how conflict detection works for a given table.
+
+### Synopsis
+
+```sql
+bdr.alter_table_conflict_detection(relation regclass,
+                                   method text,
+                                   column_name name DEFAULT NULL)
+```
+
+### Parameters
+
+-   `relation` &mdash; Name of the relation for which to set the new conflict detection method.
+-   `method` &mdash; The conflict detection method to use.
+-   `column_name` &mdash; The column to use for storing the column detection data. This can be skipped, in which case the column name is chosen based on the conflict detection method. The `row_origin` method doesn't require an extra column for metadata storage.
+
+The recognized methods for conflict detection are:
+
+-   `row_origin` &mdash; Origin of the previous change made on the tuple (see [Origin conflict detection](../conflict-management/conflicts/03_conflict_detection/#origin-conflict-detection)). This is the only method supported that doesn't require an extra column in the table.
+-   `row_version` &mdash; Row version column (see [Row version conflict detection](../conflict-management/conflicts/03_conflict_detection/#row-version-conflict-detection)).
+-   `column_commit_timestamp` &mdash; Per-column commit timestamps (described in [CLCD](../conflict-management/column-level-conflicts)).
+-   `column_modify_timestamp` &mdash; Per-column modification timestamp (described in [CLCD](../conflict-management/column-level-conflicts)).
+
+### Notes
+
+For more information about the difference between `column_commit_timestamp` and `column_modify_timestamp` conflict detection methods, see [Current versus commit timestamp](../conflict-management/column-level-conflicts/03_timestamps).
+
+This function uses the same replication mechanism as `DDL` statements. This means the replication is affected by the [ddl filters](../repsets/#ddl-replication-filtering) configuration.
+
+The function takes a `DML` global lock on the relation for which column-level conflict resolution is being enabled.
+
+This function is transactional. You can roll back the effects with the `ROLLBACK` of the transaction, and the changes are visible to the current transaction.
+
+Only the owner of the `relation` can execute the `bdr.alter_table_conflict_detection` function unless `bdr.backwards_compatibility` is set to 30618 or less.
+
+!!! Warning
+    When changing the conflict detection method from one that uses an extra column to store metadata, that column is dropped.
+
+!!! Warning
+    This function disables CAMO and gives a warning, as long as warnings aren't disabled with `bdr.camo_enable_client_warnings`.
+
+## `bdr.alter_node_set_conflict_resolver`
+
+This function sets the behavior of conflict resolution on a given node.
+
+### Synopsis
+
+```sql
+bdr.alter_node_set_conflict_resolver(node_name text,
+                                     conflict_type text,
+                                     conflict_resolver text)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of the node that's being changed.
+-   `conflict_type` &mdash; Conflict type for which to apply the setting (see [List of conflict types](conflicts/#list-of-conflict-types)).
+-   `conflict_resolver` &mdash; Resolver to use for the given conflict type (see [List of conflict resolvers](conflicts/#list-of-conflict-resolvers)).
+
+### Notes
+
+Currently you can change only the local node. The function call isn't replicated. If you want to change settings on multiple nodes, you must run the function on each of them.
+
+The configuration change made by this function overrides any default behavior of conflict resolutions specified by `bdr.create_node_group` or `bdr.alter_node_group`.
+
+This function is transactional. You can roll back the changes, and they are visible to the current transaction.
+
+## `bdr.alter_node_set_log_config`
+
+Set the conflict logging configuration for a node.
+
+### Synopsis
+
+```sql
+bdr.alter_node_set_log_config(node_name text,
+                              log_to_file bool DEFAULT true,
+                              log_to_table bool DEFAULT true,
+                              conflict_type text[] DEFAULT NULL,
+                              conflict_resolution text[] DEFAULT NULL)
+```
+
+### Parameters
+
+-   `node_name` &mdash; Name of the node that's being changed.
+-   `log_to_file` &mdash; Whether to log to the node log file.
+-   `log_to_table` &mdash; Whether to log to the `bdr.conflict_history` table.
+-   `conflict_type` &mdash; Conflict types to log. NULL (the default) means all.
+-   `conflict_resolution` &mdash; Conflict resolutions to log. NULL (the default) means all.
+
+### Notes
+
+You can change only the local node. The function call isn't replicated. If you want to change settings on multiple nodes, you must run the function on each of them.
+
+This function is transactional. You can roll back the changes, and they're visible to the current transaction.
+
+### Listing conflict logging configurations
+
+The view `bdr.node_log_config` shows all the logging configurations. It lists the name of the logging configuration, where it logs, and the conflict type and resolution it logs.
+
+### Logging conflicts to a table
+
+If `log_to_table` is set to true, conflicts are logged to a table. The target table for conflict logging is `bdr.conflict_history`.
+
+This table is range partitioned on the column `local_time`. The table is managed by autopartition. By default, a new partition is created for every day, and conflicts of the last one month are maintained. After that, the old partitions are dropped. Autopartition creates between 7 and 14 partitions in advance. bdr_superuser can change these defaults.
+
+Since conflicts generated for all tables managed by PGD are logged to this table, it's important to ensure that only legitimate users can read the conflicted data. PGD does this by defining ROW LEVEL SECURITY policies on the `bdr.conflict_history` table. Only owners of the tables are allowed to read conflicts on the respective tables. If the underlying tables have RLS policies defined, enabled, and enforced, then even owners can't read the conflicts. RLS policies created with the FORCE option also apply to owners of the table. In that case, some or all rows in the underlying table might not be readable even to the owner. So PGD also enforces a stricter policy on the conflict log table.
+
+The predefined role [bdr_read_all_conflicts](https://github.com/security/pgd-predefined-roles/#bdr_read_all_conflicts) can be granted to users who need to see all conflict details logged to the `bdr.conflict_history` table without also granting them bdr_superuser role.
+
+The default role bdr_read_all_stats has access to a catalog view called `bdr.conflict_history_summary`. This view doesn't contain user data, allowing monitoring of any conflicts logged.

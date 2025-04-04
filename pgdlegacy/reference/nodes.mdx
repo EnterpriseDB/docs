@@ -1,0 +1,170 @@
+---
+navTitle: Node management 
+title: Node management
+indexdepth: 3
+deepToC: true
+---
+
+## List of node states
+
+| State          | Description                                                                                                                                                                                                                                            |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `NONE`         | Node state is unset when the worker starts, expected to be set quickly to the current known state.                                                                                                                                                     |
+| `CREATED`      | `bdr.create_node()` was executed, but the node isn't a member of any EDB Postgres Distributed cluster yet.                                                                                                                                             |
+| `JOIN_START`   | `bdr.join_node_group()` begins to join the local node to an existing EDB Postgres Distributed cluster.                                                                                                                                                 |
+| `JOINING`      | The node join has started and is currently at the initial sync phase, creating the schema and data on the node.                                                                                                                                        |
+| `CATCHUP`      | Initial sync phase is completed. Now the join is at the last step of retrieving and applying transactions that were performed on the upstream peer node since the join started.                                                                        |
+| `STANDBY`      | Node join finished but hasn't yet started to broadcast changes. All joins spend some time in this state, but if defined as a logical standby, the node continues in this state.                                                                        |
+| `PROMOTE`      | Node was a logical standby and `bdr.promote_node` was just called to move the node state to `ACTIVE`. These two `PROMOTE` states have to be coherent to the fact that only one node can be with a state higher than `STANDBY` but lower than `ACTIVE`. |
+| `PROMOTING`    | Promotion from logical standby to full PGD node is in progress.                                                                                                                                                                                        |
+| `ACTIVE`       | The node is a full PGD node and is currently `ACTIVE`. This is the most common node status.                                                                                                                                                            |
+| `PART_START`   | Node was `ACTIVE` or `STANDBY` and `bdr.part_node` was just called to remove the node from the EDB Postgres Distributed cluster.                                                                                                                       |
+| `PARTING`      | Node disconnects from other nodes and plays no further part in consensus or replication.                                                                                                                                                               |
+| `PART_CATCHUP` | Nonparting nodes synchronize any missing data from the recently parted node.                                                                                                                                                                           |
+| `PARTED`       | Node parting operation is now complete on all nodes.                                                                                                                                                                                                   |
+
+Only one node at a time can be in either of the states PROMOTE or PROMOTING.
+
+## Node-management commands
+
+PGD also provides a command-line utility for adding nodes to the PGD group using a
+physical copy (`pg_basebackup`) of an existing node.
+
+### `bdr_init_physical`
+
+This is a regular command that's added to PostgreSQL's bin directory.
+
+You must specify a data directory. If this data directory is empty,
+use `pg_basebackup -X stream` to fill the directory
+using a fast block-level copy operation.
+
+If the specified data directory isn't empty, it's used as the base for the
+new node. Initially, it waits for catchup and then promotes to a master node
+before joining the PGD group. The `--standby` option, if used, turns it into a
+logical standby node.
+
+This command drops all PostgreSQL-native logical replication
+subscriptions from the database (or disables them when the `-S` option is
+used) as well as any replication origins and slots.
+
+#### Synopsis
+
+```shell
+bdr_init_physical [OPTION] ...
+```
+
+#### Options
+
+##### General options
+
+-   `-D, --pgdata=DIRECTORY` &mdash; The data directory to use for the new node. It
+    can be either an empty or nonexistent directory or a directory populated using the
+    `pg_basebackup -X stream` command (required).
+-   `-l, --log-file=FILE` &mdash; Use FILE for logging. The default is
+    `bdr_init_physical_postgres.log`.
+-   `-n, --node-name=NAME` &mdash; The name of the newly created node (required).
+-   `--replication-sets=SETS` &mdash; The name of a comma-separated list of replication
+    set names to use. All replication sets are used if not specified.
+-   `--standby` &mdash; Create a logical standby (receive-only node) rather than full
+    send/receive node.
+-   `--node-group-name` &mdash; Group to join. Defaults to the same group as source node.
+-   `-s, --stop` &mdash; Stop the server once the initialization is done.
+-   `-v` &mdash; Increase logging verbosity.
+-   `-L` &mdash; Perform selective pg_basebackup when used with an
+    empty/nonexistent data directory (-D option). This is a feature of
+    EDB Postgres Extended Server only.
+-   `-S` &mdash; Instead of dropping logical replication subscriptions, disable
+    them.
+
+##### Connection options
+
+-   `-d, --remote-dsn=CONNSTR` &mdash; Connection string for remote node (required).
+-   `--local-dsn=CONNSTR` &mdash; Connection string for local node (required).
+
+##### Configuration files override
+
+-   `--hba-conf` &mdash; Path to the new `pg_hba.conf`.
+-   `--postgresql-conf` &mdash; Path to the new `postgresql.conf`.
+-   `--postgresql-auto-conf` &mdash; Path to the new `postgresql.auto.conf`.
+
+#### Notes
+
+The replication set names specified in the command don't affect the data that
+exists in the data directory before the node joins the PGD group. This is true
+whether `bdr_init_physical` makes its own base backup or an existing base backup
+is being promoted to a new PGD node. Thus the `--replication-sets` option
+affects only the data published and subscribed to after the node joins the PGD node
+group. This behavior is different from the way replication sets are used in a
+logical join, as when using `bdr.join_node_group()`.
+
+The operator can truncate unwanted tables after the join completes.
+Refer to the `bdr.tables` catalog to determine replication set membership and
+identify tables that aren't members of any subscribed-to replication set. We
+strongly recommend that you truncate the tables rather than drop them, because:
+
+-   DDL replication sets aren't necessarily the same as row (DML) replication
+    sets, so you might inadvertently drop the table on other nodes.
+-   If you later want to add the table to a replication set and you dropped
+    it on some subset of nodes, you need to re-create it only
+    on those nodes without creating DDL conflicts before you can add it to
+    any replication sets.
+
+It's simpler and safer to truncate your nonreplicated tables, leaving them
+present but empty.
+
+### `bdr_config`
+
+This command-line utility allows you to examine the configuration of a PGD installation.
+It is analogous to the `pg_config` utility that comes with PostgreSQL. You can use it to assist
+in troubleshooting and support.
+
+#### Synopsis
+
+```shell
+bdr_config [OPTION] ...
+```
+
+#### Options
+
+| Option&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Description |
+| --- | --- |
+| `--all` | Show all the keys and values in the configuration. |
+| `--version` | Show only the BDR version related keys and values. This includes the full version of the BDR extension, the Postgres version and flavor it is running against, and the BDRPG and BDR plugin API versions. |
+| `--debug` | Show only the BDR debug keys and values, including build information and feature enablement. |
+
+#### Example
+
+```shell
+$ /usr/lib/edb-as/16/bin/bdr_config --all
+__OUTPUT__
+BDR_VERSION_COMPLETE=5.6.0
+BDR_VERSION_NUM=50600
+PG_VERSION=16.4.1 (Debian 16.4.1~~snapshot11329862135.2980.1.88fbec6-1.bookworm)
+PG_VERSION_NUM=160004
+PG_FLAVOR=EPAS
+BDRPG_API_VERSION_NUM=202309131
+BDR_PLUGIN_API_VERSION=7011
+USE_ASSERT_CHECKING=false
+USE_VALGRIND=false
+EXT_ENABLE_DTRACE=false
+HAVE_LAG_CONTROL=true
+HAVE_ASSESS_UPDATE_RI_HOOK=false
+HAVE_BDRPG_PROBES=false
+HAVE_CAMO=true
+HAVE_DEADLOCK_DETECTOR_HOOK=true
+HAVE_HEAP_UPDATE_HOOK=true
+HAVE_LAG_TRACKER=true
+HAVE_LCR=true
+HAVE_LOG_TOAST_COLUMNS=false
+HAVE_MISC_HOOKS=true
+HAVE_MISSING_PARTITION_CONFLICT=true
+HAVE_MULTI_PITR=false
+HAVE_SELECTIVE_BASEBACKUP=false
+HAVE_SNAPSHOT_TIMESTAMP=false
+HAVE_STREAMING_XACTS=true
+HAVE_SYNC_COMMIT_HOOK=true
+HAVE_TWOPHASE_DATA_HOOKS=true
+HAVE_XLOG_FIND_NEXT_RECORD=true
+HAVE_DETACH_CONCURRENTLY=true
+HAVE_ANALYTICS=true
+```
