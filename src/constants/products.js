@@ -30,6 +30,19 @@ const products = {
     abbreviation: "PGD",
     iconName: IconNames.HIGH_AVAILABILITY,
   },
+  pgdx: {
+    name: "EDB Postgres Distributed Expanded",
+    shortName: "PGD Expanded",
+    abbreviation: "PGDX",
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
+  pgds: {
+    name: "EDB Postgres Distributed Essentials",
+    shortName: "PGD Essentials",
+    abbreviation: "PGDS",
+    productFamily: "Postgres Distributed",
+    iconName: IconNames.HIGH_AVAILABILITY,
+  },
   pge: { name: "EDB Postgres Extended Server", iconName: IconNames.POSTGRESQL },
   "EDB Postgres Tuner": { name: "EDB Postgres Tuner" },
 
