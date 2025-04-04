@@ -7,6 +7,7 @@ const nameCodes = {
   "short": "shortName",
   "abbr": "abbreviation",
   "ccn": "commonCommandName",
+  "family": "productFamily"
 };
 
 
