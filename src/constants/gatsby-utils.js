@@ -1,9 +1,9 @@
 const fs = require("fs");
 const asyncFs = require("fs/promises");
 const path = require("path");
-let expressionReplacement = import("./expression-replacement.mjs").then(
-  (module) => (expressionReplacement = module.default),
-);
+const {
+  default: expressionReplacement,
+} = require("./expression-replacement.js");
 
 const ghBranch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF;
 const isGHBuild = !!ghBranch;

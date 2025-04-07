@@ -1,6 +1,6 @@
-import IconNames from "../components/icon/iconNames.js";
+const IconNames = require("../components/icon/iconNames.js");
 
-export const products = {
+const products = {
   "Expression Replacement": {
     name: "Name and Version Expression Replacement Syntax",
     shortName: "Expression Replacement",
@@ -120,3 +120,5 @@ export const products = {
     iconName: IconNames.EDB_TRANSPORTER,
   },
 };
+
+module.exports = { products };
