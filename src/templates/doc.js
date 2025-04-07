@@ -22,6 +22,7 @@ import {
 } from "../components";
 import { products } from "../constants/products";
 import { FeedbackDropdown } from "../components/feedback-dropdown";
+import ProductContext from "../components/product-context";
 import GithubSlugger from "github-slugger";
 
 export const query = graphql`
@@ -190,6 +191,7 @@ const DocTemplate = ({ data, pageContext }) => {
   }
 
   let title = frontmatter.title;
+
   if (depth === 2 && !navTree.hideVersion) {
     // product version root
     title += ` v${version}`;
@@ -283,7 +285,17 @@ const DocTemplate = ({ data, pageContext }) => {
                 "col-print-12",
               ].join(" ")}
             >
-              <MDXRenderer>{body}</MDXRenderer>
+              <ProductContext
+                value={{
+                  product,
+                  version,
+                  fullVersion: frontmatter.version,
+                  productVersions,
+                  fileAbsolutePath,
+                }}
+              >
+                <MDXRenderer>{body}</MDXRenderer>
+              </ProductContext>
               <Tiles mode={indexCards} node={navRoot} />
               {(!indexCards || indexCards === TileModes.None) && sections && (
                 <Sections sections={sections} />

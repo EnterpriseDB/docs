@@ -156,12 +156,12 @@ exports.onCreateNode = async ({
     Object.assign(nodeFields, {
       product: relativeFilePath.split("/")[1],
       version: relativeFilePath.split("/")[2],
-      topic: "null",
+      topic: "",
     });
   } else if (nodeFields.docType === "advocacy") {
     Object.assign(nodeFields, {
-      product: "null",
-      version: "0",
+      product: "",
+      version: "",
       topic: relativeFilePath.split("/")[2],
     });
   }
@@ -192,6 +192,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirects
             legacyRedirectsGenerated
             navigation
+            product
             showInteractiveBadge
             hideToC
             deepToC
@@ -281,7 +282,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
   await processReferenceIndexes(result.data.allReferenceIndex.nodes, reporter);
 
   // perform depth first preorder traversal
-  const treeRoot = mdxNodesToTree(nodes);
+  const treeRoot = mdxNodesToTree(nodes, productVersions);
   for (let curr of treeRoot) {
     // exit here if we're not dealing with an actual page
     if (!curr.mdxNode && !curr.path) continue;
