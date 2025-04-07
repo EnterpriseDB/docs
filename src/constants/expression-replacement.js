@@ -4,11 +4,11 @@ import semver from "semver";
 export const expressionRE =
   /(?<!\\)\{\{(?<command>\w+)(?:\((?<product>[^)]+)\)){0,1}\.(?<type>[^}]+)\}\}/;
 const nameCodes = {
-  ln: "name",
-  short: "shortName",
-  abbr: "abbreviation",
-  ccn: "commonCommandName",
-  "family": "productFamily",
+  "ln": "name",
+  "sn": "shortName",
+  "abbr": "abbreviation",
+  "ccn": "commonCommandName",
+  "fam": "productFamily",
 };
 
 export default function expressionReplacement({
