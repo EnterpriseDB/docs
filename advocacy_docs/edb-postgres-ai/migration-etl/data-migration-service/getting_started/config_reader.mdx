@@ -7,9 +7,7 @@ redirects:
 
 ## Getting credentials
 
-1.  Access the Hybrid Control Plane Portal (HCP Portal) and log in with your EDB Postgres AI credentials.
-
-1.  Select the HCP project you are using for your migration activities.
+1.  On the HCP Portal, select the project you are using for your migration activities.
 
 1.  Within your project, select **Migrate** > **Credentials**.
 
@@ -21,9 +19,9 @@ redirects:
 
 ## Configuring the reader
 
-1.  Ensure your machine has Java 17 or later installed.
+1.  Ensure your machine has Java/OpenJDK 17 or later installed.
 
-1.  Open the EDB DMS reader located in `/opt/cdcreader/run-cdcreader.sh` and ensure you have write permissions.
+1.  Open the EDB DMS Reader located in `/opt/cdcreader/run-cdcreader.sh` and ensure you have write permissions.
 
 1.  Set the variables according to your environment and uncomment the edited lines. See [parameters](#parameters) for further guidance. The script is reproduced below.
 
@@ -117,7 +115,11 @@ java ${JAVA_OPTS} -jar quarkus-run.jar
 
 ## Parameters
 
-### `DBZ_ID`
+### DMS Reader general configuration
+
+These parameters define the information the EDB DMS Reader requires to access the HCP instance and project that you are using for the migration.
+
+#### `DBZ_ID`
 
 This is the name you assign to identify a source. This name will later appear as a _source_ in the **Migrate** > **Sources** section of the EDB Postgres AI Console.
 
@@ -127,7 +129,7 @@ Consider the following ID guidelines:
 - You can use lowercase and uppercase characters, numbers, underscores(_) and hyphens(-) for the ID. Other special characters are not supported.
 - The ID must be unique within a project. Do not use the same ID for two or more sources in the same project.
 
-### `RW_SERVICE_HOST`
+#### `RW_SERVICE_HOST`
 
 Specifies the URL of the service that will host the migration. Set `RW_SERVICE_HOST` to the domain name or host associated with the HCP ingress.
         
@@ -137,68 +139,76 @@ Alternatively, derive `RW_SERVICE_HOST` from the URL you use to access the HCP p
 
 In this example, you'd have to set the `RW_SERVICE_HOST` to `transporter.foo.network/transporter`.
 
-### `TLS_PRIVATE_KEY_PATH`
+#### `TLS_PRIVATE_KEY_PATH`
 
 Directory path to the `client-key.pem` private key you downloaded from the EDB Postgres AI Console.
 
 The HTTP client of the EDB DMS Reader uses it to perform mTLS authentication with the `transporter-rw-service`.
 
-### `TLS_CERTIFICATE_PATH`
+#### `TLS_CERTIFICATE_PATH`
 
 Directory path to the X509 `client-cert.pem` certificate you downloaded from the EDB Postgres AI Console.
 
 The HTTP client of the EDB DMS Reader uses it to perform mTLS authentication with the `transporter-rw-service`.
 
-### `TLS_CA_PATH`
+#### `TLS_CA_PATH`
 
 Directory path to the `int.cert` Certificate Authority you downloaded from the EDB Postgres AI Console.
 
 It signs the certificate configured in `TLS_CERTIFICATE_PATH`.
 
-### `APICURIOREQUEST_CLIENT_KEYSTORE_LOCATION`
+#### `APICURIOREQUEST_CLIENT_KEYSTORE_LOCATION`
 
 Directory path to the `client-keystore.p12` keystore location file you downloaded from the EDB Postgres AI Console.
 It is created from the private key and certificate configured in `TLS_PRIVATE_KEY_PATH` and `TLS_CERTIFICATE_PATH`.
 
 The Apicurio client uses it to perform mTLS authentication with the `transporter-rw-service`.
 
-### `APICURIOREQUEST_TRUSTSTORE_LOCATION`
+#### `APICURIOREQUEST_TRUSTSTORE_LOCATION`
 
 Created from the Certificate Authority configured in `TLS_CA_PATH`.
 
 The Apicurio client uses it to perform mTLS authentication with the `transporter-rw-service`.
 
-### `AWS_ACCESS_KEY_ID`
+### DMS Reader object storage configuration 
+
+These optional parameters (that start with `AWS_`) provide the EDB DMS Reader with information it requires to use object storage to improve performance for migrations. If one or more of your source tables contain a row with data larger than 1 MB, the EDB DMS Reader won't be able to continue reading the source, as it lacks resources to do so.
+
+In versions 1.1 and earlier, configuring object storage for the reader is a manual process that requires pointing at the AWS S3 bucket or other S3-compatible object storage (like MinIO) that you already have configured for the HCP. In this case, fill out the `AWS_` values with the information of your object storage.
+ 
+In versions 1.2 and later, an autodiscovery mechanism will automatically use the same object storage you configured for the HCP. In this case, you won't need to provide any of the `AWS_` values.
+
+#### `AWS_ACCESS_KEY_ID`
 1) If you are using AWS S3, set this value to an access key ID that has read and write permissions for the S3 bucket.
 
 2) If you are using S3-compatible storage, like MinIO, set this value to the access key for your object storage.
 
-### `AWS_SECRET_ACCESS_KEY`
+#### `AWS_SECRET_ACCESS_KEY`
 1) If you are using AWS S3, set this value to a secret access key that has read and write permissions for the specified S3 bucket.
 
 2) If you are using S3-compatible storage, like MinIO, set this value to the secret key for your object storage.
 
-### `AWS_REGION` (Optional)
+#### `AWS_REGION` (Optional)
 1) If you are using AWS S3, set this value to match the region specified in `AWS_ENDPOINT_URL_S3`.
 
 2) If you are using S3-compatible storage, such as MinIO, this setting is not required.
 
-### `AWS_CA_BUNDLE` (Optional)
+#### `AWS_CA_BUNDLE` (Optional)
 Set this value only if you are using a self-signed certificate for your object storage. Specify the path to the CA bundle file.
 
 This setting is not required if you are using AWS S3 or S3-compatible storage with publicly trusted certificate authorities (CAs).
 
-### `AWS_ENDPOINT_URL_S3`
+#### `AWS_ENDPOINT_URL_S3`
 1) If you are using AWS S3, you can find the endpoint URL in the AWS documentation: [AWS S3 Endpoints](https://docs.aws.amazon.com/general/latest/gr/s3.html).
 
 2) If you are using S3-compatible storage, like MinIO, set this value according to your object storage configuration.
 
-### `BUCKET_NAME`
+#### `BUCKET_NAME`
 Specify the name of the bucket you want to use for the migration. The bucket must be created before starting the migration.
 
-### `DBZ_DATABASES`
+### DMS Reader source database configuration
 
-This is a list of source database information you require for the EDB DMS Reader be able to read the correct source database information for the migration.
+These parameters (`DBZ_DATABASES` section) define a list of source database information you require for the EDB DMS Reader to be able to read the correct source database information for the migration.
 
 You can configure the EDB DMS Reader to migrate multiple databases. The `DBZ_DATABASES_0__TYPE` section delimits the information for the first database. You can use `DBZ_DATABASES_1__TYPE` to provide data for a second database. Add more sections to the EDB DMS Reader (`DBZ_DATABASES_2__TYPE`, `DBZ_DATABASES_3__TYPE`) by increasing the index manually.
 
@@ -225,7 +235,6 @@ The database username of the source database.
 #### `DBZ_DATABASES_0__PASSWORD`
 
 The password for the database username of the source database.
-
 
 ## Running the EDB DMS Reader
 
