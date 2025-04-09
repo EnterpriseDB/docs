@@ -521,7 +521,7 @@ const Page = () => {
             <BannerDivider
               iconName={iconNames.CONNECT}
               headingText="Connection Poolers"
-              toUrl="/edb-postgres-ai/platforms-and-tools/integration/#connection-poolers"
+              toUrl="/edb-postgres-ai/integration/#connection-poolers"
             />
 
             <BannerWideLink to="/pgbouncer/latest">PgBouncer</BannerWideLink>
@@ -610,14 +610,20 @@ const Page = () => {
             headingText="Integration"
             to="/edb-postgres-ai/integration"
           >
-            <BannerDivider headingText="Connectors" />
+            <BannerDivider
+              headingText="Connectors"
+              toUrl="/edb-postgres-ai/integration#connectors"
+            />
 
             <BannerWideLink to="/jdbc_connector/latest">JDBC</BannerWideLink>
             <BannerWideLink to="/net_connector/latest">.NET</BannerWideLink>
             <BannerWideLink to="/ocl_connector/latest">OCL</BannerWideLink>
             <BannerWideLink to="/odbc_connector/latest">ODBC</BannerWideLink>
 
-            <BannerDivider headingText="Foreign Data Wrappers" />
+            <BannerDivider
+              headingText="Foreign Data Wrappers"
+              toUrl="/edb-postgres-ai/integration#foreign-data-wrappers"
+            />
             <BannerWideLink to="/hadoop_data_adapter/latest">
               Hadoop
             </BannerWideLink>
