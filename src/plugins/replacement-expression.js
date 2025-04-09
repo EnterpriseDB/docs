@@ -1,21 +1,81 @@
 const visit = require("unist-util-visit-parents");
-const { expressionRE } = require("../constants/expression-replacement.mjs");
-let replacer = null;
-let shortcodeRE = null;
-import("../constants/expression-replacement.mjs").then(
-  (module) => (
-    (shortcodeRE = module.expressionRE), (replacer = module.default)
-  ),
-);
+const {
+  default: replacer,
+  expressionRE,
+} = require("../constants/expression-replacement.js");
 
 // This plugin replaces shortcodes in the form {{name([product]).<type>}} with the actual name of the product
 // The type of name must be one defined in products.js
 function replaceExpressions() {
+  const pipeline = this;
+  attachParser(pipeline.Parser);
+
+  // special-case for headers: we need to replace the expressions before the ToC is generated
+  // annoyingly, the ToC is generated after parse, but before transformation - so the rest of this
+  // plugin won't run in time.
+  function attachParser(parser) {
+    if (
+      !parser ||
+      !parser.prototype ||
+      !parser.prototype.blockTokenizers ||
+      !parser.prototype.blockMethods
+    )
+      return;
+
+    // replace the heading tokenizer with one that keeps track of when we're in a heading,
+    // and allow us to replace expressions in headings before the ToC is generated
+
+    const parseHeading = (original) => {
+      return function (eat, value, silent) {
+        this.inHeading = true;
+        const ret = original.call(this, eat, value, silent);
+        this.inHeading = false;
+        return ret;
+      };
+    };
+
+    const parseText = (original) => {
+      return function (eat, value, silent) {
+        if (!this.inHeading || silent) {
+          return original.call(this, eat, value, silent);
+        }
+
+        replacerEat.now = () => eat.now.apply(eat);
+        replacerEat.file = eat.file;
+
+        return original.call(this, replacerEat, value, silent);
+
+        function replacerEat(value) {
+          const apply = eat(value);
+          return (node, parent) => {
+            node.value = replacer({
+              text: value,
+              filename: eat.file.path,
+              position: node.position,
+            });
+            return apply(node, parent);
+          };
+        }
+      };
+    };
+
+    parser = parser.prototype;
+    parser.blockTokenizers.setextHeading = parseHeading(
+      parser.blockTokenizers.setextHeading,
+    );
+    parser.blockTokenizers.atxHeading = parseHeading(
+      parser.blockTokenizers.atxHeading,
+    );
+    parser.inlineTokenizers.text = parseText(parser.inlineTokenizers.text);
+  }
+
   return (tree, file) => {
     visit(tree, ["text", "code", "inlineCode"], visitor);
 
     function visitor(node, ancestors) {
       if (!node.value?.includes("{{")) return;
+      // special-case for code:
+      // we don't parse JSX components inside code, so need to replace now
       if (["code", "inlineCode"].includes(node.type)) {
         node.value = replacer({
           text: node.value,
