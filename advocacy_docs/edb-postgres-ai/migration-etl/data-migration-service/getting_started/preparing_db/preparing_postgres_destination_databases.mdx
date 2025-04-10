@@ -1,0 +1,72 @@
+---
+title: "Preparing Postgres destination databases"
+deepToC: true
+---
+
+Configuring Postgres for EDB Data Migration Service (EDB DMS) requires administrative privileges.
+
+## Create a destination database
+
+If you don't have a destination database yet, create one that the EDB DMS Writer can connect to for migrations.
+
+1. Connect to the destination Postgres server:
+   
+   ```shell
+   psql -p <PG_PORT> -U <PG_USERNAME>
+   ```
+
+1.  Create an empty target database that you'll use as a destination for the migration. 
+    
+    In this example, the target database is called `tr_target`: 
+
+    ```sql
+    CREATE DATABASE tr_target;
+    ```
+
+## SSL configuration
+
+Ensure you configure your source database server to [accept SSL connections](https://www.postgresql.org/docs/current/ssl-tcp.html) to allow the EDB DMS Writer to connect to it. You must create a server certificate and a server private key, for example, with OpenSSL, to enable this configuration.
+
+For **testing** purposes, the following example creates a self-signed certificate and key with OpenSSL for a PostgreSQL 17 server on Ubuntu. The bin and data directories may vary depending on your OS, [Postgres distribution](/edb-postgres-ai/databases/postgres_distributions/), and version.
+
+1.  In your terminal, generate an SSL certificate and key:
+
+    ```shell
+    openssl req -new -x509 -days 365 -nodes -out server.crt -keyout server.key
+    ```
+
+    Follow the terminal prompts to create the files.
+
+1.  Move the created files to the Postgres data directory, so the server has access to them: 
+
+    ```shell
+    sudo cp server.crt server.key /var/lib/postgresql/17/<data_directory>
+    ```
+
+1.  Set the required permissions for the files: 
+
+    ```shell
+    sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.key 
+    sudo chmod 600 /var/lib/postgresql/17/<data_directory>/server.crt 
+    sudo chown postgres:postgres /var/lib/postgresql/17/<data_directory>/server.crt /var/lib/postgresql/17/<data_directory>/server.key
+    ```
+
+1.  Modify the `postgresql.conf` file to enable SSL:
+
+    ```shell
+    ssl = on
+    ssl_cert_file = 'server.crt'
+    ssl_key_file = 'server.key'
+    ```
+
+1.  Update the `pg_hba.conf` file to allow local SSL connections. Add the following line: 
+
+    ```shell
+    hostssl all             all             0.0.0.0/0               md5
+    ```
+
+1.  Restart your server to apply the changes: 
+
+    ```shell
+    /usr/lib/postgresql/17/bin/pg_ctl -D /var/lib/postgresql/17/<data_directory> restart
+    ```
