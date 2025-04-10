@@ -164,8 +164,11 @@ export function CategoryList({ navTree, pagePath, className }) {
         </div>
         <ul className="list-unstyled d-flex flex-wrap">
           {categories.map((category) => (
-            <li key={category.path} className="me-4">
-              <Link to={category.path} className="d-block py-2 align-middle">
+            <li key={category.path} className="me-2">
+              <Link
+                to={category.path}
+                className="d-block py-2 align-middle badge rounded-pill bg-primary text-dark mb-1"
+              >
                 {category.title}
               </Link>
             </li>
