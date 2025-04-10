@@ -251,7 +251,10 @@ const Page = () => {
                 EDB Postgres Extended Server
               </BannerCardLink>
               <BannerCardLink to="/pgd/latest">
-                EDB Postgres Distributed (PGD)
+                EDB Postgres Distributed Expanded
+              </BannerCardLink>
+              <BannerCardLink to="/pgds/latest">
+                EDB Postgres Distributed Essentials
               </BannerCardLink>
               <BannerCardLink to="/supported-open-source/postgresql/">
                 PostgreSQL
