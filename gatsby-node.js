@@ -11,11 +11,8 @@ const execAsync = util.promisify(exec);
 const {
   replacePathVersion,
   filePathToDocType,
-  removeTrailingSlash,
-  isPathAnIndexPage,
   pathToDepth,
   mdxNodesToTree,
-  computeFrontmatterForTreeNode,
   buildProductVersions,
   reportMissingIndex,
   treeToNavigation,
@@ -180,6 +177,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           frontmatter {
             title
             navTitle
+            categories
             description
             redirects
             iconName
@@ -192,6 +190,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
             legacyRedirects
             legacyRedirectsGenerated
             navigation
+            navRootedTo
             product
             showInteractiveBadge
             hideToC
@@ -243,6 +242,7 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
           fileAbsolutePath
         }
       }
+
       allPublicFile {
         nodes {
           urlPath
@@ -296,7 +296,11 @@ exports.createPages = async ({ actions, graphql, reporter }) => {
     // build navigation tree
     const navigationDepth = 1;
     let navRoot = curr;
-    while (navRoot.depth > navigationDepth && navRoot?.parent?.mdxNode)
+    while (
+      navRoot.depth > navigationDepth &&
+      navRoot?.parent?.mdxNode &&
+      !navRoot.mdxNode.frontmatter.navRootedTo
+    )
       navRoot = navRoot.parent;
     const navTree = treeToNavigation(navRoot, node);
 
@@ -408,7 +412,6 @@ const createAdvocacy = (navTree, prevNext, doc, productVersions, actions) => {
     context: {
       nodeId: doc.id,
       frontmatter: doc.frontmatter,
-      pagePath: doc.fields.path,
       prevNext,
       productVersions,
       navTree,
@@ -547,41 +550,43 @@ exports.createSchemaCustomization = ({ actions }) => {
     }
 
     type Frontmatter {
+      categories: [String]
       description: String
-      prevNext: Boolean
-      iconName: String
-      product: String
-      platform: String
-      originalFilePath: String
-      indexCards: TileModes
-      editTarget: EditTargets
-      legacyRedirects: [String]
-      legacyRedirectsGenerated: [String]
-      showInteractiveBadge: Boolean
-      hideToC: Boolean
+      displayBanner: String
       deepToC: Boolean
-      version: String
+      directoryDefaults: DirectoryDefaults
+      editTarget: EditTargets
+      hideKBLink: Boolean
+      hidePDF: Boolean
+      hideToC: Boolean
+      hideVersion: Boolean
+      iconName: String
+      indexCards: TileModes
       katacodaPages: DemoPage
       katacodaPanel: DemoPanel
-      hideVersion: Boolean
-      hidePDF: Boolean
-      pdfExclude: String
-      pdf: Boolean
-      hideKBLink: Boolean
-      displayBanner: String
+      legacyRedirects: [String]
+      legacyRedirectsGenerated: [String]
+      navRootedTo: String
       noindex: Boolean
-      directoryDefaults: DirectoryDefaults
+      originalFilePath: String
+      pdf: Boolean
+      pdfExclude: String
+      platform: String
+      prevNext: Boolean
+      product: String
+      showInteractiveBadge: Boolean
+      version: String
     }
     
     type DemoPage {
-      scenario: String
       account: String
+      scenario: String
     }
     type DemoPanel {
-      scenario: String
       account: String
-      initializeCommand: String
       codelanguages: String
+      initializeCommand: String
+      scenario: String
     }
 
     enum TileModes {
@@ -599,31 +604,30 @@ exports.createSchemaCustomization = ({ actions }) => {
 
     type DirectoryDefaults {
       description: String
-      prevNext: Boolean
-      iconName: String
-      product: String
-      platform: String
-      indexCards: TileModes
-      editTarget: EditTargets
-      showInteractiveBadge: Boolean
-      hideVersion: Boolean
-      hidePDF: Boolean
-      preciseVersion: String
-      pdfExclude: Boolean
-      hideKBLink: Boolean
       displayBanner: String
-      version: String
+      editTarget: EditTargets
+      hideKBLink: Boolean
+      hidePDF: Boolean
+      hideVersion: Boolean
+      iconName: String
+      indexCards: TileModes
       noindex: Boolean
+      pdfExclude: Boolean
+      platform: String
+      prevNext: Boolean
+      product: String
+      showInteractiveBadge: Boolean
+      version: String
     }
 
     type PublicFile implements Node {
       absolutePath: String
-      urlPath: String
-      product: String
-      version: String
-      mimeType: String
       ext: String
       extension: String
+      mimeType: String
+      product: String
+      urlPath: String
+      version: String
     }
 
     type ReferenceIndex implements Node {

@@ -12,11 +12,10 @@ import {
   Link,
   StubCards,
   IconList,
-  PurlAnchor,
-  Details,
-  TabContainer,
-  Tab,
 } from "../components";
+import PurlAnchor from "../components/purl-anchor";
+import Details from "../components/details";
+import TabContainer, { Tab } from "../components/tab-container";
 import ProductName from "../components/product-name";
 import ProductVersion from "../components/product-version";
 import { MDXProvider } from "@mdx-js/react";
