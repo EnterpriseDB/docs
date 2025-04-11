@@ -32,7 +32,6 @@ export {
 } from "./side-navigation";
 export { default as StubCards } from "./stub-cards";
 export { default as TableOfContents } from "./table-of-contents";
-export { default as TabContainer, Tab } from "./tab-container";
 export { default as Tiles, TileModes } from "./tiles.js";
 export { default as TimedBanner } from "./timed-banner";
 export { default as TopBar } from "./top-bar";
