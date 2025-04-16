@@ -280,12 +280,6 @@ const DocTemplate = ({ data, pageContext }) => {
             </div>
           </div>
 
-          <CategoryList
-            navTree={navTree}
-            pagePath={pagePath}
-            className={showToc ? "d-lg-none" : ""}
-          />
-
           {navTree.displayBanner ? (
             <div
               className="alert alert-warning mt-3"
@@ -321,12 +315,24 @@ const DocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
-                <CategoryList navTree={navTree} pagePath={pagePath} />
+                <CategoryList
+                  navTree={navTree}
+                  pagePath={pagePath}
+                  className="flex-column"
+                />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>
+
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : "border-top pt-2"}
+          />
+
           {depth > 2 && <PrevNext prevNext={prevNext} />}
+
           <DevFrontmatter frontmatter={frontmatter} />
 
           <Footer timestamp={mtime} fileRelativePath={fileUrlSegment} />
