@@ -59,7 +59,7 @@ const BreadcrumbList = ({ children, className }) => {
 const BreadcrumbItem = ({ node }) => {
   return (
     <li className="breadcrumb-item" key={node.path}>
-      <Link to={node.path}>
+      <Link to={node.path} title={node.description}>
         {node.rootedTo
           ? node.title || "TITLE NEEDED"
           : node.navTitle || node.title || "TITLE NEEDED"}
@@ -158,16 +158,20 @@ export function CategoryList({ navTree, pagePath, className }) {
 
   return (
     categories && (
-      <nav aria-label="Related Categories" className={className}>
-        <div className="mb-2 fw-bold text-muted text-uppercase small">
+      <nav
+        aria-label="Related Categories"
+        className={"d-flex flex-wrap " + (className || "")}
+      >
+        <div className="me-1 py-1 align-middle fw-bold text-muted text-uppercase small">
           Related Categories:
         </div>
         <ul className="list-unstyled d-flex flex-wrap">
           {categories.map((category) => (
-            <li key={category.path} className="me-2">
+            <li key={category.path} className="me-1">
               <Link
                 to={category.path}
-                className="d-block py-2 align-middle badge rounded-pill bg-primary text-dark mb-1"
+                title={category.description}
+                className="d-block py-2 align-middle badge rounded-pill text-wrap balance-text bg-primary text-dark mb-1"
               >
                 {category.title}
               </Link>

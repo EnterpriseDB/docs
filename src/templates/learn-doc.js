@@ -204,12 +204,6 @@ const LearnDocTemplate = ({ data, pageContext }) => {
             <div className="d-print-none ms-auto">{editOrFeedbackButton}</div>
           </div>
 
-          <CategoryList
-            navTree={navTree}
-            pagePath={pagePath}
-            className={showToc ? "d-lg-none" : ""}
-          />
-
           {frontmatter.displayBanner ? (
             <div className="alert alert-warning mt-3" role="alert">
               {frontmatter.displayBanner}
@@ -239,11 +233,22 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
-                <CategoryList navTree={navTree} pagePath={pagePath} />
+                <CategoryList
+                  navTree={navTree}
+                  pagePath={pagePath}
+                  className="flex-column"
+                />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>
+
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : "border-top pt-2"}
+          />
+
           {showPrevNext && <PrevNext prevNext={prevNext} />}
 
           <DevFrontmatter frontmatter={frontmatter} />
