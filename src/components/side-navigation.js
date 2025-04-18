@@ -36,8 +36,7 @@ const FooterItem = ({ url, children }) => (
 );
 
 const SideNavigationFooter = ({ hideKBLink = false }) => (
-  <ul className="list-unstyled mt-0">
-    <hr />
+  <ul className="list-unstyled mt-0 border-top">
     {!hideKBLink && (
       <FooterItem url="https://knowledge.enterprisedb.com/">
         Knowledge Base and Technical Alerts
@@ -167,11 +166,11 @@ export function CategoryList({ navTree, pagePath, className }) {
         </div>
         <ul className="list-unstyled d-flex flex-wrap">
           {categories.map((category) => (
-            <li key={category.path} className="me-1">
+            <li key={category.path} className="me-1 flex-fill">
               <Link
                 to={category.path}
                 title={category.description}
-                className="d-block py-2 align-middle badge rounded-pill text-wrap balance-text bg-primary text-dark mb-1"
+                className="d-block py-2 align-middle badge rounded-pill text-wrap balance-text bg-light link-primary mb-1"
               >
                 {category.title}
               </Link>
