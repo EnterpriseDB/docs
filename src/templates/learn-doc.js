@@ -16,6 +16,8 @@ import {
   MainContent,
   PrevNext,
   SideNavigation,
+  BreadcrumbBar,
+  CategoryList,
   TableOfContents,
   Tiles,
   TileModes,
@@ -93,29 +95,29 @@ const LearnDocTemplate = ({ data, pageContext }) => {
   const slugger = new GithubSlugger();
   const { mdx } = data;
   const { fields, tableOfContents } = data.mdx;
-  const { frontmatter, pagePath, productVersions, navTree, prevNext } =
-    pageContext;
+  const { path: pagePath } = fields;
+  const { frontmatter, productVersions, navTree, prevNext } = pageContext;
   const navRoot = findDescendent(navTree, (n) => n.path === pagePath);
   const {
-    iconName,
-    title,
-    description,
-    katacodaPanel,
-    indexCards,
-    originalFilePath,
-    editTarget,
     deepToC,
+    description,
+    editTarget,
+    iconName,
+    indexCards,
+    katacodaPanel,
+    originalFilePath,
     prevNext: showPrevNext,
+    title,
   } = frontmatter;
   const pageMeta = {
     title: title,
     description: description,
     path: pagePath,
+    minDeviceWidth: 320,
     isIndexPage: isPathAnIndexPage(mdx.fileAbsolutePath),
     productVersions,
     noindex: frontmatter.noindex,
   };
-  const { path } = fields;
   const fileUrlSegment = getRelativeFilePathFromPageAbsolutePath(
     mdx.fileAbsolutePath,
   );
@@ -126,7 +128,7 @@ const LearnDocTemplate = ({ data, pageContext }) => {
       ? frontmatter.showInteractiveBadge
       : !!katacodaPanel;
 
-  const sections = buildSections(navTree, path);
+  const sections = buildSections(navTree, pagePath);
 
   // newtoc will be passed as the toc - this will blend the existing toc with the new sections
   var newtoc = [];
@@ -172,11 +174,10 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
   return (
     <Layout pageMeta={pageMeta} katacodaPanelData={katacodaPanel}>
-      <Container fluid className="p-0 d-flex bg-white">
-        <SideNavigation hideKBLink={frontmatter.hideKBLink}>
+      <Container fluid className="p-0 d-flex flex-column flex-sm-row bg-white">
+        <SideNavigation hideKBLink={frontmatter.hideKBLink} navTree={navTree}>
           <LeftNav
             navTree={navTree}
-            path={mdx.fields.path}
             pagePath={pagePath}
             iconName={iconName}
             product={frontmatter.product}
@@ -184,14 +185,23 @@ const LearnDocTemplate = ({ data, pageContext }) => {
           />
         </SideNavigation>
         <MainContent searchProduct={frontmatter.product}>
+          <BreadcrumbBar
+            navTree={navTree}
+            pagePath={pagePath}
+            iconName={iconName}
+            hideVersion={frontmatter.hideVersion}
+            product={frontmatter.product}
+            version={frontmatter.version}
+          />
+
           {showInteractiveBadge && (
             <div className="new-thing-header" aria-roledescription="badge">
               <span className="badge-text">Interactive Demo</span>
             </div>
           )}
-          <div className="d-flex justify-content-between align-items-center">
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center">
             <h1 className="balance-text">{title}</h1>
-            <div className="d-print-none">{editOrFeedbackButton}</div>
+            <div className="d-print-none ms-auto">{editOrFeedbackButton}</div>
           </div>
 
           {frontmatter.displayBanner ? (
@@ -223,10 +233,22 @@ const LearnDocTemplate = ({ data, pageContext }) => {
 
             {showToc && (
               <Col className="d-none d-lg-block col-lg-3 d-print-none border-start">
+                <CategoryList
+                  navTree={navTree}
+                  pagePath={pagePath}
+                  className="flex-column"
+                />
                 <TableOfContents toc={newtoc} deepToC={deepToC} />
               </Col>
             )}
           </ContentRow>
+
+          <CategoryList
+            navTree={navTree}
+            pagePath={pagePath}
+            className={showToc ? "d-lg-none" : "border-top pt-2"}
+          />
+
           {showPrevNext && <PrevNext prevNext={prevNext} />}
 
           <DevFrontmatter frontmatter={frontmatter} />
