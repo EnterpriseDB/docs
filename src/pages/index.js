@@ -422,6 +422,19 @@ const Page = () => {
             </BannerWideLink>
 
             <BannerDivider
+              iconName={iconNames.BIG_DATA}
+              headingText="WarehousePG and EDB Postgres AI support for Greenplum workloads"
+              toUrl="/supported-open-source/warehousepg/"
+            />
+
+            <BannerWideLink to="/supported-open-source/warehousepg/warehousepg">
+              WarehousePG
+            </BannerWideLink>
+            <BannerWideLink to="/supported-open-source/warehousepg/edb-postgres-ai">
+              EDB Postgres AI support for Greenplum workloads
+            </BannerWideLink>
+
+            <BannerDivider
               iconName={iconNames.CONTROL}
               headingText="Management and Monitoring"
               toUrl="/edb-postgres-ai/platforms-and-tools/management/"
