@@ -1,0 +1,149 @@
+---
+title: Configuring the cluster
+navTitle: Configuring
+deepToC: true
+---
+
+## Configuring the cluster
+
+The next step in the process is to configure the database and the cluster.
+
+This involves logging into each host and running the `pgd` command to create the cluster as the database user.
+
+These steps will vary according to which platform you are using and which version of Postgres you are using.
+
+## Cluster names
+
+You will need to choose a name for your cluster. This is the name that will be used to identify the cluster in the PGD CLI and in the database. It will be referred to as `<cluster-name>` in the examples.
+
+## Group names
+
+You will also need to choose a name for the group. This is the name that will be used to identify the group in the PGD CLI and in the database. It will be referred to as `<group-name>` in the examples.
+The group name must be unique within the cluster.
+
+## Node names
+You will also need to choose a name for each node. This is the name that will be used to identify the node in the PGD CLI and in the database. It will be referred to as `<node-name>` in the examples. This is separate from the host name, which is the name of the machine on which the node is running.
+
+The node name must be unique within the group and within the cluster.
+
+## Paths and users
+
+The paths and users used in the examples will vary according to which version of Postgres you are using and which platform you are using.
+
+### For EDB Postgres Advanced Server
+
+You will use the system's `enterprisedb` user to run the `pgd` command. The database port is 5444.
+
+#### On CentOS/RHEL
+
+Postgres executable files are installed in `/usr/edb/as$PG_VERSION/bin/` and the data directory is in `/var/lib/edb/as$PG_VERSION/data/`.
+
+#### On Debian/Ubuntu
+
+Postgres executable files are installed in `/usr/lib/edb-as/$PG_VERSION/bin/` and the data directory is in `/var/lib/edb-as/$PG_VERSION/main/`.
+
+### For EDB Postgres Extended
+
+You will use the system's `postgres` user to run the `pgd` command. The database port is 5432
+
+#### On CentOS/RHEL
+
+Postgres Extended executable files are installed in `/usr/edb/pge$PG_VERSION/bin/` and the data directory is in `/var/lib/edb-pge/$PG_VERSION/data/`.
+
+#### On Debian/Ubuntu
+
+Postgres Extended executable files are installed in `/usr/lib/edb-pge/$PG_VERSION/bin/` and the data directory is in `/var/lib/edb-pge/$PG_VERSION/main/`.
+
+### For Community PostgreSQL
+
+You will use the system's `postgres` user to run the `pgd` command. The database port is 5432.
+
+#### On CentOS/RHEL
+
+Postgres executable files are installed in `/usr/pgsql-$PG_VERSION/bin/` and the data directory is in `/var/lib/pgsql/$PG_VERSION/data/`.
+
+#### On Debian/Ubuntu
+
+Postgres executable files are installed in `/usr/lib/postgresql/$PG_VERSION/bin/` and the data directory is in `/var/lib/postgresql/$PG_VERSION/main/`.
+
+## On each host
+
+1. Log in as the database user.
+
+```bash
+sudo su - <db-user>
+```
+
+2. Add the Postgres executable files to your path.
+
+```bash
+export PATH=$PATH:<executable-path>
+```
+
+3. Run the pgd node setup command
+
+### On the first host
+
+On the first host, run the following command to create the cluster:
+
+```bash
+pgd node <first-node-name> setup "host=<first-host> user=<db-user> port=<db-port> dbname=bdrdb" --pgdata <data-path>  --group-name <group-name> --cluster-name <cluster-name> --create-group 
+```
+
+This command will create the cluster and the group on the first host. It will also create the data directory and initialize the database.
+
+### On the second host
+
+On the second host, run the following command to create the cluster:
+
+```bash
+pgd node <second-node-name> setup "host=<second-host> user=<db-user> port=<db-port> dbname=bdrdb" --pgdata <data-path> --cluster-dsn "host=<first-host> user=pos<db-user> tgres port=<db-port> dbname=bdrdb"
+```
+
+This command will create the node on the second host, and then join the cluster using the cluster-dsn setting to connect to the first host.
+
+### On the third host
+
+On the third host, run the following command to create the cluster:
+
+```bash
+pgd node <third-node-name> setup "host=<third-host> user=<db-user> port=<db-port> dbname=bdrdb" --pgdata <data-path> --cluster-dsn "host=<first-host> user=<db-user> port=<db-port> dbname=bdrdb"
+```
+
+This command will create the node on the third host, and then join the cluster using the cluster-dsn setting to connect to the first host.
+
+## Worked example
+
+In this example, we will configure the PGD Essential cluster with EDB Postgres Extended Server 17 on a CentOS/RHEL system using an enterprise subscription that we installed in the [previous worked example](02-installing-database-and-pgd).
+
+We will now create a cluster called `pgd` with three nodes called `node1`, `node2`, and `node3`. 
+* The group name will be `group1`. The hosts are `host-1`, `host-2`, and `host-3`. 
+* The Postgres version is 17.
+* The database user is `postgres`. 
+* The database port is 5432.
+* The Postgres executable files are in `/usr/edb/pge17/bin/`.
+* The Postgres data directory is in `/var/lib/edb-pge/17/main/`.
+
+#### On the first host
+
+```bash
+sudo su - enterprisedb
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node1 setup "host=host-1 user=postgres port=5432 dbname=bdrdb" --pgdata /var/lib/edb/pge17/main/ --group-name group1 --cluster-name pgd --create-group
+```
+
+#### On the second host
+
+```bash
+sudo su - enterprisedb
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node2 setup "host=host-2 user=postgres port=5432 dbname=bdrdb" --pgdata /var/lib/edb/pge17/main/ --cluster-dsn "host=host-1 user=enterprisedb port=5432 dbname=bdrdb"
+```
+
+#### On the third host
+
+```bash
+sudo su - enterprisedb
+export PATH=$PATH:/usr/edb/pge17/bin/
+pgd node node3 setup "host=host-3 user=postgres port=5432 dbname=bdrdb" --pgdata /var/lib/edb/pge17/data/ --cluster-dsn "host=host-1 user=postgres port=5432 dbname=bdrdb"
+
